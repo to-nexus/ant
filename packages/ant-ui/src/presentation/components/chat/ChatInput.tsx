@@ -7,11 +7,10 @@ import { Send, ChevronDown, ChevronRight, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
-import { fetchAgents, type Agent, getApiBase, authFetch } from '@/infrastructure/http/api';
+import { fetchAgents, type Agent, API_BASE, authFetch } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
-const API_BASE = () => getApiBase();
 
 interface ChatInputProps {
   disabled?: boolean;

@@ -60,11 +60,14 @@ export function DevServerStatusPanel({
   onDismiss,  // ✅ NEW: Dismiss handler
   fixButtonClicked = false  // ✅ NEW: Track fix button state
 }: DevServerStatusPanelProps) {
-  const startingWithCounts = progress
+  // ✅ Only show (n/m) counts for multi-package projects (totalCount > 1)
+  const isMultiPackage = progress && progress.totalCount > 1;
+  
+  const startingWithCounts = isMultiPackage
     ? `${DEV_SERVER_MESSAGES.STATUS_STARTING} (${progress.completedCount}/${progress.totalCount})`
     : DEV_SERVER_MESSAGES.STATUS_STARTING;
   
-  const installingWithCounts = progress
+  const installingWithCounts = isMultiPackage
     ? `${DEV_SERVER_MESSAGES.STATUS_INSTALLING} (${progress.completedCount}/${progress.totalCount})`
     : DEV_SERVER_MESSAGES.STATUS_INSTALLING;
 
@@ -87,7 +90,7 @@ export function DevServerStatusPanel({
             <div className="text-sm font-medium text-purple-900 dark:text-purple-100">
               {progressMsg}
             </div>
-            {progress && (
+            {isMultiPackage && (
               <div className="mt-1">
                 <div className="flex gap-1">
                   {progress.packages.map((pkg, idx) => (
@@ -110,9 +113,7 @@ export function DevServerStatusPanel({
     );
   }
   
-  // Starting dev server
   if (state === 'starting') {
-    // ✅ Per spec: keep "Starting dev server..." but add (n/m) based on completed/total packages
     const progressMsg = startingWithCounts;
     
     return (
@@ -123,7 +124,7 @@ export function DevServerStatusPanel({
             <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
               {progressMsg}
             </div>
-            {progress && (
+            {isMultiPackage && (
               <div className="mt-1">
                 <div className="flex gap-1">
                   {progress.packages.map((pkg, idx) => (
@@ -148,7 +149,9 @@ export function DevServerStatusPanel({
   
   // Running successfully
   if (state === 'running') {
-    const progressMsg = progress ? getProgressMessage(progress) : DEV_SERVER_MESSAGES.STATUS_RUNNING;
+    // ✅ FIX: When ready, ignore progress from logs and show simple running message
+    // This fixes the "Progress (0/1)" bug on page refresh
+    const progressMsg = ready ? DEV_SERVER_MESSAGES.STATUS_RUNNING : (progress ? getProgressMessage(progress) : DEV_SERVER_MESSAGES.STATUS_RUNNING);
     const warning = issues?.find(i => i.severity === 'warning');
     
     return (

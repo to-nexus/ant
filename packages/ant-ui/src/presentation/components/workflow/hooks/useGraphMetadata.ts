@@ -7,9 +7,7 @@
 import { useState, useEffect } from 'react';
 import { WorkflowGraphMetadata } from '@/domain/models/workflow';
 
-import { getApiBase } from '@/infrastructure/http/api';
-
-const API_BASE = () => getApiBase();
+import { API_BASE } from '@/infrastructure/http/api';
 
 export function useGraphMetadata(agent: string, job: string) {
   const [metadata, setMetadata] = useState<WorkflowGraphMetadata | null>(null);

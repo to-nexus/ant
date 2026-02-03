@@ -13,7 +13,7 @@
 
 import { useCallback } from 'react';
 import { useStore } from '@/domain/store';
-import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, getApiBase, fetchQueuePosition } from '@/infrastructure/http/api';
+import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, API_BASE, fetchQueuePosition } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
@@ -238,7 +238,7 @@ export function useJobExecution() {
         try {
           console.log('[useJobExecution] Finalizing chat message...');
           await fetch(
-            `${getApiBase()}/projects/${selectedProject}/features/${selectedFeature}/chat/finalize-message`,
+            `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/finalize-message`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

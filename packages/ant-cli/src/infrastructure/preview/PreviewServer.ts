@@ -380,7 +380,7 @@ export class PreviewServer {
 
     return new Promise((resolve) => {
       this.server = this.app.listen(port, () => {
-        logger.warn(`[PreviewServer] 🚀 Preview Server listening on port ${port}`, {
+        logger.warn(`[PreviewServer] 🚀 Preview listening on port ${port}`, {
           component: 'PreviewServer'
         });
         logger.warn(`[PreviewServer] 📡 Ready for /preview/* requests`, {

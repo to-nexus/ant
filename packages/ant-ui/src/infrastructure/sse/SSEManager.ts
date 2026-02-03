@@ -25,7 +25,7 @@
  * @see packages/ant-ui/ARCHITECTURE.md
  */
 
-import { getRealtimeBase } from '../http/api';
+import { REALTIME_BASE } from '../http/api';
 
 // ✅ NOTE: backend unified SSE stream also emits 'preview' events
 export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange';
@@ -170,8 +170,10 @@ class SSEManager {
     
     // ✅ Build URL with user email as query parameter (for EventSource authentication)
     // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    // Use window.location.origin as base for relative path
-    const url = new URL(`${getRealtimeBase()}/projects/${projectId}/features/${featureName}/stream`, window.location.origin);
+    // VITE_BACKEND_BASE env var → absolute URL, else relative path with window.location.origin
+    const realtimeBase = REALTIME_BASE();
+    const basePath = `${realtimeBase}/projects/${projectId}/features/${featureName}/stream`;
+    const url = realtimeBase.startsWith('http') ? new URL(basePath) : new URL(basePath, window.location.origin);
     url.searchParams.set('job', job);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
@@ -249,8 +251,10 @@ class SSEManager {
     
     // ✅ Build URL with user email as query parameter
     // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    // Use window.location.origin as base for relative path
-    const url = new URL(`${getRealtimeBase()}/jobs/${jobId}/workflow/stream`, window.location.origin);
+    // VITE_BACKEND_BASE env var → absolute URL, else relative path with window.location.origin
+    const realtimeBase = REALTIME_BASE();
+    const basePath = `${realtimeBase}/jobs/${jobId}/workflow/stream`;
+    const url = realtimeBase.startsWith('http') ? new URL(basePath) : new URL(basePath, window.location.origin);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
     }
