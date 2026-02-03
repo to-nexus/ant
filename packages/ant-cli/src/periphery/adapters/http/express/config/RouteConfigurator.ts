@@ -224,17 +224,26 @@ export class RouteConfigurator {
 
   /**
    * Setup preview routes
+   * 
+   * All environments use RemotePreviewOrchestrator.
+   * Preview workers must be running separately (docker-compose or K8s).
    */
   private setupPreviewRoutes(app: Express): void {
+    const factory = getInfrastructureFactory();
+    const previewOrchestrator = factory.getPreviewOrchestrator();
+    
+    logger.info(`Preview Orchestrator: RemotePreviewOrchestrator (workers: ${factory.getConfig().previewWorkers.length})`, { 
+      component: 'RouteConfigurator' 
+    });
+    
     const previewRoutes = createPreviewRoutes({
       projectService: this.deps.projectService,
-      previewService: this.deps.previewService,
+      previewOrchestrator,
       workspaceResolver: this.deps.workspaceResolver
     });
     app.use('/api', previewRoutes);
     
-    // Start idle check for auto-cleanup of unused preview servers
-    this.deps.previewService.startIdleCheck();
+    // Note: Idle check is handled by each preview worker independently
   }
 
   /**

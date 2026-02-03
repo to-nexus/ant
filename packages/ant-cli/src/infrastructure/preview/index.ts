@@ -3,8 +3,11 @@
  * 
  * Exports preview orchestration implementations for ant-cli.
  * 
- * Usage:
- * - All environments use RemotePreviewOrchestrator (worker-based)
+ * All environments (local and cloud) use the same distributed architecture:
+ * - RemotePreviewOrchestrator: Worker-based preview management
+ * - PreviewWorkerService: Runs on preview worker nodes
+ * 
+ * The only difference between local and cloud is configuration (env vars).
  */
 
 export { RemotePreviewOrchestrator } from './RemotePreviewOrchestrator';

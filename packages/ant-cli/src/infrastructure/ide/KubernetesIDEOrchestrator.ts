@@ -1007,8 +1007,9 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             component: 'KubernetesIDEOrchestrator'
           });
 
+          // stop() expects tenantId in "org:user" format
           await this.stop(
-            instance.tenantId,
+            `${instance.tenantId}:${instance.userId}`,
             instance.projectId,
             instance.feature || 'main'
           );
