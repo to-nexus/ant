@@ -1,7 +1,6 @@
 import { Express, Request, Response, NextFunction } from 'express';
 import express from 'express';
 import cors from 'cors';
-import { createPreviewProxyMiddleware } from '../../middleware/previewProxy';
 import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
@@ -49,26 +48,12 @@ export class ServerConfigurator {
   }
 
   /**
-   * Setup proxy middleware for preview servers and IDE containers
+   * Setup proxy middleware for IDE containers
    * IMPORTANT: Must be registered BEFORE body parsers
    * 
-   * NOTE: Using /api/preview and /api/ide paths to leverage existing Ingress rules
-   * that route /api/* to ant-api service. This avoids needing separate Ingress entries.
+   * Note: Preview Proxy moved to ant-preview (see 10-cloud-architecture.md)
    */
   private setupProxyMiddleware(app: Express): void {
-    // Preview Proxy (handles /preview/:serverKey requests)
-    app.use(createPreviewProxyMiddleware({
-      portRegistry: this.deps.portRegistry,
-      pathPrefix: '/preview',
-      getBackendPort: ({ tenantId, userId, projectId, feature }) => {
-        try {
-          return this.deps.previewService.getPreviewStatus(tenantId, userId, projectId, feature).backendPort;
-        } catch {
-          return undefined;
-        }
-      }
-    }));
-
     // IDE Proxy (handles /ide/:serverKey requests)
     app.use(createIDEProxyMiddleware({
       portRegistry: this.deps.portRegistry,

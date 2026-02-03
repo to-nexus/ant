@@ -212,17 +212,23 @@ Client                  ALB                 ant-api              K8s Pod
 
 ### 3.2 ant-preview (Preview Server)
 
-**역할**: Dev Server 실행 + Preview 프록시 (Redis 기반 상태 관리)
+**역할**: Preview 관련 모든 기능을 자체 완결 (Redis 기반 상태 관리)
 
 ```
-Components:
-├── PreviewService
+ant-preview (포트 4102)
+│
+├── Preview API (모든 Preview 관리 기능)
+│   ├── POST /preview/projects/:id/start   # Dev Server 시작
+│   ├── POST /preview/projects/:id/stop    # Dev Server 중지
+│   └── GET  /preview/projects/:id/status  # 상태 조회
+│
+├── PreviewService (Dev Server 생명주기)
 │   ├── 프로젝트 구조 탐지 (Vite, Next.js, etc.)
 │   ├── npm install 실행
 │   ├── Dev Server 프로세스 실행 (port 30000+, 0.0.0.0 binding)
 │   └── Redis에 PreviewState 등록 (host, port, running, ready 등)
 │
-└── Preview Proxy (/preview/*)
+└── Preview Proxy (GET /preview/:key/*)
     ├── Redis에서 PreviewState 조회 (host, port)
     ├── 해당 Pod IP:port로 프록시 (Cross-Pod 통신)
     ├── Referer 기반 정적 자원 라우팅
@@ -250,7 +256,7 @@ interface PreviewState {
 ```
 Client                  ALB              ant-preview Pod A      ant-preview Pod B
   │                      │                    │                       │
-  │  POST /api/preview/start                  │                       │
+  │  POST /preview/projects/:id/start        │                       │
   │─────────────────────►│───────────────────►│                       │
   │                      │                    │  1. npm install        │
   │                      │                    │  2. npm run dev --host 0.0.0.0
@@ -259,7 +265,7 @@ Client                  ALB              ant-preview Pod A      ant-preview Pod 
   │                      │                    │     { host: Pod_A_IP, port: 30001 }
   │◄─────────────────────│◄───────────────────│                       │
   │                      │                    │                       │
-  │  /preview/key/*      │                    │                       │
+  │  GET /preview/:key/* │                    │                       │
   │─────────────────────►│  Round-robin       │                       │
   │                      │───────────────────►│                       │
   │                      │                    │  Redis lookup          │
@@ -267,7 +273,7 @@ Client                  ALB              ant-preview Pod A      ant-preview Pod 
   │                      │                    │  proxy to Pod A       │
   │◄─────────────────────│◄───────────────────│◄──────────────────────│
   │                      │                    │                       │
-  │  /preview/key/* (2nd)│  Round-robin       │                       │
+  │  GET /preview/:key/* │  Round-robin       │                       │
   │─────────────────────►│──────────────────────────────────────────►│
   │                      │                    │                       │  Redis lookup
   │                      │                    │                       │  → Pod_A_IP:30001
@@ -455,8 +461,15 @@ ANT_EFS_PVC_NAME=ant-workspaces-pvc        # EFS PVC 이름
 ### 5.3 Preview Server (ant-preview)
 
 ```bash
-ANT_CLI_PORT=4100                          # Preview 서버 포트
-# PreviewService가 Dev Server를 localhost에서 실행
+ANT_PREVIEW_PORT=4102                      # Preview 서버 포트
+ANT_REDIS_URL=redis://...                  # Redis (상태 관리)
+ANT_WORKSPACE_BASE_PATH=/mnt/workspaces    # 워크스페이스 경로
+
+# ant-preview handles ALL preview operations:
+# - POST /preview/projects/:id/start (Dev Server 시작)
+# - POST /preview/projects/:id/stop (Dev Server 중지)
+# - GET  /preview/projects/:id/status (상태 조회)
+# - GET  /preview/:key/* (Dev Server 프록시)
 ```
 
 ### 5.4 Realtime Server (ant-realtime)

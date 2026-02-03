@@ -12,10 +12,10 @@ import { createFigmaOAuthRoutes } from './figma-oauth.routes';
 import { createFigmaFilesRoutes } from './figma-files.routes';
 import { createModelsRoutes } from './models.routes';
 
-// ✅ Re-export existing routes (for backward compatibility)
+// ✅ Re-export existing routes
+// Note: Preview routes moved to ant-preview service (see 10-cloud-architecture.md)
 export { createJobRoutes } from './job.routes';
 export { createKanbanRoutes } from './kanban.routes';
-export { createPreviewRoutes, createDevServerRoutes } from './preview.routes';
 export { createWorkflowRoutes } from './workflow.routes';
 export { createSSERoutes } from './sse.routes';
 export { createAuthRoutes } from './auth.routes';

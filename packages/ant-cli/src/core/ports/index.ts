@@ -24,8 +24,8 @@ export * from "./jobPrerequisites";
 export * from "./auth";
 export * from "./queue";
 export * from "./workspace";
-export * from "./portRegistry";         // 🆕 Preview/IDE state management
-export * from "./stateStore";           // 🆕 Cloud Scalability - StateStorePort
-export * from "./previewOrchestrator";  // 🆕 Cloud Scalability - PreviewOrchestratorPort
-export * from "./ideOrchestrator";      // 🆕 Cloud Scalability - IDEOrchestratorPort
+export * from "./portRegistry";         // Preview/IDE state management
+export * from "./stateStore";           // Cloud Scalability - StateStorePort
+export * from "./ideOrchestrator";      // Cloud Scalability - IDEOrchestratorPort
+// Note: Preview moved to ant-preview service (see 10-cloud-architecture.md)
 

@@ -3,7 +3,6 @@ import express from 'express';
 import {
   createJobRoutes,
   createKanbanRoutes,
-  createPreviewRoutes,
   createWorkflowRoutes,
   createAuthRoutes,
   createIDERoutes,
@@ -224,26 +223,15 @@ export class RouteConfigurator {
 
   /**
    * Setup preview routes
-   * 
-   * All environments use RemotePreviewOrchestrator.
-   * Preview workers must be running separately (docker-compose or K8s).
    */
   private setupPreviewRoutes(app: Express): void {
-    const factory = getInfrastructureFactory();
-    const previewOrchestrator = factory.getPreviewOrchestrator();
-    
-    logger.info(`Preview Orchestrator: RemotePreviewOrchestrator (workers: ${factory.getConfig().previewWorkers.length})`, { 
-      component: 'RouteConfigurator' 
+    // Preview routes moved to ant-preview service
+    // @see docs/architecture/10-cloud-architecture.md
+    // Ingress routes /preview/* → ant-preview
+    // Local dev: Vite proxy routes /preview/* → localhost:4102
+    logger.info('[RouteConfigurator] Preview routes handled by ant-preview service', {
+      component: 'RouteConfigurator'
     });
-    
-    const previewRoutes = createPreviewRoutes({
-      projectService: this.deps.projectService,
-      previewOrchestrator,
-      workspaceResolver: this.deps.workspaceResolver
-    });
-    app.use('/api', previewRoutes);
-    
-    // Note: Idle check is handled by each preview worker independently
   }
 
   /**

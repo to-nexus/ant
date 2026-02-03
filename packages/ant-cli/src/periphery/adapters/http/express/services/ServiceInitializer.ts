@@ -1,7 +1,6 @@
 import { 
   KanbanService,
   SessionService, 
-  PreviewService, 
   ProjectService,
   GraphMetadataService,
   WorkflowStateService,
@@ -90,12 +89,7 @@ export function initializeServices(
   );
   const kanbanService = new KanbanService(config.workspacesPath, workspaceResolver, stateStore);
   
-  const previewService = new PreviewService(
-    portManager,
-    portRegistry,
-    { onStatusChange: () => {} },
-    stateStore
-  );
+  // Note: PreviewService moved to ant-preview (see 10-cloud-architecture.md)
   
   const graphMetadataService = new GraphMetadataService();
   const workflowStateService = new WorkflowStateService(stateStore);
@@ -125,7 +119,6 @@ export function initializeServices(
     kanbanService,
     sessionService,
     gitWatcherService,
-    previewService,
     projectService,
     chatService,
     graphMetadataService,

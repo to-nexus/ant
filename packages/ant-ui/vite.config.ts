@@ -24,6 +24,18 @@ export default defineConfig({
   server: {
     port: 4200,
     open: false,  // 브라우저 자동 열기 방지
+    proxy: {
+      // Local dev: route /preview/* to ant-preview service
+      '/preview': {
+        target: 'http://localhost:4102',
+        changeOrigin: true,
+      },
+      // Local dev: route /realtime/* to ant-realtime service
+      '/realtime': {
+        target: 'http://localhost:4101',
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     open: false,  // 브라우저 자동 열기 방지
