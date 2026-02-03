@@ -100,13 +100,17 @@ export class InfrastructureFactory {
    * 
    * ANT_SERVER_MODE only affects authentication (local:local vs real auth)
    * Infrastructure is the same for both modes (Redis, BullMQ, Remote Preview)
+   * 
+   * Note: Validation is lazy - only validates what's needed at the time of use.
+   * - ANT_REDIS_URL: Required at factory initialization (used by most services)
+   * - ANT_PREVIEW_WORKERS: Validated only when getPreviewOrchestrator() is called
    */
   private loadConfig(): InfrastructureConfig {
     const authMode = (process.env.ANT_SERVER_MODE || 'local') as AuthMode;
     const redisUrl = process.env.ANT_REDIS_URL;
     const previewWorkers = process.env.ANT_PREVIEW_WORKERS?.split(',').filter(Boolean) || [];
     
-    // Validate required environment variables
+    // Validate Redis URL - required for all environments (StateStore, JobQueue, etc.)
     if (!redisUrl) {
       throw new Error(
         'ANT_REDIS_URL is required. ' +
@@ -115,13 +119,8 @@ export class InfrastructureFactory {
       );
     }
     
-    if (previewWorkers.length === 0) {
-      throw new Error(
-        'ANT_PREVIEW_WORKERS is required. ' +
-        'At least one preview worker URL must be configured. ' +
-        'Example: ANT_PREVIEW_WORKERS=http://localhost:8080'
-      );
-    }
+    // Note: ANT_PREVIEW_WORKERS validation is deferred to getPreviewOrchestrator()
+    // This allows RealtimeServer to start without preview workers configured
     
     return {
       authMode,
@@ -203,9 +202,20 @@ export class InfrastructureFactory {
   /**
    * Get PreviewOrchestratorPort implementation
    * Always uses RemotePreviewOrchestrator (worker-based)
+   * 
+   * @throws Error if ANT_PREVIEW_WORKERS is not configured
    */
   getPreviewOrchestrator(): PreviewOrchestratorPort {
     if (!this.previewOrchestrator) {
+      // Lazy validation: only check when preview orchestrator is actually needed
+      if (this.config.previewWorkers.length === 0) {
+        throw new Error(
+          'ANT_PREVIEW_WORKERS is required for preview functionality. ' +
+          'At least one preview worker URL must be configured. ' +
+          'Example: ANT_PREVIEW_WORKERS=http://localhost:8080'
+        );
+      }
+      
       this.previewOrchestrator = new RemotePreviewOrchestrator(
         { workers: this.config.previewWorkers },
         this.getStateStore()
