@@ -12,10 +12,10 @@ EKS-based cloud deployment guide for DevOps teams.
 
 | Server | Entrypoint | Role |
 |-------|----------|------|
-| **ant-api** | `server.mjs` | HTTP REST API, Proxy |
-| **ant-realtime** | `start-realtime-server.mjs` | SSE (Server-Sent Events) |
-| **ant-job** | `start-job-worker.mjs` | AI Job Processing |
-| **ant-preview** | `start-preview-worker.mjs` | Preview Server Management |
+| **ant-api** | `server.js` | HTTP REST API, IDE Proxy |
+| **ant-realtime** | `start-realtime-server.js` | SSE (Server-Sent Events) |
+| **ant-job** | `start-job-worker.js` | AI Job Processing |
+| **ant-preview** | `start-preview-server.js` | Preview API + Proxy + Dev Server |
 
 > **Note**: `ant-api` and `ant-realtime` are separated for independent scaling. SSE requires **Sticky Session** while REST API uses **Round-robin**. See [10-cloud-architecture.md](../architecture/10-cloud-architecture.md) for details.
 
@@ -337,10 +337,10 @@ resources:
 
 | Server | Command |
 |------|---------|
-| ant-api | `node dist/server.mjs` |
-| ant-realtime | `node dist/start-realtime-server.mjs` |
-| ant-job | `node dist/start-job-worker.mjs` |
-| ant-preview | `node dist/start-preview-worker.mjs` |
+| ant-api | `node dist/server.js` |
+| ant-realtime | `node dist/start-realtime-server.js` |
+| ant-job | `node dist/start-job-worker.js` |
+| ant-preview | `node dist/start-preview-server.js` |
 
 ### 3.3 Key Configuration Principles
 
@@ -401,9 +401,14 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 |----------|-------------|---------|
 | `ANT_SERVER_MODE` | Authentication mode | `cloud` |
 | `ANT_REDIS_URL` | Redis connection URL | `redis://redis.internal:6379` |
-| `ANT_PREVIEW_WORKERS` | Preview worker URLs | `http://ant-preview:8080` |
 | `ANT_WORKSPACE_BASE_PATH` | Workspace root path | `/mnt/workspaces` |
 | `ANT_K8S_NAMESPACE` | IDE K8s namespace (enables K8s IDE) | `ant-ide` |
+
+**ant-preview specific:**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `ANT_PREVIEW_PORT` | Preview server port | `4102` |
 
 **ant-realtime specific:**
 
