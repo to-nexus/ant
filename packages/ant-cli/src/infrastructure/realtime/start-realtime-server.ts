@@ -26,7 +26,8 @@ const WORKSPACES_PATH = process.env.ANT_WORKSPACE_BASE_PATH;
 const CORS_ORIGINS = process.env.ANT_CORS_ORIGINS?.split(',').filter(Boolean);
 
 async function main(): Promise<void> {
-  logger.info('🚀 Starting Realtime Server...', { component: 'RealtimeServerProcess' });
+  const startTime = new Date().toISOString();
+  logger.info(`🚀 Starting Realtime Server... (${startTime})`, { component: 'RealtimeServerProcess' });
   
   // Validate required environment variables
   if (!WORKSPACES_PATH) {
