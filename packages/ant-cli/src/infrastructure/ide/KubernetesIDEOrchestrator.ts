@@ -400,14 +400,15 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     // Use centralized function for IDE instance key (org:user:project)
     const instanceKey = createIDEKey(userContext.organizationId, userContext.userId, projectId);
     const resourceName = this.createResourceName(instanceKey);
+    const startTime = new Date().toISOString();
 
-    // ✅ WARN level for production IDE debugging
-    logger.warn(`Starting K8s IDE: ${instanceKey}`, {
+    // ✅ WARN level for production IDE debugging with timestamp
+    logger.warn(`🚀 Starting K8s IDE: ${instanceKey} (${startTime})`, {
       component: 'KubernetesIDEOrchestrator',
       organizationId: userContext.organizationId,
       userId: userContext.userId,
       projectId
-    }, { resourceName, namespace: this.options.namespace });
+    }, { resourceName, namespace: this.options.namespace, workspacePath });
 
     try {
       // Check if pod already exists
@@ -526,11 +527,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   private async waitForPodReady(resourceName: string, timeoutMs: number = TIMEOUTS.POD_READY): Promise<void> {
     const startTime = Date.now();
     
-    logger.debug(`Waiting for Pod to be ready: ${resourceName} (timeout: ${timeoutMs / 1000}s)`, {
+    // ✅ WARN level for production visibility
+    logger.warn(`⏳ Waiting for Pod: ${resourceName} (timeout: ${timeoutMs / 1000}s)`, {
       component: 'KubernetesIDEOrchestrator'
     });
     
     let lastPhase = '';
+    let lastWaitReason = '';
     while (Date.now() - startTime < timeoutMs) {
       try {
         const pod = await this.k8sRequest<K8sPod>(
@@ -540,29 +543,41 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         const phase = pod.status?.phase || 'Unknown';
         const containerStatuses = pod.status?.containerStatuses?.[0];
         const waiting = containerStatuses?.state?.waiting;
+        const waitReason = waiting?.reason || '';
+        const waitMessage = waiting?.message || '';
         
-        // Log only when phase changes or every 10 seconds
+        // Log when phase or wait reason changes, or every 30 seconds
         const elapsed = Date.now() - startTime;
-        if (phase !== lastPhase || elapsed % 10000 < 2000) {
-          const waitReason = waiting ? ` (${waiting.reason}: ${waiting.message || 'no message'})` : '';
-          logger.debug(`Pod ${resourceName}: phase=${phase}${waitReason} (${Math.round(elapsed / 1000)}s)`, {
+        const shouldLog = phase !== lastPhase || waitReason !== lastWaitReason || elapsed % 30000 < 2000;
+        
+        if (shouldLog) {
+          const waitInfo = waiting ? ` [${waitReason}: ${waitMessage}]` : '';
+          logger.warn(`   Pod ${resourceName}: phase=${phase}${waitInfo} (${Math.round(elapsed / 1000)}s elapsed)`, {
             component: 'KubernetesIDEOrchestrator'
           });
           lastPhase = phase;
+          lastWaitReason = waitReason;
         }
 
         if (phase === 'Running') {
-          logger.debug(`Pod is ready: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
+          logger.warn(`✅ Pod is ready: ${resourceName} (took ${Math.round(elapsed / 1000)}s)`, { 
+            component: 'KubernetesIDEOrchestrator' 
+          });
           return;
         }
 
         if (phase === 'Failed') {
           const reason = containerStatuses?.state?.terminated?.reason || 'Unknown';
+          logger.error(`❌ Pod failed: ${resourceName}, reason=${reason}`, { 
+            component: 'KubernetesIDEOrchestrator' 
+          });
           throw new Error(`Pod failed to start: ${reason}`);
         }
       } catch (error: any) {
         if (!error.message.includes('404')) {
-          logger.warn(`Error checking pod: ${error.message}`, { component: 'KubernetesIDEOrchestrator' });
+          logger.warn(`⚠️ Error checking pod ${resourceName}: ${error.message}`, { 
+            component: 'KubernetesIDEOrchestrator' 
+          });
           throw error;
         }
       }
@@ -570,6 +585,9 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
+    logger.error(`❌ Pod startup timeout: ${resourceName} after ${timeoutMs}ms`, { 
+      component: 'KubernetesIDEOrchestrator' 
+    });
     throw new Error(`Pod ${resourceName} startup timeout after ${timeoutMs}ms`);
   }
 
