@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { LogEntry } from '../../../../../core/ports/http';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
-import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
+import { PortRegistryPort, PreviewState, PreviewPackage } from '../../../../../core/ports/portRegistry';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
 import { createServerKey, parseServerKey } from './utils/serverKeyUtils';
@@ -21,6 +21,10 @@ import { SSE_BROADCAST_CHANNEL } from '../SSEService';
 
 // Use sse:broadcast channel with type:'preview' (SSEService subscribes to this)
 const PREVIEW_CHANNEL = SSE_BROADCAST_CHANNEL;
+
+// Idle timeout configuration
+const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // Check every minute
 
 /**
  * PreviewService
@@ -47,6 +51,10 @@ export class PreviewService {
   private stoppingServers: Set<string> = new Set();
   private stoppingPidsByServer: Map<string, Set<number>> = new Map();
   private stoppingCleanupTimers: Map<string, NodeJS.Timeout> = new Map();
+  
+  // Idle check
+  private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private idleTimeoutMs: number = DEFAULT_IDLE_TIMEOUT_MS;
   
   // Dependencies
   private onStatusChange?: (serverKey: string) => void;
@@ -344,16 +352,30 @@ export class PreviewService {
         .map(p => ({ name: p.name, type: p.type, port: p.port as number }));
       this.previewServerPackagePorts.set(serverKey, packagePorts);
       
-      // 4. Register entry in PortRegistry
+      // 4. Register entry in PortRegistry (full state)
       // In K8s, use Pod IP instead of localhost for multi-replica support
       if (structure.entry && this.portRegistry) {
         const host = this.getPodHost();
-        await this.portRegistry.registerPreview(
-          tenantId, userId, projectId, feature,
-          structure.entry.port!,
-          host
-        );
-        logger.warn(`[Preview] Registered: ${serverKey} -> ${host}:${structure.entry.port}`, { component: 'PreviewService' });
+        const backendPort = packagePorts.find(p => p.type === 'backend')?.port;
+        
+        const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
+          tenantId,
+          userId,
+          projectId,
+          feature,
+          running: true,
+          ready: false,  // Will be updated after health check
+          port: structure.entry.port!,
+          backendPort,
+          host,
+          podId: os.hostname(),
+          packages: packagePorts,
+          issues: [],
+          startedAt: new Date()
+        };
+        
+        await this.portRegistry.registerPreview(previewState);
+        logger.info(`[Preview] Registered: ${serverKey} -> ${host}:${structure.entry.port}`, { component: 'PreviewService' });
       }
       
       // 5. Store processes and entry port
@@ -719,10 +741,178 @@ export class PreviewService {
     });
   }
   
+  // ==========================================
+  // Idle Check Management
+  // ==========================================
+  
+  /**
+   * Set idle timeout duration
+   */
+  setIdleTimeout(timeoutMs: number): void {
+    this.idleTimeoutMs = timeoutMs;
+    logger.info(`Idle timeout set to ${timeoutMs}ms (${timeoutMs / 60000} minutes)`, { 
+      component: 'PreviewService' 
+    });
+  }
+  
+  /**
+   * Start idle check timer
+   * Periodically checks for idle preview servers and terminates them
+   */
+  startIdleCheck(): void {
+    if (this.idleCheckTimer) {
+      logger.debug('Idle check timer already running', { component: 'PreviewService' });
+      return;
+    }
+    
+    this.idleCheckTimer = setInterval(async () => {
+      await this.checkIdleInstances();
+    }, IDLE_CHECK_INTERVAL_MS);
+    
+    logger.info(`[IdleCheck] Started idle check timer (interval: ${IDLE_CHECK_INTERVAL_MS / 1000}s, timeout: ${this.idleTimeoutMs / 60000}min)`, { 
+      component: 'PreviewService' 
+    });
+  }
+  
+  /**
+   * Stop idle check timer
+   */
+  stopIdleCheck(): void {
+    if (this.idleCheckTimer) {
+      clearInterval(this.idleCheckTimer);
+      this.idleCheckTimer = null;
+      logger.info('[IdleCheck] Stopped idle check timer', { component: 'PreviewService' });
+    }
+  }
+  
+  /**
+   * Check for idle instances and terminate them
+   * Uses lastAccessedAt from Redis state, or local state as fallback
+   */
+  private async checkIdleInstances(): Promise<void> {
+    const now = Date.now();
+    let checkedCount = 0;
+    let terminatedCount = 0;
+    
+    try {
+      // If stateStore is available, use Redis-based idle check
+      if (this.stateStore) {
+        const previews = await this.stateStore.listPreviews();
+        
+        for (const preview of previews) {
+          const serverKey = this.createServerKey(
+            preview.tenantId, 
+            preview.userId, 
+            preview.projectId, 
+            preview.feature
+          );
+          
+          // Skip if not running on this Pod
+          if (!this.previewServers.has(serverKey)) {
+            continue;
+          }
+          
+          checkedCount++;
+          
+          // Check last access time (convert Date to timestamp)
+          const lastAccessTime = preview.lastAccessedAt?.getTime?.() 
+            || (typeof preview.lastAccessedAt === 'number' ? preview.lastAccessedAt : 0);
+          const startTime = preview.startedAt?.getTime?.() 
+            || (typeof preview.startedAt === 'number' ? preview.startedAt : 0);
+          const lastAccess = lastAccessTime || startTime || 0;
+          const idleTime = now - lastAccess;
+          
+          if (idleTime > this.idleTimeoutMs) {
+            logger.info(`[IdleCheck] Terminating idle preview: ${serverKey} (idle for ${Math.round(idleTime / 60000)} minutes)`, {
+              component: 'PreviewService'
+            });
+            
+            try {
+              await this.stopPreview(
+                preview.tenantId,
+                preview.userId,
+                preview.projectId,
+                preview.feature
+              );
+              terminatedCount++;
+            } catch (error: any) {
+              logger.warn(`[IdleCheck] Failed to terminate idle preview ${serverKey}: ${error.message}`, {
+                component: 'PreviewService'
+              });
+            }
+          }
+        }
+      } else if (this.portRegistry) {
+        // Fallback: use local portRegistry
+        const previews = await this.portRegistry.listPreviews();
+        
+        for (const preview of previews) {
+          const serverKey = this.createServerKey(
+            preview.tenantId, 
+            preview.userId, 
+            preview.projectId, 
+            preview.feature
+          );
+          
+          // Skip if not running locally
+          if (!this.previewServers.has(serverKey)) {
+            continue;
+          }
+          
+          checkedCount++;
+          
+          // Check last access time
+          const lastAccessTime = preview.lastAccessedAt?.getTime?.() 
+            || (typeof preview.lastAccessedAt === 'number' ? preview.lastAccessedAt : 0);
+          const startTime = preview.startedAt?.getTime?.() 
+            || (typeof preview.startedAt === 'number' ? preview.startedAt : 0);
+          const lastAccess = lastAccessTime || startTime || 0;
+          const idleTime = now - lastAccess;
+          
+          if (idleTime > this.idleTimeoutMs) {
+            logger.info(`[IdleCheck] Terminating idle preview: ${serverKey} (idle for ${Math.round(idleTime / 60000)} minutes)`, {
+              component: 'PreviewService'
+            });
+            
+            try {
+              await this.stopPreview(
+                preview.tenantId,
+                preview.userId,
+                preview.projectId,
+                preview.feature
+              );
+              terminatedCount++;
+            } catch (error: any) {
+              logger.warn(`[IdleCheck] Failed to terminate idle preview ${serverKey}: ${error.message}`, {
+                component: 'PreviewService'
+              });
+            }
+          }
+        }
+      } else {
+        logger.debug('[IdleCheck] No stateStore or portRegistry configured, skipping', { 
+          component: 'PreviewService' 
+        });
+        return;
+      }
+      
+      if (checkedCount > 0) {
+        logger.debug(`[IdleCheck] Checked ${checkedCount} preview(s), terminated ${terminatedCount}`, {
+          component: 'PreviewService'
+        });
+      }
+    } catch (error: any) {
+      logger.error('[IdleCheck] Error during idle check', { component: 'PreviewService' }, error);
+    }
+  }
+  
   /**
    * Cleanup all preview servers
    */
   async cleanup(): Promise<void> {
+    // Stop idle check timer first
+    this.stopIdleCheck();
+    
     const serverKeys = Array.from(this.previewServers.keys());
     
     if (serverKeys.length === 0) {

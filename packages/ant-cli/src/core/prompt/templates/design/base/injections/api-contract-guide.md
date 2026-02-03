@@ -76,25 +76,54 @@
 Document schema, queries, mutations, subscriptions.
 
 ### 5. Real-time Communication (if applicable)
-**⚠️ ONLY if PRD explicitly requires real-time features (chat, live updates, multiplayer, etc.)**
 
-**If PRD says "real-time", choose appropriate protocol:**
-- WebSocket (bidirectional, low latency)
-- SSE (Server-Sent Events, server → client only)
-- Long polling (fallback)
-- GraphQL Subscriptions (if using GraphQL)
+#### 5.1 Communication Pattern Selection ⚠️ OBSERVE FIRST
 
-**❌ DO NOT create this section if:**
-- PRD doesn't mention real-time
-- Standard REST polling is sufficient
-- No bidirectional communication needed
+**Before choosing protocol, observe PRD requirements:**
 
-**If needed, document event schemas:**
-For EACH event:
+| Observation | Pattern Indicator |
+|-------------|-------------------|
+| Client requests, server responds, done | → REST/GraphQL sufficient |
+| Server needs to push updates to client | → SSE or WebSocket |
+| Client and server both send messages anytime | → WebSocket |
+| Long-running tasks with progress updates | → SSE or WebSocket + Job Queue |
+| Multiple clients need synchronized state | → WebSocket + Pub/Sub backend |
+
+**Constraint**: Do NOT add real-time protocol if REST polling is sufficient. Do NOT default to WebSocket when SSE (simpler) meets requirements.
+
+#### 5.2 Protocol Selection Principles
+
+| Protocol | When to Use | Connection Model |
+|----------|-------------|------------------|
+| **REST/GraphQL** | Request-response only, no server push | Stateless |
+| **SSE** | Server→Client push only, no client messages | Stateful (simpler) |
+| **WebSocket** | Bidirectional, low-latency, high-frequency | Stateful (complex) |
+| **Long Polling** | Fallback when SSE/WS not available | Stateless (inefficient) |
+
+#### 5.3 Scalability Consideration ⚠️ CRITICAL
+
+**If stateful protocol (SSE/WebSocket) is chosen:**
+
+| Checkpoint | Must Address |
+|------------|--------------|
+| **Single instance** | Connection state in memory is acceptable |
+| **Multiple instances** | Connection state MUST be externalized (Redis Pub/Sub, etc.) |
+| **Sticky sessions** | Load balancer affinity OR broadcast to all instances |
+
+**Constraint**: If horizontal scaling is expected, stateful connection handling strategy MUST be documented in backend design.
+
+#### 5.4 Event Schema Documentation
+
+**If real-time protocol is needed, document for EACH event:**
 - **Direction**: Client→Server or Server→Client
 - **Event name**: exact string
 - **Payload DTO**: reference §6 (or inline field list)
 - **Ack/Response** (if any): DTO + error shapes
+- **Delivery guarantee**: at-most-once, at-least-once, exactly-once
+
+**❌ DO NOT create this section if:**
+- PRD doesn't indicate server push or bidirectional communication
+- Standard REST polling meets data freshness requirements
 
 ### 6. Shared Type Definitions
 **Define common DTOs ONCE (language-neutral):**

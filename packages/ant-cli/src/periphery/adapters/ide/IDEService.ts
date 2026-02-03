@@ -252,13 +252,11 @@ export class IDEService {
     if (existing && existing.status === 'running') {
       existing.lastAccessedAt = new Date();
       
-      // Update last access in registry
-      await this.portRegistry.updateLastAccess(
+      // Update last access in registry (IDE is project-level)
+      await this.portRegistry.touchIDE(
         userContext.organizationId,
         userContext.userId,
-        projectId,
-        feature,
-        'ide'
+        projectId
       );
       
       logger.info(`IDE already running`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
@@ -310,7 +308,9 @@ export class IDEService {
         userContext.organizationId,
         userContext.userId,
         projectId,
-        port
+        port,
+        'localhost',
+        containerName  // podId (container name for Docker)
       );
       logger.debug(`IDE registered in PortRegistry`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, { port });
 
@@ -518,9 +518,9 @@ export class IDEService {
     // Update last accessed
     instance.lastAccessedAt = new Date();
     
-    // Update in registry
+    // Update in registry (IDE is project-level)
     const [orgId, userId] = tenantId.split(':');
-    await this.portRegistry.updateLastAccess(orgId, userId, projectId, feature, 'ide');
+    await this.portRegistry.touchIDE(orgId, userId, projectId);
     
     return instance;
   }

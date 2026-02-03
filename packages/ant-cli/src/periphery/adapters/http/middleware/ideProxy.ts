@@ -100,12 +100,10 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
   }
 
   protected async updateLastAccess(parts: ServerKeyParts): Promise<void> {
-    await this.portRegistry.updateLastAccess(
+    await this.portRegistry.touchIDE(
       parts.tenantId,
       parts.userId,
-      parts.projectId,
-      parts.feature || 'main',
-      'ide'
+      parts.projectId
     );
   }
 
@@ -202,8 +200,8 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
       logger.warn(`WS Failed to get IDE host: ${err}`, { component: 'IDEProxy' });
     }
 
-    // Update last access (IDE is project-level, feature ignored)
-    await portRegistry.updateLastAccess(tenantId, userId, projectId, '', 'ide');
+    // Update last access (IDE is project-level)
+    await portRegistry.touchIDE(tenantId, userId, projectId);
 
     // Rewrite the URL to strip the prefix and serverKey
     const targetPath = url.slice(`${pathPrefix}/${serverKey}`.length) || '/';

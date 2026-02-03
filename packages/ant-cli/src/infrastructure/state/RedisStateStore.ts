@@ -29,7 +29,13 @@ import {
   ChatMessageData,
   WorkflowRealtimeState
 } from '../../core/ports/stateStore';
-import { PortRegistryPort } from '../../core/ports/portRegistry';
+import { 
+  PortRegistryPort, 
+  PreviewState, 
+  IDEState,
+  PreviewPackage,
+  PreviewRuntimeIssue
+} from '../../core/ports/portRegistry';
 import { createIDEKey, createPreviewKey } from './redisKeyUtils';
 import { logger } from '../../utils/logger';
 
@@ -351,79 +357,128 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
-  // Port Registry - Preview
+  // Port Registry - Preview (Full State Management)
   // ============================================
 
-  // Key utilities imported from redisKeyUtils.ts:
-  // - createIDEKey(org, user, project) → 3 parts
-  // - createPreviewKey(org, user, project, feature) → 4 parts
-
-  async registerPreview(
-    tenantId: string,
-    userId: string,
-    projectId: string,
-    feature: string,
-    port: number,
-    host: string = 'localhost'
-  ): Promise<void> {
+  /**
+   * Register/Update preview state (full state)
+   * Called when preview server starts
+   */
+  async registerPreview(state: Omit<PreviewState, 'lastAccessedAt'>): Promise<void> {
+    const { tenantId, userId, projectId, feature, port, host, podId } = state;
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
     
-    const mapping: PortMapping = {
-      tenantId,
-      userId,
-      projectId,
-      feature,
-      port,
-      host,
-      registeredAt: new Date(),
+    const fullState: PreviewState = {
+      ...state,
       lastAccessedAt: new Date()
     };
 
     const pipeline = this.redis.pipeline();
-    pipeline.set(key, JSON.stringify(mapping), 'EX', TTL.PORT_MAPPING);
+    pipeline.set(key, JSON.stringify(fullState), 'EX', TTL.PORT_MAPPING);
     pipeline.sadd(this.key(KEYS.PREVIEW_LIST), portKey);
+    // Index by podId for cleanup on pod restart
+    pipeline.sadd(this.key('ant:preview:byPod:', podId), portKey);
     await pipeline.exec();
 
-    logger.warn(`[Preview] Redis registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
+    logger.info(`[Preview] Registered: ${portKey} → ${host}:${port} (pod: ${podId})`, { component: 'RedisStateStore' });
   }
 
+  /**
+   * Get preview state
+   * Does NOT auto-update lastAccessedAt (use touchPreview for that)
+   */
   async getPreview(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<PortMapping | null> {
+  ): Promise<PreviewState | null> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
     const data = await this.redis.get(key);
 
     if (!data) {
-      logger.warn(`[Preview] getPreview NOT FOUND: key=${key}`, { component: 'RedisStateStore' });
       return null;
     }
 
-    const mapping: PortMapping = JSON.parse(data);
-    logger.warn(`[Preview] getPreview FOUND: key=${key}, host=${mapping.host}, port=${mapping.port}`, { component: 'RedisStateStore' });
+    const state: PreviewState = JSON.parse(data);
+    // Parse dates
+    state.startedAt = new Date(state.startedAt);
+    state.lastAccessedAt = new Date(state.lastAccessedAt);
     
-    // Update last accessed
-    mapping.lastAccessedAt = new Date();
-    await this.redis.set(key, JSON.stringify(mapping), 'EX', TTL.PORT_MAPPING);
-
-    return mapping;
+    return state;
   }
 
-  // PortRegistryPort implementation
+  /**
+   * Get preview port (convenience method)
+   */
   async getPreviewPort(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string
   ): Promise<number | null> {
-    const mapping = await this.getPreview(tenantId, userId, projectId, feature);
-    return mapping?.port ?? null;
+    const state = await this.getPreview(tenantId, userId, projectId, feature);
+    return state?.port ?? null;
   }
 
+  /**
+   * Update preview state (partial update)
+   * For updating running, ready, issues, packages without re-registering
+   */
+  async updatePreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'issues' | 'packages' | 'backendPort'>>
+  ): Promise<void> {
+    const portKey = createPreviewKey(tenantId, userId, projectId, feature);
+    const key = this.key(KEYS.PREVIEW, portKey);
+    const data = await this.redis.get(key);
+
+    if (!data) {
+      logger.warn(`[Preview] updatePreview: NOT FOUND ${portKey}`, { component: 'RedisStateStore' });
+      return;
+    }
+
+    const state: PreviewState = JSON.parse(data);
+    const updated: PreviewState = {
+      ...state,
+      ...update,
+      lastAccessedAt: new Date()
+    };
+
+    await this.redis.set(key, JSON.stringify(updated), 'EX', TTL.PORT_MAPPING);
+    logger.debug(`[Preview] Updated: ${portKey}`, { component: 'RedisStateStore' });
+  }
+
+  /**
+   * Update last accessed time (called on proxy request)
+   */
+  async touchPreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<void> {
+    const portKey = createPreviewKey(tenantId, userId, projectId, feature);
+    const key = this.key(KEYS.PREVIEW, portKey);
+    const data = await this.redis.get(key);
+
+    if (!data) {
+      return;
+    }
+
+    const state: PreviewState = JSON.parse(data);
+    state.lastAccessedAt = new Date();
+    await this.redis.set(key, JSON.stringify(state), 'EX', TTL.PORT_MAPPING);
+  }
+
+  /**
+   * Unregister preview (delete state)
+   */
   async unregisterPreview(
     tenantId: string,
     userId: string,
@@ -432,16 +487,28 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(KEYS.PREVIEW, portKey);
-
+    
+    // Get state to find podId for index cleanup
+    const data = await this.redis.get(key);
+    
     const pipeline = this.redis.pipeline();
     pipeline.del(key);
     pipeline.srem(this.key(KEYS.PREVIEW_LIST), portKey);
+    
+    // Cleanup pod index if state exists
+    if (data) {
+      const state: PreviewState = JSON.parse(data);
+      pipeline.srem(this.key('ant:preview:byPod:', state.podId), portKey);
+    }
+    
     await pipeline.exec();
-
-    logger.info(`Preview unregistered: ${portKey}`, { component: 'RedisStateStore' });
+    logger.info(`[Preview] Unregistered: ${portKey}`, { component: 'RedisStateStore' });
   }
 
-  async listPreviews(): Promise<PortMapping[]> {
+  /**
+   * List all active previews
+   */
+  async listPreviews(): Promise<PreviewState[]> {
     const portKeys = await this.redis.smembers(this.key(KEYS.PREVIEW_LIST));
     
     if (portKeys.length === 0) {
@@ -453,51 +520,101 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     return results
       .filter((r: string | null): r is string => r !== null)
-      .map((r: string) => JSON.parse(r));
+      .map((r: string) => {
+        const state: PreviewState = JSON.parse(r);
+        state.startedAt = new Date(state.startedAt);
+        state.lastAccessedAt = new Date(state.lastAccessedAt);
+        return state;
+      });
+  }
+
+  /**
+   * List previews for a specific pod (for cleanup on pod restart)
+   */
+  async listPreviewsByPod(podId: string): Promise<PreviewState[]> {
+    const portKeys = await this.redis.smembers(this.key('ant:preview:byPod:', podId));
+    
+    if (portKeys.length === 0) {
+      return [];
+    }
+
+    const keys = portKeys.map((pk: string) => this.key(KEYS.PREVIEW, pk));
+    const results = await this.redis.mget(...keys);
+
+    return results
+      .filter((r: string | null): r is string => r !== null)
+      .map((r: string) => {
+        const state: PreviewState = JSON.parse(r);
+        state.startedAt = new Date(state.startedAt);
+        state.lastAccessedAt = new Date(state.lastAccessedAt);
+        return state;
+      });
+  }
+
+  /**
+   * Get idle previews (for auto-cleanup)
+   * @param idleThresholdMs - Milliseconds since last access
+   */
+  async getIdlePreviews(idleThresholdMs: number): Promise<PreviewState[]> {
+    const allPreviews = await this.listPreviews();
+    const now = Date.now();
+    
+    return allPreviews.filter(preview => {
+      const lastAccess = new Date(preview.lastAccessedAt).getTime();
+      return (now - lastAccess) > idleThresholdMs;
+    });
   }
 
   // ============================================
-  // Port Registry - IDE
+  // Port Registry - IDE (Full State Management)
   // ============================================
 
+  /**
+   * Register IDE state
+   */
   async registerIDE(
     tenantId: string,
     userId: string,
     projectId: string,
     port: number,
-    host: string = 'localhost'
+    host: string,
+    podId: string
   ): Promise<void> {
-    // IDE uses project-level key (no feature)
     const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);
     
-    const mapping: PortMapping = {
+    const state: IDEState = {
       tenantId,
       userId,
       projectId,
-      feature: 'main',  // Always 'main' for IDE (stored for compatibility)
+      running: true,
+      ready: true,
       port,
       host,
-      registeredAt: new Date(),
+      podId,
+      startedAt: new Date(),
       lastAccessedAt: new Date()
     };
 
     const pipeline = this.redis.pipeline();
-    pipeline.set(key, JSON.stringify(mapping), 'EX', TTL.PORT_MAPPING);
+    pipeline.set(key, JSON.stringify(state), 'EX', TTL.PORT_MAPPING);
     pipeline.sadd(this.key(KEYS.IDE_LIST), portKey);
     await pipeline.exec();
 
-    logger.info(`IDE registered: ${portKey} → ${host}:${port}`, { component: 'RedisStateStore' });
+    logger.info(`[IDE] Registered: ${portKey} → ${host}:${port} (pod: ${podId})`, { component: 'RedisStateStore' });
   }
 
+  /**
+   * Get IDE state
+   */
   async getIDE(
     tenantId: string,
     userId: string,
     projectId: string
-  ): Promise<PortMapping | null> {
+  ): Promise<IDEState | null> {
     // Validate all key components are present
     if (!tenantId || !userId || !projectId) {
-      logger.warn(`getIDE() INVALID ARGS: tenantId=${tenantId}, userId=${userId}, projectId=${projectId}`, { component: 'RedisStateStore' });
+      logger.warn(`[IDE] getIDE() INVALID ARGS: tenantId=${tenantId}, userId=${userId}, projectId=${projectId}`, { component: 'RedisStateStore' });
       return null;
     }
     
@@ -509,31 +626,55 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       return null;
     }
 
-    const mapping: PortMapping = JSON.parse(data);
-    
-    // Update last accessed
-    mapping.lastAccessedAt = new Date();
-    await this.redis.set(key, JSON.stringify(mapping), 'EX', TTL.PORT_MAPPING);
+    const state: IDEState = JSON.parse(data);
+    // Parse dates
+    state.startedAt = new Date(state.startedAt);
+    state.lastAccessedAt = new Date(state.lastAccessedAt);
 
-    return mapping;
+    return state;
   }
 
-  // PortRegistryPort implementation
+  /**
+   * Get IDE port (convenience method)
+   */
   async getIDEPort(
     tenantId: string,
     userId: string,
     projectId: string
   ): Promise<number | null> {
-    const mapping = await this.getIDE(tenantId, userId, projectId);
-    return mapping?.port ?? null;
+    const state = await this.getIDE(tenantId, userId, projectId);
+    return state?.port ?? null;
   }
 
+  /**
+   * Update last accessed time
+   */
+  async touchIDE(
+    tenantId: string,
+    userId: string,
+    projectId: string
+  ): Promise<void> {
+    const portKey = createIDEKey(tenantId, userId, projectId);
+    const key = this.key(KEYS.IDE, portKey);
+    const data = await this.redis.get(key);
+
+    if (!data) {
+      return;
+    }
+
+    const state: IDEState = JSON.parse(data);
+    state.lastAccessedAt = new Date();
+    await this.redis.set(key, JSON.stringify(state), 'EX', TTL.PORT_MAPPING);
+  }
+
+  /**
+   * Unregister IDE
+   */
   async unregisterIDE(
     tenantId: string,
     userId: string,
     projectId: string
   ): Promise<void> {
-    // IDE uses project-level key (no feature)
     const portKey = createIDEKey(tenantId, userId, projectId);
     const key = this.key(KEYS.IDE, portKey);
 
@@ -542,10 +683,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.srem(this.key(KEYS.IDE_LIST), portKey);
     await pipeline.exec();
 
-    logger.info(`IDE unregistered: ${portKey}`, { component: 'RedisStateStore' });
+    logger.info(`[IDE] Unregistered: ${portKey}`, { component: 'RedisStateStore' });
   }
 
-  async listIDEs(): Promise<PortMapping[]> {
+  /**
+   * List all active IDEs
+   */
+  async listIDEs(): Promise<IDEState[]> {
     const portKeys = await this.redis.smembers(this.key(KEYS.IDE_LIST));
     
     if (portKeys.length === 0) {
@@ -557,29 +701,12 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     return results
       .filter((r: string | null): r is string => r !== null)
-      .map((r: string) => JSON.parse(r));
-  }
-
-  async updateLastAccess(
-    tenantId: string,
-    userId: string,
-    projectId: string,
-    feature: string,
-    type: 'preview' | 'ide'
-  ): Promise<void> {
-    // IDE uses project-level key (no feature), Preview uses feature
-    const portKey = type === 'ide' 
-      ? createIDEKey(tenantId, userId, projectId)
-      : createPreviewKey(tenantId, userId, projectId, feature);
-    const keyPrefix = type === 'preview' ? KEYS.PREVIEW : KEYS.IDE;
-    const key = this.key(keyPrefix, portKey);
-
-    const data = await this.redis.get(key);
-    if (data) {
-      const mapping: PortMapping = JSON.parse(data);
-      mapping.lastAccessedAt = new Date();
-      await this.redis.set(key, JSON.stringify(mapping), 'EX', TTL.PORT_MAPPING);
-    }
+      .map((r: string) => {
+        const state: IDEState = JSON.parse(r);
+        state.startedAt = new Date(state.startedAt);
+        state.lastAccessedAt = new Date(state.lastAccessedAt);
+        return state;
+      });
   }
 
   // ============================================

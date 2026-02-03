@@ -27,7 +27,7 @@ import {
   PreviewIssue,
   PreviewStatus
 } from '../../core/ports/previewOrchestrator';
-import { StateStorePort } from '../../core/ports/stateStore';
+import { StateStorePort, PreviewState } from '../../core/ports/stateStore';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -269,15 +269,22 @@ export class RemotePreviewOrchestrator implements PreviewOrchestratorPort {
       // Store worker assignment
       await this.stateStore.publish(`preview:${instanceKey}:worker`, worker.id);
 
-      // Register in preview registry
-      await this.stateStore.registerPreview(
+      // Register in preview registry (full state)
+      const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
         tenantId,
         userId,
         projectId,
         feature,
-        response.port || 0,
-        worker.host
-      );
+        running: true,
+        ready: false,
+        port: response.port || 0,
+        host: worker.host,
+        podId: worker.id,
+        packages: [],
+        issues: [],
+        startedAt: new Date()
+      };
+      await this.stateStore.registerPreview(previewState);
 
       return {
         success: true,

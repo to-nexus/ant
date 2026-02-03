@@ -167,7 +167,7 @@ export class ProcessSpawner {
         args = ['vite', '--port', port.toString(), '--host'];
       } else if (devScript?.includes('next')) {
         command = 'npx';
-        args = ['next', 'dev', '-p', port.toString()];
+        args = ['next', 'dev', '-p', port.toString(), '--hostname', '0.0.0.0'];
       } else if (devScript?.includes('react-scripts')) {
         command = 'npm';
         args = ['run', 'dev'];

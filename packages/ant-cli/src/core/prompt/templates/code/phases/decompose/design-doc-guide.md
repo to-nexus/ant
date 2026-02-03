@@ -57,6 +57,12 @@ Analyze project characteristics to determine structure:
 - Create SINGLE setup task (priority 100)
 - All configuration and dependencies in one task
 
+**⚠️ If MSA/Service-Oriented (check design doc for service boundaries):**
+- Each service boundary in design doc = separate package
+- Shared code (types, DTOs) = separate package
+- Create setup task per package (root → shared → services → gateway/frontend)
+- **Follow design doc's service naming and boundaries exactly**
+
 **Critical Rules:**
 - ✅ Decide structure based on project needs, not rigid rules
 - ✅ Create as many setup tasks as needed for chosen structure

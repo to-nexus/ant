@@ -17,56 +17,87 @@
  */
 
 import express, { Express, Request, Response } from 'express';
+import * as os from 'os';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { PortManager } from '../networking/PortManager';
-import { PortRegistryPort, PortMapping } from '../../core/ports/portRegistry';
+import { 
+  PortRegistryPort, 
+  PreviewState, 
+  IDEState 
+} from '../../core/ports/portRegistry';
 import { logger } from '../../utils/logger';
 
 /**
  * Simple in-memory port registry for preview worker.
  * Each worker manages its own local preview processes.
  * This is NOT shared state - it's worker-local only.
+ * 
+ * Note: This is a simplified implementation for worker-local state.
+ * The main ant-preview server uses Redis-based state via RedisStateStore.
  */
 class WorkerLocalPortRegistry implements PortRegistryPort {
-  private previews = new Map<string, PortMapping>();
-  private ides = new Map<string, PortMapping>();
+  private previews = new Map<string, PreviewState>();
+  private ides = new Map<string, IDEState>();
+  private podId: string;
+
+  constructor() {
+    this.podId = os.hostname();
+  }
 
   private createKey(tenantId: string, userId: string, projectId: string, feature: string): string {
     return `${tenantId}:${userId}:${projectId}:${feature}`;
   }
 
-  /**
-   * IDE uses project-level key (no feature) - IDE is shared across features
-   */
   private createIDEKey(tenantId: string, userId: string, projectId: string): string {
     return `${tenantId}:${userId}:${projectId}`;
   }
 
-  async registerPreview(tenantId: string, userId: string, projectId: string, feature: string, port: number, host: string = 'localhost'): Promise<void> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
-    this.previews.set(key, { tenantId, userId, projectId, feature, port, host, registeredAt: new Date(), lastAccessedAt: new Date() });
+  // ==========================================
+  // Preview Management
+  // ==========================================
+
+  async registerPreview(state: Omit<PreviewState, 'lastAccessedAt'>): Promise<void> {
+    const key = this.createKey(state.tenantId, state.userId, state.projectId, state.feature);
+    this.previews.set(key, {
+      ...state,
+      lastAccessedAt: new Date()
+    });
   }
 
-  async registerIDE(tenantId: string, userId: string, projectId: string, port: number): Promise<void> {
-    // IDE uses project-level key (no feature)
-    const key = this.createIDEKey(tenantId, userId, projectId);
-    this.ides.set(key, { tenantId, userId, projectId, feature: 'main', port, registeredAt: new Date(), lastAccessedAt: new Date() });
-  }
-
-  async getPreviewPort(tenantId: string, userId: string, projectId: string, feature: string): Promise<number | null> {
-    const key = this.createKey(tenantId, userId, projectId, feature);
-    return this.previews.get(key)?.port ?? null;
-  }
-
-  async getPreview(tenantId: string, userId: string, projectId: string, feature: string): Promise<PortMapping | null> {
+  async getPreview(tenantId: string, userId: string, projectId: string, feature: string): Promise<PreviewState | null> {
     const key = this.createKey(tenantId, userId, projectId, feature);
     return this.previews.get(key) ?? null;
   }
 
-  async getIDEPort(tenantId: string, userId: string, projectId: string): Promise<number | null> {
-    // IDE uses project-level key (no feature)
-    const key = this.createIDEKey(tenantId, userId, projectId);
-    return this.ides.get(key)?.port ?? null;
+  async getPreviewPort(tenantId: string, userId: string, projectId: string, feature: string): Promise<number | null> {
+    const state = await this.getPreview(tenantId, userId, projectId, feature);
+    return state?.port ?? null;
+  }
+
+  async updatePreview(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'issues' | 'packages' | 'backendPort'>>
+  ): Promise<void> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    const existing = this.previews.get(key);
+    if (existing) {
+      this.previews.set(key, {
+        ...existing,
+        ...update,
+        lastAccessedAt: new Date()
+      });
+    }
+  }
+
+  async touchPreview(tenantId: string, userId: string, projectId: string, feature: string): Promise<void> {
+    const key = this.createKey(tenantId, userId, projectId, feature);
+    const existing = this.previews.get(key);
+    if (existing) {
+      existing.lastAccessedAt = new Date();
+    }
   }
 
   async unregisterPreview(tenantId: string, userId: string, projectId: string, feature: string): Promise<void> {
@@ -74,28 +105,74 @@ class WorkerLocalPortRegistry implements PortRegistryPort {
     this.previews.delete(key);
   }
 
+  async listPreviews(): Promise<PreviewState[]> {
+    return Array.from(this.previews.values());
+  }
+
+  async listPreviewsByPod(podId: string): Promise<PreviewState[]> {
+    return Array.from(this.previews.values()).filter(p => p.podId === podId);
+  }
+
+  async getIdlePreviews(idleThresholdMs: number): Promise<PreviewState[]> {
+    const now = Date.now();
+    return Array.from(this.previews.values()).filter(p => {
+      const lastAccess = new Date(p.lastAccessedAt).getTime();
+      return (now - lastAccess) > idleThresholdMs;
+    });
+  }
+
+  // ==========================================
+  // IDE Management (minimal for worker)
+  // ==========================================
+
+  async registerIDE(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    port: number,
+    host: string,
+    podId: string
+  ): Promise<void> {
+    const key = this.createIDEKey(tenantId, userId, projectId);
+    this.ides.set(key, {
+      tenantId,
+      userId,
+      projectId,
+      running: true,
+      ready: true,
+      port,
+      host,
+      podId,
+      startedAt: new Date(),
+      lastAccessedAt: new Date()
+    });
+  }
+
+  async getIDE(tenantId: string, userId: string, projectId: string): Promise<IDEState | null> {
+    const key = this.createIDEKey(tenantId, userId, projectId);
+    return this.ides.get(key) ?? null;
+  }
+
+  async getIDEPort(tenantId: string, userId: string, projectId: string): Promise<number | null> {
+    const state = await this.getIDE(tenantId, userId, projectId);
+    return state?.port ?? null;
+  }
+
+  async touchIDE(tenantId: string, userId: string, projectId: string): Promise<void> {
+    const key = this.createIDEKey(tenantId, userId, projectId);
+    const existing = this.ides.get(key);
+    if (existing) {
+      existing.lastAccessedAt = new Date();
+    }
+  }
+
   async unregisterIDE(tenantId: string, userId: string, projectId: string): Promise<void> {
-    // IDE uses project-level key (no feature)
     const key = this.createIDEKey(tenantId, userId, projectId);
     this.ides.delete(key);
   }
 
-  async listPreviews(): Promise<PortMapping[]> {
-    return Array.from(this.previews.values());
-  }
-
-  async listIDEs(): Promise<PortMapping[]> {
+  async listIDEs(): Promise<IDEState[]> {
     return Array.from(this.ides.values());
-  }
-
-  async updateLastAccess(tenantId: string, userId: string, projectId: string, feature: string, type: 'preview' | 'ide'): Promise<void> {
-    // IDE uses project-level key (no feature), Preview uses feature
-    const key = type === 'ide' 
-      ? this.createIDEKey(tenantId, userId, projectId)
-      : this.createKey(tenantId, userId, projectId, feature);
-    const map = type === 'preview' ? this.previews : this.ides;
-    const mapping = map.get(key);
-    if (mapping) mapping.lastAccessedAt = new Date();
   }
 
   async close(): Promise<void> {}
@@ -314,6 +391,10 @@ export class PreviewWorkerService {
         logger.info(`PreviewWorkerService listening on port ${port}`, {
           component: 'PreviewWorkerService'
         });
+        
+        // Start idle check timer
+        this.previewService.startIdleCheck();
+        
         resolve();
       });
     });

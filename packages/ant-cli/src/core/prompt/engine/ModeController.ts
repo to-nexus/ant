@@ -216,6 +216,8 @@ export class ModeController {
       if (job === 'design') {
         // ✅ Document type-specific guides (api-contract, frontend, backend)
         const targetFile = context.currentTask?.targetFile;
+        const detectedEnv = (context as any).detectedEnvironment; // 'frontend' | 'backend' | 'fullstack'
+        
         if (targetFile) {
           if (targetFile.includes('api-contract')) {
             injections.push(`design/base/injections/api-contract-guide`);
@@ -226,6 +228,15 @@ export class ModeController {
           } else if (targetFile.includes('be-system-design') || targetFile.includes('backend')) {
             injections.push(`design/base/injections/backend-guide`);
             console.log(`[ModeController] Adding backend-guide for targetFile: ${targetFile}`);
+          } else if (targetFile.includes('system-design') && !targetFile.includes('fe-') && !targetFile.includes('be-')) {
+            // ✅ Unified system-design.md: inject guide based on detected environment
+            if (detectedEnv === 'backend' || detectedEnv === 'fullstack') {
+              injections.push(`design/base/injections/backend-guide`);
+              console.log(`[ModeController] Adding backend-guide for unified system-design (env: ${detectedEnv})`);
+            } else if (detectedEnv === 'frontend') {
+              injections.push(`design/base/injections/frontend-guide`);
+              console.log(`[ModeController] Adding frontend-guide for unified system-design (env: ${detectedEnv})`);
+            }
           }
         }
         

@@ -85,6 +85,19 @@ This is a refactor task. Consider the current implementation:
 4. **External Systems**: Does it integrate with external APIs, payment, auth services?
 5. **User Roles**: Multiple user types with different permissions?
 
+### Step 1.5: Backend/Fullstack Complexity Indicators
+
+**Observe PRD for these patterns to determine Score in Step 2.**
+
+| Category | Observe for Score |
+|----------|------------------|
+| **Communication** | Realtime (WebSocket/SSE)? Async jobs/queues? |
+| **Storage** | Multiple DB types needed (RDB + Cache/NoSQL)? |
+| **Scale** | Horizontal scaling mentioned? Stateful connections? |
+| **Architecture** | Multiple independent domains? Service separation? |
+
+**Note**: Detailed design guidance for these patterns is provided in document-specific guides (api-contract-guide, backend-guide) during DocGen phase.
+
 ### Step 2: Score the Project
 
 | Condition | Score |
@@ -96,6 +109,9 @@ This is a refactor task. Consider the current implementation:
 | 5+ distinct features | +1 |
 | External integrations | +1 |
 | Multiple pages (5+) | +1 |
+| Realtime/WebSocket/SSE needed | +1 |
+| Message queue/async processing needed | +1 |
+| Multiple databases (RDB + NoSQL/Cache) | +1 |
 
 ### Step 3: Determine Budget
 
