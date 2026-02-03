@@ -27,7 +27,7 @@ const CORS_ORIGINS = process.env.ANT_CORS_ORIGINS?.split(',').filter(Boolean);
 
 async function main(): Promise<void> {
   const startTime = new Date().toISOString();
-  logger.info(`🚀 Starting Realtime Server... (${startTime})`, { component: 'RealtimeServerProcess' });
+  logger.warn(`🚀 Starting Realtime Server... (${startTime})`, { component: 'RealtimeServerProcess' });
   
   // Validate required environment variables
   if (!WORKSPACES_PATH) {
@@ -40,6 +40,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
+  logger.warn(`   Workspaces: ${WORKSPACES_PATH}`, { component: 'RealtimeServerProcess' });
+  logger.warn(`   Port: ${PORT}`, { component: 'RealtimeServerProcess' });
+  
   try {
     const server = await createRealtimeServer({
       port: PORT,
@@ -47,16 +50,12 @@ async function main(): Promise<void> {
       corsOrigins: CORS_ORIGINS
     });
     
-    logger.info(`✅ Realtime Server is running on port ${PORT}`, { 
-      component: 'RealtimeServerProcess'
-    }, { port: PORT, workspacesPath: WORKSPACES_PATH });
+    logger.warn(`✅ Realtime Server listening on http://localhost:${PORT}`, { component: 'RealtimeServerProcess' });
+    logger.warn(`📡 Ready for SSE connections`, { component: 'RealtimeServerProcess' });
     
     // Graceful shutdown handlers
     const shutdown = async (signal: string) => {
-      logger.info(`${signal} received, shutting down gracefully...`, { 
-        component: 'RealtimeServerProcess' 
-      });
-      
+      logger.warn(`${signal} received, shutting down gracefully...`, { component: 'RealtimeServerProcess' });
       await server.stop();
       process.exit(0);
     };
