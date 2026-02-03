@@ -46,18 +46,13 @@
  * ```
  */
 
-import { getApiBase } from '@/infrastructure/http/api';
-
-const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE;
-
 /**
  * Backend Mode 판별
- * - getApiBase()가 CLOUD_BACKEND_BASE이면 'cloud'
- * - 아니면 'local'
+ * - VITE_BACKEND_BASE가 설정되어 있으면 'cloud'
+ * - 없으면 'local' (Vite proxy 사용)
  */
 export function getBackendMode(): 'local' | 'cloud' {
-  const apiBase = getApiBase();
-  return apiBase === CLOUD_BACKEND_BASE ? 'cloud' : 'local';
+  return import.meta.env.VITE_BACKEND_BASE ? 'cloud' : 'local';
 }
 
 /**

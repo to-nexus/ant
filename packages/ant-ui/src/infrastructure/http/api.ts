@@ -7,52 +7,45 @@ import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
 // URL Configuration
 // ============================================================================
 // 
-// 모든 환경에서 상대경로 사용:
-// - 로컬 개발: Vite 프록시가 각 서비스로 라우팅 (vite.config.ts)
-// - 클라우드: Ingress/ALB가 각 서비스로 라우팅
+// VITE_BACKEND_BASE 환경변수로 백엔드 서버 주소 지정:
+// - 로컬 개발: 미설정 → 상대경로 사용 (Vite 프록시가 라우팅)
+// - 클라우드: VITE_BACKEND_BASE=https://ant-server.crosstoken.io
 //
-// 이렇게 하면 환경변수 불필요, 일관된 동작 보장
+// api, realtime, preview, ide 모두 같은 서버의 Ingress 경로로 라우팅됨
 // ============================================================================
+
+/**
+ * Get backend base URL from environment or use relative path
+ * - Cloud: VITE_BACKEND_BASE (e.g., https://ant-server.crosstoken.io)
+ * - Local: empty string (relative paths, Vite proxy handles routing)
+ */
+const getBackendBase = (): string => {
+  return import.meta.env.VITE_BACKEND_BASE || '';
+};
 
 /**
  * API Server base URL
  * - /api/* → ant-api service
  */
-export const API_BASE = () => '/api';
+export const API_BASE = () => `${getBackendBase()}/api`;
 
 /**
  * Realtime (SSE) Server base URL  
  * - /realtime/* → ant-realtime service
  */
-export const REALTIME_BASE = () => '/realtime';
+export const REALTIME_BASE = () => `${getBackendBase()}/realtime`;
 
 /**
  * Preview Server base URL
  * - /preview/* → ant-preview service
  */
-export const PREVIEW_BASE = () => '/preview';
+export const PREVIEW_BASE = () => `${getBackendBase()}/preview`;
 
 /**
  * Server base URL (without path prefix)
  * For endpoints that don't use /api prefix (e.g., /ide/*)
  */
-export const SERVER_BASE = () => '';
-
-/**
- * Get Realtime (SSE) Server base URL
- * @deprecated Use REALTIME_BASE() instead
- */
-export function getRealtimeBase(): string {
-  return REALTIME_BASE();
-}
-
-/**
- * Get API base URL
- * @deprecated Use API_BASE() instead
- */
-export function getApiBase(): string {
-  return API_BASE();
-}
+export const SERVER_BASE = () => getBackendBase();
 
 /**
  * Check if backend server is available

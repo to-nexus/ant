@@ -284,7 +284,7 @@ export function ItemDropdown({
                 }`}
                 title={
                   playButtonLoading 
-                    ? (isPlaying ? 'Stopping dev server...' : 'Starting dev server...')
+                    ? (isPlaying ? 'Stopping preview server...' : 'Starting preview server...')
                     : playButtonDisabled
                       ? 'Cannot start/stop dev server (task running or not available)'
                       : (isPlaying ? 'Stop dev server' : 'Start dev server')
