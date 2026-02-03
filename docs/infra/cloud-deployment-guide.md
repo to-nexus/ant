@@ -48,7 +48,8 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
 │  │  ALB (Ingress)                                                           │ │
 │  │  ├── /api/* ──────────▶ ant-api (Round-robin)                           │ │
-│  │  └── /realtime/* ─────▶ ant-realtime (Sticky Session)                   │ │
+│  │  ├── /realtime/* ─────▶ ant-realtime (Sticky Session)                   │ │
+│  │  └── /preview/* ──────▶ ant-preview (Round-robin)                       │ │
 │  └───────────────────────────────┬───────────────┬─────────────────────────┘ │
 │                                  │               │                            │
 │                                  ▼               ▼                            │
@@ -315,14 +316,14 @@ resources:
 |--------|------|
 | Deployment | ant-api, ant-realtime, ant-job, ant-preview |
 | Service | ant-api, ant-realtime, ant-preview (ClusterIP) |
-| Ingress | ALB → ant-api (/api/*), ant-realtime (/realtime/*) |
+| Ingress | ALB → ant-api (/api/*), ant-realtime (/realtime/*), ant-preview (/preview/*) |
 | PVC | EFS (workspaces), gp3 (chromadb) |
 | Secret | API Keys, Redis URL |
 | Namespace | ant-ide (for IDE Pods) |
 | ServiceAccount | ant-api (for K8s API access to manage IDE Pods) |
 | RBAC | Role/RoleBinding for IDE Pod management |
 
-> **Important**: Ingress for `/realtime/*` must have **Sticky Session** enabled.
+> **Important**: Ingress for `/realtime/*` must have **Sticky Session** enabled. `/preview/*` uses Round-robin (Redis-based state).
 
 **AWS Resources (ant-ui):**
 
@@ -433,11 +434,12 @@ VITE_CLOUD_REALTIME_BASE=https://ant.crosstoken.io/realtime
 | User Browser | CloudFront | ant-ui (static assets) |
 | User Browser | ALB (/api/*) | ant-api (REST API calls) |
 | User Browser | ALB (/realtime/*) | ant-realtime (SSE connections) |
+| User Browser | ALB (/preview/*) | ant-preview (Preview API + Proxy) |
 | ALB | ant-api | HTTPS Ingress (Round-robin) |
 | ALB | ant-realtime | HTTPS Ingress (**Sticky Session**) |
+| ALB | ant-preview | HTTPS Ingress (Round-robin) |
 | ant-api, ant-realtime, ant-job, ant-preview | Redis | State, Queue, Pub/Sub |
 | ant-api, ant-job | LLM API (External) | AI Calls |
-| ant-api | ant-preview | Preview Proxy |
 | ant-api | ant-ide Pods | IDE Proxy |
 | ant-ide | EFS | Workspace Mount |
 
