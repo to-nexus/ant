@@ -218,9 +218,30 @@ export class RemotePreviewOrchestrator implements PreviewOrchestratorPort {
     const { tenantId, userId, projectId, feature, workspacePath } = params;
     const instanceKey = this.createInstanceKey(tenantId, userId, projectId, feature);
 
-    logger.info(`Starting remote preview: ${instanceKey}`, {
+    logger.warn(`Starting remote preview: ${instanceKey}`, {
       component: 'RemotePreviewOrchestrator'
     });
+
+    // ✅ Check if preview already exists in Redis (another Worker may have it running)
+    const existingPreview = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
+    if (existingPreview && existingPreview.running) {
+      logger.warn(`Preview already running: ${instanceKey} on ${existingPreview.host}:${existingPreview.port}`, {
+        component: 'RemotePreviewOrchestrator'
+      });
+      
+      // Return existing preview info
+      return {
+        success: true,
+        instance: {
+          instanceId: instanceKey,
+          host: existingPreview.host,
+          port: existingPreview.port,
+          status: existingPreview.ready ? 'running' : 'starting',
+          url: `/preview/${instanceKey}`,
+          startedAt: existingPreview.startedAt?.toISOString() || new Date().toISOString()
+        }
+      };
+    }
 
     // Select a worker
     const worker = this.selectWorker();
