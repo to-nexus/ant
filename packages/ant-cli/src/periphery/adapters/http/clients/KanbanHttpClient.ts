@@ -33,12 +33,13 @@ export class KanbanHttpClient implements TaskQueueUpdatePort {
   private readonly baseUrl: string;
 
   /**
-   * @param serverPort - Port where parent server is running (default: 4100)
+   * Uses ANT_API_URL environment variable (set by parent process)
+   * Fallback: http://localhost:8080 (shouldn't happen in normal operation)
    */
-  constructor(serverPort: string = '4100') {
-    // ✅ Prefer ANT_API_URL for Cloud mode (service-to-service communication)
-    const apiUrl = process.env.ANT_API_URL;
-    this.baseUrl = apiUrl ? `${apiUrl}/api` : `http://localhost:${serverPort}/api`;
+  constructor() {
+    // ANT_API_URL is set by parent process (JobWorker, JobExecutionManager)
+    const apiUrl = process.env.ANT_API_URL || 'http://localhost:8080';
+    this.baseUrl = `${apiUrl}/api`;
   }
 
   /**

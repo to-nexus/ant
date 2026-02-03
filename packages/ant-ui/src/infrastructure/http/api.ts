@@ -3,80 +3,78 @@
 import { Session } from '@/domain/models/session';
 import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
 
-// Backend URLs from environment
-const LOCAL_BACKEND_BASE = import.meta.env.VITE_LOCAL_BACKEND_BASE || 'http://localhost:4000/api';
-const CLOUD_BACKEND_BASE = import.meta.env.VITE_CLOUD_BACKEND_BASE || 'http://localhost:4100/api';
-
-// Realtime (SSE) Server URLs
-// - Local mode: API 4000, Realtime 4001
-// - Cloud mode: API 4100, Realtime 4101
-// @see docs/architecture/10-cloud-architecture.md
-const LOCAL_REALTIME_BASE = import.meta.env.VITE_LOCAL_REALTIME_BASE || 'http://localhost:4001/realtime';
-const CLOUD_REALTIME_BASE = import.meta.env.VITE_CLOUD_REALTIME_BASE || 'http://localhost:4101/realtime';
+// ============================================================================
+// URL Configuration
+// ============================================================================
+// 
+// 모든 환경에서 상대경로 사용:
+// - 로컬 개발: Vite 프록시가 각 서비스로 라우팅 (vite.config.ts)
+// - 클라우드: Ingress/ALB가 각 서비스로 라우팅
+//
+// 이렇게 하면 환경변수 불필요, 일관된 동작 보장
+// ============================================================================
 
 /**
- * Get API base URL dynamically based on backend mode from localStorage
- * 
- * Priority:
- * 1. localStorage value (user selection)
- * 2. Default: 'cloud' (always default to cloud)
+ * API Server base URL
+ * - /api/* → ant-api service
  */
-export function getApiBase(): string {
-  try {
-    const stored = localStorage.getItem('ant-ui:backend-mode');
-    const backendMode = stored ? JSON.parse(stored) : 'cloud';  // ✅ Default to 'cloud'
-    return backendMode === 'local' ? LOCAL_BACKEND_BASE : CLOUD_BACKEND_BASE;
-  } catch {
-    // ✅ Always default to cloud on error
-    return CLOUD_BACKEND_BASE;
-  }
-}
+export const API_BASE = () => '/api';
+
+/**
+ * Realtime (SSE) Server base URL  
+ * - /realtime/* → ant-realtime service
+ */
+export const REALTIME_BASE = () => '/realtime';
+
+/**
+ * Preview Server base URL
+ * - /preview/* → ant-preview service
+ */
+export const PREVIEW_BASE = () => '/preview';
+
+/**
+ * Server base URL (without path prefix)
+ * For endpoints that don't use /api prefix (e.g., /ide/*)
+ */
+export const SERVER_BASE = () => '';
 
 /**
  * Get Realtime (SSE) Server base URL
- * 
- * SSE connections use a dedicated Realtime Server for:
- * - Independent scaling with Sticky Session
- * - Better connection management
- * 
- * @see docs/architecture/10-cloud-architecture.md
+ * @deprecated Use REALTIME_BASE() instead
  */
 export function getRealtimeBase(): string {
-  try {
-    const stored = localStorage.getItem('ant-ui:backend-mode');
-    const backendMode = stored ? JSON.parse(stored) : 'cloud';
-    return backendMode === 'local' ? LOCAL_REALTIME_BASE : CLOUD_REALTIME_BASE;
-  } catch {
-    return CLOUD_REALTIME_BASE;
-  }
+  return REALTIME_BASE();
 }
 
 /**
- * Check if local backend server is available
+ * Get API base URL
+ * @deprecated Use API_BASE() instead
+ */
+export function getApiBase(): string {
+  return API_BASE();
+}
+
+/**
+ * Check if backend server is available
  */
 export async function checkLocalBackend(): Promise<boolean> {
   try {
-    // Use /api/health endpoint (LOCAL_BACKEND_BASE already includes /api)
-    const response = await fetch(`${LOCAL_BACKEND_BASE}/health`, {
+    const response = await fetch(`${API_BASE()}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(3000)  // 3 second timeout
+      signal: AbortSignal.timeout(3000)
     });
     return response.ok;
   } catch (error) {
-    console.warn('[API] Local backend not available');
+    console.warn('[API] Backend not available');
     return false;
   }
 }
 
-// Helper to get current API_BASE
-export const API_BASE = () => getApiBase();
-
-// Helper to get server base URL without /api suffix (for IDE proxy, etc.)
-export const SERVER_BASE = () => getApiBase().replace(/\/api$/, '');
-
 if (import.meta.env.DEV) {
-  console.log('[API] LOCAL_BACKEND_BASE:', LOCAL_BACKEND_BASE);
-  console.log('[API] CLOUD_BACKEND_BASE:', CLOUD_BACKEND_BASE);
+  console.log('[API] Using relative paths (Vite proxy handles routing)');
+  console.log('[API] API_BASE:', API_BASE());
+  console.log('[API] REALTIME_BASE:', REALTIME_BASE());
+  console.log('[API] PREVIEW_BASE:', PREVIEW_BASE());
 }
 
 /**
@@ -1161,7 +1159,7 @@ export async function startPreview(
 ): Promise<{ success: boolean; message: string; script?: string; status?: any }> {
   try {
     const response = await authFetch(
-      `${SERVER_BASE()}/preview/projects/${encodeURIComponent(projectId)}/start`,
+      `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/start`,
       {
         method: 'POST',
         headers: {
@@ -1196,7 +1194,7 @@ export async function startPreview(
 export async function stopPreview(projectId: string, feature?: string): Promise<{ success: boolean; message: string }> {
   try {
     const response = await authFetch(
-      `${SERVER_BASE()}/preview/projects/${encodeURIComponent(projectId)}/stop`,
+      `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/stop`,
       {
         method: 'POST',
         headers: {
@@ -1222,7 +1220,7 @@ export async function getPreviewStatus(projectId: string, feature?: string): Pro
   try {
     const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
     const response = await authFetch(
-      `${SERVER_BASE()}/preview/projects/${encodeURIComponent(projectId)}/status${featureParam}`
+      `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/status${featureParam}`
     );
     
     if (!response.ok) {

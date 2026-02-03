@@ -51,5 +51,5 @@ export const EARLY_ERROR_TIMEOUT = 3000; // 3 seconds
 export const STARTUP_VERIFICATION_TIMEOUT = 5000; // 5 seconds
 export const UI_CARD_ANIMATION_DELAY = 150; // 150ms
 
-export const ORCHESTRATOR_PORT = process.env.ANT_CLI_PORT || '4100';
+export const ORCHESTRATOR_PORT = process.env.PORT || '8080';
 

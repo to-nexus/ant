@@ -44,7 +44,7 @@ const childEnv: Record<string, string> = {
   
   // ✅ Job별 독립 변수 (매번 새로 생성)
   ANT_JOB_ID: jobId,
-  ANT_CLI_PORT: process.env.ANT_CLI_PORT || '4100',
+  ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.PORT || '4100'}`,
   ANT_PROJECT_ID: params.project || '',
   ANT_FEATURE_NAME: params.feature || '',
   ANT_PROJECT_PATH: projectPath,              // /workspaces/.../codebase
@@ -152,8 +152,13 @@ await fileSystem.writeFile('src/app.ts', code);
 ```bash
 # .env
 ANT_WORKSPACE_BASE_PATH=/workspaces           # 워크스페이스 루트 (기본값)
-ANT_CLI_PORT=4100                             # ant-cli API 서버 포트
+ANT_API_URL=http://localhost:4100             # API 서버 URL (로컬) 또는 http://ant-api:8080 (K8s)
 NODE_ENV=production
+
+# 로컬 환경에서 npm 스크립트가 PORT 지정 (package.json)
+# PORT=4100 npm run start:server
+# PORT=4101 npm run start:realtime-server
+# PORT=4102 npm run start:preview-server
 ```
 
 ### 프로덕션 환경

@@ -170,7 +170,8 @@ class SSEManager {
     
     // ✅ Build URL with user email as query parameter (for EventSource authentication)
     // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    const url = new URL(`${getRealtimeBase()}/projects/${projectId}/features/${featureName}/stream`);
+    // Use window.location.origin as base for relative path
+    const url = new URL(`${getRealtimeBase()}/projects/${projectId}/features/${featureName}/stream`, window.location.origin);
     url.searchParams.set('job', job);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
@@ -248,7 +249,8 @@ class SSEManager {
     
     // ✅ Build URL with user email as query parameter
     // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    const url = new URL(`${getRealtimeBase()}/jobs/${jobId}/workflow/stream`);
+    // Use window.location.origin as base for relative path
+    const url = new URL(`${getRealtimeBase()}/jobs/${jobId}/workflow/stream`, window.location.origin);
     if (userEmail) {
       url.searchParams.set('user-email', userEmail);
     }

@@ -99,7 +99,6 @@ export async function orchestrator(params: {
 
       if (jobType === 'design') {
         console.log('🔧 [Orchestrator:Design] Starting design job...');
-        console.log('🔧 [Orchestrator:Design] ANT_CLI_PORT:', process.env.ANT_CLI_PORT);
         console.log('🔧 [Orchestrator:Design] ANT_API_URL:', process.env.ANT_API_URL);
         
         const analyzer = new CodebaseAnalyzer();
@@ -120,17 +119,17 @@ export async function orchestrator(params: {
             fileTreeUpdate = instance;
             workflowUpdate = instance;
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow) [Design]');
-          } else if (process.env.ANT_CLI_PORT) {
-            // 자식 프로세스: HTTP 클라이언트 사용
+          } else if (process.env.ANT_API_URL) {
+            // 자식 프로세스: HTTP 클라이언트 사용 (ANT_API_URL set by parent)
+            // HTTP clients internally check ANT_API_URL, port is fallback only
             const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
-            const apiUrl = process.env.ANT_API_URL || `http://localhost:${process.env.ANT_CLI_PORT}`;
-            console.log('🔧 [Orchestrator:Design] Creating HTTP clients with URL:', apiUrl);
-            kanbanUpdate = new KanbanHttpClient(process.env.ANT_CLI_PORT || '4100');
-            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_CLI_PORT || '4100');
-            workflowUpdate = new WorkflowHttpClient(process.env.ANT_CLI_PORT || '4100');
+            console.log('🔧 [Orchestrator:Design] Creating HTTP clients with ANT_API_URL:', process.env.ANT_API_URL);
+            kanbanUpdate = new KanbanHttpClient();  // Uses ANT_API_URL internally
+            fileTreeUpdate = new FileTreeHttpClient();
+            workflowUpdate = new WorkflowHttpClient();
             console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow) [Design]');
           } else {
-            console.log('ℹ️  Real-time updates disabled (no server instance or port) [Design]');
+            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_API_URL) [Design]');
           }
         } catch (error: any) {
           console.log('ℹ️  Real-time updates disabled (server not running) [Design]', error?.message);
@@ -171,15 +170,16 @@ export async function orchestrator(params: {
             fileTreeUpdate = instance;
             workflowUpdate = instance;
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow)');
-          } else if (process.env.ANT_CLI_PORT) {
-            // 자식 프로세스: HTTP 클라이언트 사용
+          } else if (process.env.ANT_API_URL) {
+            // 자식 프로세스: HTTP 클라이언트 사용 (ANT_API_URL set by parent)
+            // HTTP clients internally check ANT_API_URL, port is fallback only
             const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
-            kanbanUpdate = new KanbanHttpClient(process.env.ANT_CLI_PORT || '4100');
-            fileTreeUpdate = new FileTreeHttpClient(process.env.ANT_CLI_PORT || '4100');
-            workflowUpdate = new WorkflowHttpClient(process.env.ANT_CLI_PORT || '4100');
+            kanbanUpdate = new KanbanHttpClient();  // Uses ANT_API_URL internally
+            fileTreeUpdate = new FileTreeHttpClient();
+            workflowUpdate = new WorkflowHttpClient();
             console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow)');
           } else {
-            console.log('ℹ️  Real-time updates disabled (no server instance or port)');
+            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_API_URL)');
           }
         } catch (error) {
           console.log('ℹ️  Real-time updates disabled (server not running)');

@@ -130,12 +130,18 @@ export class PreviewServer {
   private extractUserContext(req: Request): { organizationId: string; userId: string } {
     // Cloud mode: get from headers (set by API Gateway or auth proxy)
     const email = req.headers['x-user-email'] as string || req.query['user-email'] as string;
-    const orgId = req.headers['x-organization-id'] as string || 'default';
     
-    if (email) {
-      // Extract userId from email
-      const userId = email.split('@')[0];
-      return { organizationId: orgId, userId };
+    if (email && email.includes('@')) {
+      // Extract userId and organizationId from email (e.g., probe@to.nexus)
+      const [userId, organizationId] = email.split('@');
+      return { organizationId, userId };
+    }
+    
+    // Explicit header override (if provided)
+    const orgIdHeader = req.headers['x-organization-id'] as string;
+    const userIdHeader = req.headers['x-user-id'] as string;
+    if (orgIdHeader && userIdHeader) {
+      return { organizationId: orgIdHeader, userId: userIdHeader };
     }
     
     // Local mode fallback
@@ -370,7 +376,7 @@ export class PreviewServer {
     await this.initialize();
     this.setupRoutes();
 
-    const port = this.options.port || parseInt(process.env.ANT_PREVIEW_PORT || '4102');
+    const port = this.options.port || parseInt(process.env.PORT || '8080');
 
     return new Promise((resolve) => {
       this.server = this.app.listen(port, () => {
@@ -424,7 +430,7 @@ export async function createPreviewServer(): Promise<PreviewServer> {
   }
 
   const server = new PreviewServer({
-    port: parseInt(process.env.ANT_PREVIEW_PORT || '4102'),
+    port: parseInt(process.env.PORT || '8080'),
     redisUrl,
     workspacesPath: process.env.ANT_WORKSPACE_BASE_PATH,
     mode: process.env.ANT_SERVER_MODE === 'cloud' ? 'cloud' : 'local'

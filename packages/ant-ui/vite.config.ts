@@ -25,6 +25,17 @@ export default defineConfig({
     port: 4200,
     open: false,  // 브라우저 자동 열기 방지
     proxy: {
+      // Local dev: route /api/* to ant-api service
+      '/api': {
+        target: 'http://localhost:4100',
+        changeOrigin: true,
+      },
+      // Local dev: route /ide/* to ant-api service (IDE proxy)
+      '/ide': {
+        target: 'http://localhost:4100',
+        changeOrigin: true,
+        ws: true,  // WebSocket support for IDE terminal
+      },
       // Local dev: route /preview/* to ant-preview service
       '/preview': {
         target: 'http://localhost:4102',

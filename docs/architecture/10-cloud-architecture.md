@@ -453,17 +453,17 @@ ANT_ENCRYPTION_KEY=...                     # 암호화 키
 
 ```bash
 ANT_SERVER_MODE=cloud                      # 인증 모드 (local | cloud)
-ANT_CLI_PORT=4100                          # API 서버 포트
 ANT_K8S_NAMESPACE=ant-ide                  # IDE Pod 네임스페이스
 ANT_EFS_PVC_NAME=ant-workspaces-pvc        # EFS PVC 이름
+# PORT 환경변수 불필요 - 기본값 8080, K8s Service가 라우팅
 ```
 
 ### 5.3 Preview Server (ant-preview)
 
 ```bash
-ANT_PREVIEW_PORT=4102                      # Preview 서버 포트
 ANT_REDIS_URL=redis://...                  # Redis (상태 관리)
 ANT_WORKSPACE_BASE_PATH=/mnt/workspaces    # 워크스페이스 경로
+# PORT 환경변수 불필요 - 기본값 8080, K8s Service가 라우팅
 
 # ant-preview handles ALL preview operations:
 # - POST /preview/projects/:id/start (Dev Server 시작)
@@ -475,7 +475,7 @@ ANT_WORKSPACE_BASE_PATH=/mnt/workspaces    # 워크스페이스 경로
 ### 5.4 Realtime Server (ant-realtime)
 
 ```bash
-ANT_REALTIME_PORT=4101                     # Realtime 서버 포트
+# PORT 환경변수 불필요 - 기본값 8080, K8s Service가 라우팅
 ```
 
 ### 5.5 Job Worker (ant-job)
@@ -541,7 +541,7 @@ spec:
           service:
             name: ant-realtime
             port:
-              number: 4101
+              number: 8080  # 컨테이너 기본 포트
       # Preview - Round-robin (Redis 상태 관리 기반)
       - path: /preview
         pathType: Prefix
@@ -549,7 +549,7 @@ spec:
           service:
             name: ant-preview
             port:
-              number: 4100
+              number: 8080  # 컨테이너 기본 포트
       # Default (API, IDE, SSR) - Round-robin
       - path: /
         pathType: Prefix
@@ -557,7 +557,7 @@ spec:
           service:
             name: ant-api
             port:
-              number: 4100
+              number: 8080  # 컨테이너 기본 포트
 ---
 # Sticky Session 불필요!
 # 모든 서비스가 Redis 기반 상태 관리 사용:

@@ -17,7 +17,7 @@ EKS-based cloud deployment guide for DevOps teams.
 | **ant-job** | `start-job-worker.js` | AI Job Processing |
 | **ant-preview** | `start-preview-server.js` | Preview API + Proxy + Dev Server |
 
-> **Note**: `ant-api` and `ant-realtime` are separated for independent scaling. SSE requires **Sticky Session** while REST API uses **Round-robin**. See [10-cloud-architecture.md](../architecture/10-cloud-architecture.md) for details.
+> **Note**: `ant-api` and `ant-realtime` are separated for independent scaling. All services use **Round-robin** (Redis-based state management, no Sticky Session needed). See [10-cloud-architecture.md](../architecture/10-cloud-architecture.md) for details.
 
 ### 1.2 Deployment Modes
 
@@ -48,8 +48,8 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 │  ┌─────────────────────────────────────────────────────────────────────────┐ │
 │  │  ALB (Ingress)                                                           │ │
 │  │  ├── /api/* ──────────▶ ant-api (Round-robin)                           │ │
-│  │  ├── /realtime/* ─────▶ ant-realtime (Sticky Session)                   │ │
-│  │  └── /preview/* ──────▶ ant-preview (Round-robin)                       │ │
+│  │  ├── /realtime/* ─────▶ ant-realtime (Round-robin, Redis Pub/Sub)       │ │
+│  │  └── /preview/* ──────▶ ant-preview (Round-robin, Redis State)          │ │
 │  └───────────────────────────────┬───────────────┬─────────────────────────┘ │
 │                                  │               │                            │
 │                                  ▼               ▼                            │
@@ -98,23 +98,23 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 | Stg | `stg-ant.crosstoken.io/api` | `stg-ant.crosstoken.io/realtime` | `stg-ant.crosstoken.io` |
 | Prod | `ant.crosstoken.io/api` | `ant.crosstoken.io/realtime` | `ant.crosstoken.io` |
 
-> **Note**: `/realtime/*` must be configured with **Sticky Session** in ALB for SSE connection stability.
+> **Note**: All services use **Round-robin**. No Sticky Session needed (Redis Pub/Sub for SSE, Redis State for Preview/IDE).
 
 ### 1.4 Component Roles and Scaling
 
 | Component | Role | Scaling Method | LB Strategy |
 |---------|------|--------------|-------------|
-| **ant-api** | HTTP REST API, Proxy (Preview/IDE) | HPA (CPU/Request) | Round-robin |
-| **ant-realtime** | SSE (Server-Sent Events) | HPA (Connections) | **Sticky Session** |
+| **ant-api** | HTTP REST API, IDE Proxy | HPA (CPU/Request) | Round-robin |
+| **ant-realtime** | SSE (Server-Sent Events) | HPA (Connections) | Round-robin |
 | **ant-job** | AI Job Processing (Code/Design) | **KEDA (Queue Depth)** | N/A |
-| **ant-preview** | Preview Server Management | HPA (CPU/Memory) | Round-robin |
+| **ant-preview** | Preview API + Proxy + Dev Server | HPA (CPU/Memory) | Round-robin |
 | **ant-ide** | Cloud IDE (VSCode) | **Dynamic (1 Pod/User)** | N/A |
 | **ant-ui** | CSR SPA (React) | S3 + CloudFront (CDN) | CDN |
 | **Redis** | State, Queue, Pub/Sub | ElastiCache Cluster | N/A |
 | **ChromaDB** | Vector DB (Code Search/RAG) | Vertical (Single Pod) | N/A |
 | **Embedder** | Text Embedding Generation | Horizontal (HPA) | Round-robin |
 
-> **Why Sticky Session for ant-realtime?**: SSE clients maintain long-lived connections. Without sticky session, reconnections may hit different pods, causing message loss. Redis Pub/Sub broadcasts messages to all pods, but only the pod with the client connection can deliver them.
+> **Why No Sticky Session?**: All services use Redis-based state management. SSE uses Redis Pub/Sub (all pods subscribe and can deliver). Preview/IDE use Redis State (any pod can lookup and proxy to correct target). Reconnections to different pods work correctly.
 
 ---
 
@@ -162,13 +162,7 @@ resources:
 - Scale based on **connection count**, not CPU
 - Each pod can handle thousands of SSE connections
 - Memory grows with connection count
-- **Sticky Session required** at ALB/Ingress level
-
-**ALB Target Group Settings:**
-```yaml
-stickiness.enabled: true
-stickiness.lb_cookie.duration_seconds: 86400  # 24 hours
-```
+- **No Sticky Session needed** (Redis Pub/Sub broadcasts to all pods)
 
 ### 2.3 ant-job ⚠️ Long-Running Jobs
 
@@ -323,7 +317,7 @@ resources:
 | ServiceAccount | ant-api (for K8s API access to manage IDE Pods) |
 | RBAC | Role/RoleBinding for IDE Pod management |
 
-> **Important**: Ingress for `/realtime/*` must have **Sticky Session** enabled. `/preview/*` uses Round-robin (Redis-based state).
+> **Important**: All Ingress paths use **Round-robin**. No Sticky Session needed (all services use Redis-based state management).
 
 **AWS Resources (ant-ui):**
 
@@ -347,7 +341,7 @@ resources:
 
 **Scaling:**
 - ant-api: **HPA** (CPU-based, Round-robin LB)
-- ant-realtime: **HPA** (Connection-based, **Sticky Session LB**)
+- ant-realtime: **HPA** (Connection-based, Round-robin LB)
 - ant-job: **KEDA** (Redis Queue Depth-based) - [KEDA installation required](https://keda.sh/)
 - ant-preview: **HPA** (CPU/Memory-based)
 - ant-ide: **Dynamic** (Pods created/deleted by `KubernetesIDEOrchestrator`)
@@ -391,37 +385,32 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 
 | Server | Required Sections |
 |-----|----------|
-| ant-api | COMMON + ant-api |
-| ant-realtime | COMMON + ant-realtime |
-| ant-job | COMMON + ant-job |
-| ant-preview | COMMON + ant-preview |
+| ant-api | COMMON + LLM API + API SERVER |
+| ant-realtime | COMMON |
+| ant-job | COMMON + LLM API + JOB WORKER |
+| ant-preview | COMMON |
 
-**Key Environment Variables (Required for all):**
+**Key Environment Variables:**
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `ANT_SERVER_MODE` | Authentication mode | `cloud` |
-| `ANT_REDIS_URL` | Redis connection URL | `redis://redis.internal:6379` |
-| `ANT_WORKSPACE_BASE_PATH` | Workspace root path | `/mnt/workspaces` |
-| `ANT_K8S_NAMESPACE` | IDE K8s namespace (enables K8s IDE) | `ant-ide` |
+| Variable | Description | Required By | Example |
+|----------|-------------|-------------|---------|
+| `ANT_SERVER_MODE` | Authentication mode | All | `cloud` |
+| `ANT_REDIS_URL` | Redis connection URL | All | `redis://redis.internal:6379` |
+| `ANT_WORKSPACE_BASE_PATH` | Workspace root path | All | `/mnt/workspaces` |
+| `ANT_K8S_NAMESPACE` | IDE K8s namespace | ant-api | `ant-ide` |
+| `ANT_API_URL` | API Server URL | ant-job | `http://ant-api:8080` |
+| `ANTHROPIC_API_KEY` | Claude API Key | ant-api, ant-job | `sk-ant-...` |
 
-**ant-preview specific:**
+**Port Configuration:**
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `ANT_PREVIEW_PORT` | Preview server port | `4102` |
+> ⚠️ K8s 환경에서는 PORT 환경변수가 불필요합니다. 모든 서비스는 기본 포트 8080을 사용하며, K8s Service가 라우팅합니다.
+>
+> 로컬 개발 환경에서는 `package.json` 스크립트에서 `PORT=4100` 등으로 포트 충돌을 방지합니다.
 
-**ant-realtime specific:**
+**ant-ui:**
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `ANT_REALTIME_PORT` | Realtime server port | `4101` |
-
-**ant-ui (Build time):**
-```bash
-VITE_CLOUD_BACKEND_BASE=https://ant.crosstoken.io/api
-VITE_CLOUD_REALTIME_BASE=https://ant.crosstoken.io/realtime
-```
+> ⚠️ 프론트엔드는 상대 경로 (`/api`, `/realtime`, `/preview`)를 사용합니다. 환경변수 불필요.
+> Ingress/ALB가 경로 기반 라우팅을 처리합니다.
 
 ---
 
@@ -436,7 +425,7 @@ VITE_CLOUD_REALTIME_BASE=https://ant.crosstoken.io/realtime
 | User Browser | ALB (/realtime/*) | ant-realtime (SSE connections) |
 | User Browser | ALB (/preview/*) | ant-preview (Preview API + Proxy) |
 | ALB | ant-api | HTTPS Ingress (Round-robin) |
-| ALB | ant-realtime | HTTPS Ingress (**Sticky Session**) |
+| ALB | ant-realtime | HTTPS Ingress (Round-robin) |
 | ALB | ant-preview | HTTPS Ingress (Round-robin) |
 | ant-api, ant-realtime, ant-job, ant-preview | Redis | State, Queue, Pub/Sub |
 | ant-api, ant-job | LLM API (External) | AI Calls |
@@ -445,7 +434,7 @@ VITE_CLOUD_REALTIME_BASE=https://ant.crosstoken.io/realtime
 
 **Notes:**
 - ant-ui: CloudFront serves static files (S3 origin), API calls go to ALB
-- ant-realtime: SSE requires **Sticky Session** at ALB level
+- ant-realtime: SSE uses Redis Pub/Sub (Round-robin OK)
 - ant-job does not need Inbound (Worker pulls from queue)
 - ant-ide Pods are created dynamically by ant-api via K8s API
 - Redis should only be accessible within VPC
@@ -487,10 +476,10 @@ VITE_CLOUD_REALTIME_BASE=https://ant.crosstoken.io/realtime
 
 | Component | Requirement | Implementation |
 |-----------|-------------|----------------|
-| **Redis** | Required (both local & cloud) | `RedisStateStore` (single) |
-| **Job Queue** | Required (both local & cloud) | `BullMQJobQueue` (single) |
-| **Realtime Server** | Required (both local & cloud) | `RealtimeServer` (SSE) |
-| **Preview Worker** | Required (both local & cloud) | `RemotePreviewOrchestrator` (single) |
+| **Redis** | Required (both local & cloud) | `RedisStateStore` |
+| **Job Queue** | Required (both local & cloud) | `BullMQJobQueue` |
+| **Realtime Server** | Required (both local & cloud) | `RealtimeServer` (SSE + Redis Pub/Sub) |
+| **Preview Server** | Required (both local & cloud) | `PreviewServer` (API + Proxy + Dev Server) |
 | **IDE** | Docker (local) or K8s (cloud) | `LocalIDEOrchestrator` / `KubernetesIDEOrchestrator` |
 
 > **Note**: Local and cloud use identical infrastructure components. Only authentication mode and IDE orchestration differ.
@@ -554,10 +543,10 @@ spec:
           service:
             name: ant-api
             port:
-              number: 4100
+              number: 8080
 ```
 
-### 8.2 ALB Ingress for ant-realtime (Sticky Session) ⚠️
+### 8.2 ALB Ingress for ant-realtime (Round-robin)
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -568,9 +557,7 @@ metadata:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    # ⚠️ CRITICAL: Sticky Session for SSE
-    alb.ingress.kubernetes.io/target-group-attributes: |
-      stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=86400
+    # No Sticky Session needed - Redis Pub/Sub handles broadcast
 spec:
   rules:
   - host: ant.crosstoken.io
@@ -582,7 +569,7 @@ spec:
           service:
             name: ant-realtime
             port:
-              number: 4101
+              number: 8080
 ```
 
-> **Note**: Without sticky session, SSE reconnections may hit different pods, causing message loss even with Redis Pub/Sub broadcasting.
+> **Note**: No Sticky Session needed. Redis Pub/Sub broadcasts messages to all pods. Reconnections to different pods work correctly.

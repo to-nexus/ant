@@ -48,13 +48,12 @@ import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
  * Environment Variables:
  * - ANT_SERVER_MODE: 'local' (default) or 'cloud' - affects authentication only
  * - ANT_REDIS_URL: Redis connection URL (REQUIRED)
- * - ANT_PREVIEW_WORKERS: Preview worker URLs (REQUIRED)
- * - ANT_CLI_PORT: Ant CLI server port (default: 4100)
+ * - PORT: Server port (default: 8080, set via npm scripts for local dev)
  * - ANT_WORKSPACE_BASE_PATH: Physical workspace storage path
  * - ANT_K8S_NAMESPACE: Kubernetes namespace for IDE (optional, uses Docker if not set)
  */
 
-const DEFAULT_PORT = 4100;
+const DEFAULT_PORT = 8080;
 const DEFAULT_CLOUD_URL = 'https://ant.nexus.ai';
 
 async function main() {
@@ -71,12 +70,9 @@ async function main() {
   // Environment configuration
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
   
-  // ✅ ONLY use ANT_CLI_PORT (NEVER use PORT to avoid collision with user projects)
-  const port = process.env.ANT_CLI_PORT ? parseInt(process.env.ANT_CLI_PORT) : DEFAULT_PORT;
-  
-  // 🚨 CRITICAL: Unset PORT to prevent child processes from inheriting it
-  // User projects should use their own PORT, not ant-cli's port
-  delete process.env.PORT;
+  // Use PORT environment variable (default: 8080)
+  // For local dev, ports are specified in npm scripts (PORT=4100 etc.)
+  const port = parseInt(process.env.PORT || String(DEFAULT_PORT));
   
   // ✅ Get physical workspaces path (centralized in WorkspacePathResolver)
   const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
