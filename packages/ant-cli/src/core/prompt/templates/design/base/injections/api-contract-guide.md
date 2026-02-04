@@ -180,6 +180,94 @@ Example (language-neutral):
 
 ---
 
+## 🏗️ MSA STRUCTURE (if msa-contract-first)
+
+**When multiple service boundaries exist, organize api-contract.md with service metadata.**
+
+### Section Organization Principle
+
+| Section | Content | Who References |
+|---------|---------|----------------|
+| **§ Public API** | Client → Gateway/BFF endpoints | Frontend developers |
+| **§ Internal API** | Gateway → Service endpoints | Gateway/BFF developers |
+| **§ Inter-Service API** | Service ↔ Service direct calls | Backend service developers |
+| **§ Async Events** | Event definitions (Pub/Sub) | All service developers |
+| **§ Shared DTOs** | Common type definitions | All parties |
+
+### Endpoint Metadata (REQUIRED for MSA)
+
+**Each endpoint MUST include service relationship metadata:**
+
+| Metadata | Format | Purpose |
+|----------|--------|---------|
+| **Provider** | Service name | Which service implements this endpoint |
+| **Consumers** | Service name(s) | Which services call this endpoint |
+| **Routed To** | Service name | For public API: which service handles the request |
+
+**⚠️ Constraint**: Do NOT omit Provider/Consumer metadata in MSA mode.
+
+### Section Templates
+
+#### § Public API (Client-facing)
+
+```markdown
+### {Domain} Endpoints
+
+| Endpoint | Method | Description | **Routed To** |
+|----------|--------|-------------|---------------|
+| /api/... | POST   | ...         | {service}     |
+
+#### POST /api/{resource}
+- **Purpose**: ...
+- **Routed To**: {service}
+- **Request**: {DTO} (§ Shared DTOs)
+- **Success**: 201 + {DTO}
+- **Errors**: ...
+```
+
+#### § Internal API (Service-to-Service sync)
+
+```markdown
+### {Service} (Provider)
+
+| Endpoint | **Consumers** | Purpose |
+|----------|---------------|---------|
+| /internal/... | {consumer1}, {consumer2} | ... |
+
+#### GET /internal/{resource}/{id}
+- **Provider**: {service}
+- **Consumers**: {consumer1}, {consumer2}
+- **Purpose**: ...
+- **Request**: ...
+- **Response**: ...
+```
+
+#### § Async Events
+
+```markdown
+### {Domain} Events
+
+| Event | **Publisher** | **Subscribers** | Trigger |
+|-------|---------------|-----------------|---------|
+| {EventName} | {service} | {sub1}, {sub2} | ... |
+
+#### {EventName}
+- **Publisher**: {service}
+- **Subscribers**: {sub1}, {sub2}
+- **Trigger**: When ...
+- **Payload**: {DTO} (§ Shared DTOs)
+- **Delivery**: at-least-once / at-most-once / exactly-once
+```
+
+### ⚠️ Blind Spot Reminders
+
+- ⚠️ **Provider/Consumer metadata**: Easily forgotten, REQUIRED for every endpoint in MSA mode
+- ⚠️ **Shared DTO section**: Define ONCE, reference everywhere - avoid duplication
+- ⚠️ **Event delivery guarantee**: MUST specify (at-least-once, at-most-once, exactly-once)
+- ⚠️ **Internal vs Public paths**: Use `/internal/` prefix for service-to-service endpoints
+
+---
+
 ## ✅ Example
 
 ### POST /api/rooms/create

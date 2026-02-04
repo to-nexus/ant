@@ -115,8 +115,12 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     }
     
     // ✅ CRITICAL: Load api-contract.md if generating fe/be-system-design
+    // Also handles MSA service-specific backend docs: be-system-design-{service}.md
     let apiContractContent: string | undefined;
-    const isImplementationDesign = targetFile === 'fe-system-design.md' || targetFile === 'be-system-design.md';
+    const isImplementationDesign = 
+      targetFile === 'fe-system-design.md' || 
+      targetFile === 'be-system-design.md' ||
+      targetFile.startsWith('be-system-design-');  // ✅ MSA service-specific pattern
     
     if (isImplementationDesign) {
       try {
@@ -220,6 +224,24 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     const jobId = state.jobId || state._httpJobId || 'unknown';
     if (state.context.featurePath) {
       try {
+        // ✅ Determine actually used templates based on targetFile (mirrors ModeController logic)
+        const usedTemplates: string[] = ['design/phases/execute/rules-system-design'];
+        
+        if (targetFile.includes('api-contract')) {
+          usedTemplates.push('design/base/injections/api-contract-guide');
+        } else if (targetFile.includes('be-system-design')) {
+          usedTemplates.push('design/base/injections/backend-guide');
+        } else if (targetFile.includes('fe-system-design')) {
+          usedTemplates.push('design/base/injections/frontend-guide');
+        }
+        
+        // Domain-specific guides
+        if (state.detectionReport?.domain === 'game') {
+          usedTemplates.push('design/phases/execute/injections/game-domain-guide');
+        } else if (state.detectionReport?.domain === 'service') {
+          usedTemplates.push('design/phases/execute/injections/service-domain-guide');
+        }
+        
         await logPrompt(
           state.context.featurePath,
           jobId,
@@ -230,14 +252,12 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
             taskId: state.currentTask?.id,
             taskName: state.currentTask?.name,
             templatePath: 'design/phases/execute/base-system-design',
-            usedTemplates: [
-              'design/phases/execute/rules-system-design',
-              'design/phases/execute/injections/game-domain-guide',
-              'design/phases/execute/injections/service-domain-guide',
-            ],
+            usedTemplates,
             injectedVariables: {
+              targetFile,  // ✅ NEW: Critical for MSA debugging
               directive: state.directive ? `[${state.directive.length} chars]` : undefined,
               designDoc: apiContractContent ? `[${apiContractContent.length} chars]` : undefined,
+              apiContractLoaded: !!apiContractContent,  // ✅ NEW: Quick check if contract was loaded
               lastSectionNumber,
               sectionPattern,
               prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
@@ -245,6 +265,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
               designDomain: state.detectionReport?.domain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,
+              isMSAServiceDoc: targetFile.startsWith('be-system-design-'),  // ✅ NEW: MSA indicator
             },
           }
         );
@@ -316,6 +337,24 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         }, 0);
       }, 0);
       
+      // ✅ Determine actually used templates based on targetFile
+      const targetFileForLog = state.currentTask?.targetFile || 'system-design.md';
+      const usedTemplatesForLog: string[] = ['design/phases/execute/rules-system-design'];
+      
+      if (targetFileForLog.includes('api-contract')) {
+        usedTemplatesForLog.push('design/base/injections/api-contract-guide');
+      } else if (targetFileForLog.includes('be-system-design')) {
+        usedTemplatesForLog.push('design/base/injections/backend-guide');
+      } else if (targetFileForLog.includes('fe-system-design')) {
+        usedTemplatesForLog.push('design/base/injections/frontend-guide');
+      }
+      
+      if (state.detectionReport?.domain === 'game') {
+        usedTemplatesForLog.push('design/phases/execute/injections/game-domain-guide');
+      } else if (state.detectionReport?.domain === 'service') {
+        usedTemplatesForLog.push('design/phases/execute/injections/service-domain-guide');
+      }
+      
       await logPrompt(
         state.context.featurePath,
         jobIdFinal,
@@ -326,12 +365,9 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           templatePath: 'design/phases/execute/base-system-design',
-          usedTemplates: [
-            'design/phases/execute/rules-system-design',
-            'design/phases/execute/injections/game-domain-guide',
-            'design/phases/execute/injections/service-domain-guide',
-          ],
+          usedTemplates: usedTemplatesForLog,
           injectedVariables: {
+            targetFile: targetFileForLog,  // ✅ NEW: Critical for MSA debugging
             messageCount: messages.length,
             hasConversationHistory: !!(state.conversationHistory?.length),
             conversationHistoryLength: state.conversationHistory?.length || 0,
@@ -340,6 +376,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             jobMode: state.detectionReport?.jobMode,
             designDomain: state.detectionReport?.domain,
+            isMSAServiceDoc: targetFileForLog.startsWith('be-system-design-'),  // ✅ NEW
           },
         }
       );

@@ -70,6 +70,54 @@ Analyze project characteristics to determine structure:
 - ❌ Don't mention specific file names (package.json, etc.)
 
 ════════════════════════════════════════════════════════════════════════════════
+## 🏗️ MSA DESIGN DOCUMENT HANDLING
+════════════════════════════════════════════════════════════════════════════════
+
+**When design documents include multiple `be-system-design-{service}.md` files:**
+
+### Document Structure Detection
+
+| Pattern Observed | Document Type | Package Strategy |
+|------------------|---------------|------------------|
+| `system-design.md` only | Unified | Single package |
+| `api-contract.md` + `be-system-design.md` | Contract-First | FE + BE packages |
+| `api-contract.md` + `be-system-design-*.md` (multiple) | MSA-Contract-First | **Package per service** |
+
+### MSA Package Mapping Principle
+
+| Design Document | Maps To Package |
+|-----------------|-----------------|
+| `api-contract.md` | `packages/shared/` (types, DTOs, contracts) |
+| `fe-system-design.md` | `packages/frontend/` or `packages/web/` |
+| `be-system-design-{service}.md` | `packages/{service}/` |
+
+**⚠️ Package name MUST match service name in design document filename.**
+
+### MSA Setup Task Generation
+
+| Task | Priority | Scope |
+|------|----------|-------|
+| Root workspace | 100 | pnpm-workspace.yaml, root config |
+| Shared package | 101 | Types/DTOs from api-contract.md |
+| Service packages | 102+ | One per `be-system-design-{service}.md` |
+| Frontend package | Last | Depends on shared |
+
+### MSA Feature Task Generation
+
+**For each service, reference ONLY its design document:**
+
+| Task Target | Design Doc Reference | Scope |
+|-------------|---------------------|-------|
+| Auth service implementation | `be-system-design-auth.md` | Auth service only |
+| Order service implementation | `be-system-design-order.md` | Order service only |
+| Frontend implementation | `fe-system-design.md` | Frontend only |
+
+**⚠️ Constraint**: 
+- Do NOT mix service implementations in a single task
+- Each service task references its specific `be-system-design-{service}.md`
+- All tasks reference `api-contract.md` for interface contracts
+
+════════════════════════════════════════════════════════════════════════════════
 
 **Critical Rules:**
 - ✅ Every task must reference design doc

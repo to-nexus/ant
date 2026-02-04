@@ -640,12 +640,14 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     
     // Call LLM with structured output
     let response: { 
-      documentType: 'unified' | 'contract-first';
+      documentType: 'unified' | 'contract-first' | 'msa-contract-first';
+      services?: string[];  // ✅ MSA: service names from PRD
       targetFiles: string[];
       tasks: Array<{ 
         id: string; 
         name: string; 
         targetFile: string;
+        targetService?: string;  // ✅ MSA: which service this task targets
         description: string; 
         priority: number;
       }>;
@@ -715,47 +717,104 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       response.targetFiles = ['system-design.md'];
       response.tasks = response.tasks.map(t => ({ ...t, targetFile: 'system-design.md' }));
     } else if (detectedEnv === 'fullstack') {
-      response.documentType = 'contract-first';
-      response.targetFiles = ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
-      
-      const hasRequiredTargets = (targets: string[]) =>
-        targets.includes('api-contract.md') &&
-        targets.includes('fe-system-design.md') &&
-        targets.includes('be-system-design.md');
-      
-      const taskTargets = response.tasks.map(t => t.targetFile);
-      if (!hasRequiredTargets(taskTargets) || response.tasks.length < 3) {
-        // If the LLM didn't split tasks properly, create a deterministic 3-task breakdown.
-        // Keep it concise (line budgets are handled in execute phase; decompose only sets structure).
-        response.tasks = [
-          {
-            id: 'design-api-contract',
-            name: 'Design Document: API Contract',
-            targetFile: 'api-contract.md',
-            priority: 200,
-            description: 'Define FE↔BE API contract (endpoints/events, DTOs, error format, auth if any). MAX 120 lines total!'
-          },
-          {
-            id: 'design-fe',
-            name: 'Design Document: Frontend System Design',
-            targetFile: 'fe-system-design.md',
-            priority: 220,
-            description: 'Design frontend architecture consuming api-contract.md (components, routing, state, loading/error UX, API integration). MAX 180 lines total!'
-          },
-          {
-            id: 'design-be',
-            name: 'Design Document: Backend System Design',
-            targetFile: 'be-system-design.md',
-            priority: 240,
-            description: 'Design backend architecture implementing api-contract.md (layers, endpoints, storage, validation, error handling). MAX 180 lines total!'
-          }
+      // ✅ Check if MSA (msa-contract-first) was detected by LLM
+      if (response.documentType === 'msa-contract-first' && response.services && response.services.length > 0) {
+        // MSA mode: validate and normalize service-based structure
+        console.log(`\n🏗️  MSA detected with ${response.services.length} services: ${response.services.join(', ')}`);
+        
+        // Ensure targetFiles includes service-specific backend docs
+        const expectedTargetFiles = [
+          'api-contract.md',
+          'fe-system-design.md',
+          ...response.services.map(s => `be-system-design-${s}.md`)
         ];
+        response.targetFiles = expectedTargetFiles;
+        
+        // Validate tasks have correct targetFiles
+        const validTargetFiles = new Set(response.targetFiles);
+        response.tasks = response.tasks.map(t => {
+          if (!validTargetFiles.has(t.targetFile)) {
+            console.warn(`⚠️  Task "${t.name}" has invalid targetFile: ${t.targetFile}, defaulting to api-contract.md`);
+            return { ...t, targetFile: 'api-contract.md' };
+          }
+          return t;
+        });
+        
+        // Ensure minimum required tasks exist
+        const hasApiContract = response.tasks.some(t => t.targetFile === 'api-contract.md');
+        const hasFrontend = response.tasks.some(t => t.targetFile === 'fe-system-design.md');
+        
+        if (!hasApiContract || !hasFrontend || response.tasks.length < response.services.length + 2) {
+          console.warn(`⚠️  MSA tasks incomplete, regenerating deterministic structure`);
+          response.tasks = [
+            {
+              id: 'design-api-contract',
+              name: 'Design Document: API Contract (MSA)',
+              targetFile: 'api-contract.md',
+              priority: 200,
+              description: 'Define all endpoints (public, internal, inter-service) with Provider/Consumer metadata. Define async events. MAX 200 lines!'
+            },
+            {
+              id: 'design-fe',
+              name: 'Design Document: Frontend System Design',
+              targetFile: 'fe-system-design.md',
+              priority: 210,
+              description: 'Design frontend consuming public API from api-contract.md. MAX 150 lines!'
+            },
+            ...response.services.map((service, idx) => ({
+              id: `design-be-${service}`,
+              name: `Design Document: ${service} Service`,
+              targetFile: `be-system-design-${service}.md`,
+              targetService: service,
+              priority: 220 + idx * 10,
+              description: `Design ${service} service architecture implementing endpoints from api-contract.md. MAX 120 lines!`
+            }))
+          ];
+        }
       } else {
-        // Normalize task targetFile to one of the contract-first files.
-        response.tasks = response.tasks.map(t => ({
-          ...t,
-          targetFile: response.targetFiles.includes(t.targetFile) ? t.targetFile : 'api-contract.md'
-        }));
+        // Standard contract-first (single backend)
+        response.documentType = 'contract-first';
+        response.targetFiles = ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
+        
+        const hasRequiredTargets = (targets: string[]) =>
+          targets.includes('api-contract.md') &&
+          targets.includes('fe-system-design.md') &&
+          targets.includes('be-system-design.md');
+        
+        const taskTargets = response.tasks.map(t => t.targetFile);
+        if (!hasRequiredTargets(taskTargets) || response.tasks.length < 3) {
+          // If the LLM didn't split tasks properly, create a deterministic 3-task breakdown.
+          // Keep it concise (line budgets are handled in execute phase; decompose only sets structure).
+          response.tasks = [
+            {
+              id: 'design-api-contract',
+              name: 'Design Document: API Contract',
+              targetFile: 'api-contract.md',
+              priority: 200,
+              description: 'Define FE↔BE API contract (endpoints/events, DTOs, error format, auth if any). MAX 120 lines total!'
+            },
+            {
+              id: 'design-fe',
+              name: 'Design Document: Frontend System Design',
+              targetFile: 'fe-system-design.md',
+              priority: 220,
+              description: 'Design frontend architecture consuming api-contract.md (components, routing, state, loading/error UX, API integration). MAX 180 lines total!'
+            },
+            {
+              id: 'design-be',
+              name: 'Design Document: Backend System Design',
+              targetFile: 'be-system-design.md',
+              priority: 240,
+              description: 'Design backend architecture implementing api-contract.md (layers, endpoints, storage, validation, error handling). MAX 180 lines total!'
+            }
+          ];
+        } else {
+          // Normalize task targetFile to one of the contract-first files.
+          response.tasks = response.tasks.map(t => ({
+            ...t,
+            targetFile: response.targetFiles.includes(t.targetFile) ? t.targetFile : 'api-contract.md'
+          }));
+        }
       }
     }
     
@@ -805,6 +864,40 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     }
     
     console.log(`\n✅ Task breakdown complete: ${taskQueue.size()} tasks\n`);
+    
+    // ✅ Log decompose RESULT to debug file (critical for MSA debugging)
+    if (state.context.featurePath) {
+      try {
+        await logPrompt(
+          state.context.featurePath,
+          newJobId,
+          'design',
+          'decompose-systemDesign-result',
+          JSON.stringify(response).length,
+          {
+            templatePath: 'design/phases/decompose/base-system-design',
+            usedTemplates: ['design/phases/decompose/rules-system-design'],
+            injectedVariables: {
+              documentType: response.documentType,  // ✅ 'unified' | 'contract-first' | 'msa-contract-first'
+              services: response.services || [],     // ✅ MSA service names
+              targetFiles: response.targetFiles,     // ✅ Target file list
+              taskCount: response.tasks.length,
+              isMSA: response.documentType === 'msa-contract-first',
+              detectedEnvironment: state.detectionReport?.environment,
+              tasks: response.tasks.map(t => ({
+                id: t.id,
+                name: t.name,
+                targetFile: t.targetFile,
+                targetService: t.targetService,  // ✅ MSA: which service
+                priority: t.priority
+              }))
+            },
+          }
+        );
+      } catch (logError) {
+        console.warn(`⚠️  [Decompose] Failed to log result:`, logError);
+      }
+    }
     
     // ✅ CRITICAL: Pop first task and set as currentTask immediately
     const firstTask = taskQueue.pop();
