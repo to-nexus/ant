@@ -236,7 +236,13 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               host: `localhost:${targetPort}`,
               'accept-encoding': 'identity',
               'if-none-match': undefined,
-              'if-modified-since': undefined
+              'if-modified-since': undefined,
+              // Remove hop-by-hop headers (not allowed in HTTP/2)
+              'connection': undefined,
+              'keep-alive': undefined,
+              'proxy-connection': undefined,
+              'transfer-encoding': undefined,
+              'upgrade': undefined,
             } as any,
             ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
           });
