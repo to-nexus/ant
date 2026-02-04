@@ -167,12 +167,14 @@ export class FileOperationHandler {
     }
     
     // Track active file operations for real-time streaming
-    if (phase === 'writing' || phase === 'updating') {
+    // ✅ CRITICAL: Track ALL non-complete phases to ensure subsequent updates can find the content
+    const trackablePhases = ['creating', 'writing', 'editing', 'updating', 'deleting'];
+    if (trackablePhases.includes(phase!)) {
       if (!session.activeFileOperations) {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex: existingIndex });
-    } else if (phase === 'complete') {
+    } else if (phase === 'complete' || phase === 'failed') {
       session.activeFileOperations?.delete(filePath);
     }
     
@@ -219,12 +221,16 @@ export class FileOperationHandler {
     }, session.userContext);
 
     // Track active file operations for real-time streaming
-    if ((phase === 'writing' || phase === 'updating') && contentIndex !== -1) {
+    // ✅ CRITICAL: Track ALL non-complete phases to prevent duplicate content_add
+    // Previously only tracked 'writing'/'updating', missing 'creating'/'editing'
+    // This caused duplicate file cards when phase='writing' couldn't find phase='creating' content
+    const trackablePhases = ['creating', 'writing', 'editing', 'updating', 'deleting'];
+    if (trackablePhases.includes(phase!) && contentIndex !== -1) {
       if (!session.activeFileOperations) {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex });
-      logger.debug(`Tracked NEW file operation @${contentIndex}`, { component: 'FileOperationHandler', projectId, featureName }, { filePath });
+      logger.debug(`Tracked NEW file operation @${contentIndex} (phase=${phase})`, { component: 'FileOperationHandler', projectId, featureName }, { filePath });
     }
   }
 
