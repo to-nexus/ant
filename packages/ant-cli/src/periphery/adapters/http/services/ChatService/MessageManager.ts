@@ -23,14 +23,15 @@ export class MessageManager {
 
   /**
    * Add user message to chat history
+   * CLOUD MODE: Waits for Redis save to ensure message order consistency
    */
-  addUserMessage(
+  async addUserMessage(
     projectId: string, 
     featureName: string, 
     content: string, 
     jobId?: string, 
     userContext?: UserContext
-  ): string {
+  ): Promise<string> {
     const session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId, userContext);
     
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -47,11 +48,17 @@ export class MessageManager {
     
     session.messages.push(userMessage);
     
-    // Save to file AND Redis (async)
+    // Save to file
     this.persistence.saveSession(projectId, featureName, session.messages, userContext);
-    this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
+    
+    // ✅ CRITICAL: Wait for Redis save to ensure message order in Cloud mode
+    // Without this, Job Worker may start before user message is in Redis,
+    // causing assistant message to appear before user message
+    try {
+      await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
+    } catch (err) {
       logger.warn('Failed to save session to Redis', { component: 'MessageManager' }, err);
-    });
+    }
     
     // Broadcast new user message
     this.broadcaster.broadcast(projectId, featureName, {
