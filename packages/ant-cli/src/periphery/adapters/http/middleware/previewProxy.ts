@@ -227,23 +227,26 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const method = (req.method || 'GET').toUpperCase();
       const hasRequestBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
       
+      // Build clean headers - exclude hop-by-hop headers (not allowed in HTTP/2)
+      const hopByHopHeaders = new Set([
+        'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate',
+        'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade',
+        'if-none-match', 'if-modified-since'
+      ]);
+      const cleanHeaders: Record<string, string> = {};
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (!hopByHopHeaders.has(key.toLowerCase()) && typeof value === 'string') {
+          cleanHeaders[key] = value;
+        }
+      }
+      cleanHeaders['host'] = `localhost:${targetPort}`;
+      cleanHeaders['accept-encoding'] = 'identity';
+      
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           response = await fetch(effectiveTargetUrl, {
             method: req.method,
-            headers: {
-              ...req.headers,
-              host: `localhost:${targetPort}`,
-              'accept-encoding': 'identity',
-              'if-none-match': undefined,
-              'if-modified-since': undefined,
-              // Remove hop-by-hop headers (not allowed in HTTP/2)
-              'connection': undefined,
-              'keep-alive': undefined,
-              'proxy-connection': undefined,
-              'transfer-encoding': undefined,
-              'upgrade': undefined,
-            } as any,
+            headers: cleanHeaders,
             ...(hasRequestBody ? { body: req as any, duplex: 'half' as any } : {})
           });
           break; // Success!
