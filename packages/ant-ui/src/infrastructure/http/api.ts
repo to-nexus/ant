@@ -59,13 +59,23 @@ export const getLocalBackendPort = (): number => {
 /**
  * Get backend base URL based on current mode
  * - local mode: http://localhost:{port}
- * - cloud mode: VITE_CLOUD_BACKEND_BASE
+ * - cloud mode: VITE_CLOUD_BACKEND_BASE (환경변수 필수)
+ * 
+ * ⚠️ Cloud 모드에서는 VITE_CLOUD_BACKEND_BASE가 반드시 설정되어 있어야 함
+ * 설정되지 않으면 상대 경로('')를 반환하며, 이 경우 Ingress/ALB가 라우팅해야 함
  */
 const getBackendBase = (): string => {
   const mode = getBackendMode();
   
   if (mode === 'cloud') {
-    return import.meta.env.VITE_CLOUD_BACKEND_BASE || '';
+    const cloudBase = import.meta.env.VITE_CLOUD_BACKEND_BASE;
+    if (!cloudBase) {
+      // 환경변수 미설정 시 상대 경로 사용 (Ingress/ALB가 라우팅)
+      // 이 경우 프론트엔드와 백엔드가 같은 도메인에 있어야 함
+      console.warn('[API] VITE_CLOUD_BACKEND_BASE not set, using relative paths');
+      return '';
+    }
+    return cloudBase;
   }
   
   // local mode: localhost:{port}
