@@ -194,7 +194,9 @@ export class ProcessSpawner {
     };
     
     logger.warn(`[Preview] Starting ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
+    logger.warn(`[Preview] Command: ${command} ${args.join(' ')}`, { component: 'ProcessSpawner' });
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
+    options.onLog('stdout', `📋 Command: ${command} ${args.join(' ')}`);
     
     const childProcess = spawn(command, args, {
       cwd: pkg.path,
