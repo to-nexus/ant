@@ -134,20 +134,34 @@ ant-cli (단일 코드베이스)
 
 ### 2.2 Ingress 라우팅 규칙
 
-| Priority | Path | Target | LB Policy | 비고 |
-|----------|------|--------|-----------|------|
-| 1 | `/realtime/*` | ant-realtime | Round-robin | Redis Pub/Sub 기반 |
-| 2 | `/preview/*` | ant-preview | Round-robin | Redis 상태 관리 기반 |
-| 3 | `/*` | ant-api | Round-robin | Default (REST, IDE, SSR) |
+| Priority | Path | Condition | Target | LB Policy | 비고 |
+|----------|------|-----------|--------|-----------|------|
+| 1 | `/realtime/*` | - | ant-realtime | Round-robin | Redis Pub/Sub 기반 |
+| 2 | `/preview/*` | - | ant-preview | Round-robin | Redis 상태 관리 기반 |
+| 3 | `/*` | Referer에 `/preview/` 포함 | ant-preview | Round-robin | Preview 리소스 요청 |
+| 4 | `/*` | - | ant-api | Round-robin | Default (REST, IDE, SSR) |
 
 > **Why No Sticky Session?**
 > - **SSE (ant-realtime)**: Redis Pub/Sub로 모든 Pod가 이벤트 수신. 재연결 시 다른 Pod도 OK.
 > - **Preview (ant-preview)**: Redis에서 Dev Server Pod IP 조회 → 해당 Pod로 프록시. 0.0.0.0 binding.
 > - **IDE (ant-api)**: Redis에서 IDE Pod IP 조회 → K8s Pod로 프록시.
 
+**⚠️ Referer 기반 라우팅 (Preview 리소스)**
+
+Preview 페이지에서 로드하는 리소스 (`/logos/*`, `/icons/*`, `/_next/*` 등)는 `/preview/` 경로가 아니지만, ant-preview로 라우팅되어야 합니다:
+
+```
+브라우저: GET /logos/header-logo.svg
+         Referer: https://ant-server.crosstoken.io/preview/to.nexus:probe:ant-ogf:skeleton/
+
+Ingress: Referer 헤더에 "/preview/" 포함? → ant-preview로 라우팅
+         ant-preview가 Referer에서 serverKey 추출 → 해당 Dev Server로 프록시
+```
+
 **라우팅 동작:**
 - `/realtime/stream` → ant-realtime (SSE)
 - `/preview/org:user:proj:feat/` → ant-preview (Preview)
+- `/logos/*` (Referer: `/preview/...`) → ant-preview (Preview 리소스)
 - `/api/jobs/...` → ant-api (REST)
 - `/ide/org:user:proj/` → ant-api (IDE Proxy)
 - `/_next/...` → ant-api (SSR Assets)
@@ -519,7 +533,11 @@ OPENAI_API_KEY=...                         # OpenAI API
 | EFS | 100GB+ | ReadWriteMany |
 | ALB | - | WebSocket 자동 지원 |
 
-### 6.3 Ingress 설정 (AWS ALB)
+### 6.3 Ingress 설정 (Nginx Ingress Controller)
+
+**⚠️ 중요: Referer 기반 라우팅 필요**
+
+Preview 페이지에서 로드하는 리소스 (`/logos/*`, `/icons/*` 등)는 Referer 헤더에 `/preview/`가 포함되어 있으면 ant-preview로 라우팅해야 합니다.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -527,9 +545,17 @@ kind: Ingress
 metadata:
   name: ant-ingress
   annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
+    kubernetes.io/ingress.class: nginx
+    # Referer 기반 라우팅을 위한 server-snippet
+    nginx.ingress.kubernetes.io/server-snippet: |
+      # Preview 리소스 요청: Referer에 /preview/ 포함 시 ant-preview로 라우팅
+      location ~* ^/(?!api|preview|realtime|ide).*$ {
+        if ($http_referer ~* "/preview/") {
+          proxy_pass http://ant-preview.default.svc.cluster.local:8080;
+          break;
+        }
+        proxy_pass http://ant-api.default.svc.cluster.local:8080;
+      }
 spec:
   rules:
   - http:
@@ -541,7 +567,7 @@ spec:
           service:
             name: ant-realtime
             port:
-              number: 8080  # 컨테이너 기본 포트
+              number: 8080
       # Preview - Round-robin (Redis 상태 관리 기반)
       - path: /preview
         pathType: Prefix
@@ -549,15 +575,31 @@ spec:
           service:
             name: ant-preview
             port:
-              number: 8080  # 컨테이너 기본 포트
-      # Default (API, IDE, SSR) - Round-robin
+              number: 8080
+      # API 명시적 라우팅
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: ant-api
+            port:
+              number: 8080
+      # IDE 명시적 라우팅
+      - path: /ide
+        pathType: Prefix
+        backend:
+          service:
+            name: ant-api
+            port:
+              number: 8080
+      # Default - server-snippet에서 Referer 기반으로 처리
       - path: /
         pathType: Prefix
         backend:
           service:
             name: ant-api
             port:
-              number: 8080  # 컨테이너 기본 포트
+              number: 8080
 ---
 # Sticky Session 불필요!
 # 모든 서비스가 Redis 기반 상태 관리 사용:
