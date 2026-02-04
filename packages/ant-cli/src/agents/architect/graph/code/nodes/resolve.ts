@@ -48,25 +48,17 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // ✅ CRITICAL: Skip resolve if resuming (taskQueue already exists from runner restoration)
   const isResume = state.taskQueue && !state.taskQueue.isEmpty();
   if (isResume) {
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔄 CODE AGENT - RESUME (Skip Resolve)');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    console.log('✅ Resuming from previous state (resolve phase skipped)');
-    console.log(`   Task queue: ${state.taskQueue?.size() || 0} tasks remaining`);
-    console.log(`   Completed tasks: ${state.completedTasks?.length || 0}\n`);
+    console.log(`🔄 Resume: ${state.taskQueue?.size() || 0} tasks remaining, ${state.completedTasks?.length || 0} completed`);
     
-    // ✅ CRITICAL FIX: workspaceConfig missing due to LangGraph state serialization!
-    // Reload config from disk if missing
+    // Reload config from disk if missing (LangGraph state serialization issue)
     if (!state.workspaceConfig) {
-      console.log(`⚠️  [Resolve] workspaceConfig missing! Reloading from disk...`);
       try {
         const { FileConfigAdapter } = await import('../../../../../periphery/adapters/config/FileConfigAdapter');
         const configAdapter = new FileConfigAdapter();
         const config = await configAdapter.load(state.context.project);
         state.workspaceConfig = config;
-        console.log(`✅ [Resolve] workspaceConfig restored from disk\n`);
       } catch (error) {
-        console.error(`❌ [Resolve] Failed to reload workspaceConfig:`, error);
+        console.error(`❌ Failed to reload workspaceConfig:`, error);
       }
     }
 
@@ -140,16 +132,14 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     return state;
   }
   
-  // ✅ NEW JOB: Initialize jobId and jobTiming
+  // NEW JOB: Initialize jobId and jobTiming
   const { JobTimingManager } = await import('../../common/timing/JobTimingManager');
   const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
-  // ✅ CRITICAL: Clear conversation history for NEW JOB
-  // Each job starts fresh to maintain task independence and clean context
-  console.log(`🧹 [Resolve] Clearing conversation history for NEW JOB`);
+  // Clear conversation history for NEW JOB
   state.conversationHistory = [];
   
-  // 💾 Save initial jobTiming to session
+  // Save initial jobTiming to session
   if (state.deps?.session && state.context.featureFolder) {
     try {
       await state.deps.session.updateArtifacts(
@@ -168,16 +158,13 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
           }
         }
       );
-      console.log(`💾 [Resolve] Initial jobTiming saved to session\n`);
     } catch (error) {
-      console.warn(`⚠️  [Resolve] Failed to save initial jobTiming:`, error);
+      // Failed to save initial jobTiming
     }
   }
   
-  // ✅ Send "estimating started" signal (empty task list)
+  // Send "estimating started" signal (empty task list)
   if (state._httpJobId && state.deps?.kanbanUpdate) {
-    console.log(`\n🎬 [Resolve] Signaling estimating started...`);
-    
     state.deps.kanbanUpdate.updateTaskQueue(
       state._httpJobId,
       null,    // no currentTask yet
@@ -186,7 +173,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       0,       // recursionCount
       undefined // recursionLimit
     );
-    console.log(`   ✅ Estimating signal sent\n`);
   }
   
   const { context } = state;
@@ -282,50 +268,18 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
 
   // 1. Load design document (optional)
-  // ✅ DEBUG: Log context for troubleshooting design load failures
-  console.log(`🔍 [Resolve] Loading design documents...`);
-  console.log(`   context.project: ${context.project}`);
-  console.log(`   context.featureFolder: ${context.featureFolder}`);
-  console.log(`   context.featurePath: ${context.featurePath || 'undefined'}`);
-  
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
   const designDocPath = designResult?.filePath || undefined;
   
-  // ✅ DEBUG: Log design load result
-  if (design) {
-    console.log(`   ✅ Design loaded: ${designDocPath} (${design.length} chars)`);
-  } else {
-    console.log(`   ⚠️  Design NOT loaded from file system`);
-  }
-  
-  // ✅ Load PRD (inputs/sources) for detectEnvironment & downstream prompts
+  // Load PRD (inputs/sources) for detectEnvironment & downstream prompts
   const source = await ArtifactService.getSource(context, gitPort, fileSystem);
   const prd = source?.prd || undefined;
   
-  // ✅ DEBUG: Log PRD load result
-  if (prd) {
-    console.log(`   ✅ PRD loaded (${prd.length} chars)`);
-  } else {
-    console.log(`   ⚠️  PRD NOT loaded`);
-  }
-  
-  // ✅ Load parsed UI documents (Figma-derived) for split injection
-  // Returns structured ParsedUiDocs with sections that can be selectively injected per task
+  // Load parsed UI documents (Figma-derived) for split injection
   const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
   
-  // Debug: Log UI context loading result
-  if (parsedUiDocs) {
-    const totalTokens = (parsedUiDocs.tokensTokenEstimate || 0) + 
-                        (parsedUiDocs.assetsTokenEstimate || 0) + 
-                        parsedUiDocs.specTotalTokens;
-    console.log(`📄 [Resolve] parsedUiDocs loaded (~${totalTokens} total tokens)`);
-    console.log(`   - tokens: ${parsedUiDocs.tokensTokenEstimate || 0} tokens`);
-    console.log(`   - assets: ${parsedUiDocs.assetsTokenEstimate || 0} tokens`);
-    console.log(`   - spec: ${parsedUiDocs.specSections.size} sections, ${parsedUiDocs.specTotalTokens} tokens`);
-  } else {
-    console.log(`⚠️  [Resolve] parsedUiDocs NOT loaded - check outputs/design for ui-spec.json, ui-tokens.json, ui-assets.json`);
-  }
+  console.log(`📄 [Resolve] Design: ${design ? 'loaded' : 'none'}, PRD: ${prd ? 'loaded' : 'none'}, UI: ${parsedUiDocs ? 'loaded' : 'none'}`);
 
   // ✅ Load all available design documents (api-contract / fe / be / system-design)
   // Use ArtifactService to ensure FileSystemPort receives workspace-relative paths
@@ -344,8 +298,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   let directive: string | undefined;
   
   if (state.overrideDirective) {
-    // ✅ Chat input takes highest priority
-    console.log('\n🎯 [Code Resolve] Using override directive from chat input\n');
+    // Chat input takes highest priority
     directive = state.overrideDirective;
   } else {
     // Load from file system
@@ -362,8 +315,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
 
   // 3. Build session context for LLM (mode inference moved to detectEnvironment)
-  console.log(`💭 Building session context...`);
-  
   const { SessionContextBuilder } = await import('../../../../../agents/architect/session/SessionContextBuilder');
   const sessionBuilder = new SessionContextBuilder();
   
@@ -373,7 +324,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     : null;
   
   // Build compressed session context for LLM
-  // Note: mode will be determined by detectEnvironment node
   const sessionContextForLLM = session?.turns && session.turns.length > 0
     ? sessionBuilder.buildContextForLLM(
         session.turns,
@@ -381,10 +331,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
         directive || design || ''
       )
     : undefined;
-  
-  if (sessionContextForLLM) {
-    console.log(`   Session: ${sessionContextForLLM.totalTurns} turns, window=${sessionContextForLLM.windowSize}, compression=${(sessionContextForLLM.compressionRatio * 100).toFixed(0)}%`);
-  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 4. Profile Analysis (MINIMAL - only for language/framework detection)
@@ -401,11 +347,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const analyzer = state.deps?.analyzer;
   const referenceContexts: ReferenceContext[] = [];
   
-  // ✅ Profile detection moved to detectEnvironment node (LLM-based)
-  // Resolve no longer analyzes config files for profile
-  // - New projects: No config files exist yet, profile determined from design doc by LLM
-  // - Existing projects: Profile determined from existing code patterns by LLM
-  console.log(`📋 [Resolve] Profile detection delegated to detectEnvironment node (LLM-based analysis)`);
+  // Profile detection moved to detectEnvironment node (LLM-based)
 
   // ✅ Return minimal state (profile only, NO mode - mode determined in detectEnvironment)
   const result = {

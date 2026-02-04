@@ -10,6 +10,10 @@ import { UserContext } from '../../../../../../core/types/user';
  * Utility functions for Git operations
  */
 export class GitHelper {
+  // ✅ Cache for safe.directory paths to prevent redundant calls and race conditions
+  // Multiple concurrent calls to ensureSafeDirectory can cause .gitconfig lock errors
+  private static safeDirectoryCache = new Set<string>();
+  private static safeDirectoryPending = new Map<string, Promise<void>>();
   /**
    * 🛡️ CRITICAL SAFETY: Get Git instance only if .git exists in EXACT directory
    * 
@@ -67,9 +71,41 @@ export class GitHelper {
    * Uses global config since this is a security exception that needs
    * to persist across git commands.
    * 
+   * ✅ OPTIMIZED: Caches already-added paths and coalesces concurrent calls
+   * to prevent .gitconfig lock errors from race conditions.
+   * 
    * @param targetPath - The absolute path to the git repository
    */
   static async ensureSafeDirectory(targetPath: string): Promise<void> {
+    // ✅ Skip if already added (memory cache)
+    if (this.safeDirectoryCache.has(targetPath)) {
+      logger.debug(`safe.directory already cached`, { component: 'GitHelper' }, { path: targetPath });
+      return;
+    }
+    
+    // ✅ Coalesce concurrent calls for the same path
+    // This prevents multiple simultaneous git config commands that cause lock errors
+    const pending = this.safeDirectoryPending.get(targetPath);
+    if (pending) {
+      logger.debug(`safe.directory call pending, waiting`, { component: 'GitHelper' }, { path: targetPath });
+      return pending;
+    }
+    
+    // ✅ Create and cache the promise
+    const operation = this.doEnsureSafeDirectory(targetPath);
+    this.safeDirectoryPending.set(targetPath, operation);
+    
+    try {
+      await operation;
+    } finally {
+      this.safeDirectoryPending.delete(targetPath);
+    }
+  }
+  
+  /**
+   * Internal: Actually add the directory to safe.directory
+   */
+  private static async doEnsureSafeDirectory(targetPath: string): Promise<void> {
     try {
       const git = simpleGit();
       
@@ -77,10 +113,20 @@ export class GitHelper {
       // This command is idempotent - adding the same path multiple times is safe
       await git.raw(['config', '--global', '--add', 'safe.directory', targetPath]);
       
+      // ✅ Add to cache on success
+      this.safeDirectoryCache.add(targetPath);
+      
       logger.info(`Added to safe.directory`, { component: 'GitHelper' }, { path: targetPath });
     } catch (error) {
-      logger.warn(`Failed to add safe.directory`, { component: 'GitHelper' }, { path: targetPath, error });
-      // Don't throw - this is a best-effort operation, but log for debugging
+      // ✅ Downgrade to debug level for lock errors (common in concurrent scenarios)
+      // The operation is best-effort and usually succeeds on subsequent calls
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('could not lock config file')) {
+        logger.debug(`safe.directory lock conflict (will retry on next call)`, { component: 'GitHelper' }, { path: targetPath });
+      } else {
+        logger.warn(`Failed to add safe.directory`, { component: 'GitHelper' }, { path: targetPath, error });
+      }
+      // Don't throw - this is a best-effort operation
     }
   }
 

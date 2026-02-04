@@ -261,18 +261,69 @@ export class RouteConfigurator {
       ? getInfrastructureFactory().getStateStore() 
       : undefined;
     
-    // ✅ Cloud mode: Subscribe to job completion events to update stateTracker
+    // ✅ Cloud mode: Subscribe to job completion events to update stateTracker and broadcast to SSE
     // This allows new jobs to start after previous job completes (fixes "Job already running" error)
+    // CRITICAL: Must also call cleanupJobState to broadcast Kanban update to frontend!
     if (this.config.mode === 'cloud' && stateStore) {
-      stateStore.subscribe('job:status:updates', (message: unknown) => {
-        const data = message as { type: string; jobId: string; status: string };
+      stateStore.subscribe('job:status:updates', async (message: unknown) => {
+        const data = message as { 
+          type: string; 
+          jobId: string; 
+          status: string;
+          projectId?: string;
+          featureName?: string;
+          userEmail?: string;
+        };
         if (data.type === 'completed' || data.type === 'failed') {
+          const { jobId, projectId, featureName, userEmail } = data;
+          
           // Update local stateTracker to mark job as completed
-          const jobStatus = state.jobs.get(data.jobId);
+          const jobStatus = state.jobs.get(jobId);
           if (jobStatus) {
             jobStatus.status = data.status as any;
-            logger.debug(`Updated stateTracker job status: ${data.jobId} → ${data.status}`, { 
+            logger.debug(`Updated stateTracker job status: ${jobId} → ${data.status}`, { 
               component: 'RouteConfigurator' 
+            });
+          }
+          
+          // ✅ CRITICAL: Call cleanupJobState to broadcast Kanban update to frontend SSE
+          // Without this, frontend remains in "running" state even after job completes
+          if (projectId && featureName) {
+            try {
+              // Parse userEmail to extract userId and organizationId
+              let userContext: { userId: string; organizationId: string; workspacePath: string } | undefined;
+              if (userEmail) {
+                const [userId, organizationId] = userEmail.split('@');
+                if (userId && organizationId) {
+                  userContext = { 
+                    userId, 
+                    organizationId, 
+                    workspacePath: this.deps.workspaceResolver.getPhysicalWorkspacesPath() 
+                  };
+                }
+              }
+              
+              logger.info(`Calling cleanupJobState for completed job: ${jobId}`, {
+                component: 'RouteConfigurator',
+                projectId,
+                featureName
+              });
+              
+              await this.cleanupJobState(jobId, projectId, featureName, undefined, undefined, userContext);
+              
+              logger.debug(`cleanupJobState completed for job: ${jobId}`, {
+                component: 'RouteConfigurator'
+              });
+            } catch (cleanupError) {
+              logger.error(`Failed to cleanup job state for ${jobId}`, {
+                component: 'RouteConfigurator'
+              }, cleanupError);
+            }
+          } else {
+            logger.warn(`Missing projectId/featureName for job completion cleanup: ${jobId}`, {
+              component: 'RouteConfigurator',
+              projectId,
+              featureName
             });
           }
         }

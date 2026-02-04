@@ -279,39 +279,30 @@ Create `packages/ant-ui/.env`:
 
 ```bash
 # ============================================
-# Frontend Mode
+# Cloud Backend URL (without /api suffix)
 # ============================================
-# Where the frontend is running:
-# local: Development (localhost)
-# cloud: Production (deployed)
-VITE_FRONTEND_MODE=local
+VITE_CLOUD_BACKEND_BASE=https://api.ant.works
 
 # ============================================
-# Backend Target
+# Auth
 # ============================================
-# Which backend to connect to (can be changed in UI):
-# local: Connect to local backend
-# cloud: Connect to cloud backend
-VITE_TARGET_BACKEND_MODE=local
-
-# ============================================
-# Backend URLs
-# ============================================
-# Local backend API endpoint
-VITE_LOCAL_BACKEND_BASE=http://localhost:4100/api
-
-# Cloud backend API endpoint (for production)
-VITE_CLOUD_BACKEND_BASE=https://api.ant.works/api
+# OAuth 스킵 (로컬 모드용)
+VITE_SKIP_AUTH_FOR_LOCALHOST=true
 ```
 
 **Key Environment Variables**:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `VITE_FRONTEND_MODE` | Where frontend runs | `local` or `cloud` |
-| `VITE_TARGET_BACKEND_MODE` | Which backend to connect to | `local` or `cloud` |
-| `VITE_LOCAL_BACKEND_BASE` | Local backend URL | `http://localhost:4100/api` |
-| `VITE_CLOUD_BACKEND_BASE` | Cloud backend URL | `https://api.ant.works/api` |
+| `VITE_CLOUD_BACKEND_BASE` | Cloud backend URL (no /api suffix) | `https://api.ant.works` |
+| `VITE_SKIP_AUTH_FOR_LOCALHOST` | Skip OAuth for local mode | `true` or `false` |
+
+**User Settings (configured in UI, stored in localStorage)**:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `backendMode` | `local` (on-premise) or `cloud` | `cloud` |
+| `localBackendPort` | Local backend port | `4100` |
 
 ### Running the Application
 

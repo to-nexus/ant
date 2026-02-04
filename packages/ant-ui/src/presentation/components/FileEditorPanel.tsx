@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, isSvgFilePath, saveFileContent } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
@@ -23,7 +23,10 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
   const measureRef = useRef<HTMLDivElement>(null);
   const [lineHeights, setLineHeights] = useState<number[]>([]);
   
-  const lines = value.split('\n');
+  // ✅ Memoize lines to prevent infinite loop
+  // Previously, `lines` was created on every render and used in useEffect deps,
+  // causing infinite re-renders
+  const lines = useMemo(() => value.split('\n'), [value]);
   const lineCount = lines.length;
   
   // Measure line heights after render and on resize
@@ -61,7 +64,7 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
     }
     
     return () => resizeObserver.disconnect();
-  }, [value, lines]);
+  }, [lines]);  // ✅ Now safe: lines is memoized
   
   // Sync scroll between editor and line numbers
   const handleScroll = useCallback(() => {

@@ -76,9 +76,6 @@ export class MessageManager {
     
     // If there's already a current message being streamed, reuse it
     if (session.currentMessage && session.currentMessage.isStreaming) {
-      logger.debug(`Reusing existing streaming message: ${session.currentMessage.id}`, { 
-        component: 'MessageManager'
-      });
       return session.currentMessage.id;
     }
     
@@ -94,17 +91,13 @@ export class MessageManager {
 
     session.currentMessage = newMessage;
     
-    // ✅ CRITICAL: Save currentMessage to Redis for cross-Pod consistency
+    // Save currentMessage to Redis for cross-Pod consistency
     this.sessionManager.setCurrentMessageAsync(
       projectId, 
       featureName, 
       newMessage, 
       userContext
-    ).then(() => {
-      logger.debug(`CurrentMessage saved to Redis: ${projectId}/${featureName} (${messageId})`, { 
-        component: 'MessageManager'
-      });
-    }).catch(err => {
+    ).catch(err => {
       logger.warn('Failed to save currentMessage to Redis', { component: 'MessageManager' }, err);
     });
     
@@ -134,10 +127,6 @@ export class MessageManager {
     );
     
     if (existingMessage && existingMessage.isStreaming) {
-      logger.debug(`Found existing streaming message in Redis: ${existingMessage.id}`, { 
-        component: 'MessageManager'
-      });
-      
       // Update local session
       session.currentMessage = existingMessage;
       return existingMessage.id;
@@ -157,10 +146,6 @@ export class MessageManager {
     
     // Save to Redis
     await this.sessionManager.setCurrentMessageAsync(projectId, featureName, newMessage, userContext);
-    
-    logger.debug(`Started new assistant message (async): ${projectId}/${featureName} (${messageId})`, { 
-      component: 'MessageManager'
-    });
     
     // Broadcast message start
     this.broadcaster.broadcast(projectId, featureName, {
@@ -226,11 +211,6 @@ export class MessageManager {
       // Restore to local session
       session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId, userContext);
       session.currentMessage = redisMessage;
-      
-      logger.info(`Recovered currentMessage from Redis (cross-Pod): ${projectId}/${featureName} (${redisMessage.id})`, { 
-        component: 'MessageManager'
-      });
-      
       return true;
     }
     
@@ -276,10 +256,6 @@ export class MessageManager {
       if (redisMessage) {
         session = this.sessionManager.getOrCreateSession(projectId, featureName, redisMessage.jobId, userContext);
         session.currentMessage = redisMessage;
-        
-        logger.info(`Recovered currentMessage from Redis for finalize: ${projectId}/${featureName} (${redisMessage.id})`, { 
-          component: 'MessageManager'
-        });
       }
     }
     
@@ -371,7 +347,6 @@ export class MessageManager {
       message: errorMsg
     }, session.userContext);
     
-    logger.debug(`Added job error message: ${messageId}`, { component: 'MessageManager', projectId, featureName, jobId });
     return messageId;
   }
 
@@ -415,7 +390,6 @@ export class MessageManager {
       message: cancelledMsg
     }, session.userContext);
     
-    logger.debug(`Added cancelled message: ${messageId} (reason: ${reason})`, { component: 'MessageManager', projectId, featureName, jobId });
     return messageId;
   }
 }

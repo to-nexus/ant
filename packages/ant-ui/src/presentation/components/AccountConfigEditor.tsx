@@ -8,6 +8,9 @@ import {
   disconnectFigma
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useStore } from '@/domain/store';
+import { DEFAULT_LOCAL_BACKEND_PORT } from '@/domain/store/storage';
+import { ConfigSection, ConfigIcons, ConfigStyles } from './ConfigSection';
 
 interface AccountConfigEditorProps {
   onClose: () => void;
@@ -15,6 +18,14 @@ interface AccountConfigEditorProps {
 
 export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorProps) {
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
+  
+  // Local backend port state from store
+  const localBackendPort = useStore((state) => state.localBackendPort);
+  const setLocalBackendPort = useStore((state) => state.setLocalBackendPort);
+  
+  // Local backend port input state
+  const [portInput, setPortInput] = useState(String(localBackendPort));
+  const [isPortChanged, setIsPortChanged] = useState(false);
   
   // GitHub PAT state
   const [githubPAT, setGithubPAT] = useState('');
@@ -29,6 +40,12 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const [figmaConnectedAt, setFigmaConnectedAt] = useState<string | undefined>();
   const [isCheckingFigma, setIsCheckingFigma] = useState(true);
   const [isDisconnectingFigma, setIsDisconnectingFigma] = useState(false);
+  
+  // Sync port input with store value
+  useEffect(() => {
+    setPortInput(String(localBackendPort));
+    setIsPortChanged(false);
+  }, [localBackendPort]);
 
   // Load GitHub PAT status on mount
   useEffect(() => {
@@ -111,6 +128,10 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     };
   }, []);
 
+  // ============================================
+  // Handlers
+  // ============================================
+
   const handleSaveGitHubPAT = async () => {
     if (!githubPAT.trim()) {
       showError('Please enter a GitHub Personal Access Token');
@@ -191,172 +212,190 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     });
   };
 
-  const renderGitHubSection = () => {
-    return (
-      <div className="flex gap-6 items-start">
-        {/* Left: GitHub Icon */}
-        <div className="flex-shrink-0 flex items-center justify-center w-24">
-          <svg className="w-20 h-20" viewBox="0 0 98 96" fill="none">
-            <path fillRule="evenodd" clipRule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z" className="fill-[#24292f] dark:fill-white"/>
-          </svg>
-        </div>
-        
-        {/* Right: GitHub Configuration UI */}
-        <div className="flex-1 space-y-4">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">GitHub Integration</h4>
-            </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-          {isCheckingPAT ? (
-              <span className="text-xs text-gray-500">Checking...</span>
-            ) : (
-              <span className={`text-xs px-2 py-0.5 rounded ${
-                githubPATConfigured 
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              }`}>
-                {githubPATConfigured ? '✓ Configured' : 'Not configured'}
-              </span>
-            )}
-          </p>
-        </div>
-        
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-              Personal Access Token
-            </label>
-            {githubPATConfigured ? (
-              <div className="flex items-center gap-3">
-                <input
-                  type="password"
-                  value="••••••••••••••••••••"
-                  disabled
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm"
-                />
-                <button
-                  onClick={handleDeleteGitHubPAT}
-                  disabled={isSavingPAT}
-                  className="w-24 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-50"
-                >
-                  Delete
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  type="password"
-                  value={githubPAT}
-                  onChange={(e) => setGithubPAT(e.target.value)}
-                  placeholder="ghp_••••••••••••••••••••"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm mb-2"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSaveGitHubPAT}
-                    disabled={isSavingPAT || !githubPAT.trim()}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSavingPAT ? 'Saving...' : 'Save PAT'}
-                  </button>
-                  <a
-                    href="https://github.com/settings/tokens/new?scopes=repo&description=ANT%20CLI%20Access"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors"
-                  >
-                    Generate Token →
-                  </a>
-                </div>
-              </>
-            )}
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Required scopes: <code className="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">repo</code>
-          </p>
-        </div>
-      </div>
-    );
+  const handlePortInputChange = (value: string) => {
+    setPortInput(value);
+    const numValue = parseInt(value, 10);
+    setIsPortChanged(!isNaN(numValue) && numValue !== localBackendPort);
   };
 
-  const renderFigmaSection = () => {
-    return (
-      <div className="flex gap-6 items-start">
-        {/* Left: Figma Icon */}
-        <div className="flex-shrink-0 flex items-center justify-center w-24">
-          <svg className="w-20 h-20" viewBox="0 0 38 57" fill="none">
-            <path d="M19 28.5C19 23.2533 23.2533 19 28.5 19C33.7467 19 38 23.2533 38 28.5C38 33.7467 33.7467 38 28.5 38C23.2533 38 19 33.7467 19 28.5Z" fill="#1ABCFE"/>
-            <path d="M0 47.5C0 42.2533 4.25329 38 9.5 38H19V47.5C19 52.7467 14.7467 57 9.5 57C4.25329 57 0 52.7467 0 47.5Z" fill="#0ACF83"/>
-            <path d="M19 0V19H28.5C33.7467 19 38 14.7467 38 9.5C38 4.25329 33.7467 0 28.5 0H19Z" fill="#FF7262"/>
-            <path d="M0 9.5C0 14.7467 4.25329 19 9.5 19H19V0H9.5C4.25329 0 0 4.25329 0 9.5Z" fill="#F24E1E"/>
-            <path d="M0 28.5C0 33.7467 4.25329 38 9.5 38H19V19H9.5C4.25329 19 0 23.2533 0 28.5Z" fill="#A259FF"/>
-          </svg>
-        </div>
-        
-        {/* Right: Figma Configuration UI */}
-        <div className="flex-1 space-y-4">
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Figma Integration</h4>
+  const handleSavePort = () => {
+    const port = parseInt(portInput, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      showError('Please enter a valid port number (1-65535)');
+      return;
+    }
+    setLocalBackendPort(port);
+    setIsPortChanged(false);
+    showSuccess(`Local backend port set to ${port}`);
+  };
+
+  const handleResetPort = () => {
+    setPortInput(String(DEFAULT_LOCAL_BACKEND_PORT));
+    setLocalBackendPort(DEFAULT_LOCAL_BACKEND_PORT);
+    setIsPortChanged(false);
+    showSuccess(`Local backend port reset to default (${DEFAULT_LOCAL_BACKEND_PORT})`);
+  };
+
+  // ============================================
+  // Render Sections
+  // ============================================
+
+  const renderLocalBackendSection = () => (
+    <ConfigSection
+      icon={<ConfigIcons.LocalBackend />}
+      title="Local Backend"
+      description="Configure the port for your on-premise ANT backend server"
+      hint={<>Default: <code className={ConfigStyles.code}>{DEFAULT_LOCAL_BACKEND_PORT}</code> • Used when "Local" mode is selected</>}
+    >
+      <div>
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+          Backend Port
+        </label>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center">
+            <span className="px-3 py-2 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm">
+              localhost:
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={portInput}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^0-9]/g, '');
+                handlePortInputChange(value);
+              }}
+              onFocus={(e) => e.target.select()}
+              className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-r-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm text-center"
+            />
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-          {isCheckingFigma ? (
-              <span className="text-xs text-gray-500">Checking...</span>
-            ) : (
-              <span className={`text-xs px-2 py-0.5 rounded ${
-                figmaConfigured 
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              }`}>
-                {figmaConfigured ? '✓ Connected' : 'Not connected'}
-              </span>
-            )}
-          </p>
-        </div>
-        
-        <div className="space-y-3">
-          {figmaConfigured ? (
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-                Connected Account
-              </label>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300 text-sm">
-                  {figmaUserEmail || figmaUserId || 'Connected'}
-                  {figmaConnectedAt && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                      (Connected: {new Date(figmaConnectedAt).toLocaleDateString()})
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={handleDisconnectFigma}
-                  disabled={isDisconnectingFigma}
-                  className="w-24 px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-50"
-                >
-                  {isDisconnectingFigma ? 'Disconnecting...' : 'Disconnect'}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <button
-                onClick={handleConnectFigma}
-                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-md transition-colors"
-              >
-                Connect Figma Account
-              </button>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Opens OAuth popup to authorize ANT to access your Figma files
-              </p>
-            </div>
-          )}
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            OAuth 2.0 authentication • Managed securely by Figma
-          </p>
+          <button
+            onClick={handleSavePort}
+            disabled={!isPortChanged}
+            className={ConfigStyles.buttonPrimary}
+          >
+            Save
+          </button>
+          <button
+            onClick={handleResetPort}
+            disabled={localBackendPort === DEFAULT_LOCAL_BACKEND_PORT}
+            className={ConfigStyles.buttonSecondary}
+          >
+            Reset
+          </button>
         </div>
       </div>
-    );
-  };
+    </ConfigSection>
+  );
+
+  const renderGitHubSection = () => (
+    <ConfigSection
+      icon={<ConfigIcons.GitHub />}
+      title="GitHub Integration"
+      description="Connect your GitHub account to enable repository sync"
+      status={{
+        state: isCheckingPAT ? 'checking' : (githubPATConfigured ? 'configured' : 'not-configured'),
+      }}
+      hint={<>Required scopes: <code className={ConfigStyles.code}>repo</code></>}
+    >
+      <div>
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+          Personal Access Token
+        </label>
+        {githubPATConfigured ? (
+          <div className="flex items-center gap-3">
+            <input
+              type="password"
+              value="••••••••••••••••••••"
+              disabled
+              className={`flex-1 ${ConfigStyles.inputDisabled}`}
+            />
+            <button
+              onClick={handleDeleteGitHubPAT}
+              disabled={isSavingPAT}
+              className={ConfigStyles.buttonDanger}
+            >
+              Delete
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <input
+              type="password"
+              value={githubPAT}
+              onChange={(e) => setGithubPAT(e.target.value)}
+              placeholder="ghp_••••••••••••••••••••"
+              className={ConfigStyles.input}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={handleSaveGitHubPAT}
+                disabled={isSavingPAT || !githubPAT.trim()}
+                className={ConfigStyles.buttonPrimary}
+              >
+                {isSavingPAT ? 'Saving...' : 'Save PAT'}
+              </button>
+              <a
+                href="https://github.com/settings/tokens/new?scopes=repo&description=ANT%20CLI%20Access"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={ConfigStyles.buttonSecondary}
+              >
+                Generate Token →
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+    </ConfigSection>
+  );
+
+  const renderFigmaSection = () => (
+    <ConfigSection
+      icon={<ConfigIcons.Figma />}
+      title="Figma Integration"
+      description="Connect your Figma account to import designs"
+      status={{
+        state: isCheckingFigma ? 'checking' : (figmaConfigured ? 'configured' : 'not-configured'),
+        label: figmaConfigured ? '✓ Connected' : 'Not connected',
+      }}
+      hint="OAuth 2.0 authentication • Managed securely by Figma"
+    >
+      {figmaConfigured ? (
+        <div>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+            Connected Account
+          </label>
+          <div className="flex items-center gap-3">
+            <div className={`flex-1 ${ConfigStyles.inputDisabled}`}>
+              {figmaUserEmail || figmaUserId || 'Connected'}
+              {figmaConnectedAt && (
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                  (Connected: {new Date(figmaConnectedAt).toLocaleDateString()})
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleDisconnectFigma}
+              disabled={isDisconnectingFigma}
+              className={ConfigStyles.buttonDanger}
+            >
+              {isDisconnectingFigma ? 'Disconnecting...' : 'Disconnect'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <button
+            onClick={handleConnectFigma}
+            className={ConfigStyles.buttonPurple}
+          >
+            Connect Figma Account
+          </button>
+        </div>
+      )}
+    </ConfigSection>
+  );
 
   return (
     <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-gray-800">
@@ -371,8 +410,13 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       
       <div className="flex-1 overflow-y-auto p-6">
         <div className="space-y-8">
-          {/* GitHub Integration Section */}
+          {/* Local Backend Section */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6 first:border-t-0 first:pt-0">
+            {renderLocalBackendSection()}
+          </div>
+          
+          {/* GitHub Integration Section */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
             {renderGitHubSection()}
           </div>
           

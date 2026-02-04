@@ -12,8 +12,12 @@ export const STORAGE_KEYS = {
   USER_EMAIL: 'ant-ui:user-email',
   USER_ORGANIZATION: 'ant-ui:user-organization',
   BACKEND_MODE: 'ant-ui:backend-mode',
+  LOCAL_BACKEND_PORT: 'ant-ui:local-backend-port',  // 로컬 백엔드 포트 (default: 4100)
   DISMISSED_INTERRUPT_TIMESTAMP: 'ant-ui:dismissed-interrupt-timestamp',
 } as const;
+
+// Default values
+export const DEFAULT_LOCAL_BACKEND_PORT = 4100;
 
 // ✅ Keys that should use sessionStorage (tab-specific)
 const SESSION_STORAGE_KEYS = new Set<string>([

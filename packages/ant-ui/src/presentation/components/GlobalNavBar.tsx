@@ -4,7 +4,25 @@ import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 import { SignUpModal } from './auth/SignUpModal';
 import { SignInModal } from './auth/SignInModal';
-import { signUp, signIn, signOut, checkLocalBackend } from '@/infrastructure/http/api';
+import { signUp, signIn, signOut, checkLocalBackend, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
+
+/**
+ * Get OAuth backend base URL
+ * OAuth redirect는 전체 URL이 필요하므로 상대경로 대신 절대 URL 반환
+ * - local mode: http://localhost:{port} (사용자 설정 포트)
+ * - cloud mode: VITE_CLOUD_BACKEND_BASE
+ */
+function getOAuthBackendBase(): string {
+  const mode = getBackendMode();
+  
+  if (mode === 'cloud') {
+    return import.meta.env.VITE_CLOUD_BACKEND_BASE || '';
+  }
+  
+  // local mode: localhost:{port}
+  const port = getLocalBackendPort();
+  return `http://localhost:${port}`;
+}
 
 export interface GlobalNavBarProps {
   // ✅ No props needed - uses hooks directly
@@ -129,8 +147,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       // SKIP=true: OAuth 건너뛰고 이메일 모달
       setShowSignInModal(true);
     } else {
-      // SKIP=false: OAuth 필수
-      const backendBase = import.meta.env.VITE_CLOUD_BACKEND_BASE?.replace('/api', '') || 'http://localhost:4100';
+      // SKIP=false: OAuth 필수 - 백엔드 모드에 따라 URL 선택
+      const backendBase = getOAuthBackendBase();
       window.location.href = `${backendBase}/api/auth/google`;
     }
   };
@@ -143,8 +161,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       // SKIP=true: OAuth 건너뛰고 이메일 모달
       setShowSignUpModal(true);
     } else {
-      // SKIP=false: OAuth 필수
-      const backendBase = import.meta.env.VITE_CLOUD_BACKEND_BASE?.replace('/api', '') || 'http://localhost:4100';
+      // SKIP=false: OAuth 필수 - 백엔드 모드에 따라 URL 선택
+      const backendBase = getOAuthBackendBase();
       window.location.href = `${backendBase}/api/auth/google`;
     }
   };

@@ -112,8 +112,6 @@ export class LLMEventHandler {
         // Reset tracking
         session.thinkingStartTime = undefined;
         session.lastThinkingContentIndex = undefined;
-      } else {
-        logger.warn(`blockEnd received but no thinking content found`, { component: 'LLMEventHandler', projectId, featureName });
       }
     } else {
       // Regular thinking content
@@ -161,14 +159,6 @@ export class LLMEventHandler {
     if (name === 'edit_file' || name === 'delete_file') {
       this.handleFileToolUse(projectId, featureName, session, name, input);
     }
-    // COMMAND EXECUTION: run_command
-    else if (name === 'run_command') {
-      logger.debug(`Tool: ${name} (command output shown on completion)`, { component: 'LLMEventHandler', projectId, featureName });
-    }
-    // CODEBASE EXPLORATION: read_file, list_files, search_code
-    else if (name === 'read_file' || name === 'list_files' || name === 'search_code') {
-      logger.debug(`Tool: ${name} (handled by tool node)`, { component: 'LLMEventHandler', projectId, featureName });
-    }
     // SIMPLE TOOLS: mkdir
     else if (name === 'mkdir') {
       this.handleMkdirToolUse(projectId, featureName, input);
@@ -195,7 +185,6 @@ export class LLMEventHandler {
       return;
     }
 
-    logger.debug(`Creating loading file card`, { component: 'LLMEventHandler', projectId, featureName }, { filePath, toolName });
     
     // Determine operation type
     let contentType: MessageContent['type'];
@@ -223,7 +212,6 @@ export class LLMEventHandler {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex: actualIndex });
-      logger.debug(`Tracked file operation @${actualIndex}`, { component: 'LLMEventHandler', projectId, featureName }, { filePath });
     }
   }
 
@@ -236,7 +224,6 @@ export class LLMEventHandler {
     input: any
   ): void {
     const dirPath = input.path;
-    logger.debug(`Tool: mkdir`, { component: 'LLMEventHandler', projectId, featureName }, { dirPath });
     
     this.messageManager.addContentToCurrentMessage(projectId, featureName, {
       type: 'tool_action',
@@ -259,8 +246,6 @@ export class LLMEventHandler {
     toolName: string,
     input: any
   ): void {
-    logger.debug(`Tool: ${toolName} (fallback to tool_action)`, { component: 'LLMEventHandler', projectId, featureName });
-    
     this.messageManager.addContentToCurrentMessage(projectId, featureName, {
       type: 'tool_action',
       content: `${toolName}: ${JSON.stringify(input)}`,

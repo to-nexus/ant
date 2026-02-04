@@ -63,33 +63,21 @@ import {
 export async function tool(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
-  console.log('\n🔧 [Tool] Executing tool...\n');
-  
-  // ✅ Increment recursion count (track every node execution)
+  // Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
-  // ✅ Get first tool call from llmResponse
+  // Get first tool call from llmResponse
   const toolCalls = state.llmResponse?.toolCalls || [];
   
   if (toolCalls.length === 0) {
-    console.log('⚠️  [Tool] No tool call found, skipping');
     return {};
   }
   
-  // 🎯 CRITICAL: Only process FIRST tool call (Standard Tool Calling pattern)
+  // Only process FIRST tool call (Standard Tool Calling pattern)
   const toolCall = toolCalls[0];
   const { id, name, args } = toolCall;
   
-  // ✅ Log if multiple tool calls were dropped
-  if (toolCalls.length > 1) {
-    console.log(`   ⚠️  Multiple tool calls detected (${toolCalls.length}), processing FIRST only:`);
-    console.log(`   ✅ Processing: ${name}`);
-    console.log(`   ❌ Dropping: ${toolCalls.slice(1).map(tc => tc.name).join(', ')}`);
-    console.log(`   💡 LLM will re-decide remaining actions in next turn\n`);
-  }
-  
-  console.log(`   Tool: ${name}`);
-  console.log(`   Args:`, JSON.stringify(args, null, 2));
+  console.log(`🔧 [Tool] ${name}`);
   
   // ✅ Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {

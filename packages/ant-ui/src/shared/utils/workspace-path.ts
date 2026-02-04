@@ -46,14 +46,11 @@
  * ```
  */
 
-/**
- * Backend Mode 판별
- * - VITE_BACKEND_BASE가 설정되어 있으면 'cloud'
- * - 없으면 'local' (Vite proxy 사용)
- */
-export function getBackendMode(): 'local' | 'cloud' {
-  return import.meta.env.VITE_BACKEND_BASE ? 'cloud' : 'local';
-}
+// Import from api.ts to avoid duplication
+import { getBackendMode } from '@/infrastructure/http/api';
+
+// Re-export for consumers of this module
+export { getBackendMode };
 
 /**
  * User Context 정보

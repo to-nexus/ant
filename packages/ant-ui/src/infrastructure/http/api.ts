@@ -7,20 +7,70 @@ import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
 // URL Configuration
 // ============================================================================
 // 
-// VITE_BACKEND_BASE 환경변수로 백엔드 서버 주소 지정:
-// - 로컬 개발: 미설정 → 상대경로 사용 (Vite 프록시가 라우팅)
-// - 클라우드: VITE_BACKEND_BASE=https://ant-server.crosstoken.io
+// 백엔드 모드/포트는 사용자 설정(localStorage)에서 읽어옴:
+// - backendMode: 'local' | 'cloud' (UI에서 선택)
+// - localBackendPort: 4100 등 (UI에서 설정)
+//
+// URL 결정:
+// - local mode → http://localhost:{localBackendPort}
+// - cloud mode → VITE_CLOUD_BACKEND_BASE (환경변수, 빌드 시점 고정)
 //
 // api, realtime, preview, ide 모두 같은 서버의 Ingress 경로로 라우팅됨
 // ============================================================================
 
+const DEFAULT_LOCAL_BACKEND_PORT = 4100;
+const STORAGE_KEY_BACKEND_MODE = 'ant-ui:backend-mode';
+const STORAGE_KEY_LOCAL_BACKEND_PORT = 'ant-ui:local-backend-port';
+
 /**
- * Get backend base URL from environment or use relative path
- * - Cloud: VITE_BACKEND_BASE (e.g., https://ant-server.crosstoken.io)
- * - Local: empty string (relative paths, Vite proxy handles routing)
+ * Get current backend mode from localStorage
+ * @returns 'local' or 'cloud' (default: 'cloud')
+ */
+export const getBackendMode = (): 'local' | 'cloud' => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_BACKEND_MODE);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return parsed === 'local' ? 'local' : 'cloud';
+    }
+  } catch (error) {
+    console.warn('[API] Error reading backend mode:', error);
+  }
+  return 'cloud';  // default
+};
+
+/**
+ * Get local backend port from localStorage
+ * @returns port number (default: 4100)
+ */
+export const getLocalBackendPort = (): number => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_LOCAL_BACKEND_PORT);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return typeof parsed === 'number' ? parsed : DEFAULT_LOCAL_BACKEND_PORT;
+    }
+  } catch (error) {
+    console.warn('[API] Error reading local backend port:', error);
+  }
+  return DEFAULT_LOCAL_BACKEND_PORT;
+};
+
+/**
+ * Get backend base URL based on current mode
+ * - local mode: http://localhost:{port}
+ * - cloud mode: VITE_CLOUD_BACKEND_BASE
  */
 const getBackendBase = (): string => {
-  return import.meta.env.VITE_BACKEND_BASE || '';
+  const mode = getBackendMode();
+  
+  if (mode === 'cloud') {
+    return import.meta.env.VITE_CLOUD_BACKEND_BASE || '';
+  }
+  
+  // local mode: localhost:{port}
+  const port = getLocalBackendPort();
+  return `http://localhost:${port}`;
 };
 
 /**
@@ -64,23 +114,10 @@ export async function checkLocalBackend(): Promise<boolean> {
 }
 
 if (import.meta.env.DEV) {
-  console.log('[API] Using relative paths (Vite proxy handles routing)');
+  console.log('[API] Backend mode:', getBackendMode());
   console.log('[API] API_BASE:', API_BASE());
   console.log('[API] REALTIME_BASE:', REALTIME_BASE());
   console.log('[API] PREVIEW_BASE:', PREVIEW_BASE());
-}
-
-/**
- * Get backend mode from localStorage
- */
-function getBackendMode(): 'local' | 'cloud' {
-  try {
-    const stored = localStorage.getItem('ant-ui:backend-mode');
-    return stored ? JSON.parse(stored) : 'cloud';
-  } catch (error) {
-    console.warn('[API] Error reading backend mode from localStorage:', error);
-    return 'cloud';
-  }
 }
 
 /**

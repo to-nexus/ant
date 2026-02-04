@@ -170,7 +170,7 @@ class SSEManager {
     
     // ✅ Build URL with user email as query parameter (for EventSource authentication)
     // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    // VITE_BACKEND_BASE env var → absolute URL, else relative path with window.location.origin
+    // 사용자 설정(localStorage)에 따라 적절한 백엔드 URL 사용
     const realtimeBase = REALTIME_BASE();
     const basePath = `${realtimeBase}/projects/${projectId}/features/${featureName}/stream`;
     const url = realtimeBase.startsWith('http') ? new URL(basePath) : new URL(basePath, window.location.origin);
@@ -251,7 +251,7 @@ class SSEManager {
     
     // ✅ Build URL with user email as query parameter
     // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    // VITE_BACKEND_BASE env var → absolute URL, else relative path with window.location.origin
+    // 사용자 설정(localStorage)에 따라 적절한 백엔드 URL 사용
     const realtimeBase = REALTIME_BASE();
     const basePath = `${realtimeBase}/jobs/${jobId}/workflow/stream`;
     const url = realtimeBase.startsWith('http') ? new URL(basePath) : new URL(basePath, window.location.origin);

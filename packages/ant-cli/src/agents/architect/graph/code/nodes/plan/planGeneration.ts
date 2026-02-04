@@ -53,11 +53,6 @@ export async function generatePlanText(
     task.type !== 'explain';
   
   if (!requiresPlan) {
-    if (task.priority === TASK_PRIORITIES.FINAL_VERIFICATION) {
-      console.log(`   ⊖ Final verification task - no plan needed`);
-    } else if (task.type === 'explain') {
-      console.log(`   ⊖ Explain task - no plan needed`);
-    }
     return '';
   }
   
@@ -73,18 +68,12 @@ export async function generatePlanText(
     throw new Error('[Plan] PromptEngine not available');
   }
   
-  console.log(`📝 [Plan] Generating implementation plan...`);
-  
   const designDoc = state.design || '';
   
-  // ✅ Format violations for retry context
+  // Format violations for retry context
   const violationsText = violations && violations.length > 0 
     ? formatViolations(violations) 
     : undefined;
-  
-  if (violationsText) {
-    console.log(`⚠️  [Plan] Including retry context (${violations?.length} violation(s))`);
-  }
   
   const prompt = await promptEngine.buildTaskPlanPrompt(
     task,
@@ -150,17 +139,13 @@ export async function generatePlanText(
   // Validate JSON structure (basic check)
   try {
     JSON.parse(planText);
-    console.log(`   ✅ Plan JSON validated`);
   } catch (jsonError) {
-    console.warn(`   ⚠️  Plan is not valid JSON (will still proceed): ${jsonError instanceof Error ? jsonError.message : jsonError}`);
     // Continue anyway - CodeGen can still use the structured text
   }
   
   if (planText.length < 50) {
     throw new Error(`[Plan] Generated plan is too short (${planText.length} chars). This indicates plan generation failure.`);
   }
-  
-  console.log(`   ✅ Plan generated (${planText.length} chars)\n`);
   
   // ✅ Save planText to sessions directory for debugging
   await savePlanTextForDebug(state, task, planText);
@@ -232,9 +217,7 @@ async function savePlanTextForDebug(
     
     // Save as JSON
     await fs.writeFile(filepath, JSON.stringify(plansArray, null, 2), 'utf-8');
-    console.log(`   📄 Plan saved: sessions/debug/plans/${jobId}.json`);
   } catch (err) {
-    // Non-blocking - just log warning
-    console.warn(`   ⚠️  Could not save plan for debug:`, err instanceof Error ? err.message : err);
+    // Non-blocking - plan save failed
   }
 }

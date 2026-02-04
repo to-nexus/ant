@@ -114,6 +114,7 @@ export interface AuthState {
 export interface ConfigState {
   recursionLimit: number;
   backendMode: 'local' | 'cloud';
+  localBackendPort: number;  // 로컬 백엔드 포트 (default: 4100)
 }
 
 // ==================
