@@ -353,9 +353,10 @@ export class PreviewService {
       this.previewServerPackagePorts.set(serverKey, packagePorts);
       
       // 4. Register entry in PortRegistry (full state)
-      // In K8s, use Pod IP instead of localhost for multi-replica support
+      // Use localhost since proxy and dev-server run in the same Pod
+      // Note: getPodHost() returns eth0 IP which may not be accessible if dev-server binds to localhost only
       if (structure.entry && this.portRegistry) {
-        const host = this.getPodHost();
+        const host = 'localhost';
         const backendPort = packagePorts.find(p => p.type === 'backend')?.port;
         
         const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
