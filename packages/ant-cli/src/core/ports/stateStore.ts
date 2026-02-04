@@ -121,6 +121,50 @@ export interface ChatSessionData {
 }
 
 // ============================================
+// Pending Choice Types (for Cloud Mode)
+// ============================================
+
+/**
+ * Triage result stored in Redis for pending choices
+ * Simplified version for Redis storage
+ * Mirrors TriageResult from agents/common/nodes/triage/types.ts
+ */
+export interface PendingChoiceTriageResult {
+  intent: string;
+  inScope?: boolean;
+  workStatus?: 'proceed' | 'blocked' | 'redirect';
+  suggestedAgent?: string;
+  suggestedJob?: string;
+  redirectReason?: string;
+  missingPrerequisites?: {
+    required?: string[];
+    recommended?: string[];
+  };
+  canProceed?: boolean;
+  blockedMessage?: string;
+  displayMessage?: string;
+  needsChoice?: boolean;
+  choiceOptions?: {
+    positive?: { label: string; action: string };
+    negative?: { label: string; action: string };
+    fallbackGuide?: string;
+  };
+}
+
+/**
+ * Pending Choice Data for Redis storage
+ */
+export interface PendingChoiceData {
+  jobId: string;
+  projectId: string;
+  featureName: string;
+  triageResult: PendingChoiceTriageResult;
+  originalDirective?: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+// ============================================
 // Port Registry Types (re-exported from portRegistry.ts)
 // ============================================
 
@@ -404,6 +448,26 @@ export interface StateStorePort {
    * Check if session has active (streaming) message
    */
   hasActiveMessage(sessionKey: string): Promise<boolean>;
+  
+  // ============================================
+  // Pending Choice Management (for Cloud Mode)
+  // ============================================
+  
+  /**
+   * Set pending choice
+   * @param choiceKey - Format: "projectId:featureName"
+   */
+  setPendingChoice(choiceKey: string, choice: PendingChoiceData): Promise<void>;
+  
+  /**
+   * Get pending choice
+   */
+  getPendingChoice(choiceKey: string): Promise<PendingChoiceData | null>;
+  
+  /**
+   * Delete pending choice
+   */
+  deletePendingChoice(choiceKey: string): Promise<void>;
   
   // ============================================
   // Pub/Sub (for Cloud Mode real-time updates)
