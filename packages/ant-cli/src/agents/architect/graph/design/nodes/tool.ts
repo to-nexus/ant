@@ -16,32 +16,18 @@ const toolResultManager = new ToolResultManager(tokenManager);
 export async function tool(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
-  console.log('\n🔧 [Tool] Executing tool...\n');
-  
-  // ✅ Get tool calls from llmResponse
+  // Get tool calls from llmResponse
   const toolCalls = state.llmResponse?.toolCalls || [];
   
   if (toolCalls.length === 0) {
-    console.log('⚠️  [Tool] No tool call found, skipping');
     return {};
   }
   
-  // 🎯 CRITICAL: Only process FIRST tool call (Code job pattern)
-  // Prompt instructs LLM to request ONE tool per turn
-  // System drops all subsequent tool calls
+  // Only process FIRST tool call (Code job pattern)
   const toolCall = toolCalls[0];
   const { id, name, args } = toolCall;
   
-  // ✅ Log if multiple tool calls were dropped (LLM violated the rule)
-  if (toolCalls.length > 1) {
-    console.log(`   ⚠️  Multiple tool calls detected (${toolCalls.length}), processing FIRST only:`);
-    console.log(`   ✅ Processing: ${name}`);
-    console.log(`   ❌ Dropping: ${toolCalls.slice(1).map(tc => tc.name).join(', ')}`);
-    console.log(`   💡 LLM should request ONE tool per turn (prompt rule)\n`);
-  }
-  
-  console.log(`   Tool: ${name}`);
-  console.log(`   Args:`, JSON.stringify(args, null, 2));
+  console.log(`🔧 [Tool] ${name}`);
   
   // ✅ Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -62,10 +48,9 @@ export async function tool(
     );
   }
   
-  // ✅ UI delay for delete_file
+  // UI delay for delete_file
   if (name === 'delete_file') {
     await new Promise(resolve => setTimeout(resolve, 150));
-    console.log('   ⏱️  UI preparation time provided (150ms) for smooth card animation');
   }
   
   let result: any;

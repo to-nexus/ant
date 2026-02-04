@@ -32,8 +32,6 @@ import { buildUiDesignMessages } from './uiDesignPrompt';
 export async function docGen(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
-  console.log('\n📝 [DocGen] Starting document generation...\n');
-  
   const llmClient = state.deps?.llm;
   const gitPort = state.deps?.git;
   if (!llmClient || !gitPort) {
@@ -61,15 +59,7 @@ export async function docGen(
         ? getToolsByNames(TOOL_SETS.systemDesign)  // ✅ Includes search_reference_code
         : getToolsByNames(TOOL_SETS.design);
   
-  if (isExplainMode) {
-    console.log(`💡 [DocGen] Explain mode - tools disabled (explanation only)`);
-  } else {
-    const modeLabel = isUiDesign ? 'UI Design' : hasReferences ? 'System Design (with references)' : 'System Design';
-    console.log(`📝 [DocGen] ${modeLabel} mode - ${tools?.length || 0} tools available`);
-    if (hasReferences) {
-      console.log(`   📚 Reference projects: ${state.referenceRequests!.map(r => r.project).join(', ')}`);
-    }
-  }
+  // Tool configuration complete
   
   // ✅ Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -158,9 +148,6 @@ export async function docGen(
             name: toolEvent.toolUse.name,
             args: toolEvent.toolUse.input,
           });
-          console.log(`🔧 [DocGen] Tool call detected: ${toolEvent.toolUse.name}`);
-        } else {
-          console.warn(`⚠️  [DocGen] tool_use event missing toolUse property:`, JSON.stringify(event));
         }
       }
       
@@ -181,36 +168,19 @@ export async function docGen(
     const registry = orchestrator.getRegistry();
     const files = registry.getAllFiles();
     
-    // ✅ CRITICAL: Extract explicitDone from finalize result (same as Code Job)
-    // Only mark done if LLM explicitly output <done>true</done>
+    // Extract explicitDone from finalize result
     const explicitDone = finalizeResult.explicitDone || false;
     
-    console.log(`\n✅ [DocGen] XML streaming complete (${files.length} files generated, ${pendingToolCalls.length} tool calls pending, explicitDone: ${explicitDone})`);
-    
-    // ✅ CRITICAL: Warn if no tool calls and no explicit done tag
-    // This indicates LLM response may be incomplete (truncated or stuck)
-    if (!hasToolCalls && !explicitDone) {
-      console.warn(`⚠️  [DocGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
-    }
-    
-    // ✅ Build conversation history for resume
+    // Build conversation history for resume
     const conversationHistory = buildConversationHistory(state, messages, thinking, textResponse, hasToolCalls);
     
-    console.log(`📝 [DocGen] Conversation history updated (${conversationHistory.length} messages)`);
-    
-    // ✅ Accumulate token usage to state
+    // Accumulate token usage to state
     if (capturedUsage) {
       const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
       accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
-      
-      console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
-      if (capturedUsage.cacheReadTokens) {
-        console.log(`   Cache read: ${capturedUsage.cacheReadTokens} tokens`);
-      }
-      if (capturedUsage.cacheCreationTokens) {
-        console.log(`   Cache creation: ${capturedUsage.cacheCreationTokens} tokens`);
-      }
     }
+    
+    console.log(`✅ [DocGen] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
     
     return {
       files,
@@ -269,12 +239,8 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
           }
         }
         
-        console.log(`📋 [DocGen] Existing files on disk: ${existingFiles.size > 0 ? Array.from(existingFiles).join(', ') : 'none'}`);
-      } else {
-        console.log(`📋 [DocGen] ${targetDir} directory does not exist yet (first task)`);
       }
     } catch (error) {
-      console.warn(`⚠️  [DocGen] Failed to scan ${targetDir} directory:`, error);
       // Continue with empty existingFiles set
     }
   }
@@ -297,11 +263,9 @@ function calculateMaxTokens(state: DesignGraphState): number {
       // Add 3000 tokens buffer for XML tags, metadata, and thinking
       const estimatedTokens = maxLines * 12 + 3000;
 
-      // ✅ Smart minimum based on complexity
+      // Smart minimum based on complexity
       const minTokens = maxLines <= 150 ? 12000 : 16000;
       maxTokens = Math.max(minTokens, estimatedTokens);
-
-      console.log(`📏 [DocGen] Task line budget: ${maxLines} lines → maxTokens: ${maxTokens} (min: ${minTokens})`);
     }
   }
 

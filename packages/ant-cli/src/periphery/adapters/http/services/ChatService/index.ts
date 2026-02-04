@@ -306,7 +306,6 @@ export class ChatService {
           // Save to disk
           this.persistence.saveSession(projectId, featureName, messages, userContext);
           
-          console.log(`[ChatService] Updated ${contentType} metadata:`, metadataUpdate);
           return true;
         }
       }

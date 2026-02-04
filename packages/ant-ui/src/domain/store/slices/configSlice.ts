@@ -1,12 +1,13 @@
 import { StateCreator } from 'zustand';
 import { ConfigState } from '../types';
-import { STORAGE_KEYS, saveToStorage, loadFromStorage } from '../storage';
+import { STORAGE_KEYS, DEFAULT_LOCAL_BACKEND_PORT, saveToStorage, loadFromStorage } from '../storage';
 import { API_BASE } from '@/infrastructure/http/api';
 
 export interface ConfigActions {
   setRecursionLimit: (limit: number) => void;
   loadSystemConfig: () => Promise<void>;
   setBackendMode: (mode: 'local' | 'cloud') => void;
+  setLocalBackendPort: (port: number) => void;
 }
 
 export type ConfigSlice = ConfigState & ConfigActions;
@@ -15,6 +16,10 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
   // Get backend mode from localStorage (default: cloud)
   const storedBackendMode = loadFromStorage(STORAGE_KEYS.BACKEND_MODE);
   const backendMode = (storedBackendMode || 'cloud') as 'local' | 'cloud';
+  
+  // Get local backend port from localStorage (default: 4100)
+  const storedLocalBackendPort = loadFromStorage(STORAGE_KEYS.LOCAL_BACKEND_PORT);
+  const localBackendPort = storedLocalBackendPort || DEFAULT_LOCAL_BACKEND_PORT;
 
   return {
     // ==================
@@ -22,6 +27,7 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     // ==================
     recursionLimit: 50,
     backendMode,
+    localBackendPort,
 
     // ==================
     // Actions
@@ -66,6 +72,19 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
       
       // Clear projects when switching modes
       set({ projects: [], selectedProject: undefined, selectedFeature: undefined });
+    },
+
+    setLocalBackendPort: (port) => {
+      const currentPort = get().localBackendPort;
+      
+      if (currentPort === port) {
+        console.log('[Store] Local backend port unchanged:', port);
+        return;
+      }
+      
+      set({ localBackendPort: port });
+      saveToStorage(STORAGE_KEYS.LOCAL_BACKEND_PORT, port);
+      console.log('[Store] Local backend port changed:', currentPort, '→', port);
     },
   };
 };

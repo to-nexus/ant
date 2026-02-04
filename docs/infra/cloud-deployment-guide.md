@@ -409,8 +409,14 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 
 **ant-ui:**
 
-> ⚠️ 프론트엔드는 상대 경로 (`/api`, `/realtime`, `/preview`)를 사용합니다. 환경변수 불필요.
-> Ingress/ALB가 경로 기반 라우팅을 처리합니다.
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `VITE_CLOUD_BACKEND_BASE` | Cloud backend URL (without /api suffix) | Yes |
+| `VITE_SKIP_AUTH_FOR_LOCALHOST` | Skip OAuth for local mode | Optional |
+
+> ⚠️ 사용자는 UI에서 백엔드 모드(local/cloud)와 로컬 포트를 설정할 수 있습니다.
+> - **Cloud 모드**: `VITE_CLOUD_BACKEND_BASE`로 연결 (Ingress 라우팅)
+> - **Local 모드**: `http://localhost:{port}`로 연결 (사용자가 온프레미스 백엔드 사용 시)
 
 ---
 

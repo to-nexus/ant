@@ -79,38 +79,21 @@ export class ResponseRenderer {
     
     // Filter out empty/whitespace-only content
     if (!content || !content.trim()) {
-      console.log(`[Render] 🚫 Skipping empty response content`);
       return;
     }
     
     if (content.replace(/[\s\n\r]/g, '').length === 0) {
-      console.log(`[Render] 🚫 Skipping whitespace-only response: ${JSON.stringify(content)}`);
       return;
     }
     
     // Filter out XML markdown code block tags
     const trimmed = content.trim();
     if (trimmed === '```xml' || trimmed === '```') {
-      console.log(`[Render] 🚫 Skipping XML markdown block tag: ${JSON.stringify(content)}`);
       return;
     }
     
     // Transform special tags
     const transformed = this.tagTransformer.transform(content);
-    
-    // Debug logging for special tags
-    if (content.includes('<detect>')) {
-      console.log(`🐛 [Render] DETECT TAG FOUND in chunk (${content.length} chars)`);
-      console.log(`🐛 [Render] transformed.consumed: ${transformed.consumed}`);
-      console.log(`🐛 [Render] transformed.text length: ${transformed.text?.length || 0}`);
-    }
-    
-    if (content.includes('<references>')) {
-      console.log(`🐛 [Render] REFERENCES TAG FOUND in chunk (${content.length} chars)`);
-      console.log(`🐛 [Render] Content preview: ${content.substring(0, 200)}`);
-      console.log(`🐛 [Render] transformed.consumed: ${transformed.consumed}`);
-      console.log(`🐛 [Render] transformed.text: ${transformed.text?.substring(0, 200) || '(none)'}`);
-    }
     
     if (transformed.consumed) {
       if (transformed.text) {

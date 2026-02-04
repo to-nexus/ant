@@ -70,8 +70,8 @@ export async function architectAgent(
   const config = await deps.config.load(project);
   
   // 2. Determine working directory (actual code repository path)
-  // ✅ Must use GitPort.getRepoRoot() - never fallback to process.cwd()
-  // ✅ Learn job doesn't require GitPort (works without git)
+  // Must use GitPort.getRepoRoot() - never fallback to process.cwd()
+  // Learn job doesn't require GitPort (works without git)
   if (!deps?.git && job !== 'learn') {
     throw new Error("GitPort is required to determine working directory (codebase path)");
   }
@@ -79,33 +79,22 @@ export async function architectAgent(
   let workingDir: string;
   if (deps?.git) {
     try {
-      // Get the actual repository root from git adapter
-      // Local mode: resolves config.localPath
-      // Cloud mode: returns projectPath/codebase
       workingDir = await deps.git.getRepoRoot();
-      console.log(`📂 Working directory (codebase): ${workingDir}`);
     } catch (error) {
-      console.error(`❌ Failed to determine working directory:`, error);
       throw new Error(`Could not determine codebase path. Ensure config.localPath is set correctly.`);
     }
   } else {
-    // Learn job without git - use config path
     workingDir = config.localPath || process.cwd();
-    console.log(`📂 Working directory (no git): ${workingDir}`);
   }
   
   // 3. Retrieve long-term knowledge from Vector DB
-  const vectorDbStartTime = Date.now();
-  console.log(`⏱️ [VectorDB] Starting retrieval...`);
   const vectorMemory = await retrieve(job, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
-  console.log(`⏱️ [VectorDB] Completed in ${Date.now() - vectorDbStartTime}ms`);
   
   // 4. Detect user language from input (directive > spec)
-  // ✅ Job-level language detection: each job can have different language
+  // Job-level language detection: each job can have different language
   const { detectUserLanguage } = await import('../../core/utils/languageDetector');
-  const inputText = spec || '';  // Use spec (which contains directive/PRD)
+  const inputText = spec || '';
   const userLanguage = detectUserLanguage(inputText);
-  console.log(`🌍 Detected user language: ${userLanguage}`);
   
   // 5. Extract UserContext for path resolution
   // ✅ Get from deps (passed by orchestrator)
@@ -116,16 +105,13 @@ export async function architectAgent(
   // ✅ CRITICAL: Use deps.featurePath if provided (from orchestrator) to ensure consistency
   let featurePath: string | undefined = (deps as any)?.featurePath;
   
-  if (featurePath) {
-    console.log(`📂 Feature path (from orchestrator): ${featurePath}`);
-  } else if (deps?.workspaceResolver) {
+  if (!featurePath && deps?.workspaceResolver) {
     // Fallback: calculate from workspaceResolver
     try {
       const userContext = { userId, organizationId, workspacePath: '' };
       featurePath = deps.workspaceResolver.getFeaturePath(userContext, project, featureFolder);
-      console.log(`📂 Feature path (calculated): ${featurePath}`);
     } catch (error) {
-      console.warn(`⚠️  Could not resolve featurePath:`, error);
+      // featurePath resolution failed - will proceed without it
     }
   }
   
@@ -179,9 +165,7 @@ export async function architectAgent(
         // (Learn job PERFORMS indexing, so indexing is not a prerequisite)
       };
       
-      console.log('\n🚀 Starting job: "Learn and Store Knowledge"');
-      console.log('   Type: LEARN');
-      console.log('');
+      console.log('🚀 Starting LEARN job');
       
       const l = await runLearnGraph(lInitial);
       
@@ -287,10 +271,7 @@ export async function architectAgent(
         currentAgent: 'architect'  // ✅ For triage system
       };
       
-      console.log('\n🚀 Starting job: "Generate Design Document"');
-      console.log('   Type: DESIGN');
-      console.log('');
-      
+      console.log('🚀 Starting DESIGN job');
       
       const d = await runDesignGraph(dInitial);
       
@@ -351,26 +332,17 @@ export async function architectAgent(
       // Do NOT infer mode here - let detectEnvironment decide
       const inferredMode = jobMode;  // Use explicit mode if provided, otherwise undefined
       
-      if (inferredMode) {
-        console.log(`🎯 Job mode (explicit): ${inferredMode}`);
-      } else {
-        console.log(`🎯 Code mode: Will be determined by LLM in detectEnvironment node`);
-      }
-
-      // === ✅ UNIFIED: Always use Task Queue Mode with LLM validation ===
+      // UNIFIED: Always use Task Queue Mode with LLM validation
       const { WorkSizeEstimator } = await import('../../core/codebase');
       const estimator = new WorkSizeEstimator();
       
-      console.log('📊 Analyzing work size...');
       const estimation = await estimator.estimate(
         spec,
         context.workingDir,
         deps?.git
       );
 
-      console.log(`   Estimated: ~${estimation.estimatedFiles} files, ~${Math.ceil(estimation.estimatedTokens / 1000)}K tokens`);
-      console.log(`   Decision: ${estimation.reason}`);
-      console.log('⚡ Using job queue mode\n');
+      console.log(`🚀 Starting CODE job (~${estimation.estimatedFiles} files)`);
         
         const codeEngine = new PromptEngine({
           promptPort: deps.promptPort,

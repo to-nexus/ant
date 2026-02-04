@@ -76,15 +76,10 @@ export class CommonRenderStrategy implements IRenderStrategy {
   }
   
   async finalize(hasToolCalls: boolean = false): Promise<void> {
-    console.log('[CommonRenderStrategy] 🏁 Finalizing render strategy...');
-    
     await this.fileRenderer.finalize();
     
     if (!hasToolCalls) {
-      console.log('[CommonRenderStrategy] ✅ Finalizing message (no tool calls)');
       await this.chatAPI.finalizeMessage();
-    } else {
-      console.log('[CommonRenderStrategy] ⏸️  Keeping message open (tool calls pending)');
     }
   }
   

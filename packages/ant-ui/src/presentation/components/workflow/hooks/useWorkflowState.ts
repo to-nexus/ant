@@ -18,6 +18,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import type { HandlerId } from '@/infrastructure/sse/SSEManager';
+import { useStore } from '@/domain/store';
 
 // 노드별 최소 표시 시간 (ms)
 // ✅ 모든 노드를 사용자가 인식할 수 있도록 충분한 시간 확보
@@ -294,6 +295,12 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
       // ✅ Handle 'end' event
       if (data.eventType === 'end') {
         jobEndedRef.current = true;
+        
+        // ✅ CRITICAL: Also set isRunning to false when workflow ends
+        // This is a defense mechanism in case Kanban SSE update is delayed or missed
+        console.log('[useWorkflowState] 🏁 Workflow end event received, setting isRunning=false');
+        useStore.getState().setRunning(false);
+        
         setTimeout(() => {
           setRawState(null);
         }, 500);

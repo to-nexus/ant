@@ -224,10 +224,7 @@ export async function codeGen(
     }
   }
   
-  console.log(`🔍 [CodeGen] existingFiles Set initialized with ${existingFiles.size} files from projectCodeContext`);
-  if (existingFiles.size > 0 && existingFiles.size <= 10) {
-    console.log(`   Files: ${Array.from(existingFiles).join(', ')}`);
-  }
+  // existingFiles Set initialized (prevents duplicate file creation)
   
   const orchestrator = new StreamOrchestrator({
     parser,
@@ -290,21 +287,17 @@ export async function codeGen(
       }
     }
     
-    // ✅ CRITICAL: Wait for all file operations to complete BEFORE finalizing
-    // This ensures files are saved before task is marked as completed
-    console.log(`\n💾 [CodeGen] Waiting for all file operations to complete...`);
+    // Wait for all file operations to complete BEFORE finalizing
     try {
       await orchestrator.waitForAllFileOperations();
-      console.log(`✅ [CodeGen] All files saved successfully`);
     } catch (fileError) {
-      // ❌ Do NOT throw! Let validation handle it
+      // Do NOT throw! Let validation handle it
       const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
-      console.error(`⚠️ [CodeGen] File operation failed (will be caught by validation): ${errorMsg}`);
+      console.error(`⚠️ [CodeGen] File operation failed: ${errorMsg}`);
     }
     
-    // ✅ NOW propagate done event (files are guaranteed to be saved OR errors recorded)
+    // Propagate done event (files are guaranteed to be saved OR errors recorded)
     if (isDone) {
-      console.log(`✅ [CodeGen] Files saved, now propagating done event to UI`);
       await chatAPI.sendLLMEvent({ type: 'done' });
     }
     
@@ -337,28 +330,14 @@ export async function codeGen(
         }
       }
     }
-    console.log(`📝 [CodeGen] Extracted ${files.length} file(s) from streaming session`);
-    
-    // ✅ Finalize chat message if no tool calls (task/reasoning complete)
+    // Finalize chat message if no tool calls (task/reasoning complete)
     if (toolCalls.length === 0) {
       const chatAPI = getChatAPIClient();
       await chatAPI.finalizeMessage();
     }
     
-    console.log(`\n✅ [CodeGen] Reasoning complete`);
-    console.log(`   Thinking: ${thinking.length} chars`);
-    console.log(`   Text: ${textResponse.length} chars`);
-    console.log(`   Tool calls: ${toolCalls.length}`);
-    console.log(`   Files: ${files.length}`);
-    if (capturedUsage) {
-      console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
-      if (capturedUsage.cacheReadTokens) {
-        console.log(`   Cache read: ${capturedUsage.cacheReadTokens} tokens`);
-      }
-      if (capturedUsage.cacheCreationTokens) {
-        console.log(`   Cache creation: ${capturedUsage.cacheCreationTokens} tokens`);
-      }
-    }
+    console.log(`✅ [CodeGen] Complete: ${toolCalls.length} tools, ${files.length} files${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
+
     
     // ✅ Explain mode validation
     if (isExplainMode && toolCalls.length > 0) {
@@ -399,10 +378,6 @@ export async function codeGen(
         stats: { filesLoaded: combinedPaths.length, estimatedTokens: 0 }
       };
       
-      console.log(`📁 [CodeGen] Updated projectCodeContext: ${combinedPaths.length} files (+${newFilePaths.length} this turn)`);
-      if (newFilePaths.length <= 5) {
-        newFilePaths.forEach(p => console.log(`   + ${p}`));
-      }
     }
     
     // ✅ CRITICAL: Only mark done if LLM explicitly output <done>true</done>
