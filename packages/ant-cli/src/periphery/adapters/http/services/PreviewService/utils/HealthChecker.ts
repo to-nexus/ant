@@ -21,7 +21,8 @@ export class HealthChecker {
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const response = await fetch(`http://localhost:${port}/`, {
+        // Use 127.0.0.1 explicitly to avoid IPv6 resolution issues
+        const response = await fetch(`http://127.0.0.1:${port}/`, {
           method: 'GET',
           signal: AbortSignal.timeout(2000)  // 2s timeout per attempt
         });
