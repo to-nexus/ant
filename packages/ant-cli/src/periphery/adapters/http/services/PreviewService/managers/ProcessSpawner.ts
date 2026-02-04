@@ -164,7 +164,7 @@ export class ProcessSpawner {
     if (pkg.type === 'frontend') {
       if (devScript?.includes('vite')) {
         command = 'npx';
-        args = ['vite', '--port', port.toString(), '--host'];
+        args = ['vite', '--port', port.toString(), '--host', '0.0.0.0'];
       } else if (devScript?.includes('next')) {
         command = 'npx';
         args = ['next', 'dev', '-p', port.toString(), '--hostname', '0.0.0.0'];
