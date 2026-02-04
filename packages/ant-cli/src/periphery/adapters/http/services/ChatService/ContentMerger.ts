@@ -24,6 +24,9 @@ export class ContentMerger {
     content: MessageContent
   ): number {
     if (!session.currentMessage) {
+      logger.warn(`No currentMessage in session for ${projectId}/${featureName}, content type: ${content.type}`, {
+        component: 'ContentMerger'
+      });
       return -1;
     }
 
@@ -522,6 +525,7 @@ export class ContentMerger {
    */
   private finalizeInProgressWork(projectId: string, featureName: string, session: ChatSession): void {
     const inProgressWorkTypes = new Set([
+      'placeholder',  // ✅ Added: Placeholder should be removed on cancel
       'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 
       'indexing', 'storing', 'learning', 'searching_code', 'listing_files'
     ]);
