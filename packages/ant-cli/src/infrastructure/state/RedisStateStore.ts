@@ -27,7 +27,8 @@ import {
   PortMapping,
   ChatSessionData,
   ChatMessageData,
-  WorkflowRealtimeState
+  WorkflowRealtimeState,
+  PendingChoiceData
 } from '../../core/ports/stateStore';
 import { 
   PortRegistryPort, 
@@ -55,7 +56,9 @@ const KEYS = {
   CHAT_SESSION: 'ant:chat:session:',
   CHAT_CURRENT_MESSAGE: 'ant:chat:currentMessage:',
   // Workflow state keys
-  WORKFLOW_STATE: 'ant:workflow:state:'
+  WORKFLOW_STATE: 'ant:workflow:state:',
+  // Pending choice keys
+  PENDING_CHOICE: 'ant:choice:pending:'
 } as const;
 
 // Default TTLs (in seconds)
@@ -67,7 +70,8 @@ const TTL = {
   USER_STOPPED: 60 * 60,         // 1 hour
   CHAT_SESSION: 24 * 60 * 60,    // 24 hours
   CHAT_CURRENT_MESSAGE: 60 * 60, // 1 hour (streaming message)
-  WORKFLOW_STATE: 24 * 60 * 60   // 24 hours
+  WORKFLOW_STATE: 24 * 60 * 60,  // 24 hours
+  PENDING_CHOICE: 30 * 60        // 30 minutes (matches ChoiceService DEFAULT_EXPIRY_MS)
 } as const;
 
 export interface RedisStateStoreOptions {
@@ -802,6 +806,49 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async hasActiveMessage(sessionKey: string): Promise<boolean> {
     const exists = await this.redis.exists(this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey));
     return exists === 1;
+  }
+
+  // ============================================
+  // Pending Choice Management
+  // ============================================
+
+  async setPendingChoice(choiceKey: string, choice: PendingChoiceData): Promise<void> {
+    // Use dynamic TTL based on expiresAt
+    const ttlSeconds = Math.max(1, Math.ceil((choice.expiresAt - Date.now()) / 1000));
+    
+    await this.redis.setex(
+      this.key(KEYS.PENDING_CHOICE + choiceKey),
+      ttlSeconds,
+      JSON.stringify(choice)
+    );
+    
+    logger.debug(`Pending choice stored: ${choiceKey} (TTL: ${ttlSeconds}s)`, { component: 'RedisStateStore' });
+  }
+
+  async getPendingChoice(choiceKey: string): Promise<PendingChoiceData | null> {
+    const data = await this.redis.get(this.key(KEYS.PENDING_CHOICE + choiceKey));
+    
+    if (!data) return null;
+    
+    try {
+      const choice = JSON.parse(data) as PendingChoiceData;
+      
+      // Double-check expiry (Redis TTL might be slightly off)
+      if (Date.now() > choice.expiresAt) {
+        await this.deletePendingChoice(choiceKey);
+        return null;
+      }
+      
+      return choice;
+    } catch (e) {
+      logger.error(`Failed to parse pending choice: ${choiceKey}`, { component: 'RedisStateStore' }, e);
+      return null;
+    }
+  }
+
+  async deletePendingChoice(choiceKey: string): Promise<void> {
+    await this.redis.del(this.key(KEYS.PENDING_CHOICE + choiceKey));
+    logger.debug(`Pending choice deleted: ${choiceKey}`, { component: 'RedisStateStore' });
   }
 
   // ============================================

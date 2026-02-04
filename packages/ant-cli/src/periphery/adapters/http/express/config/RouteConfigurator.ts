@@ -15,7 +15,7 @@ import { ServerConfig, ServerDependencies } from '../types';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { JobExecutionManager } from '../managers/JobExecutionManager';
 import { WorkflowBridge } from '../bridges/WorkflowBridge';
-import { choiceService } from '../../../../../infrastructure/choice/ChoiceService';
+import { ChoiceService, choiceService as defaultChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 
 /**
@@ -155,11 +155,24 @@ export class RouteConfigurator {
    * Setup unified API routes (health, agents, projects, features, files, chat, github, figma)
    */
   private setupApiRoutes(app: Express): void {
+    // Cloud mode: Create ChoiceService with Redis StateStore for cross-Pod consistency
+    // Local mode: Use default in-memory ChoiceService
+    let choiceService = defaultChoiceService;
+    
+    if (this.config.mode === 'cloud') {
+      const factory = getInfrastructureFactory();
+      const stateStore = factory.getStateStore();
+      if (stateStore) {
+        choiceService = new ChoiceService({ stateStore });
+        logger.info(`[RouteConfigurator] Created ChoiceService with Redis support`, { component: 'RouteConfigurator' });
+      }
+    }
+    
     const apiRoutes = createApiRoutes({
       projectService: this.deps.projectService,
       chatService: this.deps.chatService,
       kanbanService: this.deps.kanbanService,  // ✅ For session cache invalidation on job clear
-      choiceService,  // ✅ For triage choice handling
+      choiceService,  // ✅ For triage choice handling (Redis-backed in Cloud mode)
       githubAuthService: this.deps.githubAuthService,
       workspaceRoot: this.config.workspacesPath,
       workspaceResolver: this.deps.workspaceResolver
