@@ -345,7 +345,11 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         res.send(buffer);
       }
     } catch (error: any) {
+      // Log detailed error including cause for debugging
       logger.error(`Fetch error: ${error.message}`, { component: 'PreviewProxy' });
+      if (error.cause) {
+        logger.error(`Fetch error cause: ${error.cause.message || error.cause}`, { component: 'PreviewProxy' });
+      }
       res.status(502).json({
         error: 'Bad Gateway',
         message: `Failed to connect to preview server on port ${port}`,
