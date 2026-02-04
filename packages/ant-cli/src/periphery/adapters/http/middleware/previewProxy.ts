@@ -292,11 +292,29 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         
         // ✅ Inject window.__BASENAME__ for React Router (HTML only)
         if (contentType.includes('text/html')) {
-          const basenameScript = `<script>window.__BASENAME__ = "${pathPrefix}/${serverKey}";</script>`;
+          const basePath = `${pathPrefix}/${serverKey}`;
+          const basenameScript = `<script>window.__BASENAME__ = "${basePath}";</script>`;
           const headEndIndex = text.indexOf('</head>');
           if (headEndIndex !== -1) {
             rewritten = text.substring(0, headEndIndex) + basenameScript + text.substring(headEndIndex);
             logger.debug(`Injected window.__BASENAME__`, { component: 'PreviewProxy' });
+          }
+          
+          // ✅ Patch __NEXT_DATA__ for Next.js SSR hydration
+          // This ensures client-side rendering uses the same basePath as server
+          const nextDataRegex = /<script id="__NEXT_DATA__" type="application\/json">(\{.*?\})<\/script>/;
+          const nextDataMatch = rewritten.match(nextDataRegex);
+          if (nextDataMatch) {
+            try {
+              const nextData = JSON.parse(nextDataMatch[1]);
+              nextData.assetPrefix = basePath;
+              nextData.basePath = basePath;
+              const patchedScript = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script>`;
+              rewritten = rewritten.replace(nextDataRegex, patchedScript);
+              logger.debug(`Patched __NEXT_DATA__ with basePath: ${basePath}`, { component: 'PreviewProxy' });
+            } catch (e) {
+              logger.debug(`Failed to patch __NEXT_DATA__: ${e}`, { component: 'PreviewProxy' });
+            }
           }
         }
         
