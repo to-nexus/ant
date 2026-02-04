@@ -204,16 +204,21 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/finalize-message
    * Finalize current streaming message
+   * CLOUD MODE: Uses extractUserContext for consistent Redis key generation
    */
   router.post('/projects/:id/features/:feature/chat/finalize-message', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { cancelled, userContext } = req.body;
+    const { cancelled } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
       return;
     }
+
+    // ✅ CRITICAL: Use extractUserContext for consistent Redis key with triage-choice-message
+    // Previously used req.body.userContext which caused key mismatch
+    const userContext = extractUserContext(req);
 
     try {
       await deps.chatService.finalizeCurrentMessage(projectId, featureName, cancelled || false, userContext);
@@ -345,11 +350,16 @@ export function createChatRoutes(deps: {
 
     // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
     const userContext = extractUserContext(req);
+    console.log(`[chat.routes] triage-choice-message: ${projectId}/${featureName}, jobId=${jobId}`);
+    
     const hasActive = await deps.chatService.ensureActiveMessageAsync(
       projectId, featureName, jobId, userContext
     );
+    console.log(`[chat.routes] ensureActiveMessageAsync: hasActive=${hasActive}`);
+    
     if (!hasActive) {
-      await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      const messageId = await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      console.log(`[chat.routes] startAssistantMessageAsync: messageId=${messageId}`);
     }
 
     // ✅ Register pending choice for later handling
@@ -359,7 +369,7 @@ export function createChatRoutes(deps: {
     }
 
     // Add triage_choice content to current message
-    deps.chatService.addContentToCurrentMessage(projectId, featureName, {
+    const contentIndex = deps.chatService.addContentToCurrentMessage(projectId, featureName, {
       type: 'triage_choice',
       content: message,
       metadata: {
@@ -367,6 +377,12 @@ export function createChatRoutes(deps: {
         choiceOptions
       }
     });
+    
+    if (contentIndex === -1) {
+      console.error(`[chat.routes] ❌ addContentToCurrentMessage FAILED for ${projectId}/${featureName} - no currentMessage!`);
+    } else {
+      console.log(`[chat.routes] ✅ addContentToCurrentMessage: contentIndex=${contentIndex}`);
+    }
 
     res.json({ success: true });
   });

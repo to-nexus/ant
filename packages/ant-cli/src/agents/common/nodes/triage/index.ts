@@ -128,6 +128,12 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   console.log(prompt.substring(0, 2000));
   console.log('...\n');
   
+  // ✅ Create shared ChatAPIClient for entire triage flow
+  // Show placeholder before LLM call for loading indication
+  const chatAPI = new ChatAPIClient();
+  await chatAPI.startMessage();
+  await chatAPI.showChatStatus('analyzing', { node: 'triage' });
+  
   let responseText: string;
   
   if (llm.invokeWithUsage) {
@@ -173,10 +179,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     console.log(`📝 Question: ${userInput.substring(0, 50)}${userInput.length > 50 ? '...' : ''}`);
     console.log(`🌐 Language: ${language}\n`);
     
-    // Start chat message for streaming
-    const chatAPI = new ChatAPIClient();
-    await chatAPI.startMessage();
-    
+    // ✅ Reuse chatAPI from Step 3 (already has active message with placeholder)
     // Generate response with streaming
     const askContext = {
       userQuestion: userInput,
@@ -189,7 +192,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     let fullResponse = '';
     const generator = askResponseGenerator.generateStreaming(askContext, { llm });
     
-    // Stream response to chat UI
+    // Stream response to chat UI (will replace placeholder)
     for await (const event of generator) {
       if (event.type === 'text' && event.text) {
         await chatAPI.sendLLMEvent({ type: 'text', text: event.text });
@@ -207,35 +210,42 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     
     console.log('✅ Ask System response streamed to Chat UI');
   }
-  
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Step 6: Send Response to Chat UI (for non-proceed, non-ask cases)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const shouldSendToChat = 
-    (triageResult.intent === 'ask' && !triageResult.inScope) ||
-    triageResult.workStatus === 'redirect' ||
-    triageResult.workStatus === 'blocked';
-  
-  if (shouldSendToChat && triageResult.displayMessage) {
-    const chatAPI = new ChatAPIClient();
-    await chatAPI.startMessage();
+  else {
+    const shouldSendToChat = 
+      (triageResult.intent === 'ask' && !triageResult.inScope) ||
+      triageResult.workStatus === 'redirect' ||
+      triageResult.workStatus === 'blocked';
     
-    if (triageResult.needsChoice && triageResult.choiceOptions) {
-      // Send triage_choice message with choice options
-      await chatAPI.sendTriageChoice(
-        triageResult.displayMessage,
-        state._httpJobId || 'unknown',
-        triageResult.choiceOptions,
-        triageResult,  // ✅ Pass full triageResult for pending choice registration
-        userInput  // ✅ Pass original directive for redirect
-      );
+    if (shouldSendToChat && triageResult.displayMessage) {
+      // ✅ Reuse chatAPI from Step 3 (already has active message with placeholder)
+      if (triageResult.needsChoice && triageResult.choiceOptions) {
+        // Send triage_choice message with choice options (will replace placeholder)
+        await chatAPI.sendTriageChoice(
+          triageResult.displayMessage,
+          state._httpJobId || 'unknown',
+          triageResult.choiceOptions,
+          triageResult,  // ✅ Pass full triageResult for pending choice registration
+          userInput  // ✅ Pass original directive for redirect
+        );
+      } else {
+        // Send simple text message (not streamed - these are short system messages)
+        await chatAPI.sendLLMEvent({ type: 'text', text: triageResult.displayMessage });
+      }
+      
+      await chatAPI.finalizeMessage();
+      console.log('📤 Response sent to Chat UI');
+    } else if (triageResult.workStatus === 'proceed') {
+      // ✅ work:proceed - Cancel the placeholder message (next node will start its own)
+      // Don't leave an empty message with just placeholder
+      await chatAPI.finalizeMessage(true);  // cancelled=true removes placeholder
+      console.log('⏭️  Proceeding to next step (placeholder removed)');
     } else {
-      // Send simple text message (not streamed - these are short system messages)
-      await chatAPI.sendLLMEvent({ type: 'text', text: triageResult.displayMessage });
+      // Other cases (shouldn't happen, but finalize to be safe)
+      await chatAPI.finalizeMessage();
     }
-    
-    await chatAPI.finalizeMessage();
-    console.log('📤 Response sent to Chat UI');
   }
   
   // ✅ Workflow instrumentation: Exit node
