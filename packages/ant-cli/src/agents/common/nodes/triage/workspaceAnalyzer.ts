@@ -158,9 +158,16 @@ export async function analyzeWorkspace(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const designPath = path.join(featurePath, 'outputs', 'design');
   
-  // System design
-  const systemDesignPath = path.join(designPath, 'system-design.md');
-  state.hasSystemDesignDoc = fs.existsSync(systemDesignPath);
+  // System design - check for any *system-design*.md pattern
+  // (system-design.md, fe-system-design.md, be-system-design.md, etc.)
+  if (fs.existsSync(designPath)) {
+    const files = fs.readdirSync(designPath);
+    state.hasSystemDesignDoc = files.some(f => 
+      f.includes('system-design') && f.endsWith('.md')
+    );
+  } else {
+    state.hasSystemDesignDoc = false;
+  }
   
   // UI docs (ui-tokens.json, ui-assets.json, ui-spec.json)
   const uiTokensPath = path.join(designPath, 'ui-tokens.json');
