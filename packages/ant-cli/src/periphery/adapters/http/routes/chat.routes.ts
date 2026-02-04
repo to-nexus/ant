@@ -61,8 +61,9 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/user-message
    * Add a user message to chat history
+   * CLOUD MODE: Async to ensure Redis save completes before Job starts
    */
-  router.post('/projects/:id/features/:feature/chat/user-message', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/user-message', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { content, jobId } = req.body;
@@ -78,7 +79,8 @@ export function createChatRoutes(deps: {
     }
 
     const userContext = extractUserContext(req);
-    const messageId = deps.chatService.addUserMessage(projectId, featureName, content, jobId, userContext);
+    // ✅ CRITICAL: Await to ensure message is saved to Redis before Job starts
+    const messageId = await deps.chatService.addUserMessage(projectId, featureName, content, jobId, userContext);
     res.json({ messageId });
   });
 
@@ -473,6 +475,14 @@ export function createChatRoutes(deps: {
           type: 'text',
           content: response.message
         });
+      }
+
+      // ✅ Finalize message for terminal choices (dismiss, guide)
+      // Don't finalize for proceed/redirect as the job will continue
+      if (deps.chatService && (choice === 'dismiss' || choice === 'guide')) {
+        const cancelled = choice === 'dismiss';
+        await deps.chatService.finalizeCurrentMessage(projectId, featureName, cancelled, userContext);
+        console.log(`[chat.routes] Finalized message after ${choice} (cancelled=${cancelled})`);
       }
 
       res.json(response);

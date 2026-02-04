@@ -101,14 +101,15 @@ export class ChatService {
 
   /**
    * Add user message to chat history
+   * CLOUD MODE: Async to ensure Redis save completes before Job starts
    */
-  addUserMessage(
+  async addUserMessage(
     projectId: string, 
     featureName: string, 
     content: string, 
     jobId?: string, 
     userContext?: UserContext
-  ): string {
+  ): Promise<string> {
     return this.messageManager.addUserMessage(projectId, featureName, content, jobId, userContext);
   }
 
