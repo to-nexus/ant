@@ -88,6 +88,7 @@ export interface CodeTask extends BaseTask {
  */
 export interface DesignTask extends BaseTask {
   targetFile?: string;             // Which design document (e.g., "system-design.md")
+  targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
 }
 
 /**

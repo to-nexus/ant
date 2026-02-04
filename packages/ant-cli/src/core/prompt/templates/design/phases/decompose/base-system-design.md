@@ -152,32 +152,68 @@ This is a refactor task. Consider the current implementation:
 
 ## 🔀 CONTRACT-FIRST DETECTION
 
-**When project has BOTH Frontend AND Backend, use 3-PHASE approach.**
+**When project has BOTH Frontend AND Backend, use CONTRACT-FIRST approach.**
 
 ### Detection Criteria
 
-Use dual design if **BOTH** conditions are true **RIGHT NOW**:
+Use contract-first if **BOTH** conditions are true:
 
-1. Project CURRENTLY requires:
-   - Frontend UI (React/Vue/Angular components, pages, routing)
-   - Backend API (Express/FastAPI/Django server, database, REST/GraphQL endpoints)
+1. Project requires:
+   - Frontend UI (components, pages, routing)
+   - Backend API (server, database, endpoints)
 
-2. The project will ACTUALLY implement both tiers in this iteration
+2. The project will implement both tiers in this iteration
 
-### Examples
+### Decision
 
-**✅ Require dual design:**
-- "Build SPA frontend + Express API server with PostgreSQL"
-- "React dashboard calling REST API backed by MySQL database"
-
-**❌ Single document (system-design.md):**
-- "React SPA with localStorage" → Frontend-only
-- "Frontend calling EXISTING third-party API" → Frontend-only
-- "REST API service only" → Backend-only
-- "Next.js with tightly coupled FE/BE" → Fullstack SSR
-
-**IF dual detected → Use CONTRACT-FIRST (api-contract.md → fe-system-design.md → be-system-design.md)**
+**IF dual detected → Use CONTRACT-FIRST**
 **ELSE → Use unified system-design.md**
+
+---
+
+## 🏗️ MSA / SERVICE-ORIENTED DETECTION
+
+**After CONTRACT-FIRST detection, check if backend requires service separation.**
+
+### Observation Checklist
+
+| Checkpoint | Observation Target |
+|------------|-------------------|
+| **Domain Boundaries** | Multiple independent business domains with separate data ownership? |
+| **Deployment Independence** | PRD indicates services need independent deployment or scaling? |
+| **Team Boundaries** | Different domains owned by different teams? |
+| **Service Communication** | PRD specifies inter-service communication (sync API or async events)? |
+
+### Decision Principle
+
+| Observation Result | Document Structure |
+|-------------------|-------------------|
+| Single backend domain | `contract-first` |
+| **Multiple independent service boundaries** | `msa-contract-first` |
+
+**Constraint**: Do NOT assume MSA. Only choose `msa-contract-first` if PRD explicitly indicates service boundaries.
+
+### If MSA Detected
+
+**⚠️ MUST extract from PRD:**
+
+1. **Service names** - exact names as PRD specifies (do NOT invent)
+2. **Service responsibilities** - what each service owns
+3. **Communication patterns** - sync (HTTP/gRPC) vs async (events/messages)
+
+**Output structure for MSA:**
+```json
+{
+  "documentType": "msa-contract-first",
+  "services": ["<service1>", "<service2>", ...],
+  "targetFiles": [
+    "api-contract.md",
+    "fe-system-design.md",
+    "be-system-design-<service1>.md",
+    "be-system-design-<service2>.md"
+  ]
+}
+```
 
 ---
 

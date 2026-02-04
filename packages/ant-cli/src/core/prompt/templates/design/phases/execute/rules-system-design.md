@@ -62,11 +62,16 @@ Only skip the metadata comments at the end.
 {{/if}}
 
 **Filename determination:**
-- Check your task description for file name mention
-- "api-contract.md" mentioned → use `api-contract.md`
-- "fe-system-design.md" mentioned → use `fe-system-design.md`
-- "be-system-design.md" mentioned → use `be-system-design.md`
-- No mention → use `system-design.md`
+- Check `task.targetFile` field (HIGHEST PRIORITY)
+- If `task.targetFile` exists → use exactly that filename
+- Fallback pattern matching:
+  - "api-contract.md" mentioned → use `api-contract.md`
+  - "fe-system-design.md" mentioned → use `fe-system-design.md`
+  - "be-system-design.md" mentioned → use `be-system-design.md`
+  - "be-system-design-{service}.md" pattern → use exact filename (MSA)
+  - No mention → use `system-design.md`
+
+**⚠️ MSA Note**: For `msa-contract-first`, the filename includes service name (e.g., `be-system-design-auth.md`). Use the exact `task.targetFile` value.
 
 ### Scenario 2: Appending Content (Continuation Task)
 
@@ -141,22 +146,37 @@ edit_file(
 
 **API Contract Document:**
 - Path: `outputs/design/api-contract.md`
-- Usage: Contract-First projects (dual design)
-- Timing: Written BEFORE fe-system-design.md and be-system-design.md
+- Usage: Contract-First AND MSA-Contract-First projects
+- Timing: Written FIRST (before FE and BE design documents)
 
 **Frontend Design Document:**
 - Path: `outputs/design/fe-system-design.md`
-- Usage: Contract-First projects (dual design)
+- Usage: Contract-First AND MSA-Contract-First projects
 - Timing: Written AFTER api-contract.md
 
-**Backend Design Document:**
+**Backend Design Document (single backend):**
 - Path: `outputs/design/be-system-design.md`
-- Usage: Contract-First projects (dual design)
+- Usage: Contract-First projects (single backend)
 - Timing: Written AFTER api-contract.md
+
+**Backend Design Document (MSA - per service):**
+- Path: `outputs/design/be-system-design-{service}.md`
+- Usage: MSA-Contract-First projects (multiple services)
+- Timing: Written AFTER api-contract.md
+- **⚠️ `{service}` MUST match decompose output's `services` array**
 
 **Unified Design Document:**
 - Path: `outputs/design/system-design.md`
 - Usage: Single-tier projects (frontend-only, backend-only, or tightly coupled)
+
+### MSA Path Examples
+
+| documentType | targetFile | Valid Path |
+|--------------|------------|------------|
+| `unified` | `system-design.md` | `outputs/design/system-design.md` |
+| `contract-first` | `be-system-design.md` | `outputs/design/be-system-design.md` |
+| `msa-contract-first` | `be-system-design-auth.md` | `outputs/design/be-system-design-auth.md` |
+| `msa-contract-first` | `be-system-design-order.md` | `outputs/design/be-system-design-order.md` |
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Tag Selection Decision Tree

@@ -447,4 +447,65 @@ async function login(req, res) {  ← This is full implementation code!
 
 ---
 
-**Purpose**: This guide ensures be-system-design.md focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.
+## 🏗️ SERVICE-SPECIFIC DOCUMENT (if MSA / msa-contract-first)
+
+**When writing `be-system-design-{service}.md`, follow these additional rules.**
+
+### Document Scope Principle
+
+| ✅ Include (THIS service only) | ❌ Exclude (belongs elsewhere) |
+|-------------------------------|-------------------------------|
+| THIS service's architecture layers | Other services' internals |
+| THIS service's database schema | Other services' schemas |
+| THIS service's endpoint implementations | Endpoints other services provide |
+| Events THIS service publishes/subscribes | Event implementations in other services |
+| THIS service's technology stack | Gateway/infrastructure shared by all |
+
+### Required Sections (per service document)
+
+1. **Overview**: Service name, responsibility, api-contract.md reference
+2. **Architecture**: THIS service's internal layers (Controller → Service → Repository)
+3. **Database Schema**: Tables/collections THIS service owns
+4. **Endpoint Implementation Mapping**: Endpoints from api-contract.md that THIS service implements
+5. **Event Integration**: Events published/subscribed with api-contract.md reference
+
+### Cross-Reference Principle
+
+**⚠️ CRITICAL**: Do NOT duplicate API Contract content. Reference only.
+
+| Content Type | Location | Reference Method |
+|--------------|----------|------------------|
+| Endpoint definitions | api-contract.md | "Implements api-contract.md §X" |
+| DTO definitions | api-contract.md | "Uses {DTOName} from api-contract.md §Y" |
+| Event payloads | api-contract.md | "Publishes {EventName} per api-contract.md §Z" |
+| Inter-service calls | api-contract.md | "Calls {Service} endpoint per api-contract.md §W" |
+
+### Template for Service Document Header
+
+```markdown
+# Backend System Design: {Service Name} Service
+
+## 1. Overview
+
+**Service Name**: {service}
+**Responsibility**: {1-2 sentences from PRD}
+**API Contract Reference**: api-contract.md
+
+### Endpoints Implemented (from api-contract.md)
+- § Internal API → {service} section
+- § Async Events → {service} as Publisher/Subscriber
+
+### Data Ownership
+- {table1}, {table2}, ...
+```
+
+### ⚠️ Constraint
+
+- Each service document focuses on **HOW** (implementation architecture)
+- api-contract.md defines **WHAT** (interfaces, DTOs, events)
+- **Do NOT redefine DTOs or endpoint schemas in service documents**
+- **Do NOT describe other services' implementation details**
+
+---
+
+**Purpose**: This guide ensures be-system-design.md (or be-system-design-{service}.md) focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.
