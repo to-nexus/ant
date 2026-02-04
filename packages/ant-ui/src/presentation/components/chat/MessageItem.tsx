@@ -4,7 +4,7 @@
  * Renders different content types: thinking, text, file operations, commands
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, MessageContent } from '@/domain/models/chat';
@@ -22,6 +22,48 @@ interface MessageItemProps {
 
 export function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user';
+
+  // ✅ Deduplicate file operation cards by filePath (keep latest/completed)
+  // This prevents duplicate cards when backend emits multiple events for same file
+  const deduplicatedContents = useMemo(() => {
+    const fileOpTypes = [
+      'file_creating', 'file_writing', 'file_create', 'file_create_failed',
+      'file_editing', 'file_updating', 'file_edit', 'file_edit_failed',
+      'file_deleting', 'file_delete', 'file_delete_failed'
+    ];
+    
+    // Completed types take priority over in-progress types
+    const completedTypes = ['file_create', 'file_edit', 'file_delete', 
+                           'file_create_failed', 'file_edit_failed', 'file_delete_failed'];
+    
+    const fileOpByPath = new Map<string, { content: MessageContent; index: number; isCompleted: boolean }>();
+    const nonFileContents: { content: MessageContent; index: number }[] = [];
+    
+    message.contents.forEach((content, index) => {
+      const isFileOp = fileOpTypes.includes(content.type);
+      const filePath = content.metadata?.filePath;
+      
+      if (isFileOp && filePath) {
+        const isCompleted = completedTypes.includes(content.type);
+        const existing = fileOpByPath.get(filePath);
+        
+        // Keep if: no existing, OR current is completed and existing is not, OR both have same status (keep later)
+        if (!existing || (isCompleted && !existing.isCompleted) || (isCompleted === existing.isCompleted)) {
+          fileOpByPath.set(filePath, { content, index, isCompleted });
+        }
+      } else {
+        nonFileContents.push({ content, index });
+      }
+    });
+    
+    // Merge back: non-file contents + deduplicated file contents (sorted by original index)
+    const allContents = [
+      ...nonFileContents,
+      ...Array.from(fileOpByPath.values())
+    ].sort((a, b) => a.index - b.index);
+    
+    return allContents.map(item => ({ content: item.content, originalIndex: item.index }));
+  }, [message.contents]);
 
   return (
     <div className="w-full">
@@ -42,9 +84,9 @@ export function MessageItem({ message }: MessageItemProps) {
             {message.isStreaming && message.contents.length === 0 && (
               <TypingIndicator />
             )}
-            {message.contents.map((content, index) => (
+            {deduplicatedContents.map(({ content, originalIndex }) => (
               <ContentBlock 
-                key={index} 
+                key={originalIndex} 
                 content={content} 
                 isStreaming={message.isStreaming || false}
                 messageId={message.id}
