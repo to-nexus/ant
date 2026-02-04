@@ -290,30 +290,87 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         
         let rewritten = text;
         
-        // ✅ Inject window.__BASENAME__ for React Router (HTML only)
+        // ✅ Inject service worker to intercept absolute path requests
+        // This redirects /logos/*, /icons/*, etc. to /preview/:serverKey/...
+        // Avoids hydration mismatch while ensuring resources load correctly
         if (contentType.includes('text/html')) {
           const basePath = `${pathPrefix}/${serverKey}`;
-          const basenameScript = `<script>window.__BASENAME__ = "${basePath}";</script>`;
-          const headEndIndex = text.indexOf('</head>');
-          if (headEndIndex !== -1) {
-            rewritten = text.substring(0, headEndIndex) + basenameScript + text.substring(headEndIndex);
-            logger.debug(`Injected window.__BASENAME__`, { component: 'PreviewProxy' });
-          }
           
-          // ✅ Patch __NEXT_DATA__ for Next.js SSR hydration
-          // This ensures client-side rendering uses the same basePath as server
-          const nextDataRegex = /<script id="__NEXT_DATA__" type="application\/json">(\{.*?\})<\/script>/;
-          const nextDataMatch = rewritten.match(nextDataRegex);
-          if (nextDataMatch) {
-            try {
-              const nextData = JSON.parse(nextDataMatch[1]);
-              nextData.assetPrefix = basePath;
-              nextData.basePath = basePath;
-              const patchedScript = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script>`;
-              rewritten = rewritten.replace(nextDataRegex, patchedScript);
-              logger.debug(`Patched __NEXT_DATA__ with basePath: ${basePath}`, { component: 'PreviewProxy' });
-            } catch (e) {
-              logger.debug(`Failed to patch __NEXT_DATA__: ${e}`, { component: 'PreviewProxy' });
+          // Script that intercepts resource loading and rewrites paths
+          const swScript = `
+<script>
+(function() {
+  const PREVIEW_BASE = "${basePath}";
+  
+  // Helper to rewrite path
+  function rewritePath(path) {
+    if (path && typeof path === 'string' && path.startsWith('/') && !path.startsWith(PREVIEW_BASE)) {
+      return PREVIEW_BASE + path;
+    }
+    return path;
+  }
+  
+  // Override fetch to rewrite absolute paths
+  const originalFetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string') {
+      input = rewritePath(input);
+    }
+    return originalFetch.call(this, input, init);
+  };
+  
+  // Override XMLHttpRequest
+  const originalXHROpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url, ...args) {
+    return originalXHROpen.call(this, method, rewritePath(url), ...args);
+  };
+  
+  // Rewrite existing and future DOM elements with src/href attributes
+  function rewriteElement(el) {
+    if (el.src && el.src.startsWith(location.origin + '/') && !el.src.includes(PREVIEW_BASE)) {
+      const path = el.src.replace(location.origin, '');
+      el.src = rewritePath(path);
+    }
+    if (el.href && typeof el.href === 'string' && el.href.startsWith(location.origin + '/') && !el.href.includes(PREVIEW_BASE)) {
+      const path = el.href.replace(location.origin, '');
+      el.href = rewritePath(path);
+    }
+  }
+  
+  // Observe DOM changes
+  const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1) {
+          rewriteElement(node);
+          node.querySelectorAll && node.querySelectorAll('[src], [href]').forEach(rewriteElement);
+        }
+      });
+    });
+  });
+  
+  // Start observing when DOM is ready
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  }
+  
+  // Store base path for components that need it
+  window.__BASENAME__ = PREVIEW_BASE;
+  window.__PREVIEW_BASE__ = PREVIEW_BASE;
+})();
+</script>`;
+          
+          // Insert right after <head>
+          const headStartIndex = text.indexOf('<head');
+          if (headStartIndex !== -1) {
+            const headTagEnd = text.indexOf('>', headStartIndex);
+            if (headTagEnd !== -1) {
+              rewritten = text.substring(0, headTagEnd + 1) + swScript + text.substring(headTagEnd + 1);
+              logger.debug(`Injected preview redirect script for ${basePath}`, { component: 'PreviewProxy' });
             }
           }
         }
