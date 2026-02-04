@@ -353,10 +353,10 @@ export class PreviewService {
       this.previewServerPackagePorts.set(serverKey, packagePorts);
       
       // 4. Register entry in PortRegistry (full state)
-      // Use 127.0.0.1 (IPv4) explicitly to avoid IPv6 resolution issues with Node.js fetch
-      // Note: getPodHost() returns eth0 IP which may not be accessible if dev-server binds to localhost only
+      // Use Pod IP for K8s multi-replica support
+      // Dev server MUST be started with --host 0.0.0.0 to be accessible from other pods
       if (structure.entry && this.portRegistry) {
-        const host = '127.0.0.1';
+        const host = this.getPodHost();
         const backendPort = packagePorts.find(p => p.type === 'backend')?.port;
         
         const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
