@@ -290,134 +290,63 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         
         let rewritten = text;
         
-        // ✅ Inject service worker to intercept absolute path requests
-        // This redirects /logos/*, /icons/*, etc. to /preview/:serverKey/...
-        // Avoids hydration mismatch while ensuring resources load correctly
+        // ✅ Inject window.__BASENAME__ for React Router (HTML only)
+        // Note: With Referer-based Ingress routing, HTML path rewriting is NOT needed
+        // The Ingress routes requests with Referer containing /preview/ to ant-preview
         if (contentType.includes('text/html')) {
-          const basePath = `${pathPrefix}/${serverKey}`;
-          
-          // Script that intercepts resource loading and rewrites paths
-          const swScript = `
-<script>
-(function() {
-  const PREVIEW_BASE = "${basePath}";
-  
-  // Helper to rewrite path
-  function rewritePath(path) {
-    if (path && typeof path === 'string' && path.startsWith('/') && !path.startsWith(PREVIEW_BASE)) {
-      return PREVIEW_BASE + path;
-    }
-    return path;
-  }
-  
-  // Override fetch to rewrite absolute paths
-  const originalFetch = window.fetch;
-  window.fetch = function(input, init) {
-    if (typeof input === 'string') {
-      input = rewritePath(input);
-    }
-    return originalFetch.call(this, input, init);
-  };
-  
-  // Override XMLHttpRequest
-  const originalXHROpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url, ...args) {
-    return originalXHROpen.call(this, method, rewritePath(url), ...args);
-  };
-  
-  // Rewrite existing and future DOM elements with src/href attributes
-  function rewriteElement(el) {
-    if (el.src && el.src.startsWith(location.origin + '/') && !el.src.includes(PREVIEW_BASE)) {
-      const path = el.src.replace(location.origin, '');
-      el.src = rewritePath(path);
-    }
-    if (el.href && typeof el.href === 'string' && el.href.startsWith(location.origin + '/') && !el.href.includes(PREVIEW_BASE)) {
-      const path = el.href.replace(location.origin, '');
-      el.href = rewritePath(path);
-    }
-  }
-  
-  // Observe DOM changes
-  const observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
-      mutation.addedNodes.forEach(function(node) {
-        if (node.nodeType === 1) {
-          rewriteElement(node);
-          node.querySelectorAll && node.querySelectorAll('[src], [href]').forEach(rewriteElement);
-        }
-      });
-    });
-  });
-  
-  // Start observing when DOM is ready
-  if (document.body) {
-    observer.observe(document.body, { childList: true, subtree: true });
-  } else {
-    document.addEventListener('DOMContentLoaded', function() {
-      observer.observe(document.body, { childList: true, subtree: true });
-    });
-  }
-  
-  // Store base path for components that need it
-  window.__BASENAME__ = PREVIEW_BASE;
-  window.__PREVIEW_BASE__ = PREVIEW_BASE;
-})();
-</script>`;
-          
-          // Insert right after <head>
-          const headStartIndex = text.indexOf('<head');
-          if (headStartIndex !== -1) {
-            const headTagEnd = text.indexOf('>', headStartIndex);
-            if (headTagEnd !== -1) {
-              rewritten = text.substring(0, headTagEnd + 1) + swScript + text.substring(headTagEnd + 1);
-              logger.debug(`Injected preview redirect script for ${basePath}`, { component: 'PreviewProxy' });
-            }
+          const basenameScript = `<script>window.__BASENAME__ = "${pathPrefix}/${serverKey}";</script>`;
+          const headEndIndex = text.indexOf('</head>');
+          if (headEndIndex !== -1) {
+            rewritten = text.substring(0, headEndIndex) + basenameScript + text.substring(headEndIndex);
+            logger.debug(`Injected window.__BASENAME__`, { component: 'PreviewProxy' });
           }
         }
         
-        // Rewrite absolute paths to include /preview/:serverKey/ prefix (idempotent)
-        const prefixNoLeadingSlash = `${pathPrefix.replace(/^\//, '')}/${serverKey}/`;
-        const escapedAlready = escapeRegExp(prefixNoLeadingSlash);
-        const replacement = `${pathPrefix}/${serverKey}/`;
-        
-        const htmlAttrRe = new RegExp(`((?:src|href|action)=["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const fromRe = new RegExp(`((?:import\\s+[^"']+\\s+)?from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const importLineRe = new RegExp(`((?:^|\\n|;)\\s*import\\s+["'])\\/(?!\\/|${escapedAlready})`, 'gm');
-        const importFnRe = new RegExp(`(import\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const exportFromRe = new RegExp(`(export\\s+\\*\\s+from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const globRe = new RegExp(`(import\\.meta\\.glob\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const newUrlRe = new RegExp(`(new\\s+URL\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        
-        rewritten = rewritten
-          .replace(htmlAttrRe, `$1${replacement}`)
-          .replace(fromRe, `$1${replacement}`)
-          .replace(importLineRe, `$1${replacement}`)
-          .replace(importFnRe, `$1${replacement}`)
-          .replace(exportFromRe, `$1${replacement}`)
-          .replace(globRe, `$1${replacement}`)
-          .replace(newUrlRe, `$1${replacement}`);
-
-        // Rewrite runtime absolute asset references
-        const assetLiteralRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})(assets\\/[^"']*)\\1`, 'g');
-        rewritten = rewritten.replace(assetLiteralRe, `$1${replacement}$2$1`);
-
-        const staticExt = '(?:png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot)';
-        const staticLiteralRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})([^"'\`]+\\.${staticExt})\\1`, 'g');
-        rewritten = rewritten.replace(staticLiteralRe, `$1${replacement}$2$1`);
-
-        const nextInternalRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})(_next\\/[^"'\`]*)\\1`, 'g');
-        rewritten = rewritten.replace(nextInternalRe, `$1${replacement}$2$1`);
-
-        const cssUrlRe = new RegExp(`url\\(\\s*(["']?)\\/(?!\\/|${escapedAlready})([^"')]+\\.${staticExt})\\1\\s*\\)`, 'g');
-        rewritten = rewritten.replace(cssUrlRe, `url($1${replacement}$2$1)`);
-
-        // Frontend-only convenience: rewrite relative API calls
-        if (!isFullstack) {
-          const apiSlashRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\/`, 'g');
-          const apiExactRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\1`, 'g');
+        // Rewrite absolute paths in JS/CSS files only (not HTML)
+        // HTML paths are handled by Referer-based Ingress routing
+        if (!contentType.includes('text/html')) {
+          const prefixNoLeadingSlash = `${pathPrefix.replace(/^\//, '')}/${serverKey}/`;
+          const escapedAlready = escapeRegExp(prefixNoLeadingSlash);
+          const replacement = `${pathPrefix}/${serverKey}/`;
+          
+          const fromRe = new RegExp(`((?:import\\s+[^"']+\\s+)?from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
+          const importLineRe = new RegExp(`((?:^|\\n|;)\\s*import\\s+["'])\\/(?!\\/|${escapedAlready})`, 'gm');
+          const importFnRe = new RegExp(`(import\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
+          const exportFromRe = new RegExp(`(export\\s+\\*\\s+from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
+          const globRe = new RegExp(`(import\\.meta\\.glob\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
+          const newUrlRe = new RegExp(`(new\\s+URL\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
+          
           rewritten = rewritten
-            .replace(apiSlashRe, `$1${replacement}api/`)
-            .replace(apiExactRe, `$1${replacement}api$1`);
+            .replace(fromRe, `$1${replacement}`)
+            .replace(importLineRe, `$1${replacement}`)
+            .replace(importFnRe, `$1${replacement}`)
+            .replace(exportFromRe, `$1${replacement}`)
+            .replace(globRe, `$1${replacement}`)
+            .replace(newUrlRe, `$1${replacement}`);
+
+          // Rewrite runtime absolute asset references in JS
+          const assetLiteralRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})(assets\\/[^"']*)\\1`, 'g');
+          rewritten = rewritten.replace(assetLiteralRe, `$1${replacement}$2$1`);
+
+          const staticExt = '(?:png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot)';
+          const staticLiteralRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})([^"'\`]+\\.${staticExt})\\1`, 'g');
+          rewritten = rewritten.replace(staticLiteralRe, `$1${replacement}$2$1`);
+
+          const nextInternalRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})(_next\\/[^"'\`]*)\\1`, 'g');
+          rewritten = rewritten.replace(nextInternalRe, `$1${replacement}$2$1`);
+
+          // CSS url() rewrite
+          const cssUrlRe = new RegExp(`url\\(\\s*(["']?)\\/(?!\\/|${escapedAlready})([^"')]+\\.${staticExt})\\1\\s*\\)`, 'g');
+          rewritten = rewritten.replace(cssUrlRe, `url($1${replacement}$2$1)`);
+
+          // Frontend-only convenience: rewrite relative API calls
+          if (!isFullstack) {
+            const apiSlashRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\/`, 'g');
+            const apiExactRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\1`, 'g');
+            rewritten = rewritten
+              .replace(apiSlashRe, `$1${replacement}api/`)
+              .replace(apiExactRe, `$1${replacement}api$1`);
+          }
         }
         
         res.setHeader('content-length', Buffer.byteLength(rewritten));
