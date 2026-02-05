@@ -59,6 +59,15 @@ export class MessageBroadcaster {
       userContext
     };
 
+    // ✅ Debug: Log broadcast (only for non-streaming events to reduce noise)
+    if (data.type !== 'content_update' || !data.content?.type?.includes('thinking')) {
+      logger.debug(`Broadcasting: ${data.type} (msgId: ${data.messageId || 'N/A'})`, { 
+        component: 'MessageBroadcaster', 
+        projectId, 
+        featureName
+      });
+    }
+
     // Fire-and-forget: publish asynchronously without blocking
     this.stateStore.publish(CHAT_BROADCAST_CHANNEL, message).catch((error) => {
       logger.error('Failed to publish chat message to Redis', { 

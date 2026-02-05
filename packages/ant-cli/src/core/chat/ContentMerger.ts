@@ -29,6 +29,17 @@ export class ContentMerger {
       });
       return -1;
     }
+    
+    // ✅ Debug: Log content addition (only for new content, not streaming updates)
+    const isNewContent = session.currentMessage.contents.length === 0 || 
+                         session.currentMessage.contents[session.currentMessage.contents.length - 1]?.type !== content.type;
+    if (isNewContent) {
+      logger.debug(`Adding content type: ${content.type}, current count: ${session.currentMessage.contents.length}, msgId: ${session.currentMessage.id}`, {
+        component: 'ContentMerger',
+        projectId,
+        featureName
+      });
+    }
 
     const existingContents = session.currentMessage.contents;
     const lastContent = existingContents.length > 0 

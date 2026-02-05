@@ -163,7 +163,12 @@ export class LLMResponseService {
    * Send LLM stream event
    */
   async sendLLMEvent(event: LLMStreamEvent): Promise<void> {
-    if (!this.enabled) return;
+    if (!this.enabled) {
+      logger.warn(`LLMResponseService disabled, skipping event type '${event.type}'`, { 
+        component: 'LLMResponseService' 
+      });
+      return;
+    }
 
     try {
       // Ensure message is active
@@ -181,6 +186,21 @@ export class LLMResponseService {
           });
           return;
         }
+      }
+      
+      // ✅ Debug: Check session state before handling
+      const session = this.sessionStore.getSession();
+      if (!session) {
+        logger.error(`No session in sessionStore before handleEvent`, { 
+          component: 'LLMResponseService' 
+        });
+        return;
+      }
+      if (!session.currentMessage) {
+        logger.error(`No currentMessage in session before handleEvent (messages: ${session.messages.length})`, { 
+          component: 'LLMResponseService' 
+        });
+        return;
       }
       
       this.llmEventHandler.handleEvent(event);
