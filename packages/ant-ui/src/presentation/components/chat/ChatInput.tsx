@@ -314,29 +314,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         throw new Error('Failed to add user message to chat');
       }
       
-      try {
-        // Start assistant message placeholder (without real jobId yet)
-        const startResponse = await authFetch(
-          `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/start-message`,
-          {
-            method: 'POST',
-            body: JSON.stringify({})  // ✅ No jobId - will get pending jobId from server
-          }
-        );
-        
-        if (startResponse.ok) {
-          const { pendingJobId: _pendingJobId } = await startResponse.json();
-          // pendingJobId is available but not currently used
-          console.log('[ChatInput] Started message with pendingJobId:', _pendingJobId);
-        }
-      } catch (error) {
-        console.error('[ChatInput] Failed to start assistant message:', error);
-        if (error instanceof Error) {
-          console.error('  Error message:', error.message);
-        }
-      }
+      // NOTE: start-message is now handled by job worker via ChatAPIClient.startMessage()
+      // No need for UI to call it separately
       
-      // ✅ 3. Execute job with chat input as override directive
+      // ✅ 2. Execute job with chat input as override directive
       const { executeCodeJob } = await import('@/infrastructure/http/cli');
       
       const jobExecution = executeCodeJob({

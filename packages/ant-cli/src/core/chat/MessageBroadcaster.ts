@@ -80,6 +80,7 @@ export class MessageBroadcaster {
 
   /**
    * Broadcast message finalized event
+   * NOTE: Uses 'message_complete' type to match UI expectations
    */
   broadcastMessageFinalized(
     projectId: string, 
@@ -88,7 +89,7 @@ export class MessageBroadcaster {
     userContext?: UserContext
   ): void {
     this.broadcast(projectId, featureName, {
-      type: 'message_finalized',
+      type: 'message_complete',  // UI expects 'message_complete', not 'message_finalized'
       messageId
     }, userContext);
   }
