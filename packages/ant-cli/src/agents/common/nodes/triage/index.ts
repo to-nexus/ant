@@ -196,25 +196,36 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     triageResult.workStatus === 'blocked';
   
   if (shouldSendToChat && triageResult.displayMessage) {
-    const chatAPI = new ChatAPIClient();
-    await chatAPI.startMessage();
-    
-    if (triageResult.needsChoice && triageResult.choiceOptions) {
-      // Send triage_choice message with choice options
-      await chatAPI.sendTriageChoice(
-        triageResult.displayMessage,
-        state._httpJobId || 'unknown',
-        triageResult.choiceOptions,
-        triageResult,  // ✅ Pass full triageResult for pending choice registration
-        userInput  // ✅ Pass original directive for redirect
-      );
-    } else {
-      // Send simple text message (not streamed - these are short system messages)
-      await chatAPI.sendLLMEvent({ type: 'text', text: triageResult.displayMessage });
+    try {
+      console.log('📤 [Triage] Sending response to Chat UI...');
+      const chatAPI = new ChatAPIClient();
+      
+      console.log('📤 [Triage] Starting message...');
+      await chatAPI.startMessage();
+      
+      if (triageResult.needsChoice && triageResult.choiceOptions) {
+        // Send triage_choice message with choice options
+        console.log('📤 [Triage] Sending triage choice...');
+        await chatAPI.sendTriageChoice(
+          triageResult.displayMessage,
+          state._httpJobId || 'unknown',
+          triageResult.choiceOptions,
+          triageResult,  // ✅ Pass full triageResult for pending choice registration
+          userInput  // ✅ Pass original directive for redirect
+        );
+      } else {
+        // Send simple text message (not streamed - these are short system messages)
+        console.log('📤 [Triage] Sending text message...');
+        await chatAPI.sendLLMEvent({ type: 'text', text: triageResult.displayMessage });
+      }
+      
+      console.log('📤 [Triage] Finalizing message...');
+      await chatAPI.finalizeMessage();
+      console.log('✅ [Triage] Response sent to Chat UI');
+    } catch (chatError) {
+      console.error('❌ [Triage] Failed to send response to Chat UI:', chatError);
+      // Don't re-throw - triage can still succeed without chat notification
     }
-    
-    await chatAPI.finalizeMessage();
-    console.log('📤 Response sent to Chat UI');
   }
   
   // ✅ Workflow instrumentation: Exit node

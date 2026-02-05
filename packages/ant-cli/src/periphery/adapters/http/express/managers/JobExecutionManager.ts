@@ -209,6 +209,12 @@ export class JobExecutionManager {
       ANT_FEATURE_NAME: params.feature || '',
       ANT_PROJECT_PATH: projectPath,
       ANT_FEATURE_PATH: featurePath,
+      // ✅ CRITICAL: Pass Redis URL for LLMResponseService (direct Redis streaming)
+      ...(process.env.REDIS_URL && { ANT_REDIS_URL: process.env.REDIS_URL }),
+      // ✅ Pass user context for Redis session key
+      ...(params.userContext?.userId && { ANT_USER_ID: params.userContext.userId }),
+      ...(params.userContext?.organizationId && { ANT_ORGANIZATION_ID: params.userContext.organizationId }),
+      ...(featurePath && { ANT_WORKSPACE_PATH: featurePath.split('/features/')[0] || '' }),
       ...(userEmail && { ANT_USER_EMAIL: userEmail }),
       ...(params.overrideDirective && { ANT_OVERRIDE_DIRECTIVE: params.overrideDirective }),
       ...(params.chatSource && { ANT_CHAT_SOURCE: 'true' })
