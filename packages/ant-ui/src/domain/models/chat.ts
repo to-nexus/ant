@@ -98,6 +98,7 @@ export interface MessageContent {
       negative: { label: string; action: string };
     };
     choiceSelected?: string;  // Selected action (after user choice)
+    resolvedLabel?: string;   // Label to display after choice is made
   };
 }
 

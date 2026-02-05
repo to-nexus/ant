@@ -7,14 +7,17 @@
 export * from './types';
 export { ChoiceService, choiceService } from './ChoiceService';
 
+// Import for internal use
+import { ChoiceService, choiceService as defaultChoiceService } from './ChoiceService';
+
 // Singleton with Redis support (lazily initialized)
-let redisChoiceService: import('./ChoiceService').ChoiceService | null = null;
+let redisChoiceService: ChoiceService | null = null;
 
 /**
  * Get ChoiceService with Redis support for job workers
  * Creates a new instance with Redis stateStore if ANT_REDIS_URL is set
  */
-export async function getChoiceService(): Promise<import('./ChoiceService').ChoiceService | null> {
+export async function getChoiceService(): Promise<ChoiceService> {
   // Return cached instance if available
   if (redisChoiceService) {
     return redisChoiceService;
@@ -23,12 +26,11 @@ export async function getChoiceService(): Promise<import('./ChoiceService').Choi
   const redisUrl = process.env.ANT_REDIS_URL;
   if (!redisUrl) {
     console.log(`[getChoiceService] ANT_REDIS_URL not set, using local choiceService`);
-    return choiceService;
+    return defaultChoiceService;
   }
   
   try {
     const { RedisStateStore } = await import('../state/RedisStateStore');
-    const { ChoiceService } = await import('./ChoiceService');
     
     const stateStore = new RedisStateStore({ url: redisUrl });
     redisChoiceService = new ChoiceService({ stateStore });
@@ -37,6 +39,6 @@ export async function getChoiceService(): Promise<import('./ChoiceService').Choi
     return redisChoiceService;
   } catch (error) {
     console.error(`[getChoiceService] Failed to create Redis ChoiceService:`, error);
-    return choiceService;
+    return defaultChoiceService;
   }
 }
