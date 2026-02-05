@@ -99,20 +99,37 @@ export class RouteConfigurator {
    */
   private setupInternalEndpoints(app: Express): void {
     // Task queue updates from child processes
-    app.post('/api/internal/task-queue', express.json(), (req: Request, res: Response) => {
+    app.post('/api/internal/task-queue', express.json(), async (req: Request, res: Response) => {
       const { taskId, currentTask, queue, completedTasks, recursionCount, recursionLimit } = req.body;
       if (!taskId) {
         return res.status(400).json({ error: 'taskId is required' });
       }
-      this.workflowBridge.updateTaskQueue(
-        taskId, 
-        currentTask, 
-        queue, 
-        completedTasks, 
-        recursionCount, 
-        recursionLimit
-      );
-      res.json({ success: true });
+      
+      try {
+        // ✅ CRITICAL: Await async operation to ensure proper error handling
+        await this.workflowBridge.updateTaskQueue(
+          taskId, 
+          currentTask, 
+          queue, 
+          completedTasks, 
+          recursionCount, 
+          recursionLimit
+        );
+        
+        logger.debug(`[TaskQueueEndpoint] Update successful: ${taskId}, current: ${currentTask?.name || 'none'}, queue: ${queue?.length || 0}`, {
+          component: 'RouteConfigurator'
+        });
+        
+        res.json({ success: true });
+      } catch (error: any) {
+        logger.error(`[TaskQueueEndpoint] Failed to update task queue: ${taskId}`, {
+          component: 'RouteConfigurator'
+        }, error);
+        
+        // Still return success to not block child process (fire-and-forget pattern)
+        // but log the error for debugging
+        res.json({ success: true, warning: 'Update queued but broadcast may have failed' });
+      }
     });
     
     // File tree updates from child processes
