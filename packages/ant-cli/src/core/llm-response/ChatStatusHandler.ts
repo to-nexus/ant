@@ -288,6 +288,10 @@ export class ChatStatusHandler {
       case 'tool_action':
         return metadata?.content || 'Processing...';
       
+      case 'triage_choice':
+        // ✅ triage_choice uses message from metadata (the LLM's explanation)
+        return metadata?.message || 'Processing...';
+      
       case 'file_create_failed':
       case 'file_edit_failed':
       case 'file_delete_failed': {

@@ -205,6 +205,7 @@ export class ChatAPIClient {
 
   /**
    * Send triage choice message with options
+   * ✅ CRITICAL: Also registers pending choice in Redis for cross-Pod/restart recovery
    */
   async sendTriageChoice(
     message: string,
@@ -218,6 +219,32 @@ export class ChatAPIClient {
     originalDirective?: string
   ): Promise<void> {
     if (!this.enabled) return;
+
+    const projectId = process.env.ANT_PROJECT_ID || '';
+    const featureName = process.env.ANT_FEATURE_NAME || '';
+
+    // ✅ CRITICAL: Register pending choice in Redis for handleChoice to find
+    // This was missing after the refactoring, causing "가이드 제공됨" instead of redirect
+    if (triageResult && projectId && featureName) {
+      try {
+        const choiceModule = await import('../../infrastructure/choice');
+        const choiceService = await choiceModule.getChoiceService();
+        
+        if (choiceService) {
+          await choiceService.registerPendingChoiceAsync(
+            jobId,
+            projectId,
+            featureName,
+            triageResult,
+            originalDirective
+          );
+          console.log(`✅ [ChatAPIClient] Registered pending choice for ${projectId}/${featureName}`);
+        }
+      } catch (error) {
+        console.error(`❌ [ChatAPIClient] Failed to register pending choice:`, error);
+        // Continue anyway - UI will show choice, but backend might not find it
+      }
+    }
 
     // Triage choice requires special handling - use showChatStatus with metadata
     await this.showChatStatus('triage_choice' as any, {

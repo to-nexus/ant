@@ -427,6 +427,53 @@ export class MessageManager {
 
   /**
    * Add cancelled message (for job interruptions)
+   * ✅ CRITICAL: Use async version to ensure existing messages are loaded before adding
+   * This prevents overwriting existing chat history with only the cancelled message
+   */
+  async addCancelledMessageAsync(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    reason: string,
+    message: string,
+    userContext?: UserContext
+  ): Promise<string> {
+    // ✅ Use async version to ensure file/Redis is fully loaded
+    const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
+    
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const cancelledMsg: ChatMessage = {
+      id: messageId,
+      role: 'assistant',
+      contents: [{
+        type: 'cancelled',
+        content: message,
+        metadata: {
+          jobId,
+          reason
+        }
+      }],
+      timestamp: new Date().toISOString(),
+      jobId
+    };
+    
+    session.messages.push(cancelledMsg);
+    
+    // Save to file
+    this.persistence.saveSession(projectId, featureName, session.messages, userContext);
+    
+    // Broadcast cancelled message
+    this.broadcaster.broadcast(projectId, featureName, {
+      type: 'cancelled_message',
+      message: cancelledMsg
+    }, session.userContext);
+    
+    return messageId;
+  }
+
+  /**
+   * Add cancelled message (sync version - deprecated, use addCancelledMessageAsync)
+   * @deprecated Use addCancelledMessageAsync instead to prevent race conditions
    */
   addCancelledMessage(
     projectId: string,

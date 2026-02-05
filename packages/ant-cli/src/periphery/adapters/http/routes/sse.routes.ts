@@ -70,8 +70,8 @@ export function createSSERoutes(deps: {
       );
       deps.sseService.sendInitialState(res, 'kanban', kanbanData);
       
-      // 2. Send initial Chat messages
-      const chatMessages = deps.chatService.getMessages(projectId, featureName, userContext);  // ✅ Pass user context
+      // 2. Send initial Chat messages (using async version to ensure file/Redis is loaded)
+      const chatMessages = await deps.chatService.getMessagesAsync(projectId, featureName, userContext);
       deps.sseService.sendInitialState(res, 'chat', { 
         type: 'initial_state', 
         messages: chatMessages,
