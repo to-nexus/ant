@@ -210,8 +210,18 @@ class SSEManager {
           this.unifiedConnection.reconnectAttempts++;
           
           if (this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error(`[SSEManager] Max reconnection attempts reached. Closing connection.`);
+            // Exponential backoff retry after max attempts
+            const retryDelay = Math.min(30000, 1000 * Math.pow(2, this.unifiedConnection.reconnectAttempts - this.maxReconnectAttempts));
+            const savedProjectId = this.unifiedConnection.projectId;
+            const savedFeatureName = this.unifiedConnection.featureName;
+            const savedUrl = new URL(this.unifiedConnection.url);
+            const savedJob = savedUrl.searchParams.get('job') as 'design' | 'code' | 'learn' || 'code';
+            
             this.disconnect();
+            
+            setTimeout(() => {
+              this.connect(savedProjectId, savedFeatureName, savedJob);
+            }, retryDelay);
           }
         }
       };

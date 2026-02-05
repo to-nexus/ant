@@ -157,8 +157,8 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
     _httpJobId: params._httpJobId,
   });
   
-  // Run graph with recursion limit
-  const recursionLimit = parseInt(process.env.ASK_RECURSION_LIMIT || '10', 10);
+  // Run graph with recursion limit (default: 100 for Ask job, can be overridden via ASK_RECURSION_LIMIT)
+  const recursionLimit = parseInt(process.env.ASK_RECURSION_LIMIT || '100', 10);
   
   if (DEBUG) {
     console.log(`🔄 Recursion limit: ${recursionLimit}`);
@@ -183,6 +183,13 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
     if (chatAPI.hasActiveMessage()) {
       console.log('🧹 [Ask] Cleaning up active message after error...');
       try {
+        // ✅ Send user-friendly message before finalizing (especially for recursion limit)
+        if (graphError.message.includes('Recursion limit')) {
+          const limitMessage = params.language === 'ko'
+            ? '\n\n⚠️ 질문에 답하기 위해 더 많은 정보를 확인하던 중 처리 한도에 도달했습니다. 더 구체적인 질문을 해주시거나, 필요한 정보를 직접 알려주세요.'
+            : '\n\n⚠️ Reached processing limit while gathering information to answer your question. Please try asking a more specific question or provide the needed information directly.';
+          await chatAPI.sendLLMEvent({ type: 'text', text: limitMessage });
+        }
         await chatAPI.finalizeMessage(true); // cancelled = true
       } catch (cleanupError) {
         console.warn('⚠️ [Ask] Failed to cleanup message:', cleanupError);

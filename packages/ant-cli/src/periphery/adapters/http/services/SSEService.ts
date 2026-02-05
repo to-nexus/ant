@@ -64,10 +64,8 @@ export class SSEService {
       // 1. Subscribe to chat broadcast (from MessageBroadcaster)
       await stateStore.subscribe(CHAT_BROADCAST_CHANNEL, (message: ChatBroadcastMessage) => {
         const { projectId, featureName, data, userContext } = message;
-        console.log(`📨 [SSEService] Received chat broadcast: ${projectId}/${featureName}, type=${data?.type || 'unknown'}`);
         this.broadcastLocal(projectId, featureName, 'chat', data, userContext);
       });
-      console.log('✅ [SSEService] Subscribed to chat:broadcast channel');
       logger.info('Subscribed to chat:broadcast channel', { component: 'SSEService' });
       
       // 2. Subscribe to general SSE broadcast (kanban, fileTree, etc.)
@@ -117,7 +115,6 @@ export class SSEService {
     }
     
     this.clients.get(key)!.add(res);
-    console.log(`🔌 [SSEService] Client registered: ${key} (total: ${this.clients.get(key)!.size})`);
     logger.debug(`Client registered: ${key} (total: ${this.clients.get(key)!.size})`, { component: 'SSEService', projectId, featureName });
     
     // Handle client disconnect
@@ -222,11 +219,9 @@ export class SSEService {
     }
     
     if (!clients || clients.size === 0) {
-      const allKeys = Array.from(this.clients.keys());
-      console.log(`⚠️ [SSEService] No SSE clients for ${projectId}/${featureName} (key: ${key}). Connected clients: ${allKeys.length > 0 ? allKeys.join(', ') : '(none)'}`);
-      logger.debug(`[SSE Broadcast] No clients found for ${projectId}/${featureName} (key: ${key}, allKeys: ${allKeys.join(', ')})`, { 
-        component: 'SSEService'
-      });
+      // NOTE: In multi-pod environment, this is normal - each pod only has its own local clients
+      // The pod that has the actual SSE client will deliver the message
+      // Removed noisy console.log that was flooding logs
       return;
     }
     
