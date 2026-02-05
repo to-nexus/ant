@@ -251,8 +251,8 @@ export function createChatRoutes(deps: {
     }
 
     // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    const userContext = extractUserContext(req);
     if (jobId) {
-      const userContext = extractUserContext(req);
       const hasActive = await deps.chatService.ensureActiveMessageAsync(
         projectId, featureName, jobId, userContext
       );
@@ -261,7 +261,11 @@ export function createChatRoutes(deps: {
       }
     }
 
-    deps.chatService.addFileOperation(projectId, featureName, operation, filePath, content, diffBefore, diffAfter, phase, error);
+    // ✅ CRITICAL: Async for Redis-backed activeFileOperations consistency
+    await deps.chatService.addFileOperation(
+      projectId, featureName, operation, filePath, content, 
+      diffBefore, diffAfter, phase, error, jobId, userContext
+    );
     res.json({ success: true });
   });
 

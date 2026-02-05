@@ -186,8 +186,9 @@ export class ChatService {
 
   /**
    * Add file operation notification
+   * Uses Redis for cross-Pod consistency of activeFileOperations
    */
-  addFileOperation(
+  async addFileOperation(
     projectId: string,
     featureName: string,
     operation: 'edit' | 'create' | 'delete',
@@ -196,9 +197,11 @@ export class ChatService {
     diffBefore?: string,
     diffAfter?: string,
     phase?: FileOperationPhase,
-    error?: string
-  ): void {
-    this.fileOperationHandler.addFileOperation(
+    error?: string,
+    jobId?: string,
+    userContext?: UserContext
+  ): Promise<void> {
+    await this.fileOperationHandler.addFileOperation(
       projectId,
       featureName,
       operation,
@@ -207,7 +210,9 @@ export class ChatService {
       diffBefore,
       diffAfter,
       phase,
-      error
+      error,
+      jobId,
+      userContext
     );
   }
 

@@ -166,6 +166,9 @@ export class MessageManager {
   /**
    * Add content to current streaming message
    * Returns the actual content index used (important for MERGE cases)
+   * 
+   * IMPORTANT: In multi-Pod environments, call ensureActiveMessageAsync() first
+   * to ensure session is restored from Redis before calling this sync method.
    */
   addContentToCurrentMessage(
     projectId: string, 
@@ -174,7 +177,23 @@ export class MessageManager {
   ): number {
     const session = this.sessionManager.getSession(projectId, featureName);
     if (!session) {
-      logger.warn('No session found', { component: 'MessageManager', projectId, featureName });
+      // ✅ CRITICAL: This should NOT happen if ensureActiveMessageAsync() was called first
+      // If this occurs in multi-Pod, it means session was not properly restored from Redis
+      logger.error(`No session found for content type '${content.type}' - ensureActiveMessageAsync() may not have been called`, { 
+        component: 'MessageManager', 
+        projectId, 
+        featureName
+      });
+      return -1;
+    }
+
+    if (!session.currentMessage) {
+      // ✅ CRITICAL: No active message - this can happen if message was finalized
+      logger.error(`No currentMessage for content type '${content.type}' - message may have been finalized`, { 
+        component: 'MessageManager', 
+        projectId, 
+        featureName
+      });
       return -1;
     }
 
@@ -195,6 +214,9 @@ export class MessageManager {
   /**
    * Ensure session has an active message (for Cloud mode cross-Pod recovery)
    * Call this before addContentToCurrentMessage if message might be on different Pod
+   * 
+   * CRITICAL: Uses async version to restore FULL session from Redis,
+   * including activeFileOperations, thinkingStartTime, etc.
    */
   async ensureActiveMessageAsync(
     projectId: string, 
@@ -202,21 +224,24 @@ export class MessageManager {
     jobId: string,
     userContext?: UserContext
   ): Promise<boolean> {
-    // First check local session
-    let session = this.sessionManager.getSession(projectId, featureName);
+    // ✅ CRITICAL: Use async version to restore FULL session from Redis
+    // This ensures activeFileOperations, thinkingStartTime, etc. are restored
+    // Without this, file cards fail in multi-Pod environments
+    const session = await this.sessionManager.getOrCreateSessionAsync(
+      projectId, featureName, jobId, userContext
+    );
     
-    if (session?.currentMessage) {
+    if (session.currentMessage) {
       return true;
     }
     
-    // Try to recover from Redis (cross-Pod)
+    // Try to recover currentMessage from Redis if not in session
     const redisMessage = await this.sessionManager.getCurrentMessageAsync(
       projectId, featureName, userContext
     );
     
     if (redisMessage) {
-      // Restore to local session
-      session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId, userContext);
+      // Restore currentMessage to session
       session.currentMessage = redisMessage;
       return true;
     }

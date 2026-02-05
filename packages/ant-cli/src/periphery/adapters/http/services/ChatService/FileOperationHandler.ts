@@ -2,11 +2,15 @@
  * FileOperationHandler - Handles file operation notifications
  * 
  * Manages file create/edit/delete operations and streaming content updates
+ * 
+ * CLOUD MODE: Uses async session retrieval for Redis-backed consistency.
+ * All activeFileOperations changes are persisted to Redis for cross-Pod access.
  */
 
 import type { MessageContent, FileOperationPhase, ChatSession } from './types';
 import type { SessionManager } from './SessionManager';
 import type { MessageBroadcaster } from './MessageBroadcaster';
+import type { UserContext } from '../../../../../core/types/user';
 import { logger } from '../../../../../utils/logger';
 
 export class FileOperationHandler {
@@ -17,8 +21,11 @@ export class FileOperationHandler {
 
   /**
    * Add file operation notification
+   * 
+   * CLOUD MODE: Retrieves session from Redis for cross-Pod consistency.
+   * All activeFileOperations changes are persisted to Redis.
    */
-  addFileOperation(
+  async addFileOperation(
     projectId: string,
     featureName: string,
     operation: 'edit' | 'create' | 'delete',
@@ -27,9 +34,15 @@ export class FileOperationHandler {
     diffBefore?: string,
     diffAfter?: string,
     phase?: FileOperationPhase,
-    error?: string
-  ): void {
-    const session = this.sessionManager.getSession(projectId, featureName);
+    error?: string,
+    jobId?: string,
+    userContext?: UserContext
+  ): Promise<void> {
+    // ✅ CRITICAL: Use async version to ensure session is loaded from Redis
+    // In multi-Pod environments, sync getSession() may return stale or missing data
+    const session = jobId 
+      ? await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext)
+      : this.sessionManager.getSession(projectId, featureName);
     
     // Validate session and current message
     if (!session) {
@@ -48,7 +61,7 @@ export class FileOperationHandler {
     }
     
     // Try to update existing in-progress content
-    const updated = this.tryUpdateExisting(
+    const updated = await this.tryUpdateExisting(
       projectId, 
       featureName, 
       session, 
@@ -66,7 +79,7 @@ export class FileOperationHandler {
     }
     
     // No existing content found - add new content
-    this.addNewFileOperation(
+    await this.addNewFileOperation(
       projectId, 
       featureName, 
       session, 
@@ -82,8 +95,9 @@ export class FileOperationHandler {
 
   /**
    * Try to update existing file operation content
+   * Persists activeFileOperations changes to Redis.
    */
-  private tryUpdateExisting(
+  private async tryUpdateExisting(
     projectId: string,
     featureName: string,
     session: ChatSession,
@@ -94,7 +108,7 @@ export class FileOperationHandler {
     diffAfter?: string,
     phase?: FileOperationPhase,
     error?: string
-  ): boolean {
+  ): Promise<boolean> {
     // Include BOTH in-progress AND completed types to avoid duplicates
     const allFileTypes = {
       'create': ['file_creating', 'file_writing', 'file_create'],
@@ -168,14 +182,30 @@ export class FileOperationHandler {
     
     // Track active file operations for real-time streaming
     // ✅ CRITICAL: Track ALL non-complete phases to ensure subsequent updates can find the content
+    let activeFileOpsChanged = false;
     const trackablePhases = ['creating', 'writing', 'editing', 'updating', 'deleting'];
     if (trackablePhases.includes(phase!)) {
       if (!session.activeFileOperations) {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex: existingIndex });
+      activeFileOpsChanged = true;
     } else if (phase === 'complete' || phase === 'failed') {
-      session.activeFileOperations?.delete(filePath);
+      if (session.activeFileOperations?.has(filePath)) {
+        session.activeFileOperations.delete(filePath);
+        activeFileOpsChanged = true;
+      }
+    }
+    
+    // ✅ CRITICAL: Save activeFileOperations to Redis for cross-Pod consistency
+    if (activeFileOpsChanged) {
+      await this.sessionManager.saveSessionAsync(
+        projectId, featureName, session, session.userContext
+      ).catch(err => {
+        logger.warn('Failed to save activeFileOperations to Redis', { 
+          component: 'FileOperationHandler' 
+        }, err);
+      });
     }
     
     return true;
@@ -183,8 +213,9 @@ export class FileOperationHandler {
 
   /**
    * Add new file operation content
+   * Persists activeFileOperations changes to Redis.
    */
-  private addNewFileOperation(
+  private async addNewFileOperation(
     projectId: string,
     featureName: string,
     session: ChatSession,
@@ -195,7 +226,7 @@ export class FileOperationHandler {
     diffAfter?: string,
     phase?: FileOperationPhase,
     error?: string
-  ): void {
+  ): Promise<void> {
     const type = this.determineContentType(operation, phase!);
 
     const messageContent: MessageContent = {
@@ -222,15 +253,26 @@ export class FileOperationHandler {
 
     // Track active file operations for real-time streaming
     // ✅ CRITICAL: Track ALL non-complete phases to prevent duplicate content_add
-    // Previously only tracked 'writing'/'updating', missing 'creating'/'editing'
-    // This caused duplicate file cards when phase='writing' couldn't find phase='creating' content
+    let activeFileOpsChanged = false;
     const trackablePhases = ['creating', 'writing', 'editing', 'updating', 'deleting'];
     if (trackablePhases.includes(phase!) && contentIndex !== -1) {
       if (!session.activeFileOperations) {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex });
+      activeFileOpsChanged = true;
       logger.debug(`Tracked NEW file operation @${contentIndex} (phase=${phase})`, { component: 'FileOperationHandler', projectId, featureName }, { filePath });
+    }
+    
+    // ✅ CRITICAL: Save activeFileOperations to Redis for cross-Pod consistency
+    if (activeFileOpsChanged) {
+      await this.sessionManager.saveSessionAsync(
+        projectId, featureName, session, session.userContext
+      ).catch(err => {
+        logger.warn('Failed to save activeFileOperations to Redis', { 
+          component: 'FileOperationHandler' 
+        }, err);
+      });
     }
   }
 
@@ -273,13 +315,3 @@ export class FileOperationHandler {
     return typeMap[operation];
   }
 }
-
-
-
-
-
-
-
-
-
-
