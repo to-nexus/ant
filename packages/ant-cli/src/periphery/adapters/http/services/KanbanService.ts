@@ -21,11 +21,8 @@ export class KanbanService {
   // StateStore for Redis-based state (Cloud mode)
   private stateStore?: StateStorePort;
   
-  // Last-known-good session cache to survive partial writes
+  // Last-known-good session cache to survive partial writes (file read fallback)
   private lastGoodSessionByPath: Map<string, any> = new Map();
-  
-  // Task to project/feature mapping (local reference only)
-  private taskToProject: Map<string, { projectId: string; featureName: string }> = new Map();
   
   /**
    * Calculate total elapsed time for a job
@@ -119,12 +116,6 @@ export class KanbanService {
       await this.stateStore.deleteTaskQueue(jobId);
       console.log(`[KanbanService] 🗑️ Cleared Redis taskQueue for job: ${jobId}`);
     }
-    
-    // Clear local mapping
-    if (this.taskToProject.has(jobId)) {
-      this.taskToProject.delete(jobId);
-      console.log(`[KanbanService] 🗑️ Cleared taskToProject mapping for job: ${jobId}`);
-    }
   }
   
   /**
@@ -153,17 +144,9 @@ export class KanbanService {
   }
   
   /**
-   * Register task to project/feature mapping
-   */
-  registerTask(taskId: string, projectId: string, featureName: string): void {
-    this.taskToProject.set(taskId, { projectId, featureName });
-  }
-  
-  /**
-   * Unregister task mapping
+   * Unregister task and clean up Redis state
    */
   async unregisterTask(taskId: string): Promise<void> {
-    this.taskToProject.delete(taskId);
     if (this.stateStore) {
       await this.stateStore.deleteTaskQueue(taskId);
     }

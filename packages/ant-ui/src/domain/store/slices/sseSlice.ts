@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import type { ChatMessage } from '@/domain/models/chat';
+import type { ChatMessage, MessageContent } from '@/domain/models/chat';
 import type { KanbanData } from '@/infrastructure/http/api';
 import { removeFromStorage, STORAGE_KEYS } from '../storage';
 
@@ -236,16 +236,41 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           break;
           
         case 'user_message':
-          get().addChatMessage(event.message);
+          // ✅ Cloud multi-pod: Check for duplicate message to prevent double-add
+          if (!get().chatMessages.some((m: ChatMessage) => m.id === event.message.id)) {
+            get().addChatMessage(event.message);
+          } else {
+            console.log('[Store] 💬 Ignoring duplicate user_message event:', event.message.id);
+          }
           break;
           
         case 'message_start':
-          get().addChatMessage(event.message);
+          // ✅ Cloud multi-pod: Check for duplicate message to prevent double-add
+          if (!get().chatMessages.some((m: ChatMessage) => m.id === event.message.id)) {
+            get().addChatMessage(event.message);
+          } else {
+            console.log('[Store] 💬 Ignoring duplicate message_start event:', event.message.id);
+          }
           break;
           
         case 'content_add':
+          // ✅ Cloud multi-pod: Check for duplicate content to prevent double-add
+          // This can happen when SSE reconnects or handlers are re-registered
+          const existingMessage = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
+          if (existingMessage) {
+            const isDuplicate = existingMessage.contents.some((c: MessageContent) => 
+              c.type === event.content.type && 
+              c.content === event.content.content &&
+              c.metadata?.filePath === event.content.metadata?.filePath &&
+              c.metadata?.timestamp === event.content.metadata?.timestamp
+            );
+            if (isDuplicate) {
+              console.log('[Store] 💬 Ignoring duplicate content_add event');
+              break;
+            }
+          }
           get().updateChatMessage(event.messageId, {
-            contents: [...(get().chatMessages.find((m: ChatMessage) => m.id === event.messageId)?.contents || []), event.content]
+            contents: [...(existingMessage?.contents || []), event.content]
           });
           break;
           

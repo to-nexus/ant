@@ -2,6 +2,10 @@
  * LLMEventHandler - Handles LLM stream events
  * 
  * Processes LLM stream events and converts them to chat content
+ * 
+ * CLOUD MODE: Uses session from local cache (loaded by ensureActiveMessageAsync 
+ * before this handler is called). All session modifications that affect 
+ * cross-Pod state (e.g., activeFileOperations) are persisted to Redis.
  */
 
 import type { LLMStreamEvent } from '../../../../../core/ports/llm';
@@ -20,6 +24,9 @@ export class LLMEventHandler {
 
   /**
    * Process LLM stream event and convert to chat content
+   * 
+   * IMPORTANT: In Cloud mode, ensureActiveMessageAsync() MUST be called before
+   * this method to ensure session is loaded from Redis into local cache.
    */
   handleLLMStreamEvent(
     projectId: string,
@@ -27,6 +34,16 @@ export class LLMEventHandler {
     event: LLMStreamEvent
   ): void {
     const session = this.sessionManager.getSession(projectId, featureName);
+    
+    if (!session) {
+      // This should NOT happen if ensureActiveMessageAsync() was called
+      logger.error(`No session found for LLM event type '${event.type}' - ensureActiveMessageAsync() may not have been called`, { 
+        component: 'LLMEventHandler', 
+        projectId, 
+        featureName
+      });
+      return;
+    }
     
     switch (event.type) {
       case 'thinking':
@@ -212,6 +229,16 @@ export class LLMEventHandler {
         session.activeFileOperations = new Map();
       }
       session.activeFileOperations.set(filePath, { filePath, contentIndex: actualIndex });
+      
+      // ✅ CRITICAL: Save activeFileOperations to Redis for cross-Pod consistency
+      // Without this, file card updates fail in multi-Pod environments
+      this.sessionManager.saveSessionAsync(
+        projectId, featureName, session, session.userContext
+      ).catch(err => {
+        logger.warn('Failed to save activeFileOperations to Redis', { 
+          component: 'LLMEventHandler' 
+        }, err);
+      });
     }
   }
 
