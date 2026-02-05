@@ -198,10 +198,8 @@ export class ChatAPIClient {
       }
     }
 
-    // Only log non-thinking events to reduce noise (thinking events are very frequent)
-    if (event.type !== 'thinking') {
-      console.log(`📤 [ChatAPIClient] sendLLMEvent | type=${event.type} | messageId=${this.currentMessageId} | jobId=${this.jobId}`);
-    }
+    // Minimal logging - only log first event to confirm streaming started
+    // (text events are very frequent, logging each one is too noisy)
     await service.sendLLMEvent(event);
   }
 
