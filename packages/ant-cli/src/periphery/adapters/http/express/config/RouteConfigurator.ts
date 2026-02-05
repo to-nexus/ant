@@ -172,17 +172,18 @@ export class RouteConfigurator {
    * Setup unified API routes (health, agents, projects, features, files, chat, github, figma)
    */
   private setupApiRoutes(app: Express): void {
-    // Cloud mode: Create ChoiceService with Redis StateStore for cross-Pod consistency
-    // Local mode: Use default in-memory ChoiceService
+    // ✅ CRITICAL: Always use Redis-backed ChoiceService if stateStore is available
+    // This ensures Job Worker (which uses Redis) and API Server share the same pending choices
+    // Previously this only worked in cloud mode, causing "가이드 제공됨" in local mode with Redis
     let choiceService = defaultChoiceService;
     
-    if (this.config.mode === 'cloud') {
-      const factory = getInfrastructureFactory();
-      const stateStore = factory.getStateStore();
-      if (stateStore) {
-        choiceService = new ChoiceService({ stateStore });
-        logger.info(`[RouteConfigurator] Created ChoiceService with Redis support`, { component: 'RouteConfigurator' });
-      }
+    const factory = getInfrastructureFactory();
+    const stateStore = factory.getStateStore();
+    if (stateStore) {
+      choiceService = new ChoiceService({ stateStore });
+      logger.info(`[RouteConfigurator] Created ChoiceService with Redis support (mode: ${this.config.mode})`, { component: 'RouteConfigurator' });
+    } else {
+      logger.info(`[RouteConfigurator] Using in-memory ChoiceService (no Redis available)`, { component: 'RouteConfigurator' });
     }
     
     const apiRoutes = createApiRoutes({

@@ -73,8 +73,9 @@ export class JobCleanupManager {
     await this.deps.workflowStateService.endJob(jobId);
     
     // Finalize any active chat message
+    // ✅ CRITICAL: Must await to ensure message is finalized before session file is written
     if (mapping && this.deps.chatService) {
-      this.deps.chatService.finalizeCurrentMessage(
+      await this.deps.chatService.finalizeCurrentMessage(
         mapping.projectId, 
         mapping.featureName || 'skeleton', 
         true  // cancelled: true
@@ -181,8 +182,9 @@ export class JobCleanupManager {
         }
         
         // Add cancelled message to chat if interruption occurred
+        // ✅ CRITICAL: Use async version to ensure existing messages are loaded first
         if (interruptionReason && mapping.projectId && mapping.featureName) {
-          this.deps.chatService.addCancelledMessage(
+          await this.deps.chatService.addCancelledMessageAsync(
             mapping.projectId,
             mapping.featureName,
             jobId,

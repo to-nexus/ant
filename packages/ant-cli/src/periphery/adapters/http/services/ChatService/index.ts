@@ -267,7 +267,30 @@ export class ChatService {
   }
 
   /**
-   * Add cancelled message
+   * Add cancelled message (async version - recommended)
+   * ✅ Use this to prevent race conditions when session is not in cache
+   */
+  async addCancelledMessageAsync(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    reason: string,
+    message: string,
+    userContext?: UserContext
+  ): Promise<string> {
+    return this.messageManager.addCancelledMessageAsync(
+      projectId,
+      featureName,
+      jobId,
+      reason,
+      message,
+      userContext
+    );
+  }
+
+  /**
+   * Add cancelled message (sync version - deprecated)
+   * @deprecated Use addCancelledMessageAsync to prevent race conditions
    */
   addCancelledMessage(
     projectId: string,
@@ -293,6 +316,16 @@ export class ChatService {
   getMessages(projectId: string, featureName: string, userContext?: UserContext): ChatMessage[] {
     // Use getOrCreateSession to ensure file is loaded
     this.sessionManager.getOrCreateSession(projectId, featureName, undefined, userContext);
+    return this.sessionManager.getMessages(projectId, featureName);
+  }
+
+  /**
+   * Get all messages for a session (async version - ensures file is loaded)
+   * Use this when you need guaranteed message loading from file/Redis
+   */
+  async getMessagesAsync(projectId: string, featureName: string, userContext?: UserContext): Promise<ChatMessage[]> {
+    // Use async version to ensure file/Redis is fully loaded before returning
+    await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, undefined, userContext);
     return this.sessionManager.getMessages(projectId, featureName);
   }
 

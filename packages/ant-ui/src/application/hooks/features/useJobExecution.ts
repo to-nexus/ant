@@ -233,22 +233,8 @@ export function useJobExecution() {
       setRunning(false);
       setCurrentJob(null);
       
-      // ✅ Finalize chat message if exists (mark as complete)
-      if (selectedProject && selectedFeature) {
-        try {
-          console.log('[useJobExecution] Finalizing chat message...');
-          await fetch(
-            `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/finalize-message`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-            }
-          );
-          console.log('[useJobExecution] Chat message finalized');
-        } catch (error) {
-          console.error('[useJobExecution] Failed to finalize chat message:', error);
-        }
-      }
+      // NOTE: Chat message finalization is now handled server-side by JobCleanupManager
+      // The removed /chat/finalize-message endpoint was part of the LLMResponseService refactoring
       
       // Reload session after server confirms stop
       if (selectedProject && selectedFeature) {
