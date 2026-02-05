@@ -35,19 +35,27 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
   
   serviceInitialized = true;
   
+  console.log(`🔍 [ChatAPIClient] getLLMResponseService() called - initializing...`);
+  
   const redisUrl = process.env.ANT_REDIS_URL;
   if (!redisUrl) {
+    console.log(`⚠️ [ChatAPIClient] ANT_REDIS_URL not set, will be disabled`);
     logger.warn(`ANT_REDIS_URL not set, ChatAPIClient will be disabled`, { 
       component: 'ChatAPIClient' 
     });
     return null;
   }
   
+  console.log(`✅ [ChatAPIClient] ANT_REDIS_URL is set`);
+  
   const projectId = process.env.ANT_PROJECT_ID || '';
   const featureName = process.env.ANT_FEATURE_NAME || '';
   const jobId = process.env.ANT_JOB_ID || '';
   
+  console.log(`🔍 [ChatAPIClient] Env vars: projectId=${projectId}, featureName=${featureName}, jobId=${jobId}`);
+  
   if (!projectId || !featureName || !jobId) {
+    console.log(`⚠️ [ChatAPIClient] Missing required env vars - will be disabled`);
     logger.warn(`Missing required env vars for ChatAPIClient: projectId=${!!projectId}, featureName=${!!featureName}, jobId=${!!jobId}`, { 
       component: 'ChatAPIClient'
     });
@@ -55,12 +63,20 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
   }
   
   try {
+    console.log(`🔍 [ChatAPIClient] Importing RedisStateStore...`);
     // Dynamic import to avoid circular dependencies and bundle size in non-job contexts
     const { RedisStateStore } = await import('../../infrastructure/state/RedisStateStore');
+    
+    console.log(`🔍 [ChatAPIClient] Importing createLLMResponseServiceWithEnv...`);
     const { createLLMResponseServiceWithEnv } = await import('../llm-response');
     
+    console.log(`🔍 [ChatAPIClient] Creating RedisStateStore with url...`);
     const stateStore = new RedisStateStore({ url: redisUrl });
     
+    const workspacePath = process.env.ANT_FEATURE_PATH || process.env.ANT_WORKSPACE_PATH;
+    console.log(`🔍 [ChatAPIClient] workspacePath=${workspacePath}`);
+    
+    console.log(`🔍 [ChatAPIClient] Creating LLMResponseService...`);
     llmResponseService = createLLMResponseServiceWithEnv(stateStore, {
       projectId,
       featureName,
@@ -68,8 +84,11 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
       userEmail: process.env.ANT_USER_EMAIL,
       userId: process.env.ANT_USER_ID,
       organizationId: process.env.ANT_ORGANIZATION_ID || process.env.ANT_ORG_ID,
-      workspacePath: process.env.ANT_WORKSPACE_PATH
+      // Use ANT_FEATURE_PATH for chat.json (feature-level), fallback to ANT_WORKSPACE_PATH (base)
+      workspacePath
     });
+    
+    console.log(`✅ [ChatAPIClient] LLMResponseService created successfully`);
     
     logger.info(`ChatAPIClient initialized with direct Redis: ${projectId}/${featureName} (Job: ${jobId})`, {
       component: 'ChatAPIClient'
@@ -77,6 +96,7 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
     
     return llmResponseService;
   } catch (error) {
+    console.error(`❌ [ChatAPIClient] Failed to initialize LLMResponseService:`, error);
     logger.error(`Failed to initialize LLMResponseService`, { component: 'ChatAPIClient' }, error);
     return null;
   }
