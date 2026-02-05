@@ -251,6 +251,47 @@ export class MessageManager {
   }
 
   /**
+   * Reconstruct message from client-provided messageId
+   * Used in multi-Pod environments when Redis replication lag causes recovery failure
+   * Creates a minimal message structure that can receive streaming content
+   */
+  async reconstructMessageFromId(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    messageId: string,
+    userContext?: UserContext
+  ): Promise<void> {
+    const session = await this.sessionManager.getOrCreateSessionAsync(
+      projectId, featureName, jobId, userContext
+    );
+    
+    // Create a minimal message structure using the provided ID
+    // This ensures content is added to the SAME message that client started
+    const reconstructedMessage: ChatMessage = {
+      id: messageId,  // ✅ Use client's message ID
+      role: 'assistant',
+      contents: [],  // Will be populated by subsequent content adds
+      timestamp: new Date().toISOString(),
+      jobId,
+      isStreaming: true
+    };
+    
+    session.currentMessage = reconstructedMessage;
+    
+    // Save to Redis for subsequent requests
+    await this.sessionManager.setCurrentMessageAsync(
+      projectId, featureName, reconstructedMessage, userContext
+    );
+    
+    logger.debug(`Reconstructed message ${messageId} from client ID`, {
+      component: 'MessageManager',
+      projectId,
+      featureName
+    });
+  }
+
+  /**
    * Finalize current streaming message
    * Sync version - tries local session first
    */

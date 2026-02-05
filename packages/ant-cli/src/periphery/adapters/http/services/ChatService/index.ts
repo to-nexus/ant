@@ -151,6 +151,20 @@ export class ChatService {
   }
 
   /**
+   * Reconstruct message from client-provided messageId
+   * Used in multi-Pod environments when Redis replication lag causes recovery failure
+   */
+  async reconstructMessageFromId(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    messageId: string,
+    userContext?: UserContext
+  ): Promise<void> {
+    return this.messageManager.reconstructMessageFromId(projectId, featureName, jobId, messageId, userContext);
+  }
+
+  /**
    * Add content to current streaming message
    */
   addContentToCurrentMessage(
