@@ -290,13 +290,82 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         
         let rewritten = text;
         
-        // ✅ Inject window.__BASENAME__ for React Router (HTML only)
+        // ✅ Inject path rewrite script for client-side requests (HTML only)
+        // This handles React hydration overwriting paths back to original values
         if (contentType.includes('text/html')) {
-          const basenameScript = `<script>window.__BASENAME__ = "${pathPrefix}/${serverKey}";</script>`;
-          const headEndIndex = text.indexOf('</head>');
-          if (headEndIndex !== -1) {
-            rewritten = text.substring(0, headEndIndex) + basenameScript + text.substring(headEndIndex);
-            logger.debug(`Injected window.__BASENAME__`, { component: 'PreviewProxy' });
+          const basePath = `${pathPrefix}/${serverKey}`;
+          const clientScript = `<script>
+(function() {
+  var BASE = "${basePath}";
+  
+  // Rewrite path if needed
+  function rewrite(path) {
+    if (typeof path !== 'string') return path;
+    if (path.startsWith('/') && !path.startsWith('//') && !path.startsWith(BASE)) {
+      return BASE + path;
+    }
+    return path;
+  }
+  
+  // Override fetch
+  var origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    if (typeof input === 'string') input = rewrite(input);
+    else if (input && input.url) input = new Request(rewrite(input.url), input);
+    return origFetch.call(this, input, init);
+  };
+  
+  // Override XMLHttpRequest
+  var origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    arguments[1] = rewrite(url);
+    return origOpen.apply(this, arguments);
+  };
+  
+  // Rewrite element src/href
+  function fixEl(el) {
+    if (!el || el.nodeType !== 1) return;
+    ['src', 'href'].forEach(function(attr) {
+      var val = el.getAttribute(attr);
+      if (val && val.startsWith('/') && !val.startsWith('//') && !val.startsWith(BASE)) {
+        el.setAttribute(attr, BASE + val);
+      }
+    });
+  }
+  
+  // Observe DOM changes (React hydration)
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      m.addedNodes.forEach(fixEl);
+      if (m.type === 'attributes' && (m.attributeName === 'src' || m.attributeName === 'href')) {
+        fixEl(m.target);
+      }
+    });
+  });
+  
+  function startObserving() {
+    observer.observe(document.documentElement, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'href']
+    });
+    // Fix existing elements
+    document.querySelectorAll('[src], [href]').forEach(fixEl);
+  }
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startObserving);
+  } else {
+    startObserving();
+  }
+  
+  window.__BASENAME__ = BASE;
+})();
+</script>`;
+          
+          const headMatch = rewritten.match(/<head[^>]*>/i);
+          if (headMatch) {
+            const insertPos = headMatch.index! + headMatch[0].length;
+            rewritten = rewritten.substring(0, insertPos) + clientScript + rewritten.substring(insertPos);
+            logger.debug(`Injected client-side path rewrite script`, { component: 'PreviewProxy' });
           }
         }
         
