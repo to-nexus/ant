@@ -74,7 +74,9 @@ export class ContentMerger {
     this.handleThinkingBlockTransition(projectId, featureName, session, content);
 
     // Case 7: Streaming - same type content appending
-    if (this.canAppendContent(lastContent, content, isNewThinkingBlock)) {
+    const canAppend = this.canAppendContent(lastContent, content, isNewThinkingBlock);
+    
+    if (canAppend) {
       return this.appendContent(projectId, featureName, session, lastContentIndex, content);
     }
 

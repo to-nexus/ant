@@ -199,8 +199,10 @@ export class MessageManager {
 
     const result = this.contentMerger.addContent(projectId, featureName, session, content);
     
-    // Periodically save currentMessage to Redis for durability (every 10 contents)
-    if (session.currentMessage && session.currentMessage.contents.length % 10 === 0) {
+    // CRITICAL: Save currentMessage to Redis EVERY time for cross-Pod consistency
+    // In multi-Pod environments, any request can hit any Pod, and the next request
+    // needs to see the latest contents to properly append (not add new)
+    if (session.currentMessage) {
       this.sessionManager.setCurrentMessageAsync(
         projectId, featureName, session.currentMessage, session.userContext
       ).catch(err => {

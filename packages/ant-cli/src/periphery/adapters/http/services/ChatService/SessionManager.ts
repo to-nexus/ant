@@ -147,13 +147,37 @@ export class SessionManager {
     const redisKey = this.getSessionKey(projectId, featureName, userContext);
     const simpleKey = this.getSimpleKey(projectId, featureName);
 
-    // 1. Try Redis first (source of truth in Cloud mode)
+    // 1. Check local cache FIRST for in-progress streaming state preservation
+    // This is critical because currentMessage with streaming contents is updated locally
+    // and saved to Redis asynchronously. Local cache has the most up-to-date state.
+    if (this.isCacheValid(simpleKey)) {
+      const cached = this.localCache.get(simpleKey)!;
+      if (jobId && cached.session.jobId !== jobId) {
+        cached.session.jobId = jobId;
+      }
+      logger.debug(`Using local cache for ${projectId}/${featureName} (hasCurrentMessage=${!!cached.session.currentMessage}, contents=${cached.session.currentMessage?.contents.length || 0})`, { 
+        component: 'SessionManager'
+      });
+      return cached.session;
+    }
+
+    // 2. Try Redis (source of truth in Cloud mode)
     if (this.stateStore) {
       try {
         const redisSession = await this.stateStore.getChatSession(redisKey);
         
         if (redisSession) {
           const session = SessionManager.fromRedisSession(redisSession);
+          
+          // CRITICAL: Also restore currentMessage from Redis
+          // This ensures cross-Pod consistency when local cache is cold
+          const currentMessage = await this.stateStore.getCurrentMessage(redisKey);
+          if (currentMessage) {
+            session.currentMessage = SessionManager.fromRedisMessage(currentMessage);
+            logger.debug(`Restored currentMessage from Redis for ${projectId}/${featureName} (${session.currentMessage.contents.length} contents)`, { 
+              component: 'SessionManager'
+            });
+          }
           
           // Update jobId if provided
           if (jobId && session.jobId !== jobId) {
@@ -179,7 +203,7 @@ export class SessionManager {
       }
     }
 
-    // 2. Check local cache
+    // 3. Check local cache (fallback if Redis unavailable)
     if (this.isCacheValid(simpleKey)) {
       const cached = this.localCache.get(simpleKey)!;
       if (jobId && cached.session.jobId !== jobId) {
