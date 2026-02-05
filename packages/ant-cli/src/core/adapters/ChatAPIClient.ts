@@ -120,6 +120,10 @@ export class ChatAPIClient {
       const { messageId } = await response.json() as { messageId: string };
       this.messageStarted = true;  // ✅ Mark message as active
       this.currentMessageId = messageId;  // ✅ Store for cross-Pod recovery
+      
+      // 🔍 DEBUG: Log message creation
+      console.log(`✅ [ChatAPIClient] startMessage completed | messageId=${messageId} | jobId=${this.jobId}`);
+      
       return messageId;
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error starting message:', error);
@@ -426,6 +430,9 @@ export class ChatAPIClient {
         return;
       }
 
+      // 🔍 DEBUG: Log every LLM event with messageId
+      console.log(`📤 [ChatAPIClient] sendLLMEvent | type=${event.type} | messageId=${this.currentMessageId} | jobId=${this.jobId}`);
+      
       const response = await fetch(`${this.baseUrl}/llm-event`, {
         method: 'POST',
         headers: this.getHeaders(),
@@ -438,6 +445,7 @@ export class ChatAPIClient {
       }
     } catch (error) {
       // Silently fail - don't break agent execution if chat fails
+      console.error(`❌ [ChatAPIClient] sendLLMEvent error:`, error);
     }
   }
 
