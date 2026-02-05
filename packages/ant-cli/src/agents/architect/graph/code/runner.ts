@@ -1,6 +1,7 @@
 import { ArchitectGraphState } from "./state";
 import { TaskQueue, CodeTask } from "../../types/task";
 import { buildCodeGraph } from "./graph";
+import { getChatAPIClient } from "../../../../core/adapters/ChatAPIClient";
 
 /**
  * Code Graph Runner
@@ -158,6 +159,17 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     
     // Re-throw if not recursion limit
     if (!error.message.includes('Recursion limit')) {
+      // ✅ CRITICAL: Cleanup any active chat message before re-throwing
+      // This prevents stale currentMessage in Redis when the job fails
+      try {
+        const chatAPI = getChatAPIClient();
+        if (chatAPI.hasActiveMessage()) {
+          console.log('🧹 [CodeRunner] Cleaning up active message after error...');
+          await chatAPI.finalizeMessage(true); // cancelled = true
+        }
+      } catch (cleanupError) {
+        console.warn('⚠️ [CodeRunner] Failed to cleanup message:', cleanupError);
+      }
       throw error;
     }
     

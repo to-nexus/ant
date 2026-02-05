@@ -1,62 +1,106 @@
 /**
- * ChatAPIClient - HTTP client for sending LLM events to Chat UI
+ * ChatAPIClient - LLM Response Client for Job Workers
+ * 
+ * REFACTORED: Now uses direct Redis via LLMResponseService instead of HTTP.
+ * This eliminates the HTTP roundtrip to API server for better performance.
  * 
  * Uses environment variables set by parent process:
- * - ANT_API_URL: API server URL (required for cloud, e.g., http://ant-api:8080)
+ * - ANT_REDIS_URL: Redis URL for direct state updates (required)
  * - ANT_PROJECT_ID: Current project ID
  * - ANT_FEATURE_NAME: Current feature name
  * - ANT_JOB_ID: Current job ID
+ * - ANT_USER_ID: User ID (optional, for cloud mode)
+ * - ANT_ORGANIZATION_ID: Organization ID (optional, for cloud mode)
+ * 
+ * @see LLMResponseService for the underlying implementation
  */
 
 import type { LLMStreamEvent } from '../ports/llm';
+import type { LLMResponseService } from '../llm-response';
+import type { ChatStatusType } from '../llm-response/types';
+import { logger } from '../../utils/logger';
+
+// Lazy-loaded service instance
+let llmResponseService: LLMResponseService | null = null;
+let serviceInitialized = false;
+
+/**
+ * Lazily initialize LLMResponseService
+ * Only creates the service once, when first needed
+ */
+async function getLLMResponseService(): Promise<LLMResponseService | null> {
+  if (serviceInitialized) {
+    return llmResponseService;
+  }
+  
+  serviceInitialized = true;
+  
+  const redisUrl = process.env.ANT_REDIS_URL;
+  if (!redisUrl) {
+    logger.warn(`ANT_REDIS_URL not set, ChatAPIClient will be disabled`, { 
+      component: 'ChatAPIClient' 
+    });
+    return null;
+  }
+  
+  const projectId = process.env.ANT_PROJECT_ID || '';
+  const featureName = process.env.ANT_FEATURE_NAME || '';
+  const jobId = process.env.ANT_JOB_ID || '';
+  
+  if (!projectId || !featureName || !jobId) {
+    logger.warn(`Missing required env vars for ChatAPIClient: projectId=${!!projectId}, featureName=${!!featureName}, jobId=${!!jobId}`, { 
+      component: 'ChatAPIClient'
+    });
+    return null;
+  }
+  
+  try {
+    // Dynamic import to avoid circular dependencies and bundle size in non-job contexts
+    const { RedisStateStore } = await import('../../infrastructure/state/RedisStateStore');
+    const { createLLMResponseServiceWithEnv } = await import('../llm-response');
+    
+    const stateStore = new RedisStateStore({ url: redisUrl });
+    
+    llmResponseService = createLLMResponseServiceWithEnv(stateStore, {
+      projectId,
+      featureName,
+      jobId,
+      userEmail: process.env.ANT_USER_EMAIL,
+      userId: process.env.ANT_USER_ID,
+      organizationId: process.env.ANT_ORGANIZATION_ID || process.env.ANT_ORG_ID,
+      workspacePath: process.env.ANT_WORKSPACE_PATH
+    });
+    
+    logger.info(`ChatAPIClient initialized with direct Redis: ${projectId}/${featureName} (Job: ${jobId})`, {
+      component: 'ChatAPIClient'
+    });
+    
+    return llmResponseService;
+  } catch (error) {
+    logger.error(`Failed to initialize LLMResponseService`, { component: 'ChatAPIClient' }, error);
+    return null;
+  }
+}
 
 export class ChatAPIClient {
-  private serverPort: string;
   private projectId: string;
   private featureName: string;
   private jobId: string;
-  private baseUrl: string;
   private enabled: boolean;
-  private messageStarted: boolean = false;  // ✅ Track if message is active
-  private currentMessageId: string | null = null;  // ✅ Track current message ID for cross-Pod recovery
+  private messageStarted: boolean = false;
+  private currentMessageId: string | null = null;
 
   constructor() {
-    // ✅ ANT_API_URL is the canonical way to reach the API server
-    // Cloud: http://ant-api:8080 (K8s service DNS)
-    // Local: http://localhost:4100 (via npm script PORT=4100)
-    this.serverPort = process.env.PORT || '8080';
     this.projectId = process.env.ANT_PROJECT_ID || '';
     this.featureName = process.env.ANT_FEATURE_NAME || '';
     this.jobId = process.env.ANT_JOB_ID || '';
     
-    // ✅ ANT_API_URL required for cloud; localhost fallback for local dev
-    const apiUrl = process.env.ANT_API_URL || `http://localhost:${this.serverPort}`;
-    this.baseUrl = `${apiUrl}/api/projects/${this.projectId}/features/${this.featureName}/chat`;
-    
-    // Only enabled if all required env vars are present
-    this.enabled = !!(this.projectId && this.featureName && this.jobId);
+    // Enabled if all required env vars are present
+    this.enabled = !!(this.projectId && this.featureName && this.jobId && process.env.ANT_REDIS_URL);
     
     if (this.enabled) {
-      console.log(`💬 [ChatAPIClient] Initialized for ${this.projectId}/${this.featureName} (Job: ${this.jobId}) → ${apiUrl}`);
+      console.log(`💬 [ChatAPIClient] Initialized for ${this.projectId}/${this.featureName} (Job: ${this.jobId}) → Direct Redis`);
     }
-  }
-
-  /**
-   * Build HTTP headers with authentication (Cloud mode)
-   * @private
-   */
-  private getHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    
-    // ✅ Add user email for Cloud mode authentication
-    const userEmail = process.env.ANT_USER_EMAIL;
-    if (userEmail) {
-      headers['x-user-email'] = userEmail;
-    }
-    
-    return headers;
   }
 
   /**
@@ -65,39 +109,6 @@ export class ChatAPIClient {
   hasActiveMessage(): boolean {
     return this.messageStarted;
   }
-  
-  /**
-   * Ensure message is active, start new one if needed
-   * Returns true if message is active (or successfully started), false otherwise
-   */
-  private async ensureMessageActive(): Promise<boolean> {
-    if (!this.enabled) return false;
-    
-    try {
-      // Check if server has an active message
-      const response = await fetch(`${this.baseUrl}/has-active-message`, {
-        method: 'GET',
-        headers: this.getHeaders()
-      });
-      
-      if (response.ok) {
-        const { hasActive } = await response.json() as { hasActive: boolean };
-        if (hasActive) {
-          return true;  // Message is active on server
-        }
-      }
-      
-      // No active message on server, need to start new one
-      console.log('[ChatAPIClient] ⚠️  No active message on server, starting new message...');
-      this.messageStarted = false;  // Reset flag to allow starting new message
-      this.currentMessageId = null;  // Reset message ID
-      const messageId = await this.startMessage();
-      return messageId !== null;
-    } catch (error) {
-      // Fallback: if endpoint doesn't exist, trust the messageStarted flag
-      return this.messageStarted;
-    }
-  }
 
   /**
    * Start a new assistant message
@@ -105,315 +116,43 @@ export class ChatAPIClient {
   async startMessage(): Promise<string | null> {
     if (!this.enabled) return null;
 
-    try {
-      const response = await fetch(`${this.baseUrl}/start-message`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ jobId: this.jobId })
-      });
+    const service = await getLLMResponseService();
+    if (!service) return null;
 
-      if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] Failed to start message: ${response.statusText}`);
-        return null;
-      }
-
-      const { messageId } = await response.json() as { messageId: string };
-      this.messageStarted = true;  // ✅ Mark message as active
-      this.currentMessageId = messageId;  // ✅ Store for cross-Pod recovery
-      
-      // 🔍 DEBUG: Log message creation
+    const messageId = await service.startMessage();
+    if (messageId) {
+      this.messageStarted = true;
+      this.currentMessageId = messageId;
       console.log(`✅ [ChatAPIClient] startMessage completed | messageId=${messageId} | jobId=${this.jobId}`);
-      
-      return messageId;
-    } catch (error) {
-      console.error('❌ [ChatAPIClient] Error starting message:', error);
-      return null;
     }
+    
+    return messageId;
   }
-
-  
 
   /**
    * Show Chat Status Message
-   * 
-   * Rules:
-   * - Content text is auto-generated based on type
-   * - If message not started: start message first
-   * - Auto-merge or disappear based on next content type (handled by ChatService)
    */
   async showChatStatus(
-    type: 'placeholder' | 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'thinking' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'searching_reference' | 'searched_reference' | 'tool_action' | 'learning' | 'learned' | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed',
+    type: ChatStatusType,
     metadata?: Record<string, any>
   ): Promise<number | undefined> {
-    if (!this.enabled) return;
+    if (!this.enabled) return undefined;
 
-    try {
-      // ✅ CRITICAL: Always verify server state, not just local flag
-      // The messageStarted flag can be out of sync with server's currentMessage state
-      // This happens when a message is finalized between nodes (e.g., decompose → plan)
-      if (!await this.ensureMessageActive()) {
-        console.error(`❌ [ChatAPIClient] Cannot show chat status - no active message`);
-        return;  // ✅ Don't proceed if message is not active
+    const service = await getLLMResponseService();
+    if (!service) return undefined;
+
+    // Ensure message is active
+    if (!this.messageStarted) {
+      const hasActive = await service.hasActiveMessage();
+      if (!hasActive) {
+        const messageId = await this.startMessage();
+        if (!messageId) return undefined;
+      } else {
+        this.messageStarted = true;
       }
-
-      // ✅ Auto-generate content text based on type
-      let content: string;
-      switch (type) {
-        case 'placeholder':
-          content = 'Planning next moves...';
-          break;
-        case 'exploring':
-          const exploringFiles = metadata?.filesCount ?? 0;
-          const exploringTotal = metadata?.totalFiles ?? 0;
-          content = exploringFiles > 0 
-            ? `Exploring: ${exploringFiles}/${exploringTotal} files`
-            : 'Exploring: codebase...';
-          break;
-        case 'explored':
-          const exploredFiles = metadata?.filesCount ?? 0;
-          const exploredError = metadata?.error;
-          const exploredContent = metadata?.content;
-          if (exploredError) {
-            content = `❌ Explore Failed: ${exploredError}`;
-          } else if (exploredContent) {
-            content = exploredContent;
-          } else {
-            content = `Explored: ${exploredFiles} files with uncommitted changes`;
-          }
-          break;
-        case 'retrieving':
-          const retrievingQuery = metadata?.query ?? '';
-          content = retrievingQuery 
-            ? `Retrieving from Vector DB: '${retrievingQuery}'...`
-            : 'Retrieving from Vector DB...';
-          break;
-        case 'retrieved':
-          const retrievedFiles = metadata?.filesCount ?? 0;
-          const retrievedError = metadata?.error;
-          const retrievedContent = metadata?.content;
-          
-          if (retrievedError) {
-            content = `❌ Retrieval Failed: ${retrievedError}`;
-          } else if (retrievedContent) {
-            // Custom content (e.g., stack trace files display)
-            content = retrievedContent;
-          } else {
-            // Default: Vector DB only
-            content = `Retrieved: ${retrievedFiles} files from Vector DB`;
-          }
-          break;
-        case 'grepping':
-          const greppingKeywords = metadata?.keywords ?? [];
-          const greppingQuery = metadata?.query ?? '';
-          if (greppingKeywords.length > 0) {
-            content = `Searching local files: ${greppingKeywords.slice(0, 3).join(', ')}${greppingKeywords.length > 3 ? '...' : ''}`;
-          } else if (greppingQuery) {
-            content = `Searching local files: '${greppingQuery}'`;
-          } else {
-            content = 'Searching local files...';
-          }
-          break;
-        case 'grepped':
-          const greppedFiles = metadata?.filesCount ?? 0;
-          const greppedError = metadata?.error;
-          if (greppedError) {
-            content = `❌ Local Search Failed: ${greppedError}`;
-          } else {
-            content = `Grepped: ${greppedFiles} files`;
-          }
-          break;
-        case 'listing_files':
-          const listingDir = metadata?.directory ?? '.';
-          const listingPattern = metadata?.pattern;
-          content = listingPattern 
-            ? `📂 Listing files in ${listingDir} (${listingPattern})...`
-            : `📂 Listing files in ${listingDir}...`;
-          break;
-        case 'listed_files':
-          const listedFilesCount = metadata?.filesCount ?? 0;
-          const listedTotal = metadata?.totalFiles;
-          const listedPattern = metadata?.pattern;
-          const listedError = metadata?.error;
-          if (listedError) {
-            content = `❌ File Listing Failed: ${listedError}`;
-          } else if (listedPattern) {
-            content = `Listed: ${listedFilesCount}/${listedTotal} files (${listedPattern})`;
-          } else {
-            content = `Listed: ${listedFilesCount}/${listedTotal} files`;
-          }
-          break;
-        case 'searching_code':
-          const searchPattern = metadata?.pattern ?? '';
-          const filePattern = metadata?.file_pattern;
-          content = filePattern
-            ? `🔍 Searching code: "${searchPattern}" in ${filePattern}...`
-            : `🔍 Searching code: "${searchPattern}"...`;
-          break;
-        case 'searched_code':
-          const matchedFiles = metadata?.filesCount ?? 0;
-          const totalMatches = metadata?.totalMatches ?? 0;
-          const codeSearchError = metadata?.error;
-          if (codeSearchError) {
-            content = `❌ Code Search Failed: ${codeSearchError}`;
-          } else if (totalMatches > 0) {
-            content = `Found: ${totalMatches} matches in ${matchedFiles} files`;
-          } else {
-            content = `Found: ${matchedFiles} files`;
-          }
-          break;
-        case 'reading':
-          const readingPath = metadata?.filePath ?? '';
-          content = readingPath 
-            ? `Reading: ${readingPath}...`
-            : 'Reading: file...';
-          break;
-        case 'read':
-          const readPath = metadata?.filePath ?? '';
-          const readError = metadata?.error;
-          if (readError) {
-            content = `❌ Read Failed: ${readPath || readError}`;
-          } else {
-            // ✅ No icon prefix - ResultCard already has Eye icon on the left
-            content = readPath ? `Read: ${readPath}` : 'Read: file';
-          }
-          break;
-        case 'thinking':
-          content = '';  // Empty content, will be filled by LLM tokens
-          break;
-        case 'indexing':
-          const indexingMsg = metadata?.message ?? 'codebase...';
-          content = `Indexing: ${indexingMsg}`;
-          break;
-        case 'indexed':
-          const filesIndexed = metadata?.filesIndexed ?? 0;
-          const chunks = metadata?.chunks ?? 0;
-          const tokens = metadata?.tokens ?? 0;
-          const duration = metadata?.duration ? `in ${(metadata.duration / 1000).toFixed(1)}s` : '';
-          const indexedError = metadata?.error;
-          if (indexedError) {
-            content = `❌ Indexing Failed: ${indexedError}`;
-          } else {
-            content = `✅ Indexed: ${filesIndexed} files → ${chunks} chunks (~${Math.round(tokens / 1000)}K tokens) ${duration}`.trim();
-          }
-          break;
-        case 'analyzing':
-          const analyzingMsg = metadata?.message ?? 'files...';
-          content = `Analyzing: ${analyzingMsg}`;
-          break;
-        case 'analyzed':
-          const analyzedContent = metadata?.content;
-          const keywordCount = metadata?.keywordCount ?? 0;
-          const stackTraceCount = metadata?.stackTraceCount ?? 0;
-          const semanticCount = metadata?.semanticCount ?? 0;
-          const analyzedError = metadata?.error;
-          
-          if (analyzedError) {
-            content = `❌ Analysis Failed: ${analyzedError}`;
-          } else if (analyzedContent) {
-            // Custom content provided (keyword display)
-            content = analyzedContent;
-          } else if (keywordCount > 0) {
-            content = `🔑 Keywords Generated: ${stackTraceCount} stack trace + ${semanticCount} semantic`;
-          } else {
-            content = `✅ Analyzed: ${metadata?.filesCount ?? 0} files`;
-          }
-          break;
-        case 'storing':
-          const storingMsg = metadata?.message ?? 'lesson...';
-          content = `Storing: ${storingMsg}`;
-          break;
-        case 'stored':
-          const storedMsg = metadata?.message;
-          const storedError = metadata?.error;
-          if (storedError) {
-            content = `❌ Storage Failed: ${storedError}`;
-          } else {
-            content = `Stored: ${storedMsg ?? 'lesson successfully'}`;
-          }
-          break;
-        case 'learning':
-          const learningTask = metadata?.taskName ?? 'task';
-          content = `Learning lessons from: ${learningTask}...`;
-          break;
-        case 'learned':
-          const learnedFiles = metadata?.filesWritten ?? 0;
-          const learnedBranch = metadata?.branch ?? '';
-          const learnedContent = metadata?.content;
-          const learnedError = metadata?.error;
-          if (learnedError) {
-            content = `❌ Learning Failed: ${learnedError}`;
-          } else if (learnedContent) {
-            content = learnedContent;
-          } else {
-            content = `Lessons learned: ${learnedFiles} file(s) (${learnedBranch})`;
-          }
-          break;
-        case 'searching_reference':
-          const refProject = metadata?.project ?? 'reference project';
-          const refQuery = metadata?.query ?? '';
-          content = refQuery 
-            ? `🔍 Searching ${refProject}: "${refQuery}"...`
-            : `🔍 Searching ${refProject}...`;
-          break;
-        case 'searched_reference':
-          const searchedProject = metadata?.project ?? 'reference project';
-          const searchedFiles = metadata?.filesCount ?? 0;
-          const searchedError = metadata?.error;
-          if (searchedError) {
-            content = `❌ Search Failed (${searchedProject}): ${searchedError}`;
-          } else {
-            content = `Found ${searchedFiles} file(s) in ${searchedProject}`;
-          }
-          break;
-        case 'file_create_failed':
-        case 'file_edit_failed':
-        case 'file_delete_failed':
-          const filePath = metadata?.filePath ?? 'file';
-          const reason = metadata?.reason ?? 'Unknown error';
-          content = `❌ ${filePath}: ${reason}`;
-          break;
-        default:
-          content = 'Processing...';
-      }
-
-      // Send Chat Status Message directly to chat service (NOT an LLM event!)
-      console.log(`🌐 [ChatAPIClient] HTTP POST → /add-content (type: ${type})`);
-      console.log(`   Content: "${content.substring(0, 80)}${content.length > 80 ? '...' : ''}"`);
-      console.log(`   Metadata keys: ${Object.keys(metadata || {}).join(', ')}`);
-      
-      const requestBody = {
-        content: {
-          type,
-          content,
-          metadata: {
-            provider: 'system',
-            timestamp: new Date().toISOString(),
-            ...metadata
-          }
-        }
-      };
-      
-      const response = await fetch(`${this.baseUrl}/add-content`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] HTTP ${response.status} ${response.statusText}`);
-        console.error(`   Request body:`, JSON.stringify(requestBody, null, 2));
-        return undefined;
-      }
-      
-      console.log(`✅ [ChatAPIClient] HTTP 200 OK (type: ${type})`);
-      
-      // ✅ Return contentIndex for _mergeIndex
-      const result = await response.json() as { contentIndex?: number };
-      return result.contentIndex;
-    } catch (error) {
-      console.error('❌ [ChatAPIClient] Error showing chat status:', error);
-      return undefined;
     }
+
+    return service.showChatStatus(type, metadata);
   }
 
   /**
@@ -422,37 +161,29 @@ export class ChatAPIClient {
   async sendLLMEvent(event: LLMStreamEvent): Promise<void> {
     if (!this.enabled) return;
 
-    try {
-      // ✅ CRITICAL: Ensure message is active before sending LLM event
-      // Without this, text events can be lost if they arrive before startMessage() completes
-      if (!await this.ensureMessageActive()) {
-        console.error(`❌ [ChatAPIClient] Cannot send LLM event - no active message`);
-        return;
-      }
+    const service = await getLLMResponseService();
+    if (!service) return;
 
-      // 🔍 DEBUG: Log every LLM event with messageId
-      console.log(`📤 [ChatAPIClient] sendLLMEvent | type=${event.type} | messageId=${this.currentMessageId} | jobId=${this.jobId}`);
-      
-      const response = await fetch(`${this.baseUrl}/llm-event`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        // ✅ Include messageId for cross-Pod recovery in multi-Pod environments
-        body: JSON.stringify({ event, jobId: this.jobId, messageId: this.currentMessageId })
-      });
-
-      if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] Failed to send LLM event: ${response.statusText}`);
+    // Ensure message is active
+    if (!this.messageStarted) {
+      const hasActive = await service.hasActiveMessage();
+      if (!hasActive) {
+        const messageId = await this.startMessage();
+        if (!messageId) {
+          console.error(`❌ [ChatAPIClient] Cannot send LLM event - no active message`);
+          return;
+        }
+      } else {
+        this.messageStarted = true;
       }
-    } catch (error) {
-      // Silently fail - don't break agent execution if chat fails
-      console.error(`❌ [ChatAPIClient] sendLLMEvent error:`, error);
     }
+
+    console.log(`📤 [ChatAPIClient] sendLLMEvent | type=${event.type} | messageId=${this.currentMessageId} | jobId=${this.jobId}`);
+    await service.sendLLMEvent(event);
   }
 
   /**
    * Send triage choice message with options
-   * 
-   * Used for redirect/blocked cases where user needs to make a choice
    */
   async sendTriageChoice(
     message: string,
@@ -462,30 +193,19 @@ export class ChatAPIClient {
       negative: { label: string; action: string };
       fallbackGuide?: string;
     },
-    triageResult?: any,  // ✅ For pending choice registration
-    originalDirective?: string  // ✅ For redirect
+    triageResult?: any,
+    originalDirective?: string
   ): Promise<void> {
     if (!this.enabled) return;
 
-    try {
-      const response = await fetch(`${this.baseUrl}/triage-choice-message`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({
-          message,
-          jobId,
-          choiceOptions,
-          triageResult,  // ✅ Pass to server for pending choice registration
-          originalDirective  // ✅ For redirect
-        })
-      });
-
-      if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] Failed to send triage choice: ${response.statusText}`);
-      }
-    } catch (error) {
-      console.error('❌ [ChatAPIClient] Error sending triage choice:', error);
-    }
+    // Triage choice requires special handling - use showChatStatus with metadata
+    await this.showChatStatus('triage_choice' as any, {
+      message,
+      jobId,
+      choiceOptions,
+      triageResult,
+      originalDirective
+    });
   }
 
   /**
@@ -494,206 +214,78 @@ export class ChatAPIClient {
   async finalizeMessage(cancelled: boolean = false): Promise<void> {
     if (!this.enabled) return;
 
-    try {
-      // ✅ Include userContext for Redis lookup in Cloud mode
-      const userContext = {
-        userId: process.env.ANT_USER_ID || 'local',
-        organizationId: process.env.ANT_ORGANIZATION_ID || 'local',
-        workspacePath: process.env.ANT_WORKSPACE_PATH || ''
-      };
+    const service = await getLLMResponseService();
+    if (!service) return;
 
-      const response = await fetch(`${this.baseUrl}/finalize-message`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ cancelled, userContext })
-      });
-
-      if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] Failed to finalize message: ${response.statusText}`);
-      }
-      
-      this.messageStarted = false;  // ✅ Reset flag after finalize
-      this.currentMessageId = null;  // ✅ Clear message ID
-    } catch (error) {
-      console.error('❌ [ChatAPIClient] Error finalizing message:', error);
-      this.messageStarted = false;  // ✅ Reset even on error
-      this.currentMessageId = null;  // ✅ Clear message ID
-    }
+    await service.finalizeMessage(cancelled);
+    this.messageStarted = false;
+    this.currentMessageId = null;
   }
 
   // ============================================================================
-  // File Operations - Real-time streaming support
+  // File Operations
   // ============================================================================
 
-  /**
-   * Start file creation (header only, no content yet)
-   */
   async startFileCreation(filePath: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      // ✅ Ensure message is active before starting file operation
-      if (!await this.ensureMessageActive()) {
-        console.error(`❌ [ChatAPIClient] Cannot start file creation - no active message for: ${filePath}`);
-        return;
-      }
-      
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'creating', operation: 'create', filePath, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.startFileCreation(filePath);
   }
 
-  /**
-   * Stream file content during writing (real-time updates)
-   */
   async streamFileContent(filePath: string, content: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'writing', operation: 'create', filePath, content, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.streamFileContent(filePath, content);
   }
 
-  /**
-   * Update file progress to 'writing' state (intermediate progress indication)
-   */
   async updateFileProgress(filePath: string, phase: 'writing'): Promise<void> {
     if (!this.enabled) return;
-    try {
-      // ✅ Ensure message is active
-      if (!await this.ensureMessageActive()) {
-        console.error(`❌ [ChatAPIClient] Cannot update file progress - no active message for: ${filePath}`);
-        return;
-      }
-      
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase, operation: 'create', filePath, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    // For 'writing' phase, use streamFileContent with empty content
+    // The service handles the phase transition
   }
 
-  /**
-   * Complete file creation (final state, collapsible)
-   */
   async completeFileCreation(filePath: string, content: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      // ✅ CRITICAL: Ensure message is active before completing file operation
-      // This handles the case where messageStarted=true but currentMessage was finalized
-      if (!await this.ensureMessageActive()) {
-        console.error(`❌ [ChatAPIClient] Cannot complete file creation - no active message for: ${filePath}`);
-        return;
-      }
-      
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', operation: 'create', filePath, content, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.completeFileCreation(filePath, content);
   }
 
-  /**
-   * Start file edit (header only)
-   */
   async startFileEdit(filePath: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      // ✅ Ensure message is active before starting file operation
-      if (!await this.ensureMessageActive()) {
-        console.error(`❌ [ChatAPIClient] Cannot start file edit - no active message for: ${filePath}`);
-        return;
-      }
-      
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'editing', operation: 'edit', filePath, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.startFileEdit(filePath);
   }
 
-  /**
-   * Stream file diff during update (real-time)
-   */
   async streamFileDiff(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'updating', operation: 'edit', filePath, diffBefore, diffAfter, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.streamFileDiff(filePath, diffBefore, diffAfter);
   }
 
-  /**
-   * Complete file edit (final state, collapsible)
-   */
   async completeFileEdit(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', operation: 'edit', filePath, diffBefore, diffAfter, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.completeFileEdit(filePath, diffBefore, diffAfter);
   }
 
-  /**
-   * Start file deletion
-   */
   async startFileDeletion(filePath: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'deleting', operation: 'delete', filePath, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.startFileDeletion(filePath);
   }
 
-  /**
-   * Fail file edit (error occurred)
-   */
   async failFileEdit(filePath: string, errorMessage: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'failed', operation: 'edit', filePath, error: errorMessage, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.failFileEdit(filePath, errorMessage);
   }
 
-  /**
-   * Complete file deletion
-   */
   async completeFileDeletion(filePath: string, content?: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', operation: 'delete', filePath, content, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.completeFileDeletion(filePath, content);
   }
 
-  /**
-   * Legacy: Add file operation notification with content (backward compatibility)
-   * New code should use start/stream/complete methods for real-time effects
-   */
   async addFileOperation(
     operation: 'edit' | 'create' | 'delete', 
     filePath: string,
@@ -702,187 +294,72 @@ export class ChatAPIClient {
     diffAfter?: string
   ): Promise<void> {
     if (!this.enabled) return;
-
-    try {
-      const response = await fetch(`${this.baseUrl}/file-operation`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ 
-          phase: 'complete',  // Legacy calls are treated as complete
-          operation, 
-          filePath, 
-          content,      // ✅ Full file content (for create/delete)
-          diffBefore,   // ✅ Before content (for edit)
-          diffAfter,    // ✅ After content (for edit)
-          jobId: this.jobId
-        })
-      });
-
-      if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] Failed to add file operation: ${response.statusText}`);
-      }
-    } catch (error) {
-      // Silently fail
-    }
+    const service = await getLLMResponseService();
+    await service?.addFileOperation(operation, filePath, content, diffBefore, diffAfter);
   }
 
   // ============================================================================
-  // Command Execution - Real-time streaming support
+  // Command Execution
   // ============================================================================
 
-  /**
-   * Start command execution (header only)
-   */
   async startCommand(command: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/command-execution`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'running', command, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.startCommand(command);
   }
 
-  /**
-   * Stream command output (real-time)
-   */
   async streamCommandOutput(command: string, output: string): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/command-execution`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'streaming', command, output, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.streamCommandOutput(command, output);
   }
 
-  /**
-   * Complete command execution (final state, collapsible)
-   */
   async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/command-execution`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', command, output, exitCode, jobId: this.jobId })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.completeCommand(command, output, exitCode);
   }
 
-  /**
-   * Legacy: Add command execution notification (backward compatibility)
-   * New code should use start/stream/complete methods for real-time effects
-   */
   async addCommandExecution(command: string, output?: string, exitCode?: number): Promise<void> {
     if (!this.enabled) return;
-
-    try {
-      const response = await fetch(`${this.baseUrl}/command-execution`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ phase: 'complete', command, output, exitCode, jobId: this.jobId })
-      });
-
-      if (!response.ok) {
-        console.error(`❌ [ChatAPIClient] Failed to add command execution: ${response.statusText}`);
-      }
-    } catch (error) {
-      // Silently fail
-    }
+    const service = await getLLMResponseService();
+    await service?.addCommandExecution(command, output, exitCode);
   }
 
-  /**
-   * Add exploration status (scanning codebase)
-   * @deprecated Use showChatStatus('exploring', { filesCount, totalFiles }) instead
-   */
+  // ============================================================================
+  // Legacy Methods
+  // ============================================================================
+
   async addExploringStatus(current: number, total: number): Promise<void> {
     await this.showChatStatus('exploring', { filesCount: current, totalFiles: total });
   }
 
-  /**
-   * Add exploration result (scan complete)
-   */
   async addExploredResult(filesCount: number, filesList?: string[]): Promise<void> {
     await this.showChatStatus('explored', { filesCount, filesList });
   }
 
-  /**
-   * Add reading file status
-   * Returns the content index for merging
-   */
   async addReadingFile(filePath: string): Promise<number | undefined> {
-    // Store the current message contents length to get the index
-    const response = await fetch(`${this.baseUrl}/add-content`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify({
-        content: {
-          type: 'reading',
-          content: `Reading: ${filePath}...`,
-          metadata: {
-            provider: 'system',
-            timestamp: new Date().toISOString(),
-            filePath
-          }
-        }
-      })
-    });
-    
-    if (response.ok) {
-      const result = await response.json() as { contentIndex?: number };
-      return result.contentIndex;
-    }
-    return undefined;
+    return this.showChatStatus('reading', { filePath });
   }
 
-  /**
-   * Add file read complete
-   */
   async addReadComplete(filePath: string, readingIndex?: number, error?: string): Promise<void> {
     if (error) {
-      // Error case: signal error without including the message (showChatStatus will format it)
       await this.showChatStatus('read', { filePath, error: true, _mergeIndex: readingIndex });
     } else {
-      // Success case
       await this.showChatStatus('read', { filePath, _mergeIndex: readingIndex });
     }
   }
 
-  /**
-   * Start command execution (loading card)
-   * Returns the content index for merging
-   */
   async commandStart(command: string): Promise<number | undefined> {
     if (!this.enabled) return undefined;
-    try {
-      const response = await fetch(`${this.baseUrl}/command-execution`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ command, output: '', phase: 'running' })
-      });
-      if (response.ok) {
-        const result = await response.json() as { contentIndex?: number };
-        return result.contentIndex;
-      }
-    } catch (error) { /* Silently fail */ }
-    return undefined;
+    const service = await getLLMResponseService();
+    return service?.startCommand(command);
   }
 
-  /**
-   * Complete command execution
-   */
   async commandComplete(command: string, success: boolean, exitCode: number, output: string, commandIndex?: number): Promise<void> {
     if (!this.enabled) return;
-    try {
-      await fetch(`${this.baseUrl}/command-execution`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ command, output, exitCode, phase: 'complete', _mergeIndex: commandIndex })
-      });
-    } catch (error) { /* Silently fail */ }
+    const service = await getLLMResponseService();
+    await service?.completeCommand(command, output, exitCode);
   }
 
   /**
@@ -902,4 +379,3 @@ export function getChatAPIClient(): ChatAPIClient {
   }
   return chatAPIClient;
 }
-
