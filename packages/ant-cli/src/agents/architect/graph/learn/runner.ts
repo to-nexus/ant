@@ -1,6 +1,7 @@
 import { buildLearnGraph } from "./graph";
 import { LearnGraphState } from "./state";
 import { TriageResult } from "../../../common/nodes/triage/types";
+import { getChatAPIClient } from "../../../../core/adapters/ChatAPIClient";
 
 export interface LearnGraphResult {
   stored: number;
@@ -19,12 +20,30 @@ export async function runLearnGraph(initial: LearnGraphState): Promise<LearnGrap
   
   console.log(`🔍 [LearnRunner] Recursion limit: ${finalLimit}`);
   
-  const state = await (app as any).invoke(initial as any, {
-    recursionLimit: finalLimit  // ✅ LangGraph RunnableConfig uses camelCase (NOT snake_case!)
-  }) as LearnGraphState;
-  
-  return { 
-    stored: state.texts?.length || 0,
-    triageResult: state.triageResult  // ✅ Include triage result for redirect/blocked handling
-  };
+  try {
+    const state = await (app as any).invoke(initial as any, {
+      recursionLimit: finalLimit  // ✅ LangGraph RunnableConfig uses camelCase (NOT snake_case!)
+    }) as LearnGraphState;
+    
+    return { 
+      stored: state.texts?.length || 0,
+      triageResult: state.triageResult  // ✅ Include triage result for redirect/blocked handling
+    };
+  } catch (error) {
+    console.error(`❌ [LearnRunner] Graph execution failed:`, error);
+    
+    // ✅ CRITICAL: Cleanup any active chat message before re-throwing
+    // This prevents stale currentMessage in Redis when the job fails
+    try {
+      const chatAPI = getChatAPIClient();
+      if (chatAPI.hasActiveMessage()) {
+        console.log('🧹 [LearnRunner] Cleaning up active message after error...');
+        await chatAPI.finalizeMessage(true); // cancelled = true
+      }
+    } catch (cleanupError) {
+      console.warn('⚠️ [LearnRunner] Failed to cleanup message:', cleanupError);
+    }
+    
+    throw error;
+  }
 }

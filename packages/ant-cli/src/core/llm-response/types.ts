@@ -1,0 +1,71 @@
+/**
+ * LLMResponseService Types
+ * 
+ * Types specific to the LLM response handling in job workers
+ */
+
+import type { UserContext } from '../types/user';
+
+/**
+ * Environment variables for LLMResponseService
+ */
+export interface LLMResponseEnv {
+  projectId: string;
+  featureName: string;
+  jobId: string;
+  userEmail?: string;
+  userId?: string;
+  organizationId?: string;
+  workspacePath?: string;
+}
+
+/**
+ * Session context for Redis operations
+ */
+export interface SessionContext {
+  projectId: string;
+  featureName: string;
+  jobId: string;
+  userContext?: UserContext;
+  sessionKey: string;  // Redis key
+}
+
+/**
+ * File operation phases for streaming
+ */
+export type FileOperationPhase = 
+  | 'creating' 
+  | 'writing' 
+  | 'editing' 
+  | 'updating' 
+  | 'deleting' 
+  | 'complete' 
+  | 'failed';
+
+/**
+ * Command execution phases for streaming
+ */
+export type CommandExecutionPhase = 
+  | 'running' 
+  | 'streaming' 
+  | 'complete';
+
+/**
+ * Chat status types for showChatStatus
+ */
+export type ChatStatusType = 
+  | 'placeholder' 
+  | 'exploring' | 'explored' 
+  | 'retrieving' | 'retrieved' 
+  | 'grepping' | 'grepped' 
+  | 'listing_files' | 'listed_files'
+  | 'searching_code' | 'searched_code'
+  | 'reading' | 'read' 
+  | 'thinking' 
+  | 'indexing' | 'indexed' 
+  | 'analyzing' | 'analyzed' 
+  | 'storing' | 'stored' 
+  | 'searching_reference' | 'searched_reference' 
+  | 'tool_action' 
+  | 'learning' | 'learned' 
+  | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed';

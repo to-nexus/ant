@@ -164,9 +164,33 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
     console.log(`🔄 Recursion limit: ${recursionLimit}`);
   }
   
-  const finalState = await (graph as any).invoke(initialState as any, {
-    recursionLimit,
-  }) as AskGraphState;
+  // ✅ CRITICAL: Use try-finally to ensure message finalization on error
+  // This prevents stale currentMessage in Redis when graph fails
+  const chatAPI = getChatAPIClient();
+  let finalState: AskGraphState;
+  let graphError: Error | null = null;
+  
+  try {
+    finalState = await (graph as any).invoke(initialState as any, {
+      recursionLimit,
+    }) as AskGraphState;
+  } catch (error) {
+    graphError = error as Error;
+    console.error(`❌ [Ask] Graph execution failed: ${graphError.message}`);
+    
+    // ✅ CRITICAL: Finalize any active message to prevent stale state in Redis
+    // This ensures the next job won't be affected by this job's failure
+    if (chatAPI.hasActiveMessage()) {
+      console.log('🧹 [Ask] Cleaning up active message after error...');
+      try {
+        await chatAPI.finalizeMessage(true); // cancelled = true
+      } catch (cleanupError) {
+        console.warn('⚠️ [Ask] Failed to cleanup message:', cleanupError);
+      }
+    }
+    
+    throw graphError;
+  }
   
   // Log summary
   console.log('\n✅ Ask System completed');
