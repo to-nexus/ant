@@ -428,123 +428,208 @@ export class ArtifactService {
   }
 
   /**
-   * Load design documents for Code Job based on environment
+   * Design Documents Result Type
+   * Supports both legacy single docs and multi-package (monorepo/MSA) patterns
+   */
+  static readonly DesignDocsResultType = {} as {
+    apiContract?: string;
+    // Legacy single docs (backward compatible)
+    feDesign?: string;           // fe-system-design.md
+    beDesign?: string;           // be-system-design.md
+    unifiedDesign?: string;      // system-design.md
+    // Multi-package docs (monorepo/MSA)
+    feDesigns?: { [pkg: string]: string };  // fe-system-design-{pkg}.md
+    beDesigns?: { [svc: string]: string };  // be-system-design-{svc}.md
+  };
+
+  /**
+   * Load design documents for Code Job
    * 
    * Strategy:
-   * - Frontend: api-contract.md + (fe-system-design.md OR system-design.md)
-   * - Backend: api-contract.md + (be-system-design.md OR system-design.md)
-   * - Unknown: api-contract.md + all available design docs
+   * 1. ALWAYS load api-contract.md if exists
+   * 2. Scan for multi-package patterns (fe-system-design-*.md, be-system-design-*.md)
+   * 3. Fall back to legacy single docs (fe-system-design.md, be-system-design.md)
+   * 4. Final fallback to unified system-design.md
    * 
-   * Returns: { apiContract?, feDesign?, beDesign?, unifiedDesign? }
+   * @returns DesignDocs with both legacy and multi-package support
    */
   static async loadDesignDocuments(
     context: ProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort,
     environment?: 'frontend' | 'backend' | 'unknown'
-  ): Promise<{
-    apiContract?: string;
-    feDesign?: string;
-    beDesign?: string;
-    unifiedDesign?: string;
-  }> {
+  ): Promise<typeof ArtifactService.DesignDocsResultType> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
     const designPathAbs = path.join(featurePathAbs, "outputs/design");
     const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
     
-    // ✅ DEBUG: Log path resolution
     console.log(`🔍 [ArtifactService.loadDesignDocuments] designPath: ${designPath}`);
     
-    const result: {
-      apiContract?: string;
-      feDesign?: string;
-      beDesign?: string;
-      unifiedDesign?: string;
-    } = {};
+    const result: typeof ArtifactService.DesignDocsResultType = {};
 
-    // ✅ ALWAYS try to load api-contract.md (if exists)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 1. ALWAYS load api-contract.md (if exists)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const apiContractPath = path.join(designPath, 'api-contract.md');
     if (await fileSystem.fileExists(apiContractPath)) {
       const content = await fileSystem.readFile(apiContractPath);
       if (content) {
         result.apiContract = content;
-        console.log(`📄 [ArtifactService] Loaded api-contract.md for ${environment || 'unknown'} environment`);
+        console.log(`📄 [ArtifactService] Loaded api-contract.md`);
       }
     }
 
-    // ✅ Load environment-specific design documents
-    if (environment === 'frontend') {
-      // Frontend: Load fe-system-design.md or fallback to system-design.md
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 2. Scan for multi-package design documents
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const designFiles = await ArtifactService.listDesignFiles(fileSystem, designPath);
+    
+    // Parse multi-package patterns
+    const feMultiPattern = /^fe-system-design-(.+)\.md$/;
+    const beMultiPattern = /^be-system-design-(.+)\.md$/;
+    
+    for (const file of designFiles) {
+      const feMatch = file.match(feMultiPattern);
+      if (feMatch) {
+        const pkgName = feMatch[1];
+        const filePath = path.join(designPath, file);
+        const content = await fileSystem.readFile(filePath);
+        if (content) {
+          if (!result.feDesigns) result.feDesigns = {};
+          result.feDesigns[pkgName] = content;
+          console.log(`📄 [ArtifactService] Loaded fe-system-design-${pkgName}.md (multi-frontend)`);
+        }
+      }
+      
+      const beMatch = file.match(beMultiPattern);
+      if (beMatch) {
+        const svcName = beMatch[1];
+        const filePath = path.join(designPath, file);
+        const content = await fileSystem.readFile(filePath);
+        if (content) {
+          if (!result.beDesigns) result.beDesigns = {};
+          result.beDesigns[svcName] = content;
+          console.log(`📄 [ArtifactService] Loaded be-system-design-${svcName}.md (MSA)`);
+        }
+      }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 3. Load legacy single docs (backward compatible)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const shouldLoadFe = environment === 'frontend' || environment === 'unknown';
+    const shouldLoadBe = environment === 'backend' || environment === 'unknown';
+    
+    // Load fe-system-design.md (legacy single frontend)
+    if (shouldLoadFe && !result.feDesigns) {
       const feDesignPath = path.join(designPath, 'fe-system-design.md');
       if (await fileSystem.fileExists(feDesignPath)) {
         const content = await fileSystem.readFile(feDesignPath);
         if (content) {
           result.feDesign = content;
-          console.log(`📄 [ArtifactService] Loaded fe-system-design.md`);
-        }
-      } else {
-        // Fallback: system-design.md
-        const unifiedPath = path.join(designPath, 'system-design.md');
-        if (await fileSystem.fileExists(unifiedPath)) {
-          const content = await fileSystem.readFile(unifiedPath);
-          if (content) {
-            result.unifiedDesign = content;
-            console.log(`📄 [ArtifactService] Loaded system-design.md (frontend fallback)`);
-          }
+          console.log(`📄 [ArtifactService] Loaded fe-system-design.md (legacy)`);
         }
       }
-    } else if (environment === 'backend') {
-      // Backend: Load be-system-design.md or fallback to system-design.md
+    }
+    
+    // Load be-system-design.md (legacy single backend)
+    if (shouldLoadBe && !result.beDesigns) {
       const beDesignPath = path.join(designPath, 'be-system-design.md');
       if (await fileSystem.fileExists(beDesignPath)) {
         const content = await fileSystem.readFile(beDesignPath);
         if (content) {
           result.beDesign = content;
-          console.log(`📄 [ArtifactService] Loaded be-system-design.md`);
-        }
-      } else {
-        // Fallback: system-design.md
-        const unifiedPath = path.join(designPath, 'system-design.md');
-        if (await fileSystem.fileExists(unifiedPath)) {
-          const content = await fileSystem.readFile(unifiedPath);
-          if (content) {
-            result.unifiedDesign = content;
-            console.log(`📄 [ArtifactService] Loaded system-design.md (backend fallback)`);
-          }
+          console.log(`📄 [ArtifactService] Loaded be-system-design.md (legacy)`);
         }
       }
-    } else {
-      // Unknown environment: Load all available (for decompose phase)
-      const feDesignPath = path.join(designPath, 'fe-system-design.md');
-      const beDesignPath = path.join(designPath, 'be-system-design.md');
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 4. Final fallback: system-design.md (unified)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const hasAnyDesign = result.feDesign || result.beDesign || 
+                         result.feDesigns || result.beDesigns;
+    
+    if (!hasAnyDesign) {
       const unifiedPath = path.join(designPath, 'system-design.md');
-      
-      if (await fileSystem.fileExists(feDesignPath)) {
-        const content = await fileSystem.readFile(feDesignPath);
-        if (content) {
-          result.feDesign = content;
-          console.log(`📄 [ArtifactService] Loaded fe-system-design.md (unknown env)`);
-        }
-      }
-      
-      if (await fileSystem.fileExists(beDesignPath)) {
-        const content = await fileSystem.readFile(beDesignPath);
-        if (content) {
-          result.beDesign = content;
-          console.log(`📄 [ArtifactService] Loaded be-system-design.md (unknown env)`);
-        }
-      }
-      
       if (await fileSystem.fileExists(unifiedPath)) {
         const content = await fileSystem.readFile(unifiedPath);
         if (content) {
           result.unifiedDesign = content;
-          console.log(`📄 [ArtifactService] Loaded system-design.md (unknown env)`);
+          console.log(`📄 [ArtifactService] Loaded system-design.md (unified fallback)`);
         }
       }
     }
 
+    // Log summary
+    const loadedCount = [
+      result.apiContract ? 1 : 0,
+      result.feDesign ? 1 : 0,
+      result.beDesign ? 1 : 0,
+      result.unifiedDesign ? 1 : 0,
+      Object.keys(result.feDesigns || {}).length,
+      Object.keys(result.beDesigns || {}).length,
+    ].reduce((a, b) => a + b, 0);
+    
+    console.log(`📊 [ArtifactService] Total design documents loaded: ${loadedCount}`);
+    if (result.feDesigns) console.log(`   - Frontend packages: ${Object.keys(result.feDesigns).join(', ')}`);
+    if (result.beDesigns) console.log(`   - Backend services: ${Object.keys(result.beDesigns).join(', ')}`);
+
     return result;
+  }
+
+  /**
+   * List design files in directory
+   * Helper for scanning multi-package patterns
+   */
+  private static async listDesignFiles(
+    fileSystem: FileSystemPort,
+    designPath: string
+  ): Promise<string[]> {
+    try {
+      // Use fileSystem to list directory contents
+      const exists = await fileSystem.fileExists(designPath);
+      if (!exists) return [];
+      
+      // Try to list directory - implementation depends on FileSystemPort capabilities
+      const listDir = (fileSystem as any).listDirectory || (fileSystem as any).readdir;
+      if (listDir) {
+        const files = await listDir.call(fileSystem, designPath);
+        return files.filter((f: string) => f.endsWith('.md'));
+      }
+      
+      // Fallback: check known patterns manually
+      const knownPatterns = [
+        'api-contract.md',
+        'fe-system-design.md',
+        'be-system-design.md',
+        'system-design.md',
+      ];
+      
+      // Also check common service names for MSA
+      const commonServices = ['auth', 'user', 'order', 'payment', 'product', 'notification', 'gateway'];
+      const commonFePkgs = ['web', 'admin', 'mobile', 'shared-ui', 'common'];
+      
+      for (const svc of commonServices) {
+        knownPatterns.push(`be-system-design-${svc}.md`);
+      }
+      for (const pkg of commonFePkgs) {
+        knownPatterns.push(`fe-system-design-${pkg}.md`);
+      }
+      
+      const existing: string[] = [];
+      for (const pattern of knownPatterns) {
+        const filePath = path.join(designPath, pattern);
+        if (await fileSystem.fileExists(filePath)) {
+          existing.push(pattern);
+        }
+      }
+      
+      return existing;
+    } catch (error) {
+      console.warn(`⚠️  [ArtifactService] Failed to list design files:`, error);
+      return [];
+    }
   }
 
   /**

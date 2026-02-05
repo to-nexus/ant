@@ -110,6 +110,7 @@ export interface WorkspaceState {
   hasDirective: boolean;         // ⚠️ 채팅 입력 시 true
   prdPath?: string;
   directivePath?: string;
+  featurePath?: string;          // Feature directory path (for debug logging)
   
   // Design job - ui-design mode
   hasScreens: boolean;           // inputs/references/screens/

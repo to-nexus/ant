@@ -1,6 +1,10 @@
 /**
- * PinnedQuery - Displays the last user query pinned at the top
+ * PinnedQuery - Displays a user query pinned at the top
  * Similar to Cursor/Copilot UX where the current query stays visible
+ * 
+ * Features:
+ * - Fixed height by default (truncated with line-clamp)
+ * - Expands on hover to show full content
  */
 
 import { useEffect, useState } from 'react';
@@ -11,6 +15,7 @@ interface PinnedQueryProps {
 
 export function PinnedQuery({ query }: PinnedQueryProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     // Small delay for smooth appearance
@@ -28,11 +33,14 @@ export function PinnedQuery({ query }: PinnedQueryProps) {
         px-8 py-3
         transition-all duration-200
         ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}
+        ${isHovered ? 'shadow-lg' : ''}
       `}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex gap-3 items-center">
         {/* User Icon */}
-        <div className="flex-shrink-0 mt-0.5">
+        <div className="flex-shrink-0">
           <div className="w-6 h-6 rounded-full bg-blue-500 dark:bg-blue-600 flex items-center justify-center">
             <svg 
               className="w-4 h-4 text-white" 
@@ -50,9 +58,15 @@ export function PinnedQuery({ query }: PinnedQueryProps) {
           </div>
         </div>
         
-        {/* Query Content */}
+        {/* Query Content - Single line normally, expands on hover */}
         <div className="flex-1 min-w-0">
-          <div className="text-sm text-gray-900 dark:text-gray-100 font-medium line-clamp-2">
+          <div 
+            className={`
+              text-sm text-gray-900 dark:text-gray-100 font-medium
+              transition-all duration-200 ease-in-out
+              ${isHovered ? 'max-h-[50vh] overflow-y-auto whitespace-pre-wrap' : 'truncate'}
+            `}
+          >
             {query}
           </div>
         </div>
@@ -60,4 +74,3 @@ export function PinnedQuery({ query }: PinnedQueryProps) {
     </div>
   );
 }
-

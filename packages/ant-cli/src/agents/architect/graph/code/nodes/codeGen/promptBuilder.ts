@@ -14,6 +14,7 @@ import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
+import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
@@ -89,12 +90,26 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     detectedEnvironment: state.detectionReport?.environment,
   };
   
+  // ✅ Select design doc based on task.packages (split injection)
+  // If task.packages is specified, inject only the relevant design docs
+  // Otherwise, fall back to state.design (environment-based selection)
+  let designDocForTask: string | undefined;
+  
+  if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
+    // Package-based split injection (fe, fe-*, be, be-*)
+    designDocForTask = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
+    console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → ${designDocForTask.length} chars`);
+  } else {
+    // Legacy: use pre-filtered state.design
+    designDocForTask = state.design;
+  }
+  
   const promptResult = await promptEngine.buildExecutePrompt(
     'code',
     contextWithProfile,
     {
       directive: state.directive,
-      designDoc: state.design,
+      designDoc: designDocForTask,
       prdSpec: state.prd,
       uiDoc: uiDocForTask,  // ✅ Split-injected UI doc (only requested sections)
       projectCodeContext: codeGenProjectCodeContext,
@@ -138,7 +153,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const projectContextParts = [
     composed.injections,
     state.prd ? `# Requirements\n\n${state.prd}` : null,
-    state.design ? `# Design Document\n\n${state.design}` : null,
+    designDocForTask ? `# Design Document\n\n${designDocForTask}` : null,
   ].filter(Boolean);
   
   const projectContextBlock: CacheableContent = {
@@ -395,7 +410,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           injectedVariables: {
             // Content lengths
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            designDoc: state.design ? `[${state.design.length} chars]` : undefined,
+            designDoc: designDocForTask ? `[${designDocForTask.length} chars]` : undefined,
+            packages: state.currentTask?.packages || undefined,  // ✅ Log packages for debugging
             prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
             uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,

@@ -4,7 +4,7 @@
  * Note: Header is managed by parent (App.tsx) using Bar component
  */
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { PinnedQuery } from './PinnedQuery';
@@ -26,20 +26,20 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   
   const chatPolicy = useChatPolicy(messages.length);
 
-  // ✅ Track visibility of last user message for pinned query
-  const [isLastUserMessageVisible, setIsLastUserMessageVisible] = useState(true);
+  // ✅ Track which user message to pin (Cursor-style dynamic pinning)
+  // null = no pin needed (user message visible or none above viewport)
+  const [pinnedQuery, setPinnedQuery] = useState<string | null>(null);
   
-  const handleLastUserMessageVisibilityChange = useCallback((isVisible: boolean) => {
-    setIsLastUserMessageVisible(isVisible);
+  const handlePinnedUserMessageChange = useCallback((query: string | null) => {
+    setPinnedQuery(query);
   }, []);
-
-  // ✅ Get last user query for pinned display
-  const lastUserQuery = useMemo(() => {
-    const userMessages = messages.filter(m => m.role === 'user');
-    return userMessages.length > 0 
-      ? userMessages[userMessages.length - 1].contents[0]?.content || ''
-      : '';
-  }, [messages.length, messages[messages.length - 1]?.id]);
+  
+  // ✅ Clear pin when chat is cleared (ChatHistory unmounts when messages.length === 0)
+  useEffect(() => {
+    if (messages.length === 0) {
+      setPinnedQuery(null);
+    }
+  }, [messages.length]);
 
   // ✅ CRITICAL: Extract stable values for dependency tracking
   // messages 배열 자체는 매번 새 참조이므로, 실제 변경사항만 추적
@@ -124,10 +124,10 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
     <div className="flex flex-col h-full min-h-0">
       {/* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        {/* Pinned Query - Only show when last user message is NOT visible */}
-        {messages.length > 0 && lastUserQuery && !isLastUserMessageVisible && (
+        {/* Pinned Query - Show when a user message is above the viewport */}
+        {pinnedQuery && (
           <div className="shrink-0">
-            <PinnedQuery query={lastUserQuery} />
+            <PinnedQuery query={pinnedQuery} />
           </div>
         )}
 
@@ -165,7 +165,7 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
             <ChatHistory
               messages={messages}
               isStreaming={isStreaming}
-              onLastUserMessageVisibilityChange={handleLastUserMessageVisibilityChange}
+              onPinnedUserMessageChange={handlePinnedUserMessageChange}
             />
           </div>
         )}

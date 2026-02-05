@@ -81,6 +81,46 @@ export interface CodeTask extends BaseTask {
    * If ui=true but uiSections is empty/undefined, all UI docs are injected (backward compatible).
    */
   uiSections?: string[];
+  /**
+   * Target packages for this task (set by decompose LLM).
+   * Used for split injection - only specified package design docs are loaded into prompt.
+   * 
+   * ## Normalized Tag Format
+   * 
+   * | Tag Pattern | Maps To | Description |
+   * |-------------|---------|-------------|
+   * | `fe` | `fe-system-design.md` | Single frontend (legacy) |
+   * | `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi frontend (monorepo) |
+   * | `be` | `be-system-design.md` | Single backend (legacy) |
+   * | `be-{svc}` | `be-system-design-{svc}.md` | MSA service |
+   * 
+   * ## Examples
+   * 
+   * ### Single Package Projects
+   * - `['fe']` → fe-system-design.md
+   * - `['be']` → be-system-design.md
+   * - `['fe', 'be']` → both (fullstack integration)
+   * 
+   * ### Multi-Package Frontend (Monorepo)
+   * - `['fe-web']` → fe-system-design-web.md
+   * - `['fe-admin']` → fe-system-design-admin.md
+   * - `['fe-web', 'fe-shared-ui']` → web app + shared UI library
+   * 
+   * ### MSA Backend
+   * - `['be-auth']` → be-system-design-auth.md
+   * - `['be-auth', 'be-order']` → auth + order (inter-service)
+   * 
+   * ### Cross-Tier Integration
+   * - `['fe-web', 'be-auth']` → frontend + specific backend service
+   * 
+   * ### Default Behavior
+   * - `undefined` → environment-based selection (all relevant docs)
+   * 
+   * ## Note
+   * - `api-contract.md` is ALWAYS injected when any package is specified
+   * - If undefined, falls back to environment-based selection (legacy behavior)
+   */
+  packages?: string[];
 }
 
 /**

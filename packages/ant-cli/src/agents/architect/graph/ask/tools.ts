@@ -1,0 +1,393 @@
+/**
+ * Ask Tools
+ * 
+ * Tools for exploring Ant source code with security filters.
+ * All tools enforce whitelist/blacklist path validation.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
+
+// ============================================================
+// Path Security (Blacklist approach)
+// ============================================================
+
+const DEBUG = process.env.ASK_DEBUG === 'true';
+
+/**
+ * Forbidden path patterns (blacklist)
+ * Only block security-sensitive paths; allow everything else
+ */
+const FORBIDDEN_PATTERNS = [
+  // Security-sensitive files
+  /\.env/i,
+  /secret/i,
+  /credentials?/i,
+  /password/i,
+  /private[-_]?key/i,
+  /api[-_]?key/i,
+  
+  // Infrastructure (may contain deployment configs)
+  /infrastructure\/auth\//,
+  /infrastructure\/networking\//,
+  
+  // Build artifacts and dependencies
+  /node_modules\//,
+  /\.git\//,
+  /dist\//,
+  /\.next\//,
+  /coverage\//,
+];
+
+/**
+ * Get ant-cli root path
+ */
+function getCliRoot(): string {
+  const cliRoot = WorkspacePathResolver.getCliRoot();
+  // Go from dist to src for actual source files
+  if (cliRoot.includes('/dist')) {
+    return cliRoot.replace('/dist', '/src');
+  }
+  return cliRoot;
+}
+
+/**
+ * Get ant-ui root path
+ */
+function getUiRoot(): string {
+  const cliRoot = getCliRoot();
+  // ant-cli/src -> ../../ant-ui (packages/ant-cli/src -> packages/ant-ui)
+  return path.resolve(cliRoot, '../../ant-ui');
+}
+
+/**
+ * Validate path against blacklist (security-only filtering)
+ */
+function validatePath(relativePath: string, _source: 'cli' | 'ui'): { valid: boolean; reason?: string } {
+  // Normalize path
+  const normalized = path.normalize(relativePath).replace(/\\/g, '/');
+  
+  // Check for path traversal
+  if (normalized.includes('..')) {
+    return { valid: false, reason: 'Path traversal not allowed' };
+  }
+  
+  // Check blacklist only
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return { valid: false, reason: `Security: access denied` };
+    }
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Sanitize output to mask sensitive information
+ */
+function sanitizeOutput(content: string): string {
+  // Mask potential secrets (very conservative)
+  return content
+    .replace(/(['"])[A-Za-z0-9+/=]{32,}(['"])/g, '$1[REDACTED]$2')  // Base64-like strings
+    .replace(/(['"])sk-[A-Za-z0-9]{20,}(['"])/g, '$1[REDACTED]$2')  // API keys
+    .replace(/password\s*[:=]\s*['"][^'"]+['"]/gi, 'password=[REDACTED]');
+}
+
+// ============================================================
+// Tool Definitions
+// ============================================================
+
+export interface ToolResult {
+  success: boolean;
+  content?: string;
+  error?: string;
+}
+
+/**
+ * Read a file from Ant source code
+ */
+export async function readAntSource(args: { path: string; source?: 'cli' | 'ui' }): Promise<ToolResult> {
+  const source = args.source || 'cli';
+  const relativePath = args.path;
+  
+  if (DEBUG) {
+    console.log(`📖 [AskTool] readAntSource: ${source}/${relativePath}`);
+  }
+  
+  // Validate path
+  const validation = validatePath(relativePath, source);
+  if (!validation.valid) {
+    return { success: false, error: validation.reason };
+  }
+  
+  // Resolve full path
+  const rootPath = source === 'cli' ? getCliRoot() : getUiRoot();
+  const fullPath = path.join(rootPath, relativePath);
+  
+  // Check file exists
+  if (!fs.existsSync(fullPath)) {
+    return { success: false, error: `File not found: ${relativePath}` };
+  }
+  
+  // Read and sanitize
+  try {
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const sanitized = sanitizeOutput(content);
+    
+    // Limit content length
+    const maxLength = 10000;
+    if (sanitized.length > maxLength) {
+      return {
+        success: true,
+        content: sanitized.substring(0, maxLength) + '\n\n[... truncated, file too large ...]',
+      };
+    }
+    
+    return { success: true, content: sanitized };
+  } catch (error: any) {
+    return { success: false, error: `Failed to read file: ${error.message}` };
+  }
+}
+
+/**
+ * List files in a directory
+ */
+export async function listAntFiles(args: { path: string; source?: 'cli' | 'ui' }): Promise<ToolResult> {
+  const source = args.source || 'cli';
+  const relativePath = args.path;
+  
+  if (DEBUG) {
+    console.log(`📂 [AskTool] listAntFiles: ${source}/${relativePath}`);
+  }
+  
+  // Basic path validation (allow directories)
+  const normalized = path.normalize(relativePath).replace(/\\/g, '/');
+  if (normalized.includes('..')) {
+    return { success: false, error: 'Path traversal not allowed' };
+  }
+  
+  // Check blacklist
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return { success: false, error: `Forbidden path: ${pattern}` };
+    }
+  }
+  
+  // Resolve full path
+  const rootPath = source === 'cli' ? getCliRoot() : getUiRoot();
+  const fullPath = path.join(rootPath, relativePath);
+  
+  // Check directory exists
+  if (!fs.existsSync(fullPath)) {
+    return { success: false, error: `Directory not found: ${relativePath}` };
+  }
+  
+  if (!fs.statSync(fullPath).isDirectory()) {
+    return { success: false, error: `Not a directory: ${relativePath}` };
+  }
+  
+  try {
+    const entries = fs.readdirSync(fullPath, { withFileTypes: true });
+    const items = entries
+      .filter(e => !e.name.startsWith('.'))  // Skip hidden files
+      .map(e => ({
+        name: e.name,
+        type: e.isDirectory() ? 'dir' : 'file',
+      }));
+    
+    return {
+      success: true,
+      content: JSON.stringify(items, null, 2),
+    };
+  } catch (error: any) {
+    return { success: false, error: `Failed to list directory: ${error.message}` };
+  }
+}
+
+/**
+ * Search for text in Ant source code
+ */
+export async function searchAntCode(args: { 
+  query: string; 
+  source?: 'cli' | 'ui';
+  filePattern?: string;
+}): Promise<ToolResult> {
+  const source = args.source || 'cli';
+  const query = args.query;
+  const filePattern = args.filePattern || '*.ts';
+  
+  if (DEBUG) {
+    console.log(`🔍 [AskTool] searchAntCode: "${query}" in ${source} (${filePattern})`);
+  }
+  
+  // Validate query
+  if (!query || query.length < 2) {
+    return { success: false, error: 'Query too short (min 2 chars)' };
+  }
+  
+  if (query.length > 100) {
+    return { success: false, error: 'Query too long (max 100 chars)' };
+  }
+  
+  const rootPath = source === 'cli' ? getCliRoot() : getUiRoot();
+  
+  // Simple recursive search (limited)
+  const results: { file: string; line: number; content: string }[] = [];
+  const maxResults = 20;
+  
+  function searchDir(dir: string, relativeTo: string) {
+    if (results.length >= maxResults) return;
+    
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (results.length >= maxResults) return;
+        if (entry.name.startsWith('.')) continue;
+        if (entry.name === 'node_modules') continue;
+        
+        const fullPath = path.join(dir, entry.name);
+        const relPath = path.relative(relativeTo, fullPath);
+        
+        // Skip forbidden paths
+        const isForbidden = FORBIDDEN_PATTERNS.some(p => p.test(relPath));
+        if (isForbidden) continue;
+        
+        if (entry.isDirectory()) {
+          searchDir(fullPath, relativeTo);
+        } else if (entry.isFile()) {
+          // Check file pattern
+          if (filePattern !== '*' && !entry.name.endsWith(filePattern.replace('*', ''))) {
+            continue;
+          }
+          
+          // Check whitelist
+          const validation = validatePath(relPath, source);
+          if (!validation.valid) continue;
+          
+          try {
+            const content = fs.readFileSync(fullPath, 'utf-8');
+            const lines = content.split('\n');
+            
+            lines.forEach((line, idx) => {
+              if (results.length >= maxResults) return;
+              if (line.toLowerCase().includes(query.toLowerCase())) {
+                results.push({
+                  file: relPath,
+                  line: idx + 1,
+                  content: line.substring(0, 200),
+                });
+              }
+            });
+          } catch {
+            // Skip unreadable files
+          }
+        }
+      }
+    } catch {
+      // Skip inaccessible directories
+    }
+  }
+  
+  searchDir(rootPath, rootPath);
+  
+  if (results.length === 0) {
+    return { success: true, content: 'No matches found' };
+  }
+  
+  const output = results
+    .map(r => `${r.file}:${r.line}: ${r.content}`)
+    .join('\n');
+  
+  return {
+    success: true,
+    content: results.length >= maxResults 
+      ? `${output}\n\n[... more results truncated, showing first ${maxResults} ...]`
+      : output,
+  };
+}
+
+// ============================================================
+// Tool Schema for LLM
+// ============================================================
+
+export const ASK_TOOLS = [
+  {
+    name: 'read_ant_source',
+    description: 'Read a file from Ant source code. Use this to understand how Ant works.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Relative path to the file (e.g., "core/data/triage/jobs/design.yaml")',
+        },
+        source: {
+          type: 'string',
+          enum: ['cli', 'ui'],
+          description: 'Source package: "cli" for ant-cli, "ui" for ant-ui. Default: cli',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'list_ant_files',
+    description: 'List files in a directory of Ant source code.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Relative path to the directory (e.g., "core/data/triage/jobs")',
+        },
+        source: {
+          type: 'string',
+          enum: ['cli', 'ui'],
+          description: 'Source package: "cli" for ant-cli, "ui" for ant-ui. Default: cli',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'search_ant_code',
+    description: 'Search for text in Ant source code.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Text to search for',
+        },
+        source: {
+          type: 'string',
+          enum: ['cli', 'ui'],
+          description: 'Source package to search. Default: cli',
+        },
+        filePattern: {
+          type: 'string',
+          description: 'File pattern to match (e.g., "*.yaml", "*.ts"). Default: *.ts',
+        },
+      },
+      required: ['query'],
+    },
+  },
+];
+
+/**
+ * Execute a tool by name
+ */
+export async function executeTool(name: string, args: Record<string, any>): Promise<ToolResult> {
+  switch (name) {
+    case 'read_ant_source':
+      return readAntSource(args as { path: string; source?: 'cli' | 'ui' });
+    case 'list_ant_files':
+      return listAntFiles(args as { path: string; source?: 'cli' | 'ui' });
+    case 'search_ant_code':
+      return searchAntCode(args as { query: string; source?: 'cli' | 'ui'; filePattern?: string });
+    default:
+      return { success: false, error: `Unknown tool: ${name}` };
+  }
+}

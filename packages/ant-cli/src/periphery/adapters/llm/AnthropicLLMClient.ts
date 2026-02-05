@@ -166,18 +166,38 @@ export class AnthropicLLMClient implements LLMClient {
       }
     }
     
-    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} thinking=${enableThinking} cacheable=${cacheableBlocks}`);
+    // ✅ Extract system message (Anthropic requires it as a separate parameter)
+    // Priority: options.system > messages with role 'system'
+    const systemMessage = messages.find(m => m.role === 'system');
+    const userMessages = messages.filter(m => m.role !== 'system');
+    
+    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=stream messages=${userMessages.length} tools=${toolsCount} thinking=${enableThinking} cacheable=${cacheableBlocks}`);
+    
+    // Process system message (options.system takes priority)
+    let systemParam: string | undefined = options?.system;
+    if (!systemParam && systemMessage) {
+      if (typeof systemMessage.content === 'string') {
+        systemParam = systemMessage.content;
+      } else if (Array.isArray(systemMessage.content)) {
+        // Join text blocks
+        systemParam = systemMessage.content
+          .filter((c: any) => c?.type === 'text')
+          .map((c: any) => c.text)
+          .join('\n');
+      }
+    }
     
     const stream = await this.client.messages.create({
       model: this.modelName,
       max_tokens: options?.maxTokens || 16000,
+      ...(systemParam ? { system: systemParam } : {}),
       ...(enableThinking ? {
         thinking: {
           type: 'enabled',
           budget_tokens: 10000,
         }
       } : {}),
-      messages: messages.map(m => ({
+      messages: userMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,  // API directly accepts CacheableContent[]
       })),

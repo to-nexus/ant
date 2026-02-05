@@ -114,7 +114,11 @@ export function createTaskQueue(tasks: CodeTask[]): {
       description: task.description,
       errors: task.errors,
       category: task.category,
-      ui: typeof (task as any).ui === 'boolean' ? (task as any).ui : undefined
+      // UI injection flags
+      ui: typeof (task as any).ui === 'boolean' ? (task as any).ui : undefined,
+      uiSections: Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined,
+      // Package-based design doc injection (fe, fe-*, be, be-*)
+      packages: Array.isArray((task as any).packages) ? (task as any).packages : undefined,
     };
     
     taskQueue.push(normalizedTask);
