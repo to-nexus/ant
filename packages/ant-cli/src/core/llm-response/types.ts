@@ -68,4 +68,5 @@ export type ChatStatusType =
   | 'searching_reference' | 'searched_reference' 
   | 'tool_action' 
   | 'learning' | 'learned' 
+  | 'triage_choice'  // ✅ Triage redirect/blocked choice
   | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed';
