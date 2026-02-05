@@ -105,9 +105,20 @@ export class LLMResponseService {
 
     try {
       // Ensure session is loaded
-      await this.sessionStore.getOrCreateSession();
+      const session = await this.sessionStore.getOrCreateSession();
       
       const messageId = await this.sessionStore.startMessage();
+      const ctx = this.sessionStore.getContext();
+      
+      // ✅ CRITICAL: Broadcast message_start for UI to begin streaming display
+      // This was missing and caused UI to not show any streaming content
+      const currentMessage = this.sessionStore.getCurrentMessage();
+      if (currentMessage) {
+        this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
+          type: 'message_start',
+          message: currentMessage
+        }, ctx.userContext);
+      }
       
       logger.debug(`Started message: ${messageId}`, { component: 'LLMResponseService' });
       return messageId;
