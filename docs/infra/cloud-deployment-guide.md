@@ -580,17 +580,25 @@ spec:
 
 > **Note**: No Sticky Session needed. Redis Pub/Sub broadcasts messages to all pods. Reconnections to different pods work correctly.
 
-### 8.3 Nginx Ingress for Preview (Referer-based Routing) ⚠️ IMPORTANT
+### 8.3 Preview 리소스 경로 처리 (Path Rewrite)
 
-Preview 페이지에서 로드하는 리소스 (`/logos/*`, `/icons/*`, `/_next/*` 등)는 `/preview/` 경로가 아니지만 ant-preview로 라우팅되어야 합니다.
+Preview 페이지에서 로드하는 리소스 (`/logos/*`, `/icons/*`, `/_next/*` 등)의 절대 경로 문제는 **서버 사이드 Path Rewrite**로 해결합니다.
 
-**문제 상황:**
+> **Note**: ALB Controller는 URI 기반 라우팅만 지원합니다 (Referer, Header 기반 라우팅 불가).
+
+**동작 방식:**
 ```
-클라이언트: GET /logos/header-logo.svg (Preview 페이지에서 요청)
-Ingress: /* 규칙 → ant-api → 401 Unauthorized (인증 실패)
+1. Dev Server 렌더링: <img src="/logos/header.svg">
+
+2. PreviewProxy (ant-preview) Rewrite:
+   <img src="/preview/org:user:proj:feat/logos/header.svg">
+
+3. 브라우저 요청: GET /preview/org:user:proj:feat/logos/header.svg
+
+4. Ingress: /preview/* → ant-preview ✅
 ```
 
-**해결책: Referer 헤더 기반 라우팅**
+**Ingress 설정 (ALB):**
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -598,17 +606,9 @@ kind: Ingress
 metadata:
   name: ant-ingress
   annotations:
-    kubernetes.io/ingress.class: nginx
-    # Referer 기반 라우팅을 위한 server-snippet
-    nginx.ingress.kubernetes.io/server-snippet: |
-      # Preview 리소스 요청: Referer에 /preview/ 포함 시 ant-preview로 라우팅
-      location ~* ^/(?!api|preview|realtime|ide).*$ {
-        if ($http_referer ~* "/preview/") {
-          proxy_pass http://ant-preview.default.svc.cluster.local:8080;
-          break;
-        }
-        proxy_pass http://ant-api.default.svc.cluster.local:8080;
-      }
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
 spec:
   rules:
   - host: ant-server.crosstoken.io
@@ -653,11 +653,12 @@ spec:
 
 **라우팅 동작:**
 
-| 요청 | Referer | 라우팅 대상 |
-|-----|---------|-------------|
-| `/preview/org:user:proj:feat/` | - | ant-preview |
-| `/logos/header-logo.svg` | `*/preview/*` | ant-preview |
-| `/logos/header-logo.svg` | 없거나 다른 경로 | ant-api |
-| `/api/jobs` | - | ant-api |
+| 요청 | 라우팅 대상 | 비고 |
+|-----|-------------|------|
+| `/preview/org:user:proj:feat/*` | ant-preview | Preview 페이지 + 모든 리소스 |
+| `/api/*` | ant-api | REST API |
+| `/ide/*` | ant-api | IDE Proxy |
+| `/*` | ant-api | Default (SSR, etc.) |
 
-> **Note**: ant-preview의 `previewProxy`는 Referer 헤더에서 serverKey를 추출하여 올바른 Dev Server로 프록시합니다.
+> **Note**: ant-preview의 `previewProxy`가 HTML/JS/CSS에서 절대 경로를 `/preview/:serverKey/` prefix로 변환합니다.
+> SSR 앱의 경우 hydration mismatch 경고가 발생할 수 있으나 기능에는 영향 없습니다.

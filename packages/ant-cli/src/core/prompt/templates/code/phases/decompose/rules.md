@@ -205,6 +205,51 @@ CRITICAL:
   ```
 - If `uiSections` is omitted or empty, ALL UI docs are injected (fallback, not recommended for large docs).
 
+**PACKAGE TAG (SPLIT DESIGN DOC INJECTION - MULTI-PACKAGE SUPPORT):**
+
+When the project has multiple frontend packages or backend services (monorepo/MSA), add `"packages": [...]` to specify which design documents should be injected.
+
+**Tag Format:**
+
+| Tag | Maps To | Description |
+|-----|---------|-------------|
+| `fe` | `fe-system-design.md` | Single/legacy frontend |
+| `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi-frontend package (e.g., `fe-web`, `fe-admin`) |
+| `be` | `be-system-design.md` | Single/legacy backend |
+| `be-{svc}` | `be-system-design-{svc}.md` | MSA service (e.g., `be-auth`, `be-order`) |
+
+**Examples:**
+```json
+// Single frontend task
+{ "packages": ["fe"], "description": "Implement header component" }
+
+// Multi-frontend task (monorepo)
+{ "packages": ["fe-web"], "description": "Implement web app landing page" }
+{ "packages": ["fe-admin"], "description": "Implement admin dashboard" }
+{ "packages": ["fe-web", "fe-shared-ui"], "description": "Use shared UI library in web app" }
+
+// Single backend task
+{ "packages": ["be"], "description": "Implement user API endpoints" }
+
+// MSA backend task
+{ "packages": ["be-auth"], "description": "Implement auth service login endpoint" }
+{ "packages": ["be-auth", "be-order"], "description": "Inter-service integration: order → auth" }
+
+// Cross-tier integration
+{ "packages": ["fe-web", "be-auth"], "description": "Frontend auth integration with auth service" }
+```
+
+**Behavior:**
+- `api-contract.md` is **ALWAYS injected** when any package is specified
+- If `packages` is omitted → all relevant design docs are injected (environment-based, legacy behavior)
+- If `packages` is specified → only the specified design docs are injected (token optimization)
+
+**When to use `packages`:**
+- ✅ Multi-frontend monorepo (multiple apps: web, admin, mobile)
+- ✅ MSA backend (multiple services: auth, order, payment)
+- ✅ Cross-tier integration tasks (frontend + specific backend service)
+- ❌ Single frontend + single backend projects (use default behavior)
+
 **UI TASK DESCRIPTION GUIDELINES (CRITICAL):**
 
 **For UI tasks, task description should provide DIRECTION, not DETAILS.**

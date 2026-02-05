@@ -13,6 +13,7 @@ import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
+import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -68,7 +69,19 @@ export async function generatePlanText(
     throw new Error('[Plan] PromptEngine not available');
   }
   
-  const designDoc = state.design || '';
+  // ✅ Select design doc based on task.packages (split injection)
+  // If task.packages is specified, inject only the relevant design docs
+  // Otherwise, fall back to state.design (environment-based selection)
+  let designDoc: string;
+  
+  if (task.packages && task.packages.length > 0 && state.designDocs) {
+    // Package-based split injection
+    designDoc = buildDesignDocForTask(task.packages, state.designDocs);
+    console.log(`📄 [Plan] Split injection: packages=${task.packages.join(', ')} → ${designDoc.length} chars`);
+  } else {
+    // Legacy: use pre-filtered state.design
+    designDoc = state.design || '';
+  }
   
   // Format violations for retry context
   const violationsText = violations && violations.length > 0 

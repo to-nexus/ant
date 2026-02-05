@@ -144,6 +144,7 @@ export class FeatureCrudService {
     await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/prompts'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/plans'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/logs'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/asks'), { recursive: true });
 
     // Create inputs/sources templates (so users know what to fill)
     const sourcesDir = path.join(featurePath, 'inputs/sources');

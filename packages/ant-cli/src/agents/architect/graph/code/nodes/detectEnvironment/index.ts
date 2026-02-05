@@ -262,6 +262,7 @@ export async function detectEnvironment(
   
   // ✅ Filter designDocs based on selectedDesignFiles
   // Update state with filtered docs so subsequent nodes don't need to filter again
+  // Supports both legacy single docs and multi-package (monorepo/MSA) patterns
   let filteredDesignDocs: typeof state.designDocs = undefined;
   let filteredDesign = '';
   
@@ -269,7 +270,14 @@ export async function detectEnvironment(
     filteredDesignDocs = {};
     const parts: string[] = [];
     
+    // Patterns for multi-package files
+    const feMultiPattern = /^fe-system-design-(.+)\.md$/;
+    const beMultiPattern = /^be-system-design-(.+)\.md$/;
+    
     for (const fileName of selectedDesignFiles) {
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Legacy single docs
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       if (fileName === 'api-contract.md' && state.designDocs.apiContract) {
         filteredDesignDocs.apiContract = state.designDocs.apiContract;
         parts.push('# API Contract\n\n' + state.designDocs.apiContract);
@@ -282,6 +290,33 @@ export async function detectEnvironment(
       } else if (fileName === 'system-design.md' && state.designDocs.unifiedDesign) {
         filteredDesignDocs.unifiedDesign = state.designDocs.unifiedDesign;
         parts.push('# System Design\n\n' + state.designDocs.unifiedDesign);
+      }
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Multi-package frontend: fe-system-design-{pkg}.md
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      else {
+        const feMatch = fileName.match(feMultiPattern);
+        if (feMatch && state.designDocs.feDesigns) {
+          const pkgName = feMatch[1];
+          if (state.designDocs.feDesigns[pkgName]) {
+            if (!filteredDesignDocs.feDesigns) filteredDesignDocs.feDesigns = {};
+            filteredDesignDocs.feDesigns[pkgName] = state.designDocs.feDesigns[pkgName];
+            parts.push(`# Frontend: ${pkgName}\n\n` + state.designDocs.feDesigns[pkgName]);
+          }
+        }
+        
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        // Multi-package backend (MSA): be-system-design-{svc}.md
+        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        const beMatch = fileName.match(beMultiPattern);
+        if (beMatch && state.designDocs.beDesigns) {
+          const svcName = beMatch[1];
+          if (state.designDocs.beDesigns[svcName]) {
+            if (!filteredDesignDocs.beDesigns) filteredDesignDocs.beDesigns = {};
+            filteredDesignDocs.beDesigns[svcName] = state.designDocs.beDesigns[svcName];
+            parts.push(`# Backend: ${svcName} Service\n\n` + state.designDocs.beDesigns[svcName]);
+          }
+        }
       }
     }
     

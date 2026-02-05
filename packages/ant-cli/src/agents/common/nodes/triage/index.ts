@@ -17,7 +17,7 @@ import { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
 import { parseTriageResponse } from './parser.js';
 import { AgentRegistry } from './AgentRegistry.js';
 import { accumulateTokenUsage } from '../../../architect/graph/common/llmHelpers.js';
-import { askResponseGenerator } from '../../../../core/ask/AskResponseGenerator.js';
+import { runAskGraph } from '../../../architect/graph/ask/runner.js';
 import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
 
@@ -163,49 +163,28 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   logTriageResult(triageResult);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 5: Handle Ask Intent with Ask System (Streaming)
+  // Step 5: Handle Ask Intent with Agentic Ask System
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (triageResult.intent === 'ask' && triageResult.inScope) {
-    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('💬 ASK SYSTEM');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    
-    console.log(`📝 Question: ${userInput.substring(0, 50)}${userInput.length > 50 ? '...' : ''}`);
-    console.log(`🌐 Language: ${language}\n`);
-    
-    // Start chat message for streaming
-    const chatAPI = new ChatAPIClient();
-    await chatAPI.startMessage();
-    
-    // Generate response with streaming
-    const askContext = {
-      userQuestion: userInput,
-      workspaceState,
+    // Run Agentic Ask Graph (explores Ant source code to answer)
+    const askResult = await runAskGraph({
+      question: userInput,
+      language,
+      workspaceState: {
+        ...workspaceState,
+        featurePath: state.context?.featurePath,  // ✅ Pass featurePath for debug logging
+      },
       currentJob,
       currentAgent,
-      language,
-    };
-    
-    let fullResponse = '';
-    const generator = askResponseGenerator.generateStreaming(askContext, { llm });
-    
-    // Stream response to chat UI
-    for await (const event of generator) {
-      if (event.type === 'text' && event.text) {
-        await chatAPI.sendLLMEvent({ type: 'text', text: event.text });
-        fullResponse += event.text;
-      }
-    }
-    
-    await chatAPI.finalizeMessage();
+      deps: { llm },
+      _httpJobId: state._httpJobId,
+    });
     
     triageResult = {
       ...triageResult,
-      askResponse: fullResponse,
-      displayMessage: fullResponse,
+      askResponse: askResult.response,
+      displayMessage: askResult.response,
     };
-    
-    console.log('✅ Ask System response streamed to Chat UI');
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
