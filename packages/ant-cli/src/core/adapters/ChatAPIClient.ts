@@ -178,7 +178,10 @@ export class ChatAPIClient {
       }
     }
 
-    console.log(`📤 [ChatAPIClient] sendLLMEvent | type=${event.type} | messageId=${this.currentMessageId} | jobId=${this.jobId}`);
+    // Only log non-thinking events to reduce noise (thinking events are very frequent)
+    if (event.type !== 'thinking') {
+      console.log(`📤 [ChatAPIClient] sendLLMEvent | type=${event.type} | messageId=${this.currentMessageId} | jobId=${this.jobId}`);
+    }
     await service.sendLLMEvent(event);
   }
 

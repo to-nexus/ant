@@ -35,6 +35,16 @@ export class LLMEventHandler {
       return;
     }
     
+    // ✅ Debug: Check if currentMessage exists
+    if (!session.currentMessage) {
+      logger.error(`No currentMessage in session for LLM event type '${event.type}' (messages: ${session.messages?.length || 0})`, {
+        component: 'LLMEventHandler',
+        projectId: ctx.projectId,
+        featureName: ctx.featureName
+      });
+      return;
+    }
+    
     switch (event.type) {
       case 'thinking':
         this.handleThinkingEvent(event);
@@ -65,7 +75,11 @@ export class LLMEventHandler {
     const session = this.sessionStore.getSession();
     const ctx = this.sessionStore.getContext();
     
-    if (!session?.currentMessage) return;
+    // Already checked in handleEvent(), but double-check for safety
+    if (!session?.currentMessage) {
+      logger.warn(`handleThinkingEvent: No currentMessage`, { component: 'LLMEventHandler' });
+      return;
+    }
 
     const isBlockEnd = event.metadata?.blockEnd === true;
     
