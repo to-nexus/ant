@@ -18,6 +18,7 @@ export class ChatAPIClient {
   private baseUrl: string;
   private enabled: boolean;
   private messageStarted: boolean = false;  // ✅ Track if message is active
+  private currentMessageId: string | null = null;  // ✅ Track current message ID for cross-Pod recovery
 
   constructor() {
     // ✅ ANT_API_URL is the canonical way to reach the API server
@@ -89,6 +90,7 @@ export class ChatAPIClient {
       // No active message on server, need to start new one
       console.log('[ChatAPIClient] ⚠️  No active message on server, starting new message...');
       this.messageStarted = false;  // Reset flag to allow starting new message
+      this.currentMessageId = null;  // Reset message ID
       const messageId = await this.startMessage();
       return messageId !== null;
     } catch (error) {
@@ -117,6 +119,7 @@ export class ChatAPIClient {
 
       const { messageId } = await response.json() as { messageId: string };
       this.messageStarted = true;  // ✅ Mark message as active
+      this.currentMessageId = messageId;  // ✅ Store for cross-Pod recovery
       return messageId;
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error starting message:', error);
@@ -426,7 +429,8 @@ export class ChatAPIClient {
       const response = await fetch(`${this.baseUrl}/llm-event`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ event, jobId: this.jobId })
+        // ✅ Include messageId for cross-Pod recovery in multi-Pod environments
+        body: JSON.stringify({ event, jobId: this.jobId, messageId: this.currentMessageId })
       });
 
       if (!response.ok) {
@@ -501,9 +505,11 @@ export class ChatAPIClient {
       }
       
       this.messageStarted = false;  // ✅ Reset flag after finalize
+      this.currentMessageId = null;  // ✅ Clear message ID
     } catch (error) {
       console.error('❌ [ChatAPIClient] Error finalizing message:', error);
       this.messageStarted = false;  // ✅ Reset even on error
+      this.currentMessageId = null;  // ✅ Clear message ID
     }
   }
 

@@ -353,11 +353,41 @@ Job Worker ───────────────│──► sse:broadca
 ```
 처리 흐름:
 1. BullMQ에서 Job dequeue
-2. LLM API 호출 (Claude, GPT)
-3. 코드 생성 → EFS 저장
-4. Redis Pub/Sub으로 상태 broadcast
-5. Job 완료 상태 Redis 저장
+2. LLM API 호출 (Claude, GPT) - 스트리밍 응답 수신
+3. ChatAPIClient → ant-api HTTP 요청 (상태 관리를 위해)
+   - POST /start-message (메시지 시작)
+   - POST /llm-event (thinking, text 청크)
+   - POST /finalize-message (메시지 완료)
+4. ant-api의 ChatService가 상태 관리:
+   - currentMessage, activeFileOperations 관리
+   - ContentMerger로 thinking 이벤트 병합
+   - MessageBroadcaster → Redis Pub/Sub publish
+5. 코드 생성 → EFS 저장
+6. Job 완료 상태 Redis 저장
 ```
+
+**Chat 데이터 흐름 (상세):**
+```
+┌─────────────┐     HTTP (ChatAPIClient)     ┌─────────────┐     Redis      ┌─────────────┐
+│  ant-job    │─────────────────────────────►│  ant-api    │────publish────►│   Redis     │
+│(Job Worker) │                              │(ChatService)│                │  Pub/Sub    │
+└──────▲──────┘                              └─────────────┘                └──────┬──────┘
+       │ LLM Stream                                │                               │
+       │                                     상태 관리:                        subscribe
+┌──────┴──────┐                              - currentMessage                      │
+│  LLM API    │                              - ContentMerger              ┌────────▼────────┐
+│ (Claude 등) │                              - activeFileOperations       │  ant-realtime   │
+└─────────────┘                                                           │  (SSE Gateway)  │
+                                                                          └────────┬────────┘
+                                                                                   │ SSE
+                                                                          ┌────────▼────────┐
+                                                                          │     ant-ui      │
+                                                                          │    (브라우저)    │
+                                                                          └─────────────────┘
+```
+
+> **Note**: Job Worker가 ant-api를 거치는 이유는 ChatService의 **상태 관리** 로직이 필요하기 때문.
+> 단순 Redis publish만으로는 thinking 병합, 파일 카드 상태 관리 등이 불가능.
 
 ### 3.5 IDE Pods (ant-ide namespace)
 

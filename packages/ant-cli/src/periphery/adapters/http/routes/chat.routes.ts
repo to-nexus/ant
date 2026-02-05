@@ -175,7 +175,7 @@ export function createChatRoutes(deps: {
   router.post('/projects/:id/features/:feature/chat/llm-event', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { event, jobId } = req.body;
+    const { event, jobId, messageId } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -188,14 +188,21 @@ export function createChatRoutes(deps: {
     }
 
     // CLOUD MODE: Ensure active message exists (cross-Pod recovery)
+    // ⚠️ CRITICAL: Do NOT create new message here - client already did via /start-message
+    // This endpoint should ONLY recover existing message from Redis
     if (jobId) {
       const userContext = extractUserContext(req);
       const hasActive = await deps.chatService.ensureActiveMessageAsync(
         projectId, featureName, jobId, userContext
       );
-      if (!hasActive) {
-        // Start new message if none exists
-        await deps.chatService.startAssistantMessageAsync(projectId, featureName, jobId, userContext);
+      if (!hasActive && messageId) {
+        // ✅ Multi-Pod recovery: Use messageId provided by client to reconstruct message
+        // This handles Redis replication lag in distributed environments
+        console.log(`[LLM-Event] 🔄 Reconstructing message ${messageId} from client-provided ID`);
+        await deps.chatService.reconstructMessageFromId(projectId, featureName, jobId, messageId, userContext);
+      } else if (!hasActive) {
+        // Log warning but don't create - client is responsible for message creation
+        console.warn(`[LLM-Event] ⚠️ No active message found for ${projectId}/${featureName} (Job: ${jobId}) - client should have created via /start-message`);
       }
     }
 
