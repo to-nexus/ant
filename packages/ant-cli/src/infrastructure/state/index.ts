@@ -30,12 +30,18 @@ export {
   parseChannelUserContext,
 } from './redisConstants';
 
-// Re-export types from port (excluding LogEntry to avoid duplication)
+// Re-export types from port
 export type {
   StateStorePort,
   JobStatusData,
   JobStatusValue,
-  TaskQueueSnapshot,
-  JobProjectMapping,
   PortMapping
 } from '../../core/ports/stateStore';
+
+// Re-export task types from core
+export type {
+  TaskQueueSnapshot,
+  JobProjectMapping,
+  KanbanData,
+  KanbanBroadcastMessage
+} from '../../core/types/task';

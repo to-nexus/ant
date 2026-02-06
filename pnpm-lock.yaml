@@ -35,6 +35,9 @@ importers:
 
   packages/ant-cli:
     dependencies:
+      '@ant/shared':
+        specifier: workspace:^
+        version: link:../ant-shared
       '@anthropic-ai/sdk':
         specifier: ^0.71.2
         version: 0.71.2(zod@4.1.12)
@@ -166,8 +169,17 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/ant-shared:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/ant-ui:
     dependencies:
+      '@ant/shared':
+        specifier: workspace:^
+        version: link:../ant-shared
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@18.3.26)(react@18.3.1)

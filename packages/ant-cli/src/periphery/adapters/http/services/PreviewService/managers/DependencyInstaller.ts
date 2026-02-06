@@ -2,8 +2,7 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
-
-export type LogCallback = (type: 'stdout' | 'stderr', message: string) => void;
+import type { LogCallback } from '../types';
 
 /**
  * DependencyInstaller

@@ -5,7 +5,10 @@
  * 
  * Endpoints:
  * - GET /api/agents/:agent/jobs/:job/graph-metadata - 그래프 메타데이터 조회
- * - GET /api/jobs/:jobId/workflow/stream - 실시간 상태 스트림 (Phase 2)
+ * - GET /api/jobs/:jobId/workflow/state - 워크플로우 상태 조회
+ * 
+ * Note: Workflow state is written by WorkflowBroadcaster (Job Worker child process)
+ * via direct Redis Pub/Sub. These routes only READ the state.
  */
 
 import { Router, Request, Response } from 'express';
@@ -22,20 +25,10 @@ export function createWorkflowRoutes(deps: {
    * GET /api/agents/:agent/jobs/:job/graph-metadata
    * 
    * Agent-Job 조합에 대한 LangGraph 메타데이터 반환
-   * 
-   * Parameters:
-   * - agent: string (예: 'architect')
-   * - job: string (예: 'code', 'design', 'learn')
-   * 
-   * Response:
-   * - 200: WorkflowGraphMetadata
-   * - 404: Agent or job not found
-   * - 500: Internal error
    */
   router.get('/agents/:agent/jobs/:job/graph-metadata', async (req: Request, res: Response) => {
     try {
       const { agent, job } = req.params;
-      
       
       const metadata = await deps.graphMetadataService.extractGraphMetadata(agent, job);
       
@@ -61,13 +54,6 @@ export function createWorkflowRoutes(deps: {
    * GET /api/jobs/:jobId/workflow/state
    * 
    * Job의 워크플로우 상태 조회 (REST API)
-   * 
-   * Parameters:
-   * - jobId: string (Job ID)
-   * 
-   * Response:
-   * - 200: WorkflowRealtimeState
-   * - 404: Job state not found
    */
   router.get('/jobs/:jobId/workflow/state', async (req: Request, res: Response) => {
     const { jobId } = req.params;
@@ -82,90 +68,8 @@ export function createWorkflowRoutes(deps: {
       return;
     }
     
-    // activeActors is already an array (serialized for Redis)
     res.json(state);
-  });
-  
-  // Note: /jobs/:jobId/workflow/stream is now handled by sseRoutes.ts (unified SSE)
-  
-  /**
-   * POST /api/jobs/:jobId/workflow/update
-   * 
-   * @deprecated This HTTP endpoint is maintained for backward compatibility.
-   * New implementation: Job Worker child processes now use direct Redis Pub/Sub
-   * via core/realtime/WorkflowBroadcaster. This reduces latency and removes HTTP intermediary.
-   * 
-   * 워크플로우 상태 업데이트 (자식 프로세스에서 호출)
-   * 
-   * Parameters:
-   * - jobId: string (Job ID)
-   * 
-   * Body:
-   * - action: 'enterNode' | 'exitNode' | 'startActor' | 'endActor' | 'endJob'
-   * - nodeId?: string (for enterNode/exitNode)
-   * - actorId?: string (for startActor/endActor)
-   * 
-   * Response:
-   * - 200: { success: true }
-   * - 400: { error: 'Invalid action' }
-   */
-  router.post('/jobs/:jobId/workflow/update', async (req: Request, res: Response) => {
-    const { jobId } = req.params;
-    const { action, nodeId, actorId, taskInfo, llmInfo } = req.body;
-    
-    try {
-      switch (action) {
-        case 'enterNode':
-          if (!nodeId) {
-            res.status(400).json({ error: 'nodeId required for enterNode' });
-            return;
-          }
-          await deps.workflowStateService.enterNode(jobId, nodeId, taskInfo, llmInfo);
-          break;
-        
-        case 'exitNode':
-          if (!nodeId) {
-            res.status(400).json({ error: 'nodeId required for exitNode' });
-            return;
-          }
-          await deps.workflowStateService.exitNode(jobId, nodeId);
-          break;
-        
-        case 'startActor':
-          if (!actorId) {
-            res.status(400).json({ error: 'actorId required for startActor' });
-            return;
-          }
-          await deps.workflowStateService.startActorInteraction(jobId, actorId);
-          break;
-        
-        case 'endActor':
-          if (!actorId) {
-            res.status(400).json({ error: 'actorId required for endActor' });
-            return;
-          }
-          await deps.workflowStateService.endActorInteraction(jobId, actorId);
-          break;
-        
-        case 'endJob':
-          await deps.workflowStateService.endJob(jobId);
-          break;
-        
-        default:
-          res.status(400).json({ error: 'Invalid action' });
-          return;
-      }
-      
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error('[WorkflowRoutes] Error updating workflow state:', error);
-      res.status(500).json({
-        error: 'Internal server error',
-        message: error.message
-      });
-    }
   });
   
   return router;
 }
-

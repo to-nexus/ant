@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
-import { Session } from '@/domain/models/session';
-import { TaskTiming, TaskTokenUsage, JobTiming } from '@/domain/models/types';
+import type { Session } from '@/domain/models/session';
+import type { TaskTiming, DecomposableJobType, KanbanData } from '@ant/shared';
 
 // ============================================================================
 // URL Configuration
@@ -213,7 +213,7 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
 export interface ExecuteJobParams {
   projectId: string;
   featureName?: string;  // Optional: if not provided, uses 'skeleton'
-  jobType?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // Note: 'task' here means agent's work type
+  jobType?: DecomposableJobType | 'review' | 'plan' | 'doc';
   agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
@@ -326,8 +326,6 @@ export interface PreviewStatus {
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
 }
 
-/** @deprecated Use PreviewStatus instead */
-export type DevServerStatus = PreviewStatus;
 
 // ========== Models ==========
 
@@ -826,42 +824,16 @@ export async function fetchFeatureSession(projectId: string, featureName: string
 // ========================================
 // 📊 KANBAN API - Complete View Model
 // ========================================
-export interface KanbanTask {
-  id: string;
-  name: string;
-  type: 'setup' | 'feature' | 'integration' | 'unknown';
-  description?: string;
-  priority?: number;
-  status?: 'todo' | 'in-progress' | 'completed';
-  completed?: boolean;
-  timing?: TaskTiming;
-  tokenUsage?: TaskTokenUsage;
-}
+// Re-export shared types (canonical source: @ant/shared)
+export type {
+  TaskType, TaskStatus,
+  JobType, DecomposableJobType, JobTiming,
+  TaskTiming, TaskTokenUsage,
+  BaseTask, KanbanData,
+  InterruptionReason, InterruptionDetails,
+} from '@ant/shared';
 
-export interface KanbanData {
-  // ✅ Job Identity (from session.jobId)
-  jobId?: string;
-  
-  todo: KanbanTask[];
-  inProgress: KanbanTask | null;
-  completed: KanbanTask[];
-  isEstimating?: boolean;  // Task running but no queue data yet
-  dataSource?: 'live' | 'session' | 'estimating';  // Where the data comes from
-  
-  // ✅ Unified interruption state
-  interruption?: import('@/domain/models/session').InterruptionDetails;
-  
-  // Recursion Tracking
-  recursionCount?: number;
-  recursionLimit?: number;
-  
-  // ✨ Job Timing
-  totalElapsedTime?: number;
-  jobTiming?: JobTiming;
-  
-  // ✅ Token usage tracking (for entire job)
-  tokenUsage?: TaskTokenUsage;
-}
+
 
 /**
  * Fetch complete Kanban board data for a feature
@@ -884,7 +856,9 @@ export async function fetchKanbanData(projectId: string, featureName: string, jo
     return {
       todo: [],
       inProgress: null,
-      completed: []
+      completed: [],
+      isEstimating: false,
+      dataSource: 'session',
     };
   }
 }
@@ -1282,13 +1256,6 @@ export async function getPreviewStatus(projectId: string, feature?: string): Pro
   }
 }
 
-// Backward compatibility aliases (deprecated)
-/** @deprecated Use startPreview instead */
-export const startDevServer = startPreview;
-/** @deprecated Use stopPreview instead */
-export const stopDevServer = stopPreview;
-/** @deprecated Use getPreviewStatus instead */
-export const getDevServerStatus = getPreviewStatus;
 
 /**
  * Reset job state (remove jobId and jobTiming from session)

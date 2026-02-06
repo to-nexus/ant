@@ -142,9 +142,7 @@ export function TaskCard({
                 'text-blue-900 dark:text-blue-100',
                 'border-blue-300 dark:border-blue-700'
               )}>
-                {typeof task.priority === 'number' 
-                  ? `P${task.priority}` 
-                  : task.priority.toUpperCase()}
+                {`P${task.priority}`}
               </Badge>
             )}
             

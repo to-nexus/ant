@@ -2,11 +2,12 @@
  * WorkflowBroadcaster
  * 
  * Direct Redis Pub/Sub implementation for Workflow state updates.
- * Replaces HTTP-based WorkflowHttpClient for Job Worker child processes.
+ * Used by Job Worker child processes to broadcast workflow state.
  * 
  * Architecture:
  * - Implements WorkflowStateUpdatePort for compatibility
- * - Directly writes to Redis (state storage + Pub/Sub broadcast)
+ * - Maintains in-memory WorkflowRealtimeState (canonical type from core/ports/stateStore.ts)
+ * - Writes to Redis and publishes via Redis Pub/Sub
  * - No HTTP intermediary required
  * 
  * Flow:
@@ -15,11 +16,11 @@
 
 import { Redis } from 'ioredis';
 import { WorkflowStateUpdatePort, TaskInfo, LLMInfo } from '../ports/workflow';
+import type { WorkflowRealtimeState, NodeHistoryEntry } from '../ports/stateStore';
 import { 
   getRealtimeWorkflowChannel,
   WORKFLOW_STATE_KEY_PREFIX,
   WORKFLOW_STATE_TTL,
-  WorkflowState,
   WorkflowBroadcastMessage,
   BroadcasterOptions 
 } from './types';
@@ -31,16 +32,8 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   private readonly jobId: string;
   private readonly userContext?: UserContext;
   
-  // In-memory state tracking (for building workflow state)
-  private currentNode?: string;
-  private nodeHistory: string[] = [];
-  private activeActors: Set<string> = new Set();
-  private startTime: number = Date.now();
-  private lastUpdate: number = Date.now();
-  private taskInfo?: TaskInfo;
-  private llmInfo?: LLMInfo;
-  private recursionCount?: number;
-  private recursionLimit?: number;
+  // In-memory workflow state (canonical WorkflowRealtimeState)
+  private state: WorkflowRealtimeState;
   
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -55,6 +48,19 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     this.jobId = options.jobId;
     this.userContext = options.userContext;
     
+    // Initialize canonical WorkflowRealtimeState
+    this.state = {
+      jobId: options.jobId,
+      currentNode: null,
+      previousNode: null,
+      currentTask: null,
+      llmInfo: null,
+      startedAt: new Date().toISOString(),
+      isCompleted: false,
+      nodeHistory: [],
+      activeActors: [],
+    };
+    
     // Error & connection event handlers for diagnostics
     this.redis.on('error', (err) => console.error(`❌ [WorkflowBroadcaster] redis error:`, err.message));
     this.redis.on('ready', () => console.log(`🟢 [WorkflowBroadcaster] redis ready`));
@@ -68,12 +74,17 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * Start job tracking
    */
   startJob(jobId: string, llmInfo?: LLMInfo): void {
-    this.startTime = Date.now();
-    this.lastUpdate = Date.now();
-    this.llmInfo = llmInfo;
-    this.nodeHistory = [];
-    this.activeActors.clear();
-    this.currentNode = undefined;
+    this.state = {
+      jobId: this.jobId,
+      currentNode: null,
+      previousNode: null,
+      currentTask: null,
+      llmInfo: llmInfo || null,
+      startedAt: new Date().toISOString(),
+      isCompleted: false,
+      nodeHistory: [],
+      activeActors: [],
+    };
     
     // Fire-and-forget broadcast
     this.broadcastState(false).catch(err => {
@@ -95,21 +106,35 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     recursionCount?: number,
     recursionLimit?: number
   ): Promise<void> {
-    this.lastUpdate = Date.now();
-    this.currentNode = nodeId;
-    this.nodeHistory.push(nodeId);
+    // Close previous node's history entry
+    if (this.state.currentNode && this.state.nodeHistory.length > 0) {
+      const lastEntry = this.state.nodeHistory[this.state.nodeHistory.length - 1];
+      if (lastEntry && !lastEntry.exitedAt) {
+        const exitTime = new Date().toISOString();
+        lastEntry.exitedAt = exitTime;
+        lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+      }
+    }
+    
+    // Update state
+    this.state.previousNode = this.state.currentNode;
+    this.state.currentNode = nodeId;
+    this.state.nodeHistory.push({
+      nodeId,
+      enteredAt: new Date().toISOString()
+    });
     
     if (taskInfo) {
-      this.taskInfo = taskInfo;
+      this.state.currentTask = taskInfo;
     }
     if (llmInfo) {
-      this.llmInfo = llmInfo;
+      this.state.llmInfo = llmInfo;
     }
     if (recursionCount !== undefined) {
-      this.recursionCount = recursionCount;
+      this.state.recursionCount = recursionCount;
     }
     if (recursionLimit !== undefined) {
-      this.recursionLimit = recursionLimit;
+      this.state.recursionLimit = recursionLimit;
     }
     
     await this.broadcastState(false);
@@ -120,7 +145,15 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * Track node exit
    */
   exitNode(jobId: string, nodeId: string): void {
-    this.lastUpdate = Date.now();
+    // Close matching node's history entry
+    if (this.state.nodeHistory.length > 0) {
+      const lastEntry = this.state.nodeHistory[this.state.nodeHistory.length - 1];
+      if (lastEntry && lastEntry.nodeId === nodeId && !lastEntry.exitedAt) {
+        const exitTime = new Date().toISOString();
+        lastEntry.exitedAt = exitTime;
+        lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+      }
+    }
     
     // Fire-and-forget broadcast
     this.broadcastState(false).catch(err => {
@@ -132,8 +165,9 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * Track actor interaction start
    */
   startActorInteraction(jobId: string, actorId: string): void {
-    this.lastUpdate = Date.now();
-    this.activeActors.add(actorId);
+    if (!this.state.activeActors.includes(actorId)) {
+      this.state.activeActors.push(actorId);
+    }
     
     // Fire-and-forget broadcast
     this.broadcastState(false).catch(err => {
@@ -145,8 +179,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * Track actor interaction end
    */
   endActorInteraction(jobId: string, actorId: string): void {
-    this.lastUpdate = Date.now();
-    this.activeActors.delete(actorId);
+    this.state.activeActors = this.state.activeActors.filter(a => a !== actorId);
     
     // Fire-and-forget broadcast
     this.broadcastState(false).catch(err => {
@@ -158,7 +191,21 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * End job tracking
    */
   endJob(jobId: string): void {
-    this.lastUpdate = Date.now();
+    // Close last node's history entry
+    if (this.state.currentNode && this.state.nodeHistory.length > 0) {
+      const lastEntry = this.state.nodeHistory[this.state.nodeHistory.length - 1];
+      if (lastEntry && !lastEntry.exitedAt) {
+        const exitTime = new Date().toISOString();
+        lastEntry.exitedAt = exitTime;
+        lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+      }
+    }
+    
+    // Mark as completed
+    this.state.isCompleted = true;
+    this.state.endedAt = new Date().toISOString();
+    this.state.currentNode = null;
+    this.state.activeActors = [];
     
     // Fire-and-forget broadcast (isEndEvent: true)
     this.broadcastState(true).catch(err => {
@@ -172,25 +219,11 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * Broadcast workflow state via user-scoped Redis Pub/Sub channel
    */
   private async broadcastState(isEndEvent: boolean): Promise<void> {
-    // 1. Build state
-    const state: WorkflowState = {
-      jobId: this.jobId,
-      currentNode: this.currentNode,
-      nodeHistory: [...this.nodeHistory],
-      activeActors: Array.from(this.activeActors),
-      startTime: this.startTime,
-      lastUpdate: this.lastUpdate,
-      taskInfo: this.taskInfo,
-      llmInfo: this.llmInfo,
-      recursionCount: this.recursionCount,
-      recursionLimit: this.recursionLimit,
-    };
-
-    // 2. Save state to Redis (use central key prefix for consistency)
+    // 1. Write canonical WorkflowRealtimeState to Redis
     const key = `${WORKFLOW_STATE_KEY_PREFIX}${this.jobId}`;
-    await this.redis.set(key, JSON.stringify(state), 'EX', WORKFLOW_STATE_TTL);
+    await this.redis.set(key, JSON.stringify(this.state), 'EX', WORKFLOW_STATE_TTL);
 
-    // 3. Broadcast via user-scoped Redis Pub/Sub channel
+    // 2. Broadcast via user-scoped Redis Pub/Sub channel
     if (!this.userContext?.organizationId || !this.userContext?.userId) {
       console.warn(`[WorkflowBroadcaster] ⚠️ Cannot broadcast without userContext`);
       return;
@@ -198,7 +231,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     
     const message: WorkflowBroadcastMessage = {
       jobId: this.jobId,
-      data: state,
+      data: this.state,
       isEndEvent,
       userContext: this.userContext,
     };

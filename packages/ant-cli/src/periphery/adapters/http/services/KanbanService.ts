@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../core/types/user';
-import { StateStorePort, TaskQueueSnapshot } from '../../../../core/ports/stateStore';
+import { StateStorePort } from '../../../../core/ports/stateStore';
+import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task';
 
 /**
  * KanbanService

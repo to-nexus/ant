@@ -28,6 +28,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@ant/shared": "workspace:^",
     "@anthropic-ai/sdk": "^0.71.2",
     "@langchain/anthropic": "^1.0.0",
     "@langchain/core": "^1.0.1",

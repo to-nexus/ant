@@ -1,68 +1,38 @@
-import { TaskTiming, TaskTokenUsage, JobTiming } from './types';
+/**
+ * Session Domain Models
+ * 
+ * Frontend session types. Session/SessionState are FE VIEW MODELS
+ * (different structure from BE). Shared types come from @ant/shared.
+ */
 
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'blocked';
+import type { TaskTokenUsage, JobTiming, InterruptionDetails, BaseTask } from '@ant/shared';
 
-export type TaskType = 
-  | 'research'
-  | 'implementation'
-  | 'testing'
-  | 'documentation'
-  | 'review'
-  | 'deployment'
-  | 'bugfix'
-  | 'refactor';
+// Re-export shared types (canonical source: @ant/shared)
+export type { TaskType, TaskStatus } from '@ant/shared';
+export type { InterruptionReason, InterruptionDetails } from '@ant/shared';
+export type { BaseTask } from '@ant/shared';
 
-export interface Task {
-  id: string;
-  name?: string; // Optional: descriptive name (id is used as fallback)
-  type: TaskType;
-  description: string;
-  status: TaskStatus;
-  dependencies: string[];
-  assignee?: string;
-  estimatedHours?: number;
-  actualHours?: number;
-  startedAt?: string;
-  completedAt?: string;
-  blockedReason?: string;
-  notes?: string;
-  tags?: string[];
-  priority?: 'low' | 'medium' | 'high' | 'critical' | number;
-  timing?: TaskTiming;
-  completed?: boolean;
-  tokenUsage?: TaskTokenUsage;
-}
+// ============================================
+// Task (alias for BaseTask from @ant/shared)
+// ============================================
+
+/** FE alias for BaseTask. Guaranteed identical to backend. */
+export type Task = BaseTask;
+
+// ============================================
+// Session Status
+// ============================================
 
 export type SessionStatus = 'active' | 'paused' | 'completed' | 'cancelled';
 
-/**
- * Interruption Reason
- * Categorizes why a job was interrupted
- */
-export type InterruptionReason = 
-  | 'recursion_limit'      // Hit recursion limit
-  | 'user_stopped'         // User clicked Stop button
-  | 'api_error'            // LLM API error (overloaded, rate limit, etc.)
-  | 'process_crash'        // Child process crashed unexpectedly
-  | 'timeout'              // Job timeout
-  | 'unknown';             // Unknown reason
-
-/**
- * Interruption Details
- * Provides context about the interruption
- */
-export interface InterruptionDetails {
-  reason: InterruptionReason;
-  message: string;          // Human-readable message
-  timestamp: string;        // ISO timestamp
-  canResume: boolean;       // Whether the job can be resumed
-  metadata?: Record<string, any>;  // Additional context (e.g., error type, recursion count)
-}
+// ============================================
+// Session State (Execution Snapshot)
+// ============================================
 
 export interface SessionState {
-  // ✅ Job Identity
-  jobId?: string;  // Currently running job ID
-  
+  jobId?: string;
+
+  // Task Queue
   taskQueue: Task[];
   completedTasks: string[];
   completedTasksDetails?: Task[];
@@ -73,22 +43,24 @@ export interface SessionState {
   enforcementHistory?: any[];
   lastViolations?: any[];
   resolvedCategories?: any[];
-  
-  // ✅ Unified Interruption State
+
+  // Interruption
   interruption?: InterruptionDetails;
-  
-  // ✅ Job Timing
+
+  // Job Timing
   jobTiming?: JobTiming;
-  
-  // ✅ Job Token Usage
+
+  // Token Usage
   tokenUsage?: TaskTokenUsage;
-  
+
   // Recursion Tracking
   recursionCount?: number;
   recursionLimit?: number;
-  pausedDueToLimit?: boolean;
-  tasksRemaining?: number;
 }
+
+// ============================================
+// Session (FE View Model)
+// ============================================
 
 export interface Session {
   id: string;
@@ -113,6 +85,10 @@ export interface Session {
   description?: string;
   goals?: string[];
 }
+
+// ============================================
+// Session State Context (FE runtime state)
+// ============================================
 
 export interface SessionStateContext {
   currentTaskId?: string;

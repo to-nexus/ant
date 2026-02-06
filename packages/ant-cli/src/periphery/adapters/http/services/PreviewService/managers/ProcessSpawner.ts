@@ -1,9 +1,6 @@
 import { spawn, ChildProcess, execSync } from 'child_process';
-import { PackageInfo } from '../types';
+import { PackageInfo, LogCallback, ExitCallback } from '../types';
 import { logger } from '../../../../../../utils/logger';
-
-export type LogCallback = (type: 'stdout' | 'stderr', message: string) => void;
-export type ExitCallback = (code: number | null, signal: NodeJS.Signals | null) => void;
 
 export interface SpawnOptions {
   serverKey: string;

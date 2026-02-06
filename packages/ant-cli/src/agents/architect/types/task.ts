@@ -1,34 +1,14 @@
 /**
- * Task Types
+ * Agent-Specific Task Types
  * 
- * Code Job: setup | feature | error | explain
- * Design Job: doc (always)
+ * Extends core BaseTask with agent-specific fields.
+ * Core types (TaskType, BaseTask, TaskTiming, TaskTokenUsage) are
+ * defined in core/types/task.ts (single source of truth).
  */
-export type TaskType = 'setup' | 'feature' | 'error' | 'explain' | 'doc';
 
-/**
- * Task Timing Information
- */
-export interface TaskTiming {
-  startedAt?: string;              // ISO timestamp
-  completedAt?: string;            // ISO timestamp
-  pausedAt?: string;               // When paused
-  resumedAt?: string;              // When resumed
-  totalPausedDuration: number;     // Total paused time (ms)
-  elapsedTime?: number;            // Total elapsed time (ms, excluding paused)
-  duration?: string;               // Human-readable (e.g., "2m 30s")
-}
-
-/**
- * Task Token Usage Information
- */
-export interface TaskTokenUsage {
-  inputTokens: number;         // Total input tokens for this task
-  outputTokens: number;        // Total output tokens for this task
-  totalTokens: number;         // Total tokens (input + output)
-  cacheReadTokens?: number;    // Total cached tokens read (Anthropic)
-  cacheCreationTokens?: number; // Total cached tokens created (Anthropic)
-}
+// Re-export core types for convenience (consumers can import from here)
+export type { TaskType, TaskTiming, TaskTokenUsage, BaseTask } from '../../../core/types/task';
+import type { TaskType, TaskTiming, TaskTokenUsage, BaseTask } from '../../../core/types/task';
 
 /**
  * Token Usage Breakdown (for job-level analytics)
@@ -40,22 +20,6 @@ export interface TokenUsageBreakdown {
     [taskId: string]: TaskTokenUsage;
   };
   total: TaskTokenUsage;               // Total job usage
-}
-
-/**
- * Base Task Interface
- * Common structure for all job tasks
- */
-export interface BaseTask {
-  id: string;                      // Unique identifier
-  name: string;                    // Task name
-  type: TaskType;                  // Task type
-  priority: number;                // Lower = higher priority
-  description: string;             // What needs to be done
-  completed?: boolean;             // Whether done
-  interrupted?: boolean;           // Whether interrupted
-  timing?: TaskTiming;             // Timing information
-  tokenUsage?: TaskTokenUsage;     // Token usage information
 }
 
 /**

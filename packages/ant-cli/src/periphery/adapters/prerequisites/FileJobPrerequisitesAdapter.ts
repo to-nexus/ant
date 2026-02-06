@@ -2,10 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   JobPrerequisitesPort,
-  JobType,
   RequiredMaterial,
   PrerequisitesValidationResult,
 } from '../../../core/ports/jobPrerequisites';
+import { DecomposableJobType } from '../../../core/types/task';
 import { WorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../core/types/user';
 
@@ -29,7 +29,7 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
   /**
    * Get required materials for each job type
    */
-  getRequiredMaterials(jobType: JobType): RequiredMaterial[] {
+  getRequiredMaterials(jobType: DecomposableJobType): RequiredMaterial[] {
     switch (jobType) {
       case 'design':
         return [
@@ -89,7 +89,7 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
   async validate(
     projectId: string,
     featureName: string,
-    jobType: JobType,
+    jobType: DecomposableJobType,
     userContext?: { userId: string; organizationId: string },
     overrideDirective?: string
   ): Promise<PrerequisitesValidationResult> {

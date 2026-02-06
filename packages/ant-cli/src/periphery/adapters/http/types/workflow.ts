@@ -92,19 +92,6 @@ export interface WorkflowGraphMetadata {
   endNodes: string[];      // 종료 노드 ID들
 }
 
-// 실시간 상태 (SSE로 전송)
-export interface WorkflowRealtimeState {
-  jobId: string;
-  currentNode: string | null;     // 현재 활성 노드
-  previousNode: string | null;    // 이전 노드
-  startedAt: string;              // Job 시작 시각
-  nodeHistory: NodeHistoryEntry[]; // 노드 방문 기록
-}
-
-export interface NodeHistoryEntry {
-  nodeId: string;
-  enteredAt: string;
-  exitedAt?: string;
-  duration?: number;  // ms
-}
+// Workflow realtime state types — re-exported from canonical source
+export type { WorkflowRealtimeState, NodeHistoryEntry } from '../../../../core/ports/stateStore';
 

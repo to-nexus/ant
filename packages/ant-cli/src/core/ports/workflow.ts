@@ -4,14 +4,11 @@
  * LangGraph 노드 실행 상태를 실시간으로 업데이트하기 위한 포트
  */
 
-export interface TaskInfo {
-  id?: string;
-  name: string;
-  type?: string;
-  description?: string;
-  priority?: number;
-}
+// TaskInfo is shared between BE and FE (canonical source: @ant/shared)
+export type { TaskInfo } from '@ant/shared';
+import type { TaskInfo } from '@ant/shared';
 
+/** LLM provider/model info (BE-only) */
 export interface LLMInfo {
   provider: string;  // 'anthropic' | 'openai'
   model: string;     // 실제 모델명
@@ -49,4 +46,3 @@ export interface WorkflowStateUpdatePort {
    */
   endJob(jobId: string): void;
 }
-

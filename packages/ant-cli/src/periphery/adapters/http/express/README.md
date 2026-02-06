@@ -73,11 +73,10 @@ express/
 - 세션 파일 변경 감시
 - SSE 클라이언트 확인
 
-### 8. WorkflowBridge (워크플로우 브리지)
-- Workflow state update 처리
-- Task queue update → Kanban broadcast
-- File tree update 알림
-- Node tracking (enterNode, exitNode)
+### 8. WorkflowBridge (Kanban/FileTree 브리지)
+- Task queue update → Kanban broadcast (via Redis Pub/Sub)
+- File tree update 알림 (via Redis Pub/Sub)
+- Note: Workflow state 추적 (enterNode, exitNode 등)은 Job Worker의 WorkflowBroadcaster가 직접 처리
 
 ### 9. ServerLifecycleManager (생명주기)
 - Graceful shutdown

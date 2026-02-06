@@ -96,8 +96,8 @@ export function useUIActionPolicy(): UIActionPolicy {
   const selectedFeature = useStore(state => state.selectedFeature);
   const backendMode = useStore(state => state.backendMode);
   const userEmail = useStore(state => state.userEmail);
-  const isDevServerLoading = useStore(state => state.isDevServerLoading);
-  const devServerStatus = useStore(state => state.devServerStatus);
+  const isPreviewLoading = useStore(state => state.isPreviewLoading);
+  const previewStatus = useStore(state => state.previewStatus);
   const gitStatus = useStore(state => state.gitStatus);
   const isGitStatusLoading = useStore(state => state.isGitStatusLoading);
   
@@ -149,7 +149,7 @@ export function useUIActionPolicy(): UIActionPolicy {
    * - NOT disconnected
    * - project 선택됨
    */
-  const canStartDevServer = !isRunning && !isDevServerLoading && canPerformAnyAction && !!selectedProject && !(devServerStatus?.running ?? false);
+  const canStartDevServer = !isRunning && !isPreviewLoading && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false);
   
   /**
    * Rule 6: Dev Server 중단 조건
@@ -157,7 +157,7 @@ export function useUIActionPolicy(): UIActionPolicy {
    * - NOT dev server loading (개발서버 시작/중단 중 아님)
    * - NOT disconnected
    */
-  const canStopDevServer = (devServerStatus?.running ?? false) && !isDevServerLoading && canPerformAnyAction;
+  const canStopDevServer = (previewStatus?.running ?? false) && !isPreviewLoading && canPerformAnyAction;
 
   /**
    * Rule 7: Feature 생성 조건

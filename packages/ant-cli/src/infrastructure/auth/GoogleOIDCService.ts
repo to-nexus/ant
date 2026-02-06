@@ -9,7 +9,8 @@
  */
 
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
-import { AuthPort, AuthCredentials, AuthContext, User, Organization } from '../../core/ports/auth';
+import { AuthPort, AuthCredentials, AuthContext } from '../../core/ports/auth';
+import type { User, Organization } from '../../core/types/user';
 
 export interface GoogleOIDCConfig {
   clientId: string;

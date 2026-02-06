@@ -7,8 +7,7 @@ import {
   JobStatus, 
   LogEntry,
   TaskQueueUpdatePort,
-  FileTreeUpdatePort,
-  WorkflowStateUpdatePort
+  FileTreeUpdatePort
 } from '../../../../core/ports';
 import type { InterruptionDetails } from '../../../../core/types';
 import { UserContext } from '../../../../core/types/user';
@@ -59,8 +58,7 @@ export class ExpressServerAdapter implements
   HttpServerPort, 
   JobExecutionPort, 
   TaskQueueUpdatePort, 
-  FileTreeUpdatePort, 
-  WorkflowStateUpdatePort 
+  FileTreeUpdatePort
 {
   private app: Express;
   private server: any;
@@ -229,41 +227,6 @@ export class ExpressServerAdapter implements
   
   async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> {
     await this.workflowBridge.notifyFileTreeUpdate(projectId, featureName, userContext);
-  }
-  
-  // =====================================
-  // WorkflowStateUpdatePort Implementation
-  // =====================================
-  
-  startJob(jobId: string, llmInfo?: any): void {
-    this.workflowBridge.startJob(jobId, llmInfo);
-  }
-  
-  async enterNode(
-    jobId: string, 
-    nodeId: string, 
-    taskInfo?: any, 
-    llmInfo?: any, 
-    recursionCount?: number, 
-    recursionLimit?: number
-  ): Promise<void> {
-    await this.workflowBridge.enterNode(jobId, nodeId, taskInfo, llmInfo, recursionCount, recursionLimit);
-  }
-  
-  exitNode(jobId: string, nodeId: string): void {
-    this.workflowBridge.exitNode(jobId, nodeId);
-  }
-  
-  startActorInteraction(jobId: string, actorId: string): void {
-    this.workflowBridge.startActorInteraction(jobId, actorId);
-  }
-  
-  endActorInteraction(jobId: string, actorId: string): void {
-    this.workflowBridge.endActorInteraction(jobId, actorId);
-  }
-  
-  endJob(jobId: string): void {
-    this.workflowBridge.endJob(jobId);
   }
   
   // =====================================

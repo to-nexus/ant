@@ -16,6 +16,7 @@ import * as path from "path";
 import { GitPort, FileSystemPort } from "../../core/ports";
 import { WorkspacePathResolver } from "./WorkspaceResolver";
 import { ParsedUiDocs } from "../../core/types/uiDoc";
+import type { AgentJob } from "../../core/types/agent";
 import {
   parseUiDocs,
   getUiSectionsForTask,
@@ -23,9 +24,11 @@ import {
   generateUiSectionsSummary,
 } from "./UiDocParser";
 
-export type AgentJob = 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';
-
-export interface ProjectContext {
+/**
+ * Artifact-specific project context.
+ * Extends the core ProjectContext concept with artifact/feature-level fields.
+ */
+export interface ArtifactProjectContext {
   project: string;
   featureFolder: string;
   userId?: string;
@@ -104,7 +107,7 @@ export class ArtifactService {
    * Priority: directive.md > directive-nnn.md (latest)
    */
   static async getDirective(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     job: AgentJob,
     gitPort: GitPort,
     fileSystem: FileSystemPort
@@ -151,7 +154,7 @@ export class ArtifactService {
    * Get source materials (PRD + all resources)
    */
   static async getSource(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort
   ): Promise<{
@@ -211,7 +214,7 @@ export class ArtifactService {
    *   - specToc: Table of contents (for decompose prompt)
    */
   static async loadParsedUiContext(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort
   ): Promise<ParsedUiDocs | null> {
@@ -314,7 +317,7 @@ export class ArtifactService {
    * Returns file paths under inputs/references/ if they exist.
    */
   static async loadUiReferenceImages(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     fileSystem: FileSystemPort
   ): Promise<{
     screens?: string[];
@@ -366,7 +369,7 @@ export class ArtifactService {
    * Returns both content and file path for environment inference
    */
   static async findLatestDesign(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort,
     preferredEnvironment?: 'frontend' | 'backend' | 'any'
@@ -454,7 +457,7 @@ export class ArtifactService {
    * @returns DesignDocs with both legacy and multi-package support
    */
   static async loadDesignDocuments(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort,
     environment?: 'frontend' | 'backend' | 'unknown'
@@ -636,7 +639,7 @@ export class ArtifactService {
    * Write report file (실행 로그는 sessions/debug/logs로 이동)
    */
   static async writeReportFile(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     fileName: string,
     content: string,
     gitPort: GitPort,
@@ -657,7 +660,7 @@ export class ArtifactService {
    * Write design document
    */
   static async writeDesignDocument(
-    context: ProjectContext,
+    context: ArtifactProjectContext,
     content: string,
     gitPort: GitPort,
     fileSystem: FileSystemPort

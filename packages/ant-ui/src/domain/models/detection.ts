@@ -1,87 +1,26 @@
 /**
- * DetectionReport - 통합 환경 감지 결과 (Frontend)
+ * DetectionReport - Frontend helpers
  * 
- * Backend의 core/types/detection.ts와 동일한 구조.
- * Code Job과 Design Job에서 공통으로 사용.
+ * Shared types from @ant/shared + FE-only helper/formatter functions.
  */
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Type Definitions
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Re-export shared detection types (canonical source: @ant/shared)
+export type {
+  JobMode,
+  JobEnvironment,
+  DesignWorkType,
+  DesignDomain,
+  ProjectProfile,
+  JobSource,
+  DetectionReport,
+} from '@ant/shared';
 
-/** 작업 모드 (Code & Design 통합) */
-export type JobMode = 'generate' | 'refactor' | 'explain';
-
-/** 실행 환경 */
-export type JobEnvironment = 'frontend' | 'backend' | 'fullstack' | 'unknown';
-
-/** 작업 유형 (Design Job only) */
-export type DesignWorkType = 'ui-design' | 'system-design';
-
-/** 도메인 (System Design only) */
-export type DesignDomain = 'game' | 'service';
-
-/** 프로젝트 프로파일 (Code Job only) */
-export interface ProjectProfile {
-  language: string;
-  framework?: string;
-}
-
-/** Job 소스 타입 */
-export type JobSource = 'code' | 'design';
+import type { JobMode, JobEnvironment, DesignWorkType, DesignDomain } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Main Interface
+// FE-only Helper Functions
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/**
- * 통합 감지 결과 (Code Job & Design Job 공통)
- */
-export interface DetectionReport {
-  // ━━━ 공통 항목 (Code & Design) ━━━
-  
-  /** 작업 모드 */
-  jobMode: JobMode;
-  jobModeReasoning: string;
-  
-  /** 실행 환경 */
-  environment?: JobEnvironment;
-  environmentReasoning?: string;
-  
-  // ━━━ Design Job 전용 ━━━
-  
-  /** 작업 유형 (Design Job only) */
-  workType?: DesignWorkType;
-  workTypeReasoning?: string;
-  
-  /** 도메인 (System Design only) */
-  domain?: DesignDomain;
-  domainReasoning?: string;
-  
-  // ━━━ Code Job 전용 ━━━
-  
-  /** 프로젝트 프로파일 */
-  profile?: ProjectProfile;
-  
-  /** RAG 필요 여부 */
-  requireRag?: boolean;
-  
-  // ━━━ 메타 정보 ━━━
-  
-  /** 어떤 Job에서 생성되었는지 */
-  sourceJob: JobSource;
-  
-  /** 감지 시간 */
-  detectedAt?: string;
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Helper Functions
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * Job Mode에 대한 이모지 반환
- */
 export function getJobModeEmoji(mode: JobMode): string {
   switch (mode) {
     case 'generate': return '✨';
@@ -90,9 +29,6 @@ export function getJobModeEmoji(mode: JobMode): string {
   }
 }
 
-/**
- * Job Mode에 대한 한글 라벨 반환
- */
 export function getJobModeLabel(mode: JobMode, isKorean = true): string {
   switch (mode) {
     case 'generate': return isKorean ? '생성' : 'Generate';
@@ -101,9 +37,6 @@ export function getJobModeLabel(mode: JobMode, isKorean = true): string {
   }
 }
 
-/**
- * Environment에 대한 이모지 반환
- */
 export function getEnvironmentEmoji(env: JobEnvironment): string {
   switch (env) {
     case 'frontend': return '🎨';
@@ -113,9 +46,6 @@ export function getEnvironmentEmoji(env: JobEnvironment): string {
   }
 }
 
-/**
- * Work Type에 대한 이모지 반환
- */
 export function getWorkTypeEmoji(workType: DesignWorkType): string {
   switch (workType) {
     case 'ui-design': return '🎨';
@@ -123,9 +53,6 @@ export function getWorkTypeEmoji(workType: DesignWorkType): string {
   }
 }
 
-/**
- * Domain에 대한 이모지 반환
- */
 export function getDomainEmoji(domain: DesignDomain): string {
   switch (domain) {
     case 'game': return '🎮';

@@ -1,75 +1,55 @@
 /**
  * Unified Task Type
  * 
- * This type consolidates both live queue data (parsed from logs)
- * and session data (from session.json) into a single interface.
+ * This type consolidates both live queue data and session data
+ * into a single interface for UI consumption.
  * 
- * Live data typically has: name, type, status, timing
- * Session data has: id, name, type, description, priority, etc.
+ * Task types match backend TaskType from core/types/task.ts:
+ * setup, feature, error, explain, doc
  */
 
-import { TaskTokenUsage, TaskTiming } from './types';
+import type { TaskTokenUsage, TaskTiming, TaskType } from '@ant/shared';
 
 export interface UnifiedTask {
   // Core fields (always present)
+  id: string;
   name: string;
-  type: string;
+  type: TaskType;
+  priority: number;
+  description: string;
+  
+  // Status
   status?: string;
-  
-  // Session-specific fields (optional)
-  id?: string;
-  description?: string;
-  priority?: number | 'low' | 'medium' | 'high' | 'critical'; // Support both formats
-  dependencies?: string[];
   completed?: boolean;
-  interrupted?: boolean;  // Whether this task was interrupted (stopped manually)
+  interrupted?: boolean;
   
-  // Live timing data (optional)
+  // Timing & tokens
   timing?: TaskTiming;
-  
-  // ✅ Token usage data (optional)
   tokenUsage?: TaskTokenUsage;
-  
-  // Additional metadata
-  assignee?: string;
-  estimatedHours?: number;
-  actualHours?: number;
-  startedAt?: string;
-  completedAt?: string;
-  blockedReason?: string;
-  notes?: string;
-  tags?: string[];
 }
 
 /**
  * Normalizes a task from either live data or session data
  * into the UnifiedTask format
  */
-export function normalizeTask(task: any): UnifiedTask {
-  // If it's already a complete session task
-  if (task.id && task.description) {
-    return {
-      ...task,
-      name: task.name || task.id,
-      type: task.type || 'unknown',
-      status: task.status || (task.completed ? 'completed' : 'pending'),
-    };
-  }
-  
-  // If it's live queue data (minimal fields)
+export function normalizeTask(task: Record<string, unknown>): UnifiedTask {
   return {
-    name: task.name || 'Unknown Task',
-    type: task.type || 'unknown',
-    status: task.status || 'pending',
-    timing: task.timing,
-    // Preserve any additional fields
-    ...task,
+    id: (task.id as string) || '',
+    name: (task.name as string) || 'Unknown Task',
+    type: (task.type as TaskType) || 'feature',
+    priority: (task.priority as number) || 0,
+    description: (task.description as string) || '',
+    status: (task.status as string) || (task.completed ? 'completed' : 'pending'),
+    completed: task.completed as boolean | undefined,
+    interrupted: task.interrupted as boolean | undefined,
+    timing: task.timing as TaskTiming | undefined,
+    tokenUsage: task.tokenUsage as TaskTokenUsage | undefined,
   };
 }
 
 /**
  * Normalizes an array of tasks
  */
-export function normalizeTasks(tasks: any[]): UnifiedTask[] {
+export function normalizeTasks(tasks: Record<string, unknown>[]): UnifiedTask[] {
   return tasks.map(normalizeTask);
 }
