@@ -124,6 +124,10 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
     return null;
   }
 
+  // TLS options for rediss:// URLs (e.g., AWS ElastiCache with custom CNAME)
+  const isTLS = redisUrl.startsWith('rediss://');
+  const redisTLS = isTLS ? { checkServerIdentity: () => undefined as undefined } : undefined;
+
   return {
     redisUrl,
     jobId,
@@ -136,5 +140,6 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
       organizationId: orgId,
       workspacePath: workspacePath || '',
     },
+    redisTLS,
   };
 }

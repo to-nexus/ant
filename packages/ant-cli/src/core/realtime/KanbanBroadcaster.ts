@@ -38,14 +38,13 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private readonly userContext?: UserContext;
   
   constructor(options: BroadcasterOptions) {
-    this.redis = new Redis(options.redisUrl, {
+    const redisOpts = {
       maxRetriesPerRequest: 3,
-      retryStrategy: (times) => Math.min(times * 100, 3000),
-    });
-    this.pubRedis = new Redis(options.redisUrl, {
-      maxRetriesPerRequest: 3,
-      retryStrategy: (times) => Math.min(times * 100, 3000),
-    });
+      retryStrategy: (times: number) => Math.min(times * 100, 3000),
+      ...(options.redisTLS ? { tls: options.redisTLS } : {}),
+    };
+    this.redis = new Redis(options.redisUrl, redisOpts);
+    this.pubRedis = new Redis(options.redisUrl, redisOpts);
     this.jobId = options.jobId;
     this.projectId = options.projectId;
     this.featureName = options.featureName;
