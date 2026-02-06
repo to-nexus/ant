@@ -13,7 +13,7 @@
 
 import { Response } from 'express';
 import type { StateStorePort, WorkflowRealtimeState, TaskInfo, LLMInfo, NodeHistoryEntry } from '../../../../core/ports/stateStore';
-import { REDIS_CHANNELS } from '../../../../infrastructure/state';
+import { getSSEWorkflowChannel } from '../../../../infrastructure/state';
 import { logger } from '../../../../utils/logger';
 
 // Re-export types for backward compatibility
@@ -217,9 +217,18 @@ export class WorkflowStateService {
       await this.saveAndBroadcast(jobId, state);
     }
     
-    // Send 'end' event to SSE clients via Redis Pub/Sub
+    // Send 'end' event to user-scoped SSE channel via Redis Pub/Sub
     if (this.stateStore) {
-      await this.stateStore.publish(REDIS_CHANNELS.SSE_WORKFLOW, { jobId, data: { jobId }, isEndEvent: true });
+      const mapping = await this.stateStore.getJobMapping(jobId);
+      if (mapping?.userContext?.organizationId && mapping?.userContext?.userId) {
+        const channel = getSSEWorkflowChannel(mapping.userContext.organizationId, mapping.userContext.userId);
+        await this.stateStore.publish(channel, { jobId, data: { jobId }, isEndEvent: true, userContext: mapping.userContext });
+      } else {
+        logger.warn(`Cannot send workflow end event without userContext`, {
+          component: 'WorkflowStateService',
+          jobId
+        });
+      }
     }
   }
   

@@ -2,8 +2,10 @@ import { Response } from 'express';
 import { logger } from '../../../../utils/logger';
 import type { UserContext } from '../../../../core/types/user';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
-import { CHAT_BROADCAST_CHANNEL, type ChatBroadcastMessage } from './ChatService/MessageBroadcaster';
-import { REDIS_CHANNELS } from '../../../../infrastructure/state';
+import { 
+  getSSEBroadcastChannel, 
+  getSSEWorkflowChannel
+} from '../../../../infrastructure/state';
 
 /**
  * Message types for unified SSE stream
@@ -16,22 +18,19 @@ export interface SSEMessage {
   data: any;
 }
 
-// Redis Pub/Sub channels - re-export from central definition for backward compatibility
-export const SSE_BROADCAST_CHANNEL = REDIS_CHANNELS.SSE_BROADCAST;
-export const SSE_WORKFLOW_CHANNEL = REDIS_CHANNELS.SSE_WORKFLOW;
-
 export interface SSEBroadcastMessage {
   projectId: string;
   featureName: string;
   type: SSEMessageType;
   data: any;
-  userContext?: UserContext;
+  userContext: UserContext;  // Required for user-scoped channels
 }
 
 export interface SSEWorkflowMessage {
   jobId: string;
   data: any;
   isEndEvent?: boolean;
+  userContext: UserContext;  // Required for user-scoped channels
 }
 
 /**
@@ -40,44 +39,69 @@ export interface SSEWorkflowMessage {
  * Single SSE service that handles all real-time updates
  * Consolidates kanban, chat, fileTree, and workflow SSE streams
  * 
- * Cloud-safe: All broadcasts go through Redis Pub/Sub for cross-instance delivery
+ * Cloud-safe: Uses user-scoped Redis Pub/Sub channels for multi-tenant isolation
+ * 
+ * Channel format:
+ * - sse:broadcast:{orgId}:{userId}  - Kanban, FileTree, Preview, Job status
+ * - sse:workflow:{orgId}:{userId}   - Workflow state updates
  */
 export class SSEService {
-  // Single SSE connection per project/feature
-  // key: "projectId/featureName"
+  // SSE clients per session key
+  // key: "{orgId}:{userId}:{projectId}/{featureName}"
   private clients: Map<string, Set<Response>> = new Map();
   
   // Workflow SSE clients (per jobId)
   // key: jobId
   private workflowClients: Map<string, Set<Response>> = new Map();
   
-  // StateStore for Redis Pub/Sub (set via setupBroadcastSubscriptions)
+  // Track subscribed channels to avoid duplicate subscriptions
+  private subscribedChannels: Set<string> = new Set();
+  
+  // StateStore for Redis Pub/Sub
   private stateStore?: StateStorePort;
   
   /**
-   * Setup all Redis Pub/Sub subscriptions for cross-instance broadcasting
-   * This enables SSE broadcasting in cloud/distributed environments
+   * Setup base Redis Pub/Sub subscriptions
+   * Note: User-specific channels are subscribed dynamically when clients register
+   * 
+   * All SSE messages (chat, kanban, workflow, fileTree, preview, gitChange) now use
+   * user-scoped channels: sse:broadcast:{orgId}:{userId} and sse:workflow:{orgId}:{userId}
    */
   async setupBroadcastSubscriptions(stateStore: StateStorePort): Promise<void> {
     this.stateStore = stateStore;
     
-    try {
-      // 1. Subscribe to chat broadcast (from MessageBroadcaster)
-      await stateStore.subscribe(CHAT_BROADCAST_CHANNEL, (message: ChatBroadcastMessage) => {
-        const { projectId, featureName, data, userContext } = message;
-        this.broadcastLocal(projectId, featureName, 'chat', data, userContext);
+    // No global channel subscriptions needed anymore.
+    // User-specific channels are subscribed dynamically in subscribeToUserChannels()
+    logger.info('SSEService ready (user-scoped channel subscriptions)', { component: 'SSEService' });
+  }
+  
+  /**
+   * Subscribe to user-specific channels when a client registers
+   */
+  private async subscribeToUserChannels(userContext: UserContext): Promise<void> {
+    if (!this.stateStore) return;
+    
+    const { organizationId: orgId, userId } = userContext;
+    if (!orgId || !userId) {
+      logger.warn('Cannot subscribe to user channels: missing userContext', { component: 'SSEService' });
+      return;
+    }
+    
+    // Subscribe to SSE broadcast channel for this user
+    const broadcastChannel = getSSEBroadcastChannel(orgId, userId);
+    if (!this.subscribedChannels.has(broadcastChannel)) {
+      await this.stateStore.subscribe(broadcastChannel, (message: SSEBroadcastMessage) => {
+        const { projectId, featureName, type, data, userContext: msgUserContext } = message;
+        this.broadcastLocal(projectId, featureName, type, data, msgUserContext);
       });
-      logger.info('Subscribed to chat:broadcast channel', { component: 'SSEService' });
-      
-      // 2. Subscribe to general SSE broadcast (kanban, fileTree, etc.)
-      await stateStore.subscribe(SSE_BROADCAST_CHANNEL, (message: SSEBroadcastMessage) => {
-        const { projectId, featureName, type, data, userContext } = message;
-        this.broadcastLocal(projectId, featureName, type, data, userContext);
-      });
-      logger.info('Subscribed to sse:broadcast channel', { component: 'SSEService' });
-      
-      // 3. Subscribe to workflow broadcast
-      await stateStore.subscribe(SSE_WORKFLOW_CHANNEL, (message: SSEWorkflowMessage) => {
+      this.subscribedChannels.add(broadcastChannel);
+      logger.info(`Subscribed to user SSE channel: ${broadcastChannel}`, { component: 'SSEService' });
+    }
+    
+    // Subscribe to workflow channel for this user
+    const workflowChannel = getSSEWorkflowChannel(orgId, userId);
+    if (!this.subscribedChannels.has(workflowChannel)) {
+      await this.stateStore.subscribe(workflowChannel, (message: SSEWorkflowMessage) => {
         const { jobId, data, isEndEvent } = message;
         if (isEndEvent) {
           this.sendWorkflowEndEventLocal(jobId);
@@ -85,30 +109,30 @@ export class SSEService {
           this.broadcastWorkflowLocal(jobId, data);
         }
       });
-      logger.info('Subscribed to sse:workflow channel', { component: 'SSEService' });
-      
-      // Note: Preview status uses sse:broadcast with type:'preview' (handled by #2 above)
-      
-      logger.info('All SSE broadcast subscriptions ready', { component: 'SSEService' });
-    } catch (error) {
-      logger.error('Failed to setup SSE broadcast subscriptions', { component: 'SSEService' }, error);
+      this.subscribedChannels.add(workflowChannel);
+      logger.info(`Subscribed to user workflow channel: ${workflowChannel}`, { component: 'SSEService' });
     }
   }
   
   /**
-   * Get session key for a project/feature
+   * Get session key for a project/feature (includes user context for isolation)
    */
-  private getSessionKey(projectId: string, featureName: string, userContext?: UserContext): string {
-    // Cloud-safe: scope by tenant/user to prevent cross-user collisions
-    const org = userContext?.organizationId || 'local';
-    const user = userContext?.userId || 'local';
+  private getSessionKey(projectId: string, featureName: string, userContext: UserContext): string {
+    const org = userContext.organizationId;
+    const user = userContext.userId;
     return `${org}:${user}:${projectId}/${featureName}`;
   }
   
   /**
    * Register SSE client for a project/feature
+   * Subscribes to user-specific channels on first registration
    */
-  registerClient(projectId: string, featureName: string, res: Response, userContext?: UserContext): void {
+  registerClient(projectId: string, featureName: string, res: Response, userContext: UserContext): void {
+    if (!userContext?.organizationId || !userContext?.userId) {
+      logger.error('Cannot register client without userContext', { component: 'SSEService', projectId, featureName });
+      return;
+    }
+    
     const key = this.getSessionKey(projectId, featureName, userContext);
     
     if (!this.clients.has(key)) {
@@ -117,6 +141,11 @@ export class SSEService {
     
     this.clients.get(key)!.add(res);
     logger.debug(`Client registered: ${key} (total: ${this.clients.get(key)!.size})`, { component: 'SSEService', projectId, featureName });
+    
+    // Subscribe to user-specific channels (if not already subscribed)
+    this.subscribeToUserChannels(userContext).catch(error => {
+      logger.error('Failed to subscribe to user channels', { component: 'SSEService' }, error);
+    });
     
     // Handle client disconnect
     res.on('close', () => {
@@ -131,13 +160,20 @@ export class SSEService {
   /**
    * Register workflow SSE client for a job
    */
-  registerWorkflowClient(jobId: string, res: Response): void {
+  registerWorkflowClient(jobId: string, res: Response, userContext?: UserContext): void {
     if (!this.workflowClients.has(jobId)) {
       this.workflowClients.set(jobId, new Set());
     }
     
     this.workflowClients.get(jobId)!.add(res);
     logger.debug(`Workflow client registered: ${jobId} (total: ${this.workflowClients.get(jobId)!.size})`, { component: 'SSEService', jobId });
+    
+    // Subscribe to user-specific workflow channel
+    if (userContext?.organizationId && userContext?.userId) {
+      this.subscribeToUserChannels(userContext).catch(error => {
+        logger.error('Failed to subscribe to user workflow channels', { component: 'SSEService' }, error);
+      });
+    }
     
     // Handle client disconnect
     res.on('close', () => {
@@ -150,16 +186,16 @@ export class SSEService {
   }
   
   /**
-   * Broadcast message to project/feature clients via Redis Pub/Sub
-   * All API Server instances will receive this and forward to their local SSE clients
-   * 
-   * Note: For 'chat' type, use MessageBroadcaster instead (it has its own channel)
+   * Broadcast message to project/feature clients via user-scoped Redis Pub/Sub
    */
-  broadcast(projectId: string, featureName: string, type: SSEMessageType, data: any, userContext?: UserContext): void {
+  broadcast(projectId: string, featureName: string, type: SSEMessageType, data: any, userContext: UserContext): void {
+    if (!userContext?.organizationId || !userContext?.userId) {
+      logger.error('Cannot broadcast without userContext', { component: 'SSEService', projectId, featureName }, { type });
+      return;
+    }
+    
     // Chat messages go through MessageBroadcaster's own channel
-    // Other types (kanban, fileTree, etc.) use the general SSE channel
     if (type === 'chat') {
-      // Chat should use MessageBroadcaster, but fallback to local for backward compatibility
       this.broadcastLocal(projectId, featureName, type, data, userContext);
       return;
     }
@@ -178,9 +214,11 @@ export class SSEService {
       userContext
     };
     
-    // Fire-and-forget: publish to Redis
-    this.stateStore.publish(SSE_BROADCAST_CHANNEL, message).catch((error) => {
-      logger.error(`Failed to publish SSE broadcast (${type}) to Redis`, { 
+    // Publish to user-specific channel
+    const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+    
+    this.stateStore.publish(channel, message).catch((error) => {
+      logger.error(`Failed to publish SSE broadcast (${type}) to Redis channel ${channel}`, { 
         component: 'SSEService', 
         projectId, 
         featureName
@@ -192,37 +230,20 @@ export class SSEService {
   
   /**
    * Broadcast to local SSE clients only (called from Redis subscription)
-   * 
-   * IMPORTANT: Uses fallback matching to handle userContext mismatches
-   * - First tries exact key match with userContext
-   * - Falls back to matching any client with same projectId/featureName
+   * Strict matching: only delivers to exact userContext match
    */
-  private broadcastLocal(projectId: string, featureName: string, type: SSEMessageType, data: any, userContext?: UserContext): void {
-    // Try exact key match first
-    const key = this.getSessionKey(projectId, featureName, userContext);
-    let clients = this.clients.get(key);
-    
-    // If no exact match, try to find clients by projectId/featureName suffix
-    // This handles cases where userContext differs between sender and receiver
-    if (!clients || clients.size === 0) {
-      const suffix = `${projectId}/${featureName}`;
-      for (const [clientKey, clientSet] of this.clients.entries()) {
-        if (clientKey.endsWith(suffix) && clientSet.size > 0) {
-          clients = clientSet;
-          logger.debug(`[SSE Broadcast] Using fallback match: ${clientKey} for ${key}`, {
-            component: 'SSEService',
-            projectId,
-            featureName
-          });
-          break;
-        }
-      }
+  private broadcastLocal(projectId: string, featureName: string, type: SSEMessageType, data: any, userContext: UserContext): void {
+    if (!userContext?.organizationId || !userContext?.userId) {
+      logger.warn('broadcastLocal called without userContext, ignoring', { component: 'SSEService', projectId, featureName });
+      return;
     }
     
+    // Strict key match - NO FALLBACK
+    const key = this.getSessionKey(projectId, featureName, userContext);
+    const clients = this.clients.get(key);
+    
     if (!clients || clients.size === 0) {
-      // NOTE: In multi-pod environment, this is normal - each pod only has its own local clients
-      // The pod that has the actual SSE client will deliver the message
-      // Removed noisy console.log that was flooding logs
+      // In multi-pod environment, this is normal
       return;
     }
     
@@ -246,16 +267,17 @@ export class SSEService {
   
   /**
    * Broadcast message to all features of a project (project-level events)
-   * Used for git init/clone indexing status (no specific feature context)
    */
-  broadcastToProject(projectId: string, data: any, userContext?: UserContext): void {
+  broadcastToProject(projectId: string, data: any, userContext: UserContext): void {
+    if (!userContext?.organizationId || !userContext?.userId) {
+      logger.error('Cannot broadcastToProject without userContext', { component: 'SSEService', projectId });
+      return;
+    }
+    
     let sentCount = 0;
+    const projectPrefix = `${userContext.organizationId}:${userContext.userId}:${projectId}/`;
     
-    const org = userContext?.organizationId || 'local';
-    const user = userContext?.userId || 'local';
-    const projectPrefix = `${org}:${user}:${projectId}/`;
-    
-    // Find all clients for this project (all features)
+    // Find all clients for this project (all features) - strict prefix match
     this.clients.forEach((clients, key) => {
       if (key.startsWith(projectPrefix)) {
         const message: SSEMessage = {
@@ -284,11 +306,11 @@ export class SSEService {
   }
   
   /**
-   * Broadcast workflow message to job clients via Redis Pub/Sub
+   * Broadcast workflow message to job clients via user-scoped Redis Pub/Sub
    */
-  broadcastWorkflow(jobId: string, data: any): void {
-    if (!this.stateStore) {
-      // Fallback to local broadcast if Redis not available
+  broadcastWorkflow(jobId: string, data: any, userContext?: UserContext): void {
+    if (!this.stateStore || !userContext?.organizationId || !userContext?.userId) {
+      // Fallback to local broadcast if Redis not available or no userContext
       this.broadcastWorkflowLocal(jobId, data);
       return;
     }
@@ -296,16 +318,18 @@ export class SSEService {
     const message: SSEWorkflowMessage = {
       jobId,
       data,
-      isEndEvent: false
+      isEndEvent: false,
+      userContext
     };
     
-    // Fire-and-forget: publish to Redis
-    this.stateStore.publish(SSE_WORKFLOW_CHANNEL, message).catch((error) => {
-      logger.error('Failed to publish workflow broadcast to Redis', { 
+    // Publish to user-specific workflow channel
+    const channel = getSSEWorkflowChannel(userContext.organizationId, userContext.userId);
+    
+    this.stateStore.publish(channel, message).catch((error) => {
+      logger.error(`Failed to publish workflow broadcast to Redis channel ${channel}`, { 
         component: 'SSEService', 
         jobId
       }, error);
-      // Fallback to local broadcast
       this.broadcastWorkflowLocal(jobId, data);
     });
   }
@@ -339,11 +363,10 @@ export class SSEService {
   }
   
   /**
-   * Send 'end' event to workflow clients to signal job completion via Redis Pub/Sub
+   * Send 'end' event to workflow clients via user-scoped Redis Pub/Sub
    */
-  sendWorkflowEndEvent(jobId: string): void {
-    if (!this.stateStore) {
-      // Fallback to local
+  sendWorkflowEndEvent(jobId: string, userContext?: UserContext): void {
+    if (!this.stateStore || !userContext?.organizationId || !userContext?.userId) {
       this.sendWorkflowEndEventLocal(jobId);
       return;
     }
@@ -351,16 +374,17 @@ export class SSEService {
     const message: SSEWorkflowMessage = {
       jobId,
       data: { jobId },
-      isEndEvent: true
+      isEndEvent: true,
+      userContext
     };
     
-    // Fire-and-forget: publish to Redis
-    this.stateStore.publish(SSE_WORKFLOW_CHANNEL, message).catch((error) => {
-      logger.error('Failed to publish workflow end event to Redis', { 
+    const channel = getSSEWorkflowChannel(userContext.organizationId, userContext.userId);
+    
+    this.stateStore.publish(channel, message).catch((error) => {
+      logger.error(`Failed to publish workflow end event to Redis channel ${channel}`, { 
         component: 'SSEService', 
         jobId
       }, error);
-      // Fallback to local
       this.sendWorkflowEndEventLocal(jobId);
     });
   }
@@ -408,7 +432,8 @@ export class SSEService {
   /**
    * Get number of connected clients for a project/feature
    */
-  getClientCount(projectId: string, featureName: string, userContext?: UserContext): number {
+  getClientCount(projectId: string, featureName: string, userContext: UserContext): number {
+    if (!userContext?.organizationId || !userContext?.userId) return 0;
     const key = this.getSessionKey(projectId, featureName, userContext);
     return this.clients.get(key)?.size || 0;
   }
@@ -423,7 +448,8 @@ export class SSEService {
   /**
    * Close all connections for a project/feature
    */
-  closeClients(projectId: string, featureName: string, userContext?: UserContext): void {
+  closeClients(projectId: string, featureName: string, userContext: UserContext): void {
+    if (!userContext?.organizationId || !userContext?.userId) return;
     const key = this.getSessionKey(projectId, featureName, userContext);
     const clients = this.clients.get(key);
     

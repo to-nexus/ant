@@ -4,8 +4,7 @@ import { WorkspaceResolver } from '../../../../infrastructure/workspace/Workspac
 import { UserContext } from '../../../../core/types/user';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { logger } from '../../../../utils/logger';
-
-const GIT_CHANGE_CHANNEL = 'sse:git-change';
+import { getSSEBroadcastChannel } from '../../../../infrastructure/state';
 
 /**
  * GitWatcherService
@@ -76,12 +75,14 @@ export class GitWatcherService {
           
           logger.debug(`Git changes detected for ${key}`, { component: 'GitWatcher', projectId, featureName });
           
-          // Broadcast to frontend via Redis Pub/Sub
-          if (this.stateStore) {
-            await this.stateStore.publish(GIT_CHANGE_CHANNEL, {
+          // Broadcast to frontend via user-scoped Redis Pub/Sub channel
+          if (this.stateStore && userContext?.organizationId && userContext?.userId) {
+            const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+            await this.stateStore.publish(channel, {
               projectId,
               featureName,
               userContext,
+              type: 'gitChange',
               data: {
                 timestamp: new Date().toISOString(),
                 project: projectId,

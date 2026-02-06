@@ -3,10 +3,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
-import { REDIS_CHANNELS } from '../../../../../infrastructure/state';
-
-// Use central channel definition
-const SSE_BROADCAST_CHANNEL = REDIS_CHANNELS.SSE_BROADCAST;
+import { getSSEBroadcastChannel } from '../../../../../infrastructure/state';
 
 /**
  * WorkflowBridge
@@ -159,14 +156,24 @@ export class WorkflowBridge {
           mapping.userContext
         );
         
-        // Broadcast via Redis Pub/Sub → Realtime Server → SSE
-        logger.debug(`[Kanban Broadcast] Publishing to Redis: ${mapping.projectId}/${mapping.featureName}, userContext: ${mapping.userContext ? `${mapping.userContext.organizationId}:${mapping.userContext.userId}` : 'undefined'}`, {
+        // Broadcast via user-scoped Redis Pub/Sub → Realtime Server → SSE
+        if (!mapping.userContext?.organizationId || !mapping.userContext?.userId) {
+          logger.warn(`[Kanban Broadcast] Cannot broadcast without userContext`, {
+            component: 'WorkflowBridge',
+            projectId: mapping.projectId,
+            featureName: mapping.featureName
+          });
+          return;
+        }
+        
+        const channel = getSSEBroadcastChannel(mapping.userContext.organizationId, mapping.userContext.userId);
+        logger.debug(`[Kanban Broadcast] Publishing to ${channel}: ${mapping.projectId}/${mapping.featureName}`, {
           component: 'WorkflowBridge',
           projectId: mapping.projectId,
           featureName: mapping.featureName
         });
         
-        await stateStore.publish(SSE_BROADCAST_CHANNEL, {
+        await stateStore.publish(channel, {
           projectId: mapping.projectId,
           featureName: mapping.featureName,
           type: 'kanban',
@@ -191,6 +198,16 @@ export class WorkflowBridge {
    * Notify file tree update
    */
   async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
+    // Require userContext for user-scoped channel
+    if (!userContext?.organizationId || !userContext?.userId) {
+      logger.warn(`[FileTreeUpdate] Cannot update without userContext`, { 
+        component: 'WorkflowBridge', 
+        projectId, 
+        featureName 
+      });
+      return;
+    }
+    
     try {
       logger.debug(`[FileTreeUpdate] Updating`, { 
         component: 'WorkflowBridge', 
@@ -200,22 +217,24 @@ export class WorkflowBridge {
       
       const stateStore = getInfrastructureFactory().getStateStore();
       
-      // Use provided userContext or fallback to local
-      if (!userContext) {
-        userContext = {
-          userId: 'local',
-          organizationId: 'local',
-          workspacePath: ''
-        };
-      }
-      
       const fileTree = await this.deps.projectService.getFileTree(
         projectId, 
         featureName, 
         userContext
       );
       
-      logger.debug(`[FileTreeUpdate] Broadcasting via Redis Pub/Sub`, { 
+      // Validate userContext for user-scoped channel
+      if (!userContext?.organizationId || !userContext?.userId) {
+        logger.warn(`[FileTreeUpdate] Cannot broadcast without userContext`, { 
+          component: 'WorkflowBridge', 
+          projectId, 
+          featureName 
+        });
+        return;
+      }
+      
+      const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+      logger.debug(`[FileTreeUpdate] Broadcasting via ${channel}`, { 
         component: 'WorkflowBridge', 
         projectId, 
         featureName, 
@@ -223,8 +242,8 @@ export class WorkflowBridge {
         userId: userContext.userId 
       });
       
-      // Broadcast via Redis Pub/Sub → Realtime Server → SSE
-      await stateStore.publish(SSE_BROADCAST_CHANNEL, {
+      // Broadcast via user-scoped Redis Pub/Sub → Realtime Server → SSE
+      await stateStore.publish(channel, {
         projectId,
         featureName,
         type: 'fileTree',

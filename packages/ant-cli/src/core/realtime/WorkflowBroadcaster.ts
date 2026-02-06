@@ -16,18 +16,20 @@
 import { Redis } from 'ioredis';
 import { WorkflowStateUpdatePort, TaskInfo, LLMInfo } from '../ports/workflow';
 import { 
-  SSE_WORKFLOW_CHANNEL, 
+  getSSEWorkflowChannel,
   WORKFLOW_STATE_KEY_PREFIX,
   WORKFLOW_STATE_TTL,
   WorkflowState,
   WorkflowBroadcastMessage,
   BroadcasterOptions 
 } from './types';
+import { UserContext } from '../types/user';
 
 export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   private redis: Redis;
   private pubRedis: Redis; // Separate connection for publish
   private readonly jobId: string;
+  private readonly userContext?: UserContext;
   
   // In-memory state tracking (for building workflow state)
   private currentNode?: string;
@@ -50,6 +52,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
       retryStrategy: (times) => Math.min(times * 100, 3000),
     });
     this.jobId = options.jobId;
+    this.userContext = options.userContext;
     
     console.log(`✅ [WorkflowBroadcaster] Initialized for job: ${this.jobId}`);
   }
@@ -159,7 +162,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   }
 
   /**
-   * Broadcast workflow state via Redis
+   * Broadcast workflow state via user-scoped Redis Pub/Sub channel
    */
   private async broadcastState(isEndEvent: boolean): Promise<void> {
     // 1. Build state
@@ -180,14 +183,21 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     const key = `${WORKFLOW_STATE_KEY_PREFIX}${this.jobId}`;
     await this.redis.set(key, JSON.stringify(state), 'EX', WORKFLOW_STATE_TTL);
 
-    // 3. Broadcast via Redis Pub/Sub
+    // 3. Broadcast via user-scoped Redis Pub/Sub channel
+    if (!this.userContext?.organizationId || !this.userContext?.userId) {
+      console.warn(`[WorkflowBroadcaster] ⚠️ Cannot broadcast without userContext`);
+      return;
+    }
+    
     const message: WorkflowBroadcastMessage = {
       jobId: this.jobId,
       data: state,
       isEndEvent,
+      userContext: this.userContext,
     };
 
-    await this.pubRedis.publish(SSE_WORKFLOW_CHANNEL, JSON.stringify(message));
+    const channel = getSSEWorkflowChannel(this.userContext.organizationId, this.userContext.userId);
+    await this.pubRedis.publish(channel, JSON.stringify(message));
   }
 
   /**

@@ -19,7 +19,7 @@
 import { Redis } from 'ioredis';
 import { TaskQueueUpdatePort } from '../ports';
 import { 
-  SSE_BROADCAST_CHANNEL, 
+  getSSEBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
   TASK_QUEUE_TTL,
   TaskQueueSnapshot, 
@@ -155,7 +155,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       jobType: this.jobType,
     };
 
-    // 4. Broadcast via Redis Pub/Sub
+    // 4. Broadcast via user-scoped Redis Pub/Sub channel
+    if (!this.userContext?.organizationId || !this.userContext?.userId) {
+      console.warn(`[KanbanBroadcaster] ⚠️ Cannot broadcast without userContext`);
+      return;
+    }
+    
     const message: KanbanBroadcastMessage = {
       projectId: this.projectId,
       featureName: this.featureName,
@@ -164,9 +169,11 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       userContext: this.userContext,
     };
 
-    await this.pubRedis.publish(SSE_BROADCAST_CHANNEL, JSON.stringify(message));
+    // Publish to user-specific channel
+    const channel = getSSEBroadcastChannel(this.userContext.organizationId, this.userContext.userId);
+    await this.pubRedis.publish(channel, JSON.stringify(message));
     
-    console.log(`[KanbanBroadcaster] ✅ Broadcast sent (task: ${taskId}, current: ${currentTask?.name || 'none'}, queue: ${queue.length}, completed: ${completedTasks.length})`);
+    console.log(`[KanbanBroadcaster] ✅ Broadcast sent to ${channel} (task: ${taskId}, current: ${currentTask?.name || 'none'}, queue: ${queue.length}, completed: ${completedTasks.length})`);
   }
 
   /**

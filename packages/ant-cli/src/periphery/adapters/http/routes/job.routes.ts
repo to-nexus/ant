@@ -5,6 +5,7 @@ import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
 import type { InterruptionDetails } from '../../../../core/types';
 import type { StateStorePort, JobStatusData, JobProjectMapping } from '../../../../core/ports/stateStore';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
 import { extractUserContext } from './helpers/userContext';
 
 /**
@@ -168,13 +169,13 @@ export function createJobRoutes(deps: {
       console.log(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
       
       // Publish stop signal to Job Workers via Redis Pub/Sub
-      await deps.stateStore.publish('job:stop', { 
+      await deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, { 
         jobId, 
         projectId, 
         featureName,
         timestamp: new Date().toISOString() 
       });
-      console.log(`   ✅ Published stop signal to job:stop channel`);
+      console.log(`   ✅ Published stop signal to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`);
       
       // Update job status in Redis
       await deps.stateStore.updateJobStatus(jobId, {

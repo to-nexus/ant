@@ -38,7 +38,7 @@ import {
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
 import { createIDEKey, createPreviewKey } from './redisKeyUtils';
-import { REDIS_KEYS as KEYS, REDIS_TTL as TTL, REDIS_CHANNELS } from './redisConstants';
+import { REDIS_KEYS, REDIS_TTL, getSSEWorkflowChannel } from './redisConstants';
 import { logger } from '../../utils/logger';
 
 export interface RedisStateStoreOptions {
@@ -141,13 +141,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async setJobStatus(jobId: string, status: JobStatusData): Promise<void> {
-    const key = this.key(KEYS.JOB_STATUS, jobId);
-    const featureKey = this.key(KEYS.JOBS_BY_FEATURE, `${status.projectId}:${status.featureName}`);
+    const key = this.key(REDIS_KEYS.JOB.STATUS, jobId);
+    const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${status.projectId}:${status.featureName}`);
 
     const pipeline = this.redis.pipeline();
-    pipeline.set(key, JSON.stringify(status), 'EX', TTL.JOB_STATUS);
+    pipeline.set(key, JSON.stringify(status), 'EX', REDIS_TTL.JOB.STATUS);
     pipeline.sadd(featureKey, jobId);
-    pipeline.expire(featureKey, TTL.JOB_STATUS);
+    pipeline.expire(featureKey, REDIS_TTL.JOB.STATUS);
     
     await pipeline.exec();
 
@@ -158,7 +158,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async getJobStatus(jobId: string): Promise<JobStatusData | null> {
-    const key = this.key(KEYS.JOB_STATUS, jobId);
+    const key = this.key(REDIS_KEYS.JOB.STATUS, jobId);
     const data = await this.redis.get(key);
     return data ? JSON.parse(data) : null;
   }
@@ -174,10 +174,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const status = await this.getJobStatus(jobId);
     
     const pipeline = this.redis.pipeline();
-    pipeline.del(this.key(KEYS.JOB_STATUS, jobId));
+    pipeline.del(this.key(REDIS_KEYS.JOB.STATUS, jobId));
     
     if (status) {
-      const featureKey = this.key(KEYS.JOBS_BY_FEATURE, `${status.projectId}:${status.featureName}`);
+      const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${status.projectId}:${status.featureName}`);
       pipeline.srem(featureKey, jobId);
     }
     
@@ -187,14 +187,14 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async listJobsByFeature(projectId: string, featureName: string): Promise<JobStatusData[]> {
-    const featureKey = this.key(KEYS.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
+    const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
     const jobIds = await this.redis.smembers(featureKey);
 
     if (jobIds.length === 0) {
       return [];
     }
 
-    const keys = jobIds.map((id: string) => this.key(KEYS.JOB_STATUS, id));
+    const keys = jobIds.map((id: string) => this.key(REDIS_KEYS.JOB.STATUS, id));
     const results = await this.redis.mget(...keys);
 
     return results
@@ -207,27 +207,27 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async appendJobLog(jobId: string, log: LogEntry): Promise<void> {
-    const key = this.key(KEYS.JOB_LOGS, jobId);
+    const key = this.key(REDIS_KEYS.JOB.LOGS, jobId);
     const logWithTimestamp = {
       ...log,
       timestamp: log.timestamp || new Date().toISOString()
     };
 
     await this.redis.rpush(key, JSON.stringify(logWithTimestamp));
-    await this.redis.expire(key, TTL.JOB_LOGS);
+    await this.redis.expire(key, REDIS_TTL.JOB.LOGS);
 
     // Publish for real-time streaming
     await this.publish(`job:${jobId}:logs`, logWithTimestamp);
   }
 
   async getJobLogs(jobId: string): Promise<LogEntry[]> {
-    const key = this.key(KEYS.JOB_LOGS, jobId);
+    const key = this.key(REDIS_KEYS.JOB.LOGS, jobId);
     const logs = await this.redis.lrange(key, 0, -1);
     return logs.map((l: string) => JSON.parse(l));
   }
 
   async clearJobLogs(jobId: string): Promise<void> {
-    const key = this.key(KEYS.JOB_LOGS, jobId);
+    const key = this.key(REDIS_KEYS.JOB.LOGS, jobId);
     await this.redis.del(key);
   }
 
@@ -236,8 +236,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async updateTaskQueue(jobId: string, snapshot: TaskQueueSnapshot): Promise<void> {
-    const key = this.key(KEYS.TASK_QUEUE, jobId);
-    await this.redis.set(key, JSON.stringify(snapshot), 'EX', TTL.TASK_QUEUE);
+    const key = this.key(REDIS_KEYS.JOB.TASK_QUEUE, jobId);
+    await this.redis.set(key, JSON.stringify(snapshot), 'EX', REDIS_TTL.JOB.TASK_QUEUE);
 
     // Publish for real-time updates
     await this.publish(`job:${jobId}:taskQueue`, snapshot);
@@ -249,13 +249,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async getTaskQueue(jobId: string): Promise<TaskQueueSnapshot | null> {
-    const key = this.key(KEYS.TASK_QUEUE, jobId);
+    const key = this.key(REDIS_KEYS.JOB.TASK_QUEUE, jobId);
     const data = await this.redis.get(key);
     return data ? JSON.parse(data) : null;
   }
 
   async deleteTaskQueue(jobId: string): Promise<void> {
-    const key = this.key(KEYS.TASK_QUEUE, jobId);
+    const key = this.key(REDIS_KEYS.JOB.TASK_QUEUE, jobId);
     await this.redis.del(key);
   }
 
@@ -264,11 +264,22 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async setWorkflowState(jobId: string, state: WorkflowRealtimeState): Promise<void> {
-    const key = this.key(KEYS.WORKFLOW_STATE, jobId);
-    await this.redis.set(key, JSON.stringify(state), 'EX', TTL.WORKFLOW_STATE);
+    const key = this.key(REDIS_KEYS.JOB.WORKFLOW, jobId);
+    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.JOB.WORKFLOW);
     
-    // Publish for real-time SSE updates via SSEService
-    await this.publish(REDIS_CHANNELS.SSE_WORKFLOW, { jobId, data: state, isEndEvent: false });
+    // Get userContext from job mapping for user-scoped channel
+    const mapping = await this.getJobMapping(jobId);
+    if (!mapping?.userContext?.organizationId || !mapping?.userContext?.userId) {
+      logger.warn(`Cannot publish workflow state without userContext`, {
+        component: 'RedisStateStore',
+        jobId
+      });
+      return;
+    }
+    
+    // Publish to user-scoped channel for real-time SSE updates
+    const channel = getSSEWorkflowChannel(mapping.userContext.organizationId, mapping.userContext.userId);
+    await this.publish(channel, { jobId, data: state, isEndEvent: false, userContext: mapping.userContext });
     
     logger.debug(`Workflow state set: node=${state.currentNode}`, {
       component: 'RedisStateStore',
@@ -277,13 +288,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async getWorkflowState(jobId: string): Promise<WorkflowRealtimeState | null> {
-    const key = this.key(KEYS.WORKFLOW_STATE, jobId);
+    const key = this.key(REDIS_KEYS.JOB.WORKFLOW, jobId);
     const data = await this.redis.get(key);
     return data ? JSON.parse(data) : null;
   }
 
   async deleteWorkflowState(jobId: string): Promise<void> {
-    const key = this.key(KEYS.WORKFLOW_STATE, jobId);
+    const key = this.key(REDIS_KEYS.JOB.WORKFLOW, jobId);
     await this.redis.del(key);
   }
 
@@ -292,18 +303,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async setJobMapping(jobId: string, mapping: JobProjectMapping): Promise<void> {
-    const key = this.key(KEYS.JOB_MAPPING, jobId);
-    await this.redis.set(key, JSON.stringify(mapping), 'EX', TTL.JOB_STATUS);
+    const key = this.key(REDIS_KEYS.JOB.MAPPING, jobId);
+    await this.redis.set(key, JSON.stringify(mapping), 'EX', REDIS_TTL.JOB.STATUS);
   }
 
   async getJobMapping(jobId: string): Promise<JobProjectMapping | null> {
-    const key = this.key(KEYS.JOB_MAPPING, jobId);
+    const key = this.key(REDIS_KEYS.JOB.MAPPING, jobId);
     const data = await this.redis.get(key);
     return data ? JSON.parse(data) : null;
   }
 
   async deleteJobMapping(jobId: string): Promise<void> {
-    const key = this.key(KEYS.JOB_MAPPING, jobId);
+    const key = this.key(REDIS_KEYS.JOB.MAPPING, jobId);
     await this.redis.del(key);
   }
 
@@ -312,18 +323,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async markUserStopped(jobId: string): Promise<void> {
-    const key = this.key(KEYS.USER_STOPPED, jobId);
-    await this.redis.set(key, '1', 'EX', TTL.USER_STOPPED);
+    const key = this.key(REDIS_KEYS.JOB.USER_STOPPED, jobId);
+    await this.redis.set(key, '1', 'EX', REDIS_TTL.JOB.USER_STOPPED);
   }
 
   async isUserStopped(jobId: string): Promise<boolean> {
-    const key = this.key(KEYS.USER_STOPPED, jobId);
+    const key = this.key(REDIS_KEYS.JOB.USER_STOPPED, jobId);
     const result = await this.redis.exists(key);
     return result === 1;
   }
 
   async clearUserStopped(jobId: string): Promise<void> {
-    const key = this.key(KEYS.USER_STOPPED, jobId);
+    const key = this.key(REDIS_KEYS.JOB.USER_STOPPED, jobId);
     await this.redis.del(key);
   }
 
@@ -338,7 +349,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async registerPreview(state: Omit<PreviewState, 'lastAccessedAt'>): Promise<void> {
     const { tenantId, userId, projectId, feature, port, host, podId } = state;
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
-    const key = this.key(KEYS.PREVIEW, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
     
     const fullState: PreviewState = {
       ...state,
@@ -346,8 +357,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     };
 
     const pipeline = this.redis.pipeline();
-    pipeline.set(key, JSON.stringify(fullState), 'EX', TTL.PORT_MAPPING);
-    pipeline.sadd(this.key(KEYS.PREVIEW_LIST), portKey);
+    pipeline.set(key, JSON.stringify(fullState), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
+    pipeline.sadd(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST), portKey);
     // Index by podId for cleanup on pod restart
     pipeline.sadd(this.key('ant:preview:byPod:', podId), portKey);
     await pipeline.exec();
@@ -366,7 +377,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     feature: string
   ): Promise<PreviewState | null> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
-    const key = this.key(KEYS.PREVIEW, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
     const data = await this.redis.get(key);
 
     if (!data) {
@@ -406,7 +417,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     update: Partial<Pick<PreviewState, 'running' | 'ready' | 'issues' | 'packages' | 'backendPort'>>
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
-    const key = this.key(KEYS.PREVIEW, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
     const data = await this.redis.get(key);
 
     if (!data) {
@@ -421,7 +432,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       lastAccessedAt: new Date()
     };
 
-    await this.redis.set(key, JSON.stringify(updated), 'EX', TTL.PORT_MAPPING);
+    await this.redis.set(key, JSON.stringify(updated), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
     logger.debug(`[Preview] Updated: ${portKey}`, { component: 'RedisStateStore' });
   }
 
@@ -435,7 +446,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     feature: string
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
-    const key = this.key(KEYS.PREVIEW, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
     const data = await this.redis.get(key);
 
     if (!data) {
@@ -444,7 +455,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     const state: PreviewState = JSON.parse(data);
     state.lastAccessedAt = new Date();
-    await this.redis.set(key, JSON.stringify(state), 'EX', TTL.PORT_MAPPING);
+    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
   }
 
   /**
@@ -457,14 +468,14 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     feature: string
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
-    const key = this.key(KEYS.PREVIEW, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
     
     // Get state to find podId for index cleanup
     const data = await this.redis.get(key);
     
     const pipeline = this.redis.pipeline();
     pipeline.del(key);
-    pipeline.srem(this.key(KEYS.PREVIEW_LIST), portKey);
+    pipeline.srem(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST), portKey);
     
     // Cleanup pod index if state exists
     if (data) {
@@ -480,13 +491,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
    * List all active previews
    */
   async listPreviews(): Promise<PreviewState[]> {
-    const portKeys = await this.redis.smembers(this.key(KEYS.PREVIEW_LIST));
+    const portKeys = await this.redis.smembers(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST));
     
     if (portKeys.length === 0) {
       return [];
     }
 
-    const keys = portKeys.map((pk: string) => this.key(KEYS.PREVIEW, pk));
+    const keys = portKeys.map((pk: string) => this.key(REDIS_KEYS.INFRA.PREVIEW, pk));
     const results = await this.redis.mget(...keys);
 
     return results
@@ -509,7 +520,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       return [];
     }
 
-    const keys = portKeys.map((pk: string) => this.key(KEYS.PREVIEW, pk));
+    const keys = portKeys.map((pk: string) => this.key(REDIS_KEYS.INFRA.PREVIEW, pk));
     const results = await this.redis.mget(...keys);
 
     return results
@@ -552,7 +563,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     podId: string
   ): Promise<void> {
     const portKey = createIDEKey(tenantId, userId, projectId);
-    const key = this.key(KEYS.IDE, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
     
     const state: IDEState = {
       tenantId,
@@ -568,8 +579,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     };
 
     const pipeline = this.redis.pipeline();
-    pipeline.set(key, JSON.stringify(state), 'EX', TTL.PORT_MAPPING);
-    pipeline.sadd(this.key(KEYS.IDE_LIST), portKey);
+    pipeline.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
+    pipeline.sadd(this.key(REDIS_KEYS.INFRA.IDE_LIST), portKey);
     await pipeline.exec();
 
     logger.info(`[IDE] Registered: ${portKey} → ${host}:${port} (pod: ${podId})`, { component: 'RedisStateStore' });
@@ -590,7 +601,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     }
     
     const portKey = createIDEKey(tenantId, userId, projectId);
-    const key = this.key(KEYS.IDE, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
     const data = await this.redis.get(key);
 
     if (!data) {
@@ -626,7 +637,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     projectId: string
   ): Promise<void> {
     const portKey = createIDEKey(tenantId, userId, projectId);
-    const key = this.key(KEYS.IDE, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
     const data = await this.redis.get(key);
 
     if (!data) {
@@ -635,7 +646,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     const state: IDEState = JSON.parse(data);
     state.lastAccessedAt = new Date();
-    await this.redis.set(key, JSON.stringify(state), 'EX', TTL.PORT_MAPPING);
+    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
   }
 
   /**
@@ -647,11 +658,11 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     projectId: string
   ): Promise<void> {
     const portKey = createIDEKey(tenantId, userId, projectId);
-    const key = this.key(KEYS.IDE, portKey);
+    const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
 
     const pipeline = this.redis.pipeline();
     pipeline.del(key);
-    pipeline.srem(this.key(KEYS.IDE_LIST), portKey);
+    pipeline.srem(this.key(REDIS_KEYS.INFRA.IDE_LIST), portKey);
     await pipeline.exec();
 
     logger.info(`[IDE] Unregistered: ${portKey}`, { component: 'RedisStateStore' });
@@ -661,13 +672,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
    * List all active IDEs
    */
   async listIDEs(): Promise<IDEState[]> {
-    const portKeys = await this.redis.smembers(this.key(KEYS.IDE_LIST));
+    const portKeys = await this.redis.smembers(this.key(REDIS_KEYS.INFRA.IDE_LIST));
     
     if (portKeys.length === 0) {
       return [];
     }
 
-    const keys = portKeys.map((pk: string) => this.key(KEYS.IDE, pk));
+    const keys = portKeys.map((pk: string) => this.key(REDIS_KEYS.INFRA.IDE, pk));
     const results = await this.redis.mget(...keys);
 
     return results
@@ -717,7 +728,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async getChatSession(sessionKey: string): Promise<ChatSessionData | null> {
-    const data = await this.redis.get(this.key(KEYS.CHAT_SESSION + sessionKey));
+    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.SESSION + sessionKey));
     
     if (!data) return null;
     
@@ -731,8 +742,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async setChatSession(sessionKey: string, session: ChatSessionData): Promise<void> {
     await this.redis.setex(
-      this.key(KEYS.CHAT_SESSION + sessionKey),
-      TTL.CHAT_SESSION,
+      this.key(REDIS_KEYS.CHAT.SESSION + sessionKey),
+      REDIS_TTL.CHAT.SESSION,
       JSON.stringify(session)
     );
     
@@ -740,13 +751,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async deleteChatSession(sessionKey: string): Promise<void> {
-    await this.redis.del(this.key(KEYS.CHAT_SESSION + sessionKey));
+    await this.redis.del(this.key(REDIS_KEYS.CHAT.SESSION + sessionKey));
     // Also delete current message if exists
-    await this.redis.del(this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey));
+    await this.redis.del(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey));
   }
 
   async getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null> {
-    const data = await this.redis.get(this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey));
+    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey));
     
     if (!data) return null;
     
@@ -759,19 +770,19 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void> {
-    const key = this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey);
+    const key = this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey);
     
     if (message === null) {
       await this.redis.del(key);
       logger.debug(`Current message cleared: ${sessionKey}`, { component: 'RedisStateStore' });
     } else {
-      await this.redis.setex(key, TTL.CHAT_CURRENT_MESSAGE, JSON.stringify(message));
+      await this.redis.setex(key, REDIS_TTL.CHAT.CURRENT_MESSAGE, JSON.stringify(message));
       logger.debug(`Current message stored: ${sessionKey} (${message.id})`, { component: 'RedisStateStore' });
     }
   }
 
   async hasActiveMessage(sessionKey: string): Promise<boolean> {
-    const exists = await this.redis.exists(this.key(KEYS.CHAT_CURRENT_MESSAGE + sessionKey));
+    const exists = await this.redis.exists(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey));
     return exists === 1;
   }
 
@@ -784,7 +795,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const ttlSeconds = Math.max(1, Math.ceil((choice.expiresAt - Date.now()) / 1000));
     
     await this.redis.setex(
-      this.key(KEYS.PENDING_CHOICE + choiceKey),
+      this.key(REDIS_KEYS.CHOICE.PENDING + choiceKey),
       ttlSeconds,
       JSON.stringify(choice)
     );
@@ -793,7 +804,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async getPendingChoice(choiceKey: string): Promise<PendingChoiceData | null> {
-    const data = await this.redis.get(this.key(KEYS.PENDING_CHOICE + choiceKey));
+    const data = await this.redis.get(this.key(REDIS_KEYS.CHOICE.PENDING + choiceKey));
     
     if (!data) return null;
     
@@ -814,7 +825,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async deletePendingChoice(choiceKey: string): Promise<void> {
-    await this.redis.del(this.key(KEYS.PENDING_CHOICE + choiceKey));
+    await this.redis.del(this.key(REDIS_KEYS.CHOICE.PENDING + choiceKey));
     logger.debug(`Pending choice deleted: ${choiceKey}`, { component: 'RedisStateStore' });
   }
 
@@ -866,9 +877,9 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     subscriptions: number;
   }> {
     const [jobKeys, previewMembers, ideMembers] = await Promise.all([
-      this.redis.keys(`${this.keyPrefix}${KEYS.JOB_STATUS}*`),
-      this.redis.scard(this.key(KEYS.PREVIEW_LIST)),
-      this.redis.scard(this.key(KEYS.IDE_LIST))
+      this.redis.keys(`${this.keyPrefix}${REDIS_KEYS.JOB.STATUS}*`),
+      this.redis.scard(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST)),
+      this.redis.scard(this.key(REDIS_KEYS.INFRA.IDE_LIST))
     ]);
 
     return {

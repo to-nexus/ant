@@ -1,15 +1,16 @@
 /**
  * MessageBroadcaster - Handles chat message broadcasting via Redis Pub/Sub
  * 
- * Cloud-safe: All chat messages are published to Redis, allowing any Server
- * instance to receive and broadcast to its connected SSE clients.
+ * Cloud-safe: All chat messages are published to user-scoped Redis channels,
+ * ensuring multi-tenant isolation and efficient routing to the correct clients.
  */
 
 import type { StateStorePort } from '../ports/stateStore';
 import type { UserContext } from '../types/user';
 import { logger } from '../../utils/logger';
+import { getSSEBroadcastChannel } from '../../infrastructure/state';
 
-// Redis channel for chat messages
+// Legacy channel name (kept for backward compatibility reference)
 export const CHAT_BROADCAST_CHANNEL = 'chat:broadcast';
 
 /**
@@ -18,19 +19,20 @@ export const CHAT_BROADCAST_CHANNEL = 'chat:broadcast';
 export interface ChatBroadcastMessage {
   projectId: string;
   featureName: string;
+  type: 'chat';
   data: any;
-  userContext?: UserContext;
+  userContext: UserContext;  // Required for user-scoped channels
 }
 
 /**
- * MessageBroadcaster - Broadcasts chat events via Redis Pub/Sub
+ * MessageBroadcaster - Broadcasts chat events via user-scoped Redis Pub/Sub channels
  */
 export class MessageBroadcaster {
   constructor(private stateStore?: StateStorePort) {}
 
   /**
-   * Broadcast chat event via Redis Pub/Sub (fire-and-forget)
-   * All Server instances will receive this and forward to their SSE clients
+   * Broadcast chat event via user-scoped Redis Pub/Sub channel (fire-and-forget)
+   * Only the Server instances with the specific user's SSE connections will receive this.
    * 
    * Note: This is intentionally fire-and-forget to avoid blocking chat operations.
    * Errors are logged but don't affect the calling code.
@@ -38,6 +40,16 @@ export class MessageBroadcaster {
   broadcast(projectId: string, featureName: string, data: any, userContext?: UserContext): void {
     if (!this.stateStore) {
       logger.warn('MessageBroadcaster: No stateStore configured, cannot broadcast', { 
+        component: 'MessageBroadcaster', 
+        projectId, 
+        featureName 
+      });
+      return;
+    }
+
+    // Require userContext for user-scoped channel
+    if (!userContext?.organizationId || !userContext?.userId) {
+      logger.warn('MessageBroadcaster: Cannot broadcast without userContext', { 
         component: 'MessageBroadcaster', 
         projectId, 
         featureName 
@@ -55,6 +67,7 @@ export class MessageBroadcaster {
     const message: ChatBroadcastMessage = {
       projectId,
       featureName,
+      type: 'chat',
       data: enrichedData,
       userContext
     };
@@ -68,9 +81,12 @@ export class MessageBroadcaster {
       });
     }
 
+    // Publish to user-scoped channel
+    const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+    
     // Fire-and-forget: publish asynchronously without blocking
-    this.stateStore.publish(CHAT_BROADCAST_CHANNEL, message).catch((error) => {
-      logger.error('Failed to publish chat message to Redis', { 
+    this.stateStore.publish(channel, message).catch((error) => {
+      logger.error(`Failed to publish chat message to Redis channel ${channel}`, { 
         component: 'MessageBroadcaster', 
         projectId, 
         featureName 

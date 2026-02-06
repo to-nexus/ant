@@ -6,23 +6,27 @@
  */
 
 import { UserContext } from '../types/user';
-import { REDIS_CHANNELS, REDIS_KEYS, REDIS_TTL } from '../../infrastructure/state';
+import { 
+  REDIS_KEYS, 
+  REDIS_TTL,
+  getSSEBroadcastChannel,
+  getSSEWorkflowChannel
+} from '../../infrastructure/state';
 
 // ============================================
 // Re-export from central definition
 // ============================================
 
-// Channels
-export const SSE_BROADCAST_CHANNEL = REDIS_CHANNELS.SSE_BROADCAST;
-export const SSE_WORKFLOW_CHANNEL = REDIS_CHANNELS.SSE_WORKFLOW;
+// Channel generation functions (user-scoped)
+export { getSSEBroadcastChannel, getSSEWorkflowChannel };
 
 // Keys (for direct Redis access in Broadcasters)
-export const TASK_QUEUE_KEY_PREFIX = REDIS_KEYS.TASK_QUEUE;
-export const WORKFLOW_STATE_KEY_PREFIX = REDIS_KEYS.WORKFLOW_STATE;
+export const TASK_QUEUE_KEY_PREFIX = REDIS_KEYS.JOB.TASK_QUEUE;
+export const WORKFLOW_STATE_KEY_PREFIX = REDIS_KEYS.JOB.WORKFLOW;
 
 // TTLs
-export const TASK_QUEUE_TTL = REDIS_TTL.TASK_QUEUE;
-export const WORKFLOW_STATE_TTL = REDIS_TTL.WORKFLOW_STATE;
+export const TASK_QUEUE_TTL = REDIS_TTL.JOB.TASK_QUEUE;
+export const WORKFLOW_STATE_TTL = REDIS_TTL.JOB.WORKFLOW;
 
 // ============================================
 // Kanban Types
@@ -48,7 +52,7 @@ export interface KanbanBroadcastMessage {
   featureName: string;
   type: 'kanban';
   data: any;  // Full Kanban data with queue/current/completed
-  userContext?: UserContext;
+  userContext: UserContext;  // Required for user-scoped channels
 }
 
 // ============================================
@@ -81,6 +85,7 @@ export interface WorkflowBroadcastMessage {
   jobId: string;
   data: WorkflowState;
   isEndEvent: boolean;
+  userContext: UserContext;  // Required for user-scoped channels
 }
 
 // ============================================
@@ -95,7 +100,7 @@ export interface FileTreeBroadcastMessage {
     type: 'update';
     tree: any;  // File tree structure
   };
-  userContext?: UserContext;
+  userContext: UserContext;  // Required for user-scoped channels
 }
 
 // ============================================
@@ -119,5 +124,5 @@ export interface BroadcasterOptions {
   projectId: string;
   featureName: string;
   jobType?: 'design' | 'code' | 'learn';
-  userContext?: UserContext;
+  userContext: UserContext;  // Required for user-scoped channels
 }

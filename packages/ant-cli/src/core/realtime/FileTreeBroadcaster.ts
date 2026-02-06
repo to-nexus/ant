@@ -20,7 +20,7 @@ import * as path from 'path';
 import { FileTreeUpdatePort } from '../ports';
 import { UserContext } from '../types/user';
 import { 
-  SSE_BROADCAST_CHANNEL, 
+  getSSEBroadcastChannel,
   FileTreeBroadcastMessage,
   BroadcasterOptions 
 } from './types';
@@ -78,18 +78,24 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   }
 
   /**
-   * Broadcast file tree via Redis
+   * Broadcast file tree via user-scoped Redis Pub/Sub channel
    */
   private async broadcastFileTree(
     projectId: string, 
     featureName: string,
     userContext?: UserContext
   ): Promise<void> {
+    // Require userContext for user-scoped channel
+    if (!userContext?.organizationId || !userContext?.userId) {
+      console.warn(`[FileTreeBroadcaster] ⚠️ Cannot broadcast without userContext`);
+      return;
+    }
+    
     try {
       // 1. Build file tree from filesystem
       const tree = await this.buildFileTree(this.projectPath);
 
-      // 2. Broadcast via Redis Pub/Sub
+      // 2. Broadcast via user-scoped Redis Pub/Sub channel
       const message: FileTreeBroadcastMessage = {
         projectId,
         featureName,
@@ -101,9 +107,10 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
         userContext,
       };
 
-      await this.pubRedis.publish(SSE_BROADCAST_CHANNEL, JSON.stringify(message));
+      const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+      await this.pubRedis.publish(channel, JSON.stringify(message));
       
-      console.log(`[FileTreeBroadcaster] ✅ File tree update sent for ${projectId}/${featureName}`);
+      console.log(`[FileTreeBroadcaster] ✅ File tree update sent to ${channel} for ${projectId}/${featureName}`);
     } catch (error: any) {
       console.error(`[FileTreeBroadcaster] ❌ Error building file tree:`, error.message);
       throw error;

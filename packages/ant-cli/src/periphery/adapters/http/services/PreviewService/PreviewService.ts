@@ -17,10 +17,7 @@ import { ProcessSpawner } from './managers/ProcessSpawner';
 import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
-import { SSE_BROADCAST_CHANNEL } from '../SSEService';
-
-// Use sse:broadcast channel with type:'preview' (SSEService subscribes to this)
-const PREVIEW_CHANNEL = SSE_BROADCAST_CHANNEL;
+import { getSSEBroadcastChannel } from '../../../../../infrastructure/state';
 
 // Idle timeout configuration
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -158,7 +155,12 @@ export class PreviewService {
     
     if (this.stateStore) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      this.stateStore.publish(PREVIEW_CHANNEL, {
+      if (!tenantId || !userId) {
+        logger.warn('Cannot publish preview log without userContext', { component: 'PreviewService', projectId, featureName: feature });
+        return;
+      }
+      const channel = getSSEBroadcastChannel(tenantId, userId);
+      this.stateStore.publish(channel, {
         projectId,
         featureName: feature,
         userContext: { organizationId: tenantId, userId, workspacePath: '' },
@@ -182,8 +184,13 @@ export class PreviewService {
   private broadcastStatus(serverKey: string, status: any): void {
     if (this.stateStore) {
       const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
-      logger.warn(`[Preview] Broadcasting status: ${serverKey} running=${status?.running} ready=${status?.ready}`, { component: 'PreviewService' });
-      this.stateStore.publish(PREVIEW_CHANNEL, {
+      if (!tenantId || !userId) {
+        logger.warn('Cannot publish preview status without userContext', { component: 'PreviewService', projectId, featureName: feature });
+        return;
+      }
+      const channel = getSSEBroadcastChannel(tenantId, userId);
+      logger.debug(`[Preview] Broadcasting status: ${serverKey} running=${status?.running} ready=${status?.ready}`, { component: 'PreviewService' });
+      this.stateStore.publish(channel, {
         projectId,
         featureName: feature,
         userContext: { organizationId: tenantId, userId, workspacePath: '' },
@@ -193,7 +200,7 @@ export class PreviewService {
           data: status
         }
       }).then(() => {
-        logger.warn(`[Preview] Published to ${PREVIEW_CHANNEL}: ${projectId}/${feature}`, { component: 'PreviewService' });
+        logger.debug(`[Preview] Published to ${channel}: ${projectId}/${feature}`, { component: 'PreviewService' });
       }).catch(err => logger.warn('Failed to publish preview status', { component: 'PreviewService' }, err));
     } else {
       logger.warn(`[Preview] No stateStore, cannot broadcast: ${serverKey}`, { component: 'PreviewService' });
