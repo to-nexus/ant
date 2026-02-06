@@ -91,6 +91,10 @@ export function createWorkflowRoutes(deps: {
   /**
    * POST /api/jobs/:jobId/workflow/update
    * 
+   * @deprecated This HTTP endpoint is maintained for backward compatibility.
+   * New implementation: Job Worker child processes now use direct Redis Pub/Sub
+   * via core/realtime/WorkflowBroadcaster. This reduces latency and removes HTTP intermediary.
+   * 
    * 워크플로우 상태 업데이트 (자식 프로세스에서 호출)
    * 
    * Parameters:

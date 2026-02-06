@@ -3,6 +3,7 @@ import { logger } from '../../../../utils/logger';
 import type { UserContext } from '../../../../core/types/user';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { CHAT_BROADCAST_CHANNEL, type ChatBroadcastMessage } from './ChatService/MessageBroadcaster';
+import { REDIS_CHANNELS } from '../../../../infrastructure/state';
 
 /**
  * Message types for unified SSE stream
@@ -15,9 +16,9 @@ export interface SSEMessage {
   data: any;
 }
 
-// Redis Pub/Sub channels for cross-instance broadcasting
-export const SSE_BROADCAST_CHANNEL = 'sse:broadcast';
-export const SSE_WORKFLOW_CHANNEL = 'sse:workflow';
+// Redis Pub/Sub channels - re-export from central definition for backward compatibility
+export const SSE_BROADCAST_CHANNEL = REDIS_CHANNELS.SSE_BROADCAST;
+export const SSE_WORKFLOW_CHANNEL = REDIS_CHANNELS.SSE_WORKFLOW;
 
 export interface SSEBroadcastMessage {
   projectId: string;

@@ -13,6 +13,7 @@
 
 import { Response } from 'express';
 import type { StateStorePort, WorkflowRealtimeState, TaskInfo, LLMInfo, NodeHistoryEntry } from '../../../../core/ports/stateStore';
+import { REDIS_CHANNELS } from '../../../../infrastructure/state';
 import { logger } from '../../../../utils/logger';
 
 // Re-export types for backward compatibility
@@ -218,7 +219,7 @@ export class WorkflowStateService {
     
     // Send 'end' event to SSE clients via Redis Pub/Sub
     if (this.stateStore) {
-      await this.stateStore.publish('sse:workflow', { jobId, data: { jobId }, isEndEvent: true });
+      await this.stateStore.publish(REDIS_CHANNELS.SSE_WORKFLOW, { jobId, data: { jobId }, isEndEvent: true });
     }
   }
   

@@ -119,17 +119,22 @@ export async function orchestrator(params: {
             fileTreeUpdate = instance;
             workflowUpdate = instance;
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow) [Design]');
-          } else if (process.env.ANT_API_URL) {
-            // 자식 프로세스: HTTP 클라이언트 사용 (ANT_API_URL set by parent)
-            // HTTP clients internally check ANT_API_URL, port is fallback only
-            const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
-            console.log('🔧 [Orchestrator:Design] Creating HTTP clients with ANT_API_URL:', process.env.ANT_API_URL);
-            kanbanUpdate = new KanbanHttpClient();  // Uses ANT_API_URL internally
-            fileTreeUpdate = new FileTreeHttpClient();
-            workflowUpdate = new WorkflowHttpClient();
-            console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow) [Design]');
+          } else if (process.env.ANT_REDIS_URL) {
+            // 자식 프로세스: Direct Redis Pub/Sub (faster, no HTTP hop)
+            const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
+            const options = getBroadcasterOptionsFromEnv();
+            
+            if (options) {
+              const broadcasters = createRealtimeBroadcasters(options);
+              kanbanUpdate = broadcasters.kanban;
+              fileTreeUpdate = broadcasters.fileTree;
+              workflowUpdate = broadcasters.workflow;
+              console.log('✅ Real-time updates enabled (Direct Redis Pub/Sub - Kanban + File Tree + Workflow) [Design]');
+            } else {
+              console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Design]');
+            }
           } else {
-            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_API_URL) [Design]');
+            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_REDIS_URL) [Design]');
           }
         } catch (error: any) {
           console.log('ℹ️  Real-time updates disabled (server not running) [Design]', error?.message);
@@ -170,16 +175,22 @@ export async function orchestrator(params: {
             fileTreeUpdate = instance;
             workflowUpdate = instance;
             console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow)');
-          } else if (process.env.ANT_API_URL) {
-            // 자식 프로세스: HTTP 클라이언트 사용 (ANT_API_URL set by parent)
-            // HTTP clients internally check ANT_API_URL, port is fallback only
-            const { WorkflowHttpClient, KanbanHttpClient, FileTreeHttpClient } = await import('../periphery/adapters/http/clients');
-            kanbanUpdate = new KanbanHttpClient();  // Uses ANT_API_URL internally
-            fileTreeUpdate = new FileTreeHttpClient();
-            workflowUpdate = new WorkflowHttpClient();
-            console.log('✅ Real-time updates enabled (HTTP - Kanban + File Tree + Workflow)');
+          } else if (process.env.ANT_REDIS_URL) {
+            // 자식 프로세스: Direct Redis Pub/Sub (faster, no HTTP hop)
+            const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
+            const options = getBroadcasterOptionsFromEnv();
+            
+            if (options) {
+              const broadcasters = createRealtimeBroadcasters(options);
+              kanbanUpdate = broadcasters.kanban;
+              fileTreeUpdate = broadcasters.fileTree;
+              workflowUpdate = broadcasters.workflow;
+              console.log('✅ Real-time updates enabled (Direct Redis Pub/Sub - Kanban + File Tree + Workflow)');
+            } else {
+              console.log('⚠️  Redis URL set but missing required env vars for broadcasting');
+            }
           } else {
-            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_API_URL)');
+            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_REDIS_URL)');
           }
         } catch (error) {
           console.log('ℹ️  Real-time updates disabled (server not running)');

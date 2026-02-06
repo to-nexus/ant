@@ -3,9 +3,10 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
+import { REDIS_CHANNELS } from '../../../../../infrastructure/state';
 
-// Redis Pub/Sub channel for SSE broadcast (received by Realtime Server)
-const SSE_BROADCAST_CHANNEL = 'sse:broadcast';
+// Use central channel definition
+const SSE_BROADCAST_CHANNEL = REDIS_CHANNELS.SSE_BROADCAST;
 
 /**
  * WorkflowBridge

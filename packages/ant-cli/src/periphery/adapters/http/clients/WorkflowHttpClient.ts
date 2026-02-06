@@ -1,6 +1,9 @@
 /**
  * WorkflowHttpClient
  * 
+ * @deprecated Use WorkflowBroadcaster (core/realtime) instead for direct Redis Pub/Sub.
+ * This HTTP-based implementation is maintained for backward compatibility only.
+ * 
  * Hexagonal Architecture - Secondary/Driven Adapter (Remote Proxy)
  * 
  * Purpose:
@@ -15,7 +18,10 @@
  * 
  * Use Case:
  * - Parent process: ExpressServerAdapter (direct implementation)
- * - Child process: WorkflowHttpClient (HTTP proxy to parent)
+ * - Child process: WorkflowHttpClient (HTTP proxy to parent) - DEPRECATED
+ * 
+ * New Implementation:
+ * - Child process: WorkflowBroadcaster (core/realtime) - Direct Redis Pub/Sub
  * 
  * Design Principles:
  * - Single Responsibility: HTTP communication only
