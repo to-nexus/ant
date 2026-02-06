@@ -17,6 +17,7 @@ import { JobExecutionManager } from '../managers/JobExecutionManager';
 import { WorkflowBridge } from '../bridges/WorkflowBridge';
 import { ChoiceService, choiceService as defaultChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
+import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
 
 /**
  * RouteConfigurator
@@ -301,7 +302,7 @@ export class RouteConfigurator {
     // This allows new jobs to start after previous job completes (fixes "Job already running" error)
     // CRITICAL: Must also call cleanupJobState to broadcast Kanban update to frontend!
     if (this.config.mode === 'cloud' && stateStore) {
-      stateStore.subscribe('job:status:updates', async (message: unknown) => {
+      stateStore.subscribe(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, async (message: unknown) => {
         const data = message as { 
           type: string; 
           jobId: string; 

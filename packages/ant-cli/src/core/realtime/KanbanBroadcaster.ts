@@ -19,7 +19,7 @@
 import { Redis } from 'ioredis';
 import { TaskQueueUpdatePort } from '../ports';
 import { 
-  getSSEBroadcastChannel,
+  getRealtimeBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
   TASK_QUEUE_TTL,
   TaskQueueSnapshot, 
@@ -53,7 +53,13 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.jobType = options.jobType || 'code';
     this.userContext = options.userContext;
     
-    console.log(`✅ [KanbanBroadcaster] Initialized for ${this.projectId}/${this.featureName} (job: ${this.jobId})`);
+    // Error & connection event handlers for diagnostics
+    this.redis.on('error', (err) => console.error(`❌ [KanbanBroadcaster] redis error:`, err.message));
+    this.redis.on('ready', () => console.log(`🟢 [KanbanBroadcaster] redis ready`));
+    this.pubRedis.on('error', (err) => console.error(`❌ [KanbanBroadcaster] pubRedis error:`, err.message));
+    this.pubRedis.on('ready', () => console.log(`🟢 [KanbanBroadcaster] pubRedis ready`));
+    
+    console.log(`✅ [KanbanBroadcaster] Initialized for ${this.projectId}/${this.featureName} (job: ${this.jobId}, user: ${this.userContext?.userId}@${this.userContext?.organizationId})`);
   }
 
   /**
@@ -171,7 +177,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     };
 
     // Publish to user-specific channel
-    const channel = getSSEBroadcastChannel(this.userContext.organizationId, this.userContext.userId);
+    const channel = getRealtimeBroadcastChannel(this.userContext.organizationId, this.userContext.userId);
     await this.pubRedis.publish(channel, JSON.stringify(message));
     
     console.log(`[KanbanBroadcaster] ✅ Broadcast sent to ${channel} (task: ${taskId}, current: ${currentTask?.name || 'none'}, queue: ${queue.length}, completed: ${completedTasks.length})`);

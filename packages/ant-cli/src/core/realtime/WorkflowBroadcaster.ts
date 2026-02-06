@@ -16,7 +16,7 @@
 import { Redis } from 'ioredis';
 import { WorkflowStateUpdatePort, TaskInfo, LLMInfo } from '../ports/workflow';
 import { 
-  getSSEWorkflowChannel,
+  getRealtimeWorkflowChannel,
   WORKFLOW_STATE_KEY_PREFIX,
   WORKFLOW_STATE_TTL,
   WorkflowState,
@@ -55,7 +55,13 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     this.jobId = options.jobId;
     this.userContext = options.userContext;
     
-    console.log(`✅ [WorkflowBroadcaster] Initialized for job: ${this.jobId}`);
+    // Error & connection event handlers for diagnostics
+    this.redis.on('error', (err) => console.error(`❌ [WorkflowBroadcaster] redis error:`, err.message));
+    this.redis.on('ready', () => console.log(`🟢 [WorkflowBroadcaster] redis ready`));
+    this.pubRedis.on('error', (err) => console.error(`❌ [WorkflowBroadcaster] pubRedis error:`, err.message));
+    this.pubRedis.on('ready', () => console.log(`🟢 [WorkflowBroadcaster] pubRedis ready`));
+    
+    console.log(`✅ [WorkflowBroadcaster] Initialized for job: ${this.jobId} (user: ${this.userContext?.userId}@${this.userContext?.organizationId})`);
   }
 
   /**
@@ -197,7 +203,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
       userContext: this.userContext,
     };
 
-    const channel = getSSEWorkflowChannel(this.userContext.organizationId, this.userContext.userId);
+    const channel = getRealtimeWorkflowChannel(this.userContext.organizationId, this.userContext.userId);
     await this.pubRedis.publish(channel, JSON.stringify(message));
   }
 

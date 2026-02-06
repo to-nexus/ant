@@ -9,8 +9,8 @@ import { UserContext } from '../types/user';
 import { 
   REDIS_KEYS, 
   REDIS_TTL,
-  getSSEBroadcastChannel,
-  getSSEWorkflowChannel
+  getRealtimeBroadcastChannel,
+  getRealtimeWorkflowChannel
 } from '../../infrastructure/state';
 
 // ============================================
@@ -18,7 +18,7 @@ import {
 // ============================================
 
 // Channel generation functions (user-scoped)
-export { getSSEBroadcastChannel, getSSEWorkflowChannel };
+export { getRealtimeBroadcastChannel, getRealtimeWorkflowChannel };
 
 // Keys (for direct Redis access in Broadcasters)
 export const TASK_QUEUE_KEY_PREFIX = REDIS_KEYS.JOB.TASK_QUEUE;

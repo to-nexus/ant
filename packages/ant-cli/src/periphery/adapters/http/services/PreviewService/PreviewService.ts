@@ -17,7 +17,7 @@ import { ProcessSpawner } from './managers/ProcessSpawner';
 import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
-import { getSSEBroadcastChannel } from '../../../../../infrastructure/state';
+import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 
 // Idle timeout configuration
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -159,7 +159,7 @@ export class PreviewService {
         logger.warn('Cannot publish preview log without userContext', { component: 'PreviewService', projectId, featureName: feature });
         return;
       }
-      const channel = getSSEBroadcastChannel(tenantId, userId);
+      const channel = getRealtimeBroadcastChannel(tenantId, userId);
       this.stateStore.publish(channel, {
         projectId,
         featureName: feature,
@@ -188,7 +188,7 @@ export class PreviewService {
         logger.warn('Cannot publish preview status without userContext', { component: 'PreviewService', projectId, featureName: feature });
         return;
       }
-      const channel = getSSEBroadcastChannel(tenantId, userId);
+      const channel = getRealtimeBroadcastChannel(tenantId, userId);
       logger.debug(`[Preview] Broadcasting status: ${serverKey} running=${status?.running} ready=${status?.ready}`, { component: 'PreviewService' });
       this.stateStore.publish(channel, {
         projectId,

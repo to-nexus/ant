@@ -31,6 +31,7 @@ import {
 import { StateStorePort } from '../../core/ports/stateStore';
 import { logger } from '../../utils/logger';
 import { parseRedisUrl } from '../utils/redis';
+import { REDIS_CHANNELS } from '../state/redisConstants';
 
 // Queue configuration
 const QUEUE_NAME = 'ant-jobs';
@@ -148,7 +149,7 @@ export class BullMQJobQueue implements JobQueuePort {
       // This allows API Server to notify UI clients
       // Use a global channel for job status updates (API server subscribes to this)
       try {
-        await this.stateStore.publish('job:status:updates', {
+        await this.stateStore.publish(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, {
           type: 'completed',
           jobId,
           status: 'completed',

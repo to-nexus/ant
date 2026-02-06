@@ -3,7 +3,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
-import { getSSEBroadcastChannel } from '../../../../../infrastructure/state';
+import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 
 /**
  * WorkflowBridge
@@ -166,7 +166,7 @@ export class WorkflowBridge {
           return;
         }
         
-        const channel = getSSEBroadcastChannel(mapping.userContext.organizationId, mapping.userContext.userId);
+        const channel = getRealtimeBroadcastChannel(mapping.userContext.organizationId, mapping.userContext.userId);
         logger.debug(`[Kanban Broadcast] Publishing to ${channel}: ${mapping.projectId}/${mapping.featureName}`, {
           component: 'WorkflowBridge',
           projectId: mapping.projectId,
@@ -233,7 +233,7 @@ export class WorkflowBridge {
         return;
       }
       
-      const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+      const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
       logger.debug(`[FileTreeUpdate] Broadcasting via ${channel}`, { 
         component: 'WorkflowBridge', 
         projectId, 

@@ -3,8 +3,8 @@ import { logger } from '../../../../utils/logger';
 import type { UserContext } from '../../../../core/types/user';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { 
-  getSSEBroadcastChannel, 
-  getSSEWorkflowChannel
+  getRealtimeBroadcastChannel, 
+  getRealtimeWorkflowChannel
 } from '../../../../infrastructure/state';
 
 /**
@@ -88,7 +88,7 @@ export class SSEService {
     }
     
     // Subscribe to SSE broadcast channel for this user
-    const broadcastChannel = getSSEBroadcastChannel(orgId, userId);
+    const broadcastChannel = getRealtimeBroadcastChannel(orgId, userId);
     if (!this.subscribedChannels.has(broadcastChannel)) {
       await this.stateStore.subscribe(broadcastChannel, (message: SSEBroadcastMessage) => {
         const { projectId, featureName, type, data, userContext: msgUserContext } = message;
@@ -99,7 +99,7 @@ export class SSEService {
     }
     
     // Subscribe to workflow channel for this user
-    const workflowChannel = getSSEWorkflowChannel(orgId, userId);
+    const workflowChannel = getRealtimeWorkflowChannel(orgId, userId);
     if (!this.subscribedChannels.has(workflowChannel)) {
       await this.stateStore.subscribe(workflowChannel, (message: SSEWorkflowMessage) => {
         const { jobId, data, isEndEvent } = message;
@@ -215,7 +215,7 @@ export class SSEService {
     };
     
     // Publish to user-specific channel
-    const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+    const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
     
     this.stateStore.publish(channel, message).catch((error) => {
       logger.error(`Failed to publish SSE broadcast (${type}) to Redis channel ${channel}`, { 
@@ -323,7 +323,7 @@ export class SSEService {
     };
     
     // Publish to user-specific workflow channel
-    const channel = getSSEWorkflowChannel(userContext.organizationId, userContext.userId);
+    const channel = getRealtimeWorkflowChannel(userContext.organizationId, userContext.userId);
     
     this.stateStore.publish(channel, message).catch((error) => {
       logger.error(`Failed to publish workflow broadcast to Redis channel ${channel}`, { 
@@ -378,7 +378,7 @@ export class SSEService {
       userContext
     };
     
-    const channel = getSSEWorkflowChannel(userContext.organizationId, userContext.userId);
+    const channel = getRealtimeWorkflowChannel(userContext.organizationId, userContext.userId);
     
     this.stateStore.publish(channel, message).catch((error) => {
       logger.error(`Failed to publish workflow end event to Redis channel ${channel}`, { 

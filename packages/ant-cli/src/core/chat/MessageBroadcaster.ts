@@ -8,10 +8,7 @@
 import type { StateStorePort } from '../ports/stateStore';
 import type { UserContext } from '../types/user';
 import { logger } from '../../utils/logger';
-import { getSSEBroadcastChannel } from '../../infrastructure/state';
-
-// Legacy channel name (kept for backward compatibility reference)
-export const CHAT_BROADCAST_CHANNEL = 'chat:broadcast';
+import { getRealtimeBroadcastChannel } from '../../infrastructure/state';
 
 /**
  * Broadcast message structure for Redis Pub/Sub
@@ -82,7 +79,7 @@ export class MessageBroadcaster {
     }
 
     // Publish to user-scoped channel
-    const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+    const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
     
     // Fire-and-forget: publish asynchronously without blocking
     this.stateStore.publish(channel, message).catch((error) => {

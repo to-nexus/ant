@@ -105,16 +105,3 @@ export function parsePreviewKey(key: string): PreviewKeyComponents | null {
   return { tenantId, userId, projectId, feature };
 }
 
-// ============================================
-// Aliases for backward compatibility
-// ============================================
-
-// IDE aliases (for clarity in different contexts)
-export const createIDEInstanceKey = createIDEKey;
-export const parseIDEInstanceKey = parseIDEKey;
-export const createIDEPortKey = createIDEKey;
-
-// Preview aliases
-export const createPreviewInstanceKey = createPreviewKey;
-export const parsePreviewInstanceKey = parsePreviewKey;
-export const createPreviewPortKey = createPreviewKey;

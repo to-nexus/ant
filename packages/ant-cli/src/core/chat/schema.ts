@@ -9,11 +9,6 @@ import type { ChatSessionData, ChatMessageData } from '../ports/stateStore';
 import type { UserContext } from '../types/user';
 
 /**
- * Redis key prefix for chat data
- */
-export const REDIS_KEY_PREFIX = 'ant:chat';
-
-/**
  * Get Redis session key for a project/feature
  * Format: "org:user:projectId/featureName"
  */

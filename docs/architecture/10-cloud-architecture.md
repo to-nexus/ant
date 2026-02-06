@@ -318,76 +318,82 @@ Endpoints:
 
 **Redis Pub/Sub 기반 동작:**
 ```
-[SSE 연결 및 이벤트 전달]
+[SSE 연결 및 이벤트 전달 - 사용자 스코프 채널]
 
                           ┌─────────────────────────────────────────┐
                           │               Redis Pub/Sub             │
                           │                                         │
-Job Worker ───────────────│──► sse:broadcast ─────────────────────►│
-                          │              │                          │
-                          │    ┌─────────┼─────────┐                │
+Job Worker ───────────────│──► realtime:broadcast:{orgId}:{userId} ►│
+  (KanbanBroadcaster)     │──► realtime:workflow:{orgId}:{userId}  ►│
+  (WorkflowBroadcaster)   │                                         │
+  (MessageBroadcaster)    │    ┌─────────┼─────────┐                │
                           │    ▼         ▼         ▼                │
                           │  Pod A     Pod B     Pod C              │
                           │    │         │         │                │
                           │    ▼         ▼         ▼                │
-                          │ Client 1  Client 2  Client 3            │
+                          │ User A     (무시)    User A             │
+                          │ 연결 있음            연결 있음          │
                           └─────────────────────────────────────────┘
 
 [재연결 시나리오]
-1. Client A가 Pod X에 SSE 연결
-2. 네트워크 끊김 → 연결 종료
-3. Client A 재연결 → Round-robin → Pod Y에 연결 (다른 Pod OK!)
-4. URL 파라미터로 projectId/featureName 전달 (Stateless)
-5. Pod Y가 Redis Subscribe → 이벤트 수신 가능 ✅
+1. Client A가 Pod X에 SSE 연결 (userContext 포함)
+2. Pod X가 realtime:broadcast:{orgId}:{userId} 채널 구독
+3. 네트워크 끊김 → 연결 종료 → 구독 해제
+4. Client A 재연결 → Round-robin → Pod Y에 연결 (다른 Pod OK!)
+5. Pod Y가 같은 user-scoped 채널 구독 → 이벤트 수신 가능 ✅
 ```
 
 **핵심 설계:**
-- 모든 Pod가 Redis Pub/Sub 구독
-- SSE 연결 정보를 URL 파라미터로 전달 (Stateless)
+- 사용자별 스코프 채널 (`realtime:broadcast:{orgId}:{userId}`)
+- SSE 연결 시 `userContext`로 구독 채널 결정 (Multi-Tenant 격리)
 - **Sticky Session 불필요** (재연결 시 어떤 Pod도 OK)
 
 ### 3.4 ant-job (Job Worker)
 
-**역할**: BullMQ Job 처리 (LLM 호출, 코드 생성)
+**역할**: BullMQ Job 처리 (LLM 호출, 코드 생성, 실시간 브로드캐스트)
 
 ```
 처리 흐름:
 1. BullMQ에서 Job dequeue
-2. LLM API 호출 (Claude, GPT) - 스트리밍 응답 수신
-3. ChatAPIClient → ant-api HTTP 요청 (상태 관리를 위해)
-   - POST /start-message (메시지 시작)
-   - POST /llm-event (thinking, text 청크)
-   - POST /finalize-message (메시지 완료)
-4. ant-api의 ChatService가 상태 관리:
-   - currentMessage, activeFileOperations 관리
-   - ContentMerger로 thinking 이벤트 병합
-   - MessageBroadcaster → Redis Pub/Sub publish
-5. 코드 생성 → EFS 저장
-6. Job 완료 상태 Redis 저장
+2. 자식 프로세스(job-runner) 스폰 (런타임 환경변수로 컨텍스트 전달)
+3. LLM API 호출 (Claude, GPT) - 스트리밍 응답 수신
+4. LLMResponseService가 직접 Redis 처리:
+   - SessionStore → Redis SET (세션 저장)
+   - ContentMerger → thinking 이벤트 병합
+   - MessageBroadcaster → Redis PUBLISH (user-scoped channel)
+5. KanbanBroadcaster / WorkflowBroadcaster → Redis PUBLISH (실시간 UI)
+6. 코드 생성 → EFS 저장
+7. Job 완료 → Redis PUBLISH (job:status:updates → API Server)
 ```
 
 **Chat 데이터 흐름 (상세):**
 ```
-┌─────────────┐     HTTP (ChatAPIClient)     ┌─────────────┐     Redis      ┌─────────────┐
-│  ant-job    │─────────────────────────────►│  ant-api    │────publish────►│   Redis     │
-│(Job Worker) │                              │(ChatService)│                │  Pub/Sub    │
-└──────▲──────┘                              └─────────────┘                └──────┬──────┘
-       │ LLM Stream                                │                               │
-       │                                     상태 관리:                        subscribe
-┌──────┴──────┐                              - currentMessage                      │
-│  LLM API    │                              - ContentMerger              ┌────────▼────────┐
-│ (Claude 등) │                              - activeFileOperations       │  ant-realtime   │
-└─────────────┘                                                           │  (SSE Gateway)  │
-                                                                          └────────┬────────┘
-                                                                                   │ SSE
-                                                                          ┌────────▼────────┐
-                                                                          │     ant-ui      │
-                                                                          │    (브라우저)    │
-                                                                          └─────────────────┘
+┌─────────────┐     Redis (직접 접근)        ┌─────────────┐
+│  ant-job    │──── SET (세션 저장) ────────►│   Redis     │
+│  (child     │──── PUBLISH (broadcast) ───►│             │
+│   process)  │──── PUBLISH (workflow) ────►│  • Keys     │
+└──────▲──────┘──── PUBLISH (kanban) ──────►│  • Pub/Sub  │
+       │ LLM Stream                         └──────┬──────┘
+       │                                           │
+┌──────┴──────┐                               subscribe
+│  LLM API    │                                    │
+│ (Claude 등) │                           ┌────────▼────────┐
+└─────────────┘                           │  ant-realtime   │
+                                          │  (SSE Gateway)  │
+                                          └────────┬────────┘
+                                                   │ SSE
+[API Server]                              ┌────────▼────────┐
+  └── ChatService (경량화)                │     ant-ui      │
+      ├── 메시지 조회/삭제 (GET/DELETE)   │    (브라우저)    │
+      ├── 유저 메시지 추가 (POST)         └─────────────────┘
+      └── triage 처리
 ```
 
-> **Note**: Job Worker가 ant-api를 거치는 이유는 ChatService의 **상태 관리** 로직이 필요하기 때문.
-> 단순 Redis publish만으로는 thinking 병합, 파일 카드 상태 관리 등이 불가능.
+> **Note**: Job Worker는 ant-api를 거치지 않고 직접 Redis에 접근합니다.
+> LLMResponseService가 ContentMerger, 파일 카드 상태 관리 등을 자체 처리합니다.
+> 
+> @see REFACTORING-CHAT-SERVICE.md
+> @see src/core/types/processEnv.ts (런타임 환경변수 중앙 정의)
 
 ### 3.5 IDE Pods (ant-ide namespace)
 
@@ -415,74 +421,69 @@ Pod 구성:
 
 ### 4.1 Redis Key 구조
 
+> **중앙 정의**: `src/infrastructure/state/redisConstants.ts` (REDIS_KEYS)
+> 모든 키는 `ant:` prefix를 공유하며, 도메인별로 계층화.
+
 ```
-# Session (Chat)
+# Job (ant:job:*)
+ant:job:status:{jobId}               # Job 상태 (running/completed/failed)
+ant:job:logs:{jobId}                 # Job 실행 로그 (List)
+ant:job:taskQueue:{jobId}            # Kanban 태스크 큐 스냅샷
+ant:job:mapping:{jobId}              # projectId, featureName 매핑
+ant:job:userStopped:{jobId}          # 사용자 중지 플래그
+ant:job:workflow:{jobId}             # 워크플로우 노드 상태
+
+# Chat (ant:chat:*)
 ant:chat:session:{sessionKey}        # 세션 + 메시지 목록
 ant:chat:currentMessage:{sessionKey} # 스트리밍 중인 메시지
 
-# Job State
-ant:job:status:{jobId}               # Job 상태
-ant:job:logs:{jobId}                 # Job 로그 (List)
-ant:job:mapping:{jobId}              # projectId, featureName 매핑
-ant:job:userStopped:{jobId}          # 사용자 중지 마커
+# Choice (ant:choice:*)
+ant:choice:pending:{choiceKey}       # Triage 선택 대기
 
-# Workflow State
-ant:workflow:state:{jobId}           # 현재 노드, 히스토리 등
+# Infrastructure (ant:infra:*)
+ant:infra:preview:{portKey}          # PreviewState (JSON)
+ant:infra:preview:list               # Preview 목록 (SET)
+ant:infra:preview:byPod:{podId}      # Pod별 Preview 인덱스 (SET)
+ant:infra:ide:{portKey}              # IDEState (JSON)
+ant:infra:ide:list                   # IDE 목록 (SET)
+ant:infra:ide:instance:{instanceKey} # IDE 인스턴스 (K8s)
+ant:infra:ide:lastAccess:{instanceKey} # IDE 마지막 접근 시간
 
-# Task Queue (Kanban)
-ant:taskQueue:{jobId}                # 현재 태스크, 큐, 완료 목록
-
-# Port Registry (State Objects)
-ant:preview:{tenantId}:{userId}:{projectId}:{feature}  # PreviewState (JSON)
-ant:ide:{tenantId}:{userId}:{projectId}                # IDEState (JSON)
+# Index (ant:index:*)
+ant:index:jobsByFeature:{projectId}:{featureName}  # Feature별 Job 인덱스 (SET)
 
 # Key Format
-# - IDE: {tenantId}:{userId}:{projectId} (3-part, project-level)
-# - Preview: {tenantId}:{userId}:{projectId}:{feature} (4-part, feature-level)
-
-# PreviewState Structure (stored as JSON)
-# {
-#   tenantId, userId, projectId, feature,
-#   port: number,           # Dev Server port (30000+)
-#   host: string,           # Pod IP (for cross-pod proxy)
-#   running: boolean,       # Process running
-#   ready: boolean,         # Server ready to serve
-#   packages?: [],          # Detected packages
-#   startedAt?: number,     # Start timestamp
-#   lastAccessedAt?: number # Last access (for idle timeout)
-# }
-
-# IDEState Structure (stored as JSON)
-# {
-#   tenantId, userId, projectId,
-#   port: number,           # IDE port (3000)
-#   host: string,           # Pod IP
-#   podId: string,          # K8s Pod name
-#   startedAt?: number,
-#   lastAccessedAt?: number
-# }
+# - IDE portKey:     {tenantId}:{userId}:{projectId} (3-part, project-level)
+# - Preview portKey: {tenantId}:{userId}:{projectId}:{feature} (4-part, feature-level)
+# - sessionKey:      {orgId}:{userId}:{projectId}/{featureName}
 ```
 
 ### 4.2 Pub/Sub 채널
 
+> **중앙 정의**: `src/infrastructure/state/redisConstants.ts` (REDIS_CHANNELS)
+> 채널은 **구독자(subscriber)**로 그룹화. 사용자 스코프 채널로 멀티테넌트 격리.
+
 ```
-# Chat
-chat:broadcast:{sessionKey}   # 채팅 메시지
-chat:stream:{sessionKey}      # LLM 스트리밍 청크
+# Realtime Server 구독 → SSE로 프론트엔드 전달
+realtime:broadcast:{orgId}:{userId}  # Chat, Kanban, FileTree 등 범용
+realtime:workflow:{orgId}:{userId}   # 워크플로우 전용
 
-# UI Updates
-kanban:update:{sessionKey}    # 칸반 업데이트
-filetree:update:{sessionKey}  # 파일트리 변경
+# Job Worker 구독 → 프로세스 제어
+job:stop                             # Job 중지 신호 (API Server → Job Worker)
 
-# Job/Workflow
-workflow:update:{jobId}       # 워크플로우 상태
-job:status:{jobId}            # Job 상태 변경
-job:stop                      # Job 중지 신호
-
-# Broadcast
-sse:broadcast                 # 범용 브로드캐스트
-sse:workflow                  # 워크플로우 전용
+# API Server 구독 → 내부 상태 동기화
+job:status:updates                   # Job 완료/실패 알림 (Job Worker → API Server)
 ```
+
+**채널 생성 함수** (redisConstants.ts):
+```typescript
+getRealtimeBroadcastChannel(orgId, userId)  // → "realtime:broadcast:{orgId}:{userId}"
+getRealtimeWorkflowChannel(orgId, userId)   // → "realtime:workflow:{orgId}:{userId}"
+parseChannelUserContext(channel)             // → { orgId, userId } | null
+```
+
+> **Multi-Tenant 격리**: 모든 실시간 채널은 `{orgId}:{userId}` 스코프.
+> 다른 사용자의 이벤트가 누출되지 않음.
 
 ---
 
@@ -529,11 +530,40 @@ ANT_WORKSPACE_BASE_PATH=/mnt/workspaces    # 워크스페이스 경로
 
 ```bash
 ANT_REDIS_URL=redis://...                  # BullMQ 연결
+ANT_API_URL=http://ant-api:8080            # API Server 내부 URL
+ANT_WORKSPACE_BASE_PATH=/mnt/workspaces    # 워크스페이스 경로
 ANTHROPIC_API_KEY=...                      # Claude API
 OPENAI_API_KEY=...                         # OpenAI API
 ```
 
-### 5.6 환경별 차이
+### 5.6 런타임 환경변수 (자식 프로세스)
+
+> **중앙 정의**: `src/core/types/processEnv.ts` (CHILD_PROCESS_ENV)
+
+Job Worker/API Server가 자식 프로세스(job-runner)를 스폰할 때 주입하는 환경변수.
+DevOps가 관리하지 않으며, 인증된 사용자 세션에서 런타임으로 결정됨.
+
+| 변수 | 필수 | 설명 | 예시 |
+|------|------|------|------|
+| `ANT_JOB_ID` | ✅ | Job 식별자 | `job_abc123` |
+| `ANT_PROJECT_ID` | ✅ | 프로젝트 ID | `my-project` |
+| `ANT_FEATURE` | ✅ | Feature 이름 | `login-page` |
+| `ANT_JOB_TYPE` | ✅ | Job 타입 | `code`, `design`, `learn` |
+| `ANT_AGENT` | ✅ | 에이전트 타입 | `architect`, `reviewer` |
+| `ANT_USER_ID` | ✅ | 사용자 ID (인증 세션) | `user123` |
+| `ANT_ORG_ID` | ✅ | 조직 ID (인증 세션) | `org456` |
+| `ANT_PROJECT_PATH` | ✅ | 프로젝트 전체 경로 | `/mnt/workspaces/org/user/proj` |
+| `ANT_FEATURE_PATH` | ✅ | Feature 전체 경로 | `.../proj/features/login-page` |
+| `ANT_REDIS_URL` | ✅ | Redis URL | `rediss://...` |
+| `ANT_API_URL` | ✅ | API Server URL | `http://ant-api:8080` |
+| `ANT_USER_EMAIL` | ○ | 이메일 (userId@orgId) | `user123@org456` |
+| `ANT_MODE` | ○ | 실행 모드 | `generate` (기본값) |
+| `ANT_OVERRIDE_DIRECTIVE` | ○ | 오버라이드 지시 | - |
+
+> **주의**: `ANT_USER_ID`와 `ANT_ORG_ID`는 `.env` 파일에 설정하지 않습니다.
+> 사용자별로 다른 값이므로 반드시 인증 세션에서 동적으로 결정되어야 합니다.
+
+### 5.7 환경별 차이
 
 | 구분 | Local | Cloud |
 |------|-------|-------|

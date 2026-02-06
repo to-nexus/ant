@@ -13,7 +13,7 @@
 
 import { Response } from 'express';
 import type { StateStorePort, WorkflowRealtimeState, TaskInfo, LLMInfo, NodeHistoryEntry } from '../../../../core/ports/stateStore';
-import { getSSEWorkflowChannel } from '../../../../infrastructure/state';
+import { getRealtimeWorkflowChannel } from '../../../../infrastructure/state';
 import { logger } from '../../../../utils/logger';
 
 // Re-export types for backward compatibility
@@ -221,7 +221,7 @@ export class WorkflowStateService {
     if (this.stateStore) {
       const mapping = await this.stateStore.getJobMapping(jobId);
       if (mapping?.userContext?.organizationId && mapping?.userContext?.userId) {
-        const channel = getSSEWorkflowChannel(mapping.userContext.organizationId, mapping.userContext.userId);
+        const channel = getRealtimeWorkflowChannel(mapping.userContext.organizationId, mapping.userContext.userId);
         await this.stateStore.publish(channel, { jobId, data: { jobId }, isEndEvent: true, userContext: mapping.userContext });
       } else {
         logger.warn(`Cannot send workflow end event without userContext`, {
