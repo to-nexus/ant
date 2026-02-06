@@ -38,41 +38,8 @@ import {
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
 import { createIDEKey, createPreviewKey } from './redisKeyUtils';
+import { REDIS_KEYS as KEYS, REDIS_TTL as TTL, REDIS_CHANNELS } from './redisConstants';
 import { logger } from '../../utils/logger';
-
-// Redis key prefixes
-const KEYS = {
-  JOB_STATUS: 'ant:job:status:',
-  JOB_LOGS: 'ant:job:logs:',
-  TASK_QUEUE: 'ant:job:taskQueue:',
-  JOB_MAPPING: 'ant:job:mapping:',
-  USER_STOPPED: 'ant:job:userStopped:',
-  JOBS_BY_FEATURE: 'ant:index:jobsByFeature:',
-  PREVIEW: 'ant:preview:',
-  IDE: 'ant:ide:',
-  PREVIEW_LIST: 'ant:previews',
-  IDE_LIST: 'ant:ides',
-  // Chat session keys
-  CHAT_SESSION: 'ant:chat:session:',
-  CHAT_CURRENT_MESSAGE: 'ant:chat:currentMessage:',
-  // Workflow state keys
-  WORKFLOW_STATE: 'ant:workflow:state:',
-  // Pending choice keys
-  PENDING_CHOICE: 'ant:choice:pending:'
-} as const;
-
-// Default TTLs (in seconds)
-const TTL = {
-  JOB_STATUS: 24 * 60 * 60,      // 24 hours
-  JOB_LOGS: 7 * 24 * 60 * 60,    // 7 days
-  TASK_QUEUE: 24 * 60 * 60,      // 24 hours
-  PORT_MAPPING: 24 * 60 * 60,    // 24 hours
-  USER_STOPPED: 60 * 60,         // 1 hour
-  CHAT_SESSION: 24 * 60 * 60,    // 24 hours
-  CHAT_CURRENT_MESSAGE: 60 * 60, // 1 hour (streaming message)
-  WORKFLOW_STATE: 24 * 60 * 60,  // 24 hours
-  PENDING_CHOICE: 30 * 60        // 30 minutes (matches ChoiceService DEFAULT_EXPIRY_MS)
-} as const;
 
 export interface RedisStateStoreOptions {
   url: string;
@@ -301,7 +268,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     await this.redis.set(key, JSON.stringify(state), 'EX', TTL.WORKFLOW_STATE);
     
     // Publish for real-time SSE updates via SSEService
-    await this.publish('sse:workflow', { jobId, data: state, isEndEvent: false });
+    await this.publish(REDIS_CHANNELS.SSE_WORKFLOW, { jobId, data: state, isEndEvent: false });
     
     logger.debug(`Workflow state set: node=${state.currentNode}`, {
       component: 'RedisStateStore',

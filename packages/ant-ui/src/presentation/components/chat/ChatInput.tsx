@@ -375,6 +375,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       
     } catch (error) {
       console.error('[ChatInput] Failed to start job:', error);
+      // ✅ CRITICAL: Reset running state on error to re-enable chat input
+      useStore.getState().setRunning(false);
       // Restore message on error
       setMessage(userMessage);
     }

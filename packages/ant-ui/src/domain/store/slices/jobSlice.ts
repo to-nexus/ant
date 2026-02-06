@@ -58,7 +58,17 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     // ✅ Cloud multi-pod: Set jobStartPending when starting job (protects from SSE overwrite)
     // jobStartPending is true when local setRunning(true) is called but actual job hasn't started yet
     // This prevents SSE's updateKanban from overwriting isRunning to false before job actually starts
-    const jobStartPending = isRunning && !jobId;  // Pending until jobId is assigned
+    // 
+    // CRITICAL: Keep jobStartPending true even after jobId is received!
+    // Receiving jobId only means the API responded, NOT that the job is actually running on the worker.
+    // Only SSE should clear jobStartPending when dataSource becomes 'live' or 'estimating'.
+    const currentJobStartPending = get().jobStartPending;
+    const jobStartPending = isRunning 
+      ? (currentJobStartPending || !jobId)  // Keep true if already pending, or set if no jobId yet
+      : false;  // Clear when job stops
+    
+    // Debug log for tracking state transitions
+    console.log(`[Store] setRunning: isRunning=${isRunning}, jobId=${jobId}, jobStartPending=${jobStartPending} (was ${currentJobStartPending})`);
     
     set({ 
       isRunning,

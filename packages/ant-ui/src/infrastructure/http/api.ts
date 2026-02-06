@@ -58,11 +58,18 @@ export const getLocalBackendPort = (): number => {
 
 /**
  * Get backend base URL based on current mode
- * - local mode: http://localhost:{port}
+ * - local mode (dev): 상대 경로 사용 (Vite 프록시가 각 서비스로 라우팅)
  * - cloud mode: VITE_CLOUD_BACKEND_BASE (환경변수 필수)
  * 
  * ⚠️ Cloud 모드에서는 VITE_CLOUD_BACKEND_BASE가 반드시 설정되어 있어야 함
  * 설정되지 않으면 상대 경로('')를 반환하며, 이 경우 Ingress/ALB가 라우팅해야 함
+ * 
+ * ✅ Local mode에서 상대 경로를 사용하는 이유:
+ * - Vite dev server가 프록시를 통해 각 서비스로 라우팅:
+ *   - /api/* → localhost:4100 (API Server)
+ *   - /realtime/* → localhost:4101 (Realtime Server - SSE)
+ *   - /preview/* → localhost:4102 (Preview Server)
+ * - 직접 http://localhost:4100으로 요청하면 /realtime 라우트가 없어서 SSE 연결 실패
  */
 const getBackendBase = (): string => {
   const mode = getBackendMode();
@@ -78,9 +85,10 @@ const getBackendBase = (): string => {
     return cloudBase;
   }
   
-  // local mode: localhost:{port}
-  const port = getLocalBackendPort();
-  return `http://localhost:${port}`;
+  // ✅ Local mode: 상대 경로 사용 (Vite 프록시 활용)
+  // Vite dev server의 프록시가 각 서비스로 올바르게 라우팅함
+  // @see vite.config.ts - proxy configuration
+  return '';
 };
 
 /**

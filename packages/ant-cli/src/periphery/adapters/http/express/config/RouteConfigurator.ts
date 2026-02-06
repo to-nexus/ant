@@ -96,9 +96,14 @@ export class RouteConfigurator {
 
   /**
    * Setup internal endpoints (task queue, file tree updates)
+   * 
+   * @deprecated These HTTP endpoints are maintained for backward compatibility.
+   * New implementation: Job Worker child processes now use direct Redis Pub/Sub
+   * via core/realtime/KanbanBroadcaster and core/realtime/FileTreeBroadcaster.
+   * This reduces latency and removes HTTP intermediary.
    */
   private setupInternalEndpoints(app: Express): void {
-    // Task queue updates from child processes
+    // Task queue updates from child processes (DEPRECATED - use Redis Pub/Sub directly)
     app.post('/api/internal/task-queue', express.json(), async (req: Request, res: Response) => {
       const { taskId, currentTask, queue, completedTasks, recursionCount, recursionLimit } = req.body;
       if (!taskId) {
