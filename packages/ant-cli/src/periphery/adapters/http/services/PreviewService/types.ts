@@ -1,5 +1,19 @@
 import { ChildProcess } from 'child_process';
 
+// ============================================
+// Common Callback Types
+// ============================================
+
+/** Callback for process stdout/stderr output */
+export type LogCallback = (type: 'stdout' | 'stderr', message: string) => void;
+
+/** Callback for process exit */
+export type ExitCallback = (code: number | null, signal: NodeJS.Signals | null) => void;
+
+// ============================================
+// Package & Project Types
+// ============================================
+
 /**
  * Package information for preview server
  */
@@ -80,14 +94,3 @@ export interface ServerKeyComponents {
   projectId: string;
   feature: string;
 }
-
-// ==========================================
-// Backward compatibility aliases (deprecated)
-// ==========================================
-
-/** @deprecated Use PreviewIssueReasoning instead */
-export type DevServerIssueReasoning = PreviewIssueReasoning;
-/** @deprecated Use PreviewIssueSeverity instead */
-export type DevServerIssueSeverity = PreviewIssueSeverity;
-/** @deprecated Use PreviewIssue instead */
-export type DevServerIssue = PreviewIssue;

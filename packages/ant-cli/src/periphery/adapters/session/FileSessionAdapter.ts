@@ -1,4 +1,5 @@
-import { SessionPort, JobType, FileTreeUpdatePort } from "../../../core/ports";
+import { SessionPort, FileTreeUpdatePort } from "../../../core/ports";
+import { DecomposableJobType } from "../../../core/types/task";
 import { Session, SessionTurn, SessionArtifacts } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
@@ -55,7 +56,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Get the session file path
    */
-  private getSessionPath(project: string, feature: string, job: JobType): string {
+  private getSessionPath(project: string, feature: string, job: DecomposableJobType): string {
     // featurePath는 WorkspaceResolver로 생성
     if (!project || !feature) {
       throw new Error('getSessionPath: project and feature must be provided');
@@ -81,7 +82,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Load an existing session or create a new one
    */
-  async load(project: string, feature: string, job: JobType): Promise<Session> {
+  async load(project: string, feature: string, job: DecomposableJobType): Promise<Session> {
     const sessionPath = this.getSessionPath(project, feature, job);
     
     try {
@@ -149,7 +150,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Save the entire session
    */
-  async save(session: Session, job: JobType): Promise<void> {
+  async save(session: Session, job: DecomposableJobType): Promise<void> {
     await this.ensureDirectory(session.project, session.feature);
     const sessionPath = this.getSessionPath(session.project, session.feature, job);
     
@@ -177,7 +178,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Add a new turn to the session
    */
-  async addTurn(project: string, feature: string, job: JobType, turn: SessionTurn): Promise<void> {
+  async addTurn(project: string, feature: string, job: DecomposableJobType, turn: SessionTurn): Promise<void> {
     const session = await this.load(project, feature, job);
     
     // Set turn ID if not provided
@@ -203,7 +204,7 @@ export class FileSessionAdapter implements SessionPort {
   async updateArtifacts(
     project: string,
     feature: string,
-    job: JobType,
+    job: DecomposableJobType,
     artifacts: Partial<SessionArtifacts> & { state?: any }
   ): Promise<void> {
     const session = await this.load(project, feature, job);
@@ -225,7 +226,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Get the last turn from the session
    */
-  async getLastTurn(project: string, feature: string, job: JobType): Promise<SessionTurn | null> {
+  async getLastTurn(project: string, feature: string, job: DecomposableJobType): Promise<SessionTurn | null> {
     const session = await this.load(project, feature, job);
     if (session.turns.length === 0) {
       return null;
@@ -236,7 +237,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Check if a session exists
    */
-  async exists(project: string, feature: string, job: JobType): Promise<boolean> {
+  async exists(project: string, feature: string, job: DecomposableJobType): Promise<boolean> {
     const sessionPath = this.getSessionPath(project, feature, job);
     try {
       await fs.access(sessionPath);

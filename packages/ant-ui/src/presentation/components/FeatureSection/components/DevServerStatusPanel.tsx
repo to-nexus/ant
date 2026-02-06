@@ -1,7 +1,7 @@
 import { Loader2, Package, ExternalLink, AlertCircle, CheckCircle, Wrench, X } from 'lucide-react';
 import { DEV_SERVER_MESSAGES } from '../constants/devServer';
 import { getProgressMessage } from '../utils/devServer';
-import type { DevServerState, DevServerError, DevServerProgress, SetupFailureReasoning } from '../types/devServer';
+import type { PreviewState, PreviewError, PreviewProgress, SetupFailureReasoning } from '../types/devServer';
 
 /**
  * Get user-friendly title for setup failure reasoning
@@ -24,12 +24,12 @@ function getSetupFailureTitle(reasoning?: SetupFailureReasoning): string {
 }
 
 interface DevServerStatusPanelProps {
-  state: DevServerState;
+  state: PreviewState;
   ready?: boolean;  // Is dev server ready to accept requests?
   setupReasoning?: SetupFailureReasoning;  // Categorized failure code
   url?: string;
-  error?: DevServerError;
-  progress?: DevServerProgress;
+  error?: PreviewError;
+  progress?: PreviewProgress;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
   onOpen?: () => void;
   onFix?: () => void;  // Fix setup handler

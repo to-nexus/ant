@@ -4,7 +4,7 @@ import { ItemDropdown } from '../../ItemDropdown';
 interface FeatureDropdownProps {
   features: Array<{ name: string; path: string }>;
   selectedFeature: string | undefined;
-  isDevServerLoading: boolean;
+  isPreviewLoading: boolean;
   devServerRunning: boolean;
   canChangeFeature: boolean;
   canCreateFeature: boolean;
@@ -23,7 +23,7 @@ interface FeatureDropdownProps {
 export function FeatureDropdown({
   features,
   selectedFeature,
-  isDevServerLoading,
+  isPreviewLoading,
   devServerRunning,
   canChangeFeature,
   canCreateFeature,
@@ -63,7 +63,7 @@ export function FeatureDropdown({
       canCreate={canCreateFeature}
       createDisabledReason={createDisabledReason}
       playButtonDisabled={!canStartDevServer && !canStopDevServer}
-      playButtonLoading={isDevServerLoading}
+      playButtonLoading={isPreviewLoading}
     />
   );
 }

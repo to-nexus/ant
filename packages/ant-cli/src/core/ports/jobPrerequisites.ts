@@ -11,10 +11,7 @@
  * - Used by: HTTP routes before job execution
  */
 
-import { JobType } from './session';  // ✅ Import from session to avoid duplication
-
-// ✅ Re-export for convenience
-export { JobType };
+import { DecomposableJobType } from '../types/task';
 
 /**
  * Required material that must be present for a job to run
@@ -65,7 +62,7 @@ export interface JobPrerequisitesPort {
   validate(
     projectId: string,
     featureName: string,
-    jobType: JobType
+    jobType: DecomposableJobType
   ): Promise<PrerequisitesValidationResult>;
   
   /**
@@ -74,6 +71,5 @@ export interface JobPrerequisitesPort {
    * @param jobType - Type of job
    * @returns List of required materials
    */
-  getRequiredMaterials(jobType: JobType): RequiredMaterial[];
+  getRequiredMaterials(jobType: DecomposableJobType): RequiredMaterial[];
 }
-

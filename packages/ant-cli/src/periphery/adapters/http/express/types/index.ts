@@ -1,28 +1,10 @@
 import { ChildProcess } from 'child_process';
 import { Response } from 'express';
 import { JobStatus, LogEntry } from '../../../../../core/ports';
-import { UserContext } from '../../../../../core/types/user';
+import type { TaskQueueSnapshot, JobProjectMapping } from '../../../../../core/types/task';
 
-/**
- * Job-to-project mapping for Kanban tracking
- */
-export interface JobProjectMapping {
-  projectId: string;
-  featureName: string;
-  jobType: 'design' | 'code' | 'learn';
-  userContext?: UserContext;
-}
-
-/**
- * Task queue snapshot for real-time Kanban updates
- */
-export interface TaskQueueSnapshot {
-  currentTask: any;
-  queue: any[];
-  completedTasks: any[];
-  recursionCount?: number;
-  recursionLimit?: number;
-}
+// Re-export for consumers within periphery
+export type { TaskQueueSnapshot, JobProjectMapping };
 
 /**
  * In-memory state for job execution tracking

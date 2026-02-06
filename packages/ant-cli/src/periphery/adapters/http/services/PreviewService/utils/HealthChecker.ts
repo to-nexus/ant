@@ -1,6 +1,5 @@
 import { logger } from '../../../../../../utils/logger';
-
-export type LogCallback = (type: 'stdout' | 'stderr', message: string) => void;
+import type { LogCallback } from '../types';
 
 /**
  * HealthChecker

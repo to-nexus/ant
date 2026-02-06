@@ -89,7 +89,7 @@ export function FeatureSection() {
       <FeatureDropdown
         features={features}
         selectedFeature={selectedFeature || undefined}
-        isDevServerLoading={isLoading}
+        isPreviewLoading={isLoading}
         devServerRunning={state === 'running'}
         canChangeFeature={policy.canChangeFeature}
         canCreateFeature={policy.canCreateFeature}

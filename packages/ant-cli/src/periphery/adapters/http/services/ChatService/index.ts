@@ -359,6 +359,16 @@ export class ChatService {
           // Save to disk
           this.persistence.saveSession(projectId, featureName, messages, userContext);
           
+          // Broadcast updated content via SSE so frontend can update the card
+          if (userContext) {
+            this.broadcaster.broadcast(projectId, featureName, {
+              type: 'content_update',
+              messageId: message.id,
+              contentIndex: j,
+              content
+            }, userContext);
+          }
+          
           return true;
         }
       }

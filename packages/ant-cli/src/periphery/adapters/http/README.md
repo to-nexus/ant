@@ -20,10 +20,10 @@ This directory implements the HTTP adapter layer following **Hexagonal Architect
 │                     (Periphery)                                  │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │ ExpressServerAdapter (Primary/Server-side)               │   │
-│  │ - Implements all ports directly (in-process)             │   │
+│  │ ExpressServerAdapter (API Server)                        │   │
+│  │ - Implements HttpServerPort, JobExecutionPort            │   │
+│  │ - Implements TaskQueueUpdatePort, FileTreeUpdatePort     │   │
 │  │ - Coordinates services and routes                        │   │
-│  │ - Singleton pattern for parent process                   │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
@@ -39,13 +39,6 @@ This directory implements the HTTP adapter layer following **Hexagonal Architect
 │  │ - Dependency injection pattern                           │   │
 │  │ - Thin routing layer                                     │   │
 │  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │ Clients (HTTP Proxies)                                   │   │
-│  │ - WorkflowHttpClient (for child processes)               │   │
-│  │ - Remote Proxy pattern                                   │   │
-│  │ - Implements ports via HTTP calls                        │   │
-│  └──────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,23 +46,94 @@ This directory implements the HTTP adapter layer following **Hexagonal Architect
 
 ```
 http/
-├── ExpressServerAdapter.ts   # Main adapter (server-side)
-├── services/                  # Business logic services
+├── express/
+│   ├── ExpressServerAdapter.ts   # Main adapter (API server)
+│   ├── bridges/
+│   │   └── WorkflowBridge.ts     # Kanban + FileTree broadcasting
+│   ├── managers/
+│   │   ├── JobCleanupManager.ts
+│   │   ├── JobStateTracker.ts
+│   │   └── ...
+│   └── config/
+│       └── RouteConfigurator.ts
+├── services/                      # Business logic services
 │   ├── KanbanService.ts
-│   ├── WorkflowStateService.ts
+│   ├── WorkflowStateService.ts   # READ + cleanup (endJob) only
 │   ├── ProjectService.ts
 │   ├── SessionService.ts
 │   └── ...
-├── routes/                    # HTTP endpoint definitions
-│   ├── jobRoutes.ts
-│   ├── kanbanRoutes.ts
-│   ├── workflowRoutes.ts
+├── routes/                        # HTTP endpoint definitions
+│   ├── job.routes.ts
+│   ├── kanban.routes.ts
+│   ├── workflow.routes.ts         # GET only (graph-metadata, state)
+│   ├── sse.routes.ts
 │   └── ...
-├── clients/                   # HTTP client adapters
-│   └── WorkflowHttpClient.ts  # For child processes
-└── types/                     # Type definitions
-    └── workflow.ts
+└── types/                         # Type definitions
+    └── workflow.ts                # Re-exports from core/ports/stateStore.ts
 ```
+
+## Workflow State Architecture
+
+### How Workflow State Flows (Cloud Mode)
+
+```
+┌────────────────────────────────────────┐
+│  ant-job Pod (Job Worker)              │
+│                                        │
+│  job-runner.ts → orchestrator.ts       │
+│       ↓                                │
+│  WorkflowBroadcaster                   │
+│  (core/realtime/WorkflowBroadcaster)   │
+│       │                                │
+│       │ WRITE WorkflowRealtimeState    │
+│       ↓                                │
+│  Redis: ant:job:workflow:{jobId}       │
+│  Redis Pub/Sub: realtime:workflow:...  │
+└────────────────────────────────────────┘
+                    │
+                    ↓
+┌────────────────────────────────────────┐
+│  Redis (Shared State)                  │
+│                                        │
+│  KEY: ant:job:workflow:{jobId}         │
+│  TYPE: WorkflowRealtimeState (JSON)    │
+│  CHANNEL: realtime:workflow:{org}:{id} │
+└────────────────────────────────────────┘
+          │                    │
+          ↓                    ↓
+┌──────────────────┐  ┌──────────────────┐
+│  ant-realtime Pod │  │  ant-api Pod      │
+│                    │  │                    │
+│  SSEService        │  │  JobCleanupManager │
+│  subscribes to     │  │       ↓            │
+│  Redis Pub/Sub     │  │  WorkflowState-    │
+│       ↓            │  │  Service.endJob()  │
+│  SSE → Frontend    │  │  (READ + finalize) │
+└──────────────────┘  └──────────────────┘
+```
+
+### Key Design Decisions
+
+1. **Single canonical type**: `WorkflowRealtimeState` defined in `core/ports/stateStore.ts`
+2. **Single writer**: `WorkflowBroadcaster` in Job Worker child process (WRITE)
+3. **Readers**: `WorkflowStateService` for cleanup + SSE initial state (READ)
+4. **No HTTP intermediary**: Direct Redis Pub/Sub replaces HTTP client/server pattern
+
+### WorkflowStateService Responsibilities
+
+`WorkflowStateService` is a **read + cleanup** service. It does NOT write workflow state during job execution.
+
+- `getState(jobId)` — Read current workflow state from Redis (REST API)
+- `getInitialState(jobId)` — Read state for SSE client connection
+- `endJob(jobId)` — Finalize state and broadcast end event (cleanup)
+
+### WorkflowBroadcaster Responsibilities
+
+`WorkflowBroadcaster` (in `core/realtime/`) is the **primary writer** of workflow state.
+
+- Maintains `WorkflowRealtimeState` in-memory during job execution
+- Writes to Redis on every state change (enterNode, exitNode, etc.)
+- Publishes to user-scoped Redis Pub/Sub channel for real-time SSE updates
 
 ## Design Patterns
 
@@ -87,7 +151,6 @@ http/
 export function createJobRoutes(deps: {
   executeJob: (params: ExecuteJobParams) => Promise<any>;
   getJobStatus: (jobId: string) => any;
-  // ...
 }): Router
 ```
 
@@ -101,62 +164,14 @@ export class KanbanService {
 }
 ```
 
-### 3. Singleton Pattern
+### 3. Port Interface Pattern
 
-**ExpressServerAdapter**: Single instance per process
-```typescript
-private static instance: ExpressServerAdapter | null = null;
+`WorkflowStateUpdatePort` is implemented by different adapters depending on execution context:
 
-static getInstance(): ExpressServerAdapter | null {
-  return ExpressServerAdapter.instance;
-}
-```
-
-### 4. Remote Proxy Pattern
-
-**WorkflowHttpClient**: Implements port interface via HTTP
-```typescript
-export class WorkflowHttpClient implements WorkflowStateUpdatePort {
-  // Forwards calls to parent process server via HTTP
-  enterNode(jobId: string, nodeId: string): void {
-    this.sendUpdate(jobId, 'enterNode', { nodeId });
-  }
-}
-```
-
-## Process Communication Architecture
-
-### Parent Process (Server)
-```
-ExpressServerAdapter (Singleton)
-  ↓ (directly implements)
-WorkflowStateUpdatePort
-  ↓
-WorkflowStateService (business logic)
-  ↓
-SSE Broadcast to Frontend
-```
-
-### Child Process (Agent Execution)
-```
-WorkflowHttpClient
-  ↓ (HTTP POST)
-ExpressServerAdapter (in parent)
-  ↓
-WorkflowStateService
-  ↓
-SSE Broadcast to Frontend
-```
-
-### Why This Design?
-
-1. **Process Isolation**: Agent runs in separate process (tsx) for security/stability
-2. **Communication**: Child process can't access parent's singleton instance
-3. **Solution**: HTTP client acts as proxy to parent's services
-4. **Benefits**:
-   - Clean separation of concerns
-   - Testable in isolation
-   - Same port interface for both processes
+| Context | Implementation | Communication |
+|---|---|---|
+| Job Worker child process | `WorkflowBroadcaster` | Direct Redis Pub/Sub |
+| API Server (cleanup) | `WorkflowStateService` | Redis read/write |
 
 ## Service Layer Design
 
@@ -166,17 +181,6 @@ SSE Broadcast to Frontend
 3. **Testable**: Can be tested without HTTP layer
 4. **Reusable**: Can be used by multiple routes/adapters
 
-### Example: WorkflowStateService
-```typescript
-export class WorkflowStateService {
-  // Domain logic only
-  enterNode(jobId: string, nodeId: string): void {
-    // Update state
-    // Broadcast to clients
-  }
-}
-```
-
 ## Route Layer Design
 
 ### Principles
@@ -185,41 +189,21 @@ export class WorkflowStateService {
 3. **Dependency Injection**: Accept all deps as parameters
 4. **Function Export**: Not classes (simplicity)
 
-### Example: workflowRoutes.ts
+### Example: workflow.routes.ts
 ```typescript
 export function createWorkflowRoutes(deps: {
+  graphMetadataService: GraphMetadataService;
   workflowStateService: WorkflowStateService;
 }): Router {
   const router = Router();
   
-  router.post('/jobs/:jobId/workflow/update', (req, res) => {
-    // Parse HTTP request
-    // Call service
-    // Return HTTP response
-  });
+  // GET /api/agents/:agent/jobs/:job/graph-metadata
+  router.get('/agents/:agent/jobs/:job/graph-metadata', ...);
+  
+  // GET /api/jobs/:jobId/workflow/state
+  router.get('/jobs/:jobId/workflow/state', ...);
   
   return router;
-}
-```
-
-## Client Layer Design
-
-### Purpose
-Enable child processes to communicate with parent server.
-
-### Principles
-1. **Implements Port Interface**: Same as server adapter
-2. **HTTP Communication**: Uses fetch/http module
-3. **Fire-and-Forget**: Non-blocking, logs warnings
-4. **Fail-Safe**: Doesn't crash on network errors
-
-### Usage
-```typescript
-// In orchestrator (child process detection)
-// ANT_API_URL is set by parent process (JobWorker, JobExecutionManager)
-if (process.env.ANT_API_URL) {
-  const { WorkflowHttpClient } = await import('./clients');
-  workflowUpdate = new WorkflowHttpClient();  // Uses ANT_API_URL internally
 }
 ```
 
@@ -260,24 +244,14 @@ export function createMyRoutes(deps: {
 export { createMyRoutes } from './myRoutes';
 ```
 
-### 3. Register in ExpressServerAdapter
+### 3. Register in RouteConfigurator
 ```typescript
+// express/config/RouteConfigurator.ts
 private setupRoutes(): void {
-  // ...
   const myRoutes = createMyRoutes({
-    myService: this.myService
+    myService: this.deps.myService
   });
   this.app.use('/api', myRoutes);
-}
-```
-
-### 4. (Optional) Add Client if needed
-```typescript
-// clients/MyHttpClient.ts
-export class MyHttpClient implements MyPort {
-  async myMethod() {
-    await this.sendUpdate(...);
-  }
 }
 ```
 
@@ -286,33 +260,30 @@ export class MyHttpClient implements MyPort {
 ### Unit Tests (Services)
 ```typescript
 describe('WorkflowStateService', () => {
-  it('should track node entry', () => {
-    const service = new WorkflowStateService();
-    service.startJob('job-1');
-    service.enterNode('job-1', 'resolve');
-    
-    const state = service.getState('job-1');
-    expect(state.currentNode).toBe('resolve');
+  it('should read workflow state', async () => {
+    const service = new WorkflowStateService(mockStateStore);
+    const state = await service.getState('job-1');
+    expect(state?.currentNode).toBe('resolve');
   });
 });
 ```
 
 ### Integration Tests (Routes)
 ```typescript
-describe('POST /jobs/:jobId/workflow/update', () => {
-  it('should update workflow state', async () => {
+describe('GET /jobs/:jobId/workflow/state', () => {
+  it('should return workflow state', async () => {
     const response = await request(app)
-      .post('/api/jobs/job-1/workflow/update')
-      .send({ action: 'enterNode', nodeId: 'resolve' });
+      .get('/api/jobs/job-1/workflow/state');
     
     expect(response.status).toBe(200);
+    expect(response.body.currentNode).toBeDefined();
   });
 });
 ```
 
 ## Best Practices
 
-### ✅ Do
+### Do
 - Keep services independent of HTTP layer
 - Use dependency injection
 - Follow single responsibility principle
@@ -321,7 +292,7 @@ describe('POST /jobs/:jobId/workflow/update', () => {
 - Log important events
 - Use TypeScript types strictly
 
-### ❌ Don't
+### Don't
 - Mix HTTP logic with business logic
 - Access global state directly
 - Use concrete implementations (use interfaces)
@@ -331,16 +302,15 @@ describe('POST /jobs/:jobId/workflow/update', () => {
 
 ## Hexagonal Architecture Compliance
 
-### ✅ This implementation follows:
+### This implementation follows:
 1. **Ports** defined in `core/ports/`
 2. **Adapters** implement ports in `periphery/adapters/`
 3. **Dependency Inversion**: Core depends on interfaces, adapters depend on core
 4. **Testability**: Services can be tested without adapters
-5. **Flexibility**: Easy to swap implementations (e.g., ExpressServerAdapter → FastifyAdapter)
+5. **Flexibility**: Easy to swap implementations
 
-### 🎯 Key Benefits:
+### Key Benefits:
 - **Independent of frameworks**: Business logic doesn't depend on Express
 - **Testable**: Can test without HTTP server
 - **Flexible**: Can add new adapters without changing core
 - **Maintainable**: Clear separation of concerns
-

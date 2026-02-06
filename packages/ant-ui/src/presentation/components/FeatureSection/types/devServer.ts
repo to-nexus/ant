@@ -112,21 +112,3 @@ export interface UsePreviewManagerResult {
   dismissMessage: () => void;
 }
 
-// ==========================================
-// Backward compatibility aliases (deprecated)
-// ==========================================
-
-/** @deprecated Use PreviewState instead */
-export type DevServerState = PreviewState;
-/** @deprecated Use PreviewStatus instead */
-export type DevServerStatus = PreviewStatus;
-/** @deprecated Use PreviewLog instead */
-export type DevServerLog = PreviewLog;
-/** @deprecated Use PreviewError instead */
-export type DevServerError = PreviewError;
-/** @deprecated Use PreviewValidation instead */
-export type DevServerValidation = PreviewValidation;
-/** @deprecated Use PreviewProgress instead */
-export type DevServerProgress = PreviewProgress;
-/** @deprecated Use UsePreviewManagerResult instead */
-export type UseDevServerManagerResult = UsePreviewManagerResult;

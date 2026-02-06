@@ -11,26 +11,27 @@
  * - Orchestrator INJECTS the implementation via deps
  */
 
+import { BaseTask, TaskTokenUsage } from '../types/task';
+
 export interface TaskQueueUpdatePort {
   /**
    * Update the task queue snapshot for real-time tracking
    * 
    * @param taskId - Unique identifier for the running task
-   * @param currentTask - Task currently being executed (or undefined if just completed)
+   * @param currentTask - Task currently being executed (or null if just completed)
    * @param queue - Array of pending tasks
    * @param completedTasks - Array of completed task details
-   * @param recursionCount - Current recursion iteration count (optional)
-   * @param recursionLimit - Maximum recursion limit (optional)
-   * @param tokenUsage - Real-time token usage for current task (optional)
+   * @param recursionCount - Current recursion iteration count
+   * @param recursionLimit - Maximum recursion limit
+   * @param tokenUsage - Real-time token usage for current task
    */
   updateTaskQueue(
     taskId: string,
-    currentTask: any | undefined,
-    queue: any[],
-    completedTasks: any[],
+    currentTask: BaseTask | null | undefined,
+    queue: BaseTask[],
+    completedTasks: BaseTask[],
     recursionCount?: number,
     recursionLimit?: number,
-    tokenUsage?: { inputTokens: number; outputTokens: number; totalTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number }
+    tokenUsage?: TaskTokenUsage
   ): void;
 }
-

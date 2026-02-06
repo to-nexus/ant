@@ -5,7 +5,8 @@
  * username@organization.domain.com 형식에서 정보 추출
  */
 
-import { AuthPort, AuthCredentials, AuthContext, User, Organization } from '../../core/ports/auth';
+import { AuthPort, AuthCredentials, AuthContext } from '../../core/ports/auth';
+import type { User, Organization } from '../../core/types/user';
 
 export class AuthService implements AuthPort {
   /**

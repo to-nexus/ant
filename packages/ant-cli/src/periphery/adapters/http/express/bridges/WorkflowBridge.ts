@@ -8,81 +8,18 @@ import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state
 /**
  * WorkflowBridge
  * 
- * Implements WorkflowStateUpdatePort to bridge job execution with workflow visualization.
- * Tracks workflow state and broadcasts updates via Redis Pub/Sub → Realtime Server → SSE.
+ * Bridges API server routes with Kanban and FileTree broadcasting.
+ * Handles task queue updates and file tree change notifications via Redis Pub/Sub.
  * 
- * Cloud-safe: All methods are async and delegate to WorkflowStateService (Redis-backed).
+ * Note: Workflow state tracking (enterNode/exitNode/endJob) is handled exclusively
+ * by WorkflowBroadcaster in the Job Worker child process. This bridge only handles
+ * Kanban and FileTree updates triggered by API server routes.
  */
 export class WorkflowBridge {
   constructor(
     private readonly stateTracker: JobStateTracker,
     private readonly deps: ServerDependencies
   ) {}
-
-  /**
-   * Start workflow tracking for a job
-   */
-  async startJob(jobId: string, llmInfo?: any): Promise<void> {
-    logger.debug(`startJob`, { component: 'WorkflowBridge', jobId }, llmInfo);
-    await this.deps.workflowStateService.startJob(jobId, llmInfo);
-  }
-
-  /**
-   * Track node entry
-   */
-  async enterNode(
-    jobId: string, 
-    nodeId: string, 
-    taskInfo?: any, 
-    llmInfo?: any, 
-    recursionCount?: number, 
-    recursionLimit?: number
-  ): Promise<void> {
-    logger.debug(`enterNode: ${nodeId}`, { 
-      component: 'WorkflowBridge', 
-      jobId 
-    }, { 
-      task: taskInfo?.name, 
-      llm: llmInfo 
-    });
-    
-    await this.deps.workflowStateService.enterNode(
-      jobId, 
-      nodeId, 
-      taskInfo, 
-      llmInfo, 
-      recursionCount, 
-      recursionLimit
-    );
-  }
-
-  /**
-   * Track node exit
-   */
-  async exitNode(jobId: string, nodeId: string): Promise<void> {
-    await this.deps.workflowStateService.exitNode(jobId, nodeId);
-  }
-
-  /**
-   * Track actor interaction start
-   */
-  async startActorInteraction(jobId: string, actorId: string): Promise<void> {
-    await this.deps.workflowStateService.startActorInteraction(jobId, actorId);
-  }
-
-  /**
-   * Track actor interaction end
-   */
-  async endActorInteraction(jobId: string, actorId: string): Promise<void> {
-    await this.deps.workflowStateService.endActorInteraction(jobId, actorId);
-  }
-
-  /**
-   * End workflow tracking for a job
-   */
-  async endJob(jobId: string): Promise<void> {
-    await this.deps.workflowStateService.endJob(jobId);
-  }
 
   /**
    * Update task queue and broadcast to Kanban clients

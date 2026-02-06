@@ -1,79 +1,21 @@
 /**
  * DetectionReport - 통합 환경 감지 결과
  * 
- * Code Job과 Design Job에서 공통으로 사용하는 감지 결과 구조체.
- * UI 렌더링, 상태 관리, 로깅에서 일관된 형식 제공.
+ * Shared types from @ant/shared + backend-only factory/formatter functions.
  */
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Type Definitions
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Re-export shared detection types (canonical source: @ant/shared)
+export type {
+  JobMode,
+  JobEnvironment,
+  DesignWorkType,
+  DesignDomain,
+  ProjectProfile,
+  JobSource,
+  DetectionReport,
+} from '@ant/shared';
 
-/** 작업 모드 (Code & Design 통합) */
-export type JobMode = 'generate' | 'refactor' | 'explain';
-
-/** 실행 환경 */
-export type JobEnvironment = 'frontend' | 'backend' | 'fullstack' | 'unknown';
-
-/** 작업 유형 (Design Job only) */
-export type DesignWorkType = 'ui-design' | 'system-design';
-
-/** 도메인 (System Design only) */
-export type DesignDomain = 'game' | 'service';
-
-/** 프로젝트 프로파일 (Code Job only) */
-export interface ProjectProfile {
-  language: string;
-  framework?: string;
-}
-
-/** Job 소스 타입 */
-export type JobSource = 'code' | 'design';
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Main Interface
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * 통합 감지 결과 (Code Job & Design Job 공통)
- */
-export interface DetectionReport {
-  // ━━━ 공통 항목 (Code & Design) ━━━
-  
-  /** 작업 모드 */
-  jobMode: JobMode;
-  jobModeReasoning: string;
-  
-  /** 실행 환경 */
-  environment?: JobEnvironment;
-  environmentReasoning?: string;
-  
-  // ━━━ Design Job 전용 ━━━
-  
-  /** 작업 유형 (Design Job only) */
-  workType?: DesignWorkType;
-  workTypeReasoning?: string;
-  
-  /** 도메인 (System Design only) */
-  domain?: DesignDomain;
-  domainReasoning?: string;
-  
-  // ━━━ Code Job 전용 ━━━
-  
-  /** 프로젝트 프로파일 */
-  profile?: ProjectProfile;
-  
-  /** RAG 필요 여부 */
-  requireRag?: boolean;
-  
-  // ━━━ 메타 정보 ━━━
-  
-  /** 어떤 Job에서 생성되었는지 */
-  sourceJob: JobSource;
-  
-  /** 감지 시간 */
-  detectedAt?: string;
-}
+import type { JobMode, JobEnvironment, DesignDomain, JobSource, DetectionReport, ProjectProfile } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Factory Functions

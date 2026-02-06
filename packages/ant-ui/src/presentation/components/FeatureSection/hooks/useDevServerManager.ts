@@ -2,19 +2,19 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '@/domain/store';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { 
-  startDevServer, 
-  stopDevServer, 
-  getDevServerStatus
+  startPreview, 
+  stopPreview, 
+  getPreviewStatus
 } from '@/infrastructure/http/api';
 import { DEV_SERVER_MESSAGES } from '../constants/devServer';
 import { analyzeDevServerState, extractErrorFromLogs, extractProgress } from '../utils/devServer';
 import { loadDismissedMessages, saveDismissedMessage, clearDismissedMessagesForServer } from '../utils/dismissedMessages';
 import type { 
-  DevServerState, 
-  DevServerError, 
-  DevServerProgress, 
+  PreviewState, 
+  PreviewError, 
+  PreviewProgress, 
   SetupFailureReasoning,
-  UseDevServerManagerResult 
+  UsePreviewManagerResult 
 } from '../types/devServer';
 
 /**
@@ -31,14 +31,14 @@ import type {
 export function useDevServerManager(
   selectedProject: string | undefined,
   selectedFeature: string | undefined
-): UseDevServerManagerResult {
-  const devServerStatus = useStore((state) => state.devServerStatus);
-  const setDevServerStatus = useStore((state) => state.setDevServerStatus);
-  const setDevServerLoading = useStore((state) => state.setDevServerLoading);
-  const isDevServerLoading = useStore((state) => state.isDevServerLoading);
+): UsePreviewManagerResult {
+  const previewStatus = useStore((state) => state.previewStatus);
+  const setPreviewStatus = useStore((state) => state.setPreviewStatus);
+  const setPreviewLoading = useStore((state) => state.setPreviewLoading);
+  const isPreviewLoading = useStore((state) => state.isPreviewLoading);
   
-  const [error, setError] = useState<DevServerError | undefined>();
-  const [progress, setProgress] = useState<DevServerProgress | undefined>();
+  const [error, setError] = useState<PreviewError | undefined>();
+  const [progress, setProgress] = useState<PreviewProgress | undefined>();
   const [isDismissed, setIsDismissed] = useState(false);
   const stopGuardUntilRef = useRef<number>(0);
 
@@ -48,59 +48,59 @@ export function useDevServerManager(
     : '';
 
   // Derive state from status and logs
-  const state: DevServerState = analyzeDevServerState(
-    devServerStatus as any,  // ✅ Type cast for compatibility
-    isDevServerLoading
+  const state: PreviewState = analyzeDevServerState(
+    previewStatus as any,  // ✅ Type cast for compatibility
+    isPreviewLoading
   );
   
   // ✅ Get ready state from backend (health check result)
-  const ready = devServerStatus?.ready || false;
+  const ready = previewStatus?.ready || false;
   
   // Debug logging (disabled for production)
   // console.log('[useDevServerManager] 🔍 Current state:', {
   //   state,
-  //   devServerStatus,
-  //   isDevServerLoading,
-  //   hasLogs: devServerStatus?.logs?.length || 0
+  //   previewStatus,
+  //   isPreviewLoading,
+  //   hasLogs: previewStatus?.logs?.length || 0
   // });
 
   // Extract progress from logs
   useEffect(() => {
-    if (devServerStatus?.logs && devServerStatus.logs.length > 0) {
-      const extractedProgress = extractProgress(devServerStatus.logs);
+    if (previewStatus?.logs && previewStatus.logs.length > 0) {
+      const extractedProgress = extractProgress(previewStatus.logs);
       setProgress(extractedProgress);
     } else {
       setProgress(undefined);
     }
-  }, [devServerStatus?.logs]);
+  }, [previewStatus?.logs]);
 
   // Extract error from logs if in error state
   useEffect(() => {
-    if (state === 'error' && devServerStatus?.logs) {
-      const errorMessage = extractErrorFromLogs(devServerStatus.logs);
+    if (state === 'error' && previewStatus?.logs) {
+      const errorMessage = extractErrorFromLogs(previewStatus.logs);
       if (errorMessage && errorMessage !== error?.message) {
         setError({ message: errorMessage });
       }
     } else if (state !== 'error' && error) {
       setError(undefined);
     }
-  }, [state, devServerStatus?.logs, error]);
+  }, [state, previewStatus?.logs, error]);
 
   // Initial status check and SSE connection
   useEffect(() => {
     if (!selectedProject || !selectedFeature) {
-      setDevServerStatus(undefined);
+      setPreviewStatus(undefined);
       return;
     }
 
-    getDevServerStatus(selectedProject, selectedFeature)
+    getPreviewStatus(selectedProject, selectedFeature)
       .then(status => {
-        setDevServerStatus(status);
+        setPreviewStatus(status);
       })
       .catch(err => {
         console.error('[useDevServerManager] Status check failed:', err);
       });
-  }, [selectedProject, selectedFeature, setDevServerStatus]);
+  }, [selectedProject, selectedFeature, setPreviewStatus]);
 
   // Check dismissal state when status changes
   useEffect(() => {
@@ -109,7 +109,7 @@ export function useDevServerManager(
       return;
     }
 
-    const reasoning = devServerStatus?.setupReasoning;
+    const reasoning = previewStatus?.setupReasoning;
     if (reasoning && serverKey) {
       const dismissed = loadDismissedMessages();
       const isMessageDismissed = dismissed.some(
@@ -119,7 +119,7 @@ export function useDevServerManager(
     } else {
       setIsDismissed(false);
     }
-  }, [devServerStatus?.setupReasoning, serverKey, selectedProject, selectedFeature]);
+  }, [previewStatus?.setupReasoning, serverKey, selectedProject, selectedFeature]);
 
   // ✅ Subscribe to devServer events via existing unified SSEManager
   useEffect(() => {
@@ -139,27 +139,27 @@ export function useDevServerManager(
           }
 
           // ✅ Preserve logs on status updates
-          const currentStatus = useStore.getState().devServerStatus;
+          const currentStatus = useStore.getState().previewStatus;
           const mergedStatus = {
             ...(currentStatus || {}),
             ...(messageData || {}),
             logs: (messageData && messageData.logs) ? messageData.logs : (currentStatus?.logs || [])
           };
-          setDevServerStatus(mergedStatus);
+          setPreviewStatus(mergedStatus);
 
           // Stop loading when we have a steady/terminal signal.
           if (mergedStatus.ready || mergedStatus.running || (mergedStatus as any).setupReasoning) {
-            setDevServerLoading(false);
+            setPreviewLoading(false);
           }
         } else if (messageType === 'log') {
-          const currentStatus = useStore.getState().devServerStatus;
+          const currentStatus = useStore.getState().previewStatus;
           if (!currentStatus) return;
 
           const updated = {
             ...currentStatus,
             logs: [...(currentStatus.logs || []), messageData]
           };
-          setDevServerStatus(updated);
+          setPreviewStatus(updated);
         }
       } catch (err) {
         console.error('[useDevServerManager] devServer handler error:', err);
@@ -176,7 +176,7 @@ export function useDevServerManager(
     return () => {
       sseManager.unregisterHandler('preview', handler);
     };
-  }, [selectedProject, selectedFeature, setDevServerStatus, setDevServerLoading]);
+  }, [selectedProject, selectedFeature, setPreviewStatus, setPreviewLoading]);
 
   // Start dev server
   const startServer = useCallback(async () => {
@@ -191,29 +191,29 @@ export function useDevServerManager(
     clearDismissedMessagesForServer(serverKey);
     setIsDismissed(false);
     
-    setDevServerLoading(true);
+    setPreviewLoading(true);
     setError(undefined);
     setProgress(undefined);
     
     try {
       // ✅ Ensure we can show install/start progress immediately
-      setDevServerStatus({ running: false, ready: false, logs: [] } as any);
+      setPreviewStatus({ running: false, ready: false, logs: [] } as any);
       
-      const response = await startDevServer(selectedProject, selectedFeature);
+      const response = await startPreview(selectedProject, selectedFeature);
       
       // ✅ Use status from response (backend includes full status)
       if (response.status) {
-        setDevServerStatus(response.status);
+        setPreviewStatus(response.status);
       } else {
         // Fallback: set running: true manually
-        const currentStatus = useStore.getState().devServerStatus;
-        setDevServerStatus({ ...currentStatus, running: true });
+        const currentStatus = useStore.getState().previewStatus;
+        setPreviewStatus({ ...currentStatus, running: true });
       }
-      setDevServerLoading(false);
+      setPreviewLoading(false);
     } catch (err: any) {
       // If validation failed, set status with validation info (for Fix button)
       if (err.setupReasoning) {
-        setDevServerStatus({
+        setPreviewStatus({
           running: false,
           ready: false,
           setupReasoning: err.setupReasoning,
@@ -228,9 +228,9 @@ export function useDevServerManager(
         message: err.message || DEV_SERVER_MESSAGES.ERROR_UNKNOWN,
         details: err.setupReason || err.response?.data?.error
       });
-      setDevServerLoading(false);
+      setPreviewLoading(false);
     }
-  }, [selectedProject, selectedFeature, serverKey, setDevServerLoading, setDevServerStatus]);
+  }, [selectedProject, selectedFeature, serverKey, setPreviewLoading, setPreviewStatus]);
 
   // Stop dev server
   const stopServer = useCallback(async () => {
@@ -239,33 +239,33 @@ export function useDevServerManager(
     // ✅ Optimistically drop status immediately so the UI stops showing "Running".
     // Also guard against late SSE status updates re-marking it as running.
     stopGuardUntilRef.current = Date.now() + 5000;
-    setDevServerStatus(undefined);
-    setDevServerLoading(false);
+    setPreviewStatus(undefined);
+    setPreviewLoading(false);
 
     setError(undefined);
     setProgress(undefined);
     
     try {
-      await stopDevServer(selectedProject, selectedFeature);
+      await stopPreview(selectedProject, selectedFeature);
     } catch (err: any) {
       setError({
         message: DEV_SERVER_MESSAGES.ERROR_STOP_FAILED(err.message || DEV_SERVER_MESSAGES.ERROR_UNKNOWN)
       });
       // Re-sync status if stop failed
       try {
-        const status = await getDevServerStatus(selectedProject, selectedFeature);
-        setDevServerStatus(status);
+        const status = await getPreviewStatus(selectedProject, selectedFeature);
+        setPreviewStatus(status);
       } catch {
         // ignore
       }
     } finally {
-      setDevServerLoading(false);
+      setPreviewLoading(false);
     }
-  }, [selectedProject, selectedFeature, setDevServerLoading, setDevServerStatus]);
+  }, [selectedProject, selectedFeature, setPreviewLoading, setPreviewStatus]);
 
   // Dismiss message
   const dismissMessage = useCallback(() => {
-    const reasoning = devServerStatus?.setupReasoning;
+    const reasoning = previewStatus?.setupReasoning;
     if (reasoning && serverKey) {
       // Type guard: setupReasoning from backend is already SetupFailureReasoning type
       saveDismissedMessage(serverKey, reasoning as SetupFailureReasoning);
@@ -275,13 +275,13 @@ export function useDevServerManager(
     
     // ✅ Allow dismissing non-setup errors as well (session-only)
     setIsDismissed(true);
-  }, [devServerStatus?.setupReasoning, serverKey]);
+  }, [previewStatus?.setupReasoning, serverKey]);
 
   // ✅ Build "Fix All" payload from issues (extensible)
   const effectiveSuggestedFix = (() => {
-    const issues = devServerStatus?.issues || [];
+    const issues = previewStatus?.issues || [];
     const withFix = issues.filter(i => i.suggestedFix && i.suggestedFix.trim().length > 0);
-    if (withFix.length === 0) return devServerStatus?.suggestedFix;
+    if (withFix.length === 0) return previewStatus?.suggestedFix;
     
     const ordered = [...withFix].sort((a, b) => {
       if (a.severity === b.severity) return 0;
@@ -293,16 +293,16 @@ export function useDevServerManager(
 
   return {
     state,
-    status: devServerStatus as any,  // Type cast for compatibility
+    status: previewStatus as any,  // Type cast for compatibility
     ready,  // Health check result
-    setupReasoning: devServerStatus?.setupReasoning as SetupFailureReasoning | undefined,
-    setupReason: devServerStatus?.setupReason,
+    setupReasoning: previewStatus?.setupReasoning as SetupFailureReasoning | undefined,
+    setupReason: previewStatus?.setupReason,
     suggestedFix: effectiveSuggestedFix,
     error,
     progress,
     startServer,
     stopServer,
-    isLoading: isDevServerLoading,
+    isLoading: isPreviewLoading,
     isDismissed,
     dismissMessage
   };

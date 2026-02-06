@@ -105,7 +105,7 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
   const projectId = process.env.ANT_PROJECT_ID;
   const featureName = process.env.ANT_FEATURE_NAME || process.env.ANT_FEATURE;
   const projectPath = process.env.ANT_PROJECT_PATH || process.env.ANT_FEATURE_PATH;
-  const jobType = process.env.ANT_JOB_TYPE as 'design' | 'code' | 'learn' | undefined;
+  const jobType = process.env.ANT_JOB_TYPE as import('../types/task').DecomposableJobType | undefined;
   const userId = process.env.ANT_USER_ID;
   const orgId = process.env.ANT_ORG_ID;
   const workspacePath = process.env.ANT_WORKSPACE_PATH;

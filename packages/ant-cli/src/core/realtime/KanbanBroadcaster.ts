@@ -11,19 +11,22 @@
  * 
  * Flow:
  *   Job Worker Child → KanbanBroadcaster → Redis Pub/Sub → Realtime Server → SSE
- * 
- * (Previous Flow):
- *   Job Worker Child → HTTP → API Server → Redis Pub/Sub → Realtime Server → SSE
  */
 
 import { Redis } from 'ioredis';
 import { TaskQueueUpdatePort } from '../ports';
+import type { 
+  BaseTask,
+  TaskTokenUsage,
+  TaskQueueSnapshot, 
+  KanbanData,
+  KanbanBroadcastMessage,
+  DecomposableJobType
+} from '../types/task';
 import { 
   getRealtimeBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
   TASK_QUEUE_TTL,
-  TaskQueueSnapshot, 
-  KanbanBroadcastMessage,
   BroadcasterOptions 
 } from './types';
 import { UserContext } from '../types/user';
@@ -34,7 +37,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private readonly jobId: string;
   private readonly projectId: string;
   private readonly featureName: string;
-  private readonly jobType: 'design' | 'code' | 'learn';
+  private readonly jobType: DecomposableJobType;
   private readonly userContext?: UserContext;
   
   constructor(options: BroadcasterOptions) {
@@ -68,20 +71,14 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    */
   updateTaskQueue(
     taskId: string,
-    currentTask: any | undefined,
-    queue: any[],
-    completedTasks: any[],
+    currentTask: BaseTask | null | undefined,
+    queue: BaseTask[],
+    completedTasks: BaseTask[],
     recursionCount?: number,
     recursionLimit?: number,
-    tokenUsage?: { 
-      inputTokens: number; 
-      outputTokens: number; 
-      totalTokens: number; 
-      cacheReadTokens?: number; 
-      cacheCreationTokens?: number;
-    }
+    tokenUsage?: TaskTokenUsage
   ): void {
-    // Fire-and-forget with error logging (same pattern as before)
+    // Fire-and-forget with error logging
     this.broadcastKanbanUpdate(
       taskId, 
       currentTask, 
@@ -100,65 +97,43 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    */
   private async broadcastKanbanUpdate(
     taskId: string,
-    currentTask: any | undefined,
-    queue: any[],
-    completedTasks: any[],
+    currentTask: BaseTask | null | undefined,
+    queue: BaseTask[],
+    completedTasks: BaseTask[],
     recursionCount?: number,
     recursionLimit?: number,
-    tokenUsage?: { 
-      inputTokens: number; 
-      outputTokens: number; 
-      totalTokens: number; 
-      cacheReadTokens?: number; 
-      cacheCreationTokens?: number;
-    }
+    tokenUsage?: TaskTokenUsage
   ): Promise<void> {
-    // 1. Build snapshot
+    // 1. Build snapshot for Redis state storage
     const snapshot: TaskQueueSnapshot = {
-      currentTask,
+      currentTask: currentTask || null,
       queue,
       completedTasks,
-      recursionCount,
-      recursionLimit,
+      recursionCount: recursionCount ?? 0,
+      recursionLimit: recursionLimit ?? 50,
       tokenUsage,
     };
 
-    // 2. Save snapshot to Redis (state storage)
-    // Use central key prefix for consistency with RedisStateStore
+    // 2. Save snapshot to Redis
     const key = `${TASK_QUEUE_KEY_PREFIX}${this.jobId}`;
     await this.redis.set(key, JSON.stringify(snapshot), 'EX', TASK_QUEUE_TTL);
 
-    // 3. Build Kanban data for broadcast
-    // Format that frontend expects (same as KanbanService.getKanbanData output)
-    const kanbanData = {
-      current: currentTask ? {
-        id: currentTask.id || taskId,
-        title: currentTask.name || currentTask.title || 'Current Task',
-        status: 'inProgress',
-        progress: 50, // Default progress
-        ...currentTask,
-      } : null,
-      queue: queue.map((task, index) => ({
-        id: task.id || `queue-${index}`,
-        title: task.name || task.title || `Task ${index + 1}`,
-        status: 'todo',
+    // 3. Build KanbanData for broadcast (matches frontend KanbanData interface)
+    const isEstimating = queue.length === 0 && !currentTask && completedTasks.length === 0;
+    
+    const kanbanData: KanbanData = {
+      jobId: this.jobId,
+      todo: queue,
+      inProgress: currentTask || null,
+      completed: completedTasks.map(task => ({
         ...task,
+        completed: true,
       })),
-      completed: completedTasks.map((task, index) => ({
-        id: task.id || `completed-${index}`,
-        title: task.name || task.title || `Completed Task ${index + 1}`,
-        status: 'done',
-        ...task,
-      })),
-      summary: {
-        total: queue.length + completedTasks.length + (currentTask ? 1 : 0),
-        completed: completedTasks.length,
-        inProgress: currentTask ? 1 : 0,
-        todo: queue.length,
-        recursionCount,
-        recursionLimit,
-        tokenUsage,
-      },
+      isEstimating,
+      dataSource: 'live',
+      recursionCount,
+      recursionLimit,
+      tokenUsage,
       jobType: this.jobType,
     };
 

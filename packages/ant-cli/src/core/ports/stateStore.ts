@@ -12,6 +12,10 @@
  */
 
 import { UserContext } from '../types/user';
+import { DecomposableJobType, TaskQueueSnapshot, JobProjectMapping } from '../types/task';
+
+// Re-export for consumers
+export type { TaskQueueSnapshot, JobProjectMapping };
 
 // Re-export LogEntry from http.ts to avoid duplication
 export { LogEntry } from './http';
@@ -28,13 +32,9 @@ export interface JobStatusData {
   status: JobStatusValue;
   projectId: string;
   featureName: string;
-  type: 'code' | 'design' | 'learn';   // Job type
-  mode?: 'generate' | 'refactor' | 'explain';  // Job mode
-  timestamp?: string;  // When the status was set
-  
-  // Backward compatibility alias
-  /** @deprecated Use type instead */
-  jobType?: 'code' | 'design' | 'learn';
+  type: DecomposableJobType;
+  mode?: 'generate' | 'refactor' | 'explain';
+  timestamp?: string;
   userContext?: UserContext;
   startedAt?: string;
   completedAt?: string;
@@ -42,51 +42,28 @@ export interface JobStatusData {
   task?: string;
 }
 
-export interface TaskQueueSnapshot {
-  currentTask: any;
-  queue: any[];
-  completedTasks: any[];
-  recursionCount: number;
-  recursionLimit: number;
-}
-
 // ============================================
 // Workflow State Types (for Cross-Pod Workflow Tracking)
 // ============================================
 
-// Import from workflow.ts to avoid duplicate definitions
-import { TaskInfo, LLMInfo } from './workflow';
-export { TaskInfo, LLMInfo } from './workflow';
+// Shared types (canonical source: @ant/shared)
+export type { TaskInfo, NodeHistoryEntry } from '@ant/shared';
 
-export interface NodeHistoryEntry {
-  nodeId: string;
-  enteredAt: string;
-  exitedAt?: string;
-  duration?: number;
-}
+// BE-only types
+import { LLMInfo } from './workflow';
+export { LLMInfo } from './workflow';
 
-export interface WorkflowRealtimeState {
-  jobId: string;
-  currentNode: string | null;
-  previousNode: string | null;
-  currentTask: TaskInfo | null;
+import type { WorkflowRealtimeState as SharedWorkflowRealtimeState } from '@ant/shared';
+
+/**
+ * Backend-extended WorkflowRealtimeState (stored in Redis).
+ * Extends the shared type with BE-only fields (llmInfo, recursionCount/Limit).
+ * llmInfo is stripped before sending to FE via SSE.
+ */
+export interface WorkflowRealtimeState extends SharedWorkflowRealtimeState {
   llmInfo: LLMInfo | null;
-  startedAt: string;
-  endedAt?: string;
-  isCompleted: boolean;
-  nodeHistory: NodeHistoryEntry[];
-  activeActors: string[];  // Serialized as array for Redis
   recursionCount?: number;
   recursionLimit?: number;
-  kanbanCurrentTask?: TaskInfo | null;
-  kanbanUpdate?: boolean;
-}
-
-export interface JobProjectMapping {
-  projectId: string;
-  featureName: string;
-  jobType: 'code' | 'design' | 'learn';
-  userContext?: UserContext;
 }
 
 // ============================================

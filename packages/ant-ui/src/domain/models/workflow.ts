@@ -1,8 +1,23 @@
 /**
  * Workflow Visualization Types (Frontend)
  * 
- * 백엔드 타입과 동일한 구조 유지
+ * Shared types (WorkflowRealtimeState, etc.) from @ant/shared.
+ * FE-only types (enums, graph metadata) defined here.
  */
+
+// ============================================
+// Shared Types (canonical source: @ant/shared)
+// ============================================
+
+export type {
+  TaskInfo,
+  NodeHistoryEntry,
+  WorkflowRealtimeState,
+} from '@ant/shared';
+
+// ============================================
+// FE-only: Workflow Graph Visualization
+// ============================================
 
 export enum NodeType {
   ENTRY = 'entry',
@@ -70,35 +85,3 @@ export interface WorkflowGraphMetadata {
   entryNode: string;
   endNodes: string[];
 }
-
-export interface TaskInfo {
-  id?: string;
-  name: string;
-  type?: string;
-  description?: string;
-  priority?: number;
-}
-
-export interface WorkflowRealtimeState {
-  jobId: string;
-  currentNode: string | null;
-  previousNode: string | null;
-  currentTask: TaskInfo | null;  // ✅ 현재 실행 중인 태스크
-  startedAt: string;
-  endedAt?: string;  // Job 종료 시간
-  isCompleted: boolean;  // Job 완료 여부
-  nodeHistory: NodeHistoryEntry[];
-  activeActors: string[];  // 현재 통신 중인 Actor IDs
-  
-  // ✅ Kanban info (piggybacked on workflow SSE for atomic updates)
-  kanbanCurrentTask?: TaskInfo | null;  // In-progress task for Kanban
-  kanbanUpdate?: boolean;  // Flag to indicate Kanban should update
-}
-
-export interface NodeHistoryEntry {
-  nodeId: string;
-  enteredAt: string;
-  exitedAt?: string;
-  duration?: number;
-}
-

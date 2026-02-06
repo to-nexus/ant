@@ -6,32 +6,15 @@ import {
   getRealtimeBroadcastChannel, 
   getRealtimeWorkflowChannel
 } from '../../../../infrastructure/state';
+import type { 
+  SSEMessageType, 
+  SSEMessage, 
+  SSEBroadcastMessage, 
+  SSEWorkflowMessage 
+} from '../../../../core/realtime/types';
 
-/**
- * Message types for unified SSE stream
- */
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange';
-
-export interface SSEMessage {
-  type: SSEMessageType;
-  timestamp: string;
-  data: any;
-}
-
-export interface SSEBroadcastMessage {
-  projectId: string;
-  featureName: string;
-  type: SSEMessageType;
-  data: any;
-  userContext: UserContext;  // Required for user-scoped channels
-}
-
-export interface SSEWorkflowMessage {
-  jobId: string;
-  data: any;
-  isEndEvent?: boolean;
-  userContext: UserContext;  // Required for user-scoped channels
-}
+// Re-export for consumers that import SSE types from SSEService
+export type { SSEMessageType, SSEMessage, SSEBroadcastMessage, SSEWorkflowMessage };
 
 /**
  * SSEService
@@ -42,8 +25,8 @@ export interface SSEWorkflowMessage {
  * Cloud-safe: Uses user-scoped Redis Pub/Sub channels for multi-tenant isolation
  * 
  * Channel format:
- * - sse:broadcast:{orgId}:{userId}  - Kanban, FileTree, Preview, Job status
- * - sse:workflow:{orgId}:{userId}   - Workflow state updates
+ * - realtime:broadcast:{orgId}:{userId}  - Kanban, FileTree, Preview, Job status
+ * - realtime:workflow:{orgId}:{userId}   - Workflow state updates
  */
 export class SSEService {
   // SSE clients per session key

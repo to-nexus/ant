@@ -1,8 +1,15 @@
 /**
  * Realtime Broadcasting Types
  * 
- * Shared types for direct Redis Pub/Sub broadcasting from Job Worker.
- * These services enable real-time updates without HTTP intermediary.
+ * Central type definitions for all real-time communication:
+ * - SSE transport types (message routing, client management)
+ * - Redis Pub/Sub broadcast message types
+ * - Broadcaster configuration
+ * 
+ * Used by:
+ *   - SSEService (Realtime Server)
+ *   - KanbanBroadcaster, WorkflowBroadcaster, FileTreeBroadcaster (Job Worker)
+ *   - Frontend SSEManager (mirrors SSEMessageType)
  */
 
 import { UserContext } from '../types/user';
@@ -12,10 +19,20 @@ import {
   getRealtimeBroadcastChannel,
   getRealtimeWorkflowChannel
 } from '../../infrastructure/state';
+import type { 
+  TaskQueueSnapshot, 
+  KanbanBroadcastMessage, 
+  KanbanData,
+  JobProjectMapping,
+  DecomposableJobType 
+} from '../types/task';
 
 // ============================================
-// Re-export from central definition
+// Re-export from central definitions
 // ============================================
+
+// Task types (from core/types/task.ts)
+export type { TaskQueueSnapshot, KanbanBroadcastMessage, KanbanData, JobProjectMapping, DecomposableJobType };
 
 // Channel generation functions (user-scoped)
 export { getRealtimeBroadcastChannel, getRealtimeWorkflowChannel };
@@ -29,63 +46,49 @@ export const TASK_QUEUE_TTL = REDIS_TTL.JOB.TASK_QUEUE;
 export const WORKFLOW_STATE_TTL = REDIS_TTL.JOB.WORKFLOW;
 
 // ============================================
-// Kanban Types
+// SSE Transport Types
 // ============================================
 
-export interface TaskQueueSnapshot {
-  currentTask?: any;
-  queue: any[];
-  completedTasks: any[];
-  recursionCount?: number;
-  recursionLimit?: number;
-  tokenUsage?: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    cacheReadTokens?: number;
-    cacheCreationTokens?: number;
-  };
+/** Message types routed through the unified SSE stream */
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange';
+
+/** SSE message envelope sent to frontend */
+export interface SSEMessage {
+  type: SSEMessageType;
+  timestamp: string;
+  data: any;
 }
 
-export interface KanbanBroadcastMessage {
+/** Broadcast message published to Redis for SSE routing */
+export interface SSEBroadcastMessage {
   projectId: string;
   featureName: string;
-  type: 'kanban';
-  data: any;  // Full Kanban data with queue/current/completed
-  userContext: UserContext;  // Required for user-scoped channels
+  type: SSEMessageType;
+  data: any;
+  userContext: UserContext;
 }
 
-// ============================================
-// Workflow Types
-// ============================================
-
-export interface WorkflowState {
+/** Workflow-specific SSE message (separate channel) */
+export interface SSEWorkflowMessage {
   jobId: string;
-  currentNode?: string;
-  nodeHistory: string[];
-  activeActors: string[];
-  startTime: number;
-  lastUpdate: number;
-  taskInfo?: {
-    id?: string;
-    name: string;
-    type?: string;
-    description?: string;
-    priority?: number;
-  };
-  llmInfo?: {
-    provider: string;
-    model: string;
-  };
-  recursionCount?: number;
-  recursionLimit?: number;
+  data: any;
+  isEndEvent?: boolean;
+  userContext: UserContext;
 }
+
+// ============================================
+// Workflow Types (canonical source: core/ports/stateStore.ts)
+// ============================================
+
+export type { WorkflowRealtimeState, NodeHistoryEntry } from '../ports/stateStore';
+
+import type { WorkflowRealtimeState } from '../ports/stateStore';
 
 export interface WorkflowBroadcastMessage {
   jobId: string;
-  data: WorkflowState;
+  data: WorkflowRealtimeState;
   isEndEvent: boolean;
-  userContext: UserContext;  // Required for user-scoped channels
+  userContext: UserContext;
 }
 
 // ============================================
@@ -98,20 +101,9 @@ export interface FileTreeBroadcastMessage {
   type: 'fileTree';
   data: {
     type: 'update';
-    tree: any;  // File tree structure
+    tree: any;
   };
-  userContext: UserContext;  // Required for user-scoped channels
-}
-
-// ============================================
-// Job Mapping Types (for context lookup)
-// ============================================
-
-export interface JobMapping {
-  projectId: string;
-  featureName: string;
-  jobType?: 'design' | 'code' | 'learn';
-  userContext?: UserContext;
+  userContext: UserContext;
 }
 
 // ============================================
@@ -123,6 +115,6 @@ export interface BroadcasterOptions {
   jobId: string;
   projectId: string;
   featureName: string;
-  jobType?: 'design' | 'code' | 'learn';
-  userContext: UserContext;  // Required for user-scoped channels
+  jobType?: DecomposableJobType;
+  userContext: UserContext;
 }

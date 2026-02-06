@@ -22,14 +22,13 @@ import {
   StateStorePort,
   JobStatusData,
   LogEntry,
-  TaskQueueSnapshot,
-  JobProjectMapping,
   PortMapping,
   ChatSessionData,
   ChatMessageData,
   WorkflowRealtimeState,
   PendingChoiceData
 } from '../../core/ports/stateStore';
+import type { TaskQueueSnapshot, JobProjectMapping } from '../../core/types/task';
 import { 
   PortRegistryPort, 
   PreviewState, 

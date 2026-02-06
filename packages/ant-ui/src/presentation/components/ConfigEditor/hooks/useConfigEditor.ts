@@ -37,13 +37,9 @@ export function useConfigEditor(
         setEditedConfig(prev => ({
           ...prev,
           llmModels: {
-            designDecompose: defaultModelId,
-            designDefault: defaultModelId,
-            codeDecompose: defaultModelId,
-            codeError: defaultModelId,
-            codeFinal: defaultModelId,
-            codeSetup: defaultModelId,
-            codeDefault: defaultModelId,
+            design: { default: defaultModelId, decompose: defaultModelId },
+            code: { default: defaultModelId, decompose: defaultModelId },
+            learn: { default: defaultModelId },
           }
         }));
       }

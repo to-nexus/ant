@@ -4,20 +4,20 @@
 
 import { DEV_SERVER_LOG_PATTERNS } from '../constants/devServer';
 import type { 
-  DevServerStatus, 
-  DevServerState, 
-  DevServerLog, 
+  PreviewStatus, 
+  PreviewState, 
+  PreviewLog, 
   PackageProgress, 
-  DevServerProgress 
+  PreviewProgress 
 } from '../types/devServer';
 
 /**
  * Analyze dev server status and logs to determine current state
  */
 export function analyzeDevServerState(
-  status: DevServerStatus | undefined,
+  status: PreviewStatus | undefined,
   isLoading: boolean
-): DevServerState {
+): PreviewState {
   if (!status) {
     return isLoading ? 'starting' : 'idle';
   }
@@ -54,7 +54,7 @@ export function analyzeDevServerState(
 /**
  * Extract multi-package progress from logs
  */
-export function extractProgress(logs: DevServerLog[]): DevServerProgress | undefined {
+export function extractProgress(logs: PreviewLog[]): PreviewProgress | undefined {
   const packages: PackageProgress[] = [];
   let currentPhase: 'installing' | 'starting' | 'running' = 'installing';
   
@@ -136,7 +136,7 @@ export function extractProgress(logs: DevServerLog[]): DevServerProgress | undef
 /**
  * Extract error message from logs
  */
-export function extractErrorFromLogs(logs: DevServerLog[]): string | undefined {
+export function extractErrorFromLogs(logs: PreviewLog[]): string | undefined {
   // Find install failure
   const installError = logs.find(log => 
     log.message.includes(DEV_SERVER_LOG_PATTERNS.INSTALL_FAILED)
@@ -169,14 +169,14 @@ export function extractErrorFromLogs(logs: DevServerLog[]): string | undefined {
 /**
  * Check if logs contain a specific pattern
  */
-function hasLogPattern(logs: DevServerLog[], pattern: string): boolean {
+function hasLogPattern(logs: PreviewLog[], pattern: string): boolean {
   return logs.some(log => log.message.includes(pattern));
 }
 
 /**
  * Check if logs contain error markers
  */
-function hasErrorInLogs(logs: DevServerLog[]): boolean {
+function hasErrorInLogs(logs: PreviewLog[]): boolean {
   return logs.some(log => 
     log.type === 'stderr' && 
     DEV_SERVER_LOG_PATTERNS.ERROR_MARKER.some(marker => 
@@ -188,7 +188,7 @@ function hasErrorInLogs(logs: DevServerLog[]): boolean {
 /**
  * Get progress message for current state
  */
-export function getProgressMessage(progress: DevServerProgress | undefined): string {
+export function getProgressMessage(progress: PreviewProgress | undefined): string {
   if (!progress) {
     return '';
   }

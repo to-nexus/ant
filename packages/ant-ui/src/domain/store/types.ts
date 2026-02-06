@@ -1,5 +1,5 @@
 import { Session } from '@/domain/models/session';
-import { Feature, FileNode, FileContent, PreviewStatus, DevServerStatus, KanbanData } from '@/infrastructure/http/api';
+import { Feature, FileNode, FileContent, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatMessage } from '@/domain/models/chat';
 
@@ -98,12 +98,6 @@ export interface PreviewSliceState {
   isPreviewLoading: boolean;
 }
 
-/** @deprecated Use PreviewSliceState instead */
-export interface DevServerState {
-  devServerStatus: DevServerStatus | undefined;
-  isDevServerLoading: boolean;
-}
-
 export interface AuthState {
   userEmail: string | undefined;
   userOrganization: string | undefined;
@@ -127,7 +121,7 @@ export type StoreState = ProjectState &
   SSEState & 
   UIState & 
   GitState & 
-  DevServerState & 
+  PreviewSliceState & 
   AuthState & 
   ConfigState;
 

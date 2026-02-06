@@ -99,28 +99,16 @@ export async function orchestrator(params: {
 
       if (jobType === 'design') {
         console.log('🔧 [Orchestrator:Design] Starting design job...');
-        console.log('🔧 [Orchestrator:Design] ANT_API_URL:', process.env.ANT_API_URL);
         
         const analyzer = new CodebaseAnalyzer();
         
-        // ✅ Get ExpressServerAdapter instance for real-time updates
+        // ✅ Real-time updates via Redis Pub/Sub (Job Worker child process → Redis → Realtime Server → SSE)
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
         let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
         
-        try {
-          const { ExpressServerAdapter } = await import('../periphery/adapters/http/express');
-          const instance = ExpressServerAdapter.getInstance();
-          console.log('🔧 [Orchestrator:Design] ExpressServerAdapter.getInstance():', instance ? 'EXISTS' : 'NULL');
-          
-          if (instance) {
-            // 부모 프로세스 (서버 실행 중): 직접 참조 사용
-            kanbanUpdate = instance;
-            fileTreeUpdate = instance;
-            workflowUpdate = instance;
-            console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow) [Design]');
-          } else if (process.env.ANT_REDIS_URL) {
-            // 자식 프로세스: Direct Redis Pub/Sub (faster, no HTTP hop)
+        if (process.env.ANT_REDIS_URL) {
+          try {
             const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
             const options = getBroadcasterOptionsFromEnv();
             
@@ -129,15 +117,15 @@ export async function orchestrator(params: {
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
               workflowUpdate = broadcasters.workflow;
-              console.log('✅ Real-time updates enabled (Direct Redis Pub/Sub - Kanban + File Tree + Workflow) [Design]');
+              console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Design]');
             } else {
               console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Design]');
             }
-          } else {
-            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_REDIS_URL) [Design]');
+          } catch (error: any) {
+            console.log('⚠️  Failed to initialize real-time broadcasters [Design]:', error?.message);
           }
-        } catch (error: any) {
-          console.log('ℹ️  Real-time updates disabled (server not running) [Design]', error?.message);
+        } else {
+          console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Design]');
         }
         
         // ✅ Create session with file tree update support
@@ -160,23 +148,13 @@ export async function orchestrator(params: {
         const analyzer = new CodebaseAnalyzer();
         const command = new NodeCommandAdapter();
         
-        // ✅ Get ExpressServerAdapter instance for real-time updates
+        // ✅ Real-time updates via Redis Pub/Sub (Job Worker child process → Redis → Realtime Server → SSE)
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
         let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
         
-        try {
-          const { ExpressServerAdapter } = await import('../periphery/adapters/http/express');
-          const instance = ExpressServerAdapter.getInstance();
-          
-          if (instance) {
-            // 부모 프로세스 (서버 실행 중): 직접 참조 사용
-            kanbanUpdate = instance;
-            fileTreeUpdate = instance;
-            workflowUpdate = instance;
-            console.log('✅ Real-time updates enabled (Direct - Kanban + File Tree + Workflow)');
-          } else if (process.env.ANT_REDIS_URL) {
-            // 자식 프로세스: Direct Redis Pub/Sub (faster, no HTTP hop)
+        if (process.env.ANT_REDIS_URL) {
+          try {
             const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
             const options = getBroadcasterOptionsFromEnv();
             
@@ -185,15 +163,15 @@ export async function orchestrator(params: {
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
               workflowUpdate = broadcasters.workflow;
-              console.log('✅ Real-time updates enabled (Direct Redis Pub/Sub - Kanban + File Tree + Workflow)');
+              console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Code]');
             } else {
-              console.log('⚠️  Redis URL set but missing required env vars for broadcasting');
+              console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Code]');
             }
-          } else {
-            console.log('ℹ️  Real-time updates disabled (no server instance or ANT_REDIS_URL)');
+          } catch (error: any) {
+            console.log('⚠️  Failed to initialize real-time broadcasters [Code]:', error?.message);
           }
-        } catch (error) {
-          console.log('ℹ️  Real-time updates disabled (server not running)');
+        } else {
+          console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Code]');
         }
         
         // ✅ Create session with file tree update support
