@@ -60,7 +60,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.previousFileCount = session.state.previousFileCount;
         initial.resolvedCategories = (session.state.resolvedCategories || []) as any;
         initial.recursionCount = session.state.recursionCount || 0;
-        initial.recursionLimit = session.state.recursionLimit || finalLimit;
+        // ✅ Use the HIGHER of session limit vs current env limit
+        // Prevents stale low limits from old sessions overriding a raised RECURSION_LIMIT
+        initial.recursionLimit = Math.max(session.state.recursionLimit || 0, finalLimit);
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
         
         // CRITICAL: workspaceConfig is already set in initial state (from orchestrator)
@@ -147,7 +149,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             previousFileCount: session.state.previousFileCount,
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,  // ✅ CRITICAL: Restore recursion count
-            recursionLimit: session.state.recursionLimit || finalLimit,  // ✅ CRITICAL: Restore recursion limit
+            recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),  // ✅ Use higher of session vs env
             ...(session.state as any).jobId && { jobId: (session.state as any).jobId },  // ✅ CRITICAL: Restore jobId
             ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },  // ✅ CRITICAL: Restore jobTiming
           } as any;

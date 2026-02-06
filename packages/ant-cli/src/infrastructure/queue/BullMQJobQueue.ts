@@ -185,6 +185,32 @@ export class BullMQJobQueue implements JobQueuePort {
         }
       }
       
+      // ✅ Broadcast job failure via Redis Pub/Sub for SSE (same as completed handler)
+      // Without this, API Server never learns about failed jobs in cloud mode,
+      // leaving the UI stuck in "running" state
+      try {
+        const bullJob = await this.queue.getJob(jobId);
+        if (bullJob && bullJob.data) {
+          const payload = bullJob.data as JobPayload;
+          const userContext = payload.userContext;
+          const userEmail = userContext ? `${userContext.userId}@${userContext.organizationId}` : undefined;
+          
+          await this.stateStore.publish(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, {
+            type: 'failed',
+            jobId,
+            status: 'failed',
+            projectId: payload.projectId,
+            featureName: payload.feature,
+            userEmail,
+            result: { success: false, error: failedReason },
+            timestamp: new Date().toISOString()
+          });
+          logger.debug(`Published job failure to Redis: ${jobId}`, { component: 'BullMQJobQueue' });
+        }
+      } catch (error) {
+        logger.error(`Failed to publish job failure: ${jobId}`, { component: 'BullMQJobQueue' }, error);
+      }
+      
       // Cleanup callbacks
       this.progressCallbacks.delete(jobId);
       this.completionCallbacks.delete(jobId);

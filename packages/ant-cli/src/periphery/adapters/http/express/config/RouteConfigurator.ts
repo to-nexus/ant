@@ -310,6 +310,7 @@ export class RouteConfigurator {
           projectId?: string;
           featureName?: string;
           userEmail?: string;
+          result?: any;
         };
         if (data.type === 'completed' || data.type === 'failed') {
           const { jobId, projectId, featureName, userEmail } = data;
@@ -322,6 +323,19 @@ export class RouteConfigurator {
               component: 'RouteConfigurator' 
             });
           }
+          
+          // ✅ Extract interruption from job result (flows from JobWorker → BullMQ → Redis)
+          // This is critical: session file on EFS may not be ready when cleanup runs,
+          // so we pass interruption directly from the job result rather than relying on file reads
+          const interruption = data.result?.output?.interruption || data.result?.interruption;
+          if (interruption) {
+            logger.info(`Job ${jobId} has interruption: ${interruption.reason}`, {
+              component: 'RouteConfigurator'
+            });
+          }
+          
+          // ✅ Extract jobType from result
+          const jobType = data.result?.output?.job as 'design' | 'code' | 'learn' | undefined;
           
           // ✅ CRITICAL: Call cleanupJobState to broadcast Kanban update to frontend SSE
           // Without this, frontend remains in "running" state even after job completes
@@ -340,13 +354,13 @@ export class RouteConfigurator {
                 }
               }
               
-              logger.info(`Calling cleanupJobState for completed job: ${jobId}`, {
+              logger.info(`Calling cleanupJobState for completed job: ${jobId} (hasInterruption=${!!interruption})`, {
                 component: 'RouteConfigurator',
                 projectId,
                 featureName
               });
               
-              await this.cleanupJobState(jobId, projectId, featureName, undefined, undefined, userContext);
+              await this.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
               
               logger.debug(`cleanupJobState completed for job: ${jobId}`, {
                 component: 'RouteConfigurator'
