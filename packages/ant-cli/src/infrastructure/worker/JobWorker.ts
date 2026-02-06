@@ -405,7 +405,20 @@ export class JobWorker {
         logger.info(`Child process exited with code: ${code}`, { component: 'JobWorker', jobId });
         
         if (code === 0) {
-          resolve({ success: true });
+          // ✅ Parse RESULT from stdout to capture full job output (including interruption)
+          // Without this, BullMQ only stores { success: true } and interruption details are lost
+          // The regex uses multiline mode and anchors to avoid matching log lines containing "RESULT:"
+          let parsedResult: any = { success: true };
+          try {
+            const resultMatch = stdout.match(/^RESULT:(\{.+\})$/m);
+            if (resultMatch) {
+              parsedResult = JSON.parse(resultMatch[1]);
+              logger.debug(`Parsed RESULT from stdout: success=${parsedResult.success}, hasInterruption=${!!parsedResult.output?.interruption}`, { component: 'JobWorker', jobId });
+            }
+          } catch (parseErr) {
+            logger.warn(`Failed to parse RESULT from stdout, using default`, { component: 'JobWorker', jobId });
+          }
+          resolve(parsedResult);
         } else {
           logger.error(`Job runner failed: ${stderr || 'No stderr'}`, { component: 'JobWorker', jobId });
           resolve({ 

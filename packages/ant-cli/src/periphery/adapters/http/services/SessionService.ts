@@ -120,6 +120,11 @@ export class SessionService {
   
   /**
    * Read session data from file
+   * 
+   * ✅ Retry logic for EFS/NFS environments:
+   * In cloud mode (EFS), a file written by a Job Worker child process on another pod
+   * may not be immediately readable due to NFS cache or partial write propagation.
+   * Retries with exponential backoff handle this race condition.
    */
   async readSessionData(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code', userContext?: UserContext): Promise<any> {
     if (!this.workspaceResolver || !userContext) {
@@ -129,16 +134,44 @@ export class SessionService {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     const sessionPath = path.join(featurePath, `sessions/${job}.json`);
     
-    try {
-      if (fs.existsSync(sessionPath)) {
-        const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-        return sessionData;
+    const MAX_RETRIES = 3;
+    const BASE_DELAY_MS = 500;
+    
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        if (!fs.existsSync(sessionPath)) {
+          return null;
+        }
+        
+        const content = fs.readFileSync(sessionPath, 'utf-8');
+        
+        // Empty or whitespace-only file: likely still being written (EFS propagation)
+        if (!content || content.trim().length === 0) {
+          if (attempt < MAX_RETRIES) {
+            const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+            console.warn(`[Session] Empty session file, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+          console.warn(`[Session] Session file still empty after ${MAX_RETRIES} retries: ${sessionPath}`);
+          return null;
+        }
+        
+        return JSON.parse(content);
+      } catch (error) {
+        if (attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt);
+          console.warn(`[Session] Error reading session file, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES}):`, 
+            error instanceof SyntaxError ? error.message : error);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        console.error(`[Session] Failed to read session file after ${MAX_RETRIES + 1} attempts:`, error);
+        return null;
       }
-      return null;
-    } catch (error) {
-      console.error(`[Session] Error reading session file:`, error);
-      return null;
     }
+    
+    return null;
   }
   
   /**
