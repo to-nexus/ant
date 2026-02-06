@@ -55,10 +55,12 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private readonly userContext?: UserContext;
   
   constructor(options: BroadcasterOptions & { projectPath: string }) {
+    const isTLS = options.redisUrl.startsWith('rediss://');
+    const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
     this.pubRedis = new Redis(options.redisUrl, {
+      ...tlsOptions,
       maxRetriesPerRequest: 3,
       retryStrategy: (times: number) => Math.min(times * 100, 3000),
-      ...(options.redisTLS ? { tls: options.redisTLS } : {}),
     });
     this.projectPath = options.projectPath;
     this.userContext = options.userContext;
