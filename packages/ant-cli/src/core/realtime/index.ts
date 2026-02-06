@@ -110,14 +110,16 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
   const orgId = process.env.ANT_ORG_ID;
   const workspacePath = process.env.ANT_WORKSPACE_PATH;
 
-  // Check required environment variables
-  if (!redisUrl || !jobId || !projectId || !featureName || !projectPath) {
+  // Check required environment variables (including userContext for user-scoped channels)
+  if (!redisUrl || !jobId || !projectId || !featureName || !projectPath || !userId || !orgId) {
     console.log(`[Realtime] Missing required env vars for broadcasting:`, {
       redisUrl: !!redisUrl,
       jobId: !!jobId,
       projectId: !!projectId,
       featureName: !!featureName,
       projectPath: !!projectPath,
+      userId: !!userId,
+      orgId: !!orgId,
     });
     return null;
   }
@@ -129,10 +131,10 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
     featureName,
     projectPath,
     jobType,
-    userContext: userId && orgId ? {
+    userContext: {
       userId,
       organizationId: orgId,
       workspacePath: workspacePath || '',
-    } : undefined,
+    },
   };
 }

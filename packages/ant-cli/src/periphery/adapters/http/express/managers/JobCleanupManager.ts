@@ -7,10 +7,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
-import { REDIS_CHANNELS } from '../../../../../infrastructure/state';
-
-// Use central channel definition
-const SSE_BROADCAST_CHANNEL = REDIS_CHANNELS.SSE_BROADCAST;
+import { getSSEBroadcastChannel } from '../../../../../infrastructure/state';
 
 /**
  * JobCleanupManager
@@ -234,9 +231,18 @@ export class JobCleanupManager {
         userContext
       );
       
-      // Broadcast via Redis Pub/Sub → Realtime Server → SSE
+      // Broadcast via user-scoped Redis Pub/Sub → Realtime Server → SSE
+      if (!userContext?.organizationId || !userContext?.userId) {
+        logger.warn(`Cannot broadcast final update without userContext`, { 
+          component: 'JobCleanupManager', 
+          jobId 
+        });
+        return;
+      }
+      
       const stateStore = getInfrastructureFactory().getStateStore();
-      await stateStore.publish(SSE_BROADCAST_CHANNEL, {
+      const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+      await stateStore.publish(channel, {
         projectId: mapping.projectId,
         featureName: mapping.featureName,
         type: 'kanban',

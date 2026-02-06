@@ -23,6 +23,7 @@ import { fileURLToPath } from 'url';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { JobPayload, JobProgress } from '../../core/ports/queue';
 import { RedisStateStore } from '../state/RedisStateStore';
+import { REDIS_CHANNELS } from '../state/redisConstants';
 import { logger } from '../../utils/logger';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
 import { parseRedisUrl } from '../utils/redis';
@@ -119,7 +120,7 @@ export class JobWorker {
    */
   private async subscribeToStopSignals(): Promise<void> {
     try {
-      await this.stateStore.subscribe('job:stop', async (message: { jobId: string; projectId?: string; featureName?: string; timestamp: string }) => {
+      await this.stateStore.subscribe(REDIS_CHANNELS.JOB_WORKER.STOP, async (message: { jobId: string; projectId?: string; featureName?: string; timestamp: string }) => {
         const { jobId } = message;
         logger.info(`Received stop signal for job: ${jobId}`, { component: 'JobWorker', jobId });
         
@@ -154,9 +155,9 @@ export class JobWorker {
         }
       });
       
-      logger.info('Subscribed to job:stop channel', { component: 'JobWorker' });
+      logger.info(`Subscribed to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`, { component: 'JobWorker' });
     } catch (error: any) {
-      logger.error('Failed to subscribe to job:stop channel', { component: 'JobWorker' }, error);
+      logger.error(`Failed to subscribe to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`, { component: 'JobWorker' }, error);
     }
   }
 

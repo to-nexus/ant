@@ -15,20 +15,29 @@ export type { RedisStateStoreOptions } from './RedisStateStore';
 // ============================================
 // ALL Redis keys, TTLs, and channels MUST be imported from here!
 export {
+  // Hierarchical key/TTL/channel structure
   REDIS_KEYS,
   REDIS_TTL,
   REDIS_CHANNELS,
-  // Legacy aliases
-  KEYS,
-  TTL,
-  SSE_BROADCAST_CHANNEL,
-  SSE_WORKFLOW_CHANNEL,
+  REDIS_DOMAINS,
+  CHANNEL_DOMAINS,
+  
+  // Channel generation functions
+  getSSEBroadcastChannel,
+  getSSEWorkflowChannel,
+  getJobStopChannel,
+  parseChannelUserContext,
+  parseJobStopChannel,
+  
+  // Key helper functions
+  buildJobKey,
+  buildSessionKey,
 } from './redisConstants';
 
 export type {
-  RedisKeyType,
-  RedisTTLType,
-  RedisChannelType,
+  RedisKeyDomain,
+  RedisTTLDomain,
+  RedisChannelDomain,
 } from './redisConstants';
 
 // Re-export types from port (excluding LogEntry to avoid duplication)
