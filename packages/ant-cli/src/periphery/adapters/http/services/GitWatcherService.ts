@@ -4,7 +4,7 @@ import { WorkspaceResolver } from '../../../../infrastructure/workspace/Workspac
 import { UserContext } from '../../../../core/types/user';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { logger } from '../../../../utils/logger';
-import { getSSEBroadcastChannel } from '../../../../infrastructure/state';
+import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state';
 
 /**
  * GitWatcherService
@@ -77,7 +77,7 @@ export class GitWatcherService {
           
           // Broadcast to frontend via user-scoped Redis Pub/Sub channel
           if (this.stateStore && userContext?.organizationId && userContext?.userId) {
-            const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+            const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
             await this.stateStore.publish(channel, {
               projectId,
               featureName,

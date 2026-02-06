@@ -38,12 +38,11 @@ import {
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
 import { createIDEKey, createPreviewKey } from './redisKeyUtils';
-import { REDIS_KEYS, REDIS_TTL, getSSEWorkflowChannel } from './redisConstants';
+import { APP_PREFIX, REDIS_KEYS, REDIS_TTL, getRealtimeWorkflowChannel } from './redisConstants';
 import { logger } from '../../utils/logger';
 
 export interface RedisStateStoreOptions {
   url: string;
-  keyPrefix?: string;
   maxRetriesPerRequest?: number;
 }
 
@@ -51,10 +50,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   private redis: Redis;
   private subscriber: Redis;
   private subscriptions = new Map<string, Set<(message: unknown) => void>>();
-  private keyPrefix: string;
 
   constructor(options: RedisStateStoreOptions) {
-    this.keyPrefix = options.keyPrefix || '';
     
     // Check if TLS is enabled (rediss:// URL)
     const isTLS = options.url.startsWith('rediss://');
@@ -132,8 +129,9 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     });
   }
 
+  /** Build Redis key from central constant + parts (e.g., key(REDIS_KEYS.JOB.STATUS, jobId)) */
   private key(prefix: string, ...parts: string[]): string {
-    return `${this.keyPrefix}${prefix}${parts.join(':')}`;
+    return `${prefix}${parts.join(':')}`;
   }
 
   // ============================================
@@ -278,7 +276,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     }
     
     // Publish to user-scoped channel for real-time SSE updates
-    const channel = getSSEWorkflowChannel(mapping.userContext.organizationId, mapping.userContext.userId);
+    const channel = getRealtimeWorkflowChannel(mapping.userContext.organizationId, mapping.userContext.userId);
     await this.publish(channel, { jobId, data: state, isEndEvent: false, userContext: mapping.userContext });
     
     logger.debug(`Workflow state set: node=${state.currentNode}`, {
@@ -358,9 +356,9 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     const pipeline = this.redis.pipeline();
     pipeline.set(key, JSON.stringify(fullState), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
-    pipeline.sadd(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST), portKey);
+    pipeline.sadd(REDIS_KEYS.INFRA.PREVIEW_LIST, portKey);
     // Index by podId for cleanup on pod restart
-    pipeline.sadd(this.key('ant:preview:byPod:', podId), portKey);
+    pipeline.sadd(this.key(REDIS_KEYS.INFRA.PREVIEW_BY_POD, podId), portKey);
     await pipeline.exec();
 
     logger.info(`[Preview] Registered: ${portKey} → ${host}:${port} (pod: ${podId})`, { component: 'RedisStateStore' });
@@ -480,7 +478,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     // Cleanup pod index if state exists
     if (data) {
       const state: PreviewState = JSON.parse(data);
-      pipeline.srem(this.key('ant:preview:byPod:', state.podId), portKey);
+      pipeline.srem(this.key(REDIS_KEYS.INFRA.PREVIEW_BY_POD, state.podId), portKey);
     }
     
     await pipeline.exec();
@@ -514,7 +512,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
    * List previews for a specific pod (for cleanup on pod restart)
    */
   async listPreviewsByPod(podId: string): Promise<PreviewState[]> {
-    const portKeys = await this.redis.smembers(this.key('ant:preview:byPod:', podId));
+    const portKeys = await this.redis.smembers(this.key(REDIS_KEYS.INFRA.PREVIEW_BY_POD, podId));
     
     if (portKeys.length === 0) {
       return [];
@@ -696,28 +694,25 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async publish(channel: string, message: unknown): Promise<void> {
-    const fullChannel = `${this.keyPrefix}${channel}`;
-    await this.redis.publish(fullChannel, JSON.stringify(message));
+    await this.redis.publish(channel, JSON.stringify(message));
   }
 
   async subscribe(channel: string, callback: (message: unknown) => void): Promise<() => void> {
-    const fullChannel = `${this.keyPrefix}${channel}`;
-
-    if (!this.subscriptions.has(fullChannel)) {
-      this.subscriptions.set(fullChannel, new Set());
-      await this.subscriber.subscribe(fullChannel);
+    if (!this.subscriptions.has(channel)) {
+      this.subscriptions.set(channel, new Set());
+      await this.subscriber.subscribe(channel);
     }
 
-    this.subscriptions.get(fullChannel)!.add(callback);
+    this.subscriptions.get(channel)!.add(callback);
 
     // Return unsubscribe function
     return async () => {
-      const callbacks = this.subscriptions.get(fullChannel);
+      const callbacks = this.subscriptions.get(channel);
       if (callbacks) {
         callbacks.delete(callback);
         if (callbacks.size === 0) {
-          this.subscriptions.delete(fullChannel);
-          await this.subscriber.unsubscribe(fullChannel);
+          this.subscriptions.delete(channel);
+          await this.subscriber.unsubscribe(channel);
         }
       }
     };
@@ -728,7 +723,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async getChatSession(sessionKey: string): Promise<ChatSessionData | null> {
-    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.SESSION + sessionKey));
+    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.SESSION, sessionKey));
     
     if (!data) return null;
     
@@ -742,7 +737,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async setChatSession(sessionKey: string, session: ChatSessionData): Promise<void> {
     await this.redis.setex(
-      this.key(REDIS_KEYS.CHAT.SESSION + sessionKey),
+      this.key(REDIS_KEYS.CHAT.SESSION, sessionKey),
       REDIS_TTL.CHAT.SESSION,
       JSON.stringify(session)
     );
@@ -751,13 +746,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async deleteChatSession(sessionKey: string): Promise<void> {
-    await this.redis.del(this.key(REDIS_KEYS.CHAT.SESSION + sessionKey));
+    await this.redis.del(this.key(REDIS_KEYS.CHAT.SESSION, sessionKey));
     // Also delete current message if exists
-    await this.redis.del(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey));
+    await this.redis.del(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
   }
 
   async getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null> {
-    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey));
+    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
     
     if (!data) return null;
     
@@ -770,7 +765,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void> {
-    const key = this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey);
+    const key = this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey);
     
     if (message === null) {
       await this.redis.del(key);
@@ -782,7 +777,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async hasActiveMessage(sessionKey: string): Promise<boolean> {
-    const exists = await this.redis.exists(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE + sessionKey));
+    const exists = await this.redis.exists(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
     return exists === 1;
   }
 
@@ -795,7 +790,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const ttlSeconds = Math.max(1, Math.ceil((choice.expiresAt - Date.now()) / 1000));
     
     await this.redis.setex(
-      this.key(REDIS_KEYS.CHOICE.PENDING + choiceKey),
+      this.key(REDIS_KEYS.CHOICE.PENDING, choiceKey),
       ttlSeconds,
       JSON.stringify(choice)
     );
@@ -804,7 +799,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async getPendingChoice(choiceKey: string): Promise<PendingChoiceData | null> {
-    const data = await this.redis.get(this.key(REDIS_KEYS.CHOICE.PENDING + choiceKey));
+    const data = await this.redis.get(this.key(REDIS_KEYS.CHOICE.PENDING, choiceKey));
     
     if (!data) return null;
     
@@ -825,7 +820,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async deletePendingChoice(choiceKey: string): Promise<void> {
-    await this.redis.del(this.key(REDIS_KEYS.CHOICE.PENDING + choiceKey));
+    await this.redis.del(this.key(REDIS_KEYS.CHOICE.PENDING, choiceKey));
     logger.debug(`Pending choice deleted: ${choiceKey}`, { component: 'RedisStateStore' });
   }
 
@@ -844,7 +839,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async clear(): Promise<void> {
     // WARNING: This deletes all keys with the prefix
-    const keys = await this.redis.keys(`${this.keyPrefix}ant:*`);
+    const keys = await this.redis.keys(`${APP_PREFIX}:*`);
     
     if (keys.length > 0) {
       await this.redis.del(...keys);
@@ -877,9 +872,9 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     subscriptions: number;
   }> {
     const [jobKeys, previewMembers, ideMembers] = await Promise.all([
-      this.redis.keys(`${this.keyPrefix}${REDIS_KEYS.JOB.STATUS}*`),
-      this.redis.scard(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST)),
-      this.redis.scard(this.key(REDIS_KEYS.INFRA.IDE_LIST))
+      this.redis.keys(`${REDIS_KEYS.JOB.STATUS}*`),
+      this.redis.scard(REDIS_KEYS.INFRA.PREVIEW_LIST),
+      this.redis.scard(REDIS_KEYS.INFRA.IDE_LIST)
     ]);
 
     return {

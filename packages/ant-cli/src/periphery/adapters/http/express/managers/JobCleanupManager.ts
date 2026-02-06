@@ -7,7 +7,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
-import { getSSEBroadcastChannel } from '../../../../../infrastructure/state';
+import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 
 /**
  * JobCleanupManager
@@ -241,7 +241,7 @@ export class JobCleanupManager {
       }
       
       const stateStore = getInfrastructureFactory().getStateStore();
-      const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+      const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
       await stateStore.publish(channel, {
         projectId: mapping.projectId,
         featureName: mapping.featureName,

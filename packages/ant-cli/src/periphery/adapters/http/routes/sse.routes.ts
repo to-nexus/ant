@@ -132,8 +132,8 @@ export function createSSERoutes(deps: {
       'X-Accel-Buffering': 'no'
     });
     
-    // Register workflow client
-    deps.sseService.registerWorkflowClient(jobId, res);
+    // Register workflow client (pass userContext for channel subscription)
+    deps.sseService.registerWorkflowClient(jobId, res, userContext);
     
     // Send initial workflow state (if exists) - now async from Redis
     const initialState = await deps.workflowStateService.getInitialState(jobId);

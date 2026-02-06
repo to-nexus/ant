@@ -9,8 +9,8 @@
  * - ANT_PROJECT_ID: Current project ID
  * - ANT_FEATURE_NAME: Current feature name
  * - ANT_JOB_ID: Current job ID
- * - ANT_USER_ID: User ID (optional, for cloud mode)
- * - ANT_ORGANIZATION_ID: Organization ID (optional, for cloud mode)
+ * - ANT_USER_ID: User ID (for cloud mode)
+ * - ANT_ORG_ID: Organization ID (for cloud mode)
  * 
  * @see LLMResponseService for the underlying implementation
  */
@@ -83,7 +83,7 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
       jobId,
       userEmail: process.env.ANT_USER_EMAIL,
       userId: process.env.ANT_USER_ID,
-      organizationId: process.env.ANT_ORGANIZATION_ID || process.env.ANT_ORG_ID,
+      organizationId: process.env.ANT_ORG_ID,
       // Use ANT_FEATURE_PATH for chat.json (feature-level), fallback to ANT_WORKSPACE_PATH (base)
       workspacePath
     });

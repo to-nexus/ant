@@ -14,5 +14,5 @@ export * from './schema';
 
 // Core components
 export { ContentMerger } from './ContentMerger';
-export { MessageBroadcaster, CHAT_BROADCAST_CHANNEL } from './MessageBroadcaster';
+export { MessageBroadcaster } from './MessageBroadcaster';
 export type { ChatBroadcastMessage } from './MessageBroadcaster';

@@ -139,15 +139,6 @@ const TIMEOUTS = {
 const IDE_PORT = 3000;
 
 // ============================================
-// Redis Keys for State
-// ============================================
-
-const KEYS = {
-  IDE_INSTANCE: 'ant:ide:instance:',
-  IDE_LAST_ACCESS: 'ant:ide:lastAccess:'
-} as const;
-
-// ============================================
 // KubernetesIDEOrchestrator
 // ============================================
 

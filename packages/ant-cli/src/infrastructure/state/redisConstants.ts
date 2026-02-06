@@ -9,7 +9,7 @@
 // Base Prefixes
 // ============================================
 
-const APP_PREFIX = 'ant';
+export const APP_PREFIX = 'ant';
 
 /** Domain prefixes under the app namespace */
 export const REDIS_DOMAINS = {
@@ -67,10 +67,16 @@ export const REDIS_KEYS = {
     PREVIEW: `${REDIS_DOMAINS.INFRA}:preview:`,
     /** Preview server list (SET) - ant:infra:preview:list */
     PREVIEW_LIST: `${REDIS_DOMAINS.INFRA}:preview:list`,
+    /** Preview by pod index (SET) - ant:infra:preview:byPod:{podId} */
+    PREVIEW_BY_POD: `${REDIS_DOMAINS.INFRA}:preview:byPod:`,
     /** IDE port mapping - ant:infra:ide:{portKey} */
     IDE: `${REDIS_DOMAINS.INFRA}:ide:`,
     /** IDE list (SET) - ant:infra:ide:list */
     IDE_LIST: `${REDIS_DOMAINS.INFRA}:ide:list`,
+    /** IDE instance state (K8s) - ant:infra:ide:instance:{instanceKey} */
+    IDE_INSTANCE: `${REDIS_DOMAINS.INFRA}:ide:instance:`,
+    /** IDE last access time (K8s) - ant:infra:ide:lastAccess:{instanceKey} */
+    IDE_LAST_ACCESS: `${REDIS_DOMAINS.INFRA}:ide:lastAccess:`,
   },
   
   /** Index keys (ant:index:*) */
@@ -118,7 +124,7 @@ export const REDIS_TTL = {
 
 /** Channel domain prefixes */
 export const CHANNEL_DOMAINS = {
-  SSE: 'sse',
+  REALTIME: 'realtime',
   JOB: 'job',
 } as const;
 
@@ -128,13 +134,18 @@ export const CHANNEL_DOMAINS = {
 export const REDIS_CHANNELS = {
   /** Realtime Server subscribes - forwards to frontend via SSE */
   REALTIME: {
-    BROADCAST_PREFIX: `${CHANNEL_DOMAINS.SSE}:broadcast:`,
-    WORKFLOW_PREFIX: `${CHANNEL_DOMAINS.SSE}:workflow:`,
+    BROADCAST_PREFIX: `${CHANNEL_DOMAINS.REALTIME}:broadcast:`,
+    WORKFLOW_PREFIX: `${CHANNEL_DOMAINS.REALTIME}:workflow:`,
   },
   
-  /** Job Worker subscribes - backend process control */
+  /** Job Worker subscribes - process control signals */
   JOB_WORKER: {
     STOP: `${CHANNEL_DOMAINS.JOB}:stop`,
+  },
+  
+  /** API Server subscribes - job completion/failure notifications */
+  API_SERVER: {
+    JOB_STATUS_UPDATES: `${CHANNEL_DOMAINS.JOB}:status:updates`,
   },
 } as const;
 
@@ -143,10 +154,10 @@ export const REDIS_CHANNELS = {
 // ============================================
 
 /**
- * Generate user-scoped SSE broadcast channel
- * Format: sse:broadcast:{orgId}:{userId}
+ * Generate user-scoped broadcast channel
+ * Format: realtime:broadcast:{orgId}:{userId}
  */
-export function getSSEBroadcastChannel(orgId: string, userId: string): string {
+export function getRealtimeBroadcastChannel(orgId: string, userId: string): string {
   if (!orgId || !userId) {
     throw new Error(`Invalid channel params: orgId=${orgId}, userId=${userId}`);
   }
@@ -154,10 +165,10 @@ export function getSSEBroadcastChannel(orgId: string, userId: string): string {
 }
 
 /**
- * Generate user-scoped SSE workflow channel
- * Format: sse:workflow:{orgId}:{userId}
+ * Generate user-scoped workflow channel
+ * Format: realtime:workflow:{orgId}:{userId}
  */
-export function getSSEWorkflowChannel(orgId: string, userId: string): string {
+export function getRealtimeWorkflowChannel(orgId: string, userId: string): string {
   if (!orgId || !userId) {
     throw new Error(`Invalid channel params: orgId=${orgId}, userId=${userId}`);
   }
@@ -165,54 +176,11 @@ export function getSSEWorkflowChannel(orgId: string, userId: string): string {
 }
 
 /**
- * Generate job-scoped stop channel (for future use)
- * Format: job:stop:{jobId}
- */
-export function getJobStopChannel(jobId: string): string {
-  if (!jobId) {
-    throw new Error(`Invalid channel param: jobId=${jobId}`);
-  }
-  return `${CHANNEL_DOMAINS.JOB}:stop:${jobId}`;
-}
-
-/**
  * Parse user context from channel name
  * Returns { orgId, userId } or null if invalid format
  */
 export function parseChannelUserContext(channel: string): { orgId: string; userId: string } | null {
-  const match = channel.match(/^sse:(broadcast|workflow):([^:]+):([^:]+)$/);
+  const match = channel.match(/^realtime:(broadcast|workflow):([^:]+):([^:]+)$/);
   if (!match) return null;
   return { orgId: match[2], userId: match[3] };
 }
-
-/**
- * Parse jobId from stop channel
- * Returns jobId or null if invalid format
- */
-export function parseJobStopChannel(channel: string): string | null {
-  const match = channel.match(/^job:stop:(.+)$/);
-  return match ? match[1] : null;
-}
-
-// ============================================
-// Key Helper Functions
-// ============================================
-
-/** Build a full key with jobId */
-export function buildJobKey(keyPrefix: string, jobId: string): string {
-  return `${keyPrefix}${jobId}`;
-}
-
-/** Build a full key with session key */
-export function buildSessionKey(keyPrefix: string, sessionKey: string): string {
-  return `${keyPrefix}${sessionKey}`;
-}
-
-// ============================================
-// Type Exports
-// ============================================
-
-export type RedisKeyDomain = typeof REDIS_KEYS[keyof typeof REDIS_KEYS];
-export type RedisTTLDomain = typeof REDIS_TTL[keyof typeof REDIS_TTL];
-export type RedisChannelDomain = typeof REDIS_CHANNELS[keyof typeof REDIS_CHANNELS];
-

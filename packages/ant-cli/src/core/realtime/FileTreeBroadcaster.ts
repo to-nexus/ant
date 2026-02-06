@@ -20,7 +20,7 @@ import * as path from 'path';
 import { FileTreeUpdatePort } from '../ports';
 import { UserContext } from '../types/user';
 import { 
-  getSSEBroadcastChannel,
+  getRealtimeBroadcastChannel,
   FileTreeBroadcastMessage,
   BroadcasterOptions 
 } from './types';
@@ -64,6 +64,10 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
     });
     this.projectPath = options.projectPath;
     this.userContext = options.userContext;
+    
+    // Error & connection event handlers for diagnostics
+    this.pubRedis.on('error', (err) => console.error(`❌ [FileTreeBroadcaster] pubRedis error:`, err.message));
+    this.pubRedis.on('ready', () => console.log(`🟢 [FileTreeBroadcaster] pubRedis ready`));
     
     console.log(`✅ [FileTreeBroadcaster] Initialized for path: ${this.projectPath}`);
   }
@@ -110,7 +114,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
         userContext,
       };
 
-      const channel = getSSEBroadcastChannel(userContext.organizationId, userContext.userId);
+      const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
       await this.pubRedis.publish(channel, JSON.stringify(message));
       
       console.log(`[FileTreeBroadcaster] ✅ File tree update sent to ${channel} for ${projectId}/${featureName}`);
