@@ -57,7 +57,8 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   constructor(options: BroadcasterOptions & { projectPath: string }) {
     this.pubRedis = new Redis(options.redisUrl, {
       maxRetriesPerRequest: 3,
-      retryStrategy: (times) => Math.min(times * 100, 3000),
+      retryStrategy: (times: number) => Math.min(times * 100, 3000),
+      ...(options.redisTLS ? { tls: options.redisTLS } : {}),
     });
     this.projectPath = options.projectPath;
     this.userContext = options.userContext;
