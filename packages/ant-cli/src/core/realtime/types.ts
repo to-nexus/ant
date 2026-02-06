@@ -125,6 +125,4 @@ export interface BroadcasterOptions {
   featureName: string;
   jobType?: 'design' | 'code' | 'learn';
   userContext: UserContext;  // Required for user-scoped channels
-  /** TLS options for Redis (e.g., ElastiCache with custom CNAME) */
-  redisTLS?: { checkServerIdentity: () => undefined };
 }
