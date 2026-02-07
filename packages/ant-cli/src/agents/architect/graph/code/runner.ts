@@ -65,6 +65,22 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.recursionLimit = Math.max(session.state.recursionLimit || 0, finalLimit);
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
         
+        // ✅ CRITICAL: Restore detectionReport (required for enableTools in codeGen)
+        // Without this, codeGen disables tool calling and LLM outputs XML tags as text
+        if ((session.state as any).detectionReport) {
+          initial.detectionReport = (session.state as any).detectionReport;
+        }
+        
+        // ✅ Restore reference requests (for search_reference_code tool availability)
+        if ((session.state as any).referenceRequests) {
+          initial.referenceRequests = (session.state as any).referenceRequests;
+        }
+        
+        // ✅ Restore projectCodeContext (filePaths for existingFiles detection in codeGen)
+        if ((session.state as any).projectCodeContext) {
+          initial.projectCodeContext = (session.state as any).projectCodeContext;
+        }
+        
         // CRITICAL: workspaceConfig is already set in initial state (from orchestrator)
         
         // Restore directive/design/spec from session
@@ -152,6 +168,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),  // ✅ Use higher of session vs env
             ...(session.state as any).jobId && { jobId: (session.state as any).jobId },  // ✅ CRITICAL: Restore jobId
             ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },  // ✅ CRITICAL: Restore jobTiming
+            ...(session.state as any).detectionReport && { detectionReport: (session.state as any).detectionReport },  // ✅ Restore for tool enabling
+            ...(session.state as any).referenceRequests && { referenceRequests: (session.state as any).referenceRequests },
+            ...(session.state as any).projectCodeContext && { projectCodeContext: (session.state as any).projectCodeContext },
           } as any;
         }
       } catch (restoreError) {
