@@ -256,7 +256,15 @@ export function createJobRoutes(deps: {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
-      const inputFile = undefined;
+      // ✅ CRITICAL: Recover directive for resume
+      // Without this, the resumed job starts with empty spec → triage misclassifies
+      // Priority: session overrideDirective > directive file on disk
+      const savedDirective = sessionData.state?.overrideDirective;
+      const directivePath = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+      const hasDirectiveFile = !savedDirective && fs.existsSync(directivePath);
+      const inputFile = hasDirectiveFile ? directivePath : undefined;
+      
+      console.log(`   Directive recovery: savedDirective=${!!savedDirective}, directiveFile=${hasDirectiveFile}`);
       
       const params: ExecuteJobParams = {
         agent: 'architect',
@@ -265,6 +273,7 @@ export function createJobRoutes(deps: {
         feature: featureName,
         inputFile,
         enableEvaluation: false,
+        overrideDirective: savedDirective,
         chatSource,
         userContext,
         jobId: sessionJobId

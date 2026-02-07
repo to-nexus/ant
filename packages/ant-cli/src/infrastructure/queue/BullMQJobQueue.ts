@@ -101,9 +101,17 @@ export class BullMQJobQueue implements JobQueuePort {
       logger.info(`Job completed: ${jobId}`, { component: 'BullMQJobQueue' });
       
       // Parse result
+      // BullMQ v5: returnvalue may be a string (JSON) or already-parsed object
       let parsedResult: any;
       try {
-        parsedResult = returnvalue ? JSON.parse(returnvalue) : {};
+        if (typeof returnvalue === 'string' && returnvalue) {
+          parsedResult = JSON.parse(returnvalue);
+        } else if (typeof returnvalue === 'object' && returnvalue !== null) {
+          // Already parsed by BullMQ (v5 behavior)
+          parsedResult = returnvalue;
+        } else {
+          parsedResult = {};
+        }
       } catch {
         parsedResult = { raw: returnvalue };
       }
@@ -114,7 +122,7 @@ export class BullMQJobQueue implements JobQueuePort {
       const outputStatus = parsedResult?.output?.status || (interruption ? 'paused' : 'completed');
       
       // ✅ Log for debugging interruption propagation
-      console.log(`📋 [BullMQJobQueue] Job completed | jobId=${jobId} | hasReturnvalue=${!!returnvalue} | returnvalueLen=${returnvalue?.length || 0} | hasInterruption=${!!interruption} | outputStatus=${outputStatus}`);
+      console.log(`📋 [BullMQJobQueue] Job completed | jobId=${jobId} | returnvalueType=${typeof returnvalue} | hasInterruption=${!!interruption} | outputStatus=${outputStatus}`);
       
       const result: JobExecutionResult = {
         success: true,

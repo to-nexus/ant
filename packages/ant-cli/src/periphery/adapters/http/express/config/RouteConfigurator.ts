@@ -347,7 +347,14 @@ export class RouteConfigurator {
           
           // ✅ CRITICAL: Call cleanupJobState to broadcast Kanban update to frontend SSE
           // Without this, frontend remains in "running" state even after job completes
-          if (projectId && featureName) {
+          // ✅ Skip if user-stopped: Stop route already called cleanupJobState
+          // Without this guard, cleanupJobState runs twice → duplicate choice cards
+          const wasUserStopped = stateStore ? await stateStore.isUserStopped(jobId) : false;
+          if (wasUserStopped) {
+            logger.info(`Skipping cleanupJobState for user-stopped job: ${jobId} (already handled by stop route)`, {
+              component: 'RouteConfigurator'
+            });
+          } else if (projectId && featureName) {
             try {
               // Parse userEmail to extract userId and organizationId
               let userContext: { userId: string; organizationId: string; workspacePath: string } | undefined;

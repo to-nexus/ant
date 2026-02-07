@@ -94,8 +94,13 @@ export class FileOperationHandler {
       error?: string;
     }
   ): Promise<void> {
-    const session = this.sessionStore.getSession();
     const ctx = this.sessionStore.getContext();
+
+    // ✅ Ensure local session is loaded (critical for resume: new process has empty localSession)
+    let session = this.sessionStore.getSession();
+    if (!session) {
+      session = await this.sessionStore.getOrCreateSession();
+    }
 
     if (!session || !session.currentMessage) {
       logger.warn(`No active message for file operation`, { 

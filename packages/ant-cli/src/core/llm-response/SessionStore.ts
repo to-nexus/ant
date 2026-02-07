@@ -16,6 +16,9 @@ import { logger } from '../../utils/logger';
 // Base branches that don't need chat.json (learning only)
 const BASE_BRANCH_NAMES = ['main', 'master', 'dev', 'develop', 'staging', 'production'];
 
+// Detect if this process is a resume (set by JobWorker)
+const IS_RESUME = process.env.ANT_IS_RESUME === 'true';
+
 export class SessionStore {
   private stateStore: StateStorePort;
   private context: SessionContext;
@@ -73,30 +76,36 @@ export class SessionStore {
         if (currentMessage) {
           const restoredMessage = fromRedisMessage(currentMessage);
           
-          // ⚠️ CRITICAL: Check if this is a stale message from a different job
-          // This can happen when a previous job crashed without calling finalizeMessage()
-          if (restoredMessage.jobId && restoredMessage.jobId !== this.context.jobId) {
+          // Determine if this message is stale and should be archived:
+          // 1. Different jobId → definitely stale (crash without finalize)
+          // 2. Same jobId BUT this is a resume → stale from previous execution
+          //    Resume reuses the same jobId, so jobId check alone is insufficient
+          const isDifferentJob = restoredMessage.jobId && restoredMessage.jobId !== this.context.jobId;
+          const isSameJobResume = !isDifferentJob && IS_RESUME;
+          const isStale = isDifferentJob || isSameJobResume;
+          
+          if (isStale) {
+            const reason = isDifferentJob ? 'different job' : 'resume (same jobId, new process)';
             logger.warn(
-              `Found stale currentMessage from job ${restoredMessage.jobId}, cleaning up (current job: ${this.context.jobId})`,
+              `Found stale currentMessage (${reason}), archiving (message job: ${restoredMessage.jobId}, current: ${this.context.jobId})`,
               { component: 'SessionStore' }
             );
             
-            // Option 1: Save the incomplete message to messages array (preserve data)
-            // This ensures user can see what happened in the failed job
+            // Archive: Save the incomplete message to messages array (preserve data)
             if (restoredMessage.contents && restoredMessage.contents.length > 0) {
               delete restoredMessage.isStreaming;
               this.localSession.messages.push(restoredMessage);
               logger.info(
-                `Recovered stale message with ${restoredMessage.contents.length} contents from job ${restoredMessage.jobId}`,
+                `Recovered stale message with ${restoredMessage.contents.length} contents`,
                 { component: 'SessionStore' }
               );
             }
             
             // Clear stale currentMessage from Redis
             await this.stateStore.setCurrentMessage(this.context.sessionKey, null);
-            // Don't set it as currentMessage for this job
+            // Don't set it as currentMessage for this job - startMessage() will create a new one
           } else {
-            // Same job or no jobId - restore normally
+            // Same job, not a resume - restore normally (e.g., process reconnect)
             this.localSession.currentMessage = restoredMessage;
           }
         }
@@ -155,13 +164,21 @@ export class SessionStore {
 
   /**
    * Check if there's an active message (streaming)
+   * Prioritizes local session state over Redis to avoid stale-message false positives
+   * (e.g., resume process where Redis still has previous execution's currentMessage)
    */
   async hasActiveMessage(): Promise<boolean> {
+    // Local cache is authoritative when loaded
+    if (this.localSession) {
+      return this.localSession.currentMessage !== undefined;
+    }
+    
+    // Local session not loaded yet - check Redis as fallback
     try {
       return await this.stateStore.hasActiveMessage(this.context.sessionKey);
     } catch (error) {
       logger.warn(`Failed to check active message`, { component: 'SessionStore' }, error);
-      return this.localSession?.currentMessage !== undefined;
+      return false;
     }
   }
 
