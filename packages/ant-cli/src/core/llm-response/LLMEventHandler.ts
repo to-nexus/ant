@@ -157,6 +157,19 @@ export class LLMEventHandler {
   }
 
   /**
+   * Tools that have dedicated status handlers in their tool handler functions.
+   * These emit their own chat status (e.g. reading/read, listing_files/listed_files)
+   * so they should NOT also emit a generic tool_action to avoid duplicate UI entries.
+   */
+  private static readonly TOOLS_WITH_DEDICATED_STATUS = new Set([
+    'read_file',              // → reading/read (WorkingCard)
+    'list_files',             // → listing_files/listed_files (WorkingCard)
+    'search_code',            // → searching_code/searched_code (WorkingCard)
+    'run_command',            // → command_running/command_streaming/command (TerminalCard)
+    'search_reference_code',  // → searching_reference/searched_reference (WorkingCard)
+  ]);
+
+  /**
    * Handle tool use event (LLM tool calls)
    */
   private handleToolUseEvent(event: LLMStreamEvent): void {
@@ -173,6 +186,11 @@ export class LLMEventHandler {
     // SIMPLE TOOLS: mkdir
     else if (name === 'mkdir') {
       this.handleMkdirToolUse(input);
+    }
+    // TOOLS WITH DEDICATED STATUS: Skip generic tool_action (their handlers emit own status)
+    else if (LLMEventHandler.TOOLS_WITH_DEDICATED_STATUS.has(name)) {
+      // No-op: these tools emit their own chat status in their respective handlers
+      // (e.g. readFile.ts emits 'reading'/'read', runCommand.ts emits 'command_running'/'command')
     }
     // OTHER TOOLS: Fallback to tool_action
     else {

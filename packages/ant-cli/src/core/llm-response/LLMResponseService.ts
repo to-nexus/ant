@@ -182,13 +182,16 @@ export class LLMResponseService {
     }
 
     try {
+      // ✅ Ensure local session is loaded (critical for resume: new process has empty localSession)
+      let session = this.sessionStore.getSession();
+      if (!session) {
+        // Local cache is empty - load from Redis (happens on resume when child process is new)
+        session = await this.sessionStore.getOrCreateSession();
+      }
+      
       // Ensure message is active
-      const hasActive = await this.hasActiveMessage();
+      const hasActive = session?.currentMessage !== undefined;
       if (!hasActive) {
-        logger.warn(`No active message for LLM event type '${event.type}'`, { 
-          component: 'LLMResponseService' 
-        });
-        
         // Auto-start message if needed
         const messageId = await this.startMessage();
         if (!messageId) {
@@ -197,10 +200,10 @@ export class LLMResponseService {
           });
           return;
         }
+        // Refresh session after startMessage
+        session = this.sessionStore.getSession();
       }
       
-      // ✅ Debug: Check session state before handling
-      const session = this.sessionStore.getSession();
       if (!session) {
         logger.error(`No session in sessionStore before handleEvent`, { 
           component: 'LLMResponseService' 
@@ -232,8 +235,14 @@ export class LLMResponseService {
     if (!this.enabled) return undefined;
 
     try {
+      // ✅ Ensure local session is loaded (critical for resume)
+      let session = this.sessionStore.getSession();
+      if (!session) {
+        session = await this.sessionStore.getOrCreateSession();
+      }
+      
       // Ensure message is active
-      const hasActive = await this.hasActiveMessage();
+      const hasActive = session?.currentMessage !== undefined;
       if (!hasActive) {
         const messageId = await this.startMessage();
         if (!messageId) {
@@ -264,6 +273,7 @@ export class LLMResponseService {
 
   async streamFileContent(filePath: string, content: string): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.fileOperationHandler.streamFileContent(filePath, content);
   }
 
@@ -281,26 +291,31 @@ export class LLMResponseService {
 
   async streamFileDiff(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.fileOperationHandler.streamFileDiff(filePath, diffBefore, diffAfter);
   }
 
   async completeFileEdit(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.fileOperationHandler.completeFileEdit(filePath, diffBefore, diffAfter);
   }
 
   async startFileDeletion(filePath: string): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.fileOperationHandler.startFileDeletion(filePath);
   }
 
   async completeFileDeletion(filePath: string, content?: string): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.fileOperationHandler.completeFileDeletion(filePath, content);
   }
 
   async failFileEdit(filePath: string, errorMessage: string): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.fileOperationHandler.failFileEdit(filePath, errorMessage);
   }
 
@@ -310,17 +325,20 @@ export class LLMResponseService {
 
   async startCommand(command: string): Promise<number | undefined> {
     if (!this.enabled) return undefined;
+    if (!await this.ensureActiveMessage()) return undefined;
     const index = await this.commandExecutionHandler.startCommand(command);
     return index !== -1 ? index : undefined;
   }
 
   async streamCommandOutput(command: string, output: string): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.commandExecutionHandler.streamCommandOutput(command, output);
   }
 
   async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
     if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
     await this.commandExecutionHandler.completeCommand(command, output, exitCode);
   }
 
@@ -397,8 +415,14 @@ export class LLMResponseService {
    * Ensure there's an active message, starting one if needed
    */
   private async ensureActiveMessage(): Promise<boolean> {
-    const hasActive = await this.hasActiveMessage();
-    if (hasActive) return true;
+    // ✅ Ensure local session is loaded first (critical for resume)
+    let session = this.sessionStore.getSession();
+    if (!session) {
+      session = await this.sessionStore.getOrCreateSession();
+    }
+    
+    // Check local state (more reliable than Redis for stale message detection)
+    if (session?.currentMessage) return true;
 
     logger.warn(`No active message, attempting to start`, { component: 'LLMResponseService' });
     const messageId = await this.startMessage();

@@ -173,7 +173,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // Clear conversation history for NEW JOB
   state.conversationHistory = [];
   
-  // Save initial jobTiming to session
+  // Save initial jobTiming + directive to session
+  // ✅ CRITICAL: Save effective directive early so it survives process kill (before decompose)
+  // Without this, if user cancels before decompose, resume has no directive
+  // Priority: overrideDirective (from chat) > spec (from directive file)
+  const effectiveDirective = state.overrideDirective || state.spec || undefined;
   if (state.deps?.session && state.context.featureFolder) {
     try {
       await state.deps.session.updateArtifacts(
@@ -187,7 +191,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
             taskQueue: [],
             completedTasks: [],
             completedTasksDetails: [],
-            overrideDirective: state.overrideDirective,
+            overrideDirective: effectiveDirective,
             chatSource: state.chatSource
           }
         }
