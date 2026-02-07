@@ -64,6 +64,7 @@ export interface BaseTask {
   interrupted?: boolean;
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
+  packages?: string[];
 }
 
 // ============================================

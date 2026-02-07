@@ -22,6 +22,7 @@ import { MessageManager } from './MessageManager';
 import { FileOperationHandler } from './FileOperationHandler';
 import { LLMEventHandler } from './LLMEventHandler';
 import { CommandExecutionHandler } from './CommandExecutionHandler';
+import { logger } from '../../../../../utils/logger';
 
 // Re-export types for backward compatibility
 export type { MessageContent, ChatMessage } from './types';
@@ -289,28 +290,6 @@ export class ChatService {
   }
 
   /**
-   * Add cancelled message (sync version - deprecated)
-   * @deprecated Use addCancelledMessageAsync to prevent race conditions
-   */
-  addCancelledMessage(
-    projectId: string,
-    featureName: string,
-    jobId: string,
-    reason: string,
-    message: string,
-    userContext?: UserContext
-  ): string {
-    return this.messageManager.addCancelledMessage(
-      projectId,
-      featureName,
-      jobId,
-      reason,
-      message,
-      userContext
-    );
-  }
-
-  /**
    * Get all messages for a session
    */
   getMessages(projectId: string, featureName: string, userContext?: UserContext): ChatMessage[] {
@@ -333,13 +312,13 @@ export class ChatService {
    * Update metadata of the last content of a specific type in the last message
    * Used to mark triage_choice as resolved after user selection
    */
-  updateLastContentMetadata(
+  async updateLastContentMetadata(
     projectId: string,
     featureName: string,
     contentType: string,
     metadataUpdate: Record<string, any>,
     userContext?: UserContext
-  ): boolean {
+  ): Promise<boolean> {
     const messages = this.getMessages(projectId, featureName, userContext);
     
     // Find the last message with content of the specified type
@@ -356,8 +335,14 @@ export class ChatService {
             ...metadataUpdate
           };
           
-          // Save to disk
+          // Save to disk AND Redis
           this.persistence.saveSession(projectId, featureName, messages, userContext);
+          const session = this.sessionManager.getSession(projectId, featureName);
+          if (session) {
+            await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
+              logger.warn('Failed to save metadata update to Redis', { component: 'ChatService' }, err);
+            });
+          }
           
           // Broadcast updated content via SSE so frontend can update the card
           if (userContext) {

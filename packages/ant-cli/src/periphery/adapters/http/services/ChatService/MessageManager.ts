@@ -413,8 +413,11 @@ export class MessageManager {
     
     session.messages.push(errorMsg);
     
-    // Save to file
+    // Save to file AND Redis
     this.persistence.saveSession(projectId, featureName, session.messages);
+    this.sessionManager.saveSessionAsync(projectId, featureName, session).catch(err => {
+      logger.warn('Failed to save error message to Redis', { component: 'MessageManager' }, err);
+    });
     
     // Broadcast error message
     this.broadcaster.broadcast(projectId, featureName, {
@@ -459,52 +462,9 @@ export class MessageManager {
     
     session.messages.push(cancelledMsg);
     
-    // Save to file
+    // Save to file AND Redis
     this.persistence.saveSession(projectId, featureName, session.messages, userContext);
-    
-    // Broadcast cancelled message
-    this.broadcaster.broadcast(projectId, featureName, {
-      type: 'cancelled_message',
-      message: cancelledMsg
-    }, session.userContext);
-    
-    return messageId;
-  }
-
-  /**
-   * Add cancelled message (sync version - deprecated, use addCancelledMessageAsync)
-   * @deprecated Use addCancelledMessageAsync instead to prevent race conditions
-   */
-  addCancelledMessage(
-    projectId: string,
-    featureName: string,
-    jobId: string,
-    reason: string,
-    message: string,
-    userContext?: UserContext
-  ): string {
-    const session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId);
-    
-    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const cancelledMsg: ChatMessage = {
-      id: messageId,
-      role: 'assistant',
-      contents: [{
-        type: 'cancelled',
-        content: message,
-        metadata: {
-          jobId,
-          reason
-        }
-      }],
-      timestamp: new Date().toISOString(),
-      jobId
-    };
-    
-    session.messages.push(cancelledMsg);
-    
-    // Save to file
-    this.persistence.saveSession(projectId, featureName, session.messages, userContext);
+    await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
     
     // Broadcast cancelled message
     this.broadcaster.broadcast(projectId, featureName, {

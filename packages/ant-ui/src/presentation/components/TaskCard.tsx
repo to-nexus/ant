@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Badge } from '@/presentation/components/common/badge';
 import { TaskTimer } from './TaskTimer';
-import { ChevronDown, ChevronRight, Timer, Coins } from 'lucide-react';
+import { ChevronDown, ChevronRight, Timer, Coins, Package } from 'lucide-react';
 import { UnifiedTask } from '@/domain/models/task';
 import { useStore } from '@/domain/store';
 import { statusColors, badgeColors, cn } from '@/shared/utils/design-system';
@@ -163,6 +163,14 @@ export function TaskCard({
             <Badge className={cn(typeBadge.color, 'text-xs flex-shrink-0')}>
               {typeBadge.label}
             </Badge>
+            
+            {/* Package Scope */}
+            {task.packages && task.packages.length > 0 && (
+              <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
+                <Package className="w-3.5 h-3.5" />
+                {task.packages.join(', ')}
+              </span>
+            )}
             
             {            /* Timer - Show for in-progress and completed */}
             {status === 'in-progress' && (

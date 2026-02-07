@@ -26,6 +26,9 @@ export interface UnifiedTask {
   // Timing & tokens
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
+
+  // Package scope
+  packages?: string[];
 }
 
 /**
@@ -44,6 +47,7 @@ export function normalizeTask(task: Record<string, unknown>): UnifiedTask {
     interrupted: task.interrupted as boolean | undefined,
     timing: task.timing as TaskTiming | undefined,
     tokenUsage: task.tokenUsage as TaskTokenUsage | undefined,
+    packages: Array.isArray(task.packages) ? task.packages as string[] : undefined,
   };
 }
 
