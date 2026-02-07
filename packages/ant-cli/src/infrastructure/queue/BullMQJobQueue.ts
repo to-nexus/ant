@@ -108,6 +108,14 @@ export class BullMQJobQueue implements JobQueuePort {
         parsedResult = { raw: returnvalue };
       }
       
+      // ✅ Extract interruption and status at the top level for reliable propagation
+      // The result structure is: { success, output: { success, status, interruption, ... } }
+      const interruption = parsedResult?.output?.interruption || parsedResult?.interruption;
+      const outputStatus = parsedResult?.output?.status || (interruption ? 'paused' : 'completed');
+      
+      // ✅ Log for debugging interruption propagation
+      console.log(`📋 [BullMQJobQueue] Job completed | jobId=${jobId} | hasReturnvalue=${!!returnvalue} | returnvalueLen=${returnvalue?.length || 0} | hasInterruption=${!!interruption} | outputStatus=${outputStatus}`);
+      
       const result: JobExecutionResult = {
         success: true,
         jobId,
@@ -152,11 +160,13 @@ export class BullMQJobQueue implements JobQueuePort {
         await this.stateStore.publish(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, {
           type: 'completed',
           jobId,
-          status: 'completed',
+          status: outputStatus,  // ✅ Use actual status (paused/completed/failed), not hardcoded 'completed'
           projectId,
           featureName,
           userEmail,
           result: parsedResult,
+          // ✅ Promote interruption to top level for reliable extraction downstream
+          interruption,
           timestamp: new Date().toISOString()
         });
         logger.debug(`Published job completion to Redis: ${jobId} (${projectId}/${featureName})`, { component: 'BullMQJobQueue' });

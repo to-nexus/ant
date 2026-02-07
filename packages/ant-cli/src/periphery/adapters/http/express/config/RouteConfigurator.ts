@@ -311,6 +311,7 @@ export class RouteConfigurator {
           featureName?: string;
           userEmail?: string;
           result?: any;
+          interruption?: any;  // ✅ Top-level interruption (promoted by BullMQJobQueue)
         };
         if (data.type === 'completed' || data.type === 'failed') {
           const { jobId, projectId, featureName, userEmail } = data;
@@ -325,13 +326,20 @@ export class RouteConfigurator {
           }
           
           // ✅ Extract interruption from job result (flows from JobWorker → BullMQ → Redis)
-          // This is critical: session file on EFS may not be ready when cleanup runs,
-          // so we pass interruption directly from the job result rather than relying on file reads
-          const interruption = data.result?.output?.interruption || data.result?.interruption;
+          // Check multiple locations: top-level (promoted by BullMQJobQueue), nested in result.output, or direct in result
+          const interruption = data.interruption 
+            || data.result?.output?.interruption 
+            || data.result?.interruption;
           if (interruption) {
             logger.info(`Job ${jobId} has interruption: ${interruption.reason}`, {
               component: 'RouteConfigurator'
             });
+          } else {
+            // ✅ Log for debugging when interruption is missing despite status suggesting pause
+            const resultStatus = data.result?.output?.status || data.status;
+            if (resultStatus === 'paused' || data.status === 'paused') {
+              console.warn(`⚠️ [RouteConfigurator] Job ${jobId} status=${resultStatus} but no interruption found in result | resultKeys=${data.result ? Object.keys(data.result).join(',') : 'null'} | outputKeys=${data.result?.output ? Object.keys(data.result.output).join(',') : 'null'}`);
+            }
           }
           
           // ✅ Extract jobType from result
