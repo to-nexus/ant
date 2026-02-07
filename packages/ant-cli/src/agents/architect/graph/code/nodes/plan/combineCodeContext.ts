@@ -245,7 +245,7 @@ async function generateDirectoryTree(
   
   // Start from codebase root
   lines.push('codebase/');
-  await traverse('', '', 1);
+  await traverse('codebase', '', 1);
   
   if (lines.length <= 1) {
     return undefined;

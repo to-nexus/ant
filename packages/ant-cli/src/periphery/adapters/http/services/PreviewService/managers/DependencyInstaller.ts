@@ -12,6 +12,9 @@ import type { LogCallback } from '../types';
  * and runs npm/yarn/pnpm install as needed.
  */
 export class DependencyInstaller {
+  // Track which project roots have already been installed
+  private installedRoots: Set<string> = new Set();
+
   /**
    * Install dependencies if needed
    */
@@ -22,7 +25,38 @@ export class DependencyInstaller {
   ): Promise<void> {
     const nodeModulesPath = path.join(packagePath, 'node_modules');
     const relativePath = displayName || path.basename(packagePath);
+    const projectRoot = this.findProjectRoot(packagePath);
+    const isWorkspace = this.isWorkspaceProject(projectRoot);
     
+    // For workspace projects, only install once at root
+    if (isWorkspace) {
+      if (this.installedRoots.has(projectRoot)) {
+        logger.debug(`Workspace already installed: ${projectRoot}`, { component: 'DependencyInstaller' });
+        return;
+      }
+      
+      const rootNodeModules = path.join(projectRoot, 'node_modules');
+      if (!fs.existsSync(rootNodeModules)) {
+        logger.info(`Installing workspace dependencies at root: ${projectRoot}`, { component: 'DependencyInstaller' });
+        await this.runInstall(projectRoot, 'workspace root', onLog);
+        this.installedRoots.add(projectRoot);
+        return;
+      }
+      
+      // Check if workspace needs reinstall
+      if (this.workspaceNeedsReinstall(projectRoot)) {
+        logger.info(`Workspace needs reinstall: ${projectRoot}`, { component: 'DependencyInstaller' });
+        await this.runInstall(projectRoot, 'workspace root', onLog);
+        this.installedRoots.add(projectRoot);
+        return;
+      }
+      
+      this.installedRoots.add(projectRoot);
+      logger.debug(`Workspace dependencies OK: ${projectRoot}`, { component: 'DependencyInstaller' });
+      return;
+    }
+    
+    // Non-workspace: install per package
     // Check if node_modules exists
     if (!fs.existsSync(nodeModulesPath)) {
       logger.info(`Installing dependencies (no node_modules): ${relativePath}`, { component: 'DependencyInstaller' });
@@ -65,6 +99,7 @@ export class DependencyInstaller {
     const pm = this.detectPackageManager(projectRoot);
     
     onLog('stdout', `📦 Installing dependencies for ${relativePath}...`);
+    logger.info(`Running ${pm} install in: ${packagePath}`, { component: 'DependencyInstaller' });
     
     let command: string;
     let args: string[];
@@ -100,11 +135,15 @@ export class DependencyInstaller {
           onLog('stdout', `✅ Dependencies installed for ${relativePath}`);
           resolve();
         } else {
+          logger.error(`Install failed in ${packagePath} with code ${code}`, { component: 'DependencyInstaller' });
           reject(new Error(`${pm} install failed with code ${code}`));
         }
       });
       
-      installProcess.on('error', reject);
+      installProcess.on('error', (err) => {
+        logger.error(`Install process error in ${packagePath}`, { component: 'DependencyInstaller' }, err);
+        reject(err);
+      });
     });
   }
   
@@ -146,6 +185,11 @@ export class DependencyInstaller {
   findProjectRoot(packagePath: string): string {
     let current = packagePath;
     while (current !== path.dirname(current)) {
+      // Check for workspace config files (pnpm-workspace.yaml indicates workspace root)
+      if (fs.existsSync(path.join(current, 'pnpm-workspace.yaml'))) {
+        return current;
+      }
+      
       // Check for lock files (indicates root)
       if (
         fs.existsSync(path.join(current, 'pnpm-lock.yaml')) ||
@@ -154,6 +198,7 @@ export class DependencyInstaller {
       ) {
         return current;
       }
+      
       // Check for workspaces in package.json
       const pkgPath = path.join(current, 'package.json');
       if (fs.existsSync(pkgPath)) {
@@ -183,5 +228,71 @@ export class DependencyInstaller {
       return 'yarn';
     }
     return 'npm';
+  }
+
+  /**
+   * Check if project is a workspace (monorepo)
+   */
+  private isWorkspaceProject(projectRoot: string): boolean {
+    // Check for pnpm-workspace.yaml
+    if (fs.existsSync(path.join(projectRoot, 'pnpm-workspace.yaml'))) {
+      return true;
+    }
+    
+    // Check for workspaces in package.json
+    const pkgPath = path.join(projectRoot, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        if (pkg.workspaces) {
+          return true;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if workspace needs reinstall
+   * Returns true if any workspace package is missing critical dependencies
+   */
+  private workspaceNeedsReinstall(projectRoot: string): boolean {
+    const packagesDir = path.join(projectRoot, 'packages');
+    if (!fs.existsSync(packagesDir)) {
+      return false;
+    }
+    
+    try {
+      const packages = fs.readdirSync(packagesDir, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => path.join(packagesDir, dirent.name));
+      
+      for (const pkgPath of packages) {
+        const packageJsonPath = path.join(pkgPath, 'package.json');
+        if (!fs.existsSync(packageJsonPath)) continue;
+        
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+        const criticalDeps = this.identifyCriticalDeps(packageJson);
+        
+        // For workspace packages, check in root node_modules
+        const rootNodeModules = path.join(projectRoot, 'node_modules');
+        const missingDeps = criticalDeps.filter(dep => 
+          !fs.existsSync(path.join(rootNodeModules, dep))
+        );
+        
+        if (missingDeps.length > 0) {
+          logger.info(`Workspace package ${path.basename(pkgPath)} missing: ${missingDeps.join(', ')}`, { component: 'DependencyInstaller' });
+          return true;
+        }
+      }
+    } catch (err) {
+      logger.warn(`Failed to check workspace packages`, { component: 'DependencyInstaller' }, err);
+      return false;
+    }
+    
+    return false;
   }
 }

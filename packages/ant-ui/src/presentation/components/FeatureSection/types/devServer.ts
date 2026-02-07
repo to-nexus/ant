@@ -34,6 +34,7 @@ export interface PreviewStatus {
   setupReasoning?: SetupFailureReasoning;
   setupReason?: string;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
+  packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;  // ✅ NEW: Running packages info
 }
 
 export interface PreviewLog {

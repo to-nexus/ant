@@ -119,7 +119,7 @@ function autoCorrectCodebasePath(rawPath: string): { corrected: string; wasFixed
   
   // Pattern 3: app/... or components/... without codebase/ prefix
   // Common frontend directories that should be under codebase/
-  const frontendDirs = ['app/', 'components/', 'public/', 'styles/', 'lib/', 'utils/', 'hooks/', 'pages/'];
+  const frontendDirs = ['app/', 'components/', 'public/', 'styles/', 'lib/', 'utils/', 'hooks/', 'pages/', 'frontend/'];
   for (const dir of frontendDirs) {
     if (normalized.startsWith(dir) && !normalized.startsWith('codebase/')) {
       const corrected = `codebase/${normalized}`;
