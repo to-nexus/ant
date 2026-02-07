@@ -210,9 +210,22 @@ export class JobWorker {
       // Execute job in child process
       const result = await this.spawnJobProcess(job, payload);
 
+      // ✅ Determine correct job status from result
+      // A job can be "paused" (interruption with tasks remaining) even if outer success=true
+      const outputStatus = result.output?.status;
+      const hasInterruption = !!result.output?.interruption;
+      let jobStatus: 'completed' | 'failed' | 'paused';
+      if (outputStatus === 'paused' || hasInterruption) {
+        jobStatus = 'paused';
+      } else if (result.success) {
+        jobStatus = 'completed';
+      } else {
+        jobStatus = 'failed';
+      }
+      
       // Update final status
       await this.stateStore.updateJobStatus(jobId, {
-        status: result.success ? 'completed' : 'failed',
+        status: jobStatus,
         completedAt: new Date().toISOString(),
         error: result.error
       });
@@ -243,7 +256,7 @@ export class JobWorker {
    * - stalledInterval: 5 min
    * - Dead Worker: 10 min (expire) + 5 min (check) = ~15 min to detect
    */
-  private spawnJobProcess(job: Job<JobPayload>, payload: JobPayload): Promise<{ success: boolean; error?: string }> {
+  private spawnJobProcess(job: Job<JobPayload>, payload: JobPayload): Promise<{ success: boolean; error?: string; output?: any }> {
     return new Promise((resolve, reject) => {
       const jobId = payload.jobId;
       
@@ -404,27 +417,40 @@ export class JobWorker {
         cleanup(); // Stop lock extension timer
         logger.info(`Child process exited with code: ${code}`, { component: 'JobWorker', jobId });
         
-        if (code === 0) {
-          // ✅ Parse RESULT from stdout to capture full job output (including interruption)
-          // Without this, BullMQ only stores { success: true } and interruption details are lost
-          // The regex uses multiline mode and anchors to avoid matching log lines containing "RESULT:"
-          let parsedResult: any = { success: true };
-          try {
-            const resultMatch = stdout.match(/^RESULT:(\{.+\})$/m);
-            if (resultMatch) {
-              parsedResult = JSON.parse(resultMatch[1]);
-              logger.debug(`Parsed RESULT from stdout: success=${parsedResult.success}, hasInterruption=${!!parsedResult.output?.interruption}`, { component: 'JobWorker', jobId });
-            }
-          } catch (parseErr) {
-            logger.warn(`Failed to parse RESULT from stdout, using default`, { component: 'JobWorker', jobId });
+        // ✅ Parse RESULT from stdout regardless of exit code
+        // Even on non-zero exit, the RESULT line may have been written before the error
+        let parsedResult: any = { success: code === 0 };
+        try {
+          const resultMatch = stdout.match(/^RESULT:(\{.+\})$/m);
+          if (resultMatch) {
+            parsedResult = JSON.parse(resultMatch[1]);
+            const hasInterruption = !!parsedResult.output?.interruption;
+            const outputStatus = parsedResult.output?.status;
+            // ✅ Use console.log to ensure visibility regardless of LOG_LEVEL
+            console.log(`📋 [JobWorker] RESULT parsed | jobId=${jobId} | success=${parsedResult.success} | hasInterruption=${hasInterruption} | outputStatus=${outputStatus} | exitCode=${code}`);
+          } else {
+            // ✅ Regex didn't match - log for debugging
+            const stdoutLen = stdout.length;
+            const lastLines = stdout.split('\n').filter(Boolean).slice(-5).join(' | ');
+            console.warn(`⚠️ [JobWorker] RESULT regex no match | jobId=${jobId} | stdoutLen=${stdoutLen} | exitCode=${code} | lastLines: ${lastLines.substring(0, 300)}`);
           }
+        } catch (parseErr: any) {
+          console.warn(`⚠️ [JobWorker] RESULT parse failed | jobId=${jobId} | error=${parseErr.message}`);
+        }
+        
+        if (code === 0) {
           resolve(parsedResult);
         } else {
           logger.error(`Job runner failed: ${stderr || 'No stderr'}`, { component: 'JobWorker', jobId });
-          resolve({ 
-            success: false, 
-            error: stderr || `Process exited with code ${code}` 
-          });
+          // ✅ If RESULT was parsed (even with non-zero exit), use it (preserves interruption details)
+          if (parsedResult.output) {
+            resolve(parsedResult);
+          } else {
+            resolve({ 
+              success: false, 
+              error: stderr || `Process exited with code ${code}` 
+            });
+          }
         }
       });
 

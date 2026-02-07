@@ -147,6 +147,14 @@ export class JobCleanupManager {
               component: 'JobCleanupManager', 
               jobId 
             });
+          } else if (sessionData.state.interruption) {
+            // ✅ Fallback: Session already has interruption (saved by saveCheckpoint in runner.ts)
+            // Use it as the effective interruption for downstream processing (chat message, etc.)
+            interruptionReason = sessionData.state.interruption;
+            logger.info(`Using existing session interruption: ${interruptionReason?.reason}`, { 
+              component: 'JobCleanupManager', 
+              jobId 
+            });
           }
           
           // Write updated session

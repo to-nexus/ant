@@ -62,32 +62,67 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       }
     }
 
-    // ✅ NOTE: Runtime assets are NOT auto-synced here.
-    // Rationale: In monorepos/multi-app repos, the correct static root (public/, apps/*/public, etc.)
-    // must be chosen by the LLM as part of the implementation tasks.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Resolve featurePath (needed for doc reload and asset indexing)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (!state.context.featurePath && state.deps?.workspaceResolver) {
+      const userContext = {
+        userId: state.context.userId || 'local',
+        organizationId: state.context.organizationId || 'local',
+        workspacePath: ''
+      };
+      state.context.featurePath = state.deps.workspaceResolver.getFeaturePath(
+        userContext as any,
+        state.context.project,
+        state.context.featureFolder
+      );
+    }
 
-    // ✅ Index runtime assets (text-only) for LLM task planning (do NOT auto-copy)
-    try {
-      const path = await import('path');
-      const fs = await import('fs');
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // CRITICAL: Reload design artifacts from disk
+    // - designDocs, parsedUiDocs are NOT saved in checkpoint (too heavy)
+    // - User may have edited docs between stop and resume
+    // - Disk is always the source of truth for these documents
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const gitPort = state.deps?.git;
+    const fileSystem = state.deps?.fileSystem;
+    if (gitPort && fileSystem) {
+      try {
+        // Design document (unified string for legacy fallback)
+        const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem);
+        state.design = designResult?.content || state.design;
 
-      let featurePathAbs = state.context.featurePath;
-      if (!featurePathAbs && state.deps?.workspaceResolver) {
-        const userContext = {
-          userId: state.context.userId || 'local',
-          organizationId: state.context.organizationId || 'local',
-          workspacePath: ''
-        };
-        featurePathAbs = state.deps.workspaceResolver.getFeaturePath(
-          userContext as any,
-          state.context.project,
-          state.context.featureFolder
-        );
-        state.context.featurePath = featurePathAbs;
+        // Structured design docs (apiContract, feDesign, beDesign, feDesigns, beDesigns)
+        const env = state.detectionReport?.environment || 'unknown';
+        state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, env);
+
+        // PRD
+        const source = await ArtifactService.getSource(state.context, gitPort, fileSystem);
+        if (source?.prd) state.prd = source.prd;
+
+        // Parsed UI docs (ui-tokens, ui-assets, ui-spec)
+        state.parsedUiDocs = await ArtifactService.loadParsedUiContext(state.context, gitPort, fileSystem) || undefined;
+
+        // Restore profile from detectionReport (detectEnvironment is skipped on resume)
+        if (!state.profile && state.detectionReport?.profile) {
+          state.profile = state.detectionReport.profile;
+        }
+
+        console.log(`📄 [Resolve/Resume] Reloaded from disk: design=${!!state.design}, designDocs=${!!state.designDocs}, prd=${!!state.prd}, ui=${!!state.parsedUiDocs}, profile=${!!state.profile}`);
+      } catch (error) {
+        console.warn(`⚠️  [Resolve/Resume] Failed to reload design artifacts:`, error);
       }
+    }
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Index runtime assets (text-only) for LLM task planning
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    try {
+      const featurePathAbs = state.context.featurePath;
       if (featurePathAbs) {
-        const assetsRootAbs = path.join(featurePathAbs, 'inputs', 'assets');
+        const pathMod = await import('path');
+        const fsMod = await import('fs');
+        const assetsRootAbs = pathMod.join(featurePathAbs, 'inputs', 'assets');
         const files: string[] = [];
         const maxFiles = parseInt(process.env.ANT_RUNTIME_ASSETS_INDEX_MAX || '200', 10);
 
@@ -95,23 +130,23 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
           if (files.length >= maxFiles) return;
           let entries: any[] = [];
           try {
-            entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+            entries = fsMod.readdirSync(dirAbs, { withFileTypes: true });
           } catch {
             return;
           }
           for (const e of entries) {
             if (files.length >= maxFiles) break;
             if (e.name.startsWith('.')) continue;
-            const abs = path.join(dirAbs, e.name);
+            const abs = pathMod.join(dirAbs, e.name);
             if (e.isDirectory()) walk(abs);
             else if (e.isFile()) {
-              const relToFeature = path.relative(featurePathAbs, abs).replace(/\\/g, '/');
+              const relToFeature = pathMod.relative(featurePathAbs, abs).replace(/\\/g, '/');
               if (relToFeature && !relToFeature.startsWith('..')) files.push(relToFeature);
             }
           }
         };
 
-        if (fs.existsSync(assetsRootAbs)) {
+        if (fsMod.existsSync(assetsRootAbs)) {
           walk(assetsRootAbs);
         }
 
@@ -128,7 +163,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve');
     }
     
-    // Return existing state without changes
     return state;
   }
   
