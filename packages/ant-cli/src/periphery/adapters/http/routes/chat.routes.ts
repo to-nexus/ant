@@ -181,7 +181,7 @@ export function createChatRoutes(deps: {
           resolvedLabel = '진행됨';
         }
         
-        deps.chatService.updateLastContentMetadata(
+        await deps.chatService.updateLastContentMetadata(
           projectId,
           featureName,
           'triage_choice',
@@ -251,7 +251,7 @@ export function createChatRoutes(deps: {
    * - jobId: string
    * - choice: 'resume' | 'dismiss'
    */
-  router.post('/projects/:id/features/:feature/chat/cancelled-choice', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/cancelled-choice', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { jobId, choice } = req.body;
@@ -275,8 +275,8 @@ export function createChatRoutes(deps: {
     const userContext = extractUserContext(req);
     const resolvedLabel = choice === 'resume' ? 'Resumed' : 'Dismissed';
     
-    // Update metadata in chat.json
-    deps.chatService.updateLastContentMetadata(
+    // Update metadata in chat.json and Redis
+    await deps.chatService.updateLastContentMetadata(
       projectId,
       featureName,
       'cancelled',
