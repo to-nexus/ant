@@ -60,17 +60,18 @@ export function extractProgress(logs: PreviewLog[]): PreviewProgress | undefined
   
   // Parse logs for package-specific messages
   for (const log of logs) {
-    // Installing: "📦 Installing dependencies for web-client..."
+    // Installing: "📦 Installing dependencies for web-client..." or "📦 Installing dependencies for workspace root..."
     const installMatch = log.message.match(/📦 Installing.*for (.+)\.\.\./) || 
                         log.message.match(/Installing dependencies: (.+)\.\.\./);
     if (installMatch) {
       const pkgName = installMatch[1];
-      if (!packages.find(p => p.name === pkgName)) {
+      // Skip "workspace root" - it's not a package name
+      if (pkgName !== 'workspace root' && !packages.find(p => p.name === pkgName)) {
         packages.push({ name: pkgName, state: 'installing' });
       }
     }
     
-    // Install success: "✅ Dependencies installed for web-client"
+    // Install success: "✅ Dependencies installed for web-client" or "✅ Dependencies installed for workspace root"
     const installSuccessMatch = log.message.match(/✅ Dependencies installed for (.+)/) ||
                                log.message.match(/✅ Dependencies installed: (.+)/);
     if (installSuccessMatch) {
@@ -79,9 +80,15 @@ export function extractProgress(logs: PreviewLog[]): PreviewProgress | undefined
       if (pkg && pkg.state === 'installing') {
         pkg.state = 'starting';
       }
+      // For workspace projects, all packages move to starting after root install
+      if (pkgName === 'workspace root' && packages.length > 0) {
+        packages.forEach(p => {
+          if (p.state === 'installing') p.state = 'starting';
+        });
+      }
     }
     
-    // Starting: "🚀 Starting web-client (frontend) on port 30001..."
+    // Starting: "🚀 Starting web-client (frontend) on port 30001..." or "🚀 Starting packages/backend (backend)..."
     const startingMatch = log.message.match(/🚀 Starting (.+?) \(/);
     if (startingMatch) {
       const pkgName = startingMatch[1];
@@ -91,11 +98,13 @@ export function extractProgress(logs: PreviewLog[]): PreviewProgress | undefined
         currentPhase = 'starting';
       } else {
         packages.push({ name: pkgName, state: 'starting' });
+        currentPhase = 'starting';
       }
     }
     
-    // Running: "✅ All dev servers started successfully!"
+    // Running: "✅ All dev servers started successfully!" or "✅ All preview servers started successfully!"
     if (log.message.includes('All dev servers started') || 
+        log.message.includes('All preview servers started') ||
         log.message.includes('all servers running')) {
       packages.forEach(pkg => {
         if (pkg.state !== 'error') {

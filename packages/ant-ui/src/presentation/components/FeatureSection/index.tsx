@@ -122,6 +122,7 @@ export function FeatureSection() {
               ready={ready}  // Health check result
               setupReasoning={setupReasoning}  // Categorized failure code
               issues={status?.issues}
+              packages={status?.packages}  // ✅ NEW: Pass packages info
               url={status?.url || undefined}   // Convert null to undefined
               error={error}
               progress={progress}

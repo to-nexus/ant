@@ -31,6 +31,7 @@ interface DevServerStatusPanelProps {
   error?: PreviewError;
   progress?: PreviewProgress;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
+  packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;  // ✅ NEW: Running packages info
   onOpen?: () => void;
   onFix?: () => void;  // Fix setup handler
   onDismiss?: () => void;  // ✅ NEW: Dismiss panel
@@ -55,6 +56,7 @@ export function DevServerStatusPanel({
   error,
   progress,
   issues,
+  packages,  // ✅ NEW: Running packages info
   onOpen,
   onFix,
   onDismiss,  // ✅ NEW: Dismiss handler
@@ -62,6 +64,7 @@ export function DevServerStatusPanel({
 }: DevServerStatusPanelProps) {
   // ✅ Only show (n/m) counts for multi-package projects (totalCount > 1)
   const isMultiPackage = progress && progress.totalCount > 1;
+  const hasMultiplePackages = packages && packages.length > 1;  // ✅ NEW: Check if running with multiple packages
   
   const startingWithCounts = isMultiPackage
     ? `${DEV_SERVER_MESSAGES.STATUS_STARTING} (${progress.completedCount}/${progress.totalCount})`
@@ -257,6 +260,31 @@ export function DevServerStatusPanel({
               </button>
             )}
           </div>
+
+          {/* ✅ NEW: Show running packages for multi-package projects */}
+          {ready && hasMultiplePackages && (
+            <div className="mt-3 space-y-1.5">
+              {packages!.map((pkg, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between text-xs px-2 py-1.5 bg-green-100/50 dark:bg-green-900/20 rounded"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-600 dark:bg-green-400" />
+                    <span className="font-medium text-green-800 dark:text-green-200">
+                      {pkg.name}
+                    </span>
+                    <span className="text-green-600 dark:text-green-400">
+                      ({pkg.type})
+                    </span>
+                  </div>
+                  <span className="text-green-600 dark:text-green-400 font-mono">
+                    :{pkg.port}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
