@@ -304,7 +304,8 @@ export class KanbanService {
           recursionLimit: sessionState.recursionLimit || finalLimit,
           totalElapsedTime,
           jobTiming: sessionState.jobTiming,
-          tokenUsage: sessionState.tokenUsage
+          tokenUsage: sessionState.tokenUsage,
+          estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
         };
       }
       
@@ -333,7 +334,8 @@ export class KanbanService {
         tasksRemaining: sessionState.tasksRemaining || 0,
         totalElapsedTime,
         jobTiming: sessionState.jobTiming,
-        tokenUsage: sessionState.tokenUsage
+        tokenUsage: sessionState.tokenUsage,
+        estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
       };
     }
     
@@ -362,7 +364,8 @@ export class KanbanService {
         recursionLimit: sessionState.recursionLimit || finalLimit,
         totalElapsedTime,
         jobTiming: sessionState.jobTiming,
-        tokenUsage: sessionState.tokenUsage
+        tokenUsage: sessionState.tokenUsage,
+        estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
       };
     }
     
@@ -394,7 +397,8 @@ export class KanbanService {
       recursionLimit: sessionState.recursionLimit || finalLimit,
       totalElapsedTime,
       jobTiming: sessionState.jobTiming,
-      tokenUsage: sessionState.tokenUsage
+      tokenUsage: sessionState.tokenUsage,
+      estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
     };
   }
 }

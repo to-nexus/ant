@@ -766,6 +766,14 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     console.log(`⏱️  Starting timer for first task: ${firstTask.name}`);
     const currentTask = TaskTimingHelper.startTask(firstTask);
     
+    // ✅ Snapshot estimating phase token usage BEFORE tasks begin
+    const estimatingTokenUsage = (state as any).tokenUsage
+      ? { ...(state as any).tokenUsage }
+      : undefined;
+    if (estimatingTokenUsage) {
+      console.log(`📊 [Design Decompose] Estimating phase tokens captured: ${estimatingTokenUsage.inputTokens + estimatingTokenUsage.outputTokens} (input: ${estimatingTokenUsage.inputTokens}, output: ${estimatingTokenUsage.outputTokens})`);
+    }
+    
     // ✅ CRITICAL: Reset task-level token usage for first task
     const { resetTaskTokenUsage } = await import('../../../common/llmHelpers');
     resetTaskTokenUsage(state as any);
@@ -782,6 +790,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       _httpJobId: state._httpJobId,
       jobId: newJobId,
       jobTiming: finalJobTiming,
+      _estimatingTokenUsage: estimatingTokenUsage,
     } as any;
     
     // ✅ CRITICAL: Save checkpoint immediately after decompose (like code job)
@@ -804,6 +813,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
               jobId: newJobId,
               jobTiming: finalJobTiming,
               tokenUsage: (state as any).tokenUsage,  // ✅ Save job-level token usage from decompose
+              estimatingTokenUsage,  // ✅ Save estimating phase token snapshot
             }
           }
         );

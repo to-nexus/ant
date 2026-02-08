@@ -23,7 +23,69 @@ import {
 
 // Import submodules
 import { parseDetectResponse } from './responseParser';
-import { selectDesignFiles } from './designSelector';
+import { selectDesignFiles, DesignDocs } from './designSelector';
+
+/**
+ * Build filtered design documents from selected file list.
+ * Shared between normal path and resume fast path.
+ */
+function buildFilteredDesign(
+  selectedDesignFiles: string[],
+  designDocs?: DesignDocs
+): { filteredDesign: string; filteredDesignDocs: DesignDocs | undefined } {
+  if (selectedDesignFiles.length === 0 || !designDocs) {
+    return { filteredDesign: '', filteredDesignDocs: undefined };
+  }
+
+  const filteredDesignDocs: DesignDocs = {};
+  const parts: string[] = [];
+
+  const feMultiPattern = /^fe-system-design-(.+)\.md$/;
+  const beMultiPattern = /^be-system-design-(.+)\.md$/;
+
+  for (const fileName of selectedDesignFiles) {
+    // Legacy single docs
+    if (fileName === 'api-contract.md' && designDocs.apiContract) {
+      filteredDesignDocs.apiContract = designDocs.apiContract;
+      parts.push('# API Contract\n\n' + designDocs.apiContract);
+    } else if (fileName === 'fe-system-design.md' && designDocs.feDesign) {
+      filteredDesignDocs.feDesign = designDocs.feDesign;
+      parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
+    } else if (fileName === 'be-system-design.md' && designDocs.beDesign) {
+      filteredDesignDocs.beDesign = designDocs.beDesign;
+      parts.push('# Backend System Design\n\n' + designDocs.beDesign);
+    } else if (fileName === 'system-design.md' && designDocs.unifiedDesign) {
+      filteredDesignDocs.unifiedDesign = designDocs.unifiedDesign;
+      parts.push('# System Design\n\n' + designDocs.unifiedDesign);
+    }
+    // Multi-package frontend / backend (monorepo/MSA)
+    else {
+      const feMatch = fileName.match(feMultiPattern);
+      if (feMatch && designDocs.feDesigns) {
+        const pkgName = feMatch[1];
+        if (designDocs.feDesigns[pkgName]) {
+          if (!filteredDesignDocs.feDesigns) filteredDesignDocs.feDesigns = {};
+          filteredDesignDocs.feDesigns[pkgName] = designDocs.feDesigns[pkgName];
+          parts.push(`# Frontend: ${pkgName}\n\n` + designDocs.feDesigns[pkgName]);
+        }
+      }
+
+      const beMatch = fileName.match(beMultiPattern);
+      if (beMatch && designDocs.beDesigns) {
+        const svcName = beMatch[1];
+        if (designDocs.beDesigns[svcName]) {
+          if (!filteredDesignDocs.beDesigns) filteredDesignDocs.beDesigns = {};
+          filteredDesignDocs.beDesigns[svcName] = designDocs.beDesigns[svcName];
+          parts.push(`# Backend: ${svcName} Service\n\n` + designDocs.beDesigns[svcName]);
+        }
+      }
+    }
+  }
+
+  const filteredDesign = parts.join('\n\n────────────────────────────────────────\n\n');
+
+  return { filteredDesign, filteredDesignDocs };
+}
 
 export async function detectEnvironment(
   state: ArchitectGraphState
@@ -31,6 +93,66 @@ export async function detectEnvironment(
   
   state.recursionCount = (state.recursionCount || 0) + 1;
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Resume fast path: detectionReport already exists
+  // Skip LLM call, just filter/combine design docs
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.detectionReport) {
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 DETECT ENVIRONMENT: Resume — using existing detectionReport (LLM skip)');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+    const env = state.detectionReport.environment || 'unknown';
+    const selectedDesignFiles = selectDesignFiles(env, state.designDocs);
+
+    console.log(`✅ Environment: ${env} (from existing detectionReport)`);
+    console.log(`📄 Selected Design Documents (${selectedDesignFiles.length}): ${selectedDesignFiles.join(', ')}`);
+
+    const { filteredDesign, filteredDesignDocs } = buildFilteredDesign(
+      selectedDesignFiles,
+      state.designDocs
+    );
+
+    if (filteredDesign) {
+      const tokenEstimate = Math.ceil(filteredDesign.length / 4);
+      console.log(`📊 Combined Design Context: ${tokenEstimate.toLocaleString()} tokens (${selectedDesignFiles.length} documents)\n`);
+    }
+
+    // Workflow exit (if instrumented)
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.enterNode(
+        state._httpJobId,
+        'detectEnvironment',
+        undefined,
+        undefined,
+        state.recursionCount,
+        state.recursionLimit
+      );
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment');
+    }
+
+    return {
+      detectionReport: state.detectionReport,
+      selectedDesignFiles,
+      decomposeKeywords: state.decomposeKeywords || {
+        errorFiles: [],
+        keywords: [],
+        references: new Map<string, string[]>()
+      },
+      profile: state.detectionReport.profile ? {
+        language: state.detectionReport.profile.language,
+        framework: state.detectionReport.profile.framework,
+      } : state.profile,
+      designDocs: filteredDesignDocs || state.designDocs,
+      design: filteredDesign || state.design,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Normal path: full LLM detection
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const llm = state.deps?.llm as LLMClient;
   
   // Workflow instrumentation
@@ -260,69 +382,13 @@ export async function detectEnvironment(
   
   console.log(`   Selected Design Files: ${selectedDesignFiles.join(', ')}\n`);
   
-  // ✅ Filter designDocs based on selectedDesignFiles
-  // Update state with filtered docs so subsequent nodes don't need to filter again
-  // Supports both legacy single docs and multi-package (monorepo/MSA) patterns
-  let filteredDesignDocs: typeof state.designDocs = undefined;
-  let filteredDesign = '';
+  // ✅ Filter designDocs based on selectedDesignFiles (using shared helper)
+  const { filteredDesign, filteredDesignDocs } = buildFilteredDesign(
+    selectedDesignFiles,
+    state.designDocs
+  );
   
-  if (selectedDesignFiles.length > 0 && state.designDocs) {
-    filteredDesignDocs = {};
-    const parts: string[] = [];
-    
-    // Patterns for multi-package files
-    const feMultiPattern = /^fe-system-design-(.+)\.md$/;
-    const beMultiPattern = /^be-system-design-(.+)\.md$/;
-    
-    for (const fileName of selectedDesignFiles) {
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Legacy single docs
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      if (fileName === 'api-contract.md' && state.designDocs.apiContract) {
-        filteredDesignDocs.apiContract = state.designDocs.apiContract;
-        parts.push('# API Contract\n\n' + state.designDocs.apiContract);
-      } else if (fileName === 'fe-system-design.md' && state.designDocs.feDesign) {
-        filteredDesignDocs.feDesign = state.designDocs.feDesign;
-        parts.push('# Frontend System Design\n\n' + state.designDocs.feDesign);
-      } else if (fileName === 'be-system-design.md' && state.designDocs.beDesign) {
-        filteredDesignDocs.beDesign = state.designDocs.beDesign;
-        parts.push('# Backend System Design\n\n' + state.designDocs.beDesign);
-      } else if (fileName === 'system-design.md' && state.designDocs.unifiedDesign) {
-        filteredDesignDocs.unifiedDesign = state.designDocs.unifiedDesign;
-        parts.push('# System Design\n\n' + state.designDocs.unifiedDesign);
-      }
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Multi-package frontend: fe-system-design-{pkg}.md
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      else {
-        const feMatch = fileName.match(feMultiPattern);
-        if (feMatch && state.designDocs.feDesigns) {
-          const pkgName = feMatch[1];
-          if (state.designDocs.feDesigns[pkgName]) {
-            if (!filteredDesignDocs.feDesigns) filteredDesignDocs.feDesigns = {};
-            filteredDesignDocs.feDesigns[pkgName] = state.designDocs.feDesigns[pkgName];
-            parts.push(`# Frontend: ${pkgName}\n\n` + state.designDocs.feDesigns[pkgName]);
-          }
-        }
-        
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // Multi-package backend (MSA): be-system-design-{svc}.md
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        const beMatch = fileName.match(beMultiPattern);
-        if (beMatch && state.designDocs.beDesigns) {
-          const svcName = beMatch[1];
-          if (state.designDocs.beDesigns[svcName]) {
-            if (!filteredDesignDocs.beDesigns) filteredDesignDocs.beDesigns = {};
-            filteredDesignDocs.beDesigns[svcName] = state.designDocs.beDesigns[svcName];
-            parts.push(`# Backend: ${svcName} Service\n\n` + state.designDocs.beDesigns[svcName]);
-          }
-        }
-      }
-    }
-    
-    filteredDesign = parts.join('\n\n────────────────────────────────────────\n\n');
-    
-    // ✅ Log combined design size (for debugging)
+  if (filteredDesign) {
     const tokenEstimate = Math.ceil(filteredDesign.length / 4);
     console.log(`   📊 Combined Design Context: ${tokenEstimate.toLocaleString()} tokens (${selectedDesignFiles.length} documents)\n`);
   }

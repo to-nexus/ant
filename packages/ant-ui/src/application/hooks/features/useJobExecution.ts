@@ -76,17 +76,29 @@ export function useJobExecution() {
           useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
         }
         
-        // ✅ Remove cancelled message from chat and add resume message
-        useStore.getState().removeCancelledMessage(currentJobId);
-        useStore.getState().addChatMessage({
-          id: `msg-resume-${Date.now()}`,
-          role: 'assistant',
-          contents: [{
-            type: 'text',
-            content: '🔄 Continuing interrupted job...'
-          }],
-          timestamp: new Date().toISOString()
-        });
+        // ✅ FIX: Update cancelled message metadata to show "Resumed" badge
+        // instead of removing the choice card and adding legacy text.
+        // This keeps the ChoiceCard visible with "▷ Resumed" badge,
+        // matching the persisted state in chat.json (visible on page refresh).
+        const chatMessages = useStore.getState().chatMessages;
+        const cancelledMsg = chatMessages.find((m: { contents: Array<{ type: string; metadata?: { jobId?: string } }> }) =>
+          m.contents.some(c => c.type === 'cancelled' && c.metadata?.jobId === currentJobId)
+        );
+        if (cancelledMsg) {
+          const contentIndex = cancelledMsg.contents.findIndex((c: { type: string }) => c.type === 'cancelled');
+          if (contentIndex !== -1) {
+            const updatedContents = [...cancelledMsg.contents];
+            updatedContents[contentIndex] = {
+              ...updatedContents[contentIndex],
+              metadata: {
+                ...updatedContents[contentIndex].metadata,
+                choiceSelected: 'resume',
+                resolvedLabel: 'Resumed'
+              }
+            };
+            useStore.getState().updateChatMessage(cancelledMsg.id, { contents: updatedContents });
+          }
+        }
         
         // ✅ Set running state immediately
         setRunning(true, currentJobId);

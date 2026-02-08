@@ -79,7 +79,11 @@ export async function generatePlanText(
     designDoc = buildDesignDocForTask(task.packages, state.designDocs);
     console.log(`📄 [Plan] Split injection: packages=${task.packages.join(', ')} → ${designDoc.length} chars`);
   } else {
-    // Legacy: use pre-filtered state.design
+    // Fallback: this path should not normally be reached.
+    // task.packages should always be set by decompose, and state.designDocs should always be loaded by resolve.
+    // If this fires, it indicates a decompose bug (missing packages) or resolve bug (missing designDocs).
+    console.warn('⚠️ [Plan] Fallback to state.design: task.packages or state.designDocs missing');
+    console.warn(`   task.id=${task.id}, task.packages=${JSON.stringify(task.packages)}, hasDesignDocs=${!!state.designDocs}`);
     designDoc = state.design || '';
   }
   

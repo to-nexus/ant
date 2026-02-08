@@ -198,10 +198,36 @@ export class ContextAssembler {
       Object.assign(assembled, loaded);
     }
     
+    // ✅ FIX: Re-apply artifact values that take priority over contextLoader
+    // The contextLoader re-loads design docs from disk on every call, but uses generic defaults
+    // (findLatestDesign always picks fe-system-design.md first, loadDesignDocuments uses 'unknown' env).
+    // The artifact values from promptBuilder are more specific (split-injected per task, env-filtered).
+    if (artifacts) {
+      // designDoc: promptBuilder's buildDesignDocForTask selects correct doc per task packages
+      // (e.g., be-system-design.md for backend tasks). Loader's findLatestDesign always returns FE first.
+      if (artifacts.designDoc !== undefined) {
+        assembled.designDoc = artifacts.designDoc;
+      }
+      // designDocs: resolve.ts loads with detected environment (e.g., 'fullstack' → both FE+BE).
+      // Loader uses 'unknown' which may load differently than the env-filtered version.
+      if (artifacts.designDocs !== undefined) {
+        assembled.designDocs = artifacts.designDocs;
+      }
+    }
+    
     // ✅ CRITICAL: Read codebaseProfile from context (passed by promptBuilder)
     // This enables TypeScript/React templates for new projects!
     if ((context as any).codebaseProfile) {
       assembled.codebaseProfile = (context as any).codebaseProfile;
+    }
+    
+    // ✅ CRITICAL: Pass detectedEnvironment for ModeController priority-0 check
+    // Without this, ModeController falls back to designDocPath filename detection,
+    // which returns 'browser' for fullstack projects (fe-system-design.md is checked first).
+    // The detectedEnvironment comes from detectEnvironment node (LLM-based analysis)
+    // and is set on context by promptBuilder from state.detectionReport.environment.
+    if ((context as any).detectedEnvironment) {
+      (assembled as any).detectedEnvironment = (context as any).detectedEnvironment;
     }
     
     // ✅ Pass featurePath for runtime asset path resolution in templates

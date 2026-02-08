@@ -335,14 +335,15 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
     setLocalResolvedLabel('Resumed');
     
     try {
-      // Call API (same pattern as triage_choice)
-      await submitCancelledChoice(selectedProject, selectedFeature, jobId, 'resume');
-      
-      // ✅ Persist choice to metadata (prevents Virtuoso remount reset)
-      persistChoice('resume', 'Resumed');
-      
-      // Start job (runJob internally calls setRunning immediately)
+      // ✅ FIX: Start job FIRST, then persist choice only on success
+      // Previously, submitCancelledChoice was called before runJob,
+      // so if runJob failed, the choice was already persisted as "Resumed"
+      // leaving the UI in an inconsistent state (shows "Resumed" but job not running)
       await runJob(selectedAgent, selectedJobType);
+      
+      // ✅ Only persist after job starts successfully
+      await submitCancelledChoice(selectedProject, selectedFeature, jobId, 'resume');
+      persistChoice('resume', 'Resumed');
     } catch (error) {
       console.error('[ChoiceCard:Cancelled] ❌ Failed:', error);
       setLocalSelectedChoice(null);

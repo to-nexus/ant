@@ -3,6 +3,8 @@
  * 
  * Provides wrapper functions that automatically track token usage
  * and accumulate to state, eliminating code duplication across nodes.
+ * 
+ * Architecture: docs/architecture/13-token-usage-tracking.md
  */
 
 import { LLMClient, LLMInvokeResult, CacheableContent } from '../../../../core/ports/llm';
@@ -29,10 +31,17 @@ function initTokenUsage(): TokenUsage {
   return {
     inputTokens: 0,
     outputTokens: 0,
-    totalTokens: 0,
+    totalTokens: 0, // deprecated but kept for compat
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
   };
+}
+
+/**
+ * Helper: compute non-cache total from raw fields
+ */
+function computeTotal(usage: TokenUsage): number {
+  return (usage.inputTokens || 0) + (usage.outputTokens || 0);
 }
 
 /**
@@ -55,12 +64,11 @@ export function accumulateTokenUsage(
       state._currentTaskTokenUsage = initTokenUsage();
     }
     
-    // ✅ inputTokens는 cache 제외한 "새로운" 토큰만 포함
     state._currentTaskTokenUsage.inputTokens += usage.inputTokens;
     state._currentTaskTokenUsage.outputTokens += usage.outputTokens;
-    state._currentTaskTokenUsage.totalTokens += usage.totalTokens;
+    // Keep totalTokens in sync (deprecated field)
+    state._currentTaskTokenUsage.totalTokens = computeTotal(state._currentTaskTokenUsage);
     
-    // ✅ 캐시 토큰은 별도 누적
     if (usage.cacheReadTokens) {
       state._currentTaskTokenUsage.cacheReadTokens = 
         (state._currentTaskTokenUsage.cacheReadTokens || 0) + usage.cacheReadTokens;
@@ -79,7 +87,8 @@ export function accumulateTokenUsage(
     
     state.tokenUsage.inputTokens += usage.inputTokens;
     state.tokenUsage.outputTokens += usage.outputTokens;
-    state.tokenUsage.totalTokens += usage.totalTokens;
+    // Keep totalTokens in sync (deprecated field)
+    state.tokenUsage.totalTokens = computeTotal(state.tokenUsage);
     
     if (usage.cacheReadTokens) {
       state.tokenUsage.cacheReadTokens = 
@@ -165,10 +174,12 @@ export function getJobTokenUsage(state: TokenTrackingState): TokenUsage {
  */
 export function extractTokenUsageFromStreamEvent(event: any): TokenUsage | undefined {
   if (event.type === 'done' && event.usage) {
+    const input = event.usage.inputTokens || 0;
+    const output = event.usage.outputTokens || 0;
     return {
-      inputTokens: event.usage.inputTokens || 0,
-      outputTokens: event.usage.outputTokens || 0,
-      totalTokens: (event.usage.inputTokens || 0) + (event.usage.outputTokens || 0),
+      inputTokens: input,
+      outputTokens: output,
+      totalTokens: input + output,
       cacheReadTokens: event.usage.cacheReadTokens,
       cacheCreationTokens: event.usage.cacheCreationTokens,
     };
@@ -179,17 +190,6 @@ export function extractTokenUsageFromStreamEvent(event: any): TokenUsage | undef
 /**
  * Stream wrapper that automatically tracks tokens
  * Call this after stream completes with the accumulated token usage
- * 
- * Example:
- * ```
- * let capturedUsage: TokenUsage | undefined;
- * for await (const event of llm.stream(...)) {
- *   capturedUsage = extractTokenUsageFromStreamEvent(event) || capturedUsage;
- * }
- * if (capturedUsage) {
- *   finalizeStreamTokenUsage(state, capturedUsage);
- * }
- * ```
  */
 export function finalizeStreamTokenUsage(
   state: TokenTrackingState,
@@ -201,8 +201,8 @@ export function finalizeStreamTokenUsage(
 ): void {
   accumulateTokenUsage(state, usage, options);
   
-  // Log token usage
-  console.log(`   Tokens: ${usage.totalTokens} total (${usage.inputTokens} in, ${usage.outputTokens} out)`);
+  const total = computeTotal(usage);
+  console.log(`   Tokens: ${total} total (${usage.inputTokens} in, ${usage.outputTokens} out)`);
   if (usage.cacheReadTokens) {
     console.log(`   Cache read: ${usage.cacheReadTokens} tokens`);
   }
@@ -225,7 +225,7 @@ export function updateKanbanTokenUsage(
   const tokenUsage = getTaskTokenUsage(state);
   
   // Only update if there's actual token usage
-  if (tokenUsage.totalTokens === 0) {
+  if (computeTotal(tokenUsage) === 0) {
     return;
   }
   
@@ -234,7 +234,7 @@ export function updateKanbanTokenUsage(
   const queue = taskQueue ? taskQueue.getRemaining() : [];
   const completedTasks = (state as any).completedTasksDetails || [];
   
-  console.log(`[Token Usage] 📊 Updating Kanban with real-time tokens: ${tokenUsage.totalTokens} total`);
+  console.log(`[Token Usage] 📊 Updating Kanban with real-time tokens: ${computeTotal(tokenUsage)} total`);
   
   state.deps.kanbanUpdate.updateTaskQueue(
     state._httpJobId,
@@ -243,7 +243,6 @@ export function updateKanbanTokenUsage(
     completedTasks,
     (state as any).recursionCount,
     (state as any).recursionLimit,
-    tokenUsage  // ✅ Real-time token usage
+    tokenUsage
   );
 }
-

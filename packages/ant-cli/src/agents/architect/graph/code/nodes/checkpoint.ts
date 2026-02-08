@@ -103,6 +103,11 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       (sessionState as any).tokenUsage = (state as any).tokenUsage;
     }
     
+    // ✅ Include estimating phase token usage snapshot
+    if ((state as any)._estimatingTokenUsage) {
+      (sessionState as any).estimatingTokenUsage = (state as any)._estimatingTokenUsage;
+    }
+    
     // ✅ Include interruption details if present
     if ((state as any).interruption) {
       (sessionState as any).interruption = (state as any).interruption;

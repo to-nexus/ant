@@ -78,11 +78,20 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     const fileSystem = state.deps?.fileSystem;
     if (gitPort && fileSystem) {
       try {
-        const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem);
-        state.design = designResult?.content || state.design;
-
+        // Load raw design documents from disk (no filtering — detectEnvironment handles that)
         const env = state.detectionReport?.environment || 'unknown';
         state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, env);
+
+        // Load single design doc as legacy fallback for state.design
+        // detectEnvironment will overwrite this with the properly filtered/combined version
+        const preferredEnv = env === 'frontend' ? 'frontend' as const
+          : env === 'backend' ? 'backend' as const
+          : undefined;
+        const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem, preferredEnv);
+        if (designResult?.content) {
+          state.design = designResult.content;
+          state.designDocPath = designResult.filePath;
+        }
 
         const source = await ArtifactService.getSource(state.context, gitPort, fileSystem);
         if (source?.prd) state.prd = source.prd;
