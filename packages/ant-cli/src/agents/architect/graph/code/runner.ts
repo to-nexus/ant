@@ -84,6 +84,16 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.projectCodeContext = (session.state as any).projectCodeContext;
         }
         
+        // ✅ Restore planText for task-level resume (skip plan regeneration)
+        if (session.state.planText) {
+          initial.planText = session.state.planText;
+        }
+        
+        // ✅ Restore conversationHistory for mid-task resume (codeGen continues from interruption point)
+        if (session.state.conversationHistory && session.state.conversationHistory.length > 0) {
+          initial.conversationHistory = session.state.conversationHistory;
+        }
+        
         // CRITICAL: workspaceConfig is already set in initial state (from orchestrator)
         
         // Restore directive/design/prd from session

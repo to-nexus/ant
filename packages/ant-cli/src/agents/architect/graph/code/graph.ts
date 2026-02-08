@@ -272,6 +272,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       retries: 0,
       violations: [],
       conversationHistory: [],  // ✅ Clear for next task
+      planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
       projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit

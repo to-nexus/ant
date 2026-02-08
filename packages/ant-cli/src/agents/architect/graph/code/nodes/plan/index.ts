@@ -117,6 +117,43 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 0.5: Check if planText generation can be skipped (task-level resume)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Skip conditions:
+  //   1. Not an enforce retry (retry always needs fresh plan with violation context)
+  //   2. Task was previously interrupted (not a fresh task from queue)
+  //   3. Valid planText already exists from the previous session
+  // When skipped: preserves planText + conversationHistory → codeGen continues from interruption point
+  const canSkipPlan = (
+    !isRetry &&
+    nextTask.interrupted === true &&
+    state.planText && state.planText.length > 50
+  );
+  
+  if (canSkipPlan) {
+    console.log(`\n⚡ [Plan] Resuming interrupted task "${nextTask.name}" with existing planText (${state.planText!.length} chars)`);
+    console.log(`   Skipping: keywords, RAG, planText generation`);
+    console.log(`   ConversationHistory: ${state.conversationHistory?.length || 0} messages preserved`);
+    
+    // Exit node for workflow tracking
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+    }
+    
+    return {
+      ...state,
+      currentTask: nextTask,
+      planText: state.planText,    // Preserve existing plan
+      retries: 0,
+      completedTasksDetails: state.completedTasksDetails || [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      workspaceConfig: state.workspaceConfig,
+      // conversationHistory is preserved in state (not cleared)
+    };
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 1: Generate task-specific keywords (LLM 1st request)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let taskKeywords;

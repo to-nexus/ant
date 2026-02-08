@@ -56,6 +56,9 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       previousFileCount: state.previousFileCount,
       resolvedCategories: state.resolvedCategories || [],
       planText: state.planText,  // ✅ Save plan for reuse on resume
+      // ✅ Save conversationHistory for mid-task resume (codeGen can continue from interruption point)
+      // Content includes assistant responses + tool_results from codeGen↔tool loop
+      conversationHistory: state.conversationHistory || [],
       recursionCount: state.recursionCount,  // ✅ Save current recursion count
       recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
       directives: directivesArray,  // ✅ Save directives array (newest first)
