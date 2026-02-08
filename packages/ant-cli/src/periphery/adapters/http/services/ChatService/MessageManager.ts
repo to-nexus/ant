@@ -456,20 +456,6 @@ export class MessageManager {
     // ✅ Use async version to ensure file/Redis is fully loaded
     const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
     
-    // ✅ Safety net: Skip if a cancelled message for this jobId already exists
-    // This is a final-layer guard against duplicate cancelled messages
-    // (primary dedup is via Redis SETNX in BullMQJobQueue and RouteConfigurator)
-    const alreadyHasCancelled = session.messages.some(
-      (m: ChatMessage) => m.jobId === jobId && m.contents?.some((c: any) => c.type === 'cancelled')
-    );
-    if (alreadyHasCancelled) {
-      const existingMsg = session.messages.find(
-        (m: ChatMessage) => m.jobId === jobId && m.contents?.some((c: any) => c.type === 'cancelled')
-      );
-      logger.warn(`[MessageManager] Cancelled message already exists for job: ${jobId}, skipping duplicate`, { component: 'MessageManager' });
-      return existingMsg?.id || 'existing';
-    }
-    
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const cancelledMsg: ChatMessage = {
       id: messageId,
@@ -499,5 +485,38 @@ export class MessageManager {
     }, session.userContext);
     
     return messageId;
+  }
+
+  /**
+   * Mark all unresolved cancelled messages for a jobId as resolved.
+   * Called on resume/continue: the user chose to continue, so old choice cards are no longer actionable.
+   * Returns the number of messages resolved.
+   */
+  async resolveCancelledMessages(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    userContext?: UserContext
+  ): Promise<number> {
+    const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
+    
+    let resolvedCount = 0;
+    for (const msg of session.messages) {
+      if (msg.jobId !== jobId || !msg.contents) continue;
+      for (const content of msg.contents) {
+        if (content.type === 'cancelled' && !content.metadata?.resolved) {
+          content.metadata = { ...content.metadata, resolved: true };
+          resolvedCount++;
+        }
+      }
+    }
+    
+    if (resolvedCount > 0) {
+      this.persistence.saveSession(projectId, featureName, session.messages, userContext);
+      await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
+      logger.info(`[MessageManager] Resolved ${resolvedCount} cancelled message(s) for job: ${jobId}`, { component: 'MessageManager' });
+    }
+    
+    return resolvedCount;
   }
 }
