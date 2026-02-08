@@ -14,10 +14,7 @@ import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types
  * Inherits TaskArtifacts which provides:
  * - prd: PRD document
  * - directive: User instruction
- * - design: Previous design document
- * - code: Current codebase (for refactor mode)
- * - codeHead: Git HEAD version (not used in design)
- * - profile: Codebase profile (language/framework)
+ * - design: Previous design document (legacy single string — kept for docGen backward compat)
  */
 export interface DesignGraphState extends TaskArtifacts {
   // Context
@@ -38,14 +35,10 @@ export interface DesignGraphState extends TaskArtifacts {
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
-    // ✅ NEW: Reference project support (same as Code Job)
-    retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ For reference loading
-    vectorDB?: MemoryPort;  // ✅ Explicit vectorDB port (same as memory)
+    
   };
   
-  // ✅ NEW: Reference Requests (for system-design with reference repos)
-  // Registered in decompose, used by search_reference_code tool
-  referenceRequests?: Array<{project: string; branch?: string}>;
+  
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 DetectionReport (통합 환경 감지 결과)
@@ -109,8 +102,7 @@ export interface DesignGraphState extends TaskArtifacts {
   tokenUsage?: TokenUsage;
   jobTokenUsage?: TokenUsage;
   
-  // Codebase context (for refactor mode)
-  codeHead?: string;
+  
   
   // Results (populated by learn node)
   lessons?: string;
@@ -118,9 +110,13 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ For tracking and resume
   _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
   
-  // ✅ UI specification existence flag
-  // When true, system-design should defer UI implementation details to uiDoc
-  hasUiDoc?: boolean;
+  
+  
+  // ✅ Structured existing design documents (loaded at resolve, used by decompose)
+  // Key = filename (e.g. "api-contract.md", "ui-tokens.json"), Value = content
+  // Unified map eliminates fragmented feDesign/feDesigns/beDesign/beDesigns distinction
+  // NOT stored in session — always reloaded from disk (including on resume)
+  existingDesignDocs?: Record<string, string>;
   
   // ✅ Error handling for invalid requests (e.g., modify without documents)
   designError?: {

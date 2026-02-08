@@ -37,4 +37,8 @@ export interface WorkflowRealtimeState {
   // Kanban info (piggybacked on workflow SSE for atomic updates)
   kanbanCurrentTask?: TaskInfo | null;
   kanbanUpdate?: boolean;
+
+  // Recursion tracking (piggybacked on workflow SSE for real-time display)
+  recursionCount?: number;
+  recursionLimit?: number;
 }

@@ -1,26 +1,21 @@
 import { ArtifactService } from "../../../../../infrastructure/workspace/ArtifactService";
 import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
 import { DesignGraphState } from "../state";
-import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
 import * as path from "path";
 
 /**
  * Design Resolve Node
  * 
- * Strategy: Load based on design mode (unified with CodeMode)
- * - generate: PRD only (no codebase)
- * - refactor: Current codebase + previous design (Phase 1: CodebaseRetriever)
- * - explain: Previous design only (no generation)
+ * Loads artifacts for design generation:
+ * - PRD document
+ * - Directive (chat override or file)
+ * - Previous design document
  * 
- * Always load directive if available
- * 
- * ✅ Hexagonal Architecture Compliance:
- * - Uses GitPort for file operations
+ * Design job does NOT load codebase — code analysis is code job's responsibility.
  */
 export async function resolve(state: DesignGraphState): Promise<DesignGraphState> {
   const jobMode = state.detectionReport?.jobMode;
-  const context = state.context; // Use directly from state
-  const retriever = new CodebaseRetriever();
+  const context = state.context;
   
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -148,82 +143,9 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
 
-  // 4. Check if UI specification exists (for conditional prompt guidance)
-  let hasUiDoc = false;
-  try {
-    const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
-    hasUiDoc = !!(parsedUiDocs && (parsedUiDocs.specSections.size > 0 || parsedUiDocs.tokens || parsedUiDocs.assets));
-    if (hasUiDoc) {
-      console.log('✅ UI specification detected - system-design will defer UI details to uiDoc');
-    }
-  } catch (error) {
-    // uiDoc not found - that's fine, proceed without it
-    hasUiDoc = false;
-  }
-
-  // 5. Load codebase (conditional on mode - Phase 1: CodebaseRetriever)
-  let code: string | undefined;
-  let codeHead: string | undefined;
-  let profile = undefined;
-  
-  const needsCodebase = jobMode === 'refactor';
-  
-  if (needsCodebase) {
-    console.log(`🔍 Retrieving codebase for ${jobMode} mode...`);
-    
-    // ✅ Get ChatAPI client for grepping tracking
-    const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
-    const chatAPI = getChatAPIClient();
-    
-    // ✅ Send retrieving status
-    const query = (directive || design || prd || "").slice(0, 100);  // First 100 chars as query
-    const mergeIndex = await chatAPI.showChatStatus('retrieving', { query });  // Max 25 files
-    
-    const codeContext = await retriever.retrieve(
-      directive || design || prd || "",
-      context.workingDir,
-      {
-        git: state.deps?.git,
-        vectorDB: state.deps?.memory  // ✅ IMPROVEMENT: Enable Vector DB for design too
-      },
-      {
-        maxTokens: 80000,  // ~60KB (smaller for design)
-        maxFiles: 25,
-        exclude: ['test', 'tests', '__tests__', '*.test.*', '*.spec.*']
-      }
-    );
-    
-    console.log(`✅ Strategy: ${codeContext.strategy}, Files: ${codeContext.stats.filesLoaded}, Tokens: ~${codeContext.stats.estimatedTokens}`);
-    
-    // ✅ Send retrieved result
-    await chatAPI.showChatStatus('retrieved', {
-      filesCount: codeContext.stats.filesLoaded,
-      filesList: codeContext.files?.map(f => typeof f === 'string' ? f : f.path) || [],
-      _mergeIndex: mergeIndex
-    });
-    
-    code = codeContext.code;
-    codeHead = codeContext.codeHead;
-    
-    // Analyze codebase
-    const analyzer = state.deps?.analyzer;
-    if (code && analyzer) {
-      try {
-        profile = await analyzer.analyze(code, context.workingDir);
-        console.log(`📊 Detected: ${profile.language}${profile.framework ? ` + ${profile.framework}` : ''}`);
-      } catch (error) {
-        console.warn('⚠️  Failed to analyze codebase:', error);
-      }
-    }
-  }
-
   // Validation based on mode
   if (jobMode === 'generate' && !prd) {
     throw new Error("Generate mode requires PRD document");
-  }
-  
-  if (jobMode === 'refactor' && !code) {
-    throw new Error("Refactor mode requires existing codebase");
   }
 
   return {
@@ -231,12 +153,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     prd,
     directive,
     design,
-    code,
-    codeHead,
-    profile,
-    hasUiDoc,  // ✅ UI specification existence flag
-    overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
-    chatSource: state.chatSource,  // ✅ Preserve chat source flag
-    _httpJobId: state._httpJobId  // ✅ Preserve jobId
+    overrideDirective: state.overrideDirective,
+    chatSource: state.chatSource,
+    _httpJobId: state._httpJobId
   };
 }

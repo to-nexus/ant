@@ -239,10 +239,6 @@ export async function architectAgent(
         }
       });
 
-      // ✅ Create CodebaseRetriever for reference project loading (same as Code Job)
-      const { CodebaseRetriever } = await import('../../core/codebase/CodebaseRetriever');
-      const designRetriever = new CodebaseRetriever();
-      
       const dInitial: DesignGraphState = {
         context,
         directive: input,
@@ -260,8 +256,6 @@ export async function architectAgent(
           kanbanUpdate: deps?.kanbanUpdate,      // ✅ NEW: For real-time Kanban updates
           fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ NEW: For real-time file tree updates
           workflowUpdate: deps?.workflowUpdate,  // ✅ NEW: For real-time workflow tracking
-          retriever: designRetriever,  // ✅ NEW: CodebaseRetriever for reference project loading
-          vectorDB: deps?.memory  // ✅ NEW: Same as memory (for reference queries)
         },
         planText: "",
         _httpJobId: jobId || process.env.ANT_JOB_ID,  // ✅ For tracking and resume

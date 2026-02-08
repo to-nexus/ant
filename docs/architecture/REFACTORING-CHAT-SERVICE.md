@@ -1,6 +1,6 @@
-# Chat Service 아키텍처
+# Chat Service 리팩토링 문서
 
-> **최종 업데이트: 2026-02-08** (ChoiceCard continue 흐름 추가)
+> **상태: ✅ 완료** (2026-02-05 리팩토링, 2026-02-06 Redis 채널 정리)
 
 ## 1. 아키텍처 개요
 
@@ -199,77 +199,7 @@ packages/ant-cli/src/
 
 ---
 
-## 6. ChoiceCard와 작업 중단/재개 흐름
-
-### 6.1 ChoiceCard 개요
-
-작업이 중단되면 Chat UI에 `ChoiceCard` (variant: `cancelled`)가 렌더링된다.
-사용자는 세 가지 방법으로 중단 상태를 해소할 수 있다:
-
-| 방법 | UI 요소 | API 호출 | ChoiceCard 결과 |
-|------|---------|----------|-----------------|
-| **Resume 버튼** | ChoiceCard 내 Resume 버튼 | `POST /chat/cancelled-choice` → `POST /jobs/:id/resume` | `Resumed` 뱃지 |
-| **Dismiss 버튼** | ChoiceCard 내 Dismiss 버튼 | `POST /chat/cancelled-choice` | `Dismissed` 뱃지 |
-| **Chat 입력 (directive)** | ChatInput 텍스트 입력 | `POST /chat/cancelled-choice` → `POST /jobs/:id/continue` | `Continued` 뱃지 |
-
-### 6.2 데이터 흐름
-
-```
-[작업 중단]
-    │
-    ├── JobCleanupManager.cleanupJobState()
-    │   └── session.state.interruption 저장
-    │
-    ├── KanbanBroadcaster → SSE (kanbanData.interruption)
-    │   └── ant-ui: KanbanPausedPrompt 표시
-    │
-    └── MessageManager → SSE (cancelled_message)
-        └── ant-ui: ChoiceCard 렌더링
-
-[작업 재개: Resume 버튼]
-    │
-    ├── ChoiceCard.handleResume()
-    │   ├── submitCancelledChoice(jobId, 'resume')
-    │   │   └── chat.routes: metadata { choiceSelected: 'resume', resolvedLabel: 'Resumed' }
-    │   ├── persistChoice() → 로컬 store 즉시 업데이트
-    │   └── runJob() → 새 job 실행 (resume route)
-    │
-    └── ChoiceCard: ResolvedBadge('Resumed', icon: Play)
-
-[작업 재개: Chat 입력 (directive)]
-    │
-    ├── ChatInput → hasInterruption 감지
-    │   ├── submitCancelledChoice(jobId, 'continue')
-    │   │   └── chat.routes: metadata { choiceSelected: 'continue', resolvedLabel: 'Continued' }
-    │   ├── setDismissedInterruptTimestamp() → Kanban prompt 숨김
-    │   └── continueJob() → 기존 job 재실행 (continue route → revise)
-    │
-    └── ChoiceCard: ResolvedBadge('Continued', icon: MessageSquare)
-```
-
-### 6.3 ChoiceCard 상태 결정
-
-```typescript
-// 버튼 표시 조건
-canResume = !isRunning && jobId && selectedProject && selectedFeature && !!reason
-
-// 해결 상태 표시 조건
-isSelected = !!content.metadata?.choiceSelected
-resolvedLabel = content.metadata?.resolvedLabel  // 'Resumed' | 'Dismissed' | 'Continued'
-```
-
-### 6.4 Kanban Interruption vs ChoiceCard
-
-| 구분 | KanbanPausedPrompt | ChoiceCard (cancelled) |
-|------|-------------------|----------------------|
-| **데이터 소스** | `kanbanData.interruption` (SSE) | 채팅 메시지 metadata |
-| **숨김 조건** | `dismissedInterruptTimestamp` 일치 | `choiceSelected` 존재 |
-| **위치** | 칸반 보드 상단 | 채팅 메시지 리스트 내 |
-| **영속성** | 세션 중 휘발 (store) | chat.json에 저장 |
-
----
-
-## 7. 제거된 레거시
+## 6. 제거된 레거시
 
 | 항목 | 파일 | 설명 |
 |------|------|------|

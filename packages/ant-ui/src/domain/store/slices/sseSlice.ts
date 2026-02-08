@@ -12,6 +12,7 @@ export interface SSEState {
 
 export interface SSEActions {
   updateKanban: (data: KanbanData) => void;
+  updateKanbanRecursion: (recursionCount: number, recursionLimit?: number) => void;
   addChatMessage: (message: ChatMessage) => void;
   updateChatMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
   clearChatMessages: () => void;
@@ -30,6 +31,17 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
   connectionStatus: 'disconnected',
 
   // Actions
+  // ✅ Lightweight recursion count update from workflow SSE (no complex Kanban logic)
+  updateKanbanRecursion: (recursionCount: number, recursionLimit?: number) => {
+    set((state: any) => ({
+      kanban: {
+        ...state.kanban,
+        recursionCount,
+        ...(recursionLimit !== undefined && { recursionLimit }),
+      }
+    }));
+  },
+
   updateKanban: (data) => {
     const state = get();
     

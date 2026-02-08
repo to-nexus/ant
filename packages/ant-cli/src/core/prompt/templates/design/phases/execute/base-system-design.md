@@ -311,32 +311,6 @@ When PRD specifies external services or APIs, you MUST:
 3. Do NOT use generic names (e.g., "NewsAPI") when PRD specifies exact services (e.g., "NewsData.io", "TheNewsAPI")
 4. Include purpose and PRD section reference for each service
 
-{{#if hasUiDoc}}
-════════════════════════════════════════════════════════════════════════════════
-## 🎨 UI SPECIFICATION EXISTS (DEFER UI DETAILS)
-════════════════════════════════════════════════════════════════════════════════
-
-**A separate UI specification document (uiDoc) exists for this project.**
-
-**Your role for Presentation/UI layer:**
-- ✅ Define **architectural boundaries** (Presentation layer responsibilities, state ownership)
-- ✅ Define **interaction patterns** at abstract level (command flow, state observation)
-- ✅ Define **screen/view responsibilities** (what each boundary does, not how it looks)
-- ❌ DO NOT specify: component details, hover states, card layouts, image positions
-- ❌ DO NOT specify: visual specifications (colors, spacing, typography, animations)
-- ❌ DO NOT duplicate: content that belongs in UI specification
-
-**When referring to UI implementation, write:**
-> "Presentation layer renders [boundary name]; see UI specification for visual details and interaction states."
-
-**Example transformation:**
-- ❌ "Ecosystem Cards: Default displays title, hover reveals description with 16px gap"
-- ✅ "Ecosystem boundary: Card-based display with hover interaction; see UI specification for details"
-
-- ❌ "Token section: 7 cards in 4+3 grid layout with left-aligned bottom row"
-- ✅ "Token boundary: Grid display of token roles; see UI specification for layout"
-{{/if}}
-
 {{#if directive}}
 ════════════════════════════════════════════════════════════════════════════════
 ## 📝 USER DIRECTIVE (CONTEXT ONLY - NOT SOURCE OF TRUTH)

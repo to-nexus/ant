@@ -367,5 +367,7 @@ export async function detectEnvironment(
     designDocs: filteredDesignDocs || state.designDocs,
     design: filteredDesign || state.design,
     tokenUsage: (state as any).tokenUsage,
+    recursionCount: state.recursionCount,   // ✅ FIX: Propagate to LangGraph channel (Partial return requires explicit inclusion)
+    recursionLimit: state.recursionLimit,   // ✅ FIX: Propagate to LangGraph channel
   };
 }

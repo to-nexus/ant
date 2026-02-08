@@ -46,18 +46,12 @@ export async function docGen(
     ? await buildUiDesignMessages(state)
     : await buildMessages(state);
   
-  // ✅ Tool activation: Select appropriate tool set based on work type
-  // - Explain mode: NO tools (just explanation, like Code Job)
-  // - Normal mode: Tools enabled for file writing
-  // - System Design with references: Include search_reference_code tool
-  const hasReferences = state.referenceRequests && state.referenceRequests.length > 0;
+  // Tool activation: Select appropriate tool set based on work type
   const tools = isExplainMode
     ? undefined
     : isUiDesign
       ? getToolsByNames(TOOL_SETS.uiDesign)
-      : hasReferences
-        ? getToolsByNames(TOOL_SETS.systemDesign)  // ✅ Includes search_reference_code
-        : getToolsByNames(TOOL_SETS.design);
+      : getToolsByNames(TOOL_SETS.design);
   
   // Tool configuration complete
   

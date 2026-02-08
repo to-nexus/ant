@@ -64,13 +64,6 @@ Previous design:
 ### 🆕 New Design (no previous design)
 {{/if}}
 
-{{#if hasExistingCode}}
-### 📂 Existing Codebase Detected
-
-This is a refactor task. Consider the current implementation:
-{{codePreview}}
-{{/if}}
-
 ---
 
 ## 📊 PROJECT SCOPE ANALYSIS

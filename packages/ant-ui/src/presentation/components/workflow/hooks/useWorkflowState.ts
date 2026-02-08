@@ -307,6 +307,16 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         return;
       }
       
+      // ✅ Merge recursionCount from workflow SSE into kanban state for real-time display
+      // Workflow SSE fires on every node entry (codeGen, tool, etc.) while kanban SSE
+      // only updates at task boundaries (plan, checkTaskStatus). This bridges the gap.
+      if (data.recursionCount !== undefined) {
+        useStore.getState().updateKanbanRecursion(
+          data.recursionCount,
+          data.recursionLimit
+        );
+      }
+
       // ✅ CRITICAL: Add to queue IMMEDIATELY in SSE handler
       // This prevents race condition where rapid SSE updates skip nodes
       if (data.currentNode) {

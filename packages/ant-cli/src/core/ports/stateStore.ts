@@ -57,13 +57,12 @@ import type { WorkflowRealtimeState as SharedWorkflowRealtimeState } from '@ant/
 
 /**
  * Backend-extended WorkflowRealtimeState (stored in Redis).
- * Extends the shared type with BE-only fields (llmInfo, recursionCount/Limit).
+ * Extends the shared type with BE-only fields (llmInfo).
  * llmInfo is stripped before sending to FE via SSE.
+ * recursionCount/recursionLimit are now in shared type (sent to FE for real-time display).
  */
 export interface WorkflowRealtimeState extends SharedWorkflowRealtimeState {
   llmInfo: LLMInfo | null;
-  recursionCount?: number;
-  recursionLimit?: number;
 }
 
 // ============================================

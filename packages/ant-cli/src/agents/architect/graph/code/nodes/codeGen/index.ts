@@ -399,6 +399,8 @@ export async function codeGen(
       },
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       projectCodeContext: updatedProjectCodeContext,  // ✅ Propagate to next codeGen turn
+      recursionCount: state.recursionCount,   // ✅ FIX: Propagate to LangGraph channel (Partial return requires explicit inclusion)
+      recursionLimit: state.recursionLimit,   // ✅ FIX: Propagate to LangGraph channel
     };
   } catch (error) {
     console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');
