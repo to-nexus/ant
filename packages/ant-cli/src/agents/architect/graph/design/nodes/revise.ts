@@ -195,7 +195,6 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
                 overrideDirective: updatedState.overrideDirective,
                 chatSource: updatedState.chatSource,
                 detectionReport: updatedState.detectionReport,
-                referenceRequests: updatedState.referenceRequests || [],
               }
             }
           );

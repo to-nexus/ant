@@ -254,7 +254,6 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
         overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
         chatSource: state.chatSource,  // ✅ Save chat source flag
         detectionReport: state.detectionReport,  // ✅ Save for resume routing
-        referenceRequests: state.referenceRequests || [],  // ✅ Save reference projects
       }
     }
   );

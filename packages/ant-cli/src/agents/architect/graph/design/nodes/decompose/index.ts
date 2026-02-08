@@ -690,25 +690,9 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       }
     }
     
-    // ✅ Extract reference requests (if any)
-    const referenceRequests = response.references?.map(ref => ({
-      project: ref.project,
-      branch: ref.branch
-    })) || [];
-    
     // ✅ Validate targetFiles consistency
     console.log(`\n📊 Design Strategy: ${response.documentType}`);
     console.log(`📄 Target Files: ${response.targetFiles.join(', ')}`);
-    
-    // ✅ Log reference projects if any
-    if (referenceRequests.length > 0) {
-      console.log(`\n📚 Reference projects requested:`);
-      referenceRequests.forEach(ref => {
-        console.log(`   - ${ref.project}${ref.branch ? ` (${ref.branch})` : ''}`);
-      });
-      const reasons = response.references?.filter(r => r.reason).map(r => `     Reason: ${r.reason}`);
-      reasons?.forEach(r => console.log(r));
-    }
     
     // Create TaskQueue and populate
     const taskQueue = new TaskQueue();
@@ -798,7 +782,6 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       _httpJobId: state._httpJobId,
       jobId: newJobId,
       jobTiming: finalJobTiming,
-      referenceRequests  // ✅ NEW: Reference projects for system-design
     } as any;
     
     // ✅ CRITICAL: Save checkpoint immediately after decompose (like code job)
@@ -821,7 +804,6 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
               jobId: newJobId,
               jobTiming: finalJobTiming,
               tokenUsage: (state as any).tokenUsage,  // ✅ Save job-level token usage from decompose
-              referenceRequests  // ✅ NEW: Save reference projects for resume
             }
           }
         );

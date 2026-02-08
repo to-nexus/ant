@@ -70,7 +70,10 @@ export async function tool(
   const toolCalls = state.llmResponse?.toolCalls || [];
   
   if (toolCalls.length === 0) {
-    return {};
+    return {
+      recursionCount: state.recursionCount,   // ✅ FIX: Propagate even on empty tool calls
+      recursionLimit: state.recursionLimit,
+    };
   }
   
   // Only process FIRST tool call (Standard Tool Calling pattern)
@@ -273,6 +276,8 @@ export async function tool(
       },
     ],
     planText: state.planText,  // ✅ FIX: Explicitly preserve planText
+    recursionCount: state.recursionCount,   // ✅ FIX: Propagate to LangGraph channel (Partial return requires explicit inclusion)
+    recursionLimit: state.recursionLimit,   // ✅ FIX: Propagate to LangGraph channel
   };
 }
 

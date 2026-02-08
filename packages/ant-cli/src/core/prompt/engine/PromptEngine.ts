@@ -201,6 +201,7 @@ export class PromptEngine {
         description: string;
       };
       designDomain?: 'game' | 'service';
+      hasUiDoc?: boolean;  // ✅ Derived from existingDesignDocs (ui-* files present)
     },
     mode?: JobMode,
     taskType?: string

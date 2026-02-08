@@ -58,17 +58,16 @@ ant-cli (단일 코드베이스)
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
 │   │                         Ingress Rules                                │   │
 │   │                                                                      │   │
+│   │   [ant.crosstoken.io]                                                │   │
 │   │   /realtime/*  ──────────────────────────►  ant-realtime            │   │
-│   │                                              (Round-robin)           │   │
+│   │   /api/*       ──────────────────────────►  ant-api                 │   │
+│   │   /ide/*       ──────────────────────────►  ant-api                 │   │
+│   │   /*           ──────────────────────────►  ant-api (Default)       │   │
 │   │                                                                      │   │
-│   │   /preview/*   ──────────────────────────►  ant-preview             │   │
-│   │                                              (Round-robin)           │   │
+│   │   [ant-preview.crosstoken.io]  ← 별도 호스트                         │   │
+│   │   /*           ──────────────────────────►  ant-preview             │   │
 │   │                                                                      │   │
-│   │   /*           ──────────────────────────►  ant-api                 │   │
-│   │                                              (Round-robin, Default)  │   │
-│   │                                                                      │   │
-│   │   ※ /ide/* 요청은 /* 규칙에 의해 ant-api로 라우팅                    │   │
-│   │   ※ ALB는 WebSocket 자동 지원 (IDE 터미널 등)                        │   │
+│   │   ※ ALB는 호스트 기반 + URI 기반 라우팅, WebSocket 자동 지원          │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                     │                    │                    │
@@ -134,48 +133,43 @@ ant-cli (단일 코드베이스)
 
 ### 2.2 Ingress 라우팅 규칙
 
+**ant.crosstoken.io (메인 호스트):**
+
 | Priority | Path | Target | LB Policy | 비고 |
 |----------|------|--------|-----------|------|
 | 1 | `/realtime/*` | ant-realtime | Round-robin | Redis Pub/Sub 기반 |
-| 2 | `/preview/*` | ant-preview | Round-robin | Redis 상태 관리 기반 |
-| 3 | `/*` | ant-api | Round-robin | Default (REST, IDE, SSR) |
+| 2 | `/api/*` | ant-api | Round-robin | REST API |
+| 3 | `/ide/*` | ant-api | Round-robin | IDE Proxy |
+| 4 | `/*` | ant-api | Round-robin | Default (SSR) |
 
+**ant-preview.crosstoken.io (Preview 전용 호스트):**
+
+| Priority | Path | Target | LB Policy | 비고 |
+|----------|------|--------|-----------|------|
+| 1 | `/*` | ant-preview | Round-robin | Preview 전용 (호스트 기반 라우팅) |
+
+> **Why 별도 호스트?**
+> SSR 앱의 절대 경로 리소스 (`/_next/*`, `/logos/*`)가 ALB URI 라우팅을 우회하여 ant-api로 가는 문제를 해결.
+> 별도 호스트를 쓰면 모든 요청이 ant-preview로 라우팅됨. 상세: `02-preview-server.md` 섹션 3.
+>
 > **Why No Sticky Session?**
 > - **SSE (ant-realtime)**: Redis Pub/Sub로 모든 Pod가 이벤트 수신. 재연결 시 다른 Pod도 OK.
 > - **Preview (ant-preview)**: Redis에서 Dev Server Pod IP 조회 → 해당 Pod로 프록시. 0.0.0.0 binding.
 > - **IDE (ant-api)**: Redis에서 IDE Pod IP 조회 → K8s Pod로 프록시.
 
-**✅ Preview 리소스 경로 처리 (Path Rewrite)**
-
-Preview 페이지에서 로드하는 리소스 (`/logos/*`, `/icons/*`, `/_next/*` 등)는 원래 `/preview/` 경로가 아닙니다.
-ALB Controller는 URI 기반 라우팅만 지원하므로 (Referer, Header 기반 불가), **서버 사이드에서 경로를 변환**합니다:
-
-```
-1. Dev Server 렌더링: <img src="/logos/header.svg">
-                                ↓
-2. PreviewProxy Rewrite: <img src="/preview/org:user:proj:feat/logos/header.svg">
-                                ↓
-3. 브라우저 요청: GET /preview/org:user:proj:feat/logos/header.svg
-                                ↓
-4. Ingress: /preview/* → ant-preview ✅
-```
-
-> **Note**: `previewProxy.ts`에서 HTML, JS, CSS의 절대 경로를 `/preview/:serverKey/` prefix로 변환합니다.
-> SSR 앱의 경우 hydration mismatch 경고가 발생할 수 있으나 기능에는 영향 없습니다.
-
 **라우팅 동작:**
-- `/realtime/stream` → ant-realtime (SSE)
-- `/preview/org:user:proj:feat/*` → ant-preview (Preview + 리소스)
-- `/api/jobs/...` → ant-api (REST)
-- `/ide/org:user:proj/` → ant-api (IDE Proxy)
-- `/_next/...` → ant-api (SSR Assets)
+- `ant.crosstoken.io/realtime/stream` → ant-realtime (SSE)
+- `ant.crosstoken.io/api/jobs/...` → ant-api (REST)
+- `ant.crosstoken.io/ide/org:user:proj/` → ant-api (IDE Proxy)
+- `ant-preview.crosstoken.io/org:user:proj:feat/*` → ant-preview (Preview)
+- `ant-preview.crosstoken.io/_next/...` → ant-preview (SSR 리소스, Referer 기반)
 
 ### 2.3 WebSocket 지원
 
 | 경로 | 프로토콜 | 용도 | 지원 |
 |------|----------|------|------|
-| `/ide/:key/*` | WebSocket | IDE 터미널, 파일 변경 | ✅ ALB 자동 지원 |
-| `/preview/:key/*` | WebSocket | HMR (Hot Module Reload) | ✅ ALB 자동 지원 |
+| `ant.crosstoken.io/ide/:key/*` | WebSocket | IDE 터미널, 파일 변경 | ✅ ALB 자동 지원 |
+| `ant-preview.crosstoken.io/:key/*` | WebSocket | HMR (Hot Module Reload) | ✅ ALB 자동 지원 |
 
 > **Note**: AWS ALB는 WebSocket을 자동으로 지원합니다. 별도 설정 불필요.
 
@@ -596,72 +590,11 @@ DevOps가 관리하지 않으며, 인증된 사용자 세션에서 런타임으�
 | EFS | 100GB+ | ReadWriteMany |
 | ALB | - | WebSocket 자동 지원 |
 
-### 6.3 Ingress 설정 (ALB Ingress Controller)
+### 6.3 Ingress 설정
 
-> **Note**: ALB Controller는 URI 기반 라우팅만 지원합니다.
-> Preview 리소스의 절대 경로 문제는 **서버 사이드 Path Rewrite**로 해결합니다 (previewProxy.ts).
+라우팅 규칙은 섹션 2.2 참조. Preview는 별도 호스트(`ant-preview.crosstoken.io`)를 사용하여 SSR 리소스 라우팅 문제를 해결합니다. 상세: `02-preview-server.md` 섹션 3.
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: ant-ingress
-  annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-spec:
-  rules:
-  - http:
-      paths:
-      # SSE - Round-robin (Redis Pub/Sub 기반)
-      - path: /realtime
-        pathType: Prefix
-        backend:
-          service:
-            name: ant-realtime
-            port:
-              number: 8080
-      # Preview - Round-robin (모든 /preview/* 요청)
-      # 리소스 경로는 previewProxy에서 /preview/:key/ prefix가 추가됨
-      - path: /preview
-        pathType: Prefix
-        backend:
-          service:
-            name: ant-preview
-            port:
-              number: 8080
-      # API 명시적 라우팅
-      - path: /api
-        pathType: Prefix
-        backend:
-          service:
-            name: ant-api
-            port:
-              number: 8080
-      # IDE 명시적 라우팅
-      - path: /ide
-        pathType: Prefix
-        backend:
-          service:
-            name: ant-api
-            port:
-              number: 8080
-      # Default - ant-api (SSR, 기타)
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: ant-api
-            port:
-              number: 8080
----
-# Sticky Session 불필요!
-# 모든 서비스가 Redis 기반 상태 관리 사용:
-# - ant-realtime: Redis Pub/Sub로 모든 Pod가 이벤트 수신
-# - ant-preview: Redis에서 Dev Server Pod IP 조회 → 해당 Pod로 프록시
-# - ant-api: Redis에서 IDE Pod IP 조회 → K8s Pod로 프록시
-```
+Sticky Session 불필요 — 모든 서비스가 Redis 기반 상태 관리를 사용합니다.
 
 ---
 
@@ -817,9 +750,19 @@ spec:
 
 ### 10.1 Ingress 설정
 
+**ant.crosstoken.io:**
 - [ ] `/realtime/*` → ant-realtime (Round-robin)
-- [ ] `/preview/*` → ant-preview (Round-robin)
+- [ ] `/api/*` → ant-api (Round-robin)
+- [ ] `/ide/*` → ant-api (Round-robin)
 - [ ] `/*` → ant-api (Default, Round-robin)
+
+**ant-preview.crosstoken.io (별도 호스트):**
+- [ ] DNS 레코드: `ant-preview.crosstoken.io` → ALB
+- [ ] SSL 인증서: `*.crosstoken.io` 와일드카드 또는 별도 인증서
+- [ ] `/*` → ant-preview (Round-robin)
+- [ ] CORS 설정: ant-preview ↔ ant-api 간 cross-origin 허용
+
+**공통:**
 - [ ] ALB WebSocket 지원 확인
 - [ ] ~~Sticky Session~~ 불필요 (Redis 기반 상태 관리)
 

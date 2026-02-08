@@ -92,7 +92,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
               chatSource: state.chatSource,  // ✅ Save chat source flag
               detectionReport: state.detectionReport,  // ✅ Save for resume routing
-              referenceRequests: state.referenceRequests || [],  // ✅ Save reference projects
             }
           }
         );
@@ -158,13 +157,10 @@ export function buildDesignGraph() {
       // ✅ Error handling for invalid requests (e.g., modify without documents)
       designError: null as any,
       
-      // Artifacts (from TaskArtifacts)
+      // Artifacts
       prd: null as any,
       directive: null as any,
       design: null as any,
-      code: null as any,
-      codeHead: null as any,
-      profile: null as any,
       
       // Task Queue (like code graph)
       taskQueue: null as any,
@@ -204,15 +200,9 @@ export function buildDesignGraph() {
       currentAgent: null as any,
       currentJob: null as any,
       
-      // UI specification flag (for conditional prompt guidance)
-      hasUiDoc: null as any,
-      
       // UI document generation context
       uiReferences: null as any,
       uiAssetsList: null as any,
-      
-      // ✅ Reference Projects (for system-design with external repos)
-      referenceRequests: null as any,
       
       // ✅ Resume flag (set by runner before graph invoke)
       isResume: null as any,

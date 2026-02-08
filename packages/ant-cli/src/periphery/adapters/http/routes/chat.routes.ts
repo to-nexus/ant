@@ -244,12 +244,12 @@ export function createChatRoutes(deps: {
 
   /**
    * POST /projects/:id/features/:feature/chat/cancelled-choice
-   * Handle user choice for cancelled task (Resume/Dismiss/Continue)
-   * Called by UI when user clicks Resume, Dismiss, or continues via directive
+   * Handle user choice for cancelled task (Resume/Dismiss)
+   * Called by UI when user clicks Resume or Dismiss
    * 
    * Request body:
    * - jobId: string
-   * - choice: 'resume' | 'dismiss' | 'continue'
+   * - choice: 'resume' | 'dismiss'
    */
   router.post('/projects/:id/features/:feature/chat/cancelled-choice', async (req: Request, res: Response) => {
     const projectId = req.params.id;
@@ -266,19 +266,14 @@ export function createChatRoutes(deps: {
       return;
     }
 
-    const validChoices = ['resume', 'dismiss', 'continue'];
+    const validChoices = ['resume', 'dismiss'];
     if (!validChoices.includes(choice)) {
       res.status(400).json({ error: `Invalid choice. Must be one of: ${validChoices.join(', ')}` });
       return;
     }
 
     const userContext = extractUserContext(req);
-    const resolvedLabelMap: Record<string, string> = {
-      resume: 'Resumed',
-      dismiss: 'Dismissed',
-      continue: 'Continued',
-    };
-    const resolvedLabel = resolvedLabelMap[choice];
+    const resolvedLabel = choice === 'resume' ? 'Resumed' : 'Dismissed';
     
     // Update metadata in chat.json and Redis
     await deps.chatService.updateLastContentMetadata(

@@ -51,7 +51,7 @@ You are analyzing whether the current task queue needs modifications based on ne
 {{#if directives}}
 **Full Directive History (newest first):**
 {{#each directives}}
-{{#if this.isLatest}}[LATEST]{{/if}}{{#if this.isOriginal}}[ORIGINAL]{{/if}} {{this.content}}
+{{#if isLatest}}[LATEST]{{/if}}{{#if isOriginal}}[ORIGINAL]{{/if}} {{content}}
 {{/each}}
 {{/if}}
 

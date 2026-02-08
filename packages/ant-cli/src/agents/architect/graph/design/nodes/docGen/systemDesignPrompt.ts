@@ -148,10 +148,8 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         directive: state.directive || '',
         designDoc: apiContractContent,
         lastSectionNumber,
-        sectionPattern,  // ✅ NEW: 'top-level' or 'nested' structure pattern
-        previousDesign: state.design,
+        sectionPattern,
         prdSpec: state.prd,
-        currentCode: state.code,
         designDomain: state.detectionReport?.domain,
         currentTask: {
           name: state.currentTask.name,
@@ -161,7 +159,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
           ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),
         } as any,
         isLastTaskForDocument,  // ✅ If true, don't output metadata (passed separately)
-        referenceRequests: state.referenceRequests,  // ✅ NEW: Reference projects for search_reference_code tool
+        
       },
       undefined,
       undefined
@@ -261,7 +259,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
               lastSectionNumber,
               sectionPattern,
               prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
-              currentCode: state.code ? `[${state.code.length} chars]` : undefined,
+              planText: state.planText ? `[${state.planText.length} chars]` : undefined,
               designDomain: state.detectionReport?.domain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,

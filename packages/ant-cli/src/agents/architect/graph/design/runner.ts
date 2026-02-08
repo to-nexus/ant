@@ -62,11 +62,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.detectionReport = (session.state as any).detectionReport;
         }
         
-        // ✅ Restore reference requests (for search_reference_code tool)
-        if ((session.state as any).referenceRequests) {
-          initial.referenceRequests = (session.state as any).referenceRequests;
-        }
-        
         // ✅ Restore planText for task-level resume (skip plan regeneration if applicable)
         if (session.state.planText) {
           initial.planText = session.state.planText;
@@ -110,10 +105,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.jobTiming = (session.state as any).jobTiming;
         }
         
-        // ✅ Restore UI-specific state
-        if ((session.state as any).hasUiDoc !== undefined) {
-          initial.hasUiDoc = (session.state as any).hasUiDoc;
-        }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
         // ✅ FIX: Restore directive from early-interrupted session (triage/detectEnv stage)
         // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
@@ -268,7 +259,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
                 files: state.files || [],
                 filesToDelete: state.filesToDelete || [],
                 detectionReport: state.detectionReport,
-                referenceRequests: state.referenceRequests || [],
                 planText: state.planText,
                 conversationHistory: state.conversationHistory || [],
               }

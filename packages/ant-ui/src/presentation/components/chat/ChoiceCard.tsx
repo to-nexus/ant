@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Play, MessageSquare, Loader2, XCircle } from 'lucide-react';
+import { Play, Loader2, XCircle } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { submitTriageChoice, TriageChoiceAction, submitCancelledChoice } from '@/infrastructure/http/api';
@@ -25,7 +25,7 @@ interface ChoiceCardProps {
 // Common Components
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-type ResolvedIcon = 'dismiss' | 'resume' | 'continue' | 'redirect' | null;
+type ResolvedIcon = 'dismiss' | 'resume' | 'redirect' | null;
 type BorderColor = 'blue' | 'orange';
 
 interface ResolvedBadgeProps {
@@ -46,7 +46,6 @@ function ResolvedBadge({ label, icon, borderColor = 'blue' }: ResolvedBadgeProps
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-700">
           {icon === 'dismiss' && <XCircle className="w-3.5 h-3.5" />}
           {icon === 'resume' && <Play className="w-3.5 h-3.5" />}
-          {icon === 'continue' && <MessageSquare className="w-3.5 h-3.5" />}
           {label}
         </span>
       </div>
@@ -398,7 +397,7 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
       {isSelected && resolvedLabel ? (
         <ResolvedBadge 
           label={resolvedLabel} 
-          icon={resolvedLabel === 'Dismissed' ? 'dismiss' : resolvedLabel === 'Resumed' ? 'resume' : resolvedLabel === 'Continued' ? 'continue' : null}
+          icon={resolvedLabel === 'Dismissed' ? 'dismiss' : resolvedLabel === 'Resumed' ? 'resume' : null}
           borderColor="orange"
         />
       ) : canResume ? (
