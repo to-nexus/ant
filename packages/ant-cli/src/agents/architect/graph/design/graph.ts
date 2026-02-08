@@ -141,7 +141,6 @@ export function buildDesignGraph() {
     channels: {
       // Context & Input
       context: null as any,
-      spec: null as any,
       workspaceConfig: null as any,
       
       // Dependencies (MUST be in channels to be passed between nodes!)

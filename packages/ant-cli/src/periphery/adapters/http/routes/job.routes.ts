@@ -256,15 +256,22 @@ export function createJobRoutes(deps: {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
-      // ✅ CRITICAL: Recover directive for resume
-      // Without this, the resumed job starts with empty spec → triage misclassifies
-      // Priority: session overrideDirective > directive file on disk
-      const savedDirective = sessionData.state?.overrideDirective;
-      const directivePath = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
-      const hasDirectiveFile = !savedDirective && fs.existsSync(directivePath);
-      const inputFile = hasDirectiveFile ? directivePath : undefined;
+      // ✅ Resume always sets isResume=true. Graph router uses this + hasTaskQueue + hasDetectionReport
+      // to determine correct entry point (plan, decompose, or triage)
+      const hasTaskQueue = (sessionData.state?.taskQueue?.length || 0) > 0;
       
-      console.log(`   Directive recovery: savedDirective=${!!savedDirective}, directiveFile=${hasDirectiveFile}`);
+      let inputFile: string | undefined;
+      
+      if (!hasTaskQueue) {
+        // No tasks: may need directive file for re-execution from triage
+        const directivePath = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+        if (fs.existsSync(directivePath)) {
+          inputFile = directivePath;
+        }
+        console.log(`   No taskQueue, will re-run from appropriate entry point. directiveFile=${!!inputFile}`);
+      } else {
+        console.log(`   Plain resume: ${sessionData.state.taskQueue.length} tasks in queue`);
+      }
       
       const params: ExecuteJobParams = {
         agent: 'architect',
@@ -273,10 +280,10 @@ export function createJobRoutes(deps: {
         feature: featureName,
         inputFile,
         enableEvaluation: false,
-        overrideDirective: savedDirective,
         chatSource,
         userContext,
-        jobId: sessionJobId
+        jobId: sessionJobId,
+        isResume: true  // ✅ Always true for resume
       };
       
       const result = await deps.executeJob(params);
@@ -364,16 +371,21 @@ export function createJobRoutes(deps: {
       
       const inputFile = undefined;
       
+      // ✅ CRITICAL: Pass jobId so runner.ts loads existing session
+      const sessionJobId = sessionData.state?.jobId || jobId;
+      
       const params: ExecuteJobParams = {
         agent: 'architect',
         jobType: jobType,
         project: projectId,
         feature: featureName,
-        inputFile,
+        inputFile: undefined,
         enableEvaluation: false,
-        overrideDirective: undefined,
+        overrideDirective: newDirective,  // ✅ Pass new directive (triggers revise)
         chatSource,
-        userContext
+        userContext,
+        jobId: sessionJobId,
+        isResume: true  // ✅ Always true for continue
       };
       
       const result = await deps.executeJob(params);

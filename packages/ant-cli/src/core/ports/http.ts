@@ -34,6 +34,7 @@ export interface ExecuteJobParams {
   chatSource?: boolean;        // ✅ True if job started from chat (enables Chat SSE)
   userContext?: UserContext;   // ✅ User context for Cloud mode (includes workspacePath)
   jobId?: string;              // ✅ Existing jobId for resume (don't generate new one)
+  isResume?: boolean;          // ✅ True if this is a resume/continue of a previous job
 }
 
 export interface JobResult {

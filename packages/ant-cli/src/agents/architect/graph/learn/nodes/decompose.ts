@@ -27,7 +27,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
   // Call LLM with streaming for thinking display
-  const combinedPrompt = `${systemPrompt}\n\n---\n\nUser Request:\n${state.spec}`;
+  const combinedPrompt = `${systemPrompt}\n\n---\n\nUser Request:\n${state.directive}`;
   
   if (!llm.stream) {
     throw new Error('LLM client does not support streaming');
@@ -40,7 +40,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   const { detectUserLanguage } = await import('../../../../../core/utils/languageDetector');
   
   // ✅ Detect user language for localized messages
-  const userLanguage = detectUserLanguage(state.spec);
+  const userLanguage = detectUserLanguage(state.directive || '');
   
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(chatAPI, userLanguage, undefined, undefined, false, undefined);
@@ -74,7 +74,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
     return {
       command: {
         action: 'learn_text',
-        text: state.spec
+        text: state.directive
       } as LearnCommand
     };
   }
@@ -97,7 +97,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
     return {
       command: {
         action: 'learn_text',
-        text: state.spec
+        text: state.directive
       } as LearnCommand
     };
   }

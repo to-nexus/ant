@@ -15,10 +15,7 @@ import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
 import { routeAfterCodeGen } from "./routers/codeGenRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
-import { replanDecision } from "./nodes/replanDecision";
-import { modifyTasks } from "./nodes/modifyTasks";
-import { clearStateForReplan } from "./nodes/clearStateForReplan";
-import { routeAfterReplanDecision } from "./routers/replanRouter";
+import { revise } from "./nodes/revise";
 
 /**
  * Node that handles task completion logic and state mutations.
@@ -299,8 +296,8 @@ export function buildCodeGraph() {
     channels: {
       // Context & Input
       context: null as any,
-      spec: null as any,
       workspaceConfig: null as any,
+      isResume: null as any,  // ✅ Resume flag (API level)
       
       // Dependencies
       deps: null as any,
@@ -397,12 +394,8 @@ export function buildCodeGraph() {
       _httpJobId: null as any,  // ✅ HTTP task ID for live updates
       
       
-      // ✅ Replan Support
+      // ✅ Revise Support
       directives: null as any,       // Multiple directives
-      replanAction: null as any,     // Replan decision
-      replanReason: null as any,     // Replan explanation
-      tasksToModify: null as any,    // Tasks to modify
-      isReplanning: null as any,     // Replan flag
       // ✅ Chat integration
       overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
       chatSource: null as any,  // ✅ Flag for Chat SSE
@@ -434,18 +427,17 @@ export function buildCodeGraph() {
     } as any,
   } as any);
   
-  // ✅ SIMPLIFIED ARCHITECTURE: CodeGen <-> Tool loop, then branch by priority
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Node Registration
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addNode("resolve", resolve as any);
-  graph.addNode("triage", triage as any);  // ✅ Triage: analyze intent and prerequisites
+  graph.addNode("triage", triage as any);
   graph.addNode("detectEnvironment", detectEnvironment as any);
   graph.addNode("decompose", decompose as any);
-  graph.addNode("replanDecision", replanDecision as any);  // ✅ NEW: Replan decision (continue/modify/restart)
-  graph.addNode("modifyTasks", modifyTasks as any);        // ✅ NEW: Modify specific tasks
-  graph.addNode("clearStateForReplan", clearStateForReplan as any);  // ✅ NEW: Clear state for restart
+  graph.addNode("revise", revise as any);  // ✅ Task queue revision (continue/modify)
   graph.addNode("plan", plan as any);
-  graph.addNode("codeGen", codeGen as any);      // ✅ Code generation (LLM reasoning)
-  graph.addNode("tool", tool as any);            // ✅ Single tool execution (saves immediately!)
-  // graph.addNode("validate", validate as any);  // ✅ REMOVED: Prompts handle static validation
+  graph.addNode("codeGen", codeGen as any);
+  graph.addNode("tool", tool as any);
   graph.addNode("installDeps", installDeps as any);
   graph.addNode("runtimeValidate", runtimeValidate as any);
   graph.addNode("checkTaskStatus", checkTaskStatus as any);
@@ -454,77 +446,80 @@ export function buildCodeGraph() {
 
   graph.addEdge("__start__" as any, "resolve" as any);
   
-  // ✅ Resolve → Conditional (skip triage/detection/decompose if resuming WITHOUT new directive)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Resolve → Router (4-way: isResume x hasTaskQueue x hasDetectionReport x overrideDirective)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addConditionalEdges(
     "resolve" as any,
     ((state: ArchitectGraphState) => {
-      const isResume = state.taskQueue && !state.taskQueue.isEmpty();
+      const isResume = state.isResume === true;
+      const hasTaskQueue = state.taskQueue && !state.taskQueue.isEmpty();
+      const hasDetectionReport = !!state.detectionReport;
       const hasNewDirective = !!state.overrideDirective;
       
-      // ⚠️ CRITICAL: New chat directive = new job, must triage!
-      if (hasNewDirective) {
-        console.log('[RouteAfterResolve] New directive detected → triage');
+      console.log(`[RouteAfterResolve] isResume=${isResume}, hasTaskQueue=${hasTaskQueue}, hasDetectionReport=${hasDetectionReport}, hasNewDirective=${hasNewDirective}`);
+      
+      if (!isResume) {
+        // New job → always start with triage
+        console.log(`[RouteAfterResolve] New job → triage`);
         return 'triage';
       }
       
-      // Resume only if no new directive
-      return isResume ? 'plan' : 'triage';
+      // === isResume === true ===
+      
+      if (hasTaskQueue && hasNewDirective) {
+        // Resume with existing tasks + new chat input → revise (may modify tasks)
+        console.log(`[RouteAfterResolve] Resume + new directive → revise`);
+        return 'revise';
+      }
+      
+      if (hasTaskQueue) {
+        // Plain resume with existing tasks → skip directly to plan
+        const queueSize = state.taskQueue?.size?.() || 0;
+        const completedCount = state.completedTasks?.length || 0;
+        console.log(`[RouteAfterResolve] Plain resume: ${queueSize} tasks, ${completedCount} completed → plan`);
+        return 'plan';
+      }
+      
+      if (hasDetectionReport) {
+        // Interrupted after detectEnvironment but before decompose → decompose
+        console.log(`[RouteAfterResolve] Resume after detectEnv → decompose`);
+        return 'decompose';
+      }
+      
+      // Interrupted very early (before detectEnvironment) → start from triage
+      console.log(`[RouteAfterResolve] Resume (no tasks, no detection) → triage`);
+      return 'triage';
     }) as any,
     {
-      plan: "plan",    // Resume: skip to plan (no new directive)
-      triage: "triage" // New job OR new directive: go to triage first
+      triage: "triage",
+      revise: "revise",
+      plan: "plan",
+      decompose: "decompose"
     } as any
   );
   
-  // ✅ Triage → Conditional (proceed to detectEnvironment or end)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Triage → detectEnvironment or end
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addConditionalEdges(
     "triage" as any,
     routeAfterTriage as any,
     {
-      detectEnvironment: "detectEnvironment",  // work:proceed → continue
-      __end__: "__end__"  // ask, redirect, blocked → end (await choice or show message)
+      detectEnvironment: "detectEnvironment",
+      __end__: "__end__"
     } as any
   );
   
   graph.addEdge("detectEnvironment" as any, "decompose" as any);
   
-  // ✅ Decompose → Replan Decision (check for multiple directives)
-  graph.addConditionalEdges(
-    "decompose" as any,
-    ((state: ArchitectGraphState) => {
-      // Check if this is a resume with multiple directives
-      const hasMultipleDirectives = (state.directives?.length || 0) > 1;
-      const hasTaskQueue = state.taskQueue && state.taskQueue.size() > 0;
-      
-      if (hasMultipleDirectives && hasTaskQueue) {
-        return 'replanDecision';
-      }
-      return 'plan';
-    }) as any,
-    {
-      replanDecision: "replanDecision",
-      plan: "plan"
-    } as any
-  );
+  // ✅ Decompose → always plan (no more conditional to replanDecision)
+  graph.addEdge("decompose" as any, "plan" as any);
   
-  // ✅ Replan Decision → Router (continue/modify/restart)
-  graph.addConditionalEdges(
-    "replanDecision" as any,
-    routeAfterReplanDecision as any,
-    {
-      plan: "plan",
-      modifyTasks: "modifyTasks",
-      clearStateForReplan: "clearStateForReplan"
-    } as any
-  );
+  // ✅ Revise → always plan (revision applied inline)
+  graph.addEdge("revise" as any, "plan" as any);
   
-  // ✅ Modify Tasks → Plan (continue with modified queue)
-  graph.addEdge("modifyTasks" as any, "plan" as any);
-  
-  // ✅ Clear State → Decompose (restart with new plan)
-  graph.addEdge("clearStateForReplan" as any, "decompose" as any);
-  
-  // ✅ Plan → CodeGen (시작)
+  // Plan → CodeGen
   graph.addEdge("plan" as any, "codeGen" as any);
   
   // ✅ CodeGen → Router (tool call 체크 & priority 기반 분기)

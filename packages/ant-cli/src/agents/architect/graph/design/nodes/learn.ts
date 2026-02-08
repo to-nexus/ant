@@ -178,9 +178,9 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
   const decisions = extractDesignDecisions(state).split('\n').filter(d => d.trim());
   
   // Create input summary (truncate if too long)
-  const inputSummary = state.spec.length > 200 
-    ? state.spec.substring(0, 197) + '...' 
-    : state.spec;
+  const inputSummary = (state.directive || '').length > 200 
+    ? (state.directive || '').substring(0, 197) + '...' 
+    : (state.directive || '');
   
   // Create plan summary (first 3 lines)
   const planLines = state.planText.split('\n');
@@ -194,7 +194,7 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
       type: 'file',
       source: 'inputs/sources/prd.md',
       summary: inputSummary,
-      size: state.spec.length,
+      size: (state.directive || '').length,
     },
     output: {
       // ✅ Only store summaries, not paths (paths are deterministic from context)

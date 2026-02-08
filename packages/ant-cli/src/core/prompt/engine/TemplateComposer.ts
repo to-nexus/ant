@@ -116,7 +116,7 @@ export class TemplateComposer {
         prdSpec: assembled.prdSpec || '',
         directive: assembled.directive || '',
         
-        // Backward compatibility: some templates still read {{spec}}
+        // Template alias: some templates still use {{spec}} which maps to directive
         spec: assembled.directive || '',
         
         // ✅ Used in {{#if (eq modificationMode "MODIFICATION MODE: ...")}}

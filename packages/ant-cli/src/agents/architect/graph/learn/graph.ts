@@ -9,7 +9,7 @@ export function buildLearnGraph() {
   const graph = new StateGraph<LearnGraphState>({
     channels: {
       context: null as any,
-      spec: null as any,
+      directive: null as any,
       deps: null as any,
       command: null as any,
       targets: null as any,

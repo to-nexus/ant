@@ -22,8 +22,7 @@ import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types
 export interface DesignGraphState extends TaskArtifacts {
   // Context
   context: ProjectContext;
-  spec: string;  // CLI input or PRD path
-  workspaceConfig?: any;  // ✅ NEW: Workspace config for job/node-specific model selection
+  workspaceConfig?: any;  // Workspace config for job/node-specific model selection
   
   // Dependencies
   deps?: {

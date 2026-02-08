@@ -317,13 +317,13 @@ async function executeFileLearn(
       }
     }
 
-    if (!texts.length && !state.spec) {
+    if (!texts.length && !state.directive) {
       // ✅ No files read and no spec - this is a failure
       throw new Error(`Failed to analyze files: No content found. Failed files: ${failedFiles.join(', ')}`);
     }
 
-    if (!texts.length) {
-      texts.push(state.spec);
+    if (!texts.length && state.directive) {
+      texts.push(state.directive);
     }
 
     // ✅ Show analyzed completion (success or partial success)
@@ -360,7 +360,7 @@ async function executeTextLearn(
   state: LearnGraphState,
   command: { text?: string }
 ): Promise<Partial<LearnGraphState>> {
-  const text = command.text || state.spec;
+  const text = command.text || state.directive || '';
 
   // Note: 'storing' → 'stored' will be shown by store node
   return {
