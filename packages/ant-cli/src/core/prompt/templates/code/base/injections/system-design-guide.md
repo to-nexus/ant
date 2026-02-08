@@ -61,8 +61,11 @@
 
 **How to use (Frontend only):**
 - ✅ Follow architecture patterns described here
+- ✅ Architecture boundaries MUST be reflected as directory-level boundaries
+- ✅ Framework wiring and architecture boundaries are complementary; neither substitutes for the other
 - ✅ For integration details, always check Layer 0 first
 - ❌ Don't let architecture preferences override API specifications
+- ❌ Framework conventions alone do NOT satisfy architecture boundary separation when design specifies explicit boundaries
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -76,15 +79,18 @@
 - **Cannot override or omit Layer 0 specifications**
 
 **What it contains:**
-- Architecture layers (Controller/Service/Repository)
+- Architecture boundaries and their responsibilities
 - Database schema
 - Business logic flows
 - Authentication implementation
 
 **How to use (Backend only):**
 - ✅ Follow architecture patterns described here
+- ✅ Architecture boundaries MUST be reflected as directory-level boundaries
+- ✅ Framework wiring and architecture boundaries are complementary; neither substitutes for the other
 - ✅ For API specifications, always check Layer 0 first
 - ❌ Don't let architecture preferences override API specifications
+- ❌ Framework conventions alone do NOT satisfy architecture boundary separation when design specifies explicit boundaries
 
 ════════════════════════════════════════════════════════════════════════════════
 

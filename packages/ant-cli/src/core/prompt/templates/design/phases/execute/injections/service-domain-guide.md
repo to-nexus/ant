@@ -14,28 +14,21 @@ It helps you keep System Design documents at the **correct abstraction level** f
   - **Which layer** is responsible for owning or transforming that data.
   - **How** layers and modules collaborate at a conceptual level (commands, events, contracts).
 
-### 2. Layered Architecture for Service Systems
-- Use clear boundaries (names may vary, but responsibilities must be explicit):
-  - **Presentation Layer**:
-    - Renders views and widgets.
-    - Captures user intent (search, filter, bookmark, export, etc.) and forwards it as **use-case level commands** to the Application layer.
-    - Does **not** call external APIs or storage directly.
-  - **Application Layer**:
-    - Orchestrates **use cases** and workflows (e.g., "Search news", "Toggle bookmark", "Update dashboard filters").
-    - Owns application/session state and exposes it as read models to Presentation.
-    - Talks to Domain and Infrastructure via **ports/adapters**, not via framework-specific APIs.
-  - **Domain Layer**:
-    - Encapsulates **business rules and policies**, independent of UI and storage.
-    - MUST own rules that change the **meaning** of data across features or persistence boundaries:
-      - Aggregation and normalization rules across providers (how heterogeneous data becomes a unified model).
-      - Classification and tagging policies (how categories/tags are derived and kept consistent).
-      - Duplicate resolution policy (how conflicting or duplicated records are merged or discarded).
-      - Temporal rules (timestamp ordering, freshness windows, retention windows) as domain concepts.
-      - Metrics/statistics calculation rules and invariants (what is counted, over which populations/periods).
-    - Provides clear contracts for Application layer to invoke; Application must not re-implement these policies per screen.
-  - **Infrastructure Layer**:
-    - Implements technical details: HTTP clients, storage adapters, queues, schedulers, etc.
-    - Hides protocols, libraries, and persistence details behind interfaces.
+### 2. Boundary Separation for Service Systems
+
+Regardless of architecture pattern chosen, service systems MUST maintain these separations:
+
+| Separation | What to Isolate |
+|-----------|----------------|
+| **UI vs Domain** | Rendering/interaction concerns from business rules and policies |
+| **Orchestration vs Pure Rules** | Use-case coordination from stateless domain logic |
+| **Technical vs Business** | External system dependencies from core domain contracts |
+
+**Constraint**: If the architecture pattern observation (from the tier-specific guide) selects explicit layer separation, each boundary MUST have its own named responsibilities.
+
+**Constraint**: Do NOT let all business logic live in the orchestration boundary. Domain policies, invariants, and calculation rules belong in a dedicated domain boundary.
+
+**Principle**: Boundary names may vary across architecture patterns, but the separations above are mandatory for service systems with non-trivial domain logic.
 
 ### 3. Domain Layer as First-Class Citizen (Service)
 - Do **not** let all business logic live in the Application layer.
