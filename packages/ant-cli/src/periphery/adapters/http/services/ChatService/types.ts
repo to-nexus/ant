@@ -61,6 +61,7 @@ export interface MessageContent {
     jobId?: string;         // For cancelled/triage_choice: job ID
     reason?: string;        // For cancelled/file operations: cancellation/failure reason
     originalType?: string;  // For cancelled: original work type that was cancelled
+    resolved?: boolean;     // For cancelled: marked true when user resumes/continues
     // Triage choice metadata
     choiceOptions?: {       // For triage_choice: choice options
       positive: { label: string; action: string };

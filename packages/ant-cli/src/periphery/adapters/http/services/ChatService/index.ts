@@ -268,6 +268,19 @@ export class ChatService {
   }
 
   /**
+   * Mark all unresolved cancelled messages for a jobId as resolved.
+   * Called on resume/continue: the user chose to continue, so old choice cards are no longer actionable.
+   */
+  async resolveCancelledMessages(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    userContext?: UserContext
+  ): Promise<number> {
+    return this.messageManager.resolveCancelledMessages(projectId, featureName, jobId, userContext);
+  }
+
+  /**
    * Add cancelled message (async version - recommended)
    * ✅ Use this to prevent race conditions when session is not in cache
    */

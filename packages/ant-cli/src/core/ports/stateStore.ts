@@ -461,17 +461,6 @@ export interface StateStorePort {
   subscribe(channel: string, callback: (message: any) => void): Promise<() => void>;
   
   // ============================================
-  // Distributed Locking
-  // ============================================
-  
-  /**
-   * Acquire a distributed lock using Redis SETNX (atomic set-if-not-exists).
-   * Returns true if lock was acquired, false if already held.
-   * Lock auto-expires after ttlSeconds.
-   */
-  acquireLock(key: string, ttlSeconds: number): Promise<boolean>;
-  
-  // ============================================
   // Lifecycle
   // ============================================
   

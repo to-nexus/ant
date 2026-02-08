@@ -256,6 +256,14 @@ export function createJobRoutes(deps: {
       console.log(`   Job type: ${jobType}`);
       console.log(`   Starting resume job execution...`);
       
+      // ✅ Resolve old cancelled messages: user chose to continue, old choice cards are no longer actionable
+      if (deps.chatService && sessionJobId) {
+        const resolved = await deps.chatService.resolveCancelledMessages(projectId, featureName, sessionJobId, userContext);
+        if (resolved > 0) {
+          console.log(`   ✅ Resolved ${resolved} old cancelled message(s)`);
+        }
+      }
+      
       // ✅ Resume always sets isResume=true. Graph router uses this + hasTaskQueue + hasDetectionReport
       // to determine correct entry point (plan, decompose, or triage)
       const hasTaskQueue = (sessionData.state?.taskQueue?.length || 0) > 0;
@@ -365,10 +373,16 @@ export function createJobRoutes(deps: {
       fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
       console.log(`   ✅ Session updated with new directive`);
       
-      const inputFile = undefined;
-      
-      // ✅ CRITICAL: Pass jobId so runner.ts loads existing session
+      // ✅ Resolve old cancelled messages: user chose to continue, old choice cards are no longer actionable
       const sessionJobId = sessionData.state?.jobId || jobId;
+      if (deps.chatService) {
+        const resolved = await deps.chatService.resolveCancelledMessages(projectId, featureName, sessionJobId, userContext);
+        if (resolved > 0) {
+          console.log(`   ✅ Resolved ${resolved} old cancelled message(s)`);
+        }
+      }
+      
+      const inputFile = undefined;
       
       const params: ExecuteJobParams = {
         agent: 'architect',
