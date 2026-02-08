@@ -15,7 +15,6 @@ export interface SSEActions {
   addChatMessage: (message: ChatMessage) => void;
   updateChatMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
   clearChatMessages: () => void;
-  removeCancelledMessage: (jobId: string) => void;
   initializeSSE: () => void;
   cleanupSSE: () => void;
   reconnectSSE: (key: string) => void;
@@ -196,14 +195,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
   
   clearChatMessages: () => {
     set({ chatMessages: [] });
-  },
-  
-  removeCancelledMessage: (jobId: string) => {
-    set((state: any) => ({
-      chatMessages: state.chatMessages.filter((msg: ChatMessage) => 
-        !(msg.contents.some(c => c.type === 'cancelled' && c.metadata?.jobId === jobId))
-      )
-    }));
   },
 
   initializeSSE: () => {

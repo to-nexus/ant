@@ -2024,13 +2024,14 @@ export async function submitTriageChoice(
 }
 
 /**
- * Submit user's cancelled choice (Resume/Dismiss)
+ * Submit user's cancelled choice (Resume/Dismiss/Continue)
+ * 'continue' is used when user continues an interrupted job via chat directive
  */
 export async function submitCancelledChoice(
   projectId: string,
   featureName: string,
   jobId: string,
-  choice: 'resume' | 'dismiss'
+  choice: 'resume' | 'dismiss' | 'continue'
 ): Promise<{ success: boolean; choice: string; resolvedLabel: string }> {
   try {
     const response = await authFetch(

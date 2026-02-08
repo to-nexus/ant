@@ -76,18 +76,6 @@ export function useJobExecution() {
           useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
         }
         
-        // ✅ Remove cancelled message from chat and add resume message
-        useStore.getState().removeCancelledMessage(currentJobId);
-        useStore.getState().addChatMessage({
-          id: `msg-resume-${Date.now()}`,
-          role: 'assistant',
-          contents: [{
-            type: 'text',
-            content: '🔄 Continuing interrupted job...'
-          }],
-          timestamp: new Date().toISOString()
-        });
-        
         // ✅ Set running state immediately
         setRunning(true, currentJobId);
         
