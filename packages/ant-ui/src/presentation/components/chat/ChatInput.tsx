@@ -267,22 +267,31 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           }
         );
         
-        // ✅ 2. Dismiss interruption UI before continuing
+        // ✅ 2. Update choice card to "Continued" state
+        try {
+          const { submitCancelledChoice } = await import('@/infrastructure/http/api');
+          await submitCancelledChoice(selectedProject, selectedFeature, currentJobId, 'continue');
+        } catch (e) {
+          // Non-critical: card update failure shouldn't block job continuation
+          console.warn('[ChatInput] Failed to update choice card:', e);
+        }
+        
+        // ✅ 3. Dismiss interruption UI before continuing
         if (kanbanData?.interruption?.timestamp) {
           useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
         }
         
-        // ✅ 3. Set running state immediately
+        // ✅ 4. Set running state immediately
         useStore.getState().setRunning(true, currentJobId);
         
-        // ✅ 4. Call Continue API (adds directive with highest priority)
+        // ✅ 5. Call Continue API (adds directive with highest priority)
         const { continueJob } = await import('@/infrastructure/http/api');
         const result = await continueJob(currentJobId, selectedProject, selectedFeature, userMessage, true);
         
-        // ✅ 5. Update with same jobId from server (Continue uses same jobId)
+        // ✅ 6. Update with same jobId from server (Continue uses same jobId)
         useStore.getState().setRunning(true, result.jobId);
         
-        // ✅ 6. Clear failed state
+        // ✅ 7. Clear failed state
         useStore.getState().setLastJobFailed(false);
         
       } catch (error) {
