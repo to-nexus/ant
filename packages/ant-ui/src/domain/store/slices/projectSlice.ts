@@ -91,8 +91,12 @@ export const createProjectSlice: StateCreator<
       }
       
       // Just set the project, features will be loaded separately
+      // ✅ Also clear features & selectedFeature immediately to prevent stale state
       set({ 
         selectedProject: projectId,
+        selectedFeature: undefined,
+        features: [],
+        session: undefined,
       } as any);
       // Clear related state
       if (state.selectFile) state.selectFile(undefined);
@@ -153,7 +157,9 @@ export const createProjectSlice: StateCreator<
           attempts++;
         }, 100);
       } else {
-        console.log(`[Store] ℹ️ No last feature found for ${projectId}, staying on undefined`);
+        console.log(`[Store] ℹ️ No last feature found for ${projectId}, selectedFeature cleared`);
+        // ✅ Feature already cleared above via set({ selectedFeature: undefined })
+        // No additional action needed
       }
     }
   },
