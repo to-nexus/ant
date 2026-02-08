@@ -247,7 +247,7 @@ export class PreviewService {
     logger.warn(`[Preview] startPreview: ${tenantId}:${userId}:${projectId}:${feature}`, { component: 'PreviewService' });
     
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    const proxyUrl = `/preview/${serverKey}`;
+    const proxyUrl = `/${serverKey}`;
     
     // Check if already running in our memory tracking
     if (this.previewServers.has(serverKey)) {
@@ -338,7 +338,7 @@ export class PreviewService {
         
         const extraEnv: Record<string, string | undefined> = {};
         if (pkg.type === 'frontend' && backendPort) {
-          extraEnv.VITE_API_BASE_URL = `/preview/${serverKey}`;
+          extraEnv.VITE_API_BASE_URL = `/${serverKey}`;
         }
         
         const childProcess = this.processSpawner.spawn(pkg, pkgPort, {
@@ -698,7 +698,7 @@ export class PreviewService {
       running,
       ready,
       port,
-      url: port ? `/preview/${serverKey}` : undefined,
+      url: port ? `/${serverKey}` : undefined,
       processCount: processes?.length || 0,
       backendPort,
       packages,

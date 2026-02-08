@@ -7,7 +7,7 @@ import { useDevServerManager } from './hooks/useDevServerManager';
 import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
 import { DevServerStatusPanel } from './components/DevServerStatusPanel';
-import { SERVER_BASE } from '@/infrastructure/http/api';
+import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { useState, useEffect } from 'react';  // ✅ Add useEffect
 
 export function FeatureSection() {
@@ -128,8 +128,8 @@ export function FeatureSection() {
               progress={progress}
               onOpen={() => {
                 if (status?.url) {
-                  // ✅ Use SERVER_BASE() for dev server proxy (without /api suffix)
-                  window.open(`${SERVER_BASE()}${status.url}`, '_blank');
+                  // ✅ Preview is on a separate host (VITE_PREVIEW_HOST)
+                  window.open(`${PREVIEW_BASE()}${status.url}`, '_blank');
                 }
               }}
               onFix={handleFixSetup}  // ✅ Pass fix handler

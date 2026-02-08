@@ -5,12 +5,12 @@
  * Handles all /preview/* requests according to 10-cloud-architecture.md
  * 
  * Features:
- * - External API: /preview/projects/:id/start, stop, status
- * - Preview Proxy: /preview/:key/* → Dev Server
+ * - External API: /projects/:id/start, stop, status
+ * - Preview Proxy: /:key/* → Dev Server
  * - Redis-based state management (shared across pods)
  * - Dev Server lifecycle management
  * 
- * Ingress routing: /preview/* → ant-preview
+ * 별도 호스트: ant-preview.crosstoken.io → ant-preview service
  * 
  * @see docs/architecture/10-cloud-architecture.md Section 3.2
  */
@@ -181,10 +181,11 @@ export class PreviewServer {
     });
 
     // Preview Proxy - MUST be before body parsers
-    // Routes: /preview/:key/* where key = tenantId:userId:projectId:feature
+    // Routes: /:key/* where key = tenantId:userId:projectId:feature
+    // 별도 호스트 (ant-preview.crosstoken.io) 이므로 pathPrefix 불필요
     this.app.use(createPreviewProxyMiddleware({
       portRegistry: this.stateStore,
-      pathPrefix: '/preview',
+      pathPrefix: '',
       getBackendPort: async ({ tenantId, userId, projectId, feature }) => {
         const state = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
         return state?.backendPort || null;
@@ -202,7 +203,7 @@ export class PreviewServer {
      * POST /preview/projects/:id/start
      * Start preview for a project
      */
-    this.app.post('/preview/projects/:id/start', async (req: Request, res: Response) => {
+    this.app.post('/projects/:id/start', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
@@ -210,7 +211,7 @@ export class PreviewServer {
         const port = req.body?.port;
         const forceRestart = req.body?.forceRestart !== false;
 
-        logger.warn(`[PreviewServer] POST /preview/projects/${projectId}/start (user=${userContext.userId}, feature=${feature})`, {
+        logger.warn(`[PreviewServer] POST /projects/${projectId}/start (user=${userContext.userId}, feature=${feature})`, {
           component: 'PreviewServer'
         });
 
@@ -241,13 +242,13 @@ export class PreviewServer {
      * POST /preview/projects/:id/stop
      * Stop preview for a project
      */
-    this.app.post('/preview/projects/:id/stop', async (req: Request, res: Response) => {
+    this.app.post('/projects/:id/stop', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
         const feature = req.body?.feature || 'main';
 
-        logger.warn(`[PreviewServer] POST /preview/projects/${projectId}/stop (user=${userContext.userId}, feature=${feature})`, {
+        logger.warn(`[PreviewServer] POST /projects/${projectId}/stop (user=${userContext.userId}, feature=${feature})`, {
           component: 'PreviewServer'
         });
 
@@ -269,7 +270,7 @@ export class PreviewServer {
      * GET /preview/projects/:id/status
      * Get preview status for a project
      */
-    this.app.get('/preview/projects/:id/status', async (req: Request, res: Response) => {
+    this.app.get('/projects/:id/status', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
@@ -307,7 +308,7 @@ export class PreviewServer {
           running: status.running,
           ready: status.ready,
           port: status.port || null,
-          url: status.port ? `/preview/${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}` : null,
+          url: status.port ? `/${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}` : null,
           processCount: status.processCount || 0,
           backendPort: status.backendPort || null,
           packages: status.packages || [],
@@ -324,7 +325,7 @@ export class PreviewServer {
      * GET /preview/projects/:id/validate
      * Validate preview setup
      */
-    this.app.get('/preview/projects/:id/validate', async (req: Request, res: Response) => {
+    this.app.get('/projects/:id/validate', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
@@ -351,7 +352,7 @@ export class PreviewServer {
      * GET /preview/admin/instances
      * List all preview instances (admin only)
      */
-    this.app.get('/preview/admin/instances', async (_req: Request, res: Response) => {
+    this.app.get('/admin/instances', async (_req: Request, res: Response) => {
       try {
         const previews = await this.stateStore.listPreviews();
         res.json({ instances: previews });
