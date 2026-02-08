@@ -141,7 +141,7 @@ export interface WorkspaceState {
 export interface TriageableState {
   // 기존 필드
   context: ProjectContext;
-  spec: string;
+  directive?: string;  // User instruction (unified: CLI input or chat input)
   deps?: { 
     llm?: LLMClient; 
     workflowUpdate?: WorkflowStateUpdatePort;

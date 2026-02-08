@@ -67,7 +67,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       // ✅ CRITICAL: Save artifacts for CodeGen validation on resume
       directive: state.directive,  // ✅ Save directive (for CodeGen validation)
       design: state.design,  // ✅ Save design document
-      spec: state.spec,  // ✅ Save spec
       prd: state.prd,  // ✅ Save PRD if exists
       // ✅ NOTE: parsedUiDocs is NOT saved (contains Map, heavy)
       // It's reloaded from disk in resolve/codeGen when needed

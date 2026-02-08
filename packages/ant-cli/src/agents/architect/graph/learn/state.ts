@@ -12,7 +12,6 @@ export interface LearnCommand {
 
 export interface LearnGraphState extends TriageableState {
   context: ProjectContext;
-  spec: string; // raw directive or free text
   
   // Dependencies
   deps?: {

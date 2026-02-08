@@ -460,7 +460,7 @@ export class RouteConfigurator {
         overrideDirective: params.overrideDirective,
         chatSource: params.chatSource,
         inputFile: params.inputFile,
-        isResume: !!params.jobId,
+        isResume: params.isResume ?? !!params.jobId,
         originalJobId: params.jobId
       });
       

@@ -245,7 +245,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // Create input summary (design doc reference)
     const inputSummary = state.design 
       ? `Design: ${state.design.substring(0, 150)}...`
-      : `Spec: ${state.spec.substring(0, 150)}...`;
+      : `Directive: ${(state.directive || '').substring(0, 150)}...`;
     
     const turn: SessionTurn = {
       turnId: 0, // Will be set by adapter
@@ -255,7 +255,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         type: 'design',
         source: state.design ? 'outputs/design/[latest]' : 'directive',
         summary: inputSummary.substring(0, 200),
-        size: state.design?.length || state.spec.length,
+        size: state.design?.length || (state.directive || '').length,
       },
       output: {
         branch: branch,

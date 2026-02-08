@@ -42,6 +42,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       if (hasInterruption && hasTaskQueue && session.state) {
         console.log(`🔄 Resuming: ${session.state.taskQueue?.length || 0} tasks in queue, ${session.state.completedTasks?.length || 0} completed`);
         
+        // ✅ CRITICAL: Set isResume flag for graph router
+        initial.isResume = true;
+        
         // Reconstruct TaskQueue from saved array
         const { TaskQueue } = await import('./state');
         const taskQueue = new TaskQueue<CodeTask>();
@@ -83,7 +86,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         
         // CRITICAL: workspaceConfig is already set in initial state (from orchestrator)
         
-        // Restore directive/design/spec from session
+        // Restore directive/design/prd from session
         if (session.state.overrideDirective) {
           initial.directive = session.state.overrideDirective;
         } else if (session.state.directives && session.state.directives.length > 0) {
@@ -94,10 +97,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.design = (session.state as any).design;
         } else if (session.artifacts?.design) {
           initial.design = session.artifacts.design;
-        }
-        
-        if ((session.state as any).spec) {
-          initial.spec = (session.state as any).spec;
         }
         
         // Restore PRD for downstream prompts
@@ -120,6 +119,11 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   // ✅ Initialize recursion tracking in state (if not restored)
   initial.recursionLimit = initial.recursionLimit || finalLimit;
   initial.recursionCount = initial.recursionCount || 0;
+  
+  // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
+  if (!initial.isResume && process.env.ANT_IS_RESUME === 'true') {
+    initial.isResume = true;
+  }
   
   try {
     state = await (app as any).invoke(initial as any, {

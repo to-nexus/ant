@@ -12,7 +12,7 @@ import { LearnGraphState } from "./graph/learn/state";
 import { PromptEngine } from "../../core/prompt/engine";
 
 export async function architectAgent(
-  spec: string, 
+  input: string, 
   project: string,
   job: AgentJob = 'design',
   inputFile?: string,
@@ -90,10 +90,10 @@ export async function architectAgent(
   // 3. Retrieve long-term knowledge from Vector DB
   const vectorMemory = await retrieve(job, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
   
-  // 4. Detect user language from input (directive > spec)
+  // 4. Detect user language from input
   // Job-level language detection: each job can have different language
   const { detectUserLanguage } = await import('../../core/utils/languageDetector');
-  const inputText = spec || '';
+  const inputText = input || '';
   const userLanguage = detectUserLanguage(inputText);
   
   // 5. Extract UserContext for path resolution
@@ -145,7 +145,7 @@ export async function architectAgent(
       // Generic learn: accept repo files or free-form text in spec
       const lInitial: LearnGraphState = {
         context,
-        spec,
+        directive: input,
         deps: {
           memory: deps?.memory,
           chunk: deps?.chunk,
@@ -245,8 +245,8 @@ export async function architectAgent(
       
       const dInitial: DesignGraphState = {
         context,
-        spec,
-        workspaceConfig: config,  // ✅ NEW: Pass workspace config for job/node-specific model selection
+        directive: input,
+        workspaceConfig: config,
         deps: {
           llm: deps?.llm,
           promptEngine: designEngine,
@@ -337,7 +337,7 @@ export async function architectAgent(
       const estimator = new WorkSizeEstimator();
       
       const estimation = await estimator.estimate(
-        spec,
+        input,
         context.workingDir,
         deps?.git
       );
@@ -387,8 +387,8 @@ export async function architectAgent(
         
         const initial: ArchitectGraphState = {
           context,
-          spec,
-          workspaceConfig: config,  // ✅ NEW: Pass workspace config for job/node-specific model selection
+          directive: input,
+          workspaceConfig: config,
           deps: { 
             memory: deps?.memory, 
             llm: deps?.llm,

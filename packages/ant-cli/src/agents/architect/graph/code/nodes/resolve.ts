@@ -176,8 +176,8 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // Save initial jobTiming + directive to session
   // ✅ CRITICAL: Save effective directive early so it survives process kill (before decompose)
   // Without this, if user cancels before decompose, resume has no directive
-  // Priority: overrideDirective (from chat) > spec (from directive file)
-  const effectiveDirective = state.overrideDirective || state.spec || undefined;
+  // Priority: overrideDirective (from chat) > directive (from CLI/file)
+  const effectiveDirective = state.overrideDirective || state.directive || undefined;
   if (state.deps?.session && state.context.featureFolder) {
     try {
       await state.deps.session.updateArtifacts(

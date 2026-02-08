@@ -138,8 +138,10 @@ export interface ValidationResult {
 export interface ArchitectGraphState extends TaskArtifacts {
   // Context
   context: ProjectContext & { enableEvaluation?: boolean };
-  spec: string;  // CLI input
-  workspaceConfig?: any;  // ✅ NEW: Workspace config for job/node-specific model selection
+  workspaceConfig?: any;  // Workspace config for job/node-specific model selection
+  
+  // ✅ Resume flag (API level: true for both resume button and continue chat)
+  isResume?: boolean;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 DetectionReport (통합 환경 감지 결과)
@@ -237,12 +239,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
     count: number;
   };
   
-  // ✅ Replan Support (continue with new directive)
+  // ✅ Revise Support (continue with new directive)
   directives?: string[];  // Multiple directives (newest first = highest priority)
-  replanAction?: 'continue' | 'modify' | 'restart';  // LLM decision on how to handle new directive
-  replanReason?: string;  // Explanation for replan decision
-  tasksToModify?: string[];  // Task IDs to modify (if replanAction='modify')
-  isReplanning?: boolean;  // Flag indicating we're in replan process
 
   // Execution
   planText: string;

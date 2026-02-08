@@ -97,11 +97,11 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // DEBUG: Check what values we have
   console.log('🔍 [DEBUG] State values for triage:');
   console.log(`   state.overrideDirective: "${state.overrideDirective?.substring(0, 50) || '(empty)'}..."`);
-  console.log(`   state.spec: "${state.spec?.substring(0, 50) || '(empty)'}..."`);
+  console.log(`   state.directive: "${state.directive?.substring(0, 50) || '(empty)'}..."`);
   console.log(`   state.currentJob: "${state.currentJob || '(not set)'}"`);
   console.log(`   state.jobType: "${(state as any).jobType || '(not set)'}"`);
   
-  const userInput = state.overrideDirective || state.spec || '';
+  const userInput = state.overrideDirective || state.directive || '';
   const currentJob = state.currentJob || (state as any).jobType || 'unknown';
   const currentAgent = state.currentAgent || 'architect';
   

@@ -145,7 +145,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       'design',
       state.context,
       {
-        directive: state.directive || state.spec,
+        directive: state.directive || '',
         designDoc: apiContractContent,
         lastSectionNumber,
         sectionPattern,  // ✅ NEW: 'top-level' or 'nested' structure pattern
@@ -420,9 +420,9 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   }
   
   // ✅ 3. Directive (user requirements)
-  if (state.directive || state.spec) {
+  if (state.directive) {
     lines.push(`# Directive`);
-    lines.push(state.directive || state.spec);
+    lines.push(state.directive || '');
     lines.push('');
   }
   
