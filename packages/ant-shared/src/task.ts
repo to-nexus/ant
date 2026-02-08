@@ -44,6 +44,11 @@ export interface TaskTiming {
 export interface TaskTokenUsage {
   inputTokens: number;
   outputTokens: number;
+  /**
+   * @deprecated Redundant field — always equals `inputTokens + outputTokens`.
+   * Compute on read instead. Will be removed in a future version.
+   * All "total" calculations should use metrics from `getTokenUsageMetrics()`.
+   */
   totalTokens: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
@@ -90,6 +95,9 @@ export interface KanbanData {
 
   // Token usage (job-level aggregate)
   tokenUsage?: TaskTokenUsage;
+
+  // Estimating phase token usage (decompose + detectEnvironment, before tasks)
+  estimatingTokenUsage?: TaskTokenUsage;
 
   // Job metadata
   jobType?: DecomposableJobType;

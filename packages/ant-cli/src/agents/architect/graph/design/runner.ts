@@ -56,6 +56,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
         initial.tokenUsage = session.state.tokenUsage;
+        initial._estimatingTokenUsage = (session.state as any).estimatingTokenUsage;  // ✅ Restore estimating phase snapshot
         
         // ✅ Restore detectionReport (required for workType routing in docGen)
         if ((session.state as any).detectionReport) {

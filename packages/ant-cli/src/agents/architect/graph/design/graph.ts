@@ -175,6 +175,7 @@ export function buildDesignGraph() {
       // Token usage tracking (task-level and job-level)
       _currentTaskTokenUsage: null as any,
       tokenUsage: null as any,
+      _estimatingTokenUsage: null as any,
       
       // Execution
       planText: null as any,

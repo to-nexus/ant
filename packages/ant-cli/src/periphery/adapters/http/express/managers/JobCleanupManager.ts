@@ -70,24 +70,30 @@ export class JobCleanupManager {
     // End workflow tracking
     await this.deps.workflowStateService.endJob(jobId);
     
-    // Finalize any active chat message
-    // ✅ CRITICAL: Must await to ensure message is finalized before session file is written
-    if (mapping && this.deps.chatService) {
-      await this.deps.chatService.finalizeCurrentMessage(
-        mapping.projectId, 
-        mapping.featureName || 'skeleton', 
-        true  // cancelled: true
-      );
-    }
-    
     // Move in-progress task back to queue in session file
     if (mapping) {
       try {
+        // ✅ FIX: Resolve userContext BEFORE calling finalizeCurrentMessage
+        // Without userContext, Redis lookup uses wrong key (local:local:... instead of org:user:...)
+        // causing stale currentMessage to persist and appear on SSE reconnect
         const effectiveUserContext = userContext || mapping.userContext || {
           userId: 'local',
           organizationId: 'local',
           workspacePath: ''
         };
+        
+        // Finalize any active chat message (gracefully close streaming, don't convert to cancelled)
+        // ✅ FIX: Use cancelled=false to avoid creating a duplicate cancelled choice card.
+        // The actual "Task cancelled" choice card is created by addCancelledMessageAsync below.
+        // ✅ FIX: Pass userContext so Redis lookup uses the correct tenant-scoped key
+        if (this.deps.chatService) {
+          await this.deps.chatService.finalizeCurrentMessage(
+            mapping.projectId, 
+            mapping.featureName || 'skeleton', 
+            false,  // Don't convert to cancelled - just finalize cleanly
+            effectiveUserContext
+          );
+        }
         
         const featurePath = this.deps.workspaceResolver.getFeaturePath(
           effectiveUserContext,

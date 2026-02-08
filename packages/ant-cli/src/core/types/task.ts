@@ -42,6 +42,7 @@ export interface TaskQueueSnapshot {
   recursionCount: number;
   recursionLimit: number;
   tokenUsage?: TaskTokenUsage;
+  estimatingTokenUsage?: TaskTokenUsage;
 }
 
 // ============================================

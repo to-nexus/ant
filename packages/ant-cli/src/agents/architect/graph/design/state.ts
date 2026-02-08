@@ -101,6 +101,7 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ Token usage (per-turn and job-level)
   tokenUsage?: TokenUsage;
   jobTokenUsage?: TokenUsage;
+  _estimatingTokenUsage?: TokenUsage;
   
   
   

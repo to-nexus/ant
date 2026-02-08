@@ -383,6 +383,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Job-level token usage (accumulated across all tasks + decompose/detectEnv)
   tokenUsage?: TokenUsage;
   
+  // ✅ Estimating phase token usage snapshot (captured at end of decompose, before tasks)
+  _estimatingTokenUsage?: TokenUsage;
+  
   // ✅ Recursion tracking
   recursionCount?: number;  // Current iteration count
   recursionLimit?: number;  // Maximum allowed iterations

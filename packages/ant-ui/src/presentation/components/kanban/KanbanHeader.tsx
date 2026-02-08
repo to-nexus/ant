@@ -1,40 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Timer, Coins } from 'lucide-react';
-import { StatusChip, ChipVariant } from '../StatusChip';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
-import { formatTokenCount, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
+import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
 import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
-
-interface DataSourceIndicatorProps {
-  dataSource?: string;
-  isStopping?: boolean;  // ✅ 즉각적인 피드백을 위한 상태
-}
-
-const DATA_SOURCE_VARIANTS: Record<string, { variant: ChipVariant; label: string }> = {
-  live: { variant: 'live', label: 'Real-time' },
-  session: { variant: 'session', label: 'Session File' },
-  estimating: { variant: 'estimating', label: 'Estimating' }
-};
-
-/**
- * DataSourceIndicator - 타이틀 옆에 표시될 데이터 소스 인디케이터
- * 
- * ✅ 즉각적인 피드백: isStopping=true면 즉시 "Session File" 표시
- * ✅ 서버 SSOT: 실제 데이터는 변경하지 않음, 표시만 변경
- */
-export function DataSourceIndicator({ dataSource, isStopping = false }: DataSourceIndicatorProps) {
-  if (!dataSource) return null;
-
-  // ✅ CRITICAL: Stopping 시 즉각적인 시각적 피드백
-  // 서버가 확인할 때까지 기다리지 않고 사용자에게 즉시 피드백 제공
-  const effectiveDataSource = isStopping ? 'session' : dataSource;
-  
-  const config = DATA_SOURCE_VARIANTS[effectiveDataSource];
-  if (!config) return null;
-
-  return <StatusChip variant={config.variant} label={config.label} />;
-}
 
 interface ElapsedTimeBadgeProps {
   totalElapsedTime?: number;
@@ -224,6 +193,7 @@ export function ElapsedTimeBadge({
 interface TokenUsageBadgeProps {
   jobId?: string;  // ✅ Job identity to determine if badge should be shown
   tokenUsage?: TaskTokenUsage;
+  estimatingTokenUsage?: TaskTokenUsage;  // ✅ Direct estimating phase snapshot (no subtraction)
   completedTasks?: Array<{
     id: string;
     name: string;
@@ -237,66 +207,193 @@ interface TokenUsageBadgeProps {
 }
 
 /**
- * TokenUsageBadge - Display total token usage for the job with breakdown tooltip
- * 
- * ✅ Shows badge whenever jobId exists (like ElapsedTimeBadge with jobTiming)
- * ✅ Handles stopped/interrupted jobs gracefully (shows accumulated usage)
- * ✅ Shows even with 0 tokens to indicate tracking is active
+ * TokenUsageBadge - Display token usage with Input/Output separation
+ *
+ * Architecture: docs/architecture/13-token-usage-tracking.md
+ *
+ * DESIGN PRINCIPLE: Input and Output tokens have fundamentally different costs
+ * (Output is 5x more expensive). Never sum them into a single "total".
+ *
+ * Badge: "445K in · 16K out" — compact, honest, no false totals
+ * Tooltip sections:
+ *   1. Input — volume, cache breakdown, cost savings
+ *   2. Output — generation count
+ *   3. Phase Breakdown — estimating + individual tasks
  */
-export function TokenUsageBadge({ jobId, tokenUsage, completedTasks, inProgressTask }: TokenUsageBadgeProps) {
-  // Aggregate task token usage (works even when job-level tokenUsage is missing)
+export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, completedTasks, inProgressTask }: TokenUsageBadgeProps) {
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
     inProgressTask?.tokenUsage,
   ]);
 
-  // ✅ Render policy:
-  // - If we have a jobId, always show (even if 0) to indicate tracking is active.
-  // - If jobId is missing (e.g., some estimating/session states), still show if we have any token data.
   if (!jobId && !tokenUsage && !tasksUsage) {
     return null;
   }
 
-  // Prefer job-level usage when available (may include estimating nodes),
-  // otherwise fallback to summed task usage.
   const effectiveUsage: TaskTokenUsage = tokenUsage || tasksUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   const effective = getTokenUsageMetrics(effectiveUsage);
   const tasks = getTokenUsageMetrics(tasksUsage);
 
-  // ✅ Estimating nodes (non-cache total) = job rawTotal - tasks rawTotal
-  const estimatingNodesTotal = tokenUsage ? Math.max(0, effective.rawTotalTokens - tasks.rawTotalTokens) : 0;
-  const hasTokenData = effective.rawTotalTokens >= 0;
-  
+  // Estimating phase: prefer direct tracking, fallback to subtraction
+  const estimatingMetrics = estimatingTokenUsage ? getTokenUsageMetrics(estimatingTokenUsage) : null;
+  const estimatingInput = estimatingMetrics
+    ? estimatingMetrics.totalInputProcessed
+    : (tokenUsage ? Math.max(0, effective.totalInputProcessed - tasks.totalInputProcessed) : 0);
+  const estimatingOutput = estimatingMetrics
+    ? estimatingMetrics.outputTokens
+    : (tokenUsage ? Math.max(0, effective.outputTokens - tasks.outputTokens) : 0);
+
+  const hasTokenData = effective.totalInputProcessed > 0 || effective.outputTokens > 0;
+  const taskCount = (completedTasks?.length || 0) + (inProgressTask ? 1 : 0);
+
   const tooltipContent = (
-    <div className="space-y-2 min-w-[320px] max-h-[80vh] overflow-y-auto">
+    <div className="space-y-2 min-w-[340px] max-h-[80vh] overflow-y-auto">
       <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
-        Token Usage Breakdown
+        Token Usage
       </div>
-      
+
       {hasTokenData ? (
         <>
-          {/* Total */}
-          <div className="flex justify-between items-center">
-            <span className="text-gray-800 dark:text-gray-100 font-semibold">Total:</span>
-            <span className="font-mono font-semibold text-lg text-gray-900 dark:text-white">
-              {formatTokenCount(effective.rawTotalTokens)}
-            </span>
-          </div>
-          
-          {/* Clarify meaning */}
-          <div className="text-xs text-gray-600 dark:text-gray-400 -mt-1 mb-1 italic">
-            Total = Input (new, non-cache) + Output. Cache read/creation are tracked separately.
-          </div>
-          
-          {/* Estimating Phase (Job-level nodes) */}
-          {tokenUsage && (
-            <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500">
-              <div className="flex justify-between items-center font-semibold">
-                <span className="text-gray-800 dark:text-gray-100">Estimating Phase (non-cache):</span>
-                <span className="font-mono text-gray-800 dark:text-gray-100">
-                  {formatTokenCount(estimatingNodesTotal)}
-                </span>
+          {/* ━━ Input Tokens ━━ */}
+          <div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-800 dark:text-gray-100 font-semibold">Input</span>
+              <span className="font-mono font-semibold text-gray-900 dark:text-white">
+                {formatTokenCount(effective.totalInputProcessed)}
+              </span>
+            </div>
+
+            {/* Cache breakdown (only for input) */}
+            {effective.hasCache ? (
+              <div className="pl-2 text-xs space-y-0.5 mt-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">New (cache-miss):</span>
+                  <span className="font-mono text-gray-600 dark:text-gray-400">
+                    {formatTokenCount(effective.newInputTokens)}
+                  </span>
+                </div>
+                {effective.cacheReadTokens > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Cache hit:</span>
+                    <span className="font-mono text-gray-600 dark:text-gray-400">
+                      {formatTokenCount(effective.cacheReadTokens)}
+                    </span>
+                  </div>
+                )}
+                {effective.cacheCreationTokens > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Cache created:</span>
+                    <span className="font-mono text-gray-600 dark:text-gray-400">
+                      {formatTokenCount(effective.cacheCreationTokens)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Cache efficiency summary */}
+                <div className="pt-1 mt-1 border-t border-emerald-200 dark:border-emerald-800 space-y-0.5">
+                  {effective.cacheHitRate > 0 && (
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                      <span className="font-semibold">Cache hit rate:</span>
+                      <span className="font-mono font-semibold">
+                        {formatPercent(effective.cacheHitRate)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Billable input:</span>
+                    <span className="font-mono text-gray-600 dark:text-gray-400">
+                      {formatTokenCount(effective.billableInputTokens)}
+                    </span>
+                  </div>
+                  {effective.inputSavingsPercent > 0 && (
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                      <span className="font-semibold">Input savings:</span>
+                      <span className="font-mono font-semibold">
+                        ~{formatPercent(effective.inputSavingsPercent)}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
+            ) : (
+              <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 italic">
+                No cache activity
+              </div>
+            )}
+          </div>
+
+          {/* ━━ Output Tokens ━━ */}
+          <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-800 dark:text-gray-100 font-semibold">Output</span>
+              <span className="font-mono font-semibold text-gray-900 dark:text-white">
+                {formatTokenCount(effective.outputTokens)}
+              </span>
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 italic">
+              Not cacheable · 5x input price
+            </div>
+          </div>
+
+          {/* ━━ Phase Breakdown ━━ */}
+          {(tokenUsage || taskCount > 0) && (
+            <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
+              <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">By Phase</div>
+
+              {/* Estimating Phase */}
+              {tokenUsage && (
+                <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500 mb-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-700 dark:text-gray-200 font-semibold">Estimating:</span>
+                    <span className="font-mono text-gray-700 dark:text-gray-200">
+                      {formatTokenCount(estimatingInput)} in · {formatTokenCount(estimatingOutput)} out
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Tasks */}
+              {taskCount > 0 && (
+                <div className="pl-2 space-y-0.5 border-l-2 border-blue-400 dark:border-blue-500">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                      Tasks ({taskCount}):
+                    </span>
+                    <span className="font-mono text-gray-700 dark:text-gray-200">
+                      {formatTokenCount(tasks.totalInputProcessed)} in · {formatTokenCount(tasks.outputTokens)} out
+                    </span>
+                  </div>
+                  <div className="pl-2 space-y-0.5">
+                    {inProgressTask && inProgressTask.tokenUsage && (() => {
+                      const m = getTokenUsageMetrics(inProgressTask.tokenUsage);
+                      return (m.totalInputProcessed > 0 || m.outputTokens > 0) ? (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={inProgressTask.name}>
+                            • {inProgressTask.name}
+                          </span>
+                          <span className="font-mono text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                            {formatTokenCount(m.totalInputProcessed)} / {formatTokenCount(m.outputTokens)}
+                            <span className="text-xs opacity-70 animate-pulse">↻</span>
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
+                    {completedTasks?.map((task) => {
+                      const m = task.tokenUsage ? getTokenUsageMetrics(task.tokenUsage) : null;
+                      return (
+                        <div key={task.id} className="flex justify-between items-center text-xs">
+                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={task.name}>
+                            • {task.name}
+                          </span>
+                          <span className="font-mono text-gray-600 dark:text-gray-400">
+                            {m ? `${formatTokenCount(m.totalInputProcessed)} / ${formatTokenCount(m.outputTokens)}` : '0'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>
@@ -305,138 +402,18 @@ export function TokenUsageBadge({ jobId, tokenUsage, completedTasks, inProgressT
           No token usage data yet
         </div>
       )}
-      
-      {/* Tasks - only show if we have token data */}
-      {hasTokenData && ((completedTasks && completedTasks.length > 0) || inProgressTask) ? (
-        <div className="pl-2 space-y-1 border-l-2 border-blue-400 dark:border-blue-500">
-          <div className="flex justify-between items-center font-semibold">
-            <span className="text-gray-800 dark:text-gray-100">
-              Tasks ({(completedTasks?.length || 0) + (inProgressTask ? 1 : 0)}):
-            </span>
-            <span className="font-mono text-gray-800 dark:text-gray-100">
-              {formatTokenCount(tasks.rawTotalTokens)}
-            </span>
-          </div>
-          <div className="pl-2 space-y-1">
-            {/* In-Progress Task (show first) */}
-            {inProgressTask && inProgressTask.tokenUsage && getTokenUsageMetrics(inProgressTask.tokenUsage).rawTotalTokens > 0 && (
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={inProgressTask.name}>
-                  • {inProgressTask.name}
-                </span>
-                <span className="font-mono text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                  {formatTokenCount(getTokenUsageMetrics(inProgressTask.tokenUsage).rawTotalTokens)}
-                  <span className="text-xs opacity-70 animate-pulse">↻</span>
-                </span>
-              </div>
-            )}
-            
-            {/* Completed Tasks */}
-            {completedTasks?.map((task) => (
-              <div
-                key={task.id}
-                className="flex justify-between items-center text-sm"
-              >
-                <span className="text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={task.name}>
-                  • {task.name}
-                </span>
-                <span className="font-mono text-gray-700 dark:text-gray-300">
-                  {task.tokenUsage
-                    ? formatTokenCount(getTokenUsageMetrics(task.tokenUsage).rawTotalTokens)
-                    : '0'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      
-      {/* Input/Output Split (non-cache) + Cache breakdown */}
-      {hasTokenData && (
-        <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs space-y-0.5">
-          <div className="flex justify-between">
-            <span className="text-gray-700 dark:text-gray-300">Input (new, non-cache):</span>
-            <span className="font-mono text-gray-700 dark:text-gray-300">
-              {formatTokenCount(effective.rawInputTokens)}
-            </span>
-          </div>
-        <div className="flex justify-between">
-          <span className="text-gray-700 dark:text-gray-300">Output:</span>
-          <span className="font-mono text-gray-700 dark:text-gray-300">{formatTokenCount(effective.rawOutputTokens)}</span>
-        </div>
-
-        {/* Cache (processed input tokens) */}
-        {(effective.cacheCreationTokens || effective.cacheReadTokens) ? (
-          <div className="pt-1.5 mt-1.5 border-t border-emerald-300 dark:border-emerald-700 space-y-0.5">
-            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span>Prompt Cache</span>
-            </div>
-
-            <div className="flex justify-between pl-2 text-xs">
-              <span className="text-gray-700 dark:text-gray-300">Processed input:</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">
-                {formatTokenCount(effective.processedInputTokens)}
-              </span>
-            </div>
-
-            {effective.cacheCreationTokens > 0 && (
-              <div className="flex justify-between pl-2 text-xs">
-                <span className="text-gray-700 dark:text-gray-300">Total Created:</span>
-                <span className="font-mono text-gray-700 dark:text-gray-300">
-                  {formatTokenCount(effective.cacheCreationTokens)}
-                </span>
-              </div>
-            )}
-
-            {effective.cacheReadTokens > 0 && (
-              <>
-                <div className="flex justify-between pl-2 text-xs">
-                  <span className="text-gray-700 dark:text-gray-300">Cache Hit:</span>
-                  <span className="font-mono text-gray-700 dark:text-gray-300">
-                    {formatTokenCount(effective.cacheReadTokens)}
-                  </span>
-                </div>
-                <div className="flex justify-between pl-2">
-                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">💰 Saved (approx.):</span>
-                  <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                    {formatTokenCount(effective.cacheSavedTokens)}
-                  </span>
-                </div>
-              </>
-            )}
-
-            {/* Billable totals (cost-equivalent) */}
-            <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600">
-              <div className="flex justify-between">
-                <span className="text-gray-700 dark:text-gray-300">Input (billable equiv.):</span>
-                <span className="font-mono text-gray-700 dark:text-gray-300">
-                  {formatTokenCount(effective.billableInputTokens)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-700 dark:text-gray-300">Total (billable equiv.):</span>
-                <span className="font-mono text-gray-700 dark:text-gray-300">
-                  {formatTokenCount(effective.billableTotalTokens)}
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-      )}
     </div>
   );
-  
+
   return (
     <Tooltip content={tooltipContent} placement="bottom">
-      <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-300 dark:border-purple-800 cursor-pointer">
+      <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 cursor-pointer">
         <div className="flex items-center justify-center gap-1.5 h-7">
-          <Coins className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-          <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none">
-            {hasTokenData ? formatTokenCount(effective.rawTotalTokens) : '0'}
+          <Coins className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+          <span className="text-xs text-amber-700 dark:text-amber-300 font-medium leading-none whitespace-nowrap">
+            {hasTokenData
+              ? `${formatTokenCount(effective.totalInputProcessed)} in · ${formatTokenCount(effective.outputTokens)} out`
+              : '0'}
           </span>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { KanbanData } from '@/infrastructure/http/api';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { BoardContainer } from '../BoardContainer';
-import { DataSourceIndicator, ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from './KanbanHeader';
+import { ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from './KanbanHeader';
 import { KanbanEstimating } from './KanbanEstimating';
 import { KanbanColumns } from './KanbanColumns';
 
@@ -73,7 +73,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         title="Task Board"
         titleActions={
           <>
-            <DataSourceIndicator dataSource={kanbanData.dataSource} />
             <ElapsedTimeBadge
               totalElapsedTime={kanbanData.totalElapsedTime}
               jobTiming={kanbanData.jobTiming}
@@ -86,6 +85,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             <TokenUsageBadge 
               jobId={kanbanData.jobId}
               tokenUsage={kanbanData.tokenUsage}
+              estimatingTokenUsage={kanbanData.estimatingTokenUsage}
               completedTasks={kanbanData.completed?.map(task => ({
                 id: task.id || task.name,
                 name: task.name,
@@ -118,7 +118,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       title="Task Board"
       titleActions={
         <>
-          <DataSourceIndicator dataSource={kanbanData.dataSource} />
           <ElapsedTimeBadge
             totalElapsedTime={kanbanData.totalElapsedTime}
             jobTiming={kanbanData.jobTiming}
@@ -131,6 +130,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           <TokenUsageBadge 
             jobId={kanbanData.jobId}
             tokenUsage={kanbanData.tokenUsage}
+            estimatingTokenUsage={kanbanData.estimatingTokenUsage}
             completedTasks={kanbanData.completed?.map(task => ({
               id: task.id || task.name,
               name: task.name,

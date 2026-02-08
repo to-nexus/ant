@@ -66,6 +66,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         // Prevents stale low limits from old sessions overriding a raised RECURSION_LIMIT
         initial.recursionLimit = Math.max(session.state.recursionLimit || 0, finalLimit);
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
+        initial._estimatingTokenUsage = (session.state as any).estimatingTokenUsage;  // ✅ Restore estimating phase snapshot
         
         // ✅ CRITICAL: Restore detectionReport (required for enableTools in codeGen)
         // Without this, codeGen disables tool calling and LLM outputs XML tags as text

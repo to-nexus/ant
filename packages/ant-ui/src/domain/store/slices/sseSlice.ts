@@ -15,6 +15,7 @@ export interface SSEActions {
   updateKanbanRecursion: (recursionCount: number, recursionLimit?: number) => void;
   addChatMessage: (message: ChatMessage) => void;
   updateChatMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
+  removeCancelledMessage: (jobId: string) => void;
   clearChatMessages: () => void;
   initializeSSE: () => void;
   cleanupSSE: () => void;
@@ -197,6 +198,20 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     }));
   },
   
+  // ✅ Remove cancelled message(s) for a specific jobId
+  // Used when resuming a job to clean up the "Task cancelled" choice card
+  removeCancelledMessage: (jobId: string) => {
+    set((state: any) => ({
+      chatMessages: state.chatMessages.filter((msg: ChatMessage) => {
+        // Keep message unless it's a cancelled message for this job
+        const isCancelledForJob = msg.contents.some(
+          (c: MessageContent) => c.type === 'cancelled' && c.metadata?.jobId === jobId
+        );
+        return !isCancelledForJob;
+      })
+    }));
+  },
+  
   updateChatMessage: (messageId, updates) => {
     set((state: any) => ({
       chatMessages: state.chatMessages.map((msg: ChatMessage) =>
@@ -362,7 +377,14 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           break;
           
         case 'cancelled_message':
-          get().addChatMessage(event.message);
+          // ✅ FIX: Add deduplication check (same pattern as message_start)
+          // Without this, SSE reconnections or initial_state + cancelled_message race
+          // causes duplicate cancelled choice cards in the chat
+          if (!get().chatMessages.some((m: ChatMessage) => m.id === event.message.id)) {
+            get().addChatMessage(event.message);
+          } else {
+            console.log('[Store] 💬 Ignoring duplicate cancelled_message event:', event.message.id);
+          }
           break;
           
         // ✅ Cloud mode: Handle job status updates (from Redis Pub/Sub → SSE)

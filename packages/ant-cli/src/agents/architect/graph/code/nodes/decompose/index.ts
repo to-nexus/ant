@@ -355,6 +355,18 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 8.5: Snapshot estimating phase token usage
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Capture job-level tokenUsage BEFORE tasks begin. At this point, state.tokenUsage
+  // contains only estimating phase tokens (detectEnvironment + decompose).
+  const estimatingTokenUsage = (state as any).tokenUsage
+    ? { ...(state as any).tokenUsage }
+    : undefined;
+  if (estimatingTokenUsage) {
+    console.log(`📊 [Decompose] Estimating phase tokens captured: ${estimatingTokenUsage.inputTokens + estimatingTokenUsage.outputTokens} (input: ${estimatingTokenUsage.inputTokens}, output: ${estimatingTokenUsage.outputTokens}, cacheRead: ${estimatingTokenUsage.cacheReadTokens || 0}, cacheCreate: ${estimatingTokenUsage.cacheCreationTokens || 0})`);
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 9: Save checkpoint with actual tasks
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const updatedState = {
@@ -369,7 +381,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     completedTasks: state.completedTasks || [],
     completedTasksDetails: state.completedTasksDetails || [],
     jobId: timingJobId,
-    jobTiming
+    jobTiming,
+    _estimatingTokenUsage: estimatingTokenUsage,
   };
   
   // ✅ Save checkpoint with tasks

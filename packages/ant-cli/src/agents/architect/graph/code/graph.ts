@@ -483,9 +483,11 @@ export function buildCodeGraph() {
       }
       
       if (hasDetectionReport) {
-        // Interrupted after detectEnvironment but before decompose → decompose
-        console.log(`[RouteAfterResolve] Resume after detectEnv → decompose`);
-        return 'decompose';
+        // Interrupted after detectEnvironment but before decompose
+        // Route through detectEnvironment again (LLM skip, filter/combine design docs only)
+        // Then detectEnvironment → decompose → plan via hardcoded edges
+        console.log(`[RouteAfterResolve] Resume after detectEnv → detectEnvironment (LLM skip, filter only)`);
+        return 'detectEnvironment';
       }
       
       // Interrupted very early (before detectEnvironment) → start from triage
@@ -496,7 +498,8 @@ export function buildCodeGraph() {
       triage: "triage",
       revise: "revise",
       plan: "plan",
-      decompose: "decompose"
+      decompose: "decompose",
+      detectEnvironment: "detectEnvironment"
     } as any
   );
   
