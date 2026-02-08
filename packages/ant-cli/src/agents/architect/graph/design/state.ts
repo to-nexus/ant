@@ -53,6 +53,9 @@ export interface DesignGraphState extends TaskArtifacts {
   /** 통합 환경 감지 결과 (jobMode, workType, environment, domain 등 포함) */
   detectionReport?: DetectionReport;
   
+  // ✅ Resume flag (API level, set by runner before graph invoke)
+  isResume?: boolean;
+  
   // ✅ Chat Integration
   overrideDirective?: string;  // Chat input as directive (highest priority)
   chatSource?: boolean;         // True if job started from chat (enables Chat SSE)

@@ -93,6 +93,10 @@ Promise.all([
   fs.readFile(join(codePhaseRulesBase, "plan/rules-plan.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/phases/plan/rules-plan", content))
     .catch(() => {}),
+  // Revise rules (task queue revision on resume)
+  fs.readFile(join(codePhaseRulesBase, "revise/rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/revise/rules", content))
+    .catch(() => {}),
 ]).catch(() => {});
 
 // ✅ Register design/phases/decompose partials (System Design and UI Design)
@@ -103,6 +107,14 @@ Promise.all([
     .catch(() => {}),
   fs.readFile(join(designDecomposePath, "rules-ui-design.md"), "utf8")
     .then(content => Handlebars.registerPartial("design/phases/decompose/rules-ui-design", content))
+    .catch(() => {}),
+]).catch(() => {});
+
+// ✅ Register design/phases/revise partials (task queue revision on resume)
+const designRevisePath = join(templatesPath, "design/phases/revise");
+Promise.all([
+  fs.readFile(join(designRevisePath, "rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("design/phases/revise/rules", content))
     .catch(() => {}),
 ]).catch(() => {});
 

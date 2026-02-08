@@ -29,16 +29,19 @@ Respond with ONLY a JSON object:
       "name": "Task Name",
       "description": "What this task does",
       "type": "setup|feature",
-      "priority": 250
+      "priority": 250,
+      "ui": false,
+      "packages": ["fe"]
     }
   ]
 }
 ```
 
-### Priority Reference
+### Task Field Reference
 
-- 100-149: setup (project initialization)
-- 200-280: feature (implementation)
-- 900-999: error fix (post-implementation)
+- **type**: `"setup"` (project initialization) or `"feature"` (implementation)
+- **priority**: 100-149 setup, 200-280 feature, 900-999 error fix
+- **ui**: `true` if the task involves UI rendering or visual components, `false` otherwise
+- **packages**: Target package tags for design doc injection. Use tags from existing tasks as reference (e.g., `["fe"]`, `["be"]`, `["fe", "be"]`, `["shared"]`). Omit if task is cross-cutting (e.g., root workspace setup).
 
 **Now analyze and respond with your decision in JSON format:**

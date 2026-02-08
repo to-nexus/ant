@@ -1,6 +1,6 @@
 # Task Revision Decision
 
-You are analyzing whether the current task queue needs modifications based on new user feedback.
+You are analyzing whether the current design task queue needs modifications based on new user feedback.
 
 ## Current State
 
@@ -57,4 +57,4 @@ You are analyzing whether the current task queue needs modifications based on ne
 
 ---
 
-{{> code/phases/revise/rules }}
+{{> design/phases/revise/rules }}

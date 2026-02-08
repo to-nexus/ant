@@ -27,18 +27,21 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve');
   }
   
-  // ✅ CRITICAL: Skip validation if resuming (taskQueue already exists)
-  const isResume = state.taskQueue && !state.taskQueue.isEmpty();
-  if (isResume) {
+  // ✅ CRITICAL: Skip artifact loading if resuming (state already restored by runner)
+  if (state.isResume) {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔄 DESIGN AGENT - RESUME (Skip Resolve)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    console.log('✅ Resuming from previous state (resolve phase skipped)');
-    if (state.taskQueue) {
-      console.log(`   Task queue: ${state.taskQueue.size()} tasks remaining\n`);
-    }
+    const hasTaskQueue = state.taskQueue && !state.taskQueue.isEmpty();
+    const hasDetectionReport = Boolean(state.detectionReport);
+    const hasNewDirective = Boolean(state.overrideDirective);
+    console.log(`   isResume: true`);
+    console.log(`   hasTaskQueue: ${hasTaskQueue} (${state.taskQueue?.size() || 0} tasks)`);
+    console.log(`   hasDetectionReport: ${hasDetectionReport}`);
+    console.log(`   hasNewDirective: ${hasNewDirective}`);
+    console.log(`   → Router will decide next node\n`);
     
-    // Return existing state without changes
+    // Return existing state without changes (router decides next node)
     return state;
   }
   
