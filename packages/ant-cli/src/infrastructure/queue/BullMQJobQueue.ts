@@ -62,8 +62,14 @@ export class BullMQJobQueue implements JobQueuePort {
   
   private progressCallbacks = new Map<string, Set<(progress: JobProgress) => void>>();
   private completionCallbacks = new Map<string, Set<(result: JobExecutionResult) => void>>();
+  
+  // ✅ Diagnostic: Track instance creation to detect ESM module duplication
+  private static instanceCount = 0;
 
   constructor(options: BullMQJobQueueOptions, stateStore: StateStorePort) {
+    BullMQJobQueue.instanceCount++;
+    const instanceId = BullMQJobQueue.instanceCount;
+    
     const queueName = options.queueName || QUEUE_NAME;
     
     // Parse Redis URL for BullMQ connection (uses shared utility with TLS support)
@@ -75,7 +81,10 @@ export class BullMQJobQueue implements JobQueuePort {
 
     this.setupEventHandlers();
 
-    logger.info(`BullMQ job queue initialized: ${queueName}`, { component: 'BullMQJobQueue' });
+    logger.info(`BullMQ job queue initialized: ${queueName} (instance #${instanceId})`, { component: 'BullMQJobQueue' });
+    if (instanceId > 1) {
+      logger.warn(`⚠️ Multiple BullMQJobQueue instances detected (instance #${instanceId}). This may indicate ESM module duplication.`, { component: 'BullMQJobQueue' });
+    }
   }
 
   private setupEventHandlers(): void {
@@ -98,6 +107,17 @@ export class BullMQJobQueue implements JobQueuePort {
 
     this.queueEvents.on('completed', async (args: { jobId: string; returnvalue?: string }) => {
       const { jobId, returnvalue } = args;
+      
+      // ✅ Distributed idempotency guard: Acquire Redis lock (SETNX) to prevent duplicate handling
+      // Multiple BullMQJobQueue instances (e.g., from ESM module duplication in tsx/pnpm dev env)
+      // can each receive the same QueueEvents 'completed' event. Redis SETNX ensures only one processes it.
+      const lockKey = `ant:job-completed-lock:${jobId}`;
+      const acquired = await this.stateStore.acquireLock(lockKey, 120);
+      if (!acquired) {
+        logger.warn(`Duplicate completed event blocked by Redis lock: ${jobId}`, { component: 'BullMQJobQueue' });
+        return;
+      }
+      
       logger.info(`Job completed: ${jobId}`, { component: 'BullMQJobQueue' });
       
       // Parse result

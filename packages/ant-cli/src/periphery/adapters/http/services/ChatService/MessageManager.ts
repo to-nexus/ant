@@ -338,6 +338,18 @@ export class MessageManager {
       logger.warn(`No current message to finalize (async): ${projectId}/${featureName}`, { 
         component: 'MessageManager' 
       });
+      
+      // ✅ SAFETY NET: Even if no local currentMessage found, explicitly clear Redis
+      // This prevents stale currentMessage from being restored on SSE reconnect
+      // (e.g., when worker stored it under a different key path that we couldn't find)
+      try {
+        await this.sessionManager.setCurrentMessageAsync(
+          projectId, featureName, null, userContext
+        );
+      } catch (err) {
+        logger.warn('Failed to clear stale currentMessage from Redis', { component: 'MessageManager' }, err);
+      }
+      
       return;
     }
 
@@ -443,6 +455,20 @@ export class MessageManager {
   ): Promise<string> {
     // ✅ Use async version to ensure file/Redis is fully loaded
     const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
+    
+    // ✅ Safety net: Skip if a cancelled message for this jobId already exists
+    // This is a final-layer guard against duplicate cancelled messages
+    // (primary dedup is via Redis SETNX in BullMQJobQueue and RouteConfigurator)
+    const alreadyHasCancelled = session.messages.some(
+      (m: ChatMessage) => m.jobId === jobId && m.contents?.some((c: any) => c.type === 'cancelled')
+    );
+    if (alreadyHasCancelled) {
+      const existingMsg = session.messages.find(
+        (m: ChatMessage) => m.jobId === jobId && m.contents?.some((c: any) => c.type === 'cancelled')
+      );
+      logger.warn(`[MessageManager] Cancelled message already exists for job: ${jobId}, skipping duplicate`, { component: 'MessageManager' });
+      return existingMsg?.id || 'existing';
+    }
     
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const cancelledMsg: ChatMessage = {
