@@ -15,7 +15,8 @@ import type { TaskTiming, DecomposableJobType, KanbanData } from '@ant/shared';
 // - local mode → http://localhost:{localBackendPort}
 // - cloud mode → VITE_CLOUD_BACKEND_BASE (환경변수, 빌드 시점 고정)
 //
-// api, realtime, preview, ide 모두 같은 서버의 Ingress 경로로 라우팅됨
+// api, realtime, ide는 같은 서버의 Ingress 경로로 라우팅됨
+// preview는 별도 호스트 (VITE_PREVIEW_HOST)
 // ============================================================================
 
 const DEFAULT_LOCAL_BACKEND_PORT = 4100;
@@ -68,7 +69,7 @@ export const getLocalBackendPort = (): number => {
  * - Vite dev server가 프록시를 통해 각 서비스로 라우팅:
  *   - /api/* → localhost:4100 (API Server)
  *   - /realtime/* → localhost:4101 (Realtime Server - SSE)
- *   - /preview/* → localhost:4102 (Preview Server)
+ * - preview는 별도 호스트 (VITE_PREVIEW_HOST)로 직접 호출
  * - 직접 http://localhost:4100으로 요청하면 /realtime 라우트가 없어서 SSE 연결 실패
  */
 const getBackendBase = (): string => {
@@ -104,10 +105,17 @@ export const API_BASE = () => `${getBackendBase()}/api`;
 export const REALTIME_BASE = () => `${getBackendBase()}/realtime`;
 
 /**
- * Preview Server base URL
- * - /preview/* → ant-preview service
+ * Preview Server base URL (별도 호스트)
+ * - ant-preview.crosstoken.io (cloud)
+ * - localhost:4102 (local)
  */
-export const PREVIEW_BASE = () => `${getBackendBase()}/preview`;
+export const getPreviewBase = (): string => {
+  const previewHost = import.meta.env.VITE_PREVIEW_HOST;
+  if (previewHost) return previewHost;
+  return 'http://localhost:4102'; // fallback
+};
+
+export const PREVIEW_BASE = () => getPreviewBase();
 
 /**
  * Server base URL (without path prefix)
@@ -1173,7 +1181,7 @@ export async function updateProjectConfig(projectId: string, config: ProjectConf
 }
 
 // Preview server management
-// Note: Preview requests go to /preview/* path (routed to ant-preview service)
+// Note: Preview requests go to ant-preview host (VITE_PREVIEW_HOST)
 export async function startPreview(
   projectId: string, 
   feature?: string,

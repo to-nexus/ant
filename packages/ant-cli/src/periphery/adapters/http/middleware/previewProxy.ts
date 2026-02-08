@@ -1,16 +1,18 @@
 /**
  * PreviewProxyMiddleware
  * 
- * Express middleware to proxy preview requests.
- * Dynamically routes /preview/:serverKey/* to the appropriate port.
+ * Express middleware to proxy preview requests on a dedicated host (ant-preview.crosstoken.io).
+ * Dynamically routes /:serverKey/* to the appropriate dev server port.
  * 
  * Example:
- * /preview/alice:todo-app:feature-login → localhost:30001
- * /preview/alice:todo-app:feature-login/src/main.tsx → localhost:30001/src/main.tsx
+ * /acme:alice:todo-app:feature-login → localhost:30001
+ * /acme:alice:todo-app:feature-login/src/main.tsx → localhost:30001/src/main.tsx
+ * 
+ * For SSR resources without serverKey (e.g., /_next/chunk.js),
+ * uses Referer header to determine the correct dev server.
  */
 
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
-import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { parsePreviewKey } from '../../../../infrastructure/state/redisKeyUtils';
@@ -19,12 +21,15 @@ function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Known API/system paths that should NOT be treated as serverKey */
+const RESERVED_PATHS = ['/projects/', '/admin/', '/health'];
+
 export interface PreviewProxyConfig {
   portRegistry: PortRegistryPort;
-  pathPrefix?: string;  // Default: '/preview'
+  pathPrefix?: string;  // Default: '' (no prefix, dedicated host)
   /**
    * Optional resolver for backend port (fullstack).
-   * If provided, /preview/:serverKey/api/* can be routed to backend instead of the entry (frontend) port.
+   * If provided, /:serverKey/api/* can be routed to backend instead of the entry (frontend) port.
    */
   getBackendPort?: (args: {
     tenantId: string;
@@ -36,73 +41,103 @@ export interface PreviewProxyConfig {
 }
 
 /**
+ * Check if a path segment looks like a serverKey (contains colons)
+ * ServerKey format: tenantId:userId:projectId:feature
+ */
+function isServerKey(segment: string): boolean {
+  return segment.includes(':') && parsePreviewKey(segment) !== null;
+}
+
+/**
+ * Extract serverKey from Referer header.
+ * Looks for the first path segment that matches serverKey format (contains colons).
+ */
+function extractServerKeyFromReferer(refererStr: string): string | null {
+  try {
+    const url = new URL(refererStr);
+    const segments = url.pathname.split('/').filter(Boolean);
+    for (const segment of segments) {
+      if (isServerKey(segment)) {
+        return segment;
+      }
+    }
+  } catch {
+    // Not a valid URL, try regex fallback
+    const match = refererStr.match(/\/([^/]*:[^/]*:[^/]*:[^/]*)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
  * Create preview proxy middleware
  */
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
-  const { portRegistry, pathPrefix = '/preview', getBackendPort } = config;
+  const { portRegistry, pathPrefix = '', getBackendPort } = config;
   
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
-    // ✅ Skip API routes - they should be handled by Express routes, not proxy
-    // API paths: /preview/projects/:id/start, /preview/projects/:id/stop, /preview/projects/:id/status
-    if (req.path.startsWith(`${pathPrefix}/projects/`)) {
+    // ✅ Skip reserved API/system routes — handled by Express route handlers
+    if (RESERVED_PATHS.some(p => req.path.startsWith(p))) {
       return next();
     }
     
-    // ✅ Handle requests without /preview/:serverKey prefix that should go to preview server
-    // These come from client-side JS (hydration) - use Referer header to route.
-    // Patterns: /_next/*, /logos/*, /icons/*, /backgrounds/*, /public/*, static assets
-    // IMPORTANT: Skip if already has /preview/ prefix (handled by main logic below)
-    const hasPreviewPrefix = req.path.startsWith(`${pathPrefix}/`);
-    const isNextInternal = req.path.startsWith('/_next/');
-    const isStaticAsset = /^\/(logos|icons|backgrounds|images|assets|public|fonts|static)\//.test(req.path);
-    const hasStaticExt = /\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot|css|js)(\?.*)?$/.test(req.path);
+    // ✅ Extract first path segment to check if it's a serverKey
+    const urlPath = req.url.split('?')[0];
+    const pathAfterPrefix = pathPrefix ? urlPath.substring(pathPrefix.length) : urlPath;
+    const segments = pathAfterPrefix.split('/').filter(Boolean);
+    const firstSegment = segments[0] || '';
+    const hasServerKeyInPath = firstSegment && isServerKey(firstSegment);
     
-    if (!hasPreviewPrefix && (isNextInternal || isStaticAsset || hasStaticExt)) {
-      const referer = req.headers.referer || req.headers.referrer;
-      // Ensure referer is a string (can be string[] in Express types)
-      const refererStr = Array.isArray(referer) ? referer[0] : referer;
+    // ✅ Handle requests without serverKey in path (SSR resource leakage)
+    // These come from SSR-rendered absolute paths (/_next/*, /logos/*, etc.)
+    // Use Referer header to determine the correct dev server.
+    if (!hasServerKeyInPath) {
+      const isNextInternal = req.path.startsWith('/_next/');
+      const isStaticAsset = /^\/(logos|icons|backgrounds|images|assets|public|fonts|static)\//.test(req.path);
+      const hasStaticExt = /\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot|css|js)(\?.*)?$/.test(req.path);
       
-      if (refererStr) {
-        // Extract serverKey from referer: .../api/preview/tenantId:userId:projectId:feature/...
-        // Also support legacy /preview/ for backward compatibility
-        const refererMatch = refererStr.match(/\/(?:api\/)?preview\/([^/]+)/);
-        if (refererMatch) {
-          const serverKey = refererMatch[1];
-          const parsed = parsePreviewKey(serverKey);
-          if (parsed) {
-            const { tenantId, userId, projectId, feature } = parsed;
-            
-            try {
-              const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
-              if (mapping) {
-                // Proxy request to the correct preview server (use registered host)
-                const host = mapping.host || 'localhost';
-                const targetUrl = `http://${host}:${mapping.port}${req.url}`;
-                logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (from referer)`, { component: 'PreviewProxy' });
-                
-                const response = await fetch(targetUrl, {
-                  method: req.method,
-                  headers: {
-                    ...req.headers,
-                    host: `${host}:${mapping.port}`,
-                    'accept-encoding': 'identity',
-                  } as any,
-                });
-                
-                res.status(response.status);
-                response.headers.forEach((value: string, key: string) => {
-                  const lower = key.toLowerCase();
-                  if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
-                  res.setHeader(key, value);
-                });
-                
-                const buffer = Buffer.from(await response.arrayBuffer());
-                res.setHeader('content-length', buffer.length);
-                res.send(buffer);
-                return;
+      if (isNextInternal || isStaticAsset || hasStaticExt) {
+        const referer = req.headers.referer || req.headers.referrer;
+        const refererStr = Array.isArray(referer) ? referer[0] : referer;
+        
+        if (refererStr) {
+          const serverKey = extractServerKeyFromReferer(refererStr);
+          if (serverKey) {
+            const parsed = parsePreviewKey(serverKey);
+            if (parsed) {
+              const { tenantId, userId, projectId, feature } = parsed;
+              
+              try {
+                const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
+                if (mapping) {
+                  const host = mapping.host || 'localhost';
+                  const targetUrl = `http://${host}:${mapping.port}${req.url}`;
+                  logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (from referer)`, { component: 'PreviewProxy' });
+                  
+                  const response = await fetch(targetUrl, {
+                    method: req.method,
+                    headers: {
+                      ...req.headers,
+                      host: `${host}:${mapping.port}`,
+                      'accept-encoding': 'identity',
+                    } as any,
+                  });
+                  
+                  res.status(response.status);
+                  response.headers.forEach((value: string, key: string) => {
+                    const lower = key.toLowerCase();
+                    if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
+                    res.setHeader(key, value);
+                  });
+                  
+                  const buffer = Buffer.from(await response.arrayBuffer());
+                  res.setHeader('content-length', buffer.length);
+                  res.send(buffer);
+                  return;
+                }
+              } catch (error) {
+                logger.debug(`Failed to route ${req.path} request`, { component: 'PreviewProxy' });
               }
-            } catch (error) {
-              logger.debug(`Failed to route ${req.path} request`, { component: 'PreviewProxy' });
             }
           }
         }
@@ -111,34 +146,12 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return next();
     }
     
-    // Only handle paths starting with /preview/
-    if (!req.path.startsWith(`${pathPrefix}/`)) {
-      return next();
-    }
+    // ── Main proxy logic: /:serverKey/* ──
     
+    const serverKey = firstSegment;
     logger.warn(`[Preview] PROXY: ${req.method} ${req.url}`, { component: 'PreviewProxy' });
-    
-    // ✅ Use req.url instead of req.path to preserve query params
-    // Extract serverKey from path: /preview/tenantId:userId:projectId:feature/...
-    const url = req.url.split('?')[0]; // Remove query params
-    const pathWithoutPrefix = url.substring(pathPrefix.length + 1); // Remove '/preview/'
-    const firstSlashIndex = pathWithoutPrefix.indexOf('/');
-    const serverKey = firstSlashIndex === -1 
-      ? pathWithoutPrefix  // No slash, entire string is serverKey
-      : pathWithoutPrefix.substring(0, firstSlashIndex);  // Everything before first slash
-    
-    if (!serverKey) {
-      logger.warn('No serverKey', { component: 'PreviewProxy' });
-      res.status(404).json({
-        error: 'Server key not provided',
-        message: `Usage: ${pathPrefix}/:serverKey`
-      });
-      return;
-    }
-    
     logger.debug(`serverKey=${serverKey}`, { component: 'PreviewProxy' });
     
-    // Use centralized parsing function for Preview key (4 parts)
     const parsed = parsePreviewKey(serverKey);
     if (!parsed) {
       logger.warn(`Invalid serverKey format: ${serverKey}`, { component: 'PreviewProxy' });
@@ -185,7 +198,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return;
     }
     
-    // ✅ Strip /preview/:serverKey from path for Vite (handle accidental double-prefix)
+    // ✅ Strip /:serverKey from path for dev server (handle accidental double-prefix)
     const prefix = `${pathPrefix}/${serverKey}`;
     let targetPath = req.url;
     while (targetPath.startsWith(prefix)) {
@@ -293,7 +306,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         // ✅ Inject path rewrite script for client-side requests (HTML only)
         // This handles React hydration overwriting paths back to original values
         if (contentType.includes('text/html')) {
-          const basePath = `${pathPrefix}/${serverKey}`;
+          const basePath = `/${serverKey}`;
           const clientScript = `<script>
 (function() {
   var BASE = "${basePath}";
@@ -369,12 +382,10 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           }
         }
         
-        // ✅ Rewrite absolute paths to include /preview/:serverKey/ prefix
-        // This ensures all resources (images, CSS, JS) are routed through ant-preview
-        // ALB only supports URI-based routing, so paths must include the prefix
-        const prefixNoLeadingSlash = `${pathPrefix.replace(/^\//, '')}/${serverKey}/`;
-        const escapedAlready = escapeRegExp(prefixNoLeadingSlash);
-        const replacement = `${pathPrefix}/${serverKey}/`;
+        // ✅ Rewrite absolute paths to include /:serverKey/ prefix
+        // This ensures all resources (images, CSS, JS) are routed correctly
+        const replacement = `/${serverKey}/`;
+        const escapedAlready = escapeRegExp(`${serverKey}/`);
         
         // HTML attributes: src, href, action
         const htmlAttrRe = new RegExp(`((?:src|href|action)=["'])\\/(?!\\/|${escapedAlready})`, 'g');
@@ -443,45 +454,3 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
   };
 }
 
-/**
- * Legacy: Batch proxy creation (not recommended for dynamic routing)
- */
-export async function createBatchPreviewProxies(
-  portRegistry: PortRegistryPort,
-  pathPrefix: string = '/preview'
-): Promise<Array<{ path: string; proxy: any }>> {
-  const previews = await portRegistry.listPreviews();
-  const proxies: Array<{ path: string; proxy: any }> = [];
-  
-  for (const mapping of previews) {
-    const serverKey = `${mapping.tenantId}:${mapping.userId}:${mapping.projectId}:${mapping.feature}`;
-    const path = `${pathPrefix}/${serverKey}`;
-    const targetHost = mapping.host || 'localhost';
-    
-    const proxy = createProxyMiddleware({
-      target: `http://${targetHost}:${mapping.port}`,
-      changeOrigin: true,
-      ws: true,
-      pathRewrite: {
-        [`^${path}`]: ''
-      }
-    } as Options);
-    
-    proxies.push({ path, proxy });
-  }
-  
-  return proxies;
-}
-
-// ==========================================
-// Backward compatibility aliases (deprecated)
-// ==========================================
-
-/** @deprecated Use PreviewProxyConfig instead */
-export type DevServerProxyConfig = PreviewProxyConfig;
-
-/** @deprecated Use createPreviewProxyMiddleware instead */
-export const createDevServerProxyMiddleware = createPreviewProxyMiddleware;
-
-/** @deprecated Use createBatchPreviewProxies instead */
-export const createBatchDevServerProxies = createBatchPreviewProxies;

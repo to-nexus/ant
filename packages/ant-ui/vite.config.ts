@@ -36,11 +36,7 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,  // WebSocket support for IDE terminal
       },
-      // Local dev: route /preview/* to ant-preview service
-      '/preview': {
-        target: 'http://localhost:4102',
-        changeOrigin: true,
-      },
+      // Note: preview는 별도 호스트 (VITE_PREVIEW_HOST)로 직접 호출
       // Local dev: route /realtime/* to ant-realtime service
       '/realtime': {
         target: 'http://localhost:4101',

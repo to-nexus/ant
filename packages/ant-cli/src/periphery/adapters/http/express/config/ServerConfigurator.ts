@@ -103,8 +103,8 @@ export class ServerConfigurator {
         return next();
       }
 
-      // Preview and IDE proxy requests
-      if (req.path.startsWith('/preview/') || req.path.startsWith('/ide/')) {
+      // IDE proxy requests (preview is on a separate host)
+      if (req.path.startsWith('/ide/')) {
         return next();
       }
 
