@@ -316,6 +316,17 @@ export class RouteConfigurator {
         if (data.type === 'completed' || data.type === 'failed') {
           const { jobId, projectId, featureName, userEmail } = data;
           
+          // ✅ Distributed idempotency guard: Acquire Redis lock (SETNX) to prevent duplicate cleanup
+          // Multiple RouteConfigurator instances or Redis Pub/Sub re-delivery can cause duplicates.
+          // Redis SETNX ensures only one handler processes the event across all instances.
+          const eventKey = `${jobId}:${data.type}`;
+          const lockKey = `ant:job-event-lock:${eventKey}`;
+          const acquired = await stateStore.acquireLock(lockKey, 120);
+          if (!acquired) {
+            logger.debug(`Duplicate job event blocked by Redis lock: ${eventKey}`, { component: 'RouteConfigurator' });
+            return;
+          }
+          
           // Update local stateTracker to mark job as completed
           const jobStatus = state.jobs.get(jobId);
           if (jobStatus) {
