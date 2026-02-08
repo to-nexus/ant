@@ -460,7 +460,7 @@ export class ArtifactService {
     context: ArtifactProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort,
-    environment?: 'frontend' | 'backend' | 'unknown'
+    environment?: 'frontend' | 'backend' | 'fullstack' | 'unknown'
   ): Promise<typeof ArtifactService.DesignDocsResultType> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
     const designPathAbs = path.join(featurePathAbs, "outputs/design");
@@ -520,8 +520,8 @@ export class ArtifactService {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // 3. Load legacy single docs (backward compatible)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const shouldLoadFe = environment === 'frontend' || environment === 'unknown';
-    const shouldLoadBe = environment === 'backend' || environment === 'unknown';
+    const shouldLoadFe = environment === 'frontend' || environment === 'fullstack' || environment === 'unknown';
+    const shouldLoadBe = environment === 'backend' || environment === 'fullstack' || environment === 'unknown';
     
     // Load fe-system-design.md (legacy single frontend)
     if (shouldLoadFe && !result.feDesigns) {

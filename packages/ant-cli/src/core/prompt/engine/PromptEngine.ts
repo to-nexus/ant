@@ -481,6 +481,26 @@ export class PromptEngine {
   }
 
   /**
+   * Build prompt for Revise node (task queue revision on resume with new directive)
+   */
+  async buildRevisePrompt(
+    job: 'code' | 'design',
+    context: {
+      completedCount: number;
+      totalTasks: number;
+      currentTask?: { id: string; name: string; type: string; description: string };
+      remainingTasks: Array<{ id: string; name: string; type: string; priority: number; description: string; index: number }>;
+      completedTasksList: Array<{ id: string; name: string; type: string; description: string }>;
+      originalDirective: string;
+      newDirective: string;
+      directives: Array<{ index: number; content: string; isLatest: boolean; isOriginal: boolean }>;
+      context?: any;
+    }
+  ): Promise<string> {
+    return await this.deps.promptPort.render(`${job}/phases/revise/base`, context);
+  }
+
+  /**
    * Build prompt for Plan node (task plan generation)
    */
   async buildTaskPlanPrompt(

@@ -67,149 +67,21 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   
   const llm = state.deps?.llm as LLMClient;
   
-  // ✅ CRITICAL: Load session FIRST to get completedTasksDetails before signaling
+  // ✅ Preload completed tasks for "estimating started" signal
   let preloadedCompletedTasks: any[] = [];
   if (state.deps?.session) {
     try {
       const session = await state.deps.session.load(
         state.context.project,
         state.context.featureFolder || 'default',
-        'design'  // ✅ Specify job type
+        'design'
       );
-      
-      // ✅ Extract completed tasks for "estimating started" signal
       if (session.state?.completedTasksDetails) {
         preloadedCompletedTasks = session.state.completedTasksDetails;
         console.log(`\n📦 Preloaded ${preloadedCompletedTasks.length} completed tasks from session\n`);
       }
-      
-      // Resume if: taskQueue has tasks OR currentTask exists
-      if (session.state && 
-          session.state.taskQueue && 
-          (session.state.taskQueue.length > 0 || session.state.currentTask)) {
-        console.log('\n🔄 Resuming from previous design session...\n');
-        
-        // Restore TaskQueue from saved state
-        const taskQueue = new TaskQueue<DesignTask>();
-        session.state.taskQueue.forEach((task: DesignTask) => {
-          taskQueue.push(task);
-        });
-        
-        // ✨ Restore or initialize jobId and jobTiming
-        const existingJobId = session.state.jobId || state._httpJobId || 'unknown-job';
-        const { jobId, jobTiming: resumedJobTiming } = JobTimingManager.resumeJob(existingJobId, session.state.jobTiming);
-        
-        // ✅ Build merged directive from directives array (newest first = highest priority)
-        let mergedDirective = state.directive;
-        if (session.state.directives && session.state.directives.length > 0) {
-          console.log(`\n📝 Merging ${session.state.directives.length} directive(s) (newest first):`);
-          session.state.directives.forEach((dir: string, idx: number) => {
-            console.log(`   ${idx + 1}. ${dir.substring(0, 60)}...`);
-          });
-          
-          // ✅ Structure directives with context (newest = highest priority)
-          if (session.state.directives.length === 1) {
-            mergedDirective = session.state.directives[0];
-          } else {
-            // Multiple directives: label them clearly
-            const [initial, ...feedbacks] = session.state.directives.slice().reverse(); // oldest first for labeling
-            const parts = [`[Initial Request]\n${initial}`];
-            
-            feedbacks.forEach((feedback, idx) => {
-              parts.push(`[Additional Feedback ${idx + 1}]\n${feedback}`);
-            });
-            
-            // Join with clear separators (newest feedback last = most visible to LLM)
-            mergedDirective = parts.join('\n\n---\n\n');
-            console.log(`   ✅ Structured ${session.state.directives.length} directive(s) with labels\n`);
-          }
-        }
-        
-        const resumedState: DesignGraphState = {
-          ...state,
-          taskQueue,
-          currentTask: session.state.currentTask,
-          completedTasks: session.state.completedTasks || [],
-          completedTasksDetails: session.state.completedTasksDetails || [],
-          _httpJobId: state._httpJobId,
-          jobId,
-          jobTiming: resumedJobTiming,
-          tokenUsage: session.state.tokenUsage,  // ✅ CRITICAL: Restore job-level token usage
-          directive: mergedDirective,  // ✅ Merged directives (newest first)
-          overrideDirective: session.state.overrideDirective,  // ✅ Restore chat-initiated directive
-          chatSource: session.state.chatSource,  // ✅ Restore chat source flag
-          files: session.state.files || [],  // ✅ Restore generated files (unified approach)
-          filesToDelete: session.state.filesToDelete || [],
-          interruption: undefined  // ✅ CRITICAL: Clear interruption when resuming (job is now running again)
-        } as any;
-        
-        // ✅ Restore buffer from disk for interruption recovery
-        try {
-          const { StreamBufferManager } = await import('../../../../../../core/streaming/buffer/StreamBufferManager');
-          const featurePath = state.deps?.workspaceResolver?.getFeaturePath(
-            { userId: state.context.userId || 'local', organizationId: state.context.organizationId || 'local', workspacePath: '' },
-            state.context.project,
-            state.context.featureFolder
-          ) || state.context.featurePath || '';
-          const projectPath = featurePath.replace(`/features/${state.context.featureFolder}`, '');
-          const bufferManager = new StreamBufferManager(projectPath, state.context.featureFolder, 'design', jobId);
-          
-          const savedBuffers = bufferManager.loadBuffersFromDisk();
-          if (savedBuffers.size > 0) {
-            console.log(`\n🔄 [Resume] Loaded ${savedBuffers.size} buffer(s) from disk for recovery`);
-            // Buffer will be used by execute node automatically
-          }
-        } catch (error) {
-          console.warn(`⚠️  [Resume] Failed to restore buffers (non-critical):`, error);
-        }
-        
-        console.log(`📊 RESUMING DESIGN SESSION:`);
-        console.log(`   ✅ ${resumedState.completedTasks?.length || 0} task(s) completed`);
-        if (resumedState.currentTask) {
-          console.log(`   🔄 Current task: "${resumedState.currentTask.name}"`);
-        }
-        console.log(`   📋 ${taskQueue.size()} task(s) in queue`);
-        console.log(`   📄 Generated files: ${resumedState.files?.length || 0} restored\n`);
-        
-        // ✅ Update live snapshot via kanbanUpdate port
-        console.log(`🔍 [Design Decompose Resume] Kanban update check:`);
-        console.log(`   _httpJobId: ${state._httpJobId || 'undefined'}`);
-        console.log(`   kanbanUpdate exists: ${!!state.deps?.kanbanUpdate}`);
-        
-        if (state._httpJobId && state.deps?.kanbanUpdate) {
-          const completedTasks = resumedState.completedTasksDetails || [];
-          const queueTasks = taskQueue.getAll();
-          
-          // ✅ CRITICAL: Get recursionCount and recursionLimit from resumed state
-          const recursionCount = session.state.recursionCount || 0;
-          const MIN_RECURSION_LIMIT = 5;
-          const envLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
-          const recursionLimit = (isNaN(envLimit) || envLimit < MIN_RECURSION_LIMIT) 
-            ? MIN_RECURSION_LIMIT 
-            : envLimit;
-          
-          state.deps.kanbanUpdate.updateTaskQueue(
-            state._httpJobId,
-            resumedState.currentTask || null,
-            queueTasks,
-            completedTasks,
-            recursionCount,  // ✅ Pass recursion tracking
-            recursionLimit   // ✅ Pass recursion limit
-          );
-          console.log(`🔄 [Design Decompose Resume] Live snapshot updated via PORT`);
-          console.log(`   JobId: ${state._httpJobId}`);
-          console.log(`   CurrentTask: ${resumedState.currentTask?.name || 'none'}`);
-          console.log(`   Queue: ${taskQueue.size()} tasks`);
-          console.log(`   Completed: ${completedTasks.length} tasks`);
-          console.log(`   Recursion: ${recursionCount}/${recursionLimit}\n`);
-        } else {
-          console.log(`   ❌ Skipping Kanban update (missing httpTaskId or kanbanUpdate port)\n`);
-        }
-        
-        return resumedState;
-      }
     } catch (error) {
-      console.log('⚠️  Could not load previous session state, starting fresh');
+      // Non-critical: starting fresh
     }
   }
   

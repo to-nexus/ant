@@ -323,11 +323,7 @@ export function createJobRoutes(deps: {
     }
     
     try {
-      const userContext = req.user && req.organization ? {
-        userId: req.user.id,
-        organizationId: req.organization.id,
-        workspacePath: ''
-      } : { userId: 'local', organizationId: 'local', workspacePath: '' };
+      const userContext = extractUserContext(req);
       
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const sessionDir = path.join(featurePath, 'sessions');

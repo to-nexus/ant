@@ -327,6 +327,30 @@ export async function detectEnvironment(
     console.log(`   📊 Combined Design Context: ${tokenEstimate.toLocaleString()} tokens (${selectedDesignFiles.length} documents)\n`);
   }
   
+  // Save detectionReport to session (enables decompose-direct routing on resume)
+  if (state.deps?.session && state.context.featureFolder) {
+    try {
+      const session = await state.deps.session.load(
+        state.context.project,
+        state.context.featureFolder,
+        'code'
+      );
+      await state.deps.session.updateArtifacts(
+        state.context.project,
+        state.context.featureFolder,
+        'code',
+        {
+          state: {
+            ...session.state,
+            detectionReport,
+          }
+        }
+      );
+    } catch (err) {
+      // Non-critical
+    }
+  }
+  
   // Workflow exit
   if (state.deps?.workflowUpdate && state._httpJobId) {
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment');

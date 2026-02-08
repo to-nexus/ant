@@ -45,26 +45,21 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     );
   }
   
-  // ✅ CRITICAL: Skip resolve if resuming (taskQueue already exists from runner restoration)
-  const isResume = state.taskQueue && !state.taskQueue.isEmpty();
-  if (isResume) {
-    console.log(`🔄 Resume: ${state.taskQueue?.size() || 0} tasks remaining, ${state.completedTasks?.length || 0} completed`);
+  // Skip artifact loading if resuming (state already restored by runner)
+  if (state.isResume) {
+    console.log(`🔄 Resume: tasks=${state.taskQueue?.size() || 0}, detection=${!!state.detectionReport}, completed=${state.completedTasks?.length || 0}`);
     
-    // Reload config from disk if missing (LangGraph state serialization issue)
     if (!state.workspaceConfig) {
       try {
         const { FileConfigAdapter } = await import('../../../../../periphery/adapters/config/FileConfigAdapter');
         const configAdapter = new FileConfigAdapter();
-        const config = await configAdapter.load(state.context.project);
-        state.workspaceConfig = config;
+        state.workspaceConfig = await configAdapter.load(state.context.project);
       } catch (error) {
         console.error(`❌ Failed to reload workspaceConfig:`, error);
       }
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Resolve featurePath (needed for doc reload and asset indexing)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (!state.context.featurePath && state.deps?.workspaceResolver) {
       const userContext = {
         userId: state.context.userId || 'local',
@@ -78,37 +73,27 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       );
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // CRITICAL: Reload design artifacts from disk
-    // - designDocs, parsedUiDocs are NOT saved in checkpoint (too heavy)
-    // - User may have edited docs between stop and resume
-    // - Disk is always the source of truth for these documents
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Reload design artifacts from disk (not saved in checkpoint, user may have edited)
     const gitPort = state.deps?.git;
     const fileSystem = state.deps?.fileSystem;
     if (gitPort && fileSystem) {
       try {
-        // Design document (unified string for legacy fallback)
         const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem);
         state.design = designResult?.content || state.design;
 
-        // Structured design docs (apiContract, feDesign, beDesign, feDesigns, beDesigns)
         const env = state.detectionReport?.environment || 'unknown';
         state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, env);
 
-        // PRD
         const source = await ArtifactService.getSource(state.context, gitPort, fileSystem);
         if (source?.prd) state.prd = source.prd;
 
-        // Parsed UI docs (ui-tokens, ui-assets, ui-spec)
         state.parsedUiDocs = await ArtifactService.loadParsedUiContext(state.context, gitPort, fileSystem) || undefined;
 
-        // Restore profile from detectionReport (detectEnvironment is skipped on resume)
         if (!state.profile && state.detectionReport?.profile) {
           state.profile = state.detectionReport.profile;
         }
 
-        console.log(`📄 [Resolve/Resume] Reloaded from disk: design=${!!state.design}, designDocs=${!!state.designDocs}, prd=${!!state.prd}, ui=${!!state.parsedUiDocs}, profile=${!!state.profile}`);
+        console.log(`📄 [Resolve/Resume] design=${!!state.design}, designDocs=${!!state.designDocs}, prd=${!!state.prd}, ui=${!!state.parsedUiDocs}`);
       } catch (error) {
         console.warn(`⚠️  [Resolve/Resume] Failed to reload design artifacts:`, error);
       }

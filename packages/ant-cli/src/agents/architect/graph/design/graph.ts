@@ -8,6 +8,7 @@ import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate
 import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
 import { detectEnvironment } from "./nodes/detectEnvironment";
+import { revise } from "./nodes/revise";
 
 /**
  * Check task status and handle completion
@@ -82,13 +83,16 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               completedTasksDetails,
               currentTask: undefined,
               planText: state.planText,
+              conversationHistory: [],  // ✅ Reset between tasks (task completed)
               files: state.files || [],  // ✅ Save generated files
               filesToDelete: state.filesToDelete || [],
               jobId: (state as any).jobId,
               jobTiming: (state as any).jobTiming,
               tokenUsage: (state as any).tokenUsage,  // ✅ Save job-level token usage
               overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
-              chatSource: state.chatSource  // ✅ Save chat source flag
+              chatSource: state.chatSource,  // ✅ Save chat source flag
+              detectionReport: state.detectionReport,  // ✅ Save for resume routing
+              referenceRequests: state.referenceRequests || [],  // ✅ Save reference projects
             }
           }
         );
@@ -126,6 +130,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       completedTasks,
       completedTasksDetails,
       currentTask: undefined,
+      planText: '',  // ✅ Clear for next task - prevents stale planText leaking
       conversationHistory: [],  // ✅ CRITICAL: Reset conversation history between tasks
       files: [],  // ✅ CRITICAL: Reset files for next task (each task generates fresh)
       tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Return accumulated job-level token usage
@@ -208,6 +213,9 @@ export function buildDesignGraph() {
       
       // ✅ Reference Projects (for system-design with external repos)
       referenceRequests: null as any,
+      
+      // ✅ Resume flag (set by runner before graph invoke)
+      isResume: null as any,
     } as any,
   } as any);
 
@@ -215,17 +223,49 @@ export function buildDesignGraph() {
   graph.addNode("triage" as const, triage as any);  // ✅ Triage: analyze intent and prerequisites
   graph.addNode("detectEnvironment" as const, detectEnvironment as any);
   graph.addNode("decompose" as const, decompose as any);
+  graph.addNode("revise" as const, revise as any);  // ✅ Task queue revision (on resume with new directive)
   graph.addNode("plan" as const, plan as any);
   graph.addNode("docGen" as const, docGen as any);  // ✅ XML streaming + immediate file writes (like code job)
   graph.addNode("tool" as const, tool as any);  // ✅ Tool execution (for UI Design multimodal image loading)
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
 
-  // ✅ Unified flow: resolve → triage → detectEnvironment → decompose → [plan → docGen → check] → learn
+  // ✅ Unified flow: resolve → [4-way routing] → ... → [plan → docGen → check] → learn
   // Design job now writes files immediately like code job (no separate writeFiles node)
   // docGen: XML streaming + immediate writes to disk (with LAST_SECTION handling)
   (graph as any).addEdge("__start__", "resolve");
-  (graph as any).addEdge("resolve", "triage");
+  
+  // ✅ 4-way conditional routing after resolve (aligned with code job)
+  // 1. isResume + hasTaskQueue + hasNewDirective → revise (task queue modification)
+  // 2. isResume + hasTaskQueue (no new directive) → plan (continue from where we left off)
+  // 3. isResume + !hasTaskQueue + hasDetectionReport → decompose (interrupted after detect but before decompose)
+  // 4. !isResume (new job) → triage (full flow)
+  graph.addConditionalEdges(
+    "resolve" as any,
+    ((s: DesignGraphState) => {
+      const isResume = s.isResume === true;
+      const hasTaskQueue = Boolean(s.taskQueue && !s.taskQueue.isEmpty());
+      const hasDetectionReport = Boolean(s.detectionReport);
+      const hasNewDirective = Boolean(s.overrideDirective);
+      
+      if (isResume && hasTaskQueue && hasNewDirective) {
+        console.log(`🔀 [Resolve→Router] isResume + taskQueue + newDirective → revise`);
+        return "revise";
+      }
+      if (isResume && hasTaskQueue) {
+        console.log(`🔀 [Resolve→Router] isResume + taskQueue → plan (continue)`);
+        return "plan";
+      }
+      if (isResume && hasDetectionReport) {
+        console.log(`🔀 [Resolve→Router] isResume + detectionReport (no tasks) → decompose`);
+        return "decompose";
+      }
+      
+      console.log(`🔀 [Resolve→Router] New job → triage`);
+      return "triage";
+    }) as any,
+    { triage: "triage", revise: "revise", plan: "plan", decompose: "decompose" } as any
+  );
   
   // ✅ Triage → Conditional (proceed to detectEnvironment or end)
   graph.addConditionalEdges(
@@ -253,6 +293,7 @@ export function buildDesignGraph() {
   );
   
   (graph as any).addEdge("decompose", "plan");
+  (graph as any).addEdge("revise", "plan");  // ✅ revise always routes to plan
   (graph as any).addEdge("plan", "docGen");
   
   // ✅ Conditional routing: docGen → tool (if tool call) or checkTaskStatus (if done) or docGen (retry)

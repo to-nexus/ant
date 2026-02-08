@@ -27,7 +27,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   // Recursion limit configured
   
   // ✅ CRITICAL: Check for resumable session BEFORE invoke
-  // If session has taskQueue with interruption, restore it to initial state
   if (initial.deps?.session && initial.context.featureFolder) {
     try {
       const session = await initial.deps.session.load(
@@ -120,6 +119,19 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         if ((session.state as any).jobTiming) {
           (initial as any).jobTiming = (session.state as any).jobTiming;
         }
+      } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
+        // Restore partial state from early-interrupted session (triage/detectEnv stage)
+        // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
+        const savedDirective = (session.state as any).directive || session.state.overrideDirective;
+        if (savedDirective && !initial.directive) {
+          console.log(`🔄 [CodeRunner] Restoring directive from early-interrupted session`);
+          initial.directive = savedDirective;
+        }
+        // Restore detectionReport (enables decompose-direct routing after detectEnv interruption)
+        if ((session.state as any).detectionReport && !initial.detectionReport) {
+          console.log(`🔄 [CodeRunner] Restoring detectionReport from session`);
+          initial.detectionReport = (session.state as any).detectionReport;
+        }
       }
     } catch (err) {
       console.warn('⚠️  Failed to check for resumable session:', err);
@@ -133,6 +145,37 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
   if (!initial.isResume && process.env.ANT_IS_RESUME === 'true') {
     initial.isResume = true;
+  }
+  
+  // ✅ FIX: Save directive to session EARLY (before graph invoke)
+  // Ensures directive survives early interruptions (triage/detectEnvironment stage)
+  // Without this, if job is interrupted before decompose, directive is lost
+  if (initial.deps?.session && initial.context.featureFolder && initial.directive) {
+    try {
+      const session = await initial.deps.session.load(
+        initial.context.project,
+        initial.context.featureFolder,
+        'code'
+      );
+      // Only save if session doesn't already have directive (avoid overwriting with stale data)
+      if (!(session.state as any)?.directive) {
+        await initial.deps.session.updateArtifacts(
+          initial.context.project,
+          initial.context.featureFolder,
+          'code',
+          {
+            state: {
+              ...session.state,
+              directive: initial.directive,
+              overrideDirective: initial.overrideDirective,
+            }
+          }
+        );
+        console.log(`💾 [CodeRunner] Saved directive to session (early checkpoint)`);
+      }
+    } catch (err) {
+      // Non-critical: directive save is a safety net
+    }
   }
   
   try {
