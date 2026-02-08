@@ -487,21 +487,41 @@ export class IDEService {
       await container.stop();
       await container.remove();
       
-      // Release port
-      this.portManager.release(instance.port);
-      
-      // Unregister from PortRegistry (IDE is project-level, no feature)
-      const [orgId, userId] = tenantId.split(':');
-      await this.portRegistry.unregisterIDE(orgId, userId, projectId);
-      
-      this.instances.delete(key);
-      
       logger.info(`IDE stopped: ${key}`, { component: 'IDEService' });
       
-    } catch (error) {
-      logger.error(`Failed to stop IDE: ${key}`, { component: 'IDEService' }, error);
-      throw error;
+    } catch (error: any) {
+      const statusCode = error?.statusCode || error?.reason;
+      const isNotFound = statusCode === 404
+        || String(error?.message || '').includes('no such container')
+        || String(error?.message || '').includes('No such container');
+      
+      if (isNotFound) {
+        // Container already gone (crashed, manually removed, Docker pruned, etc.)
+        // Proceed with cleanup of in-memory state and port/registry.
+        logger.warn(`IDE container already removed, cleaning up stale entry: ${key}`, { component: 'IDEService' }, { containerId: instance.containerId });
+      } else {
+        // Genuine error (e.g. Docker daemon unreachable) — still clean up in-memory state
+        // to avoid infinite retry loops from the idle checker.
+        logger.error(`Failed to stop IDE container: ${key}`, { component: 'IDEService' }, error);
+      }
     }
+    
+    // Always clean up in-memory state, port, and registry — even if container stop/remove failed.
+    // This prevents stale entries from causing repeated errors in the idle checker.
+    try {
+      this.portManager.release(instance.port);
+    } catch (e) {
+      logger.debug(`Failed to release port for IDE: ${key}`, { component: 'IDEService' }, e);
+    }
+    
+    try {
+      const [orgId, userId] = tenantId.split(':');
+      await this.portRegistry.unregisterIDE(orgId, userId, projectId);
+    } catch (e) {
+      logger.debug(`Failed to unregister IDE from PortRegistry: ${key}`, { component: 'IDEService' }, e);
+    }
+    
+    this.instances.delete(key);
   }
   
   /**
