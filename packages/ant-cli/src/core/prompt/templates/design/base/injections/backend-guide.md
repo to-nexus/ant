@@ -7,8 +7,8 @@
 ### 🎯 What This Document IS
 
 **Backend Implementation Architecture:**
-- ✅ HOW to implement endpoints at an architectural level (controllers, services, domain/application boundaries)
-- ✅ Architecture layers (Controller → Service → Repository pattern, etc.)
+- ✅ HOW to implement endpoints at an architectural level (boundary responsibilities, data flow)
+- ✅ Architecture pattern selection based on observed complexity (boundary separation level)
 - ✅ Database design (conceptual schema, relationships, key constraints)
 - ✅ Business logic placement (validation, authorization, domain rules location)
 - ✅ Integration patterns (external APIs, message queues, caching)
@@ -54,33 +54,37 @@ NO deviations from the contract are permitted.
 - ✅ Authentication per §2 implemented
 ```
 
-### 2. Architecture Layers
+### 2. Architecture Pattern Selection
 
-**Layer Definition:**
-```markdown
-### Layered Architecture (example)
+#### 2.1 Internal Architecture Observation
 
-**Controller Layer**:
-- Handles HTTP requests/responses
-- Input validation (matches contract DTOs)
-- Delegates to Service layer
-- Returns contract-compliant responses
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Domain complexity** | Are there business rules, invariants, or domain policies beyond data pass-through? |
+| **Integration boundary count** | Does the system interact with multiple external systems that may change independently? |
+| **Dependency direction concern** | Do core business rules need to be testable or replaceable independent of framework and persistence? |
 
-**Service Layer**:
-- Business logic implementation
-- Authorization checks
-- Transaction management
-- Delegates to Repository layer
+#### 2.2 Architecture Selection Principle
 
-**Repository Layer**:
-- Database access abstraction
-- Query building
-- Data mapping (DB entities ↔ Domain models)
+| Complexity Observed | Pattern Direction |
+|--------------------|--------------------|
+| Thin domain logic, straightforward data flow | Framework-conventional layering sufficient |
+| Non-trivial domain rules and invariants | Explicit domain boundary separated from infrastructure |
+| Multiple external integration points with substitution needs | Port/adapter boundaries isolating external dependencies |
 
-**Data Flow**: Request → Controller validates → Service processes → Repository persists → Response
-```
+**Constraint**: Do NOT default to the most complex pattern. Observed complexity must justify the chosen separation level.
+**Constraint**: Selected pattern MUST specify boundary responsibilities clearly in this document.
 
-**Focus**: Clear boundaries and responsibilities per layer
+#### 2.3 Directory Structure Principle
+
+**Constraint**: Each architecture boundary specified in this document MUST correspond to a directory-level boundary in the codebase.
+
+**Principle**: Framework wiring mechanisms and architecture boundaries serve complementary purposes:
+- Framework mechanisms handle dependency resolution, runtime wiring, and module lifecycle
+- Architecture boundaries handle concern separation and dependency direction
+- Both coexist; neither substitutes for the other
+
+**Constraint**: Framework conventions alone do NOT satisfy architecture boundary separation when this document specifies explicit boundaries.
 
 ### 3. Database Design
 

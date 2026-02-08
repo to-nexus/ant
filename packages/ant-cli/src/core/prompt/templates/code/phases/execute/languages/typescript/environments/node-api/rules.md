@@ -1,6 +1,6 @@
 ## 🖥️ Node.js API Server Environment
 
-**Context**: Backend API server handling concurrent HTTP requests (Express, Fastify, Koa, etc.)
+**Context**: Backend API server handling concurrent HTTP requests
 
 ---
 
@@ -17,6 +17,21 @@
 1. **Avoid blocking**: Synchronous operations block ALL requests
 2. **Resource management**: Connection pools, file handles, memory
 3. **Error handling**: Don't crash the server on individual request errors
+
+---
+
+### Architecture Compliance
+
+**Constraint**: Architecture boundaries defined in System Design MUST be reflected as directory-level boundaries in the codebase.
+
+**Principle**: Framework wiring mechanisms and architecture boundaries are complementary:
+- Framework mechanisms handle dependency resolution and runtime wiring
+- Architecture boundaries handle concern separation and dependency direction
+- Both coexist; neither substitutes for the other
+
+**Constraint**: If System Design specifies explicit boundary separation, framework-conventional structure alone does NOT satisfy this requirement. Architecture boundaries MUST exist alongside framework conventions.
+
+⚠️ **Blind spot reminder**: When a framework provides strong module/convention patterns, it is easy to let those patterns become the ONLY structural organization. Verify that each architecture boundary from System Design has a corresponding directory boundary — not just a conceptual separation within framework modules.
 
 ---
 
