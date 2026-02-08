@@ -109,6 +109,7 @@ export interface SessionState {
   
   // Execution Context
   planText?: string;
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
   files?: Array<{ path: string; content: string }>;
   filesToDelete?: string[];
   
