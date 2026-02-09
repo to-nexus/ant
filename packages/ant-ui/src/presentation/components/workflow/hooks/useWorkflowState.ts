@@ -298,12 +298,37 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         
         // ✅ CRITICAL: Also set isRunning to false when workflow ends
         // This is a defense mechanism in case Kanban SSE update is delayed or missed
-        console.log('[useWorkflowState] 🏁 Workflow end event received, setting isRunning=false');
+        console.log('[useWorkflowState] 🏁 Workflow end event received, resetting workflow');
         useStore.getState().setRunning(false);
         
-        setTimeout(() => {
-          setRawState(null);
-        }, 500);
+        // ✅ Clear queue for this job (no point displaying remaining nodes for a stopped job)
+        clearQueueForJob(data.jobId || stableJobId || '');
+        
+        // ✅ Clear raw state immediately
+        setRawState(null);
+        
+        // ✅ CRITICAL: Clear displayed state after last node's min display time
+        // Without this, the workflow stays stuck on the last active node (e.g., "learn")
+        const lastNode = globalDisplayedNode;
+        const lastNodeMinTime = lastNode
+          ? (NODE_MIN_DISPLAY_TIME[lastNode] || DEFAULT_MIN_DISPLAY_TIME)
+          : 0;
+        const elapsed = globalDisplayStartTime ? Date.now() - globalDisplayStartTime : lastNodeMinTime;
+        const remaining = Math.max(0, lastNodeMinTime - elapsed);
+        
+        // Cancel any existing cleanup timer
+        if (globalCleanupTimer) {
+          clearTimeout(globalCleanupTimer);
+          globalCleanupTimer = null;
+        }
+        
+        globalCleanupTimer = setTimeout(() => {
+          setDisplayedState(null);
+          globalDisplayedState = null;
+          globalDisplayedNode = null;
+          globalCleanupTimer = null;
+        }, remaining);
+        
         return;
       }
       

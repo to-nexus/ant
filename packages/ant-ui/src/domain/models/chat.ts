@@ -99,6 +99,7 @@ export interface MessageContent {
     };
     choiceSelected?: string;  // Selected action (after user choice)
     resolvedLabel?: string;   // Label to display after choice is made
+    resolved?: boolean;       // For cancelled: marked true when user resumes/continues (server-set)
   };
 }
 
