@@ -58,6 +58,10 @@ Before output, check each file:
 1. ESLint MUST have `ignorePatterns: ["dist", "build", "node_modules", "*.config.*"]`
 2. Include ALL dependencies in package.json (don't defer to feature tasks)
 3. Next task will create ALL application code - don't do it now
+4. **Tailwind `content` paths MUST match the framework's source directory structure** (see config.md)
+
+⚠️ **Blind spot — Tailwind content paths**:
+Tailwind `content` glob patterns are the #1 cause of "CSS looks correct but page has no styling" issues. If the framework uses `./app/` for source files but `content` only lists `./src/`, ALL utility classes will be missing. Verify content paths match where source files will actually be created.
 
 ## Infrastructure Services (Observe Design Document)
 

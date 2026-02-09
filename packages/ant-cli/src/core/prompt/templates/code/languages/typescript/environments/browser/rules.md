@@ -85,6 +85,10 @@ When `ui-tokens.json` is provided, configure tokens in the project's styling sys
 ```javascript
 // tailwind.config.js
 module.exports = {
+  content: [
+    // ⚠️ REQUIRED — list ALL directories containing source files with Tailwind classes
+    // Paths MUST match the actual framework directory structure
+  ],
   theme: {
     extend: {
       colors: {
@@ -98,6 +102,13 @@ module.exports = {
   }
 }
 ```
+
+**⚠️ CRITICAL — `content` paths MUST match source directories:**
+
+Tailwind CSS v3+ JIT scans only files listed in `content`. If paths don't match where source files actually live, **no utility classes will be generated** — only the preflight reset CSS will be output, breaking all layouts.
+
+**Principle**: Observe the framework's source directory structure, then set `content` to match.
+**Constraint**: Do NOT reuse content paths from a different framework. If migrating, update content paths.
 
 **Usage:**
 ```tsx
