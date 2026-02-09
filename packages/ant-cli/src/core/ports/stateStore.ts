@@ -145,7 +145,7 @@ export interface PendingChoiceData {
 // ============================================
 
 // Re-export from portRegistry for backward compatibility (used by many files)
-export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue } from './portRegistry';
+export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase } from './portRegistry';
 import { PreviewState, IDEState, PortMapping } from './portRegistry';
 
 // ============================================
@@ -304,7 +304,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'issues' | 'packages' | 'backendPort'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort'>>
   ): Promise<void>;
   
   /**
@@ -468,6 +468,11 @@ export interface StateStorePort {
    * Atomic set-if-not-exists with TTL. Returns true if acquired.
    */
   acquireLock(key: string, ttlSeconds: number): Promise<boolean>;
+  
+  /**
+   * Release a previously acquired lock.
+   */
+  releaseLock(key: string): Promise<void>;
   
   // ============================================
   // Lifecycle

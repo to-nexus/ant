@@ -4,6 +4,9 @@ import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
 import type { LogCallback } from '../types';
 
+// npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
+const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
+
 /**
  * DependencyInstaller
  * 
@@ -116,11 +119,29 @@ export class DependencyInstaller {
     }
     
     return new Promise((resolve, reject) => {
+      let settled = false;
+      
       const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe'
       });
+      
+      // Timeout: kill the process if install takes too long (e.g., EFS network hang)
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          const msg = `${pm} install timed out after ${INSTALL_TIMEOUT_MS / 1000}s`;
+          logger.error(msg, { component: 'DependencyInstaller' });
+          onLog('stderr', `❌ ${msg}`);
+          try { installProcess.kill('SIGTERM'); } catch { /* ignore */ }
+          // Force kill after 5s if SIGTERM didn't work
+          setTimeout(() => {
+            try { installProcess.kill('SIGKILL'); } catch { /* ignore */ }
+          }, 5000);
+          reject(new Error(msg));
+        }
+      }, INSTALL_TIMEOUT_MS);
       
       installProcess.stdout?.on('data', (data) => {
         onLog('stdout', data.toString());
@@ -131,6 +152,10 @@ export class DependencyInstaller {
       });
       
       installProcess.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        
         if (code === 0) {
           onLog('stdout', `✅ Dependencies installed for ${relativePath}`);
           resolve();
@@ -141,6 +166,10 @@ export class DependencyInstaller {
       });
       
       installProcess.on('error', (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        
         logger.error(`Install process error in ${packagePath}`, { component: 'DependencyInstaller' }, err);
         reject(err);
       });

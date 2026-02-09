@@ -74,32 +74,52 @@ export function useDevServerManager(
     }
   }, [previewStatus?.logs]);
 
-  // Extract error from logs if in error state
+  // Extract error from backend error field or logs
   useEffect(() => {
-    if (state === 'error' && previewStatus?.logs) {
-      const errorMessage = extractErrorFromLogs(previewStatus.logs);
-      if (errorMessage && errorMessage !== error?.message) {
-        setError({ message: errorMessage });
+    if (state === 'error') {
+      // Prefer backend-provided error message over log parsing
+      const backendError = previewStatus?.error;
+      if (backendError && backendError !== error?.message) {
+        setError({ message: backendError });
+      } else if (!backendError && previewStatus?.logs) {
+        const errorMessage = extractErrorFromLogs(previewStatus.logs);
+        if (errorMessage && errorMessage !== error?.message) {
+          setError({ message: errorMessage });
+        }
       }
-    } else if (state !== 'error' && error) {
+    } else if (error) {
       setError(undefined);
     }
-  }, [state, previewStatus?.logs, error]);
+  }, [state, previewStatus?.error, previewStatus?.logs, error]);
 
-  // Initial status check and SSE connection
+  // Initial status check + periodic sync (recovers from SSE drops)
   useEffect(() => {
     if (!selectedProject || !selectedFeature) {
       setPreviewStatus(undefined);
       return;
     }
 
-    getPreviewStatus(selectedProject, selectedFeature)
-      .then(status => {
-        setPreviewStatus(status);
-      })
-      .catch(err => {
-        console.error('[useDevServerManager] Status check failed:', err);
-      });
+    const syncStatus = () => {
+      getPreviewStatus(selectedProject, selectedFeature)
+        .then(status => {
+          // Don't override if user just pressed stop (guard window)
+          if (Date.now() < stopGuardUntilRef.current && status?.running) {
+            return;
+          }
+          setPreviewStatus(status);
+        })
+        .catch(err => {
+          console.error('[useDevServerManager] Status check failed:', err);
+        });
+    };
+
+    // Initial sync
+    syncStatus();
+    
+    // Periodic sync every 30s — recovers from missed SSE events
+    const intervalId = setInterval(syncStatus, 30_000);
+    
+    return () => clearInterval(intervalId);
   }, [selectedProject, selectedFeature, setPreviewStatus]);
 
   // Check dismissal state when status changes
@@ -148,7 +168,7 @@ export function useDevServerManager(
           setPreviewStatus(mergedStatus);
 
           // Stop loading when we have a steady/terminal signal.
-          if (mergedStatus.ready || mergedStatus.running || (mergedStatus as any).setupReasoning) {
+          if (mergedStatus.ready || mergedStatus.running || mergedStatus.setupReasoning || mergedStatus.error || mergedStatus.phase === 'error') {
             setPreviewLoading(false);
           }
         } else if (messageType === 'log') {

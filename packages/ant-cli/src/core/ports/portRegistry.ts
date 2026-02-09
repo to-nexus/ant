@@ -21,6 +21,8 @@ export interface PreviewRuntimeIssue {
   source?: string;
 }
 
+export type PreviewPhase = 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';
+
 export interface PreviewState {
   // Identity
   tenantId: string;
@@ -35,6 +37,10 @@ export interface PreviewState {
   backendPort?: number;            // Backend port if fullstack
   host: string;                    // Pod IP or localhost
   podId: string;                   // Pod hostname (for identification)
+  
+  // Phase (single source of truth for UI state)
+  phase: PreviewPhase;
+  error?: string;                  // Error message when phase is 'error'
   
   // Packages
   packages: PreviewPackage[];
@@ -126,7 +132,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'issues' | 'packages' | 'backendPort'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort'>>
   ): Promise<void>;
   
   /**
