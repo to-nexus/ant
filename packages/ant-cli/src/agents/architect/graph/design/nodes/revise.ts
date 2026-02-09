@@ -245,7 +245,12 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
     }
     
-    return state;
+    // ✅ CRITICAL: Still update directive even on error
+    const result = { ...state };
+    if (overrideDirective) {
+      result.directive = overrideDirective;
+    }
+    return result;
   }
 }
 

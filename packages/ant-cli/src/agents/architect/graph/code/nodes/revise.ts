@@ -239,7 +239,13 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
     }
     
-    return state;
+    // ✅ CRITICAL: Still update directive even on error
+    // Without this, the new directive is lost and subsequent prompts use the old one
+    const result = { ...state };
+    if (overrideDirective) {
+      result.directive = overrideDirective;
+    }
+    return result;
   }
 }
 

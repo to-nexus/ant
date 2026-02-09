@@ -462,7 +462,38 @@ createWebHistory((window as any).__BASENAME__ || '/')
 
 ---
 
-## 8. 파일 구조
+## 8. 클라우드 환경 제약사항
+
+### 8.1 파일 감시 (File Watching)
+
+클라우드 환경에서 워크스페이스는 **EFS (NFS 기반)** 에 마운트됩니다 (`/mnt/workspaces`).
+
+**문제**: Dev Server(Vite, Next.js 등)는 HMR을 위해 `fs.watch` (Linux `inotify`)를 사용합니다.
+`inotify`는 로컬 파일시스템 전용 커널 기능이므로 **NFS/EFS에서는 작동하지 않습니다**.
+
+```
+Error: UNKNOWN: unknown error, watch '/mnt/workspaces/.../src/components/About.tsx'
+  errno: -116, syscall: 'watch', code: 'UNKNOWN'
+```
+
+**해결**: ProcessSpawner가 Dev Server 프로세스를 spawn할 때 **polling 모드**를 활성화합니다.
+
+| 환경변수 | 대상 | 설명 |
+|----------|------|------|
+| `CHOKIDAR_USEPOLLING=true` | Vite (chokidar), Webpack 5+ | `fs.watch` 대신 `fs.stat` polling 사용 |
+| `CHOKIDAR_INTERVAL=3000` | Vite (chokidar) | Polling 간격 3초 (CPU 절약, Preview에서 즉시 HMR 불필요) |
+| `WATCHPACK_POLLING=true` | Next.js, Webpack 4 (watchpack) | watchpack polling 활성화 |
+
+**왜 polling인가**:
+- `fs.stat()`으로 파일 수정 시간을 주기적으로 확인 → 모든 파일시스템에서 작동
+- Docker Desktop, WSL2, NFS 환경의 표준 해법
+- Preview 용도에서는 HMR이 핵심이 아니므로 긴 polling 간격으로 CPU 부담 최소화
+
+**로컬 환경 영향**: 없음. 로컬에서도 동일한 환경변수가 주입되나, 로컬 파일시스템은 `inotify`가 정상 작동하므로 polling이 활성화되어도 기능적 차이 없음. (다만 로컬에서는 파일 변경 감지가 약간 느려질 수 있음 — 3초 간격)
+
+---
+
+## 9. 파일 구조
 
 ```
 packages/ant-cli/src/
@@ -495,7 +526,7 @@ packages/ant-cli/src/
 
 ---
 
-## 9. 핵심 요약
+## 10. 핵심 요약
 
 | 항목 | 설명 |
 |------|------|

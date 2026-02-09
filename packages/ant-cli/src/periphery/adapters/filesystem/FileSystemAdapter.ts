@@ -8,7 +8,7 @@
  * Security features:
  * - Path traversal protection
  * - Workspace isolation
- * - Relative path enforcement
+ * - Accepts both relative and absolute paths (absolute must be within workspace)
  * 
  * Note: Previously named LocalFileSystemAdapter. Renamed because it works
  * with any POSIX-compatible filesystem (local, EFS), not just local.
@@ -32,22 +32,30 @@ export class FileSystemAdapter implements FileSystemPort {
   }
   
   /**
-   * Resolve relative path to absolute path within workspace
-   * @throws Error if path traversal detected
+   * Resolve input path to absolute path within workspace.
+   * Accepts both relative paths and absolute paths within the workspace boundary.
+   * @throws Error if path resolves outside workspace (traversal protection)
    */
-  private resolvePath(relativePath: string): string {
-    // Remove leading slash (enforce relative paths)
-    const cleanPath = relativePath.startsWith('/') 
-      ? relativePath.substring(1) 
-      : relativePath;
+  private resolvePath(inputPath: string): string {
+    // Absolute path: validate it's within workspace
+    if (path.isAbsolute(inputPath)) {
+      const normalized = path.normalize(inputPath);
+      if (normalized === this.basePath || normalized.startsWith(this.basePath + path.sep)) {
+        return normalized;
+      }
+      throw new Error(
+        `Path traversal detected: "${inputPath}" resolves outside workspace. ` +
+        `Workspace: ${this.basePath}, Requested: ${normalized}`
+      );
+    }
     
-    // Resolve to absolute path
-    const fullPath = path.resolve(this.basePath, cleanPath);
+    // Relative path: resolve against basePath
+    const fullPath = path.resolve(this.basePath, inputPath);
     
-    // Security check: prevent path traversal
+    // Security check: prevent path traversal (e.g., "../../../etc/passwd")
     if (!fullPath.startsWith(this.basePath)) {
       throw new Error(
-        `Path traversal detected: "${relativePath}" resolves outside workspace. ` +
+        `Path traversal detected: "${inputPath}" resolves outside workspace. ` +
         `Workspace: ${this.basePath}, Requested: ${fullPath}`
       );
     }

@@ -514,6 +514,11 @@ ANT_WORKSPACE_BASE_PATH=/mnt/workspaces    # 워크스페이스 경로
 # - GET  /preview/:key/* (Dev Server 프록시)
 ```
 
+> **⚠️ EFS File Watching**: EFS는 NFS 기반이므로 `inotify`(fs.watch)가 작동하지 않습니다.
+> Dev Server(Vite, Next.js)의 파일 감시가 실패하여 프로세스가 크래시됩니다.
+> ProcessSpawner가 자동으로 `CHOKIDAR_USEPOLLING=true`, `WATCHPACK_POLLING=true`를
+> Dev Server 프로세스에 주입하여 해결합니다. 상세: `02-preview-server.md` 섹션 8.
+
 ### 5.4 Realtime Server (ant-realtime)
 
 ```bash

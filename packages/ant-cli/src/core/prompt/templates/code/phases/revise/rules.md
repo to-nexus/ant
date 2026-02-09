@@ -1,11 +1,11 @@
 ## Decision Protocol
 
-Analyze whether the new feedback changes what design documents need to be produced. Decide: **continue** or **modify** the remaining task queue.
+Analyze whether the new feedback changes what needs to be built. Decide: **continue** or **modify** the remaining task queue.
 
 ### Decision Principle
 
-**CONTINUE** when new feedback does not change what remains to be designed.
-**MODIFY** when new feedback adds, removes, or restructures remaining design work.
+**CONTINUE** when new feedback does not change what remains to be built.
+**MODIFY** when new feedback adds, removes, or restructures remaining work.
 
 ⚠️ **Blind spot**: Simple encouragement ("keep going", "resume") is NOT a scope change — choose CONTINUE.
 
@@ -28,10 +28,9 @@ Respond with ONLY a JSON object:
   "tasksToAdd": [
     {
       "name": "Task Name",
-      "description": "What this task produces",
-      "type": "doc",
-      "priority": 250,
-      "targetFile": "output-filename.md"
+      "description": "What this task implements",
+      "type": "setup|feature",
+      "priority": 100
     }
   ]
 }
