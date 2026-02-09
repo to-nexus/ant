@@ -689,6 +689,15 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
+  // Distributed Locking
+  // ============================================
+
+  async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+    const result = await this.redis.set(key, '1', 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
+  // ============================================
   // Pub/Sub
   // ============================================
 

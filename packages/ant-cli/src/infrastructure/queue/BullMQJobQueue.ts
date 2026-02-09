@@ -63,10 +63,6 @@ export class BullMQJobQueue implements JobQueuePort {
   private progressCallbacks = new Map<string, Set<(progress: JobProgress) => void>>();
   private completionCallbacks = new Map<string, Set<(result: JobExecutionResult) => void>>();
   
-  // ✅ Idempotency: Track recently processed job completions to prevent duplicate handling
-  // BullMQ QueueEvents can fire the same 'completed' event twice under certain Redis conditions
-  private recentlyCompletedJobs = new Set<string>();
-  private readonly COMPLETED_JOB_TTL_MS = 60_000; // 60 seconds
 
   constructor(options: BullMQJobQueueOptions, stateStore: StateStorePort) {
     const queueName = options.queueName || QUEUE_NAME;
@@ -104,14 +100,12 @@ export class BullMQJobQueue implements JobQueuePort {
     this.queueEvents.on('completed', async (args: { jobId: string; returnvalue?: string }) => {
       const { jobId, returnvalue } = args;
       
-      // ✅ Idempotency guard: Skip if already processed this job completion
-      // BullMQ QueueEvents can fire duplicate 'completed' events under certain Redis conditions
-      if (this.recentlyCompletedJobs.has(jobId)) {
-        logger.warn(`Ignoring duplicate completed event for job: ${jobId}`, { component: 'BullMQJobQueue' });
+      // ✅ Redis-based idempotency: in-memory Set doesn't work (multiple instances confirmed by logs)
+      const acquired = await this.stateStore.acquireLock(`ant:job-completed:${jobId}`, 120);
+      if (!acquired) {
+        logger.warn(`Duplicate completed event blocked: ${jobId}`, { component: 'BullMQJobQueue' });
         return;
       }
-      this.recentlyCompletedJobs.add(jobId);
-      setTimeout(() => this.recentlyCompletedJobs.delete(jobId), this.COMPLETED_JOB_TTL_MS);
       
       logger.info(`Job completed: ${jobId}`, { component: 'BullMQJobQueue' });
       
