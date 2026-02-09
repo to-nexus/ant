@@ -23,6 +23,7 @@ import type {
   KanbanBroadcastMessage,
   DecomposableJobType
 } from '../types/task';
+import type { JobTiming } from '@ant/shared';
 import { 
   getRealtimeBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
@@ -39,6 +40,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private readonly featureName: string;
   private readonly jobType: DecomposableJobType;
   private readonly userContext?: UserContext;
+  private jobTiming?: JobTiming;  // ✅ Stored once, included in every broadcast
   
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -63,6 +65,15 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.pubRedis.on('ready', () => console.log(`🟢 [KanbanBroadcaster] pubRedis ready`));
     
     console.log(`✅ [KanbanBroadcaster] Initialized for ${this.projectId}/${this.featureName} (job: ${this.jobId}, user: ${this.userContext?.userId}@${this.userContext?.organizationId})`);
+  }
+
+  /**
+   * Store job-level timing so every subsequent broadcast includes it.
+   * Called once from resolve/decompose nodes when jobTiming is initialized.
+   */
+  setJobTiming(jobTiming: JobTiming): void {
+    this.jobTiming = jobTiming;
+    console.log(`[KanbanBroadcaster] ⏱️ jobTiming set (startedAt: ${jobTiming.startedAt})`);
   }
 
   /**
@@ -135,6 +146,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionLimit,
       tokenUsage,
       jobType: this.jobType,
+      // ✅ Include job-level timing in every broadcast (set once via setJobTiming)
+      ...(this.jobTiming && { jobTiming: this.jobTiming }),
     };
 
     // 4. Broadcast via user-scoped Redis Pub/Sub channel

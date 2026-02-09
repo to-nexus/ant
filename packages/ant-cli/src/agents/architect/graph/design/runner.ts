@@ -131,6 +131,11 @@ export async function runDesignGraph(initial: DesignGraphState) {
     initial.isResume = true;
   }
   
+  // ✅ Set jobTiming on broadcaster for resume (so SSE broadcasts include timing from first event)
+  if ((initial as any).jobTiming && initial.deps?.kanbanUpdate?.setJobTiming) {
+    initial.deps.kanbanUpdate.setJobTiming((initial as any).jobTiming);
+  }
+  
   // ✅ FIX: Save directive to session EARLY (before graph invoke)
   // Ensures directive survives early interruptions (triage/detectEnvironment stage)
   if (initial.deps?.session && initial.context.featureFolder && initial.directive) {

@@ -195,6 +195,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     }
   }
   
+  // ✅ Set jobTiming on broadcaster so every SSE broadcast includes timing
+  if (state.deps?.kanbanUpdate?.setJobTiming) {
+    state.deps.kanbanUpdate.setJobTiming(newJobTiming);
+  }
+  
   // Send "estimating started" signal (empty task list)
   if (state._httpJobId && state.deps?.kanbanUpdate) {
     state.deps.kanbanUpdate.updateTaskQueue(
