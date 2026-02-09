@@ -88,70 +88,95 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     const firstSegment = segments[0] || '';
     const hasServerKeyInPath = firstSegment && isServerKey(firstSegment);
     
-    // ✅ Handle requests without serverKey in path (SSR resource leakage)
-    // These come from SSR-rendered absolute paths (/_next/*, /logos/*, etc.)
-    // Use Referer header to determine the correct dev server.
+    // ✅ Handle requests without serverKey in path
+    // On a dedicated preview host, ANY non-reserved request without a serverKey
+    // likely belongs to a preview project (SSR assets, static files, CSS url() refs, etc.).
+    // Determine the correct dev server from Referer header or preview cookie.
     if (!hasServerKeyInPath) {
-      const isNextInternal = req.path.startsWith('/_next/');
-      const isStaticAsset = /^\/(logos|icons|backgrounds|images|assets|public|fonts|static)\//.test(req.path);
-      const hasStaticExt = /\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot|css|js)(\?.*)?$/.test(req.path);
+      const referer = req.headers.referer || req.headers.referrer;
+      const refererStr = Array.isArray(referer) ? referer[0] : referer;
       
-      if (isNextInternal || isStaticAsset || hasStaticExt) {
-        const referer = req.headers.referer || req.headers.referrer;
-        const refererStr = Array.isArray(referer) ? referer[0] : referer;
-        
-        if (refererStr) {
-          const serverKey = extractServerKeyFromReferer(refererStr);
-          if (serverKey) {
-            const parsed = parsePreviewKey(serverKey);
-            if (parsed) {
-              const { tenantId, userId, projectId, feature } = parsed;
+      // 1. Try extracting serverKey from Referer (most reliable, project-specific)
+      let serverKey: string | null = null;
+      if (refererStr) {
+        serverKey = extractServerKeyFromReferer(refererStr);
+      }
+      
+      // 2. Fallback: check preview cookie (handles CSS sub-resource chain)
+      // When CSS is loaded via fallback (URL without serverKey), its url() sub-resources
+      // have the CSS URL as referer — no serverKey. The cookie bridges this gap.
+      if (!serverKey) {
+        const cookieMatch = (req.headers.cookie || '').match(/__ant_preview_sk=([^;]+)/);
+        if (cookieMatch) {
+          try {
+            serverKey = decodeURIComponent(cookieMatch[1]);
+          } catch { /* invalid cookie value */ }
+        }
+      }
+      
+      if (serverKey) {
+        const parsed = parsePreviewKey(serverKey);
+        if (parsed) {
+          const { tenantId, userId, projectId, feature } = parsed;
+          
+          try {
+            const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
+            if (mapping) {
+              const host = mapping.host || 'localhost';
+              const fetchHeaders = {
+                ...req.headers,
+                host: `${host}:${mapping.port}`,
+                'accept-encoding': 'identity',
+              } as any;
               
-              try {
-                const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
-                if (mapping) {
-                  const host = mapping.host || 'localhost';
-                  
-                  // For native basePath projects (e.g. Next.js), the dev server only serves
-                  // assets under /{basePath}/... so we must prepend the serverKey.
-                  // This handles raw HTML tags (<img>, <link>) that don't get basePath from Next.js.
-                  let resolvedUrl = req.url;
-                  if (mapping.nativeBasePath) {
-                    resolvedUrl = `/${serverKey}${req.url}`;
-                  }
-                  
-                  const targetUrl = `http://${host}:${mapping.port}${resolvedUrl}`;
-                  logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (from referer${mapping.nativeBasePath ? ', native basePath' : ''})`, { component: 'PreviewProxy' });
-                  
-                  const response = await fetch(targetUrl, {
-                    method: req.method,
-                    headers: {
-                      ...req.headers,
-                      host: `${host}:${mapping.port}`,
-                      'accept-encoding': 'identity',
-                    } as any,
-                  });
-                  
-                  res.status(response.status);
-                  response.headers.forEach((value: string, key: string) => {
-                    const lower = key.toLowerCase();
-                    if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
-                    res.setHeader(key, value);
-                  });
-                  
-                  const buffer = Buffer.from(await response.arrayBuffer());
-                  res.setHeader('content-length', buffer.length);
-                  res.send(buffer);
-                  return;
-                }
-              } catch (error) {
-                logger.debug(`Failed to route ${req.path} request`, { component: 'PreviewProxy' });
+              // For nativeBasePath projects (e.g. Next.js with basePath), the dev server
+              // only serves assets under /{basePath}/... so we must prepend the serverKey.
+              let resolvedUrl = req.url;
+              if (mapping.nativeBasePath) {
+                resolvedUrl = `/${serverKey}${req.url}`;
               }
+              
+              const targetUrl = `http://${host}:${mapping.port}${resolvedUrl}`;
+              logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (fallback${mapping.nativeBasePath ? ', native basePath' : ''})`, { component: 'PreviewProxy' });
+              
+              let response = await fetch(targetUrl, {
+                method: req.method,
+                headers: fetchHeaders,
+              });
+              
+              // Retry with serverKey prepend if 404 and we didn't already prepend.
+              // Covers: nativeBasePath not yet stored in Redis (deployment timing),
+              // or preview started before nativeBasePath code was deployed.
+              if (response.status === 404 && !mapping.nativeBasePath) {
+                const retryUrl = `http://${host}:${mapping.port}/${serverKey}${req.url}`;
+                logger.debug(`[Preview] Retrying with basePath prepend: ${retryUrl}`, { component: 'PreviewProxy' });
+                const retryResponse = await fetch(retryUrl, {
+                  method: req.method,
+                  headers: fetchHeaders,
+                });
+                if (retryResponse.status !== 404) {
+                  response = retryResponse;
+                }
+              }
+              
+              res.status(response.status);
+              response.headers.forEach((value: string, key: string) => {
+                const lower = key.toLowerCase();
+                if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
+                res.setHeader(key, value);
+              });
+              
+              const buffer = Buffer.from(await response.arrayBuffer());
+              res.setHeader('content-length', buffer.length);
+              res.send(buffer);
+              return;
             }
+          } catch (error) {
+            logger.debug(`[Preview] Failed to route ${req.path} via fallback`, { component: 'PreviewProxy' });
           }
         }
       }
-      // If we can't determine the server, let it fall through
+      // No serverKey found or routing failed — fall through to Express
       return next();
     }
     
@@ -310,6 +335,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       });
       
       res.setHeader('cache-control', 'no-cache, no-store, must-revalidate');
+      
+      // Set preview cookie so sub-resource requests can find the serverKey.
+      // This is critical for CSS url() references: the browser's Referer for those
+      // is the CSS file's URL (which may not contain the serverKey), so the cookie
+      // provides a reliable fallback for the referer-based routing.
+      if (contentType.includes('text/html')) {
+        res.setHeader('Set-Cookie', `__ant_preview_sk=${encodeURIComponent(serverKey)}; Path=/; SameSite=Lax`);
+      }
       
       // Check if content needs rewriting (HTML, JS, CSS)
       // Skip rewriting for native basePath — the framework already generates all URLs with the prefix.
