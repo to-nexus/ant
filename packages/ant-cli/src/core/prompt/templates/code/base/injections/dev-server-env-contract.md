@@ -1,11 +1,12 @@
 # Dev Server Runtime Contract (Ant Platform)
 
-This is a **platform contract** for projects that run via Ant-managed development servers.
+**Platform contract** for projects running via Ant-managed development servers.
 
-The Ant platform runs multiple packages (frontend + backend) with **dynamic ports** through a proxy.
-Your project MUST be compatible with runtime injection so that:
+**Principle**: Project MUST accept runtime-injected configuration so that:
 - Running via Ant works (dynamic ports, proxy routing)
 - Running outside Ant still works (project-defined defaults)
+
+**Constraint**: Do NOT hardcode values that the platform injects. Always read from the injected source with a sensible default.
 
 ---
 
@@ -14,26 +15,19 @@ Your project MUST be compatible with runtime injection so that:
 ### Principle
 **API calls MUST go through the proxy, not directly to backend.**
 
-Ant injects `VITE_API_BASE_URL` as a **relative proxy path**. This ensures API calls work regardless of where the browser is running (local or remote).
-
 ### Contract
-- Frontend MUST read `VITE_API_BASE_URL` from environment
-- Frontend MUST use it as a **prefix** for all API calls
-- Frontend MUST define its own API path structure (e.g., `/api/v1`)
-- Frontend MUST provide a sensible default when running outside Ant
 
-### Pattern
-```typescript
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-const API_PREFIX = '/api/v1';  // Project-defined
+| Variable | Purpose | Default when absent |
+|----------|---------|-------------------|
+| `VITE_API_BASE_URL` | Relative proxy path for API routing | `''` (empty string) |
 
-fetch(`${API_BASE}${API_PREFIX}/endpoint`);
-```
+- Frontend MUST read API base from environment
+- Frontend MUST use it as a prefix for all API calls
+- Frontend MUST define its own API path structure (project-specific)
 
 ### Why
 - Browser cannot reach server's internal network directly
 - Proxy handles routing to the correct backend port
-- Works in any deployment environment
 
 ---
 
@@ -42,23 +36,33 @@ fetch(`${API_BASE}${API_PREFIX}/endpoint`);
 ### Principle
 **Backend MUST bind to the injected port, not a hardcoded one.**
 
-Ant allocates ports dynamically and injects via `process.env.PORT`.
-
 ### Contract
-- Backend MUST read port from environment variable
+
+| Variable | Purpose | Default when absent |
+|----------|---------|-------------------|
+| `PORT` | Dynamic port allocated by platform | Project-defined default |
+
+- Backend MUST read port from `process.env.PORT`
 - Backend MUST NOT require a specific hardcoded port
 
 ---
 
-## 3) Frontend: Router Basename
+## 3) Frontend: Router Path Prefix
 
 ### Principle
-**Frontend router MUST support dynamic basename for proxy prefix.**
-
-Ant serves frontend under `/dev/{serverKey}/` and injects `window.__BASENAME__` at runtime.
+**Frontend MUST support dynamic path prefix for proxy routing.**
 
 ### Contract
-- Frontend router MUST read basename from `window.__BASENAME__`
-- Frontend MUST provide empty string as default
 
-See `dev-server-setup.md` for framework-specific implementation.
+| Rendering Type | Variable | Injection Method |
+|---------------|----------|-----------------|
+| CSR | `window.__BASENAME__` | Runtime `<script>` tag in HTML |
+| SSR | `NEXT_PUBLIC_BASE_PATH` | Environment variable at startup |
+
+- CSR: Client-side router MUST read base path from `window.__BASENAME__`
+- SSR: Framework config MUST read path prefix from environment variable
+- Both MUST default to empty string when running outside Ant
+
+**⚠️ Constraint**: Do NOT use `window.__BASENAME__` for SSR frameworks. Server-rendered HTML and client bundle must produce identical URLs — only the framework's native path config achieves this.
+
+See `dev-server-setup.md` for detailed principles and constraints.

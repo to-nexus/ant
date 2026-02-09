@@ -219,6 +219,9 @@ export class PreviewServer {
       getBackendPort: async ({ tenantId, userId, projectId, feature }) => {
         const state = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
         return state?.backendPort || null;
+      },
+      isNativeBasePath: (serverKey) => {
+        return this.previewService.hasNativeBasePath(serverKey);
       }
     }));
 

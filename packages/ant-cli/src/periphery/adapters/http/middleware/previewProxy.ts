@@ -38,6 +38,15 @@ export interface PreviewProxyConfig {
     feature: string;
     serverKey: string;
   }) => number | undefined | null | Promise<number | undefined | null>;
+  /**
+   * Optional check if a preview uses native basePath (e.g. Next.js with basePath in next.config).
+   * When true, the proxy will:
+   * - NOT strip /{serverKey} prefix from request paths (dev server expects it as basePath)
+   * - NOT inject client-side path rewrite script (framework already prefixes all URLs)
+   * - NOT rewrite HTML/JS/CSS absolute paths (no post-render patching needed)
+   * This eliminates SSR hydration mismatches caused by proxy-level URL rewriting.
+   */
+  isNativeBasePath?: (serverKey: string) => boolean | Promise<boolean>;
 }
 
 /**
@@ -73,7 +82,7 @@ function extractServerKeyFromReferer(refererStr: string): string | null {
  * Create preview proxy middleware
  */
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
-  const { portRegistry, pathPrefix = '', getBackendPort } = config;
+  const { portRegistry, pathPrefix = '', getBackendPort, isNativeBasePath } = config;
   
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
     // ✅ Skip reserved API/system routes — handled by Express route handlers
@@ -198,11 +207,26 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return;
     }
     
+    // ✅ Check if this preview uses native basePath (e.g. Next.js with basePath config)
+    // When true, the dev server expects the full path including /{serverKey}/ prefix
+    // and generates all URLs with it — no proxy-level rewriting needed.
+    let nativeBasePath = false;
+    if (typeof isNativeBasePath === 'function') {
+      try {
+        nativeBasePath = await isNativeBasePath(serverKey) === true;
+      } catch {
+        // best-effort, default to false (standard rewriting)
+      }
+    }
+    
     // ✅ Strip /:serverKey from path for dev server (handle accidental double-prefix)
+    // Skip stripping for native basePath — the dev server expects the prefix as its basePath.
     const prefix = `${pathPrefix}/${serverKey}`;
     let targetPath = req.url;
-    while (targetPath.startsWith(prefix)) {
-      targetPath = targetPath.slice(prefix.length) || '/';
+    if (!nativeBasePath) {
+      while (targetPath.startsWith(prefix)) {
+        targetPath = targetPath.slice(prefix.length) || '/';
+      }
     }
 
     // ✅ Fullstack support: check if project has a backend
@@ -216,7 +240,11 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           isFullstack = true;
           
           // Route /api/* requests to backend port
-          const isApiRequest = targetPath === '/api' || targetPath.startsWith('/api/');
+          // For native basePath, strip the prefix to check for /api/
+          const pathForApiCheck = nativeBasePath
+            ? targetPath.replace(new RegExp(`^/${escapeRegExp(serverKey)}`), '')
+            : targetPath;
+          const isApiRequest = pathForApiCheck === '/api' || pathForApiCheck.startsWith('/api/');
           if (isApiRequest) {
             targetPort = backendPort;
             logger.debug(`Routing API request to backend port: ${backendPort}`, { component: 'PreviewProxy' });
@@ -229,7 +257,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
 
     const targetUrl = `http://${previewHost}:${port}${targetPath}`;
     const effectiveTargetUrl = `http://${previewHost}:${targetPort}${targetPath}`;
-    logger.warn(`[Preview] Target: ${effectiveTargetUrl}`, { component: 'PreviewProxy' });
+    logger.warn(`[Preview] Target: ${effectiveTargetUrl}${nativeBasePath ? ' (native basePath)' : ''}`, { component: 'PreviewProxy' });
     
     try {
       // ✅ Retry logic for preview server startup race condition
@@ -291,11 +319,13 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       res.setHeader('cache-control', 'no-cache, no-store, must-revalidate');
       
       // Check if content needs rewriting (HTML, JS, CSS)
-      const needsRewrite = contentType.includes('text/html') || 
+      // Skip rewriting for native basePath — the framework already generates all URLs with the prefix.
+      const needsRewrite = !nativeBasePath && (
+                           contentType.includes('text/html') || 
                            contentType.includes('javascript') || 
                            contentType.includes('text/javascript') ||
                            contentType.includes('application/javascript') ||
-                           contentType.includes('text/css');
+                           contentType.includes('text/css'));
       
       if (needsRewrite) {
         const text = await response.text();

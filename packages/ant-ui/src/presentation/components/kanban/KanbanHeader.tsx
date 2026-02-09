@@ -6,6 +6,19 @@ import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 
 /**
+ * useRealtimeTick - Forces a re-render every second while `enabled` is true.
+ * Used to drive Date.now()-based calculations without stale closures.
+ */
+function useRealtimeTick(enabled: boolean) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [enabled]);
+}
+
+/**
  * LiveElapsedTime - Real-time elapsed time from a startedAt timestamp.
  * Used inside tooltips for in-progress items.
  */
@@ -21,6 +34,28 @@ function LiveElapsedTime({ startedAt }: { startedAt: string }) {
   }, [startedAt]);
 
   return <>{formatElapsedTime(elapsed, true)}</>;
+}
+
+/**
+ * Calculate elapsed time from JobTiming using Date.now().
+ * Pure function — call on every render for real-time display.
+ */
+function calculateJobElapsed(jobTiming: JobTiming, totalElapsedTime?: number): number {
+  // Completed: use final value
+  if (jobTiming.completedAt) {
+    return totalElapsedTime ?? jobTiming.totalElapsedTime ?? 0;
+  }
+
+  // Paused: calculate elapsed up to pause point
+  if (jobTiming.pausedAt) {
+    const start = new Date(jobTiming.startedAt).getTime();
+    const paused = new Date(jobTiming.pausedAt).getTime();
+    return Math.max(0, paused - start - (jobTiming.totalPausedDuration || 0));
+  }
+
+  // Running: calculate from Date.now()
+  const start = new Date(jobTiming.startedAt).getTime();
+  return Math.max(0, Date.now() - start - (jobTiming.totalPausedDuration || 0));
 }
 
 interface ElapsedTimeBadgeProps {
@@ -50,6 +85,10 @@ interface ElapsedTimeBadgeProps {
 
 /**
  * ElapsedTimeBadge - Real-time 뱃지 우측에 위치할 경과 시간 뱃지 (with breakdown tooltip)
+ *
+ * ✅ FIX: Tick-driven re-render + pure Date.now() calculation on every render.
+ * No state for elapsed time — avoids stale-value reset from SSE object reference changes.
+ * Same proven pattern as LiveElapsedTime.
  */
 export function ElapsedTimeBadge({
   totalElapsedTime,
@@ -58,81 +97,17 @@ export function ElapsedTimeBadge({
   inProgressTask,
   estimatingActivity,
 }: ElapsedTimeBadgeProps) {
-  // ✨ Real-time elapsed time calculation
-  const [realtimeElapsed, setRealtimeElapsed] = useState<number | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-  
-  // ✅ Initialize: Use backend data OR calculate from jobTiming.startedAt
-  useEffect(() => {
-    // Priority 1: Job completed - use final totalElapsedTime
-    if (jobTiming?.completedAt && totalElapsedTime !== undefined) {
-      setRealtimeElapsed(totalElapsedTime);
-      setIsInitialized(true);
-      return;
-    }
-    
-    // Priority 2: Use backend calculated value if available (and positive)
-    if (totalElapsedTime !== undefined && totalElapsedTime > 0) {
-      setRealtimeElapsed(totalElapsedTime);
-      setIsInitialized(true);
-      return;
-    }
-    
-    // Priority 3: If job has started (jobTiming.startedAt exists), calculate elapsed time
-    // This handles estimating phase where totalElapsedTime is 0
-    if (jobTiming?.startedAt) {
-      const startTime = new Date(jobTiming.startedAt).getTime();
-      const currentTime = Date.now();
-      const elapsed = currentTime - startTime - (jobTiming.totalPausedDuration || 0);
-      setRealtimeElapsed(Math.max(0, elapsed));
-      setIsInitialized(true);
-      return;
-    }
-    
-    // Priority 4: No timing info yet
-    setRealtimeElapsed(null);
-    setIsInitialized(false);
-  }, [totalElapsedTime, jobTiming]);
-  
-  // ✅ Tick every second if job is running
-  useEffect(() => {
-    // Don't tick if not initialized yet
-    if (!isInitialized || realtimeElapsed === null) {
-      return;
-    }
-    
-    // If job is paused or completed, don't tick
-    const isPaused = !!jobTiming?.pausedAt;
-    const isCompleted = !!jobTiming?.completedAt;
-    
-    if (isPaused || isCompleted) {
-      return;
-    }
-    
-    // Job is running: increment every second
-    const intervalId = setInterval(() => {
-      setRealtimeElapsed(prev => (prev !== null ? prev + 1000 : 0));
-    }, 1000);
-    
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [isInitialized, jobTiming?.pausedAt, jobTiming?.completedAt, jobTiming?.lastResumedAt]);
-  // ✅ CRITICAL: Track pause/resume state changes
-  // - pausedAt: becomes truthy when paused → stops interval
-  // - completedAt: becomes truthy when completed → stops interval  
-  // - lastResumedAt: changes when resumed → restarts interval
-  // Do NOT include realtimeElapsed to avoid recreating interval every second
+  // ✅ Tick every second while running (forces re-render → recalc from Date.now())
+  const isRunning = !!jobTiming?.startedAt && !jobTiming?.completedAt && !jobTiming?.pausedAt;
+  useRealtimeTick(isRunning);
   
   // ✅ Show badge if job has timing data
   if (!jobTiming) {
     return null;
   }
-  
-  // ✅ Wait for data to be initialized before showing
-  if (!isInitialized || realtimeElapsed === null) {
-    return null;
-  }
+
+  // ✅ Pure calculation on every render — always uses Date.now() for running jobs
+  const realtimeElapsed = calculateJobElapsed(jobTiming, totalElapsedTime);
   
   // Format elapsed time (include seconds for real-time updates)
   const formattedTime = formatElapsedTime(realtimeElapsed, true);
