@@ -93,37 +93,33 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     }
   }
   
-  // ✨ Initialize jobId and jobTiming for NEW job
-  const { jobId: newJobId, jobTiming: newJobTiming, estimatingStartTime } = JobTimingManager.initializeNewJob(state._httpJobId!);
+  // ✨ Use existing jobTiming from resolve (already initialized and broadcast)
+  // Falls back to initializeNewJob() if resolve didn't set it (e.g., edge cases)
+  const existingJobTiming = (state as any).jobTiming;
+  const existingJobId = (state as any).jobId;
   
-  // 💾 CRITICAL: Save jobTiming to session IMMEDIATELY so frontend can show timer during estimating
-  if (state.deps?.session && state.context.featureFolder) {
-    try {
-      await state.deps.session.updateArtifacts(
-        state.context.project,
-        state.context.featureFolder,
-        'design',
-        {
-          state: {
-            jobId: newJobId,
-            jobTiming: newJobTiming,
-            taskQueue: [],
-            completedTasks: [],
-            completedTasksDetails: preloadedCompletedTasks,
-            overrideDirective: state.overrideDirective,  // ✅ Preserve chat directive
-            chatSource: state.chatSource  // ✅ Preserve chat source flag
-          }
-        }
-      );
-      console.log(`💾 [Design Decompose] Initial jobTiming saved to session\n`);
-    } catch (error) {
-      console.warn(`⚠️  [Design Decompose] Failed to save initial jobTiming:`, error);
+  let newJobId: string;
+  let newJobTiming: any;
+  let estimatingStartTime: string;
+  
+  if (existingJobTiming && existingJobId) {
+    // ✅ Reuse jobTiming from resolve node (already on broadcaster and session)
+    newJobId = existingJobId;
+    newJobTiming = existingJobTiming;
+    estimatingStartTime = existingJobTiming.startedAt;
+    console.log(`⏱️  [Design Decompose] Using jobTiming from resolve (startedAt: ${estimatingStartTime})`);
+  } else {
+    // Fallback: initialize fresh (shouldn't happen in normal flow)
+    const init = JobTimingManager.initializeNewJob(state._httpJobId!);
+    newJobId = init.jobId;
+    newJobTiming = init.jobTiming;
+    estimatingStartTime = init.estimatingStartTime;
+    console.warn(`⚠️  [Design Decompose] No jobTiming from resolve, initializing fresh`);
+    
+    // Set on broadcaster since resolve didn't
+    if (state.deps?.kanbanUpdate?.setJobTiming) {
+      state.deps.kanbanUpdate.setJobTiming(newJobTiming);
     }
-  }
-  
-  // ✅ Set jobTiming on broadcaster so every SSE broadcast includes timing
-  if (state.deps?.kanbanUpdate?.setJobTiming) {
-    state.deps.kanbanUpdate.setJobTiming(newJobTiming);
   }
   
   // ✅ NOW send "estimating started" signal with preloaded completed tasks

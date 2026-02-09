@@ -21,7 +21,49 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const effectiveDirective = state.overrideDirective || state.directive || '';
   state._uiLocale = detectUILocale(effectiveDirective);
   
-  // ✅ Node activity banner
+  // ✅ NEW JOB: Initialize jobTiming BEFORE setEstimatingActivity
+  // so the first broadcast already includes timing (matches code job pattern).
+  // Without this, design job broadcasts 4 nodes (resolve/triage/detect/decompose)
+  // without jobTiming, causing frontend to keep stale completedAt from previous job.
+  if (!state.isResume && state._httpJobId) {
+    const { JobTimingManager } = await import('../../common/timing/JobTimingManager');
+    const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId);
+    
+    // Store on state for downstream nodes (decompose will finalize estimating phase)
+    (state as any).jobId = newJobId;
+    (state as any).jobTiming = newJobTiming;
+    
+    // Set on broadcaster so every subsequent broadcast includes timing
+    if (state.deps?.kanbanUpdate?.setJobTiming) {
+      state.deps.kanbanUpdate.setJobTiming(newJobTiming);
+    }
+    
+    // Save to session early (survives process kill before decompose)
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'design',
+          {
+            state: {
+              jobId: newJobId,
+              jobTiming: newJobTiming,
+              taskQueue: [],
+              completedTasks: [],
+              completedTasksDetails: [],
+              overrideDirective: state.overrideDirective || state.directive || undefined,
+              chatSource: state.chatSource
+            }
+          }
+        );
+      } catch (error) {
+        // Non-critical: session save failed
+      }
+    }
+  }
+  
+  // ✅ Node activity banner (now broadcasts WITH jobTiming for new jobs)
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', state._uiLocale), 'resolve');
   }
@@ -172,5 +214,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     chatSource: state.chatSource,
     _httpJobId: state._httpJobId,
     _phaseTimings: { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart },
+    jobId: (state as any).jobId,
+    jobTiming: (state as any).jobTiming,
   };
 }
