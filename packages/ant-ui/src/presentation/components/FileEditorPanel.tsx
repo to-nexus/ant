@@ -19,13 +19,11 @@ interface LineNumberedEditorProps {
 function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [lineHeights, setLineHeights] = useState<number[]>([]);
   
   // ✅ Memoize lines to prevent infinite loop
-  // Previously, `lines` was created on every render and used in useEffect deps,
-  // causing infinite re-renders
   const lines = useMemo(() => value.split('\n'), [value]);
   const lineCount = lines.length;
   
@@ -35,17 +33,21 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
       if (!measureRef.current || !editorRef.current) return;
       
       const measureDiv = measureRef.current;
-      const editorWidth = editorRef.current.clientWidth;
+      // textarea clientWidth includes padding; subtract padding to get content width
+      const style = getComputedStyle(editorRef.current);
+      const paddingLeft = parseFloat(style.paddingLeft) || 0;
+      const paddingRight = parseFloat(style.paddingRight) || 0;
+      const editorContentWidth = editorRef.current.clientWidth - paddingLeft - paddingRight;
       
       // Set the measure div to same width as editor content area
-      measureDiv.style.width = `${editorWidth}px`;
+      measureDiv.style.width = `${editorContentWidth}px`;
       
       const heights: number[] = [];
       lines.forEach((line, i) => {
         // Create a temp span to measure this line
         const span = document.createElement('span');
         span.style.whiteSpace = 'pre-wrap';
-        span.style.wordBreak = 'break-word';
+        span.style.overflowWrap = 'break-word';
         span.textContent = line || ' '; // Empty lines need a space to have height
         measureDiv.innerHTML = '';
         measureDiv.appendChild(span);
@@ -73,18 +75,10 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
     }
   }, []);
   
-  // Handle input in contentEditable
-  const handleInput = useCallback((e: React.FormEvent<HTMLDivElement>) => {
-    const text = e.currentTarget.innerText;
-    onChange(text);
+  // Handle textarea change — native <textarea> yields correct text without DOM quirks
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onChange(e.target.value);
   }, [onChange]);
-  
-  // Handle paste to strip formatting
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    document.execCommand('insertText', false, text);
-  }, []);
   
   // Calculate width for line numbers (based on max line count)
   const lineNumberWidth = Math.max(String(lineCount).length * 8 + 16, 32);
@@ -99,7 +93,7 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
       <div
         ref={measureRef}
         className="absolute invisible font-mono text-sm leading-[1.625] p-0"
-        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+        style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}
         aria-hidden="true"
       />
       
@@ -122,24 +116,23 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
         </div>
       </div>
       
-      {/* Editable content area */}
-      <div
+      {/* Textarea editor — no contentEditable quirks, paste works natively */}
+      <textarea
         ref={editorRef}
-        contentEditable={!disabled}
-        onInput={handleInput}
+        value={value}
+        onChange={handleChange}
         onScroll={handleScroll}
-        onPaste={handlePaste}
-        suppressContentEditableWarning
-        className="flex-1 p-3 font-mono text-sm resize-none overflow-auto leading-[1.625] whitespace-pre-wrap break-words
+        disabled={disabled}
+        className="flex-1 p-3 font-mono text-sm resize-none overflow-auto leading-[1.625] break-words
+          border-0
           bg-transparent
           text-gray-900 dark:text-white
           focus:outline-none
           disabled:opacity-50 disabled:cursor-not-allowed"
         style={{ minHeight: '100%' }}
         spellCheck={false}
-      >
-        {value}
-      </div>
+        wrap="soft"
+      />
     </div>
   );
 }
