@@ -111,11 +111,11 @@ export class NextValidator {
     
     if (configExists) {
       lines.push(
-        'Please add `basePath` to the existing Next.js config file:',
+        'Please add `basePath` and `images` to the existing Next.js config file:',
       );
     } else {
       lines.push(
-        'Please create a `next.config.js` (or .mjs/.ts) with `basePath`:',
+        'Please create a `next.config.js` (or .mjs/.ts) with `basePath` and `images`:',
       );
     }
     
@@ -125,6 +125,9 @@ export class NextValidator {
       '// next.config.js',
       'const nextConfig = {',
       '  basePath: process.env.NEXT_PUBLIC_BASE_PATH || \'\',',
+      '  images: {',
+      '    unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH,',
+      '  },',
       '  // ... other config',
       '};',
       '',
@@ -133,6 +136,9 @@ export class NextValidator {
       '',
       'The environment variable `NEXT_PUBLIC_BASE_PATH` is injected automatically by the Ant platform at runtime.',
       'When running outside Ant, it defaults to empty string (no prefix), so the app works normally.',
+      '',
+      '`images.unoptimized` disables Next.js Image Optimization when running in the proxy environment.',
+      'This avoids internal fetch issues with the proxy path prefix while keeping optimization active in production.',
     );
     
     return lines.join('\n');
