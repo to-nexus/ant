@@ -2,6 +2,7 @@ import { ArtifactService } from "../../../../../infrastructure/workspace/Artifac
 import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
 import { DesignGraphState } from "../state";
 import * as path from "path";
+import { getEstimatingLabel, detectUILocale } from "../../common/timing/estimatingLabels";
 
 /**
  * Design Resolve Node
@@ -14,6 +15,17 @@ import * as path from "path";
  * Design job does NOT load codebase — code analysis is code job's responsibility.
  */
 export async function resolve(state: DesignGraphState): Promise<DesignGraphState> {
+  const phaseStart = Date.now();
+  
+  // ✅ Detect UI locale from directive (first node to run)
+  const effectiveDirective = state.overrideDirective || state.directive || '';
+  state._uiLocale = detectUILocale(effectiveDirective);
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', state._uiLocale), 'resolve');
+  }
+  
   const jobMode = state.detectionReport?.jobMode;
   const context = state.context;
   
@@ -35,6 +47,9 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     console.log(`   hasDetectionReport: ${hasDetectionReport}`);
     console.log(`   hasNewDirective: ${hasNewDirective}`);
     console.log(`   → Router will decide next node\n`);
+    
+    // ✅ Record phase timing
+    state._phaseTimings = { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart };
     
     // Return existing state without changes (router decides next node)
     return state;
@@ -155,6 +170,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     design,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
-    _httpJobId: state._httpJobId
+    _httpJobId: state._httpJobId,
+    _phaseTimings: { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart },
   };
 }

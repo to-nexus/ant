@@ -1,9 +1,5 @@
-import { Timer, Brain } from 'lucide-react';
-import { TaskTimer } from '../TaskTimer';
-import { JobTiming } from '@/domain/models/types';
-
 /**
- * SkeletonCard - Placeholder card during decompose
+ * SkeletonCard - Placeholder card during decompose/revise
  * @param delay - Animation delay in milliseconds (for staggered effect)
  */
 function SkeletonCard({ delay = 0 }: { delay?: number }) {
@@ -38,73 +34,43 @@ function ColumnHeader({ icon, title, count }: { icon: string; title: string; cou
   );
 }
 
-interface KanbanEstimatingProps {
-  jobTiming?: JobTiming;
-}
-
 /**
- * KanbanEstimating - Estimating state display with full kanban layout
- * Uses StatusBanner + shows skeleton cards in To Do column while keeping layout intact
+ * KanbanEstimatingSkeleton - Skeleton card layout for decompose/revise phases.
+ * Shows 3-column Kanban layout with placeholder cards in "To Do" column,
+ * indicating that tasks are about to be generated.
+ * 
+ * This is shown BELOW the NodeActivityBanner when the current node
+ * is decompose or revise (task generation nodes).
  */
-export function KanbanEstimating({ jobTiming }: KanbanEstimatingProps) {
-  
+export function KanbanEstimatingSkeleton() {
   return (
-    <>
-      {/* Compact banner with animated brain icon and timer */}
-      <div className="mb-4 p-4 bg-purple-50 dark:bg-purple-950 border-2 border-purple-300 dark:border-purple-700 rounded-lg">
-        <div className="flex items-start gap-4">
-          {/* Animated brain icon - thinking/analyzing */}
-          <div className="animate-pulse">
-            <Brain className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-3">
-              <div className="font-semibold text-base text-purple-900 dark:text-purple-200">
-                Breaking down tasks...
-              </div>
-              {/* Elapsed time timer - using TaskTimer component (same as TaskCard) */}
-              <div className="text-sm text-purple-700 dark:text-purple-300 whitespace-nowrap flex items-center gap-1">
-                <Timer className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <TaskTimer timing={jobTiming} isRunning={true} />
-              </div>
-            </div>
-            <div className="text-sm text-purple-800 dark:text-purple-300 mt-2">
-              Analyzing requirements and creating task queue
-            </div>
-          </div>
+    <div className="grid grid-cols-3 gap-4 pt-4">
+      {/* To Do column with skeleton cards */}
+      <div className="space-y-3">
+        <ColumnHeader icon="📝" title="To Do" count="···" />
+        <div className="space-y-2">
+          {/* Staggered animation: 0ms, 200ms, 400ms delays */}
+          <SkeletonCard delay={0} />
+          <SkeletonCard delay={200} />
+          <SkeletonCard delay={400} />
         </div>
       </div>
       
-      {/* Full 3-column layout */}
-      <div className="grid grid-cols-3 gap-4 pt-4">
-        {/* To Do column with skeleton cards */}
-        <div className="space-y-3">
-          <ColumnHeader icon="📝" title="To Do" count="···" />
-          <div className="space-y-2">
-            {/* ✅ Staggered animation: 0ms, 200ms, 400ms delays */}
-            <SkeletonCard delay={0} />
-            <SkeletonCard delay={200} />
-            <SkeletonCard delay={400} />
-          </div>
-        </div>
-        
-        {/* In Progress column (empty) */}
-        <div className="space-y-3">
-          <ColumnHeader icon="🔄" title="In Progress" count={0} />
-          <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-            Waiting for tasks...
-          </div>
-        </div>
-        
-        {/* Completed column (empty) */}
-        <div className="space-y-3">
-          <ColumnHeader icon="✅" title="Completed" count={0} />
-          <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-            No completed tasks yet
-          </div>
+      {/* In Progress column (empty) */}
+      <div className="space-y-3">
+        <ColumnHeader icon="🔄" title="In Progress" count={0} />
+        <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+          Waiting for tasks...
         </div>
       </div>
-    </>
+      
+      {/* Completed column (empty) */}
+      <div className="space-y-3">
+        <ColumnHeader icon="✅" title="Completed" count={0} />
+        <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+          No completed tasks yet
+        </div>
+      </div>
+    </div>
   );
 }
-

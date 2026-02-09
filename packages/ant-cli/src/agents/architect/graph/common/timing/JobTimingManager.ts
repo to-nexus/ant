@@ -89,16 +89,25 @@ export class JobTimingManager {
    * @param estimatingStartTime - When estimating started (ISO string)
    * @returns Updated jobTiming with estimatingDuration
    */
-  static finalizeEstimatingPhase(jobTiming: JobTiming, estimatingStartTime: string): JobTiming {
+  static finalizeEstimatingPhase(
+    jobTiming: JobTiming,
+    estimatingStartTime: string,
+    phaseBreakdown?: Record<string, number>
+  ): JobTiming {
     const estimatingEndTime = Date.now();
     const estimatingDuration = estimatingEndTime - new Date(estimatingStartTime).getTime();
     
     const finalJobTiming: JobTiming = {
       ...jobTiming,
-      estimatingDuration
+      estimatingDuration,
+      ...(phaseBreakdown && { phaseBreakdown }),
     };
     
     console.log(`⏰ [Decompose Complete] Estimating took ${Math.round(estimatingDuration / 1000)}s`);
+    if (phaseBreakdown) {
+      const breakdown = Object.entries(phaseBreakdown).map(([k, v]) => `${k}: ${Math.round(v / 1000)}s`).join(', ');
+      console.log(`   Phase breakdown: ${breakdown}`);
+    }
     
     return finalJobTiming;
   }

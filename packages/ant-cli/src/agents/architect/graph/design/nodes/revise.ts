@@ -1,6 +1,7 @@
 import { LLMClient } from "../../../../../core/ports";
 import { DesignGraphState } from "../state";
 import { DesignTask } from "../../../types/task";
+import { getEstimatingLabel } from "../../common/timing/estimatingLabels";
 
 /**
  * Revise Node for Design Job
@@ -16,6 +17,13 @@ import { DesignTask } from "../../../types/task";
  * Design-specific: Tasks produce documents (type: 'doc'), each with a targetFile.
  */
 export async function revise(state: DesignGraphState): Promise<DesignGraphState> {
+  const phaseStart = Date.now();
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('revise', state._uiLocale), 'revise');
+  }
+  
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ Workflow tracking: enter node
@@ -46,6 +54,8 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
   // If no new directive (just resume button), continue without changes
   if (!overrideDirective) {
     console.log('📋 [Design Revise] No new directive → CONTINUE (no task changes needed)\n');
+    
+    state._phaseTimings = { ...(state._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
@@ -217,6 +227,8 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
         console.log(`📋 [Design Revise] Task queue updated → Kanban board\n`);
       }
       
+      updatedState._phaseTimings = { ...(updatedState._phaseTimings || {}), revise: Date.now() - phaseStart };
+      
       if (state.deps?.workflowUpdate && state._httpJobId) {
         state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
       }
@@ -230,6 +242,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     if (overrideDirective) {
       result.directive = overrideDirective;
     }
+    result._phaseTimings = { ...(result._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
@@ -250,6 +263,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     if (overrideDirective) {
       result.directive = overrideDirective;
     }
+    result._phaseTimings = { ...(result._phaseTimings || {}), revise: Date.now() - phaseStart };
     return result;
   }
 }

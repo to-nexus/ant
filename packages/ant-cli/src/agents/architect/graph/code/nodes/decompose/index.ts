@@ -19,6 +19,7 @@ import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
+import { getEstimatingLabel } from "../../../common/timing/estimatingLabels";
 
 // Import submodules
 import { validateTasks } from "./validation";
@@ -32,6 +33,13 @@ import { loadCodebaseFilePaths } from "./codebaseLoader";
  * Decompose Node - Main Entry Point
  */
 export async function decompose(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  const phaseStart = Date.now();
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('decompose', state._uiLocale), 'decompose');
+  }
+  
   // Increment recursion count
   state.recursionCount = (state.recursionCount || 0) + 1;
   
@@ -331,6 +339,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   
   let timingJobId: string;
   let jobTiming: any;
+  const finalPhaseTimings = { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart };
   
   if (replanJobId) {
     console.log(`🔄 [Decompose] Replan: Preserving job timing (Job ID: ${replanJobId})`);
@@ -348,7 +357,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     
     // ✅ CRITICAL: Finalize estimating phase (detectEnvironment + decompose)
     const estimatingStartTime = existingJobTiming.startedAt || new Date().toISOString();
-    jobTiming = JobTimingManager.finalizeEstimatingPhase(existingJobTiming, estimatingStartTime);
+    jobTiming = JobTimingManager.finalizeEstimatingPhase(existingJobTiming, estimatingStartTime, finalPhaseTimings);
     
     console.log(`⏱️  [Decompose] Using job ID from session: ${timingJobId}`);
     console.log(`⏰  [Decompose] Estimating phase finalized: ${Math.round((jobTiming.estimatingDuration || 0) / 1000)}s`);
@@ -383,8 +392,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     jobId: timingJobId,
     jobTiming,
     _estimatingTokenUsage: estimatingTokenUsage,
+    _phaseTimings: finalPhaseTimings,
   };
   
+  // ✅ Update broadcaster with finalized jobTiming (includes estimatingDuration + phaseBreakdown)
+  if (state.deps?.kanbanUpdate?.setJobTiming) {
+    state.deps.kanbanUpdate.setJobTiming(jobTiming);
+  }
+
   // ✅ Save checkpoint with tasks
   if (state.deps?.session) {
     const { saveCheckpoint } = await import('../checkpoint');

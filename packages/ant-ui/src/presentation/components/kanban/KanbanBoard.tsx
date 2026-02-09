@@ -4,8 +4,9 @@ import { KanbanData } from '@/infrastructure/http/api';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { BoardContainer } from '../BoardContainer';
 import { ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from './KanbanHeader';
-import { KanbanEstimating } from './KanbanEstimating';
+import { KanbanEstimatingSkeleton } from './KanbanEstimating';
 import { KanbanColumns } from './KanbanColumns';
+import { NodeActivityBanner } from './NodeActivityBanner';
 
 interface KanbanBoardProps {
   kanbanData: KanbanData;  // ✅ App에서 전달받음 (project/feature 단위 SSE)
@@ -66,7 +67,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     }
   }, [kanbanData.inProgress, previousInProgressId]);
   
-  // ✅ Estimating state: Show estimating UI instead of Kanban board
+  // ✅ Estimating state: Show activity banner or fallback skeleton UI
   if (kanbanData.isEstimating) {
     return (
       <BoardContainer 
@@ -81,6 +82,10 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
                 name: task.name,
                 timing: task.timing
               }))}
+              estimatingActivity={kanbanData.estimatingLabel && kanbanData.estimatingStartedAt ? {
+                label: kanbanData.estimatingLabel,
+                startedAt: kanbanData.estimatingStartedAt,
+              } : null}
             />
             <TokenUsageBadge 
               jobId={kanbanData.jobId}
@@ -105,9 +110,20 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
           />
         }
-        className={`kanban-board ${splitLayout}`}  // ✅ Pass splitLayout
+        className={`kanban-board ${splitLayout}`}
       >
-        <KanbanEstimating jobTiming={kanbanData.jobTiming} />
+        {/* Current node activity indicator */}
+        {kanbanData.estimatingLabel && kanbanData.estimatingStartedAt && (
+          <NodeActivityBanner
+            label={kanbanData.estimatingLabel}
+            startedAt={kanbanData.estimatingStartedAt}
+          />
+        )}
+
+        {/* Skeleton cards: only during decompose/revise (task generation nodes) */}
+        {(kanbanData.estimatingNodeId === 'decompose' || kanbanData.estimatingNodeId === 'revise') && (
+          <KanbanEstimatingSkeleton />
+        )}
       </BoardContainer>
     );
   }
@@ -126,6 +142,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
               name: task.name,
               timing: task.timing
             }))}
+            inProgressTask={kanbanData.inProgress ? {
+              id: kanbanData.inProgress.id || kanbanData.inProgress.name,
+              name: kanbanData.inProgress.name,
+              timing: kanbanData.inProgress.timing,
+            } : null}
           />
           <TokenUsageBadge 
             jobId={kanbanData.jobId}

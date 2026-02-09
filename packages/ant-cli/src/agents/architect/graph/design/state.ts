@@ -110,6 +110,8 @@ export interface DesignGraphState extends TaskArtifacts {
   
   // ✅ For tracking and resume
   _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
+  _phaseTimings?: Record<string, number>;  // Per-node ms timings for phaseBreakdown
+  _uiLocale?: 'ko' | 'en';  // UI locale detected from directive
   
   
   

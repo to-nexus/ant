@@ -2,6 +2,7 @@ import { LLMClient } from "../../../../../core/ports";
 import { ArchitectGraphState } from "../state";
 import { CodeTask } from "../../../types/task";
 import { saveCheckpoint } from "./checkpoint";
+import { getEstimatingLabel } from "../../common/timing/estimatingLabels";
 
 /**
  * Revise Node (replaces replanDecision + modifyTasks + clearStateForReplan)
@@ -15,6 +16,13 @@ import { saveCheckpoint } from "./checkpoint";
  * 4. Always routes to → plan
  */
 export async function revise(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  const phaseStart = Date.now();
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('revise', state._uiLocale), 'revise');
+  }
+  
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   const llm = state.deps?.llm as LLMClient;
@@ -50,6 +58,8 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
   // If no new directive (just resume button), continue without changes
   if (!overrideDirective && directives.length < 2) {
     console.log('📋 [Revise] No new directive → CONTINUE (no task changes needed)\n');
+    
+    state._phaseTimings = { ...(state._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
@@ -211,6 +221,8 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
         console.log(`📋 [Revise] Task queue updated → Kanban board\n`);
       }
       
+      updatedState._phaseTimings = { ...(updatedState._phaseTimings || {}), revise: Date.now() - phaseStart };
+      
       if (state.deps?.workflowUpdate && state._httpJobId) {
         state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
       }
@@ -224,6 +236,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     if (overrideDirective) {
       result.directive = overrideDirective;
     }
+    result._phaseTimings = { ...(result._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
@@ -245,6 +258,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     if (overrideDirective) {
       result.directive = overrideDirective;
     }
+    result._phaseTimings = { ...(result._phaseTimings || {}), revise: Date.now() - phaseStart };
     return result;
   }
 }

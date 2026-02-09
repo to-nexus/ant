@@ -42,4 +42,12 @@ export interface TaskQueueUpdatePort {
    * so every SSE broadcast includes timing without per-call overhead.
    */
   setJobTiming?(jobTiming: JobTiming): void;
+
+  /**
+   * Set the current non-task node activity label for the Kanban board banner.
+   * Broadcasts immediately. Auto-cleared when updateTaskQueue receives tasks.
+   * @param label - User-facing label (e.g., "환경 분석 중")
+   * @param nodeId - Graph node ID (e.g., "decompose") for UI-specific rendering
+   */
+  setEstimatingActivity?(label: string, nodeId?: string): void;
 }

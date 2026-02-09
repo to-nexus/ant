@@ -19,4 +19,6 @@ export interface JobTiming {
   totalPausedDuration: number;
   estimatingDuration?: number;
   totalElapsedTime?: number;
+  /** Individual pre-task node durations in ms (e.g., { resolve: 1200, detect: 4100 }) */
+  phaseBreakdown?: Record<string, number>;
 }
