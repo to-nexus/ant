@@ -117,17 +117,11 @@ Set up according to chosen framework (Vite/Next.js/etc). Match your project's ne
 
 Configure as needed for project (Tailwind, ESLint, etc).
 
-**⚠️ Tailwind CSS — `content` paths (CRITICAL):**
+**⚠️ Blind Spot — Tailwind `content` paths:**
 
-Tailwind JIT generates CSS ONLY for classes found in files matching the `content` glob patterns. If `content` paths don't match the framework's source directory structure, utility classes will be missing and all layouts will break.
+**Principle**: `content` MUST list every directory where source files with styling classes will exist.
 
-**Principle**: The `content` array MUST include every directory that contains files using Tailwind classes. Observe the framework's directory convention:
-
-- CSR frameworks (Vite, CRA): source files in `./src/`
-- Next.js App Router: source files in `./app/`, `./components/`
-- Next.js Pages Router: source files in `./pages/`, `./components/`
-
-**Constraint**: Do NOT hardcode content paths from one framework when using another. Always match the actual project structure.
+**Constraint**: Do NOT assume existing `content` paths are correct. Observe where the framework convention places source files, and verify `content` matches before finalizing.
 
 ## 5. .gitignore
 

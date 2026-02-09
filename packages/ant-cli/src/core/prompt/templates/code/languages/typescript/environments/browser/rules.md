@@ -103,12 +103,13 @@ module.exports = {
 }
 ```
 
-**⚠️ CRITICAL — `content` paths MUST match source directories:**
+**⚠️ Blind Spot — `content` path mismatch:**
 
-Tailwind CSS v3+ JIT scans only files listed in `content`. If paths don't match where source files actually live, **no utility classes will be generated** — only the preflight reset CSS will be output, breaking all layouts.
+**Principle**: `content` paths MUST list every directory where source files with styling classes exist.
 
-**Principle**: Observe the framework's source directory structure, then set `content` to match.
-**Constraint**: Do NOT reuse content paths from a different framework. If migrating, update content paths.
+**Constraint**: Do NOT assume existing `content` paths are correct. Observe the actual source directory structure and verify `content` matches.
+
+**Constraint**: If source files are in a directory not listed in `content`, zero utility classes will be generated for those files. The CSS file still loads normally — it just contains only the base reset, making this failure invisible in network/console.
 
 **Usage:**
 ```tsx
