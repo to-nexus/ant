@@ -302,10 +302,6 @@ export class RouteConfigurator {
     // This allows new jobs to start after previous job completes (fixes "Job already running" error)
     // CRITICAL: Must also call cleanupJobState to broadcast Kanban update to frontend!
     if (this.config.mode === 'cloud' && stateStore) {
-      // ✅ Idempotency: Track recently processed job events to prevent duplicate cleanup
-      const processedJobEvents = new Set<string>();
-      const PROCESSED_EVENT_TTL_MS = 60_000; // 60 seconds
-      
       stateStore.subscribe(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, async (message: unknown) => {
         const data = message as { 
           type: string; 
@@ -320,15 +316,12 @@ export class RouteConfigurator {
         if (data.type === 'completed' || data.type === 'failed') {
           const { jobId, projectId, featureName, userEmail } = data;
           
-          // ✅ Idempotency guard: Skip if already processed this job event
-          // BullMQJobQueue may publish duplicate events; also prevents race from multiple subscribers
-          const eventKey = `${jobId}:${data.type}`;
-          if (processedJobEvents.has(eventKey)) {
-            logger.debug(`Ignoring duplicate job event: ${eventKey}`, { component: 'RouteConfigurator' });
+          // ✅ Redis-based idempotency: in-memory Set doesn't work (multiple instances confirmed by logs)
+          const acquired = await stateStore.acquireLock(`ant:job-event:${jobId}:${data.type}`, 120);
+          if (!acquired) {
+            logger.debug(`Duplicate job event blocked: ${jobId}:${data.type}`, { component: 'RouteConfigurator' });
             return;
           }
-          processedJobEvents.add(eventKey);
-          setTimeout(() => processedJobEvents.delete(eventKey), PROCESSED_EVENT_TTL_MS);
           
           // Update local stateTracker to mark job as completed
           const jobStatus = state.jobs.get(jobId);

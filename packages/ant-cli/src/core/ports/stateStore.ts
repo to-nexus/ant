@@ -461,6 +461,15 @@ export interface StateStorePort {
   subscribe(channel: string, callback: (message: any) => void): Promise<() => void>;
   
   // ============================================
+  // Distributed Locking
+  // ============================================
+  
+  /**
+   * Atomic set-if-not-exists with TTL. Returns true if acquired.
+   */
+  acquireLock(key: string, ttlSeconds: number): Promise<boolean>;
+  
+  // ============================================
   // Lifecycle
   // ============================================
   
