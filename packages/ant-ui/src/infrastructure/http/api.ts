@@ -332,6 +332,8 @@ export interface PreviewStatus {
   suggestedFix?: string;    // Suggested fix prompt
   packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
+  phase?: 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';  // Explicit phase from backend
+  error?: string;  // Error message from backend (install failure, health check failure, etc.)
 }
 
 

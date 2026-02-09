@@ -273,32 +273,77 @@ React hydration이 서버 사이드에서 재작성한 경로를 원래대로 �
 
 ## 5. Preview 생명주기
 
-### 5.1 시작 흐름
+### 5.1 상태 전이 (Phase)
+
+Preview는 다음 상태를 순서대로 거칩니다. 백엔드가 `phase` 필드로 명시적으로 전달합니다.
+
+```
+idle → installing → starting → running
+                        │           │
+                        ▼           ▼
+                      error ←──── error (health check fail → cleanup)
+```
+
+| Phase | 의미 | UI 표시 |
+|-------|------|---------|
+| `idle` | 실행 대기 | Start 버튼 활성 |
+| `installing` | npm install 진행 중 (타임아웃: 3분) | 진행률 표시 |
+| `starting` | 프로세스 실행 + Health check 대기 (최대 60초) | 스피너 |
+| `running` | Health check 통과, Dev server 정상 | Open 버튼 |
+| `error` | 실패 (install/health check/프로세스 크래시) | 에러 메시지 |
+
+### 5.2 시작 흐름
 
 ```
 1. 사용자: "Start Preview" 클릭
    ↓
 2. Frontend: POST /preview/projects/:id/start { feature: "localtest" }
    ↓
-3. ant-preview: 프로젝트 구조 감지
+3. 분산 락 획득 (Redis SET NX, TTL 120s) — 다른 Pod 중복 방지
+   ↓
+4. ant-preview: 프로젝트 구조 감지
    → { type: 'fullstack', packages: [frontend, backend], entry: frontend }
    ↓
-4. 의존성 설치 (npm install) — 패키지별 순차
+5. 의존성 설치 (npm install, 타임아웃 3분) — 패키지별 순차
    로그: "📦 Installing dependencies for web-client..."
    ↓
-5. Dev Server 기동 (npm run dev --host 0.0.0.0)
+6. Dev Server 기동 (npm run dev --host 0.0.0.0)
    로그: "🚀 Starting web-client (frontend) on port 30001..."
    ↓
-6. Redis에 PreviewState 등록
+7. Redis에 PreviewState 등록
    { host: Pod_A_IP, port: 30001, running: true, ready: false }
    ↓
-7. Health Check 통과
-   { running: true, ready: true }
+8. Health Check (최대 60초, 1초 간격)
+   ├── 성공 → { running: true, ready: true } → 분산 락 해제
+   └── 실패 → 모든 프로세스 kill → 상태 정리 → 에러 broadcast → 분산 락 해제
    ↓
-8. URL 반환: /org:user:proj:feat
+9. URL 반환: /org:user:proj:feat
 ```
 
-### 5.2 프로젝트 구조 감지
+### 5.3 에러 처리 및 자동 정리
+
+| 상황 | 처리 |
+|------|------|
+| npm install 실패 (exit code ≠ 0) | 에러 broadcast, 분산 락 해제, UI에 에러 표시 |
+| npm install 타임아웃 (3분) | 프로세스 SIGTERM → SIGKILL, 에러 broadcast |
+| Health check 실패 (60초) | 모든 프로세스 kill, Redis unregister, 에러 broadcast |
+| 프로세스 비정상 종료 | 모든 프로세스 사망 시 자동 cleanup (Map, Redis, Port) |
+| stopPreview 중 startPreview 진행 | cancel 플래그로 start 완료 후 자동 정리 |
+| 분산 락 Pod 크래시 | TTL 120초 만료 후 다른 Pod에서 재시도 가능 |
+
+### 5.4 Cross-Pod 상태 조회
+
+Multi-Pod 환경에서 GET `/projects/:id/status`는 다음 순서로 조회합니다:
+
+```
+1. 로컬 메모리 확인 → 있으면 반환 (+ logs)
+2. Redis fallback → 있으면 반환 (logs 없음, 다른 Pod에서 실행 중)
+3. 둘 다 없으면 → { running: false }
+```
+
+이로써 ALB round-robin으로 다른 Pod가 status를 받아도 정확한 상태를 반환합니다.
+
+### 5.5 프로젝트 구조 감지
 
 | 타입 | 판단 기준 | Entry | 기동 패키지 |
 |------|-----------|-------|------------|
@@ -307,7 +352,7 @@ React hydration이 서버 사이드에서 재작성한 경로를 원래대로 �
 | **Fullstack** | Frontend + Backend 디렉토리 | Frontend | 모두 |
 | **Monorepo** | `workspaces` 설정 | 첫 Frontend | dev script 있는 모두 |
 
-### 5.3 Fullstack 지원
+### 5.6 Fullstack 지원
 
 Fullstack 프로젝트에서는 Frontend와 Backend를 동시 실행합니다:
 
@@ -319,7 +364,7 @@ Fullstack 프로젝트에서는 Frontend와 Backend를 동시 실행합니다:
 
 PreviewProxy가 `targetPath`를 분석하여 `/api/*` 요청만 Backend 포트로 분기합니다.
 
-### 5.4 API 엔드포인트
+### 5.7 API 엔드포인트
 
 ```bash
 # 시작
@@ -331,11 +376,13 @@ Response: { success: true, port: 30001, url: "/org:user:proj:localtest" }
 POST /preview/projects/:id/stop
 Body: { feature: "localtest" }
 
-# 상태 조회 (폴링)
+# 상태 조회 (폴링 + SSE 보완)
 GET /preview/projects/:id/status?feature=localtest
 Response: {
   running: true,
   ready: true,
+  phase: "running",   // idle | installing | starting | running | error
+  error: null,        // 에러 시 메시지 포함
   port: 30001,
   url: "/org:user:proj:localtest",
   packages: [
@@ -464,7 +511,37 @@ createWebHistory((window as any).__BASENAME__ || '/')
 
 ## 8. 클라우드 환경 제약사항
 
-### 8.1 파일 감시 (File Watching)
+### 8.1 분산 락 (Multi-Pod 동시성 제어)
+
+클라우드에서 ant-preview가 **2+ Pod**로 실행될 때, ALB round-robin으로 인해 동일한 프로젝트에 대한 start 요청이 서로 다른 Pod에 도달할 수 있습니다.
+
+**문제**: 두 Pod가 동시에 같은 EFS 경로에서 `npm install`을 실행하면:
+- Lock file 충돌로 install 실패 (exit code 1)
+- `node_modules` 오염으로 Dev Server 기동 실패
+- UI에 "Installing dependencies" 표시가 영원히 남음
+
+**해결**: Redis 분산 락 (`SET NX + TTL`)
+
+```
+Pod A: POST /start → acquireLock("ant:lock:preview:{serverKey}", 120s) → OK → npm install → dev server → releaseLock
+Pod B: POST /start → acquireLock("ant:lock:preview:{serverKey}", 120s) → FAIL → "Preview is starting on another server"
+```
+
+| 항목 | 값 |
+|------|-----|
+| Lock key | `ant:lock:preview:{serverKey}` |
+| TTL | 120초 (npm install + startup 커버) |
+| 실패 시 | 자동 해제 (TTL 만료) |
+| 성공 시 | Health check 완료 후 즉시 해제 |
+
+### 8.2 실패 상태 전파
+
+`startPreview` 실패 시 (npm install 에러, 프로세스 크래시 등):
+1. Redis Pub/Sub로 실패 상태 브로드캐스트 → UI가 에러 표시
+2. 분산 락 즉시 해제 → 재시도 가능
+3. `installingProjects` Set에서 제거
+
+### 8.3 파일 감시 (File Watching)
 
 클라우드 환경에서 워크스페이스는 **EFS (NFS 기반)** 에 마운트됩니다 (`/mnt/workspaces`).
 

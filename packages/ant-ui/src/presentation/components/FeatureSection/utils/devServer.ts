@@ -12,7 +12,15 @@ import type {
 } from '../types/devServer';
 
 /**
- * Analyze dev server status and logs to determine current state
+ * Analyze dev server status and logs to determine current state.
+ * 
+ * Priority:
+ * 1. Backend-provided `phase` field (most reliable, server-authoritative)
+ * 2. Setup validation failure (`setupReasoning`)
+ * 3. Backend-provided `error` field
+ * 4. Log pattern matching (fallback for backwards compatibility)
+ * 5. `running` flag
+ * 6. `isLoading` state
  */
 export function analyzeDevServerState(
   status: PreviewStatus | undefined,
@@ -22,14 +30,32 @@ export function analyzeDevServerState(
     return isLoading ? 'starting' : 'idle';
   }
   
-  const logs = status.logs || [];
+  // 1. Backend-provided phase (most authoritative)
+  if (status.phase) {
+    // Map backend phases to frontend states
+    switch (status.phase) {
+      case 'installing': return 'installing';
+      case 'starting': return 'starting';
+      case 'running': return 'running';
+      case 'error':
+      case 'stopped': return 'error';
+      case 'idle': return isLoading ? 'starting' : 'idle';
+    }
+  }
   
-  // Check for setup validation failure FIRST
-  if (status.setupReasoning) {  // If reasoning exists, validation failed
+  // 2. Setup validation failure
+  if (status.setupReasoning) {
     return 'error';
   }
   
-  // Check for installing state
+  // 3. Backend error field
+  if (status.error) {
+    return 'error';
+  }
+  
+  const logs = status.logs || [];
+  
+  // 4. Log pattern matching (fallback)
   if (hasLogPattern(logs, DEV_SERVER_LOG_PATTERNS.INSTALLING)) {
     const hasSuccess = hasLogPattern(logs, DEV_SERVER_LOG_PATTERNS.INSTALL_SUCCESS);
     if (!hasSuccess) {
@@ -37,17 +63,16 @@ export function analyzeDevServerState(
     }
   }
   
-  // Check for error state in logs
   if (hasErrorInLogs(logs)) {
     return 'error';
   }
   
-  // Check if running
+  // 5. Running flag
   if (status.running) {
     return 'running';
   }
   
-  // Default to starting if loading
+  // 6. Default
   return isLoading ? 'starting' : 'idle';
 }
 

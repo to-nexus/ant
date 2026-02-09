@@ -305,14 +305,18 @@ export class PreviewServer {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
         const feature = req.query.feature as string || 'main';
+        const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
 
-        const status = this.previewService.getPreviewStatus(
+        // getPreviewStatus reads from Redis (source of truth), with local memory fallback.
+        // This guarantees consistent state across pods in multi-pod deployments.
+        const status = await this.previewService.getPreviewStatus(
           userContext.organizationId,
           userContext.userId,
           projectId,
           feature
         );
 
+        // Logs are only available on the owning pod (stored in local memory)
         const logs = this.previewService.getPreviewLogs(
           userContext.organizationId,
           userContext.userId,
@@ -320,29 +324,17 @@ export class PreviewServer {
           feature
         );
 
-        if (!status) {
-          res.json({
-            running: false,
-            ready: false,
-            port: null,
-            url: null,
-            processCount: 0,
-            packages: [],
-            issues: [],
-            logs: []
-          });
-          return;
-        }
-
         res.json({
           running: status.running,
           ready: status.ready,
           port: status.port || null,
-          url: status.port ? `/${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}` : null,
+          url: status.port ? `/${serverKey}` : null,
           processCount: status.processCount || 0,
           backendPort: status.backendPort || null,
           packages: status.packages || [],
           issues: status.issues || [],
+          phase: status.phase,
+          error: status.error,
           logs: logs.slice(-50)
         });
       } catch (error: any) {

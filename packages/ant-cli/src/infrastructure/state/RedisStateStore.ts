@@ -411,7 +411,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'issues' | 'packages' | 'backendPort'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort'>>
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
@@ -695,6 +695,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
     const result = await this.redis.set(key, '1', 'EX', ttlSeconds, 'NX');
     return result === 'OK';
+  }
+
+  async releaseLock(key: string): Promise<void> {
+    await this.redis.del(key);
   }
 
   // ============================================
