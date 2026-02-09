@@ -373,16 +373,32 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         res.setHeader('Set-Cookie', `__ant_preview_sk=${encodeURIComponent(serverKey)}; Path=/; SameSite=Lax`);
       }
       
+      // ✅ For nativeBasePath + HTML: inject ONLY a WebSocket fix script (no path rewriting).
+      // Next.js normalizedAssetPrefix strips leading '/' from basePath, then URL.canParse()
+      // treats "to.nexus:probe:..." as a valid URL scheme (because 'to.nexus' matches [a-z][a-z0-9+\-.]* ).
+      // This makes HMR WebSocket construction fail with "scheme 'to.nexus' is not allowed".
+      // Fix: patch WebSocket constructor to prepend wss://host when the URL has no valid scheme.
+      if (nativeBasePath && contentType.includes('text/html')) {
+        const text = await response.text();
+        const wsFixScript = `<script>(function(){var O=window.WebSocket;window.WebSocket=function(u,p){try{return p!==void 0?new O(u,p):new O(u)}catch(e){if(e instanceof SyntaxError&&typeof u==='string'&&!/^wss?:\\/\\//.test(u)){var f=(location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/'+u;return p!==void 0?new O(f,p):new O(f)}throw e}};window.WebSocket.prototype=O.prototype;window.WebSocket.CONNECTING=O.CONNECTING;window.WebSocket.OPEN=O.OPEN;window.WebSocket.CLOSING=O.CLOSING;window.WebSocket.CLOSED=O.CLOSED})()</script>`;
+        const headMatch = text.match(/<head[^>]*>/i);
+        let patched = text;
+        if (headMatch) {
+          const insertPos = headMatch.index! + headMatch[0].length;
+          patched = text.substring(0, insertPos) + wsFixScript + text.substring(insertPos);
+          logger.debug(`[Preview] Injected WebSocket fix for nativeBasePath`, { component: 'PreviewProxy' });
+        }
+        res.setHeader('content-length', Buffer.byteLength(patched));
+        res.send(patched);
+      }
       // Check if content needs rewriting (HTML, JS, CSS)
       // Skip rewriting for native basePath — the framework already generates all URLs with the prefix.
-      const needsRewrite = !nativeBasePath && (
+      else if (!nativeBasePath && (
                            contentType.includes('text/html') || 
                            contentType.includes('javascript') || 
                            contentType.includes('text/javascript') ||
                            contentType.includes('application/javascript') ||
-                           contentType.includes('text/css'));
-      
-      if (needsRewrite) {
+                           contentType.includes('text/css'))) {
         const text = await response.text();
         logger.debug(`Rewriting ${text.length} bytes`, { component: 'PreviewProxy' });
         
