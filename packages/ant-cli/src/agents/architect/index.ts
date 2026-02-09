@@ -359,13 +359,13 @@ export async function architectAgent(
             // TemplateComposer will filter by environment before sending to LLM
             const designDocs = await ArtifactService.loadDesignDocuments(ctx, gitPort, fileSystem, 'unknown');
             
-            // ✅ Also load unified design for backward compatibility
+            // ✅ Also load unified design as fallback
             // This will be used if designDocs filtering doesn't find environment-specific docs
             const designResult = await ArtifactService.findLatestDesign(ctx, gitPort, fileSystem);
             
             return {
               directive: directive || undefined,
-              designDoc: designResult?.content || undefined,  // ✅ Backward compatibility
+              designDoc: designResult?.content || undefined,
               designDocPath: designResult?.filePath || undefined,  // ✅ For environment inference
               designDocs  // ✅ All docs (filtered later by TemplateComposer)
             };
@@ -412,8 +412,8 @@ export async function architectAgent(
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           completedTasksDetails: [],  // ✅ Initialize completedTasksDetails
           referenceCodeContexts: [],  // ✅ Initialize reference code contexts
-          subtaskIndex: 0,  // Backward compatibility
-          totalSubtasks: 0,  // Backward compatibility
+          subtaskIndex: 0,
+          totalSubtasks: 0,
           _httpJobId: resolvedJobId,  // ✅ For real-time tracking and resume
           overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
           chatSource: deps?.chatSource,  // ✅ Chat SSE flag

@@ -40,7 +40,7 @@ export function MainContentArea({
   // For "job tab cleared" we render the same empty state as when no job is selected,
   // without mutating the underlying kanban/workflow state.
   const effectiveKanbanData = isJobTabCleared
-    ? { ...kanbanData, jobId: undefined, todo: [], inProgress: null, completed: [] }
+    ? { ...kanbanData, jobId: undefined, todo: [], inProgress: [], completed: [] }
     : kanbanData;
   const effectiveWorkflowState = isJobTabCleared ? null : workflowState;
   

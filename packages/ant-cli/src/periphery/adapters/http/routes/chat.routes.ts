@@ -28,15 +28,6 @@ export function createChatRoutes(deps: {
 }): Router {
   const router = Router();
   
-  // ⚠️ DEPRECATED: Redirect to unified SSE endpoint
-  router.get('/projects/:id/features/:feature/chat/stream', (req: Request, res: Response) => {
-    res.status(410).json({ 
-      error: 'Endpoint deprecated',
-      message: 'Use /projects/:id/features/:feature/stream instead',
-      newEndpoint: `/projects/${req.params.id}/features/${req.params.feature}/stream`
-    });
-  });
-
   /**
    * GET /projects/:id/features/:feature/chat/messages
    * Get all chat messages for a feature

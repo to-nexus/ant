@@ -22,15 +22,26 @@ export interface NodeHistoryEntry {
   duration?: number;
 }
 
+/** Active worker node — represents one worker occupying a graph node */
+export interface ActiveWorkerNode {
+  workerId: number;
+  nodeId: string;              // Original graph node ID (plan, codeGen, etc.)
+  previousNodeId: string | null;  // Previous node (for edge animation)
+  taskName: string;            // Display task name
+  taskId: string;              // Task ID
+  enteredAt: string;           // ISO timestamp when entered
+}
+
 /** Real-time workflow state (sent via SSE) */
 export interface WorkflowRealtimeState {
   jobId: string;
-  currentNode: string | null;
-  previousNode: string | null;
-  currentTask: TaskInfo | null;
   startedAt: string;
   endedAt?: string;
   isCompleted: boolean;
+
+  /** All currently active worker nodes. */
+  activeNodes: ActiveWorkerNode[];
+
   nodeHistory: NodeHistoryEntry[];
   activeActors: string[];
 

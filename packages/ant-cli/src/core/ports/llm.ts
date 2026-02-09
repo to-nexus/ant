@@ -127,7 +127,7 @@ export interface LLMStreamEvent {
     blockEnd?: boolean;       // ✅ Marks block ending (e.g. thinking block end)
     placeholder?: boolean;    // Mark as placeholder for replacement
     durationMs?: number;      // ✅ Duration in milliseconds (for thinking/tasks)
-    thinkingDuration?: number;  // ✅ DEPRECATED: Use durationMs instead
+    thinkingDuration?: number;  // Alias for durationMs (thinking blocks)
   };
 }
 

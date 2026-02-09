@@ -44,11 +44,6 @@ export interface TaskTiming {
 export interface TaskTokenUsage {
   inputTokens: number;
   outputTokens: number;
-  /**
-   * @deprecated Redundant field — always equals `inputTokens + outputTokens`.
-   * Compute on read instead. Will be removed in a future version.
-   * All "total" calculations should use metrics from `getTokenUsageMetrics()`.
-   */
   totalTokens: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
@@ -70,6 +65,27 @@ export interface BaseTask {
   timing?: TaskTiming;
   tokenUsage?: TaskTokenUsage;
   packages?: string[];
+
+  /**
+   * Exclusive execution flag (set by decompose).
+   * When true, this task cannot run concurrently with any other task.
+   * The orchestrator waits until all running tasks complete before starting
+   * an exclusive task, and no new tasks are started until it finishes.
+   *
+   * Code job: setup, error, final → exclusive: true
+   * Design job: api-contract → exclusive: true
+   */
+  exclusive?: boolean;
+
+  /**
+   * Parallel execution group ID (set by decompose LLM).
+   * Tasks sharing the same parallelGroup cannot execute simultaneously.
+   * Tasks with different parallelGroup values can run in parallel.
+   *
+   * Ignored when exclusive is true.
+   * When undefined, the task runs alone (conservative default).
+   */
+  parallelGroup?: string;
 }
 
 // ============================================
@@ -84,7 +100,8 @@ export interface BaseTask {
 export interface KanbanData {
   jobId?: string;
   todo: BaseTask[];
-  inProgress: BaseTask | null;
+  /** Currently executing task(s). Array for parallel execution support. */
+  inProgress: BaseTask[];
   completed: BaseTask[];
   isEstimating: boolean;
   dataSource: 'live' | 'session' | 'estimating';

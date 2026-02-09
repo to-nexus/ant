@@ -29,7 +29,11 @@ export async function plan(state: DesignGraphState) {
       resetTaskTokenUsage(state as any);
       
       // ✅ CRITICAL: Update Kanban snapshot when task starts
-      if (state._httpJobId && state.deps?.kanbanUpdate) {
+      // Skip in worker context — TaskOrchestrator handles kanban for parallel mode
+      // (per-worker kanban would overwrite multi-task inProgress with just this worker's task)
+      const _workerId = (state as any).workerId;
+      const isWorkerContext = _workerId !== undefined && _workerId !== null;
+      if (!isWorkerContext && state._httpJobId && state.deps?.kanbanUpdate) {
         console.log(`\n🔥 [Plan] Updating Kanban → task started`);
         console.log(`   Current: ${currentTask.name}`);
         console.log(`   Remaining in queue: ${state.taskQueue.size()}\n`);
@@ -74,7 +78,7 @@ export async function plan(state: DesignGraphState) {
     } : undefined;
     
     // ✅ Note: No llmInfo needed - plan node doesn't call LLM
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', (state as any).workerId ?? 0, taskInfo);
   }
 
   console.log(`\n✅ [Plan] Task prepared for execution`);

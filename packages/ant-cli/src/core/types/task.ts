@@ -37,6 +37,8 @@ import type { BaseTask, TaskTokenUsage, DecomposableJobType, KanbanData } from '
  */
 export interface TaskQueueSnapshot {
   currentTask: BaseTask | null;
+  /** All currently running tasks (for parallel execution support). Falls back to [currentTask] if absent. */
+  currentTasks?: BaseTask[];
   queue: BaseTask[];
   completedTasks: BaseTask[];
   recursionCount: number;

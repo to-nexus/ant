@@ -347,7 +347,7 @@ export class LLMResponseService {
   // ============================================================================
 
   /**
-   * Legacy: Add file operation notification with content (backward compatibility)
+   * Add file operation notification with content
    */
   async addFileOperation(
     operation: 'edit' | 'create' | 'delete', 

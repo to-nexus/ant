@@ -56,7 +56,6 @@ export class RouteConfigurator {
    */
   configure(app: Express): void {
     this.setupRootRoutes(app);
-    this.setupInternalEndpoints(app);
     this.setupAuthRoutes(app);
     this.setupApiRoutes(app);
     this.setupIDERoutes(app);
@@ -93,71 +92,6 @@ export class RouteConfigurator {
         });
       });
     }
-  }
-
-  /**
-   * Setup internal endpoints (task queue, file tree updates)
-   * 
-   * @deprecated These HTTP endpoints are maintained for backward compatibility.
-   * New implementation: Job Worker child processes now use direct Redis Pub/Sub
-   * via core/realtime/KanbanBroadcaster and core/realtime/FileTreeBroadcaster.
-   * This reduces latency and removes HTTP intermediary.
-   */
-  private setupInternalEndpoints(app: Express): void {
-    // Task queue updates from child processes (DEPRECATED - use Redis Pub/Sub directly)
-    app.post('/api/internal/task-queue', express.json(), async (req: Request, res: Response) => {
-      const { taskId, currentTask, queue, completedTasks, recursionCount, recursionLimit } = req.body;
-      if (!taskId) {
-        return res.status(400).json({ error: 'taskId is required' });
-      }
-      
-      try {
-        // ✅ CRITICAL: Await async operation to ensure proper error handling
-        await this.workflowBridge.updateTaskQueue(
-          taskId, 
-          currentTask, 
-          queue, 
-          completedTasks, 
-          recursionCount, 
-          recursionLimit
-        );
-        
-        logger.debug(`[TaskQueueEndpoint] Update successful: ${taskId}, current: ${currentTask?.name || 'none'}, queue: ${queue?.length || 0}`, {
-          component: 'RouteConfigurator'
-        });
-        
-        res.json({ success: true });
-      } catch (error: any) {
-        logger.error(`[TaskQueueEndpoint] Failed to update task queue: ${taskId}`, {
-          component: 'RouteConfigurator'
-        }, error);
-        
-        // Still return success to not block child process (fire-and-forget pattern)
-        // but log the error for debugging
-        res.json({ success: true, warning: 'Update queued but broadcast may have failed' });
-      }
-    });
-    
-    // File tree updates from child processes
-    app.post('/api/internal/file-tree-update', express.json(), (req: Request, res: Response) => {
-      const { projectId, featureName } = req.body;
-      if (!projectId || !featureName) {
-        return res.status(400).json({ error: 'projectId and featureName are required' });
-      }
-      
-      // Extract userContext from request (x-user-email header in Cloud mode)
-      const userContext = extractUserContext(req);
-      
-      // Fire and forget - non-blocking
-      this.workflowBridge.notifyFileTreeUpdate(projectId, featureName, userContext)
-        .catch(err => logger.warn('[FileTreeUpdate] Error', { 
-          component: 'RouteConfigurator', 
-          projectId, 
-          featureName 
-        }, err));
-      
-      res.json({ success: true });
-    });
   }
 
   /**
@@ -249,7 +183,6 @@ export class RouteConfigurator {
     const state = this.stateTracker.getState();
     const kanbanRoutes = createKanbanRoutes({
       kanbanService: this.deps.kanbanService,
-      kanbanSSE: new Map(), // Legacy SSE - deprecated
       jobToProject: state.jobToProject,
       jobs: state.jobs,
       taskQueueSnapshots: state.taskQueueSnapshots,
@@ -505,7 +438,7 @@ export class RouteConfigurator {
         jobId
       });
       
-      // Also register in local stateTracker for backward compatibility (Local mode)
+      // Also register in local stateTracker (Local mode)
       this.stateTracker.initializeJob(jobId, params.project, params.feature, params.jobType || 'code', params.userContext);
       
       // ⏱️ DEBUG: Record enqueue completion time

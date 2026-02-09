@@ -144,7 +144,7 @@ export interface PendingChoiceData {
 // Port Registry Types (re-exported from portRegistry.ts)
 // ============================================
 
-// Re-export from portRegistry for backward compatibility (used by many files)
+// Re-export from portRegistry
 export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase } from './portRegistry';
 import { PreviewState, IDEState, PortMapping } from './portRegistry';
 

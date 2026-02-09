@@ -65,15 +65,6 @@ export function createFilesRoutes(deps: {
     }
   });
   
-  // ⚠️ DEPRECATED: Redirect to unified SSE endpoint
-  router.get('/projects/:id/features/:feature/files/stream', (req: Request, res: Response) => {
-    res.status(410).json({ 
-      error: 'Endpoint deprecated',
-      message: 'Use /projects/:id/features/:feature/stream instead',
-      newEndpoint: `/projects/${req.params.id}/features/${req.params.feature}/stream`
-    });
-  });
-
   /**
    * Get raw file bytes (binary-safe)
    * - Useful for images (png/jpg/webp/gif/svg) and other non-text files

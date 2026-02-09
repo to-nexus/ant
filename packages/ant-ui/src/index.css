@@ -59,7 +59,7 @@
     display: none !important;
   }
   
-  /* Explicit thin scrollbar (redundant now, but kept for backwards compatibility) */
+  /* Explicit thin scrollbar */
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: rgba(156, 163, 175, 0.3) transparent;

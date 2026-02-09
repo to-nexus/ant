@@ -185,7 +185,7 @@ export class KeywordSearchStrategy {
 
       await walk(dir);
     } else {
-      // ✅ Fallback to direct fs (for backward compatibility)
+      // ✅ Fallback to direct fs
       const walk = (currentPath: string) => {
         if (!fs.existsSync(currentPath)) return;
         const stat = fs.statSync(currentPath);

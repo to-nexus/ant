@@ -263,7 +263,7 @@ describe('WorkflowStateService', () => {
   it('should read workflow state', async () => {
     const service = new WorkflowStateService(mockStateStore);
     const state = await service.getState('job-1');
-    expect(state?.currentNode).toBe('resolve');
+    expect(state?.activeNodes?.length).toBeGreaterThan(0);
   });
 });
 ```
@@ -276,7 +276,7 @@ describe('GET /jobs/:jobId/workflow/state', () => {
       .get('/api/jobs/job-1/workflow/state');
     
     expect(response.status).toBe(200);
-    expect(response.body.currentNode).toBeDefined();
+    expect(response.body.activeNodes).toBeDefined();
   });
 });
 ```

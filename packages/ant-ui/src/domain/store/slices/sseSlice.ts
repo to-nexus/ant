@@ -27,7 +27,7 @@ export type SSESlice = SSEState & SSEActions;
 
 export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) => ({
   // State
-  kanban: { jobId: undefined, todo: [], inProgress: null, completed: [], isEstimating: false, dataSource: 'session' as const },
+  kanban: { jobId: undefined, todo: [], inProgress: [], completed: [], isEstimating: false, dataSource: 'session' as const },
   chatMessages: [],
   connectionStatus: 'disconnected',
 
@@ -70,8 +70,8 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       set({ jobStartPending: false });
     }
     
-    // Clear queue position when job actually starts running (has inProgress task)
-    if (isJobRunning && data.inProgress && state.isQueued) {
+    // Clear queue position when job actually starts running (has inProgress tasks)
+    if (isJobRunning && data.inProgress?.length > 0 && state.isQueued) {
       console.log('[Store] 🚀 Job started running, clearing queue position');
       set({ isQueued: false, queuePosition: null });
     }

@@ -10,7 +10,7 @@ export type ResetSlice = ResetActions;
 export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => ({
   reset: () => {
     set({
-      kanban: { jobId: undefined, todo: [], inProgress: null, completed: [] },
+      kanban: { jobId: undefined, todo: [], inProgress: [], completed: [] },
       selectedProject: undefined,
       selectedFeature: undefined,
       session: undefined,

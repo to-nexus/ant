@@ -90,8 +90,7 @@ export class GoogleOIDCService implements AuthPort {
   }
   
   /**
-   * Authenticate with email (fallback for legacy system)
-   * This maintains backward compatibility
+   * Authenticate with email (fallback)
    */
   async authenticate(credentials: AuthCredentials): Promise<AuthContext> {
     if (credentials.email) {
@@ -133,8 +132,7 @@ export class GoogleOIDCService implements AuthPort {
   }
   
   /**
-   * Legacy email-based authentication
-   * Used for backward compatibility with existing system
+   * Email-based authentication
    */
   private async authenticateWithEmail(email: string): Promise<AuthContext> {
     const normalizedEmail = email.trim().toLowerCase();

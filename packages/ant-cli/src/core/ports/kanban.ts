@@ -28,7 +28,7 @@ export interface TaskQueueUpdatePort {
    */
   updateTaskQueue(
     taskId: string,
-    currentTask: BaseTask | null | undefined,
+    currentTask: BaseTask | BaseTask[] | null | undefined,
     queue: BaseTask[],
     completedTasks: BaseTask[],
     recursionCount?: number,

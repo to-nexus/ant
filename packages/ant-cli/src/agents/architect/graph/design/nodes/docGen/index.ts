@@ -64,7 +64,7 @@ export async function docGen(
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'docGen', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'docGen', (state as any).workerId ?? 0, taskInfo);
   }
   
   // ✅ Setup XML Parser + StreamOrchestrator

@@ -272,7 +272,7 @@ ${sec.content}
 }
 
 /**
- * Get all UI content (backward compatible)
+ * Get all UI content
  * Used when task.uiSections is undefined but task.ui is true
  */
 export function getAllUiContent(parsedDocs: ParsedUiDocs): string {

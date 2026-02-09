@@ -13,7 +13,7 @@ export class SimpleGitAdapter implements GitPort {
     this.config = config;
     // ✅ Require projectPath - no fallback
     // projectPath는 WorkspaceResolver에서 생성해야 함
-    // 예시: new LocalWorkspaceResolver().getProjectPath(context, project)
+    // 예시: new UnifiedWorkspaceResolver().getProjectPath(context, project)
     if (!projectPath) {
       throw new Error('projectPath is required for SimpleGitAdapter. Use WorkspaceResolver to generate paths.');
     }

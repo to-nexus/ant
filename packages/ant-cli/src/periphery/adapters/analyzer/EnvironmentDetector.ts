@@ -205,7 +205,7 @@ export class EnvironmentDetector {
       fullstackFrameworks.push('monorepo-fullstack');
     }
     
-    // Legacy signals (not used for fullstack detection anymore)
+    // SSR signals (not used for fullstack detection)
     const hasSSR = fileStructure.keyFiles.hasNextConfig ||
                   fileStructure.directories.has('app') || // Next.js App Router
                   fileStructure.directories.has('pages'); // Next.js Pages Router

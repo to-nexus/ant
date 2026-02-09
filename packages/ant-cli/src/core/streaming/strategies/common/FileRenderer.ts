@@ -78,7 +78,23 @@ export class FileRenderer {
       }
     }
 
-    // Code jobs: use path as-is (LLM should provide "codebase/..." paths)
+    // Code jobs: ensure path resolves under the codebase directory.
+    // LLM SHOULD provide "codebase/..." paths, but some tasks omit the prefix
+    // (e.g., output "packages/backend/src/main.ts" instead of "codebase/packages/backend/src/main.ts").
+    // When codebasePath is known, auto-prepend the prefix so files are never written
+    // to the wrong location (feature root instead of codebase).
+    if (this.jobType === 'code' && this.codebasePath) {
+      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
+      if (workspaceRoot) {
+        const codebaseRel = path.relative(workspaceRoot, this.codebasePath).replace(/\\/g, '/');
+        if (codebaseRel && !originalPath.startsWith(codebaseRel + '/') && !originalPath.startsWith(codebaseRel + '\\')) {
+          const corrected = path.join(codebaseRel, originalPath);
+          console.warn(`⚠️ [FileRenderer] Auto-prepending codebase prefix: "${originalPath}" → "${corrected}"`);
+          return corrected;
+        }
+      }
+    }
+
     return originalPath;
   }
 

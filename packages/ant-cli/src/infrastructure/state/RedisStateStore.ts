@@ -278,7 +278,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const channel = getRealtimeWorkflowChannel(mapping.userContext.organizationId, mapping.userContext.userId);
     await this.publish(channel, { jobId, data: state, isEndEvent: false, userContext: mapping.userContext });
     
-    logger.debug(`Workflow state set: node=${state.currentNode}`, {
+    logger.debug(`Workflow state set: activeNodes=${state.activeNodes?.length ?? 0}`, {
       component: 'RedisStateStore',
       jobId
     });

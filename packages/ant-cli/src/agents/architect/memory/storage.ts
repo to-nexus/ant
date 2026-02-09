@@ -40,6 +40,4 @@ export async function storeLessons(
   ], project);
 }
 
-// ✅ Legacy alias (for backward compatibility during transition)
-export const storeLearnings = storeLessons;
 

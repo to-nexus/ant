@@ -49,6 +49,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'resolve', 
+      0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -93,7 +94,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
         const env = state.detectionReport?.environment || 'unknown';
         state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, env);
 
-        // Load single design doc as legacy fallback for state.design
+        // Load single design doc as fallback for state.design
         // detectEnvironment will overwrite this with the properly filtered/combined version
         const preferredEnv = env === 'frontend' ? 'frontend' as const
           : env === 'backend' ? 'backend' as const
@@ -168,7 +169,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     
     // ✅ Workflow instrumentation: Exit node (skip path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
     }
     
     return state;
@@ -336,7 +337,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // Use ArtifactService to ensure FileSystemPort receives workspace-relative paths
   const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
 
-  // ✅ Fallback: if structured designDocs are missing but a legacy/unified design exists, keep it usable
+  // ✅ Fallback: if structured designDocs are missing but a unified design exists, keep it usable
   if (
     (!designDocs.apiContract && !designDocs.feDesign && !designDocs.beDesign && !designDocs.unifiedDesign) &&
     design
@@ -419,7 +420,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve');
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
   }
   
   return result;

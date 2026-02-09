@@ -25,7 +25,7 @@ export interface StreamOrchestratorConfig {
   parser: IStreamParser;
   renderStrategy: IRenderStrategy;
   existingFiles: Set<string>;
-  fileSystem?: any;  // ✅ FileSystemPort for disk checks (optional for backward compat)
+  fileSystem?: any;  // ✅ FileSystemPort for disk checks (optional)
 }
 
 export class StreamOrchestrator {

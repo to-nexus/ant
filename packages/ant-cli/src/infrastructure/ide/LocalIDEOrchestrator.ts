@@ -2,7 +2,7 @@
  * LocalIDEOrchestrator
  * 
  * Local (Docker-based) implementation of IDEOrchestratorPort.
- * Wraps the existing IDEService for backward compatibility.
+ * Wraps the existing IDEService.
  * 
  * This orchestrator manages IDE containers on the local Docker daemon.
  * In cloud mode (Phase 4), KubernetesIDEOrchestrator will manage
@@ -194,7 +194,3 @@ export class LocalIDEOrchestrator implements IDEOrchestratorPort {
   }
 }
 
-/**
- * @deprecated Use LocalIDEOrchestrator instead
- */
-export const DockerIDEOrchestrator = LocalIDEOrchestrator;

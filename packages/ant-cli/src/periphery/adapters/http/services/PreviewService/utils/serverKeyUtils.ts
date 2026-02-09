@@ -1,7 +1,7 @@
 /**
  * Preview Server Key Utilities
  * 
- * Re-exports from centralized redisKeyUtils for backward compatibility.
+ * Re-exports from centralized redisKeyUtils.
  * Preview uses 4-part keys: org:user:project:feature
  */
 
@@ -12,7 +12,7 @@ import {
 } from '../../../../../../infrastructure/state/redisKeyUtils';
 import type { ServerKeyComponents } from '../types';
 
-// Re-export with original names for backward compatibility
+// Re-export with original names
 export const createServerKey = createPreviewKey;
 
 export function parseServerKey(serverKey: string): ServerKeyComponents {

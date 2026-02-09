@@ -278,17 +278,23 @@ export class SessionStore {
 
   /**
    * Get chat.json file path
+   * 
+   * workspacePath can be either:
+   * - ANT_FEATURE_PATH: already the full feature path (e.g., .../features/localtest)
+   * - ANT_WORKSPACE_PATH: workspace root, needs projectId/featureName appended
    */
   private getChatFilePath(): string | null {
     if (!this.workspacePath) {
       return null;
     }
     
-    const featurePath = path.join(
-      this.workspacePath, 
-      this.context.projectId, 
-      this.context.featureName
-    );
+    // If workspacePath already contains /features/ (i.e., ANT_FEATURE_PATH), 
+    // it's already the feature directory — use directly
+    const isFeaturePath = this.workspacePath.includes('/features/');
+    const featurePath = isFeaturePath
+      ? this.workspacePath
+      : path.join(this.workspacePath, this.context.projectId, this.context.featureName);
+    
     return path.join(featurePath, 'sessions', 'chat.json');
   }
 

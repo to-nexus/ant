@@ -119,7 +119,7 @@ export class SessionManager {
   }
 
   /**
-   * Simple key for backward compatibility (internal use only)
+   * Simple key (internal use only)
    */
   private getSimpleKey(projectId: string, featureName: string): string {
     return `${projectId}/${featureName}`;
@@ -244,7 +244,7 @@ export class SessionManager {
   }
 
   /**
-   * Get or create a chat session (sync version for backward compatibility)
+   * Get or create a chat session (sync version)
    * Uses local cache first, then triggers async Redis load
    */
   getOrCreateSession(

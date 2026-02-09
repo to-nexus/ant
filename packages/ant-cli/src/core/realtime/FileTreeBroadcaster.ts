@@ -2,7 +2,6 @@
  * FileTreeBroadcaster
  * 
  * Direct Redis Pub/Sub implementation for File Tree updates.
- * Replaces HTTP-based FileTreeHttpClient for Job Worker child processes.
  * 
  * Architecture:
  * - Implements FileTreeUpdatePort for compatibility

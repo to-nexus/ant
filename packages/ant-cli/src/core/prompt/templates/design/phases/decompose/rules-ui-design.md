@@ -146,6 +146,18 @@ DO NOT CREATE:
 | targetFile | MUST be in targetFiles array |
 | description | Clear scope of what to document |
 | priority | See priority ranges above |
+| parallelGroup | Group ID for parallel scheduling — use targetFile basename (e.g., `"ui-tokens"`, `"ui-spec"`) |
+
+### Parallel Execution Hints
+
+Add `"parallelGroup"` to every task. Tasks targeting the SAME file MUST share the same group ID.
+
+Use the targetFile basename as group ID:
+- `ui-tokens.json` tasks → `"parallelGroup": "ui-tokens"`
+- `ui-assets.json` tasks → `"parallelGroup": "ui-assets"`
+- `ui-spec.json` tasks → `"parallelGroup": "ui-spec"`
+
+This ensures chapters within the same document are serialized, while the orchestrator handles cross-document dependencies via priority ordering.
 
 ---
 
@@ -177,9 +189,10 @@ Before outputting, verify:
 - ✅ Valid JSON syntax
 - ✅ `targetFiles` contains only requested documents (check directive!)
 - ✅ Every task's `targetFile` is in `targetFiles` array
-- ✅ All fields present (id, name, targetFile, description, priority)
+- ✅ All fields present (id, name, targetFile, description, priority, parallelGroup)
 - ✅ Priority in correct range (100-149, 200-249, 300-349)
 - ✅ No forbidden tasks (verification, deployment, operations)
+- ✅ Every task has `parallelGroup` matching its targetFile basename
 
 ### Chapter Count
 - ✅ At least 2 chapters for ui-spec (ch1 = outline, ch2+ = content)

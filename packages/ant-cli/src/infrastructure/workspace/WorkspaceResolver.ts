@@ -249,15 +249,4 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
   }
 }
 
-/**
- * @deprecated Use UnifiedWorkspaceResolver instead
- * Alias for backward compatibility
- */
-export const LocalWorkspaceResolver = UnifiedWorkspaceResolver;
-
-/**
- * @deprecated Use UnifiedWorkspaceResolver instead
- * Alias for backward compatibility
- */
-export const CloudWorkspaceResolver = UnifiedWorkspaceResolver;
 

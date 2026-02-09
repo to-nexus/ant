@@ -31,7 +31,7 @@ function initTokenUsage(): TokenUsage {
   return {
     inputTokens: 0,
     outputTokens: 0,
-    totalTokens: 0, // deprecated but kept for compat
+    totalTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
   };
@@ -66,7 +66,6 @@ export function accumulateTokenUsage(
     
     state._currentTaskTokenUsage.inputTokens += usage.inputTokens;
     state._currentTaskTokenUsage.outputTokens += usage.outputTokens;
-    // Keep totalTokens in sync (deprecated field)
     state._currentTaskTokenUsage.totalTokens = computeTotal(state._currentTaskTokenUsage);
     
     if (usage.cacheReadTokens) {
@@ -87,7 +86,6 @@ export function accumulateTokenUsage(
     
     state.tokenUsage.inputTokens += usage.inputTokens;
     state.tokenUsage.outputTokens += usage.outputTokens;
-    // Keep totalTokens in sync (deprecated field)
     state.tokenUsage.totalTokens = computeTotal(state.tokenUsage);
     
     if (usage.cacheReadTokens) {

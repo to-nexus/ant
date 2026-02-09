@@ -306,7 +306,7 @@ export class FileOperationHandler {
       return typeMap[operation];
     }
     
-    // Fallback (legacy - no phase)
+    // Fallback (no phase)
     const typeMap = {
       edit: 'file_edit' as const,
       create: 'file_create' as const,

@@ -73,7 +73,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve');
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve', 0);
   }
   
   // ✅ CRITICAL: Skip artifact loading if resuming (state already restored by runner)

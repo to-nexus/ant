@@ -1,7 +1,7 @@
 /**
  * Response Parsing for DetectEnvironment Node
  * 
- * ✅ Supports both old and new field names for backward compatibility:
+ * ✅ Supports both old and new field names:
  * - Old: mode, modeReasoning, requireRagForDecompose
  * - New: jobMode, jobModeReasoning, requireRag
  */

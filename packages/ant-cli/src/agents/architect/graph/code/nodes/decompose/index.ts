@@ -63,6 +63,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'decompose', 
+      0,
       taskInfo, 
       llmInfo,
       state.recursionCount,
@@ -94,7 +95,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     
     // ✅ Workflow exitNode (explain 조기 반환에서도 호출 필요)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose', 0);
     }
     
     return {
@@ -311,7 +312,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // STEP 6.5: Exit decompose node for workflow tracking
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose');
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose', 0);
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -6,9 +6,14 @@
  * 
  * Architecture:
  * - Implements WorkflowStateUpdatePort for compatibility
- * - Maintains in-memory WorkflowRealtimeState (canonical type from core/ports/stateStore.ts)
+ * - Maintains in-memory WorkflowRealtimeState (canonical type from @ant/shared)
  * - Writes to Redis and publishes via Redis Pub/Sub
  * - No HTTP intermediary required
+ * 
+ * Refactored for parallel execution:
+ * - Uses activeNodes[] instead of currentNode/previousNode/currentTask
+ * - Tracks multiple concurrent workers via activeWorkers Map
+ * - workerId=0 for sequential mode, N for parallel workers
  * 
  * Flow:
  *   Job Worker Child → WorkflowBroadcaster → Redis Pub/Sub → Realtime Server → SSE
@@ -26,11 +31,61 @@ import {
 } from './types';
 import { UserContext } from '../types/user';
 
+/**
+ * Lightweight async mutex for serializing concurrent enterNode/exitNode calls.
+ * Prevents race conditions when multiple parallel workers share the same broadcaster.
+ */
+class BroadcasterMutex {
+  private locked = false;
+  private waitQueue: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.waitQueue.push(resolve);
+    });
+  }
+
+  release(): void {
+    if (this.waitQueue.length > 0) {
+      const next = this.waitQueue.shift()!;
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+
+  async runExclusive<T>(fn: () => T | Promise<T>): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+}
+
+interface ActiveWorkerInfo {
+  nodeId: string;
+  previousNodeId: string | null;
+  taskInfo: TaskInfo;
+  enteredAt: string;
+}
+
 export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   private redis: Redis;
   private pubRedis: Redis; // Separate connection for publish
   private readonly jobId: string;
   private readonly userContext?: UserContext;
+  
+  // Mutex for serializing concurrent state mutations from parallel workers
+  private readonly mutex = new BroadcasterMutex();
+  
+  // Active worker tracking
+  private activeWorkers = new Map<number, ActiveWorkerInfo>();
   
   // In-memory workflow state (canonical WorkflowRealtimeState)
   private state: WorkflowRealtimeState;
@@ -51,9 +106,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     // Initialize canonical WorkflowRealtimeState
     this.state = {
       jobId: options.jobId,
-      currentNode: null,
-      previousNode: null,
-      currentTask: null,
+      activeNodes: [],
       llmInfo: null,
       startedAt: new Date().toISOString(),
       isCompleted: false,
@@ -74,11 +127,10 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * Start job tracking
    */
   startJob(jobId: string, llmInfo?: LLMInfo): void {
+    this.activeWorkers.clear();
     this.state = {
       jobId: this.jobId,
-      currentNode: null,
-      previousNode: null,
-      currentTask: null,
+      activeNodes: [],
       llmInfo: llmInfo || null,
       startedAt: new Date().toISOString(),
       isCompleted: false,
@@ -96,69 +148,77 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
 
   /**
    * Track node entry
+   * @param workerId - Worker identifier (0 for sequential, N for parallel workers)
    * Returns Promise to ensure SSE ordering
+   * Uses mutex to prevent race conditions from concurrent worker calls
    */
   async enterNode(
     jobId: string, 
-    nodeId: string, 
+    nodeId: string,
+    workerId: number,
     taskInfo?: TaskInfo, 
     llmInfo?: LLMInfo,
     recursionCount?: number,
     recursionLimit?: number
   ): Promise<void> {
-    // Close previous node's history entry
-    if (this.state.currentNode && this.state.nodeHistory.length > 0) {
-      const lastEntry = this.state.nodeHistory[this.state.nodeHistory.length - 1];
-      if (lastEntry && !lastEntry.exitedAt) {
-        const exitTime = new Date().toISOString();
-        lastEntry.exitedAt = exitTime;
-        lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+    await this.mutex.runExclusive(async () => {
+      // Close previous node's history entry for this worker
+      const prev = this.activeWorkers.get(workerId);
+      if (prev) {
+        this.closeHistoryEntry(prev.nodeId);
       }
-    }
-    
-    // Update state
-    this.state.previousNode = this.state.currentNode;
-    this.state.currentNode = nodeId;
-    this.state.nodeHistory.push({
-      nodeId,
-      enteredAt: new Date().toISOString()
+      
+      // Update active worker
+      const enteredAt = new Date().toISOString();
+      this.activeWorkers.set(workerId, {
+        nodeId,
+        previousNodeId: prev?.nodeId ?? null,
+        taskInfo: taskInfo ?? { name: 'unknown' },
+        enteredAt,
+      });
+      
+      // Rebuild activeNodes array from map
+      this.rebuildActiveNodes();
+      
+      // Add to history
+      this.state.nodeHistory.push({
+        nodeId,
+        enteredAt,
+      });
+      
+      if (llmInfo) {
+        this.state.llmInfo = llmInfo;
+      }
+      if (recursionCount !== undefined) {
+        this.state.recursionCount = recursionCount;
+      }
+      if (recursionLimit !== undefined) {
+        this.state.recursionLimit = recursionLimit;
+      }
+      
+      await this.broadcastState(false);
+      console.log(`[WorkflowBroadcaster] Enter node: ${nodeId} (worker=${workerId}${taskInfo ? `, task: ${taskInfo.name}` : ''})`);
     });
-    
-    if (taskInfo) {
-      this.state.currentTask = taskInfo;
-    }
-    if (llmInfo) {
-      this.state.llmInfo = llmInfo;
-    }
-    if (recursionCount !== undefined) {
-      this.state.recursionCount = recursionCount;
-    }
-    if (recursionLimit !== undefined) {
-      this.state.recursionLimit = recursionLimit;
-    }
-    
-    await this.broadcastState(false);
-    console.log(`[WorkflowBroadcaster] Enter node: ${nodeId}${taskInfo ? ` (task: ${taskInfo.name})` : ''}`);
   }
 
   /**
    * Track node exit
+   * @param workerId - Worker identifier (0 for sequential, N for parallel workers)
+   * Now async with mutex to prevent race conditions with concurrent enterNode/exitNode calls
    */
-  exitNode(jobId: string, nodeId: string): void {
-    // Close matching node's history entry
-    if (this.state.nodeHistory.length > 0) {
-      const lastEntry = this.state.nodeHistory[this.state.nodeHistory.length - 1];
-      if (lastEntry && lastEntry.nodeId === nodeId && !lastEntry.exitedAt) {
-        const exitTime = new Date().toISOString();
-        lastEntry.exitedAt = exitTime;
-        lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
-      }
+  async exitNode(jobId: string, nodeId: string, workerId: number): Promise<void> {
+    try {
+      await this.mutex.runExclusive(async () => {
+        this.activeWorkers.delete(workerId);
+        this.rebuildActiveNodes();
+        this.closeHistoryEntry(nodeId);
+        
+        await this.broadcastState(false);
+      });
+    } catch (err: any) {
+      // Catch internally to prevent unhandled rejection from non-awaited callers
+      console.warn(`[WorkflowBroadcaster] Failed to broadcast exitNode(${nodeId}, worker=${workerId}):`, err.message);
     }
-    
-    // Fire-and-forget broadcast
-    this.broadcastState(false).catch(err => {
-      console.warn(`[WorkflowBroadcaster] Failed to broadcast exitNode:`, err.message);
-    });
   }
 
   /**
@@ -188,23 +248,46 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   }
 
   /**
+   * Clear stale worker entries after parallel orchestrator completes.
+   * Workers' last node (usually 'learn') stays in activeWorkers until cleared.
+   */
+  async clearWorkers(jobId: string, workerIds?: number[]): Promise<void> {
+    await this.mutex.runExclusive(async () => {
+      if (workerIds) {
+        for (const wId of workerIds) {
+          const info = this.activeWorkers.get(wId);
+          if (info) {
+            this.closeHistoryEntry(info.nodeId);
+            this.activeWorkers.delete(wId);
+          }
+        }
+      } else {
+        // Clear all workers
+        for (const info of this.activeWorkers.values()) {
+          this.closeHistoryEntry(info.nodeId);
+        }
+        this.activeWorkers.clear();
+      }
+      this.rebuildActiveNodes();
+      await this.broadcastState(false);
+      console.log(`[WorkflowBroadcaster] Cleared workers: ${workerIds ? workerIds.join(',') : 'all'}`);
+    });
+  }
+
+  /**
    * End job tracking
    */
   endJob(jobId: string): void {
-    // Close last node's history entry
-    if (this.state.currentNode && this.state.nodeHistory.length > 0) {
-      const lastEntry = this.state.nodeHistory[this.state.nodeHistory.length - 1];
-      if (lastEntry && !lastEntry.exitedAt) {
-        const exitTime = new Date().toISOString();
-        lastEntry.exitedAt = exitTime;
-        lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
-      }
+    // Close all remaining history entries
+    for (const worker of this.activeWorkers.values()) {
+      this.closeHistoryEntry(worker.nodeId);
     }
     
-    // Mark as completed
+    // Clear all active state
+    this.activeWorkers.clear();
+    this.state.activeNodes = [];
     this.state.isCompleted = true;
     this.state.endedAt = new Date().toISOString();
-    this.state.currentNode = null;
     this.state.activeActors = [];
     
     // Fire-and-forget broadcast (isEndEvent: true)
@@ -213,6 +296,40 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     });
     
     console.log(`[WorkflowBroadcaster] Job ended: ${jobId}`);
+  }
+
+  // ============================================
+  // Internal helpers
+  // ============================================
+
+  /**
+   * Rebuild activeNodes array from activeWorkers map
+   */
+  private rebuildActiveNodes(): void {
+    this.state.activeNodes = Array.from(this.activeWorkers.entries())
+      .map(([wId, info]) => ({
+        workerId: wId,
+        nodeId: info.nodeId,
+        previousNodeId: info.previousNodeId,
+        taskName: info.taskInfo.name,
+        taskId: info.taskInfo.id || '',
+        enteredAt: info.enteredAt,
+      }));
+  }
+
+  /**
+   * Close the most recent matching history entry
+   */
+  private closeHistoryEntry(nodeId: string): void {
+    for (let i = this.state.nodeHistory.length - 1; i >= 0; i--) {
+      const entry = this.state.nodeHistory[i];
+      if (entry.nodeId === nodeId && !entry.exitedAt) {
+        const exitTime = new Date().toISOString();
+        entry.exitedAt = exitTime;
+        entry.duration = new Date(exitTime).getTime() - new Date(entry.enteredAt).getTime();
+        break;
+      }
+    }
   }
 
   /**

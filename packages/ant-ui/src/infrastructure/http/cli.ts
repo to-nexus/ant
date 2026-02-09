@@ -108,7 +108,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
           .join('\n');
         
         const errorMessage = `Cannot start ${jobType} job. The following required materials are missing:\n\n${materialsList}\n\nAll of these materials must be provided before starting the job.`;
-        // ✅ No window.alert() (legacy). Surface this in the chat stream instead.
+        // ✅ Surface this in the chat stream instead of window.alert().
         try {
           store.addChatMessage({
             id: `msg-prereq-${Date.now()}`,

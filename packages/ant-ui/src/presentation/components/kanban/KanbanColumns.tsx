@@ -3,12 +3,39 @@ import { TaskCard } from '../TaskCard';
 import { motion, LayoutGroup } from 'framer-motion';
 import { UnifiedTask } from '@/domain/models/task';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
-import { ActiveNodeIndicator } from './ActiveNodeIndicator';
+import type { ActiveWorkerNode } from '@/domain/models/workflow';
 import { useEffect, useRef, useMemo } from 'react';
+import { useStore } from '@/domain/store';
+
+/**
+ * Inline node status shown directly below each in-progress task card.
+ * Displays which workflow node a task is currently in.
+ */
+function InlineNodeStatus({ node }: { node: ActiveWorkerNode | undefined }) {
+  const isRunning = useStore(state => state.isRunning);
+  const isStopping = useStore(state => state.isStopping);
+  
+  if (!node || !isRunning || isStopping) return null;
+  
+  const formatNodeName = (nodeId: string): string =>
+    nodeId.split(/(?=[A-Z])/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-50/50 dark:bg-gray-800/30 rounded-b-lg border-x border-b border-gray-200/60 dark:border-gray-700/40">
+      <div className="relative flex h-1.5 w-1.5">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+      </div>
+      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+        {formatNodeName(node.nodeId)}
+      </span>
+    </div>
+  );
+}
 
 interface KanbanColumnsProps {
   todoTasks: UnifiedTask[];
-  inProgressTask: UnifiedTask | null;
+  inProgressTasks: UnifiedTask[];
   completedTasks: UnifiedTask[];
   newlyCompletedIds: Set<string>;
   newlyInProgressId: string | null;
@@ -29,7 +56,7 @@ interface KanbanColumnsProps {
  */
 export function KanbanColumns({
   todoTasks,
-  inProgressTask,
+  inProgressTasks,
   completedTasks,
   newlyCompletedIds,
   newlyInProgressId,
@@ -154,7 +181,7 @@ export function KanbanColumns({
           <div className="flex items-center gap-2 mb-3 shrink-0">
             <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
             <Badge variant="secondary" className="text-xs">
-              {inProgressTask ? 1 : 0}
+              {inProgressTasks.length}
             </Badge>
           </div>
           
@@ -163,11 +190,16 @@ export function KanbanColumns({
             "space-y-3 pr-2" : 
             "space-y-3 overflow-y-auto pr-2 scrollbar-hide"
           }>
-            {inProgressTask && (() => {
-              const taskId = inProgressTask.id || inProgressTask.name;
+            {inProgressTasks.map((task) => {
+              const taskId = task.id || task.name;
+              
+              // Find the active node for this specific task
+              const taskActiveNode = workflowDisplayedState?.activeNodes?.find(
+                n => n.taskId === taskId || n.taskName === task.name
+              );
               
               return (
-                <div key="in-progress-with-indicator" className="space-y-2">
+                <div key={`in-progress-${taskId}`} className="space-y-0">
                   <motion.div
                     key={taskId}
                     layoutId={`task-${taskId}`}
@@ -181,16 +213,15 @@ export function KanbanColumns({
                     }}
                   >
                     <TaskCard 
-                      task={inProgressTask} 
+                      task={task} 
                       status="in-progress"
                     />
                   </motion.div>
-                  
-                  <ActiveNodeIndicator displayedState={workflowDisplayedState} />
+                  <InlineNodeStatus node={taskActiveNode} />
                 </div>
               );
-            })()}
-            {!inProgressTask && !isHorizontalSplit && (
+            })}
+            {inProgressTasks.length === 0 && !isHorizontalSplit && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
                 No task in progress
               </div>

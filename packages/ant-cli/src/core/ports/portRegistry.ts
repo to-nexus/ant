@@ -79,7 +79,7 @@ export interface IDEState {
 }
 
 // ============================================
-// Legacy PortMapping (for backward compatibility during migration)
+// Port Mapping
 // ============================================
 
 export interface PortMapping {

@@ -68,14 +68,14 @@ interface ElapsedTimeBadgeProps {
       elapsedTime?: number;
     };
   }>;
-  inProgressTask?: {
+  inProgressTasks?: Array<{
     id: string;
     name: string;
     timing?: {
       startedAt?: string;
       elapsedTime?: number;
     };
-  } | null;
+  }>;
   /** Current estimating node activity (e.g., { label: "환경 분석 중", startedAt: "..." }) */
   estimatingActivity?: {
     label: string;
@@ -94,7 +94,7 @@ export function ElapsedTimeBadge({
   totalElapsedTime,
   jobTiming,
   completedTasks,
-  inProgressTask,
+  inProgressTasks,
   estimatingActivity,
 }: ElapsedTimeBadgeProps) {
   // ✅ Tick every second while running (forces re-render → recalc from Date.now())
@@ -118,7 +118,7 @@ export function ElapsedTimeBadge({
   const tasksTotal = completedTasks?.reduce((sum, task) => {
     return sum + (task.timing?.elapsedTime || 0);
   }, 0) || 0;
-  const taskCount = (completedTasks?.length || 0) + (inProgressTask ? 1 : 0);
+  const taskCount = (completedTasks?.length || 0) + (inProgressTasks?.length || 0);
   
   // Build tooltip content
   const tooltipContent = (
@@ -187,20 +187,20 @@ export function ElapsedTimeBadge({
             </span>
           </div>
           <div className="pl-2 space-y-1 mt-1">
-            {/* In-progress task (real-time) */}
-            {inProgressTask && (
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-blue-600 dark:text-blue-400 truncate max-w-[200px] flex items-center gap-1" title={inProgressTask.name}>
-                  • {inProgressTask.name}
+            {/* In-progress tasks (real-time) */}
+            {inProgressTasks?.map(task => (
+              <div key={task.id} className="flex justify-between items-center text-sm">
+                <span className="text-blue-600 dark:text-blue-400 truncate max-w-[200px] flex items-center gap-1" title={task.name}>
+                  • {task.name}
                   <span className="text-xs animate-pulse">↻</span>
                 </span>
                 <span className="font-mono text-blue-600 dark:text-blue-400">
-                  {inProgressTask.timing?.startedAt
-                    ? <LiveElapsedTime startedAt={inProgressTask.timing.startedAt} />
+                  {task.timing?.startedAt
+                    ? <LiveElapsedTime startedAt={task.timing.startedAt} />
                     : '0s'}
                 </span>
               </div>
-            )}
+            ))}
             {/* Completed tasks */}
             {completedTasks?.map((task) => (
               <div
@@ -256,11 +256,11 @@ interface TokenUsageBadgeProps {
     name: string;
     tokenUsage?: TaskTokenUsage;
   }>;
-  inProgressTask?: {
+  inProgressTasks?: Array<{
     id: string;
     name: string;
     tokenUsage?: TaskTokenUsage;
-  };
+  }>;
 }
 
 /**
@@ -277,10 +277,10 @@ interface TokenUsageBadgeProps {
  *   2. Output — generation count
  *   3. Phase Breakdown — estimating + individual tasks
  */
-export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, completedTasks, inProgressTask }: TokenUsageBadgeProps) {
+export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, completedTasks, inProgressTasks }: TokenUsageBadgeProps) {
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
-    inProgressTask?.tokenUsage,
+    ...(inProgressTasks?.map(t => t.tokenUsage) || []),
   ]);
 
   if (!jobId && !tokenUsage && !tasksUsage) {
@@ -301,7 +301,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
     : (tokenUsage ? Math.max(0, effective.outputTokens - tasks.outputTokens) : 0);
 
   const hasTokenData = effective.totalInputProcessed > 0 || effective.outputTokens > 0;
-  const taskCount = (completedTasks?.length || 0) + (inProgressTask ? 1 : 0);
+  const taskCount = (completedTasks?.length || 0) + (inProgressTasks?.length || 0);
 
   const tooltipContent = (
     <div className="space-y-2 min-w-[340px] max-h-[80vh] overflow-y-auto">
@@ -421,12 +421,12 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                     </span>
                   </div>
                   <div className="pl-2 space-y-0.5">
-                    {inProgressTask && inProgressTask.tokenUsage && (() => {
-                      const m = getTokenUsageMetrics(inProgressTask.tokenUsage);
+                    {inProgressTasks?.filter(t => t.tokenUsage).map(task => {
+                      const m = getTokenUsageMetrics(task.tokenUsage!);
                       return (m.totalInputProcessed > 0 || m.outputTokens > 0) ? (
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={inProgressTask.name}>
-                            • {inProgressTask.name}
+                        <div key={task.id} className="flex justify-between items-center text-xs">
+                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={task.name}>
+                            • {task.name}
                           </span>
                           <span className="font-mono text-gray-600 dark:text-gray-400 flex items-center gap-1">
                             {formatTokenCount(m.totalInputProcessed)} / {formatTokenCount(m.outputTokens)}
@@ -434,7 +434,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                           </span>
                         </div>
                       ) : null;
-                    })()}
+                    })}
                     {completedTasks?.map((task) => {
                       const m = task.tokenUsage ? getTokenUsageMetrics(task.tokenUsage) : null;
                       return (

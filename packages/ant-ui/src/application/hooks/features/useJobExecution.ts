@@ -77,7 +77,7 @@ export function useJobExecution() {
         }
         
         // ✅ FIX: Update cancelled message metadata to show "Resumed" badge
-        // instead of removing the choice card and adding legacy text.
+        // instead of removing the choice card and adding plain text.
         // This keeps the ChoiceCard visible with "▷ Resumed" badge,
         // matching the persisted state in chat.json (visible on page refresh).
         const chatMessages = useStore.getState().chatMessages;

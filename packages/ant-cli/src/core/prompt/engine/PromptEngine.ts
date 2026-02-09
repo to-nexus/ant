@@ -389,9 +389,6 @@ export class PromptEngine {
 
   /**
    * Build prompt for Decompose node
-   * 
-   * TEMPORARY: Simple wrapper until full refactoring
-   * Returns string (not PromptBuildResult) for backward compatibility
    */
   async buildDecomposePrompt(context: {
     directive: string;

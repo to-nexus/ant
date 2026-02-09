@@ -162,23 +162,6 @@ export interface TriageableState {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Agent/Job Prerequisites (Legacy - use core/data/triage for new code)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/**
- * Prerequisites: Job별 필수/권장 조건
- * @deprecated Use ResolvedPrerequisites from core/data/triage instead
- */
-export interface Prerequisites {
-  required: string[];
-  recommended: string[];
-}
-
-// Note: JobCapability and AgentCapability have been removed.
-// Job definitions are now data-driven via YAML files in core/data/triage/
-// See: AgentRegistry.generatePromptContext() for LLM-friendly capability descriptions
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // API Types
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
