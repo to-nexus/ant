@@ -52,6 +52,14 @@ SSR renders HTML on the server, then the client hydrates it. If path prefixes di
 - Default MUST be empty string when env var is absent (non-Ant execution)
 - This ensures server-rendered HTML and client bundle produce identical URLs
 
+**⚠️ Blind Spot — SSR Image Optimization**:
+SSR frameworks with built-in image optimization (e.g., `next/image`) may internally fetch images in a way that ignores the path prefix. Disable image optimization when running in the proxy environment to avoid broken images.
+
+**Contract**:
+- When path prefix env var is set, image optimization MUST be disabled
+- When path prefix env var is absent (production), image optimization works normally
+- This is a conditional toggle, not a permanent disable
+
 ---
 
 ## When to Skip
