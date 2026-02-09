@@ -265,6 +265,28 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         targetPath = targetPath.slice(prefix.length) || '/';
       }
     }
+    
+    // ✅ Fix Next.js Image Optimization with basePath
+    // Next.js _next/image handler internally fetches images using the `url` query param,
+    // but uses `new URL(url, origin)` which ignores basePath for absolute paths (starting with /).
+    // This causes a 400 "not a valid image" because the internal fetch hits the wrong path.
+    // Fix: prepend basePath to the `url` param so the internal fetch resolves correctly.
+    if (nativeBasePath) {
+      const imageApiPrefix = `/${serverKey}/_next/image`;
+      if (targetPath.startsWith(imageApiPrefix)) {
+        try {
+          const urlObj = new URL(targetPath, 'http://localhost');
+          const imageUrl = urlObj.searchParams.get('url');
+          if (imageUrl && !imageUrl.startsWith(`/${serverKey}`)) {
+            urlObj.searchParams.set('url', `/${serverKey}${imageUrl}`);
+            targetPath = urlObj.pathname + urlObj.search;
+            logger.debug(`[Preview] Rewrote _next/image url: ${imageUrl} -> /${serverKey}${imageUrl}`, { component: 'PreviewProxy' });
+          }
+        } catch {
+          // URL parse error — proceed without rewrite
+        }
+      }
+    }
 
     // ✅ Fullstack support: check if project has a backend
     let targetPort = port;
