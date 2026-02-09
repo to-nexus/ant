@@ -29,11 +29,41 @@ export class ServerConfigurator {
   }
 
   /**
-   * Configure CORS to support credentials
+   * Configure CORS with explicit allowed origins
    */
   private setupCors(app: Express): void {
+    const allowedOrigins = [
+      'https://ant.crosstoken.io',
+      'https://ant-server.crosstoken.io',
+      'https://ant-preview.crosstoken.io',
+      'https://*.crosstoken.io',
+    ];
+
     app.use(cors({
-      origin: true,
+      origin: (origin, callback) => {
+        // Allow requests with no origin (same-origin, server-to-server, Postman, etc.)
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        // Check if origin matches allowed list (supports wildcard patterns)
+        if (allowedOrigins.some(allowed => {
+          if (allowed.includes('*')) {
+            const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
+            return pattern.test(origin);
+          }
+          return allowed === origin;
+        })) {
+          return callback(null, true);
+        }
+
+        // Allow any localhost origin in development
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+          return callback(null, true);
+        }
+
+        callback(new Error(`CORS not allowed for origin: ${origin}`));
+      },
       credentials: true
     }));
   }

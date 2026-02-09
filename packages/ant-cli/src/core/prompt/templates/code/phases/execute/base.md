@@ -157,6 +157,7 @@ Create config files only. **NO source code, NO tests.**
 - `.gitignore` - Version control exclusions
 - `.env.example` - Environment variable template
 - Entry file (framework-specific, e.g., index.html for SPA)
+- `docker-compose.yml` - Local infrastructure services (only if: root-level setup AND design specifies external services requiring a runtime process)
 
 **Framework-Specific Requirements:**
 
@@ -180,7 +181,8 @@ Follow the framework/language-specific setup instructions from:
 
 **⛔ FORBIDDEN in Setup Task:**
 - `npm run build`, `npm run dev`, `npm start` - verification happens in final-verification task
-- ONLY `npm install` / `pnpm install` / `yarn install` is allowed
+- `docker compose up`, `docker compose down` - infrastructure startup happens in preview/verification
+- ONLY dependency install is allowed
 - Do NOT verify build success - just install dependencies and complete
 
 **Actions:** Write files → Run install command ONLY → Output `<done>true</done>`
@@ -272,7 +274,11 @@ Do NOT assume commands. Read the project's configuration:
 | Phase | Action | Success Criteria |
 |-------|--------|------------------|
 | **Build** | Run project's build script | Must pass - PRIMARY verification |
+| **Infrastructure** | If `docker-compose.yml` exists, run `docker compose up -d --wait` | Services healthy (best-effort) |
 | **Dev Server** | Run project's dev/start script | Server outputs ready message |
+
+**Constraint**: Infrastructure startup failure does NOT block task completion.
+Build success = task complete, regardless of infrastructure status.
 
 **⚠️ CRITICAL: Dev Server is a Long-Running Process**
 

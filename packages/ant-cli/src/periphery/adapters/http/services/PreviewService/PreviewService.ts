@@ -14,6 +14,7 @@ import { ProjectValidator } from './validators/ProjectValidator';
 import { ProjectStructureDetector } from './detectors/ProjectStructureDetector';
 import { DependencyInstaller } from './managers/DependencyInstaller';
 import { ProcessSpawner } from './managers/ProcessSpawner';
+import { InfrastructureManager } from './managers/InfrastructureManager';
 import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
@@ -43,6 +44,7 @@ export class PreviewService {
   private installingProjects: Set<string> = new Set();
   private previewServerPackagePorts: Map<string, Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>> = new Map();
   private previewServerIssues: Map<string, PreviewIssue[]> = new Map();
+  private previewServerPaths: Map<string, string> = new Map(); // serverKey -> localPath (for infrastructure cleanup)
   
   // Stopping state management
   private stoppingServers: Set<string> = new Set();
@@ -66,6 +68,7 @@ export class PreviewService {
   private structureDetector: ProjectStructureDetector;
   private dependencyInstaller: DependencyInstaller;
   private processSpawner: ProcessSpawner;
+  private infrastructureManager: InfrastructureManager;
   private healthChecker: HealthChecker;
   private issueDetector: IssueDetector;
   
@@ -89,6 +92,7 @@ export class PreviewService {
     this.structureDetector = new ProjectStructureDetector(this.packageDetector);
     this.dependencyInstaller = new DependencyInstaller();
     this.processSpawner = new ProcessSpawner();
+    this.infrastructureManager = new InfrastructureManager();
     this.healthChecker = new HealthChecker();
     this.issueDetector = new IssueDetector();
   }
@@ -314,6 +318,11 @@ export class PreviewService {
       }
       
       this.installingProjects.delete(serverKey);
+      
+      // 2.5. Start infrastructure services (if docker-compose.yml exists)
+      this.previewServerPaths.set(serverKey, localPath);
+      const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+      await this.infrastructureManager.startInfrastructure(localPath, logCallback, infraProjectName);
       
       // 3. Allocate ports and start all preview servers
       const processes: ChildProcess[] = [];
@@ -622,6 +631,15 @@ export class PreviewService {
       }, 10_000)
     );
     
+    // Stop infrastructure services (best-effort, before killing app processes)
+    const localPath = this.previewServerPaths.get(serverKey);
+    if (localPath) {
+      const { projectId, feature } = this.parseServerKey(serverKey);
+      const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+      const logCallback = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
+      await this.infrastructureManager.stopInfrastructure(localPath, logCallback, infraProjectName);
+    }
+    
     // Kill all processes
     for (const process of processes) {
       this.processSpawner.kill(process);
@@ -642,6 +660,7 @@ export class PreviewService {
     this.previewServers.delete(serverKey);
     this.previewServerPorts.delete(serverKey);
     this.previewServerReady.delete(serverKey);
+    this.previewServerPaths.delete(serverKey);
     this.logManager.clearLogs(serverKey);
     this.previewServerPackagePorts.delete(serverKey);
     this.previewServerIssues.delete(serverKey);

@@ -163,9 +163,39 @@ export class PreviewServer {
    * Setup Express middleware and routes
    */
   private setupRoutes(): void {
-    // CORS
+    // CORS - explicit allowed origins
+    const allowedOrigins = [
+      'https://ant.crosstoken.io',
+      'https://ant-server.crosstoken.io',
+      'https://ant-preview.crosstoken.io',
+      'https://*.crosstoken.io',
+    ];
+
     this.app.use(cors({
-      origin: true,
+      origin: (origin, callback) => {
+        // Allow requests with no origin (same-origin, server-to-server, health checks, etc.)
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        // Check if origin matches allowed list (supports wildcard patterns)
+        if (allowedOrigins.some(allowed => {
+          if (allowed.includes('*')) {
+            const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
+            return pattern.test(origin);
+          }
+          return allowed === origin;
+        })) {
+          return callback(null, true);
+        }
+
+        // Allow any localhost origin in development
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+          return callback(null, true);
+        }
+
+        callback(new Error(`CORS not allowed for origin: ${origin}`));
+      },
       credentials: true
     }));
 
