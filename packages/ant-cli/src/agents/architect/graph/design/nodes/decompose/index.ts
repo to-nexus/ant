@@ -6,6 +6,7 @@ import { JobTimingManager } from "../../../common/timing/JobTimingManager";
 import { extractErrorDetails, logErrorHeader } from "../../../code/nodes/shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
+import { getEstimatingLabel } from "../../../common/timing/estimatingLabels";
 
 /**
  * Decompose Node for Design
@@ -24,6 +25,13 @@ import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
  * - Creates tasks for ui-tokens.json, ui-assets.json, ui-spec.json generation
  */
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
+  const phaseStart = Date.now();
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('decompose', state._uiLocale), 'decompose');
+  }
+  
   // ✅ NEW: Validate UI design prerequisites
   if (state.detectionReport?.workType === 'ui-design') {
     const hasReferences = state.uiReferences?.screens?.length || state.uiReferences?.components?.length;
@@ -332,8 +340,14 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
       console.log();
       
       // Mark estimating phase complete
-      const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, newJobTiming.startedAt);
+      const uiPhaseBreakdown = { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart };
+      const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, newJobTiming.startedAt, uiPhaseBreakdown);
       
+      // ✅ Update broadcaster with finalized jobTiming (includes estimatingDuration + phaseBreakdown)
+      if (state.deps?.kanbanUpdate?.setJobTiming) {
+        state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
+      }
+
       const uiDocsState: DesignGraphState = {
         ...state,
         taskQueue,
@@ -785,8 +799,14 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     console.log(`🔄 [Design Decompose] Reset task-level token usage for first task`);
     
     // ✨ Calculate estimating duration
-    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime);
+    const sysPhaseBreakdown = { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart };
+    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(newJobTiming, estimatingStartTime, sysPhaseBreakdown);
     
+    // ✅ Update broadcaster with finalized jobTiming (includes estimatingDuration + phaseBreakdown)
+    if (state.deps?.kanbanUpdate?.setJobTiming) {
+      state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
+    }
+
     const newState = {
       ...state,
       taskQueue,

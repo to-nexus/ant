@@ -393,6 +393,8 @@ export function buildCodeGraph() {
       
       // Real-time Kanban tracking
       _httpJobId: null as any,  // ✅ HTTP task ID for live updates
+      _phaseTimings: null as any,  // ✅ Per-node timing for phaseBreakdown
+      _uiLocale: null as any,     // ✅ UI locale (ko/en) from directive
       
       
       // ✅ Revise Support

@@ -5,6 +5,24 @@ import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages }
 import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 
+/**
+ * LiveElapsedTime - Real-time elapsed time from a startedAt timestamp.
+ * Used inside tooltips for in-progress items.
+ */
+function LiveElapsedTime({ startedAt }: { startedAt: string }) {
+  const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - new Date(startedAt).getTime()));
+
+  useEffect(() => {
+    const start = new Date(startedAt).getTime();
+    const update = () => setElapsed(Math.max(0, Date.now() - start));
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  return <>{formatElapsedTime(elapsed, true)}</>;
+}
+
 interface ElapsedTimeBadgeProps {
   totalElapsedTime?: number;
   jobTiming?: JobTiming;
@@ -15,6 +33,19 @@ interface ElapsedTimeBadgeProps {
       elapsedTime?: number;
     };
   }>;
+  inProgressTask?: {
+    id: string;
+    name: string;
+    timing?: {
+      startedAt?: string;
+      elapsedTime?: number;
+    };
+  } | null;
+  /** Current estimating node activity (e.g., { label: "환경 분석 중", startedAt: "..." }) */
+  estimatingActivity?: {
+    label: string;
+    startedAt: string;
+  } | null;
 }
 
 /**
@@ -23,7 +54,9 @@ interface ElapsedTimeBadgeProps {
 export function ElapsedTimeBadge({
   totalElapsedTime,
   jobTiming,
-  completedTasks
+  completedTasks,
+  inProgressTask,
+  estimatingActivity,
 }: ElapsedTimeBadgeProps) {
   // ✨ Real-time elapsed time calculation
   const [realtimeElapsed, setRealtimeElapsed] = useState<number | null>(null);
@@ -106,9 +139,11 @@ export function ElapsedTimeBadge({
   
   // Calculate breakdown
   const estimatingTime = jobTiming.estimatingDuration || 0;
+  const isEstimatingFinalized = !!jobTiming.estimatingDuration;
   const tasksTotal = completedTasks?.reduce((sum, task) => {
     return sum + (task.timing?.elapsedTime || 0);
   }, 0) || 0;
+  const taskCount = (completedTasks?.length || 0) + (inProgressTask ? 1 : 0);
   
   // Build tooltip content
   const tooltipContent = (
@@ -130,22 +165,69 @@ export function ElapsedTimeBadge({
         <div className="flex justify-between items-center font-semibold">
           <span className="text-gray-800 dark:text-gray-100">Estimating Phase:</span>
           <span className="font-mono text-gray-800 dark:text-gray-100">
-            {formatElapsedTime(estimatingTime, true)}
+            {isEstimatingFinalized
+              ? formatElapsedTime(estimatingTime, true)
+              : estimatingActivity?.startedAt
+                ? <LiveElapsedTime startedAt={jobTiming.startedAt} />
+                : formatElapsedTime(estimatingTime, true)
+            }
           </span>
         </div>
+        {/* Phase breakdown detail */}
+        {jobTiming.phaseBreakdown && Object.keys(jobTiming.phaseBreakdown).length > 0 && (
+          <div className="pl-2 space-y-0.5 mt-1">
+            {Object.entries(jobTiming.phaseBreakdown).map(([phase, ms]) => (
+              <div key={phase} className="flex justify-between items-center text-xs">
+                <span className="text-gray-600 dark:text-gray-400 capitalize">• {phase}</span>
+                <span className="font-mono text-gray-600 dark:text-gray-400">
+                  {formatElapsedTime(ms, true)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Live estimating node activity (when phase breakdown not yet available) */}
+        {!isEstimatingFinalized && estimatingActivity && (
+          <div className="pl-2 mt-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                • {estimatingActivity.label}
+                <span className="animate-pulse">↻</span>
+              </span>
+              <span className="font-mono text-purple-600 dark:text-purple-400">
+                <LiveElapsedTime startedAt={estimatingActivity.startedAt} />
+              </span>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Tasks */}
-      {completedTasks && completedTasks.length > 0 && (
+      {taskCount > 0 && (
         <div className="pl-2 border-l-2 border-blue-400 dark:border-blue-500">
           <div className="flex justify-between items-center font-semibold">
-            <span className="text-gray-800 dark:text-gray-100">Tasks ({completedTasks.length}):</span>
+            <span className="text-gray-800 dark:text-gray-100">Tasks ({taskCount}):</span>
             <span className="font-mono text-gray-800 dark:text-gray-100">
               {formatElapsedTime(tasksTotal, true)}
             </span>
           </div>
           <div className="pl-2 space-y-1 mt-1">
-            {completedTasks.map((task) => (
+            {/* In-progress task (real-time) */}
+            {inProgressTask && (
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-blue-600 dark:text-blue-400 truncate max-w-[200px] flex items-center gap-1" title={inProgressTask.name}>
+                  • {inProgressTask.name}
+                  <span className="text-xs animate-pulse">↻</span>
+                </span>
+                <span className="font-mono text-blue-600 dark:text-blue-400">
+                  {inProgressTask.timing?.startedAt
+                    ? <LiveElapsedTime startedAt={inProgressTask.timing.startedAt} />
+                    : '0s'}
+                </span>
+              </div>
+            )}
+            {/* Completed tasks */}
+            {completedTasks?.map((task) => (
               <div
                 key={task.id}
                 className="flex justify-between items-center text-sm"

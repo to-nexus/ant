@@ -305,7 +305,11 @@ export class KanbanService {
           totalElapsedTime,
           jobTiming: sessionState.jobTiming,
           tokenUsage: sessionState.tokenUsage,
-          estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
+          estimatingTokenUsage: (sessionState as any).estimatingTokenUsage,
+          // Node activity banner from snapshot
+          estimatingLabel: liveSnapshot.estimatingLabel,
+          estimatingStartedAt: liveSnapshot.estimatingStartedAt,
+          estimatingNodeId: liveSnapshot.estimatingNodeId,
         };
       }
       

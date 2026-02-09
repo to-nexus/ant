@@ -108,4 +108,9 @@ export interface KanbanData {
 
   // Interruption state
   interruption?: InterruptionDetails;
+
+  // Node activity banner (shown when a non-task node is running)
+  estimatingLabel?: string;       // Current node activity label (e.g., "환경 분석 중")
+  estimatingStartedAt?: string;   // ISO timestamp when current phase started (for timer)
+  estimatingNodeId?: string;      // Node ID (e.g., "decompose") for UI-specific rendering
 }

@@ -364,6 +364,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ Real-time tracking and resume (internal, not persisted)
   _httpJobId?: string;  // Job ID for live updates and job resumption
+  _phaseTimings?: Record<string, number>;  // Per-node ms timings for phaseBreakdown
+  _uiLocale?: 'ko' | 'en';  // UI locale detected from directive
   
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating

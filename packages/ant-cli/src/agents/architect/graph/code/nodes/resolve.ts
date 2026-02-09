@@ -3,6 +3,7 @@ import { ArchitectGraphState } from "../state";
 import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
 import { ReferenceContext } from "../../../../../core/codebase/types";
 import * as path from "path";
+import { getEstimatingLabel, detectUILocale } from "../../common/timing/estimatingLabels";
 
 /**
  * Code Resolve Node
@@ -23,6 +24,16 @@ import * as path from "path";
  * - Uses GitPort for file operations
  */
 export async function resolve(state: ArchitectGraphState): Promise<ArchitectGraphState> {
+  const phaseStart = Date.now();
+  
+  // ✅ Detect UI locale from directive (first node to run)
+  state._uiLocale = detectUILocale(state.overrideDirective || state.directive || '');
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', state._uiLocale), 'resolve');
+  }
+  
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
@@ -151,6 +162,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     } catch {
       state.runtimeAssetsIndex = { files: [], count: 0 };
     }
+    
+    // ✅ Record phase timing
+    state._phaseTimings = { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart };
     
     // ✅ Workflow instrumentation: Exit node (skip path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -399,6 +413,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     profile,  // ✅ ONLY profile!
     referenceContexts,  // Empty array (references loaded per-task)
   };
+  
+  // ✅ Record phase timing
+  result._phaseTimings = { ...(result._phaseTimings || {}), resolve: Date.now() - phaseStart };
   
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {

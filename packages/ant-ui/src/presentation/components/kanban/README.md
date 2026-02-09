@@ -29,9 +29,13 @@ kanban/
 - Recursion Limit 게이지
 - Tasks 진행률 게이지
 
-### KanbanEstimating
-- "Breaking down tasks..." 표시
-- Estimating 상태 시각화
+### KanbanEstimating (KanbanEstimatingSkeleton)
+- decompose/revise 단계에서 스켈레톤 카드 3컬럼 표시
+- NodeActivityBanner와 함께 사용
+
+### NodeActivityBanner
+- 현재 실행 중인 비-태스크 노드의 활동 라벨 + 실시간 타이머 표시
+- estimatingLabel/estimatingStartedAt 기반 자동 마운트/해제
 
 ### KanbanPausedPrompt
 - Recursion limit 도달 시 표시

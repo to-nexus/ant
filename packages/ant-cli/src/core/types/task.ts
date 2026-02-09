@@ -43,6 +43,10 @@ export interface TaskQueueSnapshot {
   recursionLimit: number;
   tokenUsage?: TaskTokenUsage;
   estimatingTokenUsage?: TaskTokenUsage;
+  // Node activity banner (for reconnect/recovery)
+  estimatingLabel?: string;
+  estimatingStartedAt?: string;
+  estimatingNodeId?: string;
 }
 
 // ============================================

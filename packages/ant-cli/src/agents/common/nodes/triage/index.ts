@@ -20,6 +20,7 @@ import { accumulateTokenUsage } from '../../../architect/graph/common/llmHelpers
 import { runAskGraph } from '../../../architect/graph/ask/runner.js';
 import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
+import { getEstimatingLabel } from '../../../architect/graph/common/timing/estimatingLabels.js';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -51,9 +52,17 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
  * Entry point for analyzing user input and determining the correct path
  */
 export async function triage<T extends TriageableState>(state: T): Promise<Partial<T>> {
+  const phaseStart = Date.now();
+  
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🏥 TRIAGE');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  
+  // ✅ Node activity banner (only when kanbanUpdate is available — learn job has none)
+  if ((state as any).deps?.kanbanUpdate?.setEstimatingActivity) {
+    const locale = (state as any)._uiLocale || 'en';
+    (state as any).deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('triage', locale), 'triage');
+  }
   
   // ✅ Skip triage if explicitly requested
   if (state.skipTriage) {
@@ -228,6 +237,9 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     }
   }
   
+  // ✅ Record phase timing
+  const _phaseTimings = { ...((state as any)._phaseTimings || {}), triage: Date.now() - phaseStart };
+  
   // ✅ Workflow instrumentation: Exit node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'triage');
@@ -236,8 +248,9 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   return {
     triageResult,
     workspaceState,
-    tokenUsage: state.tokenUsage
-  } as Partial<T>;
+    tokenUsage: state.tokenUsage,
+    _phaseTimings,
+  } as unknown as Partial<T>;
 }
 
 /**

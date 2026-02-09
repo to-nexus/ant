@@ -17,6 +17,7 @@ import { logPrompt } from "../../../../../core/utils/promptLogger";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../common/llmConfig";
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { getEstimatingLabel } from "../../common/timing/estimatingLabels";
 import {
   DetectionReport,
   createUiDesignDetectionReport,
@@ -185,6 +186,13 @@ async function dirHasFiles(dirPath: string): Promise<boolean> {
 export async function detectEnvironment(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
+  const phaseStart = Date.now();
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('detect', state._uiLocale), 'detect');
+  }
+  
   const llm = state.deps?.llm as LLMClient | undefined;
   const engine = state.deps?.promptEngine as PromptEngine | undefined;
 
@@ -201,7 +209,7 @@ export async function detectEnvironment(
       domainReasoning: "Defaulting to service.",
     });
     
-    return { detectionReport: defaultReport };
+    return { detectionReport: defaultReport, _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart } };
   }
 
   // Workflow UI
@@ -394,6 +402,7 @@ export async function detectEnvironment(
           message: parsed.errorMessage || 'An error occurred',
           suggestedAction: parsed.suggestedAction,
         },
+        _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
       };
     }
 
@@ -461,6 +470,7 @@ export async function detectEnvironment(
       uiReferences: detectionReport.workType === 'ui-design' ? uiReferences : undefined,
       uiAssetsList: detectionReport.workType === 'ui-design' ? uiAssetsList : undefined,
       tokenUsage: (state as any).tokenUsage,
+      _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
   } finally {
     if (state.deps?.workflowUpdate && state._httpJobId) {

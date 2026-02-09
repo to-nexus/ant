@@ -189,6 +189,8 @@ export function buildDesignGraph() {
       
       // For tracking in UI
       _httpJobId: null as any,
+      _phaseTimings: null as any,  // ✅ Per-node timing for phaseBreakdown
+      _uiLocale: null as any,     // ✅ UI locale (ko/en) from directive
       
       // Chat integration
       overrideDirective: null as any,

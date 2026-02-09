@@ -24,6 +24,7 @@ import {
 // Import submodules
 import { parseDetectResponse } from './responseParser';
 import { selectDesignFiles, DesignDocs } from './designSelector';
+import { getEstimatingLabel } from '../../../common/timing/estimatingLabels';
 
 /**
  * Build filtered design documents from selected file list.
@@ -90,6 +91,12 @@ function buildFilteredDesign(
 export async function detectEnvironment(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
+  const phaseStart = Date.now();
+  
+  // ✅ Node activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('detect', state._uiLocale), 'detect');
+  }
   
   state.recursionCount = (state.recursionCount || 0) + 1;
   
@@ -147,6 +154,7 @@ export async function detectEnvironment(
       design: filteredDesign || state.design,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
+      _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
   }
 
@@ -435,5 +443,6 @@ export async function detectEnvironment(
     tokenUsage: (state as any).tokenUsage,
     recursionCount: state.recursionCount,   // ✅ FIX: Propagate to LangGraph channel (Partial return requires explicit inclusion)
     recursionLimit: state.recursionLimit,   // ✅ FIX: Propagate to LangGraph channel
+    _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
   };
 }

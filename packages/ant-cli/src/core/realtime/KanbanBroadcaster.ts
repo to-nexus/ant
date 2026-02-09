@@ -41,6 +41,9 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private readonly jobType: DecomposableJobType;
   private readonly userContext?: UserContext;
   private jobTiming?: JobTiming;  // ✅ Stored once, included in every broadcast
+  private estimatingLabel?: string;       // Current non-task node activity label
+  private estimatingStartedAt?: string;   // ISO timestamp when current phase started
+  private estimatingNodeId?: string;      // Node ID for UI-specific rendering
   
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -74,6 +77,28 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   setJobTiming(jobTiming: JobTiming): void {
     this.jobTiming = jobTiming;
     console.log(`[KanbanBroadcaster] ⏱️ jobTiming set (startedAt: ${jobTiming.startedAt})`);
+  }
+
+  /**
+   * Set the current non-task node activity label.
+   * Broadcasts immediately so frontend banner updates in real-time.
+   * Auto-cleared when updateTaskQueue receives actual tasks.
+   */
+  setEstimatingActivity(label: string, nodeId?: string): void {
+    this.estimatingLabel = label;
+    this.estimatingStartedAt = new Date().toISOString();
+    this.estimatingNodeId = nodeId;
+    console.log(`[KanbanBroadcaster] 📊 Activity: ${label} (node: ${nodeId || 'unknown'})`);
+    
+    // Broadcast immediately so frontend banner updates in real-time
+    this.broadcastKanbanUpdate(
+      this.jobId,
+      null,  // no current task during estimating
+      [],    // no tasks yet
+      [],    // no completed tasks yet
+    ).catch(err => {
+      console.warn(`[KanbanBroadcaster] Failed to broadcast estimating activity:`, err.message);
+    });
   }
 
   /**
@@ -115,6 +140,14 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     recursionLimit?: number,
     tokenUsage?: TaskTokenUsage
   ): Promise<void> {
+    // Auto-clear estimating activity when task work begins
+    const hasTasks = !!currentTask || queue.length > 0;
+    if (hasTasks) {
+      this.estimatingLabel = undefined;
+      this.estimatingStartedAt = undefined;
+      this.estimatingNodeId = undefined;
+    }
+
     // 1. Build snapshot for Redis state storage
     const snapshot: TaskQueueSnapshot = {
       currentTask: currentTask || null,
@@ -123,6 +156,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionCount: recursionCount ?? 0,
       recursionLimit: recursionLimit ?? 50,
       tokenUsage,
+      // Include estimating activity for reconnect/recovery
+      ...(this.estimatingLabel && {
+        estimatingLabel: this.estimatingLabel,
+        estimatingStartedAt: this.estimatingStartedAt,
+        estimatingNodeId: this.estimatingNodeId,
+      }),
     };
 
     // 2. Save snapshot to Redis
@@ -148,6 +187,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       jobType: this.jobType,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)
       ...(this.jobTiming && { jobTiming: this.jobTiming }),
+      // ✅ Include node activity banner data (auto-cleared when tasks exist)
+      ...(this.estimatingLabel && {
+        estimatingLabel: this.estimatingLabel,
+        estimatingStartedAt: this.estimatingStartedAt,
+        estimatingNodeId: this.estimatingNodeId,
+      }),
     };
 
     // 4. Broadcast via user-scoped Redis Pub/Sub channel
