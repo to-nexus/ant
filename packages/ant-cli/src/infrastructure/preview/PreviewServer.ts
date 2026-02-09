@@ -19,12 +19,15 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import * as path from 'path';
 import * as os from 'os';
+import * as net from 'net';
+import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
 import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
+import { parsePreviewKey } from '../state/redisKeyUtils';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -414,6 +417,101 @@ export class PreviewServer {
         this.previewService.startIdleCheck();
         
         resolve();
+      });
+
+      // ✅ WebSocket Upgrade Proxy
+      // Next.js dev server requires WebSocket for HMR (Hot Module Replacement).
+      // Without this, the HotReload component fails and the page doesn't render properly.
+      // We intercept HTTP Upgrade requests on the server, extract the serverKey from the URL,
+      // look up the dev server port, then create a raw TCP tunnel to the dev server.
+      this.server.on('upgrade', async (req: IncomingMessage, socket: net.Socket, head: Buffer) => {
+        try {
+          const urlPath = req.url || '/';
+          const segments = urlPath.split('/').filter(Boolean);
+          const firstSegment = segments[0] || '';
+
+          // Check if first segment is a serverKey (contains colons)
+          if (!firstSegment.includes(':')) {
+            socket.destroy();
+            return;
+          }
+
+          const serverKey = firstSegment;
+          const parsed = parsePreviewKey(serverKey);
+          if (!parsed) {
+            socket.destroy();
+            return;
+          }
+
+          const { tenantId, userId, projectId, feature } = parsed;
+          const mapping = await this.stateStore.getPreview(tenantId, userId, projectId, feature);
+          if (!mapping) {
+            socket.destroy();
+            return;
+          }
+
+          const targetHost = mapping.host || 'localhost';
+          const targetPort = mapping.port;
+
+          // Determine target path based on nativeBasePath
+          // nativeBasePath: dev server expects /{serverKey}/ prefix → keep it
+          // non-nativeBasePath: dev server expects bare path → strip prefix
+          let targetPath = urlPath;
+          if (!mapping.nativeBasePath) {
+            const prefix = `/${serverKey}`;
+            if (targetPath.startsWith(prefix)) {
+              targetPath = targetPath.slice(prefix.length) || '/';
+            }
+          }
+
+          logger.debug(`[PreviewServer] WS upgrade: ${urlPath} → ${targetHost}:${targetPort}${targetPath}`, {
+            component: 'PreviewServer'
+          });
+
+          // Open TCP connection to dev server
+          const proxySocket = net.connect(targetPort, targetHost, () => {
+            // Reconstruct the HTTP upgrade request with corrected Host and path
+            const rawHeaders: string[] = [];
+            const rawHeaderPairs = req.rawHeaders;
+            for (let i = 0; i < rawHeaderPairs.length; i += 2) {
+              const key = rawHeaderPairs[i];
+              const value = rawHeaderPairs[i + 1];
+              if (key.toLowerCase() === 'host') {
+                rawHeaders.push(`Host: ${targetHost}:${targetPort}`);
+              } else {
+                rawHeaders.push(`${key}: ${value}`);
+              }
+            }
+
+            const upgradeReq =
+              `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n` +
+              rawHeaders.join('\r\n') +
+              '\r\n\r\n';
+
+            proxySocket.write(upgradeReq);
+            if (head.length > 0) {
+              proxySocket.write(head);
+            }
+
+            // Bidirectional pipe: client ↔ dev server
+            proxySocket.pipe(socket);
+            socket.pipe(proxySocket);
+          });
+
+          proxySocket.on('error', (err) => {
+            logger.debug(`[PreviewServer] WS proxy error: ${err.message}`, { component: 'PreviewServer' });
+            socket.destroy();
+          });
+          socket.on('error', () => {
+            proxySocket.destroy();
+          });
+          socket.on('close', () => {
+            proxySocket.destroy();
+          });
+        } catch (error: any) {
+          logger.warn(`[PreviewServer] WS upgrade failed: ${error.message}`, { component: 'PreviewServer' });
+          socket.destroy();
+        }
       });
     });
   }
