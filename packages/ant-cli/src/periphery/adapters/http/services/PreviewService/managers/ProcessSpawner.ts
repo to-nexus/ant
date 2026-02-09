@@ -187,6 +187,13 @@ export class ProcessSpawner {
       // Prevent auto-opening browser (Vite, CRA, Next.js)
       BROWSER: 'none',
       BROWSER_ARGS: '--no-sandbox',
+      // File watching: use polling instead of fs.watch (inotify)
+      // Required for NFS/EFS cloud filesystems where inotify is not supported
+      // - CHOKIDAR_USEPOLLING: Vite (chokidar), Webpack 5+ dev server
+      // - WATCHPACK_POLLING: Next.js, Webpack 4 (watchpack)
+      CHOKIDAR_USEPOLLING: 'true',
+      CHOKIDAR_INTERVAL: '3000',    // 3s interval — preview doesn't need instant HMR
+      WATCHPACK_POLLING: 'true',
       ...(options.extraEnv || {})
     };
     

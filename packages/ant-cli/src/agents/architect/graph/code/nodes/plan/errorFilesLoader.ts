@@ -66,8 +66,11 @@ export async function loadErrorFiles(
       }
       
       // Load file content
+      // FileSystemPort expects paths relative to workspace root, not absolute paths.
       const fullPath = path.join(state.context.workingDir, resolvedPath);
-      const content = await fileSystem.readFile(fullPath);
+      const workspaceRoot = fileSystem.getWorkspaceRoot();
+      const relativePath = path.relative(workspaceRoot, fullPath);
+      const content = await fileSystem.readFile(relativePath);
       
       if (content) {
         loadedFiles.push({ path: resolvedPath, content, source: 'local' });

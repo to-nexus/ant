@@ -61,7 +61,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.lastViolations = session.state.lastViolations || [];
         initial.previousFileCount = session.state.previousFileCount;
         initial.resolvedCategories = (session.state.resolvedCategories || []) as any;
-        initial.recursionCount = session.state.recursionCount || 0;
+        initial.recursionCount = 0;  // Reset per invoke (must match LangGraph's per-invoke recursionLimit)
         // ✅ Use the HIGHER of session limit vs current env limit
         // Prevents stale low limits from old sessions overriding a raised RECURSION_LIMIT
         initial.recursionLimit = Math.max(session.state.recursionLimit || 0, finalLimit);
@@ -227,7 +227,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             lastViolations: session.state.lastViolations || [],
             previousFileCount: session.state.previousFileCount,
             resolvedCategories: (session.state.resolvedCategories || []) as any,
-            recursionCount: session.state.recursionCount || 0,  // ✅ CRITICAL: Restore recursion count
+            recursionCount: 0,  // Reset per invoke (must match LangGraph's per-invoke recursionLimit)
             recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),  // ✅ Use higher of session vs env
             ...(session.state as any).jobId && { jobId: (session.state as any).jobId },  // ✅ CRITICAL: Restore jobId
             ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },  // ✅ CRITICAL: Restore jobTiming
