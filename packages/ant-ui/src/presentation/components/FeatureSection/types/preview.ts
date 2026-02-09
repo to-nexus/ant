@@ -10,11 +10,12 @@ export type PreviewState = 'idle' | 'installing' | 'starting' | 'running' | 'err
 /**
  * Preview server setup failure reasoning codes
  * 
- * ALIGNED with Backend: packages/ant-cli/.../DevServerService/types.ts
+ * ALIGNED with Backend: packages/ant-cli/.../PreviewService/types.ts
  * Categorizes different types of setup failures for appropriate handling
  */
 export type SetupFailureReasoning = 
-  | 'basename-missing'      // Frontend: Missing basename configuration for proxy
+  | 'basename-missing'      // Frontend (CSR): Missing basename configuration for proxy (React Router, Vue Router)
+  | 'basepath-missing'      // Frontend (SSR): Missing basePath in Next.js config for proxy
   | 'port-conflict'         // Port already in use
   | 'dependency-error'      // npm/pnpm install failed
   | 'config-invalid'        // Invalid vite/webpack config
@@ -115,4 +116,3 @@ export interface UsePreviewManagerResult {
   isDismissed: boolean;
   dismissMessage: () => void;
 }
-

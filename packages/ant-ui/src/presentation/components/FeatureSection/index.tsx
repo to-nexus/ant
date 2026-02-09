@@ -3,10 +3,10 @@ import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useBaseBranch } from './hooks/useBaseBranch';
 import { useFeatureBranchManager } from './hooks/useFeatureBranchManager';
-import { useDevServerManager } from './hooks/useDevServerManager';
+import { usePreviewManager } from './hooks/usePreviewManager';
 import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
-import { DevServerStatusPanel } from './components/DevServerStatusPanel';
+import { PreviewStatusPanel } from './components/PreviewStatusPanel';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { useState, useEffect } from 'react';  // ✅ Add useEffect
 
@@ -36,7 +36,7 @@ export function FeatureSection() {
     isLoading,
     isDismissed,     // ✅ NEW: Dismissal state from hook
     dismissMessage   // ✅ NEW: Dismiss handler from hook
-  } = useDevServerManager(selectedProject, selectedFeature);
+  } = usePreviewManager(selectedProject, selectedFeature);
   
   const {
     handleCreateFeature,
@@ -69,7 +69,7 @@ export function FeatureSection() {
     setPendingChatInput({
       message: suggestedFix,
       jobType: 'code',
-      source: `dev-server-fix:${setupReasoning || (status as any)?.issues?.map((i: any) => i.reasoning).join(',') || 'unknown'}`,
+      source: `preview-fix:${setupReasoning || (status as any)?.issues?.map((i: any) => i.reasoning).join(',') || 'unknown'}`,
     });
     
     console.log('[FeatureSection] ✅ Chat input set via Chat service');
@@ -90,11 +90,11 @@ export function FeatureSection() {
         features={features}
         selectedFeature={selectedFeature || undefined}
         isPreviewLoading={isLoading}
-        devServerRunning={state === 'running'}
+        previewRunning={state === 'running'}
         canChangeFeature={policy.canChangeFeature}
         canCreateFeature={policy.canCreateFeature}
-        canStartDevServer={policy.canStartDevServer}
-        canStopDevServer={policy.canStopDevServer}
+        canStartPreview={policy.canStartPreview}
+        canStopPreview={policy.canStopPreview}
         disabledReason={policy.disabledReason || undefined}
         createDisabledReason={policy.createFeatureDisabledReason || undefined}
         onFeatureChange={handleFeatureChange}
@@ -109,7 +109,7 @@ export function FeatureSection() {
       {(() => {
         const shouldShow = state !== 'idle' && selectedFeature && !isDismissed;  // ✅ Use hook's dismissal state
         // Debug logging (disabled for production)
-        // console.log('[FeatureSection] DevServerStatusPanel render decision:', {
+        // console.log('[FeatureSection] PreviewStatusPanel render decision:', {
         //   state,
         //   selectedFeature,
         //   shouldShow,
@@ -117,7 +117,7 @@ export function FeatureSection() {
         // });
         return shouldShow ? (
           <div className="mt-2">
-            <DevServerStatusPanel
+            <PreviewStatusPanel
               state={state}
               ready={ready}  // Health check result
               setupReasoning={setupReasoning}  // Categorized failure code

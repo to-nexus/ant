@@ -1,14 +1,14 @@
 /**
  * Dismissed Messages Persistence
  * 
- * ✅ Stores dismissed dev server messages in localStorage
+ * Stores dismissed preview server messages in localStorage
  * User can dismiss error messages with X button
  * Messages stay dismissed until user explicitly clicks Play button again
  */
 
-import type { DismissedMessage, SetupFailureReasoning } from '../types/devServer';
+import type { DismissedMessage, SetupFailureReasoning } from '../types/preview';
 
-const STORAGE_KEY = 'ant-ui:dismissed-dev-server-messages';
+const STORAGE_KEY = 'ant-ui:dismissed-preview-messages';
 
 /**
  * Load all dismissed messages from localStorage

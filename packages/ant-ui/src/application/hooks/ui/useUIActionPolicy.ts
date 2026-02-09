@@ -58,10 +58,10 @@ export interface UIActionPolicy {
   canSelectFile: boolean;       // 파일 선택/보기 (항상 가능)
   
   // ============================================
-  // Dev Server Actions (개발 서버)
+  // Preview Actions (프리뷰 서버)
   // ============================================
-  canStartDevServer: boolean;   // 개발 서버 시작 가능
-  canStopDevServer: boolean;    // 개발 서버 중단 가능
+  canStartPreview: boolean;   // 프리뷰 시작 가능
+  canStopPreview: boolean;    // 프리뷰 중단 가능
   
   // ============================================
   // Display Policy (표시/숨김 정책)
@@ -143,21 +143,21 @@ export function useUIActionPolicy(): UIActionPolicy {
   const canStop = isRunning && !isStopping && canPerformAnyAction;
   
   /**
-   * Rule 5: Dev Server 시작 조건
+   * Rule 5: Preview 시작 조건
    * - NOT job running (작업 실행 중 아님)
-   * - NOT dev server loading (개발서버 시작/중단 중 아님)
+   * - NOT preview loading (프리뷰 시작/중단 중 아님)
    * - NOT disconnected
    * - project 선택됨
    */
-  const canStartDevServer = !isRunning && !isPreviewLoading && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false);
+  const canStartPreview = !isRunning && !isPreviewLoading && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false);
   
   /**
-   * Rule 6: Dev Server 중단 조건
-   * - Dev server running
-   * - NOT dev server loading (개발서버 시작/중단 중 아님)
+   * Rule 6: Preview 중단 조건
+   * - Preview running
+   * - NOT preview loading (프리뷰 시작/중단 중 아님)
    * - NOT disconnected
    */
-  const canStopDevServer = (previewStatus?.running ?? false) && !isPreviewLoading && canPerformAnyAction;
+  const canStopPreview = (previewStatus?.running ?? false) && !isPreviewLoading && canPerformAnyAction;
 
   /**
    * Rule 7: Feature 생성 조건
@@ -234,9 +234,9 @@ export function useUIActionPolicy(): UIActionPolicy {
     canDeleteFile: !isWorkInProgress && canPerformAnyAction,
     canSelectFile: canPerformAnyAction,  // 파일 선택/보기는 항상 가능 (서버 연결 시)
     
-    // Dev Server Actions
-    canStartDevServer,
-    canStopDevServer,
+    // Preview Actions
+    canStartPreview,
+    canStopPreview,
     
     // Display Policy
     shouldShowWorkflowIndicators: isRunning && !isStopping,  // 실행 중이고 중단 중이 아닐 때만 표시

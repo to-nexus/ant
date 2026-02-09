@@ -32,13 +32,13 @@
 │ Frontend (ant-ui)                                              │
 │  ├─ PreviewPanel              # 미리보기 UI (iframe)          │
 │  ├─ usePreviewManager         # 상태 관리 & 폴링              │
-│  └─ DevServerStatusPanel      # 진행 상황 표시               │
+│  └─ PreviewStatusPanel         # 진행 상황 표시               │
 └────────────────────────────────────────────────────────────────┘
                               ↓ HTTP API
 ┌────────────────────────────────────────────────────────────────┐
 │ ant-preview (Express, 포트 8080)                               │
 │  ├─ Preview API               # 시작/중지/상태 엔드포인트    │
-│  ├─ PreviewService            # Dev Server 생명주기 관리     │
+│  ├─ PreviewService            # Preview 생명주기 관리        │
 │  ├─ PreviewProxy              # /:serverKey/* 프록시          │
 │  ├─ PortManager               # 동적 포트 할당               │
 │  └─ RedisStateStore           # 상태 관리 (PortRegistry)     │
@@ -582,7 +582,7 @@ packages/ant-cli/src/
 │   ├── middleware/
 │   │   └── previewProxy.ts           # 프록시 미들웨어 (핵심)
 │   └── services/PreviewService/
-│       ├── PreviewService.ts         # Dev Server 생명주기 관리
+│       ├── PreviewService.ts         # Preview 생명주기 관리
 │       ├── managers/
 │       │   ├── ProcessSpawner.ts     # 프로세스 생성/종료
 │       │   ├── LogManager.ts         # 로그 관리

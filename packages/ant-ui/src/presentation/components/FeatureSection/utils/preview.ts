@@ -1,18 +1,18 @@
 /**
- * Dev Server Utilities
+ * Preview Server Utilities
  */
 
-import { DEV_SERVER_LOG_PATTERNS } from '../constants/devServer';
+import { PREVIEW_LOG_PATTERNS } from '../constants/preview';
 import type { 
   PreviewStatus, 
   PreviewState, 
   PreviewLog, 
   PackageProgress, 
   PreviewProgress 
-} from '../types/devServer';
+} from '../types/preview';
 
 /**
- * Analyze dev server status and logs to determine current state.
+ * Analyze preview server status and logs to determine current state.
  * 
  * Priority:
  * 1. Backend-provided `phase` field (most reliable, server-authoritative)
@@ -22,7 +22,7 @@ import type {
  * 5. `running` flag
  * 6. `isLoading` state
  */
-export function analyzeDevServerState(
+export function analyzePreviewState(
   status: PreviewStatus | undefined,
   isLoading: boolean
 ): PreviewState {
@@ -56,8 +56,8 @@ export function analyzeDevServerState(
   const logs = status.logs || [];
   
   // 4. Log pattern matching (fallback)
-  if (hasLogPattern(logs, DEV_SERVER_LOG_PATTERNS.INSTALLING)) {
-    const hasSuccess = hasLogPattern(logs, DEV_SERVER_LOG_PATTERNS.INSTALL_SUCCESS);
+  if (hasLogPattern(logs, PREVIEW_LOG_PATTERNS.INSTALLING)) {
+    const hasSuccess = hasLogPattern(logs, PREVIEW_LOG_PATTERNS.INSTALL_SUCCESS);
     if (!hasSuccess) {
       return 'installing';
     }
@@ -127,7 +127,7 @@ export function extractProgress(logs: PreviewLog[]): PreviewProgress | undefined
       }
     }
     
-    // Running: "✅ All dev servers started successfully!" or "✅ All preview servers started successfully!"
+    // Running: "✅ All preview servers started successfully!"
     if (log.message.includes('All dev servers started') || 
         log.message.includes('All preview servers started') ||
         log.message.includes('all servers running')) {
@@ -156,7 +156,7 @@ export function extractProgress(logs: PreviewLog[]): PreviewProgress | undefined
     return undefined;
   }
   
-  // ✅ "completed" means successfully started (running), not failed (error)
+  // "completed" means successfully started (running), not failed (error)
   const completedCount = packages.filter(p => p.state === 'running').length;
   
   return {
@@ -173,7 +173,7 @@ export function extractProgress(logs: PreviewLog[]): PreviewProgress | undefined
 export function extractErrorFromLogs(logs: PreviewLog[]): string | undefined {
   // Find install failure
   const installError = logs.find(log => 
-    log.message.includes(DEV_SERVER_LOG_PATTERNS.INSTALL_FAILED)
+    log.message.includes(PREVIEW_LOG_PATTERNS.INSTALL_FAILED)
   );
   if (installError) {
     return installError.message;
@@ -182,7 +182,7 @@ export function extractErrorFromLogs(logs: PreviewLog[]): string | undefined {
   // Find port in use error
   const portError = logs.find(log =>
     log.type === 'stderr' && 
-    log.message.includes(DEV_SERVER_LOG_PATTERNS.PORT_IN_USE)
+    log.message.includes(PREVIEW_LOG_PATTERNS.PORT_IN_USE)
   );
   if (portError) {
     return portError.message;
@@ -192,7 +192,7 @@ export function extractErrorFromLogs(logs: PreviewLog[]): string | undefined {
   const errorLog = logs
     .filter(log => log.type === 'stderr')
     .find(log => 
-      DEV_SERVER_LOG_PATTERNS.ERROR_MARKER.some(marker => 
+      PREVIEW_LOG_PATTERNS.ERROR_MARKER.some(marker => 
         log.message.includes(marker)
       )
     );
@@ -213,7 +213,7 @@ function hasLogPattern(logs: PreviewLog[], pattern: string): boolean {
 function hasErrorInLogs(logs: PreviewLog[]): boolean {
   return logs.some(log => 
     log.type === 'stderr' && 
-    DEV_SERVER_LOG_PATTERNS.ERROR_MARKER.some(marker => 
+    PREVIEW_LOG_PATTERNS.ERROR_MARKER.some(marker => 
       log.message.includes(marker)
     )
   );

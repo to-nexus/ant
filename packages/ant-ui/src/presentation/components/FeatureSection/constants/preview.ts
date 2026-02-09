@@ -1,8 +1,8 @@
 /**
- * Dev Server UI Constants
+ * Preview Server UI Constants
  */
 
-export const DEV_SERVER_MESSAGES = {
+export const PREVIEW_MESSAGES = {
   // Status Messages
   STATUS_INSTALLING: 'Installing dependencies...',
   STATUS_STARTING: 'Starting preview...',
@@ -25,16 +25,15 @@ export const DEV_SERVER_MESSAGES = {
   LOG_STATUS_CHECK_FAILED: 'Failed to check preview status',
 } as const;
 
-export const DEV_SERVER_POLLING = {
+export const PREVIEW_POLLING = {
   INTERVAL_MS: 5000,
   INITIAL_DELAY_MS: 1000,
 } as const;
 
-export const DEV_SERVER_LOG_PATTERNS = {
+export const PREVIEW_LOG_PATTERNS = {
   INSTALLING: 'Installing dependencies',
   INSTALL_SUCCESS: 'Dependencies installed',
   INSTALL_FAILED: 'Failed to install dependencies',
   PORT_IN_USE: 'already in use',
   ERROR_MARKER: ['Error:', 'error:', '❌'],
 } as const;
-
