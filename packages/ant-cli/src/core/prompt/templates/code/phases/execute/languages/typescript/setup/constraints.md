@@ -39,7 +39,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Styling: tailwind.config.js, postcss.config.js
 - Linting: .eslintrc.* (MUST include ignorePatterns), .prettierrc
 - Project: .gitignore, README.md, index.html (entry point only)
-- Docker: Dockerfile, docker-compose.yml (if needed)
+- Docker: Dockerfile, docker-compose.yml (see Infrastructure Services below)
 
 **❌ DON'T CREATE (Application layer)**
 - Source directories: src/*, app/*, pages/*, lib/*, components/*, hooks/*, utils/*
@@ -59,5 +59,34 @@ Before output, check each file:
 2. Include ALL dependencies in package.json (don't defer to feature tasks)
 3. Next task will create ALL application code - don't do it now
 
+## Infrastructure Services (Observe Design Document)
 
+| Checkpoint | Observation Target |
+|------------|-------------------|
+| **External services** | Does the design document specify services that require a running server process? |
+| **Scope** | Is this a root/workspace-level setup or a package-level setup? |
+
+**Principle**: Infrastructure provisioning belongs to the **root workspace level**, not individual packages.
+
+**Root/workspace-level setup** (when external services observed in design):
+
+| Required Output | Purpose |
+|----------------|---------|
+| `docker-compose.yml` | Local development environment for each observed service |
+| `package.json` scripts: `"dev:infra"`, `"dev:infra:down"` | Start/stop infrastructure services |
+| `.env.example` | Connection URLs for each service |
+
+**Package-level setup**: Do NOT create docker-compose.yml or dev:infra scripts.
+Reference environment variables for service connections.
+
+**Constraints**:
+- Do NOT hardcode connection URLs in application code. Use environment variables.
+- Do NOT omit healthcheck for any service in docker-compose.yml.
+- Do NOT omit volume mounts for stateful services (data must survive container restart).
+- Do NOT run `docker compose up` in setup tasks. Only create the files.
+
+⚠️ **Blind spot reminder**:
+- `dev:infra` / `dev:infra:down` scripts are EASILY FORGOTTEN. Verify they exist in root package.json.
+- `.env.example` must include ALL service connection URLs.
+- Package-level setup must NOT duplicate infrastructure provisioning.
 

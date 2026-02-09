@@ -80,6 +80,9 @@ export class NodeCommandAdapter implements CommandPort {
     'curl',    // HTTP requests / API testing
     'wget',    // Download files
     
+    // Containers
+    'docker',  // Docker CLI (docker compose up/down for infrastructure services)
+    
     // System info
     'pwd',     // Print working directory
     'tree',    // Directory tree (if installed)

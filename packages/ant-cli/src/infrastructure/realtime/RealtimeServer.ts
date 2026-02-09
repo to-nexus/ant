@@ -93,14 +93,10 @@ export class RealtimeServer {
   private setupMiddleware(): void {
     // CORS configuration
     const corsOrigins = this.config.corsOrigins || [
-      'http://localhost:5173',  // Vite dev
-      'http://localhost:5174',
-      'http://localhost:4173',  // Vite preview
-      'http://localhost:3000',
-      // Production origins
       'https://ant.crosstoken.io',
       'https://ant-server.crosstoken.io',
-      'https://*.crosstoken.io',  // Wildcard for all subdomains
+      'https://ant-preview.crosstoken.io',
+      'https://*.crosstoken.io',
     ];
     
     this.app.use(cors({
