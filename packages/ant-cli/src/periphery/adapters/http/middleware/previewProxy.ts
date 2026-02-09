@@ -72,6 +72,29 @@ function extractServerKeyFromReferer(refererStr: string): string | null {
 /**
  * Create preview proxy middleware
  */
+// Headers that must NOT be forwarded to upstream (hop-by-hop, HTTP/2 forbidden)
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate',
+  'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade',
+  'if-none-match', 'if-modified-since'
+]);
+
+/**
+ * Build clean headers from incoming request — strips hop-by-hop headers
+ * and non-string values (arrays/undefined) that would break Node.js fetch.
+ */
+function buildCleanHeaders(req: Request, targetHost: string, targetPort: number): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase()) && typeof value === 'string') {
+      headers[key] = value;
+    }
+  }
+  headers['host'] = `${targetHost}:${targetPort}`;
+  headers['accept-encoding'] = 'identity';
+  return headers;
+}
+
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
   const { portRegistry, pathPrefix = '', getBackendPort } = config;
   
@@ -123,11 +146,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
             const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
             if (mapping) {
               const host = mapping.host || 'localhost';
-              const fetchHeaders = {
-                ...req.headers,
-                host: `${host}:${mapping.port}`,
-                'accept-encoding': 'identity',
-              } as any;
+              const cleanHeaders = buildCleanHeaders(req, host, mapping.port);
               
               // For nativeBasePath projects (e.g. Next.js with basePath), the dev server
               // only serves assets under /{basePath}/... so we must prepend the serverKey.
@@ -141,7 +160,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               
               let response = await fetch(targetUrl, {
                 method: req.method,
-                headers: fetchHeaders,
+                headers: cleanHeaders,
               });
               
               // Retry with serverKey prepend if 404 and we didn't already prepend.
@@ -152,7 +171,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
                 logger.debug(`[Preview] Retrying with basePath prepend: ${retryUrl}`, { component: 'PreviewProxy' });
                 const retryResponse = await fetch(retryUrl, {
                   method: req.method,
-                  headers: fetchHeaders,
+                  headers: cleanHeaders,
                 });
                 if (retryResponse.status !== 404) {
                   response = retryResponse;
@@ -171,8 +190,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               res.send(buffer);
               return;
             }
-          } catch (error) {
-            logger.debug(`[Preview] Failed to route ${req.path} via fallback`, { component: 'PreviewProxy' });
+          } catch (error: any) {
+            logger.warn(`[Preview] Failed to route ${req.path} via fallback: ${error.message}`, { component: 'PreviewProxy' });
           }
         }
       }
@@ -287,19 +306,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const hasRequestBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
       
       // Build clean headers - exclude hop-by-hop headers (not allowed in HTTP/2)
-      const hopByHopHeaders = new Set([
-        'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate',
-        'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade',
-        'if-none-match', 'if-modified-since'
-      ]);
-      const cleanHeaders: Record<string, string> = {};
-      for (const [key, value] of Object.entries(req.headers)) {
-        if (!hopByHopHeaders.has(key.toLowerCase()) && typeof value === 'string') {
-          cleanHeaders[key] = value;
-        }
-      }
-      cleanHeaders['host'] = `localhost:${targetPort}`;
-      cleanHeaders['accept-encoding'] = 'identity';
+      const cleanHeaders = buildCleanHeaders(req, 'localhost', targetPort);
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
