@@ -42,6 +42,9 @@ export interface PreviewState {
   phase: PreviewPhase;
   error?: string;                  // Error message when phase is 'error'
   
+  // Framework hints (for proxy routing)
+  nativeBasePath?: boolean;        // true if framework uses native basePath (e.g. Next.js with basePath config)
+  
   // Packages
   packages: PreviewPackage[];
   
@@ -132,7 +135,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath'>>
   ): Promise<void>;
   
   /**

@@ -411,7 +411,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath'>>
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
