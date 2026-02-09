@@ -201,8 +201,9 @@ Express PreviewProxy:
 | **2. Validator + Chat Fix (탐지/교정)** | 기존 프로젝트에 누락된 설정 감지 → UI Fix 버튼 → 채팅 입력 | NextValidator |
 | **3. 프록시 Resilience (런타임 안전망)** | Layer 1,2 실패 시에도 동작 보장 | PreviewProxy |
 | ↳ 3a. `_next/image` URL 리라이트 | 이미지 최적화 API의 basePath 미적용 버그 대응 | url 파라미터 rewrite |
-| ↳ 3b. Referer/Cookie fallback | raw img 등 basePath 미적용 리소스 복구 | Express 앱 레벨 |
-| ↳ 3c. Retry-on-404 | Redis 동기화 타이밍 이슈 대응 | fallback 내 retry |
+| ↳ 3b. WebSocket 생성자 패치 | basePath 내 콜론이 URL scheme으로 오인식 → HMR 크래시 방지 | HTML `<head>` 스크립트 주입 |
+| ↳ 3c. Referer/Cookie fallback | raw img 등 basePath 미적용 리소스 복구 | Express 앱 레벨 |
+| ↳ 3d. Retry-on-404 | Redis 동기화 타이밍 이슈 대응 | fallback 내 retry |
 | **4. 별도 호스트** | 모든 fallback이 작동하려면 요청 도달 보장 필요 | ALB 호스트 라우팅 |
 
 ---
@@ -315,7 +316,30 @@ React hydration이 서버 사이드에서 재작성한 경로를 원래대로 �
 
 **근본 해결**: `images: { unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH }`를 next.config.js에 설정하면 `_next/image` API 자체를 사용하지 않습니다. Layer 1(코드 생성)과 Layer 2(Validator 제안)에서 이 설정을 유도하며, 프록시 리라이트는 Layer 3 안전망입니다.
 
-### 4.6 Fallback: Referer + Cookie 기반 복구
+### 4.6 SSR 모드: WebSocket 생성자 패치 (HMR 크래시 방지)
+
+**문제**: Next.js `normalizedAssetPrefix`는 basePath에서 leading `/`를 제거합니다:
+
+```
+"/to.nexus:probe:ant-ogf:skeleton"
+  → strip leading slash
+  → "to.nexus:probe:ant-ogf:skeleton"
+  → URL.canParse() = true (to.nexus가 유효한 URL scheme 패턴 [a-z][a-z0-9+\-.]* 에 매칭)
+  → WebSocket URL: "to.nexus:probe:ant-ogf:skeleton/_next/webpack-hmr"
+  → new WebSocket() → SyntaxError: scheme 'to.nexus' is not allowed
+```
+
+이 에러는 React useEffect 내에서 uncaught로 발생하여 전체 앱을 크래시시킵니다 ("Application error: a client-side exception has occurred").
+
+**해결**: nativeBasePath 프로젝트의 HTML 응답에 **WebSocket 생성자 패치 스크립트**만 주입합니다:
+- `new WebSocket(invalidUrl)` 에서 SyntaxError가 발생하면 catch
+- `wss://currentHost/` + 원래 URL로 재구성하여 재시도
+- 경로 재작성은 하지 않음 (Hydration Mismatch 회피)
+- 이 스크립트는 Next.js 내부 HMR 클라이언트의 WebSocket URL 구성 버그에 대한 방어
+
+**이 문제의 본질**: serverKey에 포함된 콜론(`:`)이 URL scheme 구분자와 충돌. `to.nexus:probe:...`에서 `to.nexus`가 유효한 URL scheme으로 오인식됩니다. 콜론 없는 serverKey (예: `acme-alice-todo-feature`)를 사용하면 이 문제는 발생하지 않습니다.
+
+### 4.7 Fallback: Referer + Cookie 기반 복구
 
 일부 리소스는 serverKey prefix 없이 요청됩니다:
 
