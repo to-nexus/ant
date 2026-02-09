@@ -123,13 +123,9 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        {/* Pinned Query - Show when a user message is above the viewport */}
-        {pinnedQuery && (
-          <div className="shrink-0">
-            <PinnedQuery query={pinnedQuery} />
-          </div>
-        )}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
+        {/* Pinned Query - Absolute overlay to avoid layout feedback loop with Virtuoso */}
+        <PinnedQuery query={pinnedQuery} />
 
         {/* Empty State Message - Not Ready */}
         {messages.length === 0 && chatPolicy.emptyStateMessage && (

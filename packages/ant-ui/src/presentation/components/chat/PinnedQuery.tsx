@@ -5,34 +5,30 @@
  * Features:
  * - Fixed height by default (truncated with line-clamp)
  * - Expands on hover to show full content
+ * - Uses absolute positioning to avoid layout feedback loops with Virtuoso
+ * - Always mounted, visibility controlled via CSS (no mount/unmount flicker)
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 interface PinnedQueryProps {
-  query: string;
+  query: string | null;
 }
 
 export function PinnedQuery({ query }: PinnedQueryProps) {
-  const [isVisible, setIsVisible] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  useEffect(() => {
-    // Small delay for smooth appearance
-    setIsVisible(true);
-  }, [query]);
-
-  if (!query) return null;
+  const isActive = !!query;
 
   return (
     <div 
       className={`
-        sticky top-0 z-10 
+        absolute top-0 left-0 right-0 z-10 
         bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm
         border-b border-gray-200 dark:border-gray-700
         px-8 py-3
-        transition-all duration-200
-        ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}
+        transition-[opacity,transform] duration-200
+        ${isActive ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-2 pointer-events-none'}
         ${isHovered ? 'shadow-lg' : ''}
       `}
       onMouseEnter={() => setIsHovered(true)}
