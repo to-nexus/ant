@@ -380,7 +380,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       // Fix: patch WebSocket constructor to prepend wss://host when the URL has no valid scheme.
       if (nativeBasePath && contentType.includes('text/html')) {
         const text = await response.text();
-        const wsFixScript = `<script>(function(){var O=window.WebSocket;window.WebSocket=function(u,p){try{return p!==void 0?new O(u,p):new O(u)}catch(e){if(e instanceof SyntaxError&&typeof u==='string'&&!/^wss?:\\/\\//.test(u)){var f=(location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/'+u;return p!==void 0?new O(f,p):new O(f)}throw e}};window.WebSocket.prototype=O.prototype;window.WebSocket.CONNECTING=O.CONNECTING;window.WebSocket.OPEN=O.OPEN;window.WebSocket.CLOSING=O.CLOSING;window.WebSocket.CLOSED=O.CLOSED})()</script>`;
+        const wsFixScript = `<script>(function(){var O=window.WebSocket;window.WebSocket=function(u,p){try{return p!==void 0?new O(u,p):new O(u)}catch(e){if(e.name==='SyntaxError'&&typeof u==='string'&&!/^wss?:\\/\\//.test(u)){var f=(location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/'+u;return p!==void 0?new O(f,p):new O(f)}throw e}};window.WebSocket.prototype=O.prototype;window.WebSocket.CONNECTING=O.CONNECTING;window.WebSocket.OPEN=O.OPEN;window.WebSocket.CLOSING=O.CLOSING;window.WebSocket.CLOSED=O.CLOSED})()</script>`;
         const headMatch = text.match(/<head[^>]*>/i);
         let patched = text;
         if (headMatch) {
