@@ -38,15 +38,6 @@ export interface PreviewProxyConfig {
     feature: string;
     serverKey: string;
   }) => number | undefined | null | Promise<number | undefined | null>;
-  /**
-   * Optional check if a preview uses native basePath (e.g. Next.js with basePath in next.config).
-   * When true, the proxy will:
-   * - NOT strip /{serverKey} prefix from request paths (dev server expects it as basePath)
-   * - NOT inject client-side path rewrite script (framework already prefixes all URLs)
-   * - NOT rewrite HTML/JS/CSS absolute paths (no post-render patching needed)
-   * This eliminates SSR hydration mismatches caused by proxy-level URL rewriting.
-   */
-  isNativeBasePath?: (serverKey: string) => boolean | Promise<boolean>;
 }
 
 /**
@@ -82,7 +73,7 @@ function extractServerKeyFromReferer(refererStr: string): string | null {
  * Create preview proxy middleware
  */
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
-  const { portRegistry, pathPrefix = '', getBackendPort, isNativeBasePath } = config;
+  const { portRegistry, pathPrefix = '', getBackendPort } = config;
   
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
     // ✅ Skip reserved API/system routes — handled by Express route handlers
@@ -120,8 +111,17 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
                 const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
                 if (mapping) {
                   const host = mapping.host || 'localhost';
-                  const targetUrl = `http://${host}:${mapping.port}${req.url}`;
-                  logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (from referer)`, { component: 'PreviewProxy' });
+                  
+                  // For native basePath projects (e.g. Next.js), the dev server only serves
+                  // assets under /{basePath}/... so we must prepend the serverKey.
+                  // This handles raw HTML tags (<img>, <link>) that don't get basePath from Next.js.
+                  let resolvedUrl = req.url;
+                  if (mapping.nativeBasePath) {
+                    resolvedUrl = `/${serverKey}${req.url}`;
+                  }
+                  
+                  const targetUrl = `http://${host}:${mapping.port}${resolvedUrl}`;
+                  logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (from referer${mapping.nativeBasePath ? ', native basePath' : ''})`, { component: 'PreviewProxy' });
                   
                   const response = await fetch(targetUrl, {
                     method: req.method,
@@ -179,6 +179,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     // Lookup entry (frontend) port and host from registry
     let port: number;
     let previewHost: string;
+    let nativeBasePath = false;
     try {
       const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
       
@@ -193,7 +194,11 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
       port = mapping.port;
       previewHost = mapping.host || 'localhost';
-      logger.warn(`[Preview] Found: ${serverKey} -> ${previewHost}:${port}`, { component: 'PreviewProxy' });
+      // Read nativeBasePath from Redis state (set by PreviewService during startup).
+      // Multi-pod consistent — any pod's proxy can read this flag.
+      // When true, the dev server expects the full /{serverKey}/ prefix as its basePath.
+      nativeBasePath = mapping.nativeBasePath === true;
+      logger.warn(`[Preview] Found: ${serverKey} -> ${previewHost}:${port}${nativeBasePath ? ' (native basePath)' : ''}`, { component: 'PreviewProxy' });
       
       // Update last access time
       await portRegistry.touchPreview(tenantId, userId, projectId, feature);
@@ -205,18 +210,6 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         message: error instanceof Error ? error.message : 'Unknown error'
       });
       return;
-    }
-    
-    // ✅ Check if this preview uses native basePath (e.g. Next.js with basePath config)
-    // When true, the dev server expects the full path including /{serverKey}/ prefix
-    // and generates all URLs with it — no proxy-level rewriting needed.
-    let nativeBasePath = false;
-    if (typeof isNativeBasePath === 'function') {
-      try {
-        nativeBasePath = await isNativeBasePath(serverKey) === true;
-      } catch {
-        // best-effort, default to false (standard rewriting)
-      }
     }
     
     // ✅ Strip /:serverKey from path for dev server (handle accidental double-prefix)

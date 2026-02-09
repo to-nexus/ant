@@ -41,15 +41,10 @@ const PREVIEW_LOCK_PREFIX = 'ant:lock:preview:';
  * - Process management: Tracks and manages all running processes
  */
 export class PreviewService {
-  // State maps
-  private previewServers: Map<string, ChildProcess[]> = new Map();
-  private previewServerPorts: Map<string, number> = new Map();
-  private previewServerReady: Map<string, boolean> = new Map();
+  // State maps (only non-serializable / pod-local data)
+  private previewServers: Map<string, ChildProcess[]> = new Map();  // Process handles (cannot serialize)
   private installingProjects: Set<string> = new Set();
-  private previewServerPackagePorts: Map<string, Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>> = new Map();
-  private previewServerIssues: Map<string, PreviewIssue[]> = new Map();
   private previewServerPaths: Map<string, string> = new Map(); // serverKey -> localPath (for infrastructure cleanup)
-  private previewServerNativeBasePath: Map<string, boolean> = new Map(); // serverKey -> true if framework uses native basePath (e.g. Next.js)
   
   // Start/Stop state management
   private startingServers: Set<string> = new Set(); // serverKeys currently in startPreview
@@ -146,16 +141,36 @@ export class PreviewService {
     }
     
     // 2. Broadcast via SSE (real-time push to UI)
-    const broadcastPayload = {
-      running: extra?.running ?? (phase === 'installing' || phase === 'starting' || phase === 'running'),
-      ready: extra?.ready ?? (phase === 'running'),
-      phase,
-      error: extra?.error,
-      port: this.previewServerPorts.get(serverKey),
-      url: this.previewServerPorts.get(serverKey) ? `/${serverKey}` : undefined,
-      packages: this.previewServerPackagePorts.get(serverKey) || [],
-      issues: this.previewServerIssues.get(serverKey) || [],
-    };
+    // Read full state from Redis for the broadcast payload (single source of truth)
+    let broadcastPayload: any;
+    if (this.portRegistry) {
+      try {
+        const state = await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+        if (state) {
+          broadcastPayload = {
+            running: state.running,
+            ready: state.ready,
+            phase: state.phase,
+            error: state.error,
+            port: state.port || undefined,
+            url: state.port ? `/${serverKey}` : undefined,
+            packages: state.packages || [],
+            issues: state.issues || [],
+          };
+        }
+      } catch {
+        // Fall through to computed payload
+      }
+    }
+    // Fallback: broadcast what we know from the update parameters
+    if (!broadcastPayload) {
+      broadcastPayload = {
+        running: extra?.running ?? (phase === 'installing' || phase === 'starting' || phase === 'running'),
+        ready: extra?.ready ?? (phase === 'running'),
+        phase,
+        error: extra?.error,
+      };
+    }
     this.broadcastStatus(serverKey, broadcastPayload);
   }
   
@@ -333,7 +348,11 @@ export class PreviewService {
         if (this.stateStore && lockAcquired) {
           await this.stateStore.releaseLock(lockKey).catch(() => {});
         }
-        const existingPort = this.previewServerPorts.get(serverKey);
+        // Read port from Redis (source of truth)
+        let existingPort: number | undefined;
+        if (this.portRegistry) {
+          existingPort = (await this.portRegistry.getPreviewPort(tenantId, userId, projectId, feature)) ?? undefined;
+        }
         return { 
           success: false, 
           error: 'Preview server already running', 
@@ -457,11 +476,10 @@ export class PreviewService {
         processes.push(childProcess);
       }
 
-      // Persist package ports for UI
+      // Build package ports for Redis registration
       const packagePorts = orderedPackages
         .filter(p => typeof p.port === 'number')
         .map(p => ({ name: p.name, type: p.type, port: p.port as number }));
-      this.previewServerPackagePorts.set(serverKey, packagePorts);
       
       // 4. Update Redis with full port/package info + phase: 'starting'
       if (structure.entry && this.portRegistry) {
@@ -489,9 +507,8 @@ export class PreviewService {
       }
       await this.updatePhase(serverKey, 'starting', { running: true });
       
-      // 5. Store processes and entry port
+      // 5. Store processes (port is already in Redis via registerPreview)
       this.previewServers.set(serverKey, processes);
-      this.previewServerPorts.set(serverKey, structure.entry?.port || structure.packages[0].port!);
       this.startingServers.delete(serverKey);
       
       // Check if stopPreview was called while we were starting
@@ -518,9 +535,18 @@ export class PreviewService {
         }
         
         // Track if this project uses native basePath (Next.js with basePath configured).
-        // The proxy uses this to skip HTML rewriting and prefix stripping.
+        // Stored in Redis so any pod's proxy can read it for correct routing.
         if (validation.framework === 'next') {
-          this.previewServerNativeBasePath.set(serverKey, true);
+          try {
+            const parsed = parseServerKey(serverKey);
+            if (parsed && this.portRegistry) {
+              await this.portRegistry.updatePreview(parsed.tenantId, parsed.userId, parsed.projectId, parsed.feature, {
+                nativeBasePath: true
+              });
+            }
+          } catch {
+            // best-effort; proxy will fall back to standard rewriting
+          }
           logger.info(`[Preview] Next.js with native basePath detected for ${serverKey}`, { component: 'PreviewService' });
         }
       }
@@ -535,12 +561,17 @@ export class PreviewService {
         if (apiIssue) issues.push(apiIssue);
       }
       
+      // Write issues to Redis and broadcast
+      if (this.portRegistry) {
+        try {
+          await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, {
+            issues: issues as any
+          });
+        } catch { /* best-effort */ }
+      }
       if (issues.length > 0) {
-        this.previewServerIssues.set(serverKey, issues);
         const updatedStatus = await this.getPreviewStatus(tenantId, userId, projectId, feature);
         this.broadcastStatus(serverKey, updatedStatus);
-      } else {
-        this.previewServerIssues.delete(serverKey);
       }
       
       // 8. Health check (async)
@@ -553,7 +584,6 @@ export class PreviewService {
         }
         
         if (ready) {
-          this.previewServerReady.set(serverKey, true);
           await this.updatePhase(serverKey, 'running', { running: true, ready: true });
         } else {
           // Health check failed — dev server is not responding. Clean up everything.
@@ -632,21 +662,11 @@ export class PreviewService {
       this.processSpawner.kill(process);
     }
     
-    // Clean up
+    // Clean up local state (process handles, paths, logs)
     this.previewServers.delete(serverKey);
-    this.previewServerPorts.delete(serverKey);
-    this.previewServerReady.delete(serverKey);
+    this.previewServerPaths.delete(serverKey);
     this.logManager.clearLogs(serverKey);
-    this.previewServerPackagePorts.delete(serverKey);
-    this.previewServerIssues.delete(serverKey);
-    this.previewServerNativeBasePath.delete(serverKey);
     
-    // Update Redis state to error (don't unregister — let UI see the error reason)
-    await this.updatePhase(serverKey, 'error', {
-      running: false, ready: false,
-      error: validation.reason || 'Preview server setup validation failed'
-    });
-
     // Build issues stack
     const issues: PreviewIssue[] = [];
     issues.push(this.issueDetector.createFatalIssue(
@@ -663,7 +683,21 @@ export class PreviewService {
       // Best-effort only
     }
     
-    this.previewServerIssues.set(serverKey, issues);
+    // Write issues to Redis, then update phase to error
+    if (this.portRegistry) {
+      try {
+        await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, {
+          issues: issues as any
+        });
+      } catch { /* best-effort */ }
+    }
+    
+    // Update Redis state to error (don't unregister — let UI see the error reason)
+    await this.updatePhase(serverKey, 'error', {
+      running: false, ready: false,
+      error: validation.reason || 'Preview server setup validation failed'
+    });
+    
     const combinedSuggestedFix = this.issueDetector.combineIssueFixes(issues);
     
     return {
@@ -756,20 +790,20 @@ export class PreviewService {
     logger.warn(`[Preview] All processes exited for ${serverKey}, cleaning up`, { component: 'PreviewService' });
     
     try {
-      // Release port
-      const port = this.previewServerPorts.get(serverKey);
-      if (port && this.portManager) {
-        this.portManager.release(port);
+      // Release port (read from Redis)
+      const { tenantId: t, userId: u, projectId: p, feature: f } = this.parseServerKey(serverKey);
+      if (this.portRegistry && this.portManager) {
+        try {
+          const state = await this.portRegistry.getPreview(t, u, p, f);
+          if (state?.port) {
+            this.portManager.release(state.port);
+          }
+        } catch { /* best-effort */ }
       }
       
-      // Clear all local state maps (process handles, logs, etc.)
+      // Clear local state (process handles, paths)
       this.previewServers.delete(serverKey);
-      this.previewServerPorts.delete(serverKey);
-      this.previewServerReady.delete(serverKey);
       this.previewServerPaths.delete(serverKey);
-      this.previewServerPackagePorts.delete(serverKey);
-      this.previewServerIssues.delete(serverKey);
-      this.previewServerNativeBasePath.delete(serverKey);
       
       // Update Redis to error + broadcast
       await this.updatePhase(serverKey, 'error', {
@@ -840,26 +874,25 @@ export class PreviewService {
       this.processSpawner.kill(process);
     }
     
-    // Release ports
-    const port = this.previewServerPorts.get(serverKey);
-    if (port && this.portManager) {
-      this.portManager.release(port);
+    // Release port (read from Redis before unregister)
+    if (this.portRegistry && this.portManager) {
+      try {
+        const state = await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+        if (state?.port) {
+          this.portManager.release(state.port);
+        }
+      } catch { /* best-effort */ }
     }
     
-    // Unregister from PortRegistry
+    // Unregister from PortRegistry (Redis)
     if (this.portRegistry) {
       await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature);
     }
     
-    // Cleanup
+    // Cleanup local state (process handles, paths, logs)
     this.previewServers.delete(serverKey);
-    this.previewServerPorts.delete(serverKey);
-    this.previewServerReady.delete(serverKey);
     this.previewServerPaths.delete(serverKey);
     this.logManager.clearLogs(serverKey);
-    this.previewServerPackagePorts.delete(serverKey);
-    this.previewServerIssues.delete(serverKey);
-    this.previewServerNativeBasePath.delete(serverKey);
     
     logger.info(`Stopped all servers for ${serverKey}`, { component: 'PreviewService' });
     
@@ -940,32 +973,21 @@ export class PreviewService {
       }
     }
     
-    // 2. Fallback: local memory only (no Redis or Redis failure)
+    // 2. Fallback: process-handle-only degraded mode (no Redis or Redis failure)
+    //    We can only determine if processes are alive — no port/package/issue data.
     const processes = this.previewServers.get(serverKey);
-    const port = this.previewServerPorts.get(serverKey);
-    const ready = this.previewServerReady.get(serverKey) || false;
-    const packages = this.previewServerPackagePorts.get(serverKey) || [];
-    const backendPort = packages.find(p => p.type === 'backend')?.port;
-    const issues = this.previewServerIssues.get(serverKey) || [];
-    
     const aliveProcesses = processes?.filter(p => !p.killed && p.exitCode === null) || [];
     const running = aliveProcesses.length > 0;
     
     const phase: PreviewPhase = this.installingProjects.has(serverKey) ? 'installing'
-      : running && ready ? 'running'
       : running ? 'starting'
       : 'idle';
     
     return {
       running,
-      ready,
-      port,
-      url: port ? `/${serverKey}` : undefined,
+      ready: false,  // Cannot determine without Redis
+      phase,
       processCount: aliveProcesses.length,
-      backendPort,
-      packages,
-      issues,
-      phase
     };
   }
   
@@ -984,12 +1006,20 @@ export class PreviewService {
   
   /**
    * Check if a preview uses native basePath (e.g. Next.js with basePath config).
+   * Reads from Redis for multi-pod consistency.
    * When true, the proxy should NOT strip the serverKey prefix from request paths
    * and should NOT rewrite HTML or inject client-side scripts — the framework
    * already generates all URLs with the correct prefix.
    */
-  hasNativeBasePath(serverKey: string): boolean {
-    return this.previewServerNativeBasePath.get(serverKey) === true;
+  async hasNativeBasePath(serverKey: string): Promise<boolean> {
+    try {
+      const parsed = parseServerKey(serverKey);
+      if (!parsed || !this.portRegistry) return false;
+      const state = await this.portRegistry.getPreview(parsed.tenantId, parsed.userId, parsed.projectId, parsed.feature);
+      return state?.nativeBasePath === true;
+    } catch {
+      return false;
+    }
   }
   
   /**
