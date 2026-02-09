@@ -90,27 +90,19 @@ When `ui-tokens.json` is provided, configure tokens in the project's styling sys
 
 ### Tailwind CSS
 
-**⚠️ CRITICAL — `content` paths MUST match source directories:**
+**⚠️ Blind Spot — `content` path mismatch:**
 
-Tailwind CSS v3+ JIT scans only the files listed in `content`. If the paths don't match where your source files actually live, **no utility classes will be generated** — only the preflight reset CSS will be output, breaking all layouts.
+**Principle**: `content` paths MUST list every directory where source files with styling classes exist.
 
-**Principle**: Observe the framework's source directory structure, then set `content` to match.
+**Constraint**: Do NOT assume existing `content` paths are correct. Observe the actual source directory structure and verify `content` matches.
 
-| Framework | Typical source directories |
-|-----------|---------------------------|
-| CSR (Vite/CRA) | `./src/**/*`, `./index.html` |
-| SSR (Next.js App Router) | `./app/**/*`, `./components/**/*` |
-| SSR (Next.js Pages Router) | `./pages/**/*`, `./components/**/*` |
-| SSR (Nuxt) | `./pages/**/*`, `./components/**/*`, `./layouts/**/*` |
-
-**Constraint**: Do NOT reuse content paths from a different framework. If migrating from one framework to another, the content paths MUST be updated to reflect the new directory structure.
+**Constraint**: If source files are in a directory not listed in `content`, zero utility classes will be generated for those files. The CSS file still loads normally — it just contains only the base reset, making this failure invisible in network/console.
 
 ```javascript
 // tailwind.config.js
 module.exports = {
   content: [
-    // ⚠️ REQUIRED — list ALL directories containing source files with Tailwind classes
-    // Paths MUST match the actual framework directory structure
+    // ⚠️ REQUIRED — MUST match actual source directories
   ],
   theme: {
     extend: {
