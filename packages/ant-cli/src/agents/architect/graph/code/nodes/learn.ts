@@ -291,10 +291,13 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       'code'  // ✅ Specify job type
     );
     
-    // ✨ Mark job as completed
+    // ✨ Mark job as completed — ONLY set completedAt on the LAST task.
+    // Setting it after every task contaminates the session, causing SSE reconnects
+    // to serve stale completedAt → frontend isRunning=false → badge freezes.
+    const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
     const completedJobTiming = (state as any).jobTiming ? {
       ...(state as any).jobTiming,
-      completedAt: new Date().toISOString()
+      ...(isLastTask && { completedAt: new Date().toISOString() })
     } : undefined;
     
     // ✅ Build directives array from state.directive (split by separator)
