@@ -174,7 +174,7 @@ function App() {
   useEffect(() => {
     if (mainView === 'codeIde' && !ideWorkspacePath && selectedProject) {
       // ✅ Cloud IDE containers mount the project at /{projectId} (project-mode fixed).
-      // Avoid legacy /workspace/... mapping which causes "Workspace does not exist" after refresh.
+      // Avoid /workspace/... mapping which causes "Workspace does not exist" after refresh.
       setIdeWorkspacePath(`/${selectedProject}`);
     }
   // ✅ Remove ideWorkspacePath from dependencies to prevent double render
@@ -224,7 +224,7 @@ function App() {
       selectedAgent,
       isRunning,
       kanbanDataSource: kanbanData?.dataSource,
-      workflowNode: workflowData?.currentNode,
+      workflowActiveNodes: workflowData?.activeNodes?.length ?? 0,
       projectConfigData: !!projectConfigData,
       isLoadingProjectConfig,
       isExplorerCollapsed,

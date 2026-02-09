@@ -2,7 +2,6 @@
  * Realtime Broadcasting Module
  * 
  * Direct Redis Pub/Sub implementations for Job Worker child processes.
- * Replaces HTTP-based clients (KanbanHttpClient, WorkflowHttpClient, FileTreeHttpClient).
  * 
  * Usage in orchestrator.ts:
  * ```

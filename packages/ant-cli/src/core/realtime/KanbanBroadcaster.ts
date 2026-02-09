@@ -2,7 +2,6 @@
  * KanbanBroadcaster
  * 
  * Direct Redis Pub/Sub implementation for Kanban (Task Queue) updates.
- * Replaces HTTP-based KanbanHttpClient for Job Worker child processes.
  * 
  * Architecture:
  * - Implements TaskQueueUpdatePort for compatibility
@@ -93,7 +92,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     // Broadcast immediately so frontend banner updates in real-time
     this.broadcastKanbanUpdate(
       this.jobId,
-      null,  // no current task during estimating
+      [],    // no current tasks during estimating
       [],    // no tasks yet
       [],    // no completed tasks yet
     ).catch(err => {
@@ -107,17 +106,22 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    */
   updateTaskQueue(
     taskId: string,
-    currentTask: BaseTask | null | undefined,
+    currentTask: BaseTask | BaseTask[] | null | undefined,
     queue: BaseTask[],
     completedTasks: BaseTask[],
     recursionCount?: number,
     recursionLimit?: number,
     tokenUsage?: TaskTokenUsage
   ): void {
+    // Normalize to array
+    const currentTasks: BaseTask[] = currentTask
+      ? (Array.isArray(currentTask) ? currentTask : [currentTask])
+      : [];
+
     // Fire-and-forget with error logging
     this.broadcastKanbanUpdate(
       taskId, 
-      currentTask, 
+      currentTasks, 
       queue, 
       completedTasks, 
       recursionCount, 
@@ -133,7 +137,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    */
   private async broadcastKanbanUpdate(
     taskId: string,
-    currentTask: BaseTask | null | undefined,
+    currentTasks: BaseTask[],
     queue: BaseTask[],
     completedTasks: BaseTask[],
     recursionCount?: number,
@@ -141,7 +145,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     tokenUsage?: TaskTokenUsage
   ): Promise<void> {
     // Auto-clear estimating activity when task work begins
-    const hasTasks = !!currentTask || queue.length > 0;
+    const hasTasks = currentTasks.length > 0 || queue.length > 0;
     if (hasTasks) {
       this.estimatingLabel = undefined;
       this.estimatingStartedAt = undefined;
@@ -150,7 +154,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
 
     // 1. Build snapshot for Redis state storage
     const snapshot: TaskQueueSnapshot = {
-      currentTask: currentTask || null,
+      currentTask: currentTasks[0] || null,
+      currentTasks: currentTasks.length > 0 ? currentTasks : undefined,  // Store ALL running tasks for parallel execution
       queue,
       completedTasks,
       recursionCount: recursionCount ?? 0,
@@ -169,12 +174,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     await this.redis.set(key, JSON.stringify(snapshot), 'EX', TASK_QUEUE_TTL);
 
     // 3. Build KanbanData for broadcast (matches frontend KanbanData interface)
-    const isEstimating = queue.length === 0 && !currentTask && completedTasks.length === 0;
+    const isEstimating = queue.length === 0 && currentTasks.length === 0 && completedTasks.length === 0;
     
     const kanbanData: KanbanData = {
       jobId: this.jobId,
       todo: queue,
-      inProgress: currentTask || null,
+      inProgress: currentTasks,
       completed: completedTasks.map(task => ({
         ...task,
         completed: true,
@@ -213,7 +218,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     const channel = getRealtimeBroadcastChannel(this.userContext.organizationId, this.userContext.userId);
     await this.pubRedis.publish(channel, JSON.stringify(message));
     
-    console.log(`[KanbanBroadcaster] ✅ Broadcast sent to ${channel} (task: ${taskId}, current: ${currentTask?.name || 'none'}, queue: ${queue.length}, completed: ${completedTasks.length})`);
+    const currentNames = currentTasks.map(t => t.name).join(', ') || 'none';
+    console.log(`[KanbanBroadcaster] ✅ Broadcast sent to ${channel} (task: ${taskId}, current: [${currentNames}], queue: ${queue.length}, completed: ${completedTasks.length})`);
   }
 
   /**

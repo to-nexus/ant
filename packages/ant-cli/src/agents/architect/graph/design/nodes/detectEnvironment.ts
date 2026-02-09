@@ -214,7 +214,7 @@ export async function detectEnvironment(
 
   // Workflow UI
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, "detectEnvironment");
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, "detectEnvironment", 0);
   }
 
   try {
@@ -474,7 +474,7 @@ export async function detectEnvironment(
     };
   } finally {
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, "detectEnvironment");
+      state.deps.workflowUpdate.exitNode(state._httpJobId, "detectEnvironment", 0);
     }
   }
 }

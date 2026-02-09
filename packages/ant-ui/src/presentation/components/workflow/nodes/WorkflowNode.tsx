@@ -8,7 +8,7 @@
 import { memo, useEffect } from 'react';
 import { Handle, Position } from 'reactflow';
 import { Settings } from 'lucide-react';
-import { NodeType, NodeImportance } from '@/domain/models/workflow';
+import { NodeType, NodeImportance, ActiveWorkerNode } from '@/domain/models/workflow';
 import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
 import { getActorInfoList } from '@/shared/utils/actor-utils';
@@ -18,6 +18,7 @@ interface NodeData {
   description?: string;
   importance: NodeImportance;
   isActive?: boolean;
+  workers?: ActiveWorkerNode[];  // Workers currently active on this node
   nodeType: NodeType;
   actors?: string[];  // Actor IDs
   isExpanded?: boolean;  // 확장 상태
@@ -203,6 +204,18 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
           </div>
         )}
       </div>
+      
+      {/* Task label badges for parallel workers — column layout for readability */}
+      {data.isActive && data.workers && data.workers.length > 0 && (
+        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 translate-y-full flex flex-col items-center gap-0.5">
+          {data.workers.map((w) => (
+            <span key={w.workerId}
+              className="text-[10px] bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-1.5 py-0.5 rounded-full whitespace-nowrap shadow-sm">
+              {w.taskName}
+            </span>
+          ))}
+        </div>
+      )}
       
       <Handle 
         type="source" 

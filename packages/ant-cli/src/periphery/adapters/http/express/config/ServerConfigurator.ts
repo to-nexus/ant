@@ -192,8 +192,6 @@ export class ServerConfigurator {
       '/api/auth/signout',
       '/api/auth/google',
       '/api/auth/google/callback',
-      '/api/internal/task-queue',
-      '/api/internal/file-tree-update',
       '/api/figma/oauth/authorize',
       '/api/figma/oauth/callback',
     ];
@@ -201,8 +199,6 @@ export class ServerConfigurator {
     const internalEndpoints = [
       '/api/jobs/queue/next',
       '/api/jobs/queue/complete',
-      '/api/internal/task-queue',
-      '/api/internal/file-tree-update',
     ];
     
     const isGraphMetadata = path.includes('/graph-metadata');

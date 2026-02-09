@@ -167,6 +167,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'learn', 
+      (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -230,10 +231,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const filesWritten = files.length;
   
   // 3. Save turn to session file first (to get sessionId and turnId)
+  // Skip turn recording in worker context (only main orchestrator should record)
+  const _workerId = (state as any).workerId;
+  const isWorkerContext = _workerId !== undefined && _workerId !== null;
+  
   let sessionId: string | undefined;
   let turnId: number | undefined;
   
-  if (state.deps?.session) {
+  if (state.deps?.session && !isWorkerContext) {
     // Load session to get sessionId
     const session = await state.deps.session.load(
       state.context.project,
@@ -468,12 +473,15 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn');
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn', (state as any).workerId ?? 0);
   }
   
   // ✅ CRITICAL: Update Kanban when transitioning to learn (all tasks completed)
   // This clears the live snapshot and ensures UI shows completed state
-  if (state.deps?.kanbanUpdate && state._httpJobId) {
+  // Skip in worker context — orchestrator handles kanban for parallel mode
+  const _learnWorkerId = (state as any).workerId;
+  const _isLearnWorkerContext = _learnWorkerId !== undefined && _learnWorkerId !== null;
+  if (!_isLearnWorkerContext && state.deps?.kanbanUpdate && state._httpJobId) {
     console.log(`\n📋 [Learn] Updating Kanban → All tasks completed`);
     console.log(`   Completed: ${state.completedTasksDetails?.length || 0} tasks`);
     console.log(`   Queue: 0 (all done)\n`);

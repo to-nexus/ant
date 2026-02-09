@@ -27,11 +27,15 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'learn', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'learn', (state as any).workerId ?? 0, taskInfo);
   }
   
   // ✅ Update Kanban to show all tasks completed
-  if (state._httpJobId && state.deps?.kanbanUpdate) {
+  // Skip in worker context — orchestrator handles kanban for parallel mode
+  // (worker's learn would overwrite multi-task kanban with only this worker's completed tasks)
+  const _workerId = (state as any).workerId;
+  const _isWorkerContext = _workerId !== undefined && _workerId !== null;
+  if (!_isWorkerContext && state._httpJobId && state.deps?.kanbanUpdate) {
     const completedTasksDetails = state.completedTasksDetails || [];
     
     console.log(`\n🔥 [Learn] Final Kanban update`);
@@ -158,7 +162,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ End workflow visualization
-  if (state.deps?.workflowUpdate && state._httpJobId) {
+  // CRITICAL: Skip in worker context! Each worker runs learn after its task.
+  // If worker calls endJob, it prematurely terminates workflow visualization
+  // while other workers are still running. Only the MAIN graph's learn should end the job.
+  if (!_isWorkerContext && state.deps?.workflowUpdate && state._httpJobId) {
     state.deps.workflowUpdate.endJob(state._httpJobId);
     console.log(`\n🏁 Job ended: ${state._httpJobId}\n`);
   }
@@ -174,6 +181,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
  */
 async function saveSessionTurn(state: DesignGraphState): Promise<void> {
   if (!state.deps?.session) return;
+  
+  // Skip turn recording in worker context (only main orchestrator should record)
+  const workerId = (state as any).workerId;
+  if (workerId !== undefined && workerId !== null) return;
   
   const decisions = extractDesignDecisions(state).split('\n').filter(d => d.trim());
   

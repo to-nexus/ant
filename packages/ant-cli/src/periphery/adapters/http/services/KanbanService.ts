@@ -167,7 +167,7 @@ export class KanbanService {
     jobType: 'design' | 'code' | 'learn',
     jobToProject?: Map<string, { projectId: string; featureName: string }>,
     jobs?: Map<string, any>,
-    taskQueueSnapshots?: Map<string, any>,  // Legacy param, ignored
+    taskQueueSnapshots?: Map<string, any>,
     userContext?: UserContext
   ): Promise<any> {
     const debug = process.env.DEBUG_KANBAN === '1';
@@ -251,7 +251,7 @@ export class KanbanService {
       isActuallyRunning = !!jobStatus && jobStatus.status === 'running';
       dlog(`   Job status from Redis: ${jobStatus?.status || 'not found'}, isActuallyRunning: ${isActuallyRunning}`);
     } else {
-      // Fallback to local jobs Map (for backward compatibility in local mode)
+      // Fallback to local jobs Map (local mode)
       const runningStatus = sessionJobId ? (jobs as any)?.get?.(sessionJobId) : undefined;
       isActuallyRunning = !!runningStatus && runningStatus.status === 'running';
     }
@@ -275,10 +275,12 @@ export class KanbanService {
     if (sessionJobId && !isJobCompleted && isActuallyRunning && liveSnapshot) {
       const liveQueue = liveSnapshot.queue || [];
       const liveCurrentTask = liveSnapshot.currentTask || null;
+      // Use currentTasks array when available (parallel execution), fall back to single currentTask
+      const liveCurrentTasks = liveSnapshot.currentTasks || (liveCurrentTask ? [liveCurrentTask] : []);
       const liveCompletedTasks = liveSnapshot.completedTasks || [];
       
       // SPECIAL CASE: Empty snapshot with NO completed tasks = "estimating started"
-      const isEstimating = liveQueue.length === 0 && !liveCurrentTask && liveCompletedTasks.length === 0;
+      const isEstimating = liveQueue.length === 0 && liveCurrentTasks.length === 0 && liveCompletedTasks.length === 0;
       
       if (isEstimating) {
         dlog(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot)`);
@@ -292,7 +294,7 @@ export class KanbanService {
         return {
           jobId: sessionJobId,
           todo: sessionTaskQueue,
-          inProgress: null,
+          inProgress: [],
           completed: completedTasksDetails.map((detail: any) => ({
             ...detail,
             status: 'completed',
@@ -324,7 +326,7 @@ export class KanbanService {
       return {
         jobId: sessionJobId,
         todo: liveQueue,
-        inProgress: liveCurrentTask,
+        inProgress: liveCurrentTasks,
         completed: liveCompletedTasks.map((detail: any) => ({
           ...detail,
           status: 'completed',
@@ -356,7 +358,7 @@ export class KanbanService {
       return {
         jobId: sessionJobId,
         todo: sessionTaskQueue,
-        inProgress: null,
+        inProgress: [],
         completed: completedTasksDetails.map((detail: any) => ({
           ...detail,
           status: 'completed',
@@ -388,7 +390,7 @@ export class KanbanService {
         !completedTaskIds.includes(task.id) && 
         (!currentTask || currentTask.id !== task.id)
       ),
-      inProgress: currentTask,
+      inProgress: currentTask ? [currentTask] : [],
       completed: completedTasksDetails.map((detail: any) => ({
         ...detail,
         status: 'completed',

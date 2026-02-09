@@ -120,14 +120,21 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     [baseNodes, expandedNodeId]
   );
   
+  // ✅ Tracking target: most recently entered active node (by enteredAt)
+  const trackingTarget = React.useMemo(() => {
+    if (!workflowState?.activeNodes?.length) return null;
+    return workflowState.activeNodes.reduce((latest, node) =>
+      node.enteredAt > latest.enteredAt ? node : latest
+    );
+  }, [workflowState?.activeNodes]);
+
   // ✅ 페이지 로드/새로고침 시: Job 실행 중이면 활성 노드로 포커스, 아니면 fit to screen
   React.useEffect(() => {
     if (!reactFlowInstance || nodes.length === 0) return;
     
     // Job이 실행 중이고 활성 노드가 있으면 포커스
-    if (isRunning && workflowState?.currentNode) {
-      const currentNodeId = workflowState.currentNode;
-      const node = reactFlowInstance.getNode(currentNodeId);
+    if (isRunning && trackingTarget) {
+      const node = reactFlowInstance.getNode(trackingTarget.nodeId);
       
       if (node) {
         const nodeWidth = node.width || 150;
@@ -147,31 +154,26 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     setTimeout(() => {
       reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
     }, 50);
-  }, [reactFlowInstance, nodes.length, splitLayout, isRunning, workflowState?.currentNode]);  // ✅ 의존성 추가
+  }, [reactFlowInstance, nodes.length, splitLayout, isRunning, trackingTarget?.nodeId]);
   
   // ✅ 활성 노드로 자동 포커스 + 줌인
   React.useEffect(() => {
-    if (!reactFlowInstance || !workflowState?.currentNode) return;
+    if (!reactFlowInstance || !trackingTarget) return;
     
-    const currentNodeId = workflowState.currentNode;
-    const node = reactFlowInstance.getNode(currentNodeId);
+    const node = reactFlowInstance.getNode(trackingTarget.nodeId);
     
-    if (!node) {
-      return;
-    }
+    if (!node) return;
     
-    // 노드 중심으로 이동 + 적절한 줌 레벨
     const nodeWidth = node.width || 150;
     const nodeHeight = node.height || 60;
     const centerX = node.position.x + nodeWidth / 2;
     const centerY = node.position.y + nodeHeight / 2;
     
-    // 부드러운 애니메이션으로 이동 + 줌인 (1.3배)
     reactFlowInstance.setCenter(centerX, centerY, {
       zoom: 1.3,
-      duration: 800  // 800ms 애니메이션
+      duration: 800
     });
-  }, [reactFlowInstance, workflowState?.currentNode]);
+  }, [reactFlowInstance, trackingTarget?.nodeId, trackingTarget?.workerId]);
   
   // ReactFlow 이벤트 핸들러
   const onNodesChange = useCallback(() => {
@@ -199,9 +201,8 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     }
     
     // Job이 실행 중이고 활성 노드가 있으면 해당 노드로 포커스
-    if (isRunning && workflowState?.currentNode) {
-      const currentNodeId = workflowState.currentNode;
-      const node = reactFlowInstance.getNode(currentNodeId);
+    if (isRunning && trackingTarget) {
+      const node = reactFlowInstance.getNode(trackingTarget.nodeId);
       
       if (node) {
         const nodeWidth = node.width || 150;
@@ -214,8 +215,6 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
           duration: 800
         });
         return;
-      } else {
-        console.warn('[WorkflowViz] ⚠️ Active node not found in ReactFlow:', currentNodeId);
       }
     }
     
@@ -233,11 +232,9 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
         duration: 800
       });
     } else {
-      console.warn('[WorkflowViz] ⚠️ First node not found in ReactFlow:', nodes[0]?.id);
-      // Fallback: fitView
       reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
     }
-  }, [reactFlowInstance, isRunning, workflowState?.currentNode, nodes]);
+  }, [reactFlowInstance, isRunning, trackingTarget, nodes]);
   
   // ========================================
   // 조건부 렌더링 (모든 Hooks 호출 후)

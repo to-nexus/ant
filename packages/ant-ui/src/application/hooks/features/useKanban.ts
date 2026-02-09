@@ -29,7 +29,7 @@ export function useKanban(): UseKanbanReturn {
     () => ({
       todoCount: kanbanData.todo?.length ?? 0,
       completedCount: kanbanData.completed?.length ?? 0,
-      hasActiveJob: kanbanData.inProgress !== null,
+      hasActiveJob: kanbanData.inProgress?.length > 0,
     }),
     [kanbanData]
   );

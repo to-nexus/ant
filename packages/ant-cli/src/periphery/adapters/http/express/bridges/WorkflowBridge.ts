@@ -49,7 +49,7 @@ export class WorkflowBridge {
       recursionLimit
     );
     
-    // Update local snapshot for backwards compatibility
+    // Update local snapshot
     this.stateTracker.updateTaskQueue(
       jobId, 
       currentTask, 

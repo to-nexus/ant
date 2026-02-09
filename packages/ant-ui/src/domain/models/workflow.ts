@@ -12,6 +12,7 @@
 export type {
   TaskInfo,
   NodeHistoryEntry,
+  ActiveWorkerNode,
   WorkflowRealtimeState,
 } from '@ant/shared';
 

@@ -17,8 +17,8 @@ import { extractUserContext } from './helpers/userContext';
 export function createJobRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   executeJob: (params: ExecuteJobParams) => Promise<any>;
-  getJobStatus: (jobId: string) => any;  // Legacy, will delegate to StateStore
-  getLogs: (jobId: string) => LogEntry[];  // Legacy, will delegate to StateStore
+  getJobStatus: (jobId: string) => any;
+  getLogs: (jobId: string) => LogEntry[];
   cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
   chatService: import('../services/ChatService').ChatService;
@@ -145,13 +145,6 @@ export function createJobRoutes(deps: {
     }
   });
   
-  // Deprecated: Logs SSE endpoint (replaced by unified SSE)
-  router.get('/jobs/:jobId/stream', (req: Request, res: Response) => {
-    res.status(410).json({ 
-      error: 'This endpoint has been deprecated. Use unified SSE instead.' 
-    });
-  });
-
   // Stop task
   router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;

@@ -44,6 +44,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'revise',
+      0,
       taskInfo,
       llmInfo
     );
@@ -58,7 +59,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     state._phaseTimings = { ...(state._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
     }
     
     return state;
@@ -230,7 +231,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       updatedState._phaseTimings = { ...(updatedState._phaseTimings || {}), revise: Date.now() - phaseStart };
       
       if (state.deps?.workflowUpdate && state._httpJobId) {
-        state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
       }
       
       return updatedState;
@@ -245,7 +246,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     result._phaseTimings = { ...(result._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
     }
     
     return result;
@@ -255,7 +256,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     console.log('   Falling back to CONTINUE (safe default)\n');
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
     }
     
     // ✅ CRITICAL: Still update directive even on error

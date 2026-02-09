@@ -39,7 +39,7 @@ export interface SearchResult {
  */
 export interface CodeContext {
   code: string;                   // Current working tree (formatted)
-  codeHead?: string;              // DEPRECATED: use gitDiff instead
+  codeHead?: string;              // Use gitDiff instead when available
   gitDiff?: import('./GitDiffSummary').GitDiffSummary;  // ✅ NEW: Compact git diff summary
   files: FileWithSource[];        // Files with source tracking
   strategy: 'hybrid';             // Always hybrid now
@@ -58,7 +58,7 @@ export interface CodeContext {
     estimatedTokens: number;
     sourceBreakdown: {            // Source statistics
       vectorSearch: number;
-      keywordSearch: number;      // DEPRECATED: Keyword search no longer used
+      keywordSearch: number;
       gitChanged: number;
       importGraph: number;
     };

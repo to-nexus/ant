@@ -176,7 +176,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       kanban: {
         jobId: undefined,
         todo: [],
-        inProgress: null,
+        inProgress: [],
         completed: [],
         isEstimating: false,
         dataSource: 'session',

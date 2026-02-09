@@ -37,6 +37,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'installDeps', 
+      (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -55,7 +56,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
     
     // ✅ Workflow instrumentation: Exit node (skip path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'installDeps');
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'installDeps', (state as any).workerId ?? 0);
     }
     
     return state;
@@ -298,7 +299,7 @@ Please check:
 
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'installDeps');
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'installDeps', (state as any).workerId ?? 0);
   }
   
   // ✅ Return with violations if any

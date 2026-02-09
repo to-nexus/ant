@@ -436,7 +436,7 @@ export class ArtifactService {
    */
   static readonly DesignDocsResultType = {} as {
     apiContract?: string;
-    // Legacy single docs (backward compatible)
+    // Single docs (non-monorepo)
     feDesign?: string;           // fe-system-design.md
     beDesign?: string;           // be-system-design.md
     unifiedDesign?: string;      // system-design.md
@@ -518,7 +518,7 @@ export class ArtifactService {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 3. Load legacy single docs (backward compatible)
+    // 3. Load single docs (non-monorepo)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const shouldLoadFe = environment === 'frontend' || environment === 'fullstack' || environment === 'unknown';
     const shouldLoadBe = environment === 'backend' || environment === 'fullstack' || environment === 'unknown';

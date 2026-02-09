@@ -865,7 +865,7 @@ export async function fetchKanbanData(projectId: string, featureName: string, jo
     // Return empty kanban on error
     return {
       todo: [],
-      inProgress: null,
+      inProgress: [],
       completed: [],
       isEstimating: false,
       dataSource: 'session',
@@ -1467,7 +1467,7 @@ export async function checkIDEInstalled(ide: 'cursor' | 'vscode'): Promise<Check
 
 export interface CloudIDEInstance {
   url: string;          // proxy url (e.g. /ide/org:user:project) - project-level
-  directUrl?: string;   // ✅ local direct access (e.g. http://localhost:45xxx) - optional for backward compatibility
+  directUrl?: string;   // ✅ local direct access (e.g. http://localhost:45xxx)
   port: number;
   status: string;
   workspacePath?: string;

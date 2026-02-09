@@ -26,7 +26,16 @@ export function useCurrentTask(currentJobId: string | undefined, isRunning: bool
     const handleWorkflowUpdate = (data: any) => {
       // ✅ Filter by jobId to avoid cross-job contamination in multi-project environments.
       if (data?.jobId && data.jobId !== currentJobId) return;
-      if (data.currentTask) setCurrentTask(data.currentTask);
+      // Extract current task from activeNodes (first active worker)
+      const activeNodes = data?.activeNodes;
+      if (activeNodes && activeNodes.length > 0) {
+        const firstNode = activeNodes[0];
+        setCurrentTask({
+          name: firstNode.taskName,
+          id: firstNode.taskId,
+          nodeId: firstNode.nodeId,
+        });
+      }
     };
 
     // Dynamic import to avoid SSR issues

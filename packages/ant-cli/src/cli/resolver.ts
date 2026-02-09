@@ -26,17 +26,15 @@ export function detectProject(inputPath: string): string {
     }
   }
   
-  // ⚠️ DEPRECATED: workspace/<project> (singular - old structure)
+  // Fallback: workspace/<project> (singular)
   const workspaceIdx = parts.indexOf("workspace");
   if (workspaceIdx >= 0 && workspaceIdx + 1 < parts.length) {
-    console.warn('⚠️  Using deprecated "workspace" (singular) path structure. Please migrate to "workspaces".');
     return parts[workspaceIdx + 1];
   }
   
-  // ⚠️ DEPRECATED: projects/<project> (very old structure)
+  // Fallback: projects/<project>
   const projectsIdx = parts.indexOf("projects");
   if (projectsIdx >= 0 && projectsIdx + 1 < parts.length) {
-    console.warn('⚠️  Using deprecated "projects" path structure. Please migrate to "workspaces".');
     return parts[projectsIdx + 1];
   }
   

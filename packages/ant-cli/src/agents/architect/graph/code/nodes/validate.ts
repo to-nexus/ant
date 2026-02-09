@@ -24,6 +24,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'validate', 
+      0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -85,7 +86,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
           
           // ✅ Workflow instrumentation: Exit node (existing files path)
           if (state.deps?.workflowUpdate && state._httpJobId) {
-            state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate');
+            state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate', 0);
           }
           
           return { ...state, violations };
@@ -107,7 +108,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
     
     // ✅ Workflow instrumentation: Exit node (no files path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate', 0);
     }
     
     return { ...state, violations };
@@ -152,7 +153,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
 
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate');
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'validate', 0);
   }
 
   return { ...state, violations };

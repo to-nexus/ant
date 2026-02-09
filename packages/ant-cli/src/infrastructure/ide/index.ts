@@ -8,7 +8,7 @@
  * - Cloud mode: KubernetesIDEOrchestrator (K8s pods)
  */
 
-export { LocalIDEOrchestrator, DockerIDEOrchestrator } from './LocalIDEOrchestrator';
+export { LocalIDEOrchestrator } from './LocalIDEOrchestrator';
 export { KubernetesIDEOrchestrator } from './KubernetesIDEOrchestrator';
 export type { KubernetesIDEOrchestratorOptions } from './KubernetesIDEOrchestrator';
 

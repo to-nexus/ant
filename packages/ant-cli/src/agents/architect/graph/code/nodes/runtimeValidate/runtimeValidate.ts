@@ -61,6 +61,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'runtimeValidate', 
+      (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -256,7 +257,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'runtimeValidate');
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'runtimeValidate', (state as any).workerId ?? 0);
   }
   
   // 🚨 CRITICAL: Clear violations on success
@@ -400,7 +401,7 @@ async function runTypeCheck(
     // Convert parsed errors to formatted strings
     result.typeErrors = parser.format(parsedErrors);
     
-    // ✅ Use diagnostics system for legacy support
+    // ✅ Use diagnostics system
     const diagnosis = diagnoseError(errorOutput, {
       command: 'npx tsc --noEmit',
       workDir: resolvedPath,

@@ -24,7 +24,7 @@ import { LLMEventHandler } from './LLMEventHandler';
 import { CommandExecutionHandler } from './CommandExecutionHandler';
 import { logger } from '../../../../../utils/logger';
 
-// Re-export types for backward compatibility
+// Re-export types
 export type { MessageContent, ChatMessage } from './types';
 
 /**

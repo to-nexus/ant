@@ -124,8 +124,7 @@ export class ChoiceService {
   }
   
   /**
-   * Sync version for backward compatibility
-   * Schedules async operation without awaiting
+   * Sync version — schedules async operation without awaiting
    */
   registerPendingChoice(
     jobId: string,
@@ -187,8 +186,7 @@ export class ChoiceService {
   }
   
   /**
-   * Sync version for backward compatibility
-   * Returns local cache only (may miss cross-Pod data)
+   * Sync version — returns local cache only (may miss cross-Pod data)
    */
   getPendingChoice(projectId: string, featureName: string): PendingChoice | undefined {
     const key = this.getKey(projectId, featureName);
@@ -230,7 +228,7 @@ export class ChoiceService {
   }
   
   /**
-   * Sync version for backward compatibility
+   * Sync version
    */
   clearPendingChoice(projectId: string, featureName: string): void {
     const key = this.getKey(projectId, featureName);

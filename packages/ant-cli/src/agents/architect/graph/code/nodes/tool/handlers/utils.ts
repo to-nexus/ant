@@ -117,10 +117,13 @@ function autoCorrectCodebasePath(rawPath: string): { corrected: string; wasFixed
     return { corrected, wasFixed: true, reason: 'project uses codebase/, not src/' };
   }
   
-  // Pattern 3: app/... or components/... without codebase/ prefix
-  // Common frontend directories that should be under codebase/
-  const frontendDirs = ['app/', 'components/', 'public/', 'styles/', 'lib/', 'utils/', 'hooks/', 'pages/', 'frontend/'];
-  for (const dir of frontendDirs) {
+  // Pattern 3: app/... or components/... or packages/... without codebase/ prefix
+  // Common directories that should be under codebase/
+  const codebaseDirs = [
+    'app/', 'components/', 'public/', 'styles/', 'lib/', 'utils/', 'hooks/', 'pages/', 'frontend/',
+    'packages/', 'backend/', 'server/', 'api/', 'shared/', 'common/', 'core/',
+  ];
+  for (const dir of codebaseDirs) {
     if (normalized.startsWith(dir) && !normalized.startsWith('codebase/')) {
       const corrected = `codebase/${normalized}`;
       console.warn(`\n⚠️  [PATH AUTO-FIX] Missing codebase/ prefix`);

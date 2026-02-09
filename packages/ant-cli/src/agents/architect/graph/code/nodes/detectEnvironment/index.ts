@@ -45,7 +45,7 @@ function buildFilteredDesign(
   const beMultiPattern = /^be-system-design-(.+)\.md$/;
 
   for (const fileName of selectedDesignFiles) {
-    // Legacy single docs
+    // Single docs
     if (fileName === 'api-contract.md' && designDocs.apiContract) {
       filteredDesignDocs.apiContract = designDocs.apiContract;
       parts.push('# API Contract\n\n' + designDocs.apiContract);
@@ -130,12 +130,13 @@ export async function detectEnvironment(
       await state.deps.workflowUpdate.enterNode(
         state._httpJobId,
         'detectEnvironment',
+        0,
         undefined,
         undefined,
         state.recursionCount,
         state.recursionLimit
       );
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment', 0);
     }
 
     return {
@@ -181,6 +182,7 @@ export async function detectEnvironment(
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'detectEnvironment',
+      0,
       taskInfo,
       llmInfo,
       state.recursionCount,
@@ -427,7 +429,7 @@ export async function detectEnvironment(
   
   // Workflow exit
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment');
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment', 0);
   }
   
   return {

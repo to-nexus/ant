@@ -112,71 +112,90 @@ export class JobCleanupManager {
         let shouldBroadcast = true;
         
         if (sessionData?.state) {
-          // ✅ FIX: Try multiple sources for current in-progress task (cloud-safe)
-          // Priority: 1. local snapshot, 2. Redis StateStore, 3. session file
-          let taskToReturn = snapshot?.currentTask || null;
+          // ✅ Parallel mode: Orchestrator's checkpoint already has the complete
+          // taskQueue (including running tasks marked as interrupted) and completedTasks.
+          // Skip single-currentTask logic — it doesn't apply to parallel execution.
+          const isParallelMode = sessionData.state.parallelMode === true;
           
-          if (!taskToReturn) {
-            try {
-              const redisSnapshot = await stateStore.getTaskQueue(jobId);
-              taskToReturn = redisSnapshot?.currentTask || null;
-              if (taskToReturn) {
-                logger.info(`Found currentTask from Redis StateStore`, {
-                  component: 'JobCleanupManager',
-                  jobId
-                }, { taskName: taskToReturn.name });
-              }
-            } catch (err) {
-              logger.warn(`Failed to get task from Redis StateStore`, {
-                component: 'JobCleanupManager',
-                jobId
-              });
-            }
-          }
-          
-          if (!taskToReturn) {
-            taskToReturn = sessionData.state.currentTask || null;
-          }
-          
-          // ✅ FIX: Skip completed tasks — session's currentTask might be stale
-          // (learn node saves the just-completed task as currentTask, but plan has already
-          // popped the next task without saving a checkpoint)
-          if (taskToReturn?.completed) {
-            logger.debug(`Skipping completed task as taskToReturn`, {
+          if (isParallelMode) {
+            logger.info(`Parallel mode detected — using orchestrator checkpoint data as-is`, {
               component: 'JobCleanupManager',
               jobId
-            }, { taskName: taskToReturn.name });
-            taskToReturn = null;
-          }
-          
-          if (taskToReturn) {
-            // ✅ FIX: Set timing.pausedAt to properly track pause duration
-            // Without this, TaskTimingHelper.startTask() on resume can't calculate 
-            // the pause gap, and elapsed time becomes incorrect
-            const now = new Date().toISOString();
-            const interruptedTask = {
-              ...taskToReturn,
-              interrupted: true,
-              timing: taskToReturn.timing ? {
-                ...taskToReturn.timing,
-                pausedAt: now
-              } : undefined
-            };
+            }, {
+              queueSize: (sessionData.state.taskQueue || []).length,
+              completedCount: (sessionData.state.completedTasks || []).length,
+            });
             
-            // Put currentTask back at the front of the queue
-            const existingQueue = sessionData.state.taskQueue || [];
-            const filteredQueue = existingQueue.filter((task: any) => task.id !== taskToReturn!.id);
-            const updatedQueue = [interruptedTask, ...filteredQueue];
-            
+            // In parallel mode, the checkpoint already includes running tasks
+            // (marked interrupted) at the front of taskQueue. Just clear currentTask.
             sessionData.state = {
               ...sessionData.state,
-              taskQueue: updatedQueue,
               currentTask: undefined
             };
           } else {
-            sessionData.state = {
-              ...sessionData.state
-            };
+            // ✅ Sequential mode: original single-currentTask logic
+            // Try multiple sources for current in-progress task (cloud-safe)
+            // Priority: 1. local snapshot, 2. Redis StateStore, 3. session file
+            let taskToReturn = snapshot?.currentTask || null;
+            
+            if (!taskToReturn) {
+              try {
+                const redisSnapshot = await stateStore.getTaskQueue(jobId);
+                taskToReturn = redisSnapshot?.currentTask || null;
+                if (taskToReturn) {
+                  logger.info(`Found currentTask from Redis StateStore`, {
+                    component: 'JobCleanupManager',
+                    jobId
+                  }, { taskName: taskToReturn.name });
+                }
+              } catch (err) {
+                logger.warn(`Failed to get task from Redis StateStore`, {
+                  component: 'JobCleanupManager',
+                  jobId
+                });
+              }
+            }
+            
+            if (!taskToReturn) {
+              taskToReturn = sessionData.state.currentTask || null;
+            }
+            
+            // ✅ FIX: Skip completed tasks — session's currentTask might be stale
+            if (taskToReturn?.completed) {
+              logger.debug(`Skipping completed task as taskToReturn`, {
+                component: 'JobCleanupManager',
+                jobId
+              }, { taskName: taskToReturn.name });
+              taskToReturn = null;
+            }
+            
+            if (taskToReturn) {
+              // ✅ FIX: Set timing.pausedAt to properly track pause duration
+              const now = new Date().toISOString();
+              const interruptedTask = {
+                ...taskToReturn,
+                interrupted: true,
+                timing: taskToReturn.timing ? {
+                  ...taskToReturn.timing,
+                  pausedAt: now
+                } : undefined
+              };
+              
+              // Put currentTask back at the front of the queue
+              const existingQueue = sessionData.state.taskQueue || [];
+              const filteredQueue = existingQueue.filter((task: any) => task.id !== taskToReturn!.id);
+              const updatedQueue = [interruptedTask, ...filteredQueue];
+              
+              sessionData.state = {
+                ...sessionData.state,
+                taskQueue: updatedQueue,
+                currentTask: undefined
+              };
+            } else {
+              sessionData.state = {
+                ...sessionData.state
+              };
+            }
           }
           
           // Update jobTiming with pausedAt

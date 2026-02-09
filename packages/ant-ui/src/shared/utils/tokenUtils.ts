@@ -60,23 +60,6 @@ export interface TokenUsageMetrics {
    */
   inputSavingsPercent: number;
 
-  // === Legacy (하위 호환 — deprecated) ===
-  /** @deprecated — mixing input + output is misleading */
-  totalProcessed: number;
-  /** @deprecated Use `newInputTokens` */
-  rawInputTokens: number;
-  /** @deprecated Use `outputTokens` */
-  rawOutputTokens: number;
-  /** @deprecated — non-cache input + output only */
-  rawTotalTokens: number;
-  /** @deprecated Use `totalInputProcessed` */
-  processedInputTokens: number;
-  /** @deprecated Use `inputSavingsPercent` */
-  cacheSavedTokens: number;
-  /** @deprecated — mixing input + output billable is misleading */
-  billableTotalTokens: number;
-  /** @deprecated Use `inputSavingsPercent` */
-  savingsPercent: number;
 }
 
 /**
@@ -107,17 +90,7 @@ export function getTokenUsageMetrics(tokenUsage?: TaskTokenUsage | null): TokenU
     ? Math.max(0, 1 - (billableInputTokens / totalInputProcessed))
     : 0;
 
-  // Legacy compat (deprecated)
-  const totalProcessed = totalInputProcessed + outputTokens;
-  const rawTotalTokens = newInputTokens + outputTokens;
-  const billableTotalTokens = billableInputTokens + outputTokens;
-  const cacheSavedTokens = Math.floor(cacheReadTokens * (1 - CACHE_READ_MULTIPLIER));
-  const savingsPercent = totalProcessed > 0
-    ? Math.max(0, 1 - (billableTotalTokens / totalProcessed))
-    : 0;
-
   return {
-    // Primary
     totalInputProcessed,
     newInputTokens,
     cacheReadTokens,
@@ -127,15 +100,6 @@ export function getTokenUsageMetrics(tokenUsage?: TaskTokenUsage | null): TokenU
     hasCache,
     billableInputTokens,
     inputSavingsPercent,
-    // Legacy
-    totalProcessed,
-    rawInputTokens: newInputTokens,
-    rawOutputTokens: outputTokens,
-    rawTotalTokens,
-    processedInputTokens: totalInputProcessed,
-    cacheSavedTokens,
-    billableTotalTokens,
-    savingsPercent,
   };
 }
 

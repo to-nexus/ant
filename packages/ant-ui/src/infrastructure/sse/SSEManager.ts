@@ -74,7 +74,7 @@ class SSEManager {
   
   /**
    * Register message handler for a specific type
-   * @deprecated Use registerHandlerWithId for better cleanup support
+   * Prefer registerHandlerWithId for better cleanup support.
    */
   registerHandler(type: SSEMessageType, handler: SSEMessageHandler): void {
     if (!this.handlers.has(type)) {

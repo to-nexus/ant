@@ -24,8 +24,7 @@ export function TaskCard({
   // Get actual running state from store
   const isTaskRunning = useStore((state) => state.isRunning);
   
-  // In-progress tasks should be expanded by default
-  const defaultExpanded = status === 'in-progress' ? true : isExpanded;
+  const defaultExpanded = isExpanded;
   const [localExpanded, setLocalExpanded] = useState(defaultExpanded);
   
   const expanded = onToggleExpand !== undefined ? isExpanded : localExpanded;

@@ -91,7 +91,7 @@ export class TemplateComposer {
       : '';
     
     // ✅ 3. Determine design document to use
-    // Priority: designDoc (backward compat) > filtered designDocs (environment-specific)
+    // Priority: designDoc > filtered designDocs (environment-specific)
     let designDoc = assembled.designDoc || '';
     
     // Design doc is already filtered by detectEnvironment node
@@ -410,8 +410,7 @@ export class TemplateComposer {
     try {
       return await this.promptPort.render(templatePath, vars);
     } catch (error) {
-      // ✅ Plan phase templates are deprecated (plan node doesn't use LLM)
-      // Just return empty string silently
+      // Plan phase templates don't exist (plan node doesn't use LLM)
       if (templatePath.includes('phases/plan/')) {
         return '';
       }

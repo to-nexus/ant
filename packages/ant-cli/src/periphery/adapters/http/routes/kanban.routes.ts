@@ -9,7 +9,6 @@ import { extractUserContext } from './helpers/userContext';
  */
 export function createKanbanRoutes(deps: {
   kanbanService: KanbanService;
-  kanbanSSE: Map<string, Set<Response>>;
   jobToProject: Map<string, { projectId: string; featureName: string }>;
   jobs: Map<string, any>;
   taskQueueSnapshots: Map<string, any>;
@@ -40,15 +39,6 @@ export function createKanbanRoutes(deps: {
       console.error(`[Kanban API] Error:`, error);
       res.status(500).json({ error: error.message });
     }
-  });
-  
-  // ⚠️ DEPRECATED: Redirect to unified SSE endpoint
-  router.get('/projects/:id/features/:feature/kanban/stream', (req: Request, res: Response) => {
-    res.status(410).json({ 
-      error: 'Endpoint deprecated',
-      message: 'Use /projects/:id/features/:feature/stream instead',
-      newEndpoint: `/projects/${req.params.id}/features/${req.params.feature}/stream`
-    });
   });
   
   return router;

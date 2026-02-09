@@ -29,15 +29,26 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Setup Project",
     "type": "setup",
     "priority": 100,
+    "exclusive": true,
     "ui": true,
     "uiSections": ["tokens"],
     "description": "<ui> Create project structure, configure Tailwind with design tokens, and install dependencies"
   },
   {
+    "id": "database-schema",
+    "name": "Implement Database Schema & Models",
+    "type": "feature",
+    "priority": 200,
+    "parallelGroup": "backend-db",
+    "ui": false,
+    "description": "Define database schema, ORM models, and migrations for user and content entities"
+  },
+  {
     "id": "api-endpoints",
     "name": "Implement API Endpoints",
     "type": "feature",
-    "priority": 200,
+    "priority": 210,
+    "parallelGroup": "backend-api",
     "ui": false,
     "description": "Create REST API for user authentication and data management"
   },
@@ -45,7 +56,8 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "id": "hero-section",
     "name": "Implement Hero Section",
     "type": "feature",
-    "priority": 210,
+    "priority": 220,
+    "parallelGroup": "frontend-hero",
     "ui": true,
     "uiSections": ["tokens", "assets", "hero", "layout", "responsive"],
     "description": "<ui> Implement Hero section based on design specifications"
@@ -54,7 +66,8 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "id": "about-section",
     "name": "Implement About Section",
     "type": "feature",
-    "priority": 220,
+    "priority": 230,
+    "parallelGroup": "frontend-about",
     "ui": true,
     "uiSections": ["tokens", "about", "layout"],
     "description": "<ui> Implement About section based on design specifications"
@@ -64,6 +77,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Final Build & Startup Verification",
     "type": "feature",
     "priority": 1000,
+    "exclusive": true,
     "ui": false,
     "description": "Run build/lint/type-check commands on EXISTING codebase. DO NOT write new code or create new projects. Only verify: npm run build, npm run lint, npm run dev."
   }
@@ -78,6 +92,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Add Balance Field to User",
     "type": "feature",
     "priority": 200,
+    "parallelGroup": "backend",
     "ui": false,
     "description": "Extend User entity with balance field and update related services"
   },
@@ -86,6 +101,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Final Build & Startup Verification",
     "type": "feature",
     "priority": 1000,
+    "exclusive": true,
     "ui": false,
     "description": "Run build/lint/type-check commands on EXISTING codebase. DO NOT write new code or create new projects. Only verify: npm run build, npm run lint, npm run dev."
   }
@@ -100,6 +116,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Fix ERR_MODULE_NOT_FOUND for EventHandler",
     "type": "error",
     "priority": 200,
+    "exclusive": true,
     "ui": false,
     "description": "Analyze and resolve: 'Error [ERR_MODULE_NOT_FOUND]: Cannot find module ./EventHandler'. Determine root cause (missing file, wrong path, or config issue) and apply fix."
   },
@@ -108,6 +125,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "name": "Verify Error Resolution",
     "type": "feature",
     "priority": 1000,
+    "exclusive": true,
     "ui": false,
     "description": "Run build/lint/type-check on EXISTING codebase to confirm fix. DO NOT write new code or create new projects. Fix remaining errors if build fails."
   }
@@ -213,9 +231,9 @@ When the project has multiple frontend packages or backend services (monorepo/MS
 
 | Tag | Maps To | Description |
 |-----|---------|-------------|
-| `fe` | `fe-system-design.md` | Single/legacy frontend |
+| `fe` | `fe-system-design.md` | Single frontend |
 | `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi-frontend package (e.g., `fe-web`, `fe-admin`) |
-| `be` | `be-system-design.md` | Single/legacy backend |
+| `be` | `be-system-design.md` | Single backend |
 | `be-{svc}` | `be-system-design-{svc}.md` | MSA service (e.g., `be-auth`, `be-order`) |
 
 **Examples:**
@@ -241,7 +259,7 @@ When the project has multiple frontend packages or backend services (monorepo/MS
 
 **Behavior:**
 - `api-contract.md` is **ALWAYS injected** when any package is specified
-- If `packages` is omitted → all relevant design docs are injected (environment-based, legacy behavior)
+- If `packages` is omitted → all relevant design docs are injected (environment-based)
 - If `packages` is specified → only the specified design docs are injected (token optimization)
 
 **When to use `packages`:**
@@ -343,6 +361,33 @@ IMPORTANT:
   - ✅ Include if there are feature tasks
   - ❌ Skip if ALL tasks are error tasks
 
+**PARALLEL EXECUTION HINTS (`exclusive` and `parallelGroup`):**
+
+Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-id>"` to indicate whether it can run concurrently with other tasks.
+
+**`exclusive: true`** — Task MUST run alone (no concurrent execution):
+- `type: "setup"` → ALWAYS exclusive (installs dependencies, modifies lock files)
+- `type: "error"` → ALWAYS exclusive (may install deps or modify shared configs)
+- `priority: 1000` (final verification) → ALWAYS exclusive (validates entire project)
+- Any task that installs packages, modifies shared build configs, or has global side effects
+
+**`parallelGroup: "<group-id>"`** — Tasks with the SAME group ID conflict with each other (cannot run simultaneously). Tasks with DIFFERENT group IDs can run in parallel.
+
+Group ID assignment principle: **Maximize parallelism by identifying independent scopes.**
+- Tasks modifying different files/directories → different group IDs → can parallelize
+- Tasks modifying the SAME files → same group ID → must serialize
+- Within a single package, tasks targeting different layers or modules SHOULD have different group IDs
+
+Group ID naming convention: `"<package>-<scope>"` where scope is the functional area.
+- Monorepo with multiple packages:
+  - `"backend-db"`, `"backend-api"`, `"backend-auth"` (different layers within backend)
+  - `"frontend-hero"`, `"frontend-nav"`, `"frontend-auth"` (different sections within frontend)
+  - `"admin-dashboard"`, `"admin-settings"` (different areas within admin)
+- Single package with clear layers: `"app-db"`, `"app-api"`, `"app-ui"`
+- Truly indivisible single module: `"main"` (only when ALL tasks genuinely touch the same files)
+
+**⚠️ Constraint:** Only assign the SAME group ID when tasks are LIKELY to modify the SAME source files. Different API endpoints, different UI sections, different database tables — these are independent scopes that SHOULD get different group IDs for parallel execution.
+
 **Output Format:**
 
 1. Output tasks as JSON array in <tasks> tags (NO markdown code blocks!):
@@ -350,11 +395,21 @@ IMPORTANT:
 <tasks>
 [
   {
-    "id": "backend-api",
-    "name": "Create API Endpoints",
-    "description": "Implement REST API for data management",
+    "id": "backend-db",
+    "name": "Define Database Schema",
+    "description": "Create database models, schema definitions, and migrations",
     "type": "feature",
     "priority": 200,
+    "parallelGroup": "backend-db",
+    "ui": false
+  },
+  {
+    "id": "backend-api",
+    "name": "Create API Endpoints",
+    "description": "Implement REST API routes and controllers for data management",
+    "type": "feature",
+    "priority": 210,
+    "parallelGroup": "backend-api",
     "ui": false
   },
   {
@@ -362,7 +417,8 @@ IMPORTANT:
     "name": "Implement Header",
     "description": "<ui> Implement Header based on design specifications",
     "type": "feature",
-    "priority": 210,
+    "priority": 220,
+    "parallelGroup": "frontend-header",
     "ui": true,
     "uiSections": ["tokens", "assets", "gnb", "layout", "responsive"]
   }

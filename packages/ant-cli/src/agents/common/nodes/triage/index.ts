@@ -81,7 +81,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'triage');
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'triage', 0);
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -242,7 +242,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   
   // ✅ Workflow instrumentation: Exit node
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'triage');
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'triage', 0);
   }
   
   return {

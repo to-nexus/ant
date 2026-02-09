@@ -23,6 +23,25 @@ export interface TokenUsageBreakdown {
 }
 
 /**
+ * Per-task resume state (populated only when a task is interrupted).
+ * Stores individual worker context so that each interrupted task can
+ * resume independently during parallel execution.
+ */
+export interface TaskResumeState {
+  planText: string;
+  conversationHistory: any[];
+  projectCodeContext?: {
+    source: string;
+    filePaths: string[];
+    stats: any;
+  };
+  retries: number;
+  violations?: any[];
+  enforcementHistory?: any[];
+  tokenUsage?: TaskTokenUsage;
+}
+
+/**
  * Code-specific Task
  */
 export interface CodeTask extends BaseTask {
@@ -42,7 +61,7 @@ export interface CodeTask extends BaseTask {
    * - Common sections: "layout", "responsive", "accessibility"
    * - Special: "tokens" (ui-tokens.json), "assets" (ui-assets.json)
    * 
-   * If ui=true but uiSections is empty/undefined, all UI docs are injected (backward compatible).
+   * If ui=true but uiSections is empty/undefined, all UI docs are injected.
    */
   uiSections?: string[];
   /**
@@ -53,9 +72,9 @@ export interface CodeTask extends BaseTask {
    * 
    * | Tag Pattern | Maps To | Description |
    * |-------------|---------|-------------|
-   * | `fe` | `fe-system-design.md` | Single frontend (legacy) |
+   * | `fe` | `fe-system-design.md` | Single frontend |
    * | `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi frontend (monorepo) |
-   * | `be` | `be-system-design.md` | Single backend (legacy) |
+   * | `be` | `be-system-design.md` | Single backend |
    * | `be-{svc}` | `be-system-design-{svc}.md` | MSA service |
    * 
    * ## Examples
@@ -82,9 +101,15 @@ export interface CodeTask extends BaseTask {
    * 
    * ## Note
    * - `api-contract.md` is ALWAYS injected when any package is specified
-   * - If undefined, falls back to environment-based selection (legacy behavior)
+   * - If undefined, falls back to environment-based selection
    */
   packages?: string[];
+  
+  /**
+   * Per-task resume state (exists only when interrupted during parallel execution).
+   * Contains the worker's execution context at the time of interruption.
+   */
+  resumeState?: TaskResumeState;
 }
 
 /**
@@ -93,6 +118,12 @@ export interface CodeTask extends BaseTask {
 export interface DesignTask extends BaseTask {
   targetFile?: string;             // Which design document (e.g., "system-design.md")
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
+  
+  /**
+   * Per-task resume state (exists only when interrupted during parallel execution).
+   * Contains the worker's execution context at the time of interruption.
+   */
+  resumeState?: TaskResumeState;
 }
 
 /**
@@ -126,6 +157,16 @@ export class TaskQueue<T extends BaseTask> {
   
   removeType(type: TaskType): void {
     this.tasks = this.tasks.filter(t => t.type !== type);
+  }
+  
+  /**
+   * Remove a specific task by ID (for parallel task assignment from middle of queue).
+   * Returns the removed task, or undefined if not found.
+   */
+  removeById(id: string): T | undefined {
+    const index = this.tasks.findIndex(t => t.id === id);
+    if (index === -1) return undefined;
+    return this.tasks.splice(index, 1)[0];
   }
   
   getAll(): T[] {

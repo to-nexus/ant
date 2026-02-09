@@ -41,6 +41,7 @@ export async function tool(
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'tool', 
+      (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
       (state as any).recursionCount,
@@ -170,7 +171,7 @@ export async function tool(
   
   // ✅ Workflow instrumentation: Exit node
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool');
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', (state as any).workerId ?? 0);
   }
   
   // ✅ CRITICAL: Clear toolCalls to prevent infinite loop

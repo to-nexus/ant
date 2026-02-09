@@ -61,13 +61,23 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})\n`);
   } else {
-    nextTask = state.taskQueue?.pop();
+    // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
+    // Sequential context: pop next task from queue
+    const _wid = (state as any).workerId;
+    const isWorkerCtx = _wid !== undefined && _wid !== null;
     
-    if (!nextTask) {
-      throw new Error('[Plan] No tasks in queue');
+    if (isWorkerCtx && state.currentTask) {
+      nextTask = state.currentTask;
+      console.log(`\n📋 [Plan] Task pre-assigned by orchestrator (worker ${_wid}): ${nextTask.name}\n`);
+    } else {
+      nextTask = state.taskQueue?.pop();
+      
+      if (!nextTask) {
+        throw new Error('[Plan] No tasks in queue');
+      }
+      
+      console.log(`\n📋 [Plan] Next task: ${nextTask.name}\n`);
     }
-    
-    console.log(`\n📋 [Plan] Next task: ${nextTask.name}\n`);
     
     // Start timing
     const { TaskTimingHelper } = await import('../../state');
@@ -79,8 +89,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     resetTaskTokenUsage(state as any);
     
     // Update Kanban UI
-    console.log(`\n🔍 [Plan] Kanban check: _httpJobId=${state._httpJobId}, kanbanUpdate=${!!state.deps?.kanbanUpdate}`);
-    if (state._httpJobId && state.deps?.kanbanUpdate) {
+    // Skip in worker context — TaskOrchestrator handles kanban for parallel mode
+    // (per-worker kanban would overwrite multi-task inProgress with just this worker's task)
+    if (!isWorkerCtx && state._httpJobId && state.deps?.kanbanUpdate) {
       console.log(`🔥 [Plan] Updating Kanban → task started`);
       console.log(`   Current: ${nextTask.name}`);
       console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
@@ -125,6 +136,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'plan',
+      (state as any).workerId ?? 0,
       taskInfo,
       undefined,
       state.recursionCount,
@@ -153,7 +165,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
     }
     
     return {
@@ -349,7 +361,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan');
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
     }
     
     return updatedState;

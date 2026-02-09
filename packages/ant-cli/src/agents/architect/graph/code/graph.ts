@@ -16,6 +16,7 @@ import { learn } from "./nodes/learn";
 import { routeAfterCodeGen } from "./routers/codeGenRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
 import { revise } from "./nodes/revise";
+import { getTaskConcurrency } from "./parallel/types";
 
 /**
  * Node that handles task completion logic and state mutations.
@@ -38,6 +39,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'checkTaskStatus', 
+      0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -169,7 +171,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     state.violationMessage = undefined;
     console.log(`🧹 [checkTaskStatus] Cleared violations for next task`);
     
-    // Update completedTasks (IDs only - for backward compatibility)
+    // Update completedTasks (IDs only)
     const completedTasks = state.completedTasks || [];
     completedTasks.push(completedTask.id);
     
@@ -262,7 +264,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     
     // ✅ Workflow instrumentation: Exit node (task completed path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
     }
     
     return {
@@ -281,7 +283,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   
   // ✅ Workflow instrumentation: Exit node (task failed/has violations path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus');
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
   }
   
   // Task failed or has violations - propagate violations and recursion tracking
@@ -290,6 +292,146 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     recursionCount: state.recursionCount,  // ✅ Propagate recursion count
     recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
   };
+}
+
+/**
+ * Parallel Orchestrator node for code job.
+ * Runs all tasks from the queue using TaskOrchestrator with worker subgraphs.
+ * Only invoked when ANT_TASK_CONCURRENCY > 1.
+ * After all tasks are processed, returns to the main graph for final learn + END.
+ */
+async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
+  const { TaskOrchestrator: OrchestratorClass } = await import('./parallel/TaskOrchestrator');
+  const { createCodeWorkerGraphBuilder } = await import('./parallel/workerGraph');
+
+  const maxWorkers = getTaskConcurrency();
+  console.log(`\n🔀 [ParallelOrchestrator] Starting with maxWorkers=${maxWorkers}`);
+
+  const taskQueue = state.taskQueue;
+  if (!taskQueue || taskQueue.isEmpty()) {
+    console.log(`[ParallelOrchestrator] No tasks in queue, skipping`);
+    return {};
+  }
+
+  // Build shared context for workers (everything they need except per-task state)
+  const sharedContext = {
+    context: state.context,
+    workspaceConfig: state.workspaceConfig,
+    deps: state.deps,
+    gitPort: state.gitPort,
+    detectionReport: state.detectionReport,
+    decomposeKeywords: state.decomposeKeywords,
+    selectedDesignFiles: state.selectedDesignFiles,
+    decomposeFilePaths: state.decomposeFilePaths,
+    prd: state.prd,
+    directive: state.directive,
+    design: state.design,
+    designDocPath: state.designDocPath,
+    designDocs: state.designDocs,
+    code: state.code,
+    codeHead: (state as any).codeHead,
+    profile: state.profile,
+    parsedUiDocs: state.parsedUiDocs,
+    runtimeAssetsIndex: state.runtimeAssetsIndex,
+    referenceCodeContexts: state.referenceCodeContexts,
+    sessionContext: state.sessionContext,
+    featureName: state.featureName,
+    maxRetries: state.maxRetries || 3,
+    recursionCount: state.recursionCount || 0,
+    recursionLimit: state.recursionLimit || 100,
+    _httpJobId: state._httpJobId,
+    _uiLocale: state._uiLocale,
+    jobId: (state as any).jobId,
+    jobTiming: (state as any).jobTiming,
+    featureTasks: state.featureTasks,
+    referenceRequests: state.referenceRequests,
+  };
+
+  const graphBuilder = createCodeWorkerGraphBuilder();
+  const orchestrator = new OrchestratorClass<CodeTask>(
+    taskQueue,
+    graphBuilder,
+    sharedContext,
+    {
+      onTaskComplete: (task, workerId) => {
+        console.log(`[ParallelOrchestrator] Worker ${workerId} completed: ${task.name}`);
+      },
+      onTaskFailure: (task, error, workerId) => {
+        console.error(`[ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
+      },
+      onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
+        if (state.deps?.kanbanUpdate && state._httpJobId) {
+          state.deps.kanbanUpdate.updateTaskQueue(
+            state._httpJobId,
+            currentTasks,
+            queue,
+            completedTasks,
+            state.recursionCount,
+            state.recursionLimit,
+            tokenUsage,
+          );
+        }
+      },
+      onCheckpoint: async (checkpoint) => {
+        if (state.deps?.session && state.context.featureFolder) {
+          try {
+            await state.deps.session.updateArtifacts(
+              state.context.project,
+              state.context.featureFolder,
+              'code',
+              {
+                state: {
+                  taskQueue: checkpoint.taskQueue,
+                  completedTasks: checkpoint.completedTasks.map(t => t.id),
+                  completedTasksDetails: checkpoint.completedTasks,
+                  tokenUsage: checkpoint.tokenUsage,
+                  // ✅ Preserve estimating phase token usage snapshot in checkpoint
+                  estimatingTokenUsage: (state as any)._estimatingTokenUsage,
+                  jobId: (state as any).jobId,
+                  jobTiming: (state as any).jobTiming,
+                  parallelMode: true,
+                },
+              },
+            );
+            console.log(`💾 [ParallelOrchestrator] Checkpoint saved (${checkpoint.completedTasks.length} completed, ${checkpoint.taskQueue.length} queued)`);
+          } catch (err) {
+            console.warn(`⚠️ [ParallelOrchestrator] Checkpoint save failed:`, err);
+          }
+        }
+      },
+    },
+    {
+      maxWorkers,
+      checkpointInterval: 60000,
+    },
+  );
+
+  const result = await orchestrator.run();
+
+  // Clear stale worker entries from WorkflowBroadcaster
+  // Workers' last node stays in activeWorkers until explicitly cleared
+  if (state.deps?.workflowUpdate?.clearWorkers && state._httpJobId) {
+    await state.deps.workflowUpdate.clearWorkers(state._httpJobId);
+  }
+
+  console.log(`\n🔀 [ParallelOrchestrator] Completed:`);
+  console.log(`   Completed: ${result.completedTasks.length}`);
+  console.log(`   Failed: ${result.failedTasks.length}`);
+  console.log(`   Remaining: ${result.remainingQueue.length}`);
+  if (result.drainReason) {
+    console.log(`   Drain reason: ${result.drainReason}`);
+  }
+
+  // Remaining tasks are already back in the shared taskQueue reference
+  // (orchestrator uses it directly)
+
+  return {
+    completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
+    completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+    failedTasks: result.failedTasks.map(f => f.task) as any,
+    currentTask: undefined,
+    tokenUsage: result.tokenUsage || (state as any).tokenUsage,
+  } as any;
 }
 
 export function buildCodeGraph() {
@@ -446,6 +588,7 @@ export function buildCodeGraph() {
   graph.addNode("checkTaskStatus", checkTaskStatus as any);
   graph.addNode("enforce", enforce as any);
   graph.addNode("learn", learn as any);
+  graph.addNode("parallelOrchestrator", parallelOrchestrator as any);
 
   graph.addEdge("__start__" as any, "resolve" as any);
   
@@ -477,9 +620,14 @@ export function buildCodeGraph() {
       }
       
       if (hasTaskQueue) {
-        // Plain resume with existing tasks → skip directly to plan
+        // Plain resume with existing tasks
         const queueSize = state.taskQueue?.size?.() || 0;
         const completedCount = state.completedTasks?.length || 0;
+        const concurrency = getTaskConcurrency();
+        if (concurrency > 1) {
+          console.log(`[RouteAfterResolve] Plain resume: ${queueSize} tasks, ${completedCount} completed, concurrency=${concurrency} → parallelOrchestrator`);
+          return 'parallelOrchestrator';
+        }
         console.log(`[RouteAfterResolve] Plain resume: ${queueSize} tasks, ${completedCount} completed → plan`);
         return 'plan';
       }
@@ -500,6 +648,7 @@ export function buildCodeGraph() {
       triage: "triage",
       revise: "revise",
       plan: "plan",
+      parallelOrchestrator: "parallelOrchestrator",
       decompose: "decompose",
       detectEnvironment: "detectEnvironment"
     } as any
@@ -519,11 +668,36 @@ export function buildCodeGraph() {
   
   graph.addEdge("detectEnvironment" as any, "decompose" as any);
   
-  // ✅ Decompose → always plan (no more conditional to replanDecision)
-  graph.addEdge("decompose" as any, "plan" as any);
+  // ✅ Decompose → conditional: parallel or sequential
+  graph.addConditionalEdges(
+    "decompose" as any,
+    ((s: ArchitectGraphState) => {
+      const concurrency = getTaskConcurrency();
+      if (concurrency > 1) {
+        console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
+        return "parallelOrchestrator";
+      }
+      console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=1 → sequential plan`);
+      return "plan";
+    }) as any,
+    { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
+  );
   
-  // ✅ Revise → always plan (revision applied inline)
-  graph.addEdge("revise" as any, "plan" as any);
+  // ✅ ParallelOrchestrator → learn (after all tasks are done)
+  graph.addEdge("parallelOrchestrator" as any, "learn" as any);
+  
+  // ✅ Revise → conditional: parallel or sequential (same logic)
+  graph.addConditionalEdges(
+    "revise" as any,
+    ((s: ArchitectGraphState) => {
+      const concurrency = getTaskConcurrency();
+      if (concurrency > 1) {
+        return "parallelOrchestrator";
+      }
+      return "plan";
+    }) as any,
+    { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
+  );
   
   // Plan → CodeGen
   graph.addEdge("plan" as any, "codeGen" as any);

@@ -14,7 +14,7 @@ import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types
  * Inherits TaskArtifacts which provides:
  * - prd: PRD document
  * - directive: User instruction
- * - design: Previous design document (legacy single string — kept for docGen backward compat)
+ * - design: Previous design document (single string for docGen)
  */
 export interface DesignGraphState extends TaskArtifacts {
   // Context

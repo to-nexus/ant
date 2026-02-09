@@ -10,8 +10,7 @@
  * - Workspace isolation
  * - Accepts both relative and absolute paths (absolute must be within workspace)
  * 
- * Note: Previously named LocalFileSystemAdapter. Renamed because it works
- * with any POSIX-compatible filesystem (local, EFS), not just local.
+ * Works with any POSIX-compatible filesystem (local, EFS).
  */
 
 import * as fs from 'fs';
@@ -190,7 +189,3 @@ export class FileSystemAdapter implements FileSystemPort {
     return this.basePath;
   }
 }
-
-// ✅ Backward compatibility alias (deprecated)
-/** @deprecated Use FileSystemAdapter instead */
-export const LocalFileSystemAdapter = FileSystemAdapter;

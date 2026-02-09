@@ -105,6 +105,18 @@ export function createTaskQueue(tasks: CodeTask[]): {
   }
   
   tasks.forEach(task => {
+    // Determine exclusive flag:
+    // - Explicit from LLM takes precedence
+    // - Fallback: setup, error, and final (priority 1000) are always exclusive
+    const isExplicitExclusive = typeof (task as any).exclusive === 'boolean' ? (task as any).exclusive : undefined;
+    const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+    const exclusive = isExplicitExclusive ?? isTypeExclusive;
+    
+    // parallelGroup only applies when not exclusive
+    const parallelGroup = !exclusive && typeof (task as any).parallelGroup === 'string' 
+      ? (task as any).parallelGroup 
+      : undefined;
+    
     // Ensure task has required fields
     const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -119,6 +131,9 @@ export function createTaskQueue(tasks: CodeTask[]): {
       uiSections: Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined,
       // Package-based design doc injection (fe, fe-*, be, be-*)
       packages: Array.isArray((task as any).packages) ? (task as any).packages : undefined,
+      // Parallel execution hints
+      exclusive: exclusive || undefined,
+      parallelGroup,
     };
     
     taskQueue.push(normalizedTask);
@@ -153,6 +168,15 @@ export function logTaskSummary(
   console.log(`   Feature: ${tasksByType.feature}`);
   console.log(`   Error: ${tasksByType.error}`);
   console.log(`   Final: ${tasksByType.final}`);
+  
+  // Parallel execution summary
+  const exclusiveTasks = tasks.filter(t => t.exclusive);
+  const parallelGroups = new Set(tasks.filter(t => t.parallelGroup).map(t => t.parallelGroup));
+  if (exclusiveTasks.length > 0 || parallelGroups.size > 0) {
+    console.log(`   🔀 Parallel hints:`);
+    console.log(`      Exclusive: ${exclusiveTasks.length} tasks (${exclusiveTasks.map(t => t.id).join(', ')})`);
+    console.log(`      Parallel groups: ${parallelGroups.size > 0 ? [...parallelGroups].join(', ') : 'none'}`);
+  }
   
   // Log reference requests
   if (referenceRequests && referenceRequests.length > 0) {

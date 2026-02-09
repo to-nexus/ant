@@ -53,14 +53,18 @@ export function useGraphLayout(
     // vertical (상하 분할) → 워크플로우는 가로로 (LR)
     const rankdir = splitLayout === 'horizontal' ? 'TB' : 'LR';
     
+    // Helper: check if a node is currently active (any worker occupying it)
+    const isNodeActive = (nodeId: string) =>
+      realtimeState?.activeNodes?.some(w => w.nodeId === nodeId) ?? false;
+
+    // Helper: get workers active on a specific node
+    const getNodeWorkers = (nodeId: string) =>
+      realtimeState?.activeNodes?.filter(w => w.nodeId === nodeId) ?? [];
+    
     // 1. Workflow 노드를 ReactFlow 노드로 변환
     const workflowNodes: Node[] = metadata.nodes.map(node => {
-      const isActive = realtimeState?.currentNode === node.id;
-      
-      // ✅ Track active node
-      if (isActive) {
-        // console.log('[useGraphLayout] 🟢 ACTIVE NODE:', node.id); // ✅ Too verbose
-      }
+      const isActive = isNodeActive(node.id);
+      const workers = getNodeWorkers(node.id);
       
       return {
         id: node.id,
@@ -70,6 +74,7 @@ export function useGraphLayout(
           description: node.description,
           importance: node.importance,
           isActive,
+          workers,  // Pass worker info for task label badges
           actors: node.interactsWithActors,
           nodeType: node.type,
           llmInfo
@@ -97,8 +102,10 @@ export function useGraphLayout(
     
     // 3. Workflow 엣지 변환
     const workflowEdges: Edge[] = metadata.edges.map(edge => {
-      const isActive = realtimeState?.previousNode === edge.source && 
-                       realtimeState?.currentNode === edge.target;
+      // Edge is active if any worker transitioned from source to target
+      const isActive = realtimeState?.activeNodes?.some(
+        w => w.previousNodeId === edge.source && w.nodeId === edge.target
+      ) ?? false;
       const edgeStyle = getEdgeStyle(edge.type, isActive, theme);
       
       return {
@@ -131,7 +138,7 @@ export function useGraphLayout(
       node.interactsWithActors.forEach(actorId => {
         // 현재 노드가 활성화되고 Actor가 활성화되어 있으면 animated
         const isActiveInteraction = 
-          realtimeState?.currentNode === node.id && 
+          isNodeActive(node.id) && 
           realtimeState?.activeActors?.includes(actorId);
         
         const actorStroke = isActiveInteraction 

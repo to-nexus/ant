@@ -57,9 +57,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
     }
   }, [kanbanData.completed, previousCompletedIds, isInitialLoad]);
 
-  // ✅ Detect newly in-progress task
+  // ✅ Detect newly in-progress tasks
   useEffect(() => {
-    const currentInProgressId = kanbanData.inProgress?.id || kanbanData.inProgress?.name || null;
+    // Use the first in-progress task for animation tracking
+    const firstInProgress = kanbanData.inProgress?.[0];
+    const currentInProgressId = firstInProgress?.id || firstInProgress?.name || null;
     
     if (currentInProgressId && currentInProgressId !== previousInProgressId) {
       setNewlyInProgressId(currentInProgressId);
@@ -96,11 +98,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
                 name: task.name,
                 tokenUsage: task.tokenUsage
               }))}
-              inProgressTask={kanbanData.inProgress ? {
-                id: kanbanData.inProgress.id || kanbanData.inProgress.name,
-                name: kanbanData.inProgress.name,
-                tokenUsage: kanbanData.inProgress.tokenUsage
-              } : undefined}
+              inProgressTasks={kanbanData.inProgress?.map(task => ({
+                id: task.id || task.name,
+                name: task.name,
+                tokenUsage: task.tokenUsage
+              })) || []}
             />
           </>
         }
@@ -142,11 +144,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
               name: task.name,
               timing: task.timing
             }))}
-            inProgressTask={kanbanData.inProgress ? {
-              id: kanbanData.inProgress.id || kanbanData.inProgress.name,
-              name: kanbanData.inProgress.name,
-              timing: kanbanData.inProgress.timing,
-            } : null}
+            inProgressTasks={kanbanData.inProgress?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              timing: task.timing,
+            })) || []}
           />
           <TokenUsageBadge 
             jobId={kanbanData.jobId}
@@ -157,11 +159,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
               name: task.name,
               tokenUsage: task.tokenUsage
             }))}
-            inProgressTask={kanbanData.inProgress ? {
-              id: kanbanData.inProgress.id || kanbanData.inProgress.name,
-              name: kanbanData.inProgress.name,
-              tokenUsage: kanbanData.inProgress.tokenUsage
-            } : undefined}
+            inProgressTasks={kanbanData.inProgress?.map(task => ({
+              id: task.id || task.name,
+              name: task.name,
+              tokenUsage: task.tokenUsage
+            })) || []}
           />
         </>
       }
@@ -181,7 +183,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         
         <KanbanColumns
           todoTasks={kanbanData.todo || []}
-          inProgressTask={kanbanData.inProgress}
+          inProgressTasks={kanbanData.inProgress || []}
           completedTasks={kanbanData.completed || []}
           newlyCompletedIds={newlyCompletedIds}
           newlyInProgressId={newlyInProgressId}

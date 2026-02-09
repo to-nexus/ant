@@ -18,7 +18,7 @@ import type {
  * 1. Backend-provided `phase` field (most reliable, server-authoritative)
  * 2. Setup validation failure (`setupReasoning`)
  * 3. Backend-provided `error` field
- * 4. Log pattern matching (fallback for backwards compatibility)
+ * 4. Log pattern matching (fallback)
  * 5. `running` flag
  * 6. `isLoading` state
  */

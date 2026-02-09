@@ -83,10 +83,6 @@ export const TASK_PRIORITIES = {
   FINAL_VERIFICATION: 1000,     // 최종 검증
 } as const;
 
-// Alias for backward compatibility
-export type Subtask = CodeTask;
-export type ErrorSubtask = CodeTask;
-
 export type ErrorCategory = 
   | 'missing_files'       // Missing required files (index.html, etc)
   | 'missing_deps'        // Missing npm packages
@@ -165,10 +161,10 @@ export interface ArchitectGraphState extends TaskArtifacts {
   referenceCodeContexts: ReferenceCodeContext[]; // Reference projects
   
   // ✅ Design Documents (loaded in contextLoader)
-  // Supports both legacy single docs and multi-package (monorepo/MSA) patterns
+  // Supports both single docs and multi-package (monorepo/MSA) patterns
   designDocs?: {
     apiContract?: string;
-    // Legacy single docs (backward compatible)
+    // Single docs (non-monorepo)
     feDesign?: string;           // fe-system-design.md (single frontend)
     beDesign?: string;           // be-system-design.md (single backend)
     unifiedDesign?: string;      // system-design.md (unified)
@@ -330,11 +326,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
     violations: Violation[];
   }>;
   
-  // Backward compatibility (deprecated)
-  featureSubtasks?: Subtask[];        // @deprecated Use featureTasks
-  currentSubtask?: Subtask;           // @deprecated Use currentTask
-  remainingSubtasks?: Subtask[];      // @deprecated Use taskQueue
-  completedSubtasks?: string[];       // @deprecated Use completedTasks
   subtaskIndex: number;               // Current subtask index (for display)
   totalSubtasks: number;              // Total number of subtasks
   

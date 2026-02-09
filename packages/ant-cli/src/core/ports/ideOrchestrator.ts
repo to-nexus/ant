@@ -5,7 +5,7 @@
  * Abstracts the underlying infrastructure (Docker, Kubernetes).
  * 
  * Implementations:
- * - DockerIDEOrchestrator: Wraps existing IDEService (local Docker)
+ * - LocalIDEOrchestrator: Wraps existing IDEService (local Docker)
  * - KubernetesIDEOrchestrator: Manages K8s pods (Phase 4)
  * 
  * @see 10-cloud-scalability-design.md Section 3.2.4

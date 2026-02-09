@@ -1,5 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 import { DesignGraphState } from "./state";
+import { DesignTask } from "../../types/task";
 import { resolve } from "./nodes/resolve";
 import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅ Triage System
 import { decompose } from "./nodes/decompose/index";
@@ -9,6 +10,7 @@ import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design 
 import { learn } from "./nodes/learn";
 import { detectEnvironment } from "./nodes/detectEnvironment";
 import { revise } from "./nodes/revise";
+import { getTaskConcurrency } from "../code/parallel/types";
 
 /**
  * Check task status and handle completion
@@ -28,7 +30,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', taskInfo);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', 0, taskInfo);
   }
   
   // ✅ Current task completed successfully
@@ -140,6 +142,121 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
   return { currentTask: undefined };
 }
 
+/**
+ * Parallel Orchestrator node for design job.
+ * Runs all tasks from the queue using TaskOrchestrator with worker subgraphs.
+ * Only invoked when ANT_TASK_CONCURRENCY > 1.
+ */
+async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
+  const { TaskOrchestrator: OrchestratorClass } = await import('../code/parallel/TaskOrchestrator');
+  const { createDesignWorkerGraphBuilder } = await import('./parallel/workerGraph');
+
+  const maxWorkers = getTaskConcurrency();
+  console.log(`\n🔀 [Design ParallelOrchestrator] Starting with maxWorkers=${maxWorkers}`);
+
+  const taskQueue = state.taskQueue;
+  if (!taskQueue || taskQueue.isEmpty()) {
+    console.log(`[Design ParallelOrchestrator] No tasks in queue, skipping`);
+    return {};
+  }
+
+  // Build shared context
+  const sharedContext = {
+    context: state.context,
+    workspaceConfig: state.workspaceConfig,
+    deps: state.deps,
+    detectionReport: state.detectionReport,
+    prd: state.prd,
+    directive: state.directive,
+    design: state.design,
+    uiReferences: (state as any).uiReferences,
+    uiAssetsList: (state as any).uiAssetsList,
+    _httpJobId: state._httpJobId,
+    _uiLocale: (state as any)._uiLocale,
+    jobId: (state as any).jobId,
+    jobTiming: (state as any).jobTiming,
+  };
+
+  const graphBuilder = createDesignWorkerGraphBuilder();
+  const orchestrator = new OrchestratorClass<DesignTask>(
+    taskQueue,
+    graphBuilder,
+    sharedContext,
+    {
+      onTaskComplete: (task, workerId) => {
+        console.log(`[Design ParallelOrchestrator] Worker ${workerId} completed: ${task.name}`);
+      },
+      onTaskFailure: (task, error, workerId) => {
+        console.error(`[Design ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
+      },
+      onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
+        if (state.deps?.kanbanUpdate && state._httpJobId) {
+          state.deps.kanbanUpdate.updateTaskQueue(
+            state._httpJobId,
+            currentTasks,
+            queue,
+            completedTasks,
+            undefined, // recursionCount
+            undefined, // recursionLimit
+            tokenUsage,
+          );
+        }
+      },
+      onCheckpoint: async (checkpoint) => {
+        if (state.deps?.session && state.context.featureFolder) {
+          try {
+            await state.deps.session.updateArtifacts(
+              state.context.project,
+              state.context.featureFolder,
+              'design',
+              {
+                state: {
+                  taskQueue: checkpoint.taskQueue,
+                  completedTasks: checkpoint.completedTasks.map(t => t.id),
+                  completedTasksDetails: checkpoint.completedTasks,
+                  tokenUsage: checkpoint.tokenUsage,
+                  // ✅ Preserve estimating phase token usage snapshot in checkpoint
+                  estimatingTokenUsage: (state as any)._estimatingTokenUsage,
+                  jobId: (state as any).jobId,
+                  jobTiming: (state as any).jobTiming,
+                  parallelMode: true,
+                },
+              },
+            );
+            console.log(`💾 [Design ParallelOrchestrator] Checkpoint saved`);
+          } catch (err) {
+            console.warn(`⚠️ [Design ParallelOrchestrator] Checkpoint save failed:`, err);
+          }
+        }
+      },
+    },
+    {
+      maxWorkers,
+      checkpointInterval: 60000,
+    },
+  );
+
+  const result = await orchestrator.run();
+
+  // Clear stale worker entries from WorkflowBroadcaster
+  // Workers' last node (usually 'learn') stays in activeWorkers until cleared
+  if (state.deps?.workflowUpdate?.clearWorkers && state._httpJobId) {
+    await state.deps.workflowUpdate.clearWorkers(state._httpJobId);
+  }
+
+  console.log(`\n🔀 [Design ParallelOrchestrator] Completed:`);
+  console.log(`   Completed: ${result.completedTasks.length}`);
+  console.log(`   Failed: ${result.failedTasks.length}`);
+  console.log(`   Remaining: ${result.remainingQueue.length}`);
+
+  return {
+    completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
+    completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+    currentTask: undefined,
+    tokenUsage: result.tokenUsage || (state as any).tokenUsage,
+  } as any;
+}
+
 export function buildDesignGraph() {
   const graph = new StateGraph<DesignGraphState>({
     channels: {
@@ -222,6 +339,7 @@ export function buildDesignGraph() {
   graph.addNode("tool" as const, tool as any);  // ✅ Tool execution (for UI Design multimodal image loading)
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);
+  graph.addNode("parallelOrchestrator" as const, parallelOrchestrator as any);
 
   // ✅ Unified flow: resolve → [4-way routing] → ... → [plan → docGen → check] → learn
   // Design job now writes files immediately like code job (no separate writeFiles node)
@@ -246,6 +364,11 @@ export function buildDesignGraph() {
         return "revise";
       }
       if (isResume && hasTaskQueue) {
+        const concurrency = getTaskConcurrency();
+        if (concurrency > 1) {
+          console.log(`🔀 [Resolve→Router] isResume + taskQueue, concurrency=${concurrency} → parallelOrchestrator`);
+          return "parallelOrchestrator";
+        }
         console.log(`🔀 [Resolve→Router] isResume + taskQueue → plan (continue)`);
         return "plan";
       }
@@ -257,7 +380,7 @@ export function buildDesignGraph() {
       console.log(`🔀 [Resolve→Router] New job → triage`);
       return "triage";
     }) as any,
-    { triage: "triage", revise: "revise", plan: "plan", decompose: "decompose" } as any
+    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose" } as any
   );
   
   // ✅ Triage → Conditional (proceed to detectEnvironment or end)
@@ -285,8 +408,36 @@ export function buildDesignGraph() {
     { __end__: "__end__", decompose: "decompose" } as any
   );
   
-  (graph as any).addEdge("decompose", "plan");
-  (graph as any).addEdge("revise", "plan");  // ✅ revise always routes to plan
+  // ✅ Decompose → conditional: parallel or sequential
+  graph.addConditionalEdges(
+    "decompose" as any,
+    ((s: DesignGraphState) => {
+      const concurrency = getTaskConcurrency();
+      if (concurrency > 1) {
+        console.log(`[Design Decompose→Router] ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
+        return "parallelOrchestrator";
+      }
+      console.log(`[Design Decompose→Router] ANT_TASK_CONCURRENCY=1 → sequential plan`);
+      return "plan";
+    }) as any,
+    { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
+  );
+  
+  // ✅ ParallelOrchestrator → learn (after all tasks are done)
+  (graph as any).addEdge("parallelOrchestrator", "learn");
+  
+  // ✅ Revise → conditional: parallel or sequential
+  graph.addConditionalEdges(
+    "revise" as any,
+    ((s: DesignGraphState) => {
+      const concurrency = getTaskConcurrency();
+      if (concurrency > 1) {
+        return "parallelOrchestrator";
+      }
+      return "plan";
+    }) as any,
+    { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
+  );
   (graph as any).addEdge("plan", "docGen");
   
   // ✅ Conditional routing: docGen → tool (if tool call) or checkTaskStatus (if done) or docGen (retry)

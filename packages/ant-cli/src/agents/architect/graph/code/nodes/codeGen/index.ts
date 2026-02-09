@@ -159,6 +159,7 @@ export async function codeGen(
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'codeGen',  // ✅ FIX: Must match graph.addNode() name!
+      (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -202,7 +203,7 @@ export async function codeGen(
     }
   }
   
-  // ✅ FALLBACK: Also add files from files array if available (for backward compatibility)
+  // ✅ FALLBACK: Also add files from files array if available
   if (state.projectCodeContext?.files) {
     for (const file of state.projectCodeContext.files) {
       if (file.path) {
@@ -348,7 +349,7 @@ export async function codeGen(
     
     // ✅ Workflow instrumentation: Exit node (success path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen');  // ✅ FIX: Must match graph.addNode() name!
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen', (state as any).workerId ?? 0);
     }
     
     // ✅ Return LLM response (state에 저장)
@@ -413,7 +414,7 @@ export async function codeGen(
     
     // ✅ Workflow instrumentation: Exit node (error path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen');  // ✅ FIX: Must match graph.addNode() name!
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen', (state as any).workerId ?? 0);
     }
     
     throw error;

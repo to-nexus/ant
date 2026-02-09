@@ -71,6 +71,7 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'enforce', 
+      (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -108,7 +109,7 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
     
     // ✅ Workflow instrumentation: Exit node (no retryable errors path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'enforce');
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'enforce', (state as any).workerId ?? 0);
     }
     
     return {
@@ -237,7 +238,7 @@ Try a different approach. Read error message literally.${dependencyHint}
   
   // ✅ Workflow instrumentation: Exit node (retry path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'enforce');
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'enforce', (state as any).workerId ?? 0);
   }
   
   return {

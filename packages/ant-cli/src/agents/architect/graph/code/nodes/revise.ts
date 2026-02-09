@@ -45,6 +45,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'revise',
+      0,
       taskInfo,
       llmInfo,
       state.recursionCount,
@@ -62,7 +63,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     state._phaseTimings = { ...(state._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
     }
     
     return state;
@@ -224,7 +225,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
       updatedState._phaseTimings = { ...(updatedState._phaseTimings || {}), revise: Date.now() - phaseStart };
       
       if (state.deps?.workflowUpdate && state._httpJobId) {
-        state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
       }
       
       return updatedState;
@@ -239,7 +240,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     result._phaseTimings = { ...(result._phaseTimings || {}), revise: Date.now() - phaseStart };
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
     }
     
     return result;
@@ -249,7 +250,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     console.log('   Falling back to CONTINUE (safe default)\n');
     
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise');
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'revise', 0);
     }
     
     // ✅ CRITICAL: Still update directive even on error

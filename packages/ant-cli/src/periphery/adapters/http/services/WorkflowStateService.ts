@@ -17,7 +17,7 @@ import type { StateStorePort, WorkflowRealtimeState, TaskInfo, LLMInfo, NodeHist
 import { getRealtimeWorkflowChannel } from '../../../../infrastructure/state';
 import { logger } from '../../../../utils/logger';
 
-// Re-export types for backward compatibility
+// Re-export types
 export type { WorkflowRealtimeState, TaskInfo, LLMInfo, NodeHistoryEntry };
 
 export class WorkflowStateService {
@@ -42,21 +42,22 @@ export class WorkflowStateService {
   async endJob(jobId: string): Promise<void> {
     const state = await this.getStateInternal(jobId);
     if (state) {
-      // 마지막 노드 종료 처리
-      if (state.currentNode && state.nodeHistory.length > 0) {
-        const lastEntry = state.nodeHistory[state.nodeHistory.length - 1];
-        // Defensive: 배포 과도기에 string 형식 데이터가 Redis에 남아있을 수 있음
-        if (lastEntry && typeof lastEntry === 'object' && !lastEntry.exitedAt) {
-          const exitTime = new Date().toISOString();
-          lastEntry.exitedAt = exitTime;
-          lastEntry.duration = new Date(exitTime).getTime() - new Date(lastEntry.enteredAt).getTime();
+      // 마지막 활성 노드들의 히스토리 종료 처리
+      if (state.activeNodes && state.activeNodes.length > 0 && state.nodeHistory.length > 0) {
+        const exitTime = new Date().toISOString();
+        // Close all unclosed history entries
+        for (const entry of state.nodeHistory) {
+          if (typeof entry === 'object' && !entry.exitedAt) {
+            entry.exitedAt = exitTime;
+            entry.duration = new Date(exitTime).getTime() - new Date(entry.enteredAt).getTime();
+          }
         }
       }
       
       // 종료 상태로 마킹
       state.isCompleted = true;
       state.endedAt = new Date().toISOString();
-      state.currentNode = null;
+      state.activeNodes = [];
       state.activeActors = [];
       
       await this.saveState(jobId, state);

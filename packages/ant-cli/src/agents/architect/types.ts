@@ -31,7 +31,7 @@ export interface ArchitectResult {
   success: boolean;
   status?: 'success' | 'paused' | 'partial';  // ✅ Explicit status for better clarity
   job: AgentJob;
-  reportFile?: string;  // ⚠️  DEPRECATED: Only for code jobs (report.md), design jobs don't need this
+  reportFile?: string;  // Only for code jobs (report.md)
   filesAnalyzed?: number;
   interruption?: import('../../core/types').InterruptionDetails;  // ✅ Unified interruption details
   message: string;

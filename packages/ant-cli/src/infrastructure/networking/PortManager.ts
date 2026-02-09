@@ -22,14 +22,14 @@ export const PORT_RANGES: Record<PortType, PortRangeConfig> = {
 };
 
 export class PortManager {
-  // Legacy defaults (for backward compatibility and overall stats)
+  // Defaults
   private readonly MIN_PORT = PORT_RANGES['dev-server'].min;  // 30000
   private readonly MAX_PORT = PORT_RANGES['ide'].max;         // 49999
   private usedPorts = new Set<number>();
   
   /**
    * Allocate an available port for a specific service type
-   * @param type - 'dev-server' or 'ide' (defaults to 'dev-server' for backward compatibility)
+   * @param type - 'dev-server' or 'ide' (defaults to 'dev-server')
    */
   async allocate(type: PortType = 'dev-server'): Promise<number> {
     const range = PORT_RANGES[type];

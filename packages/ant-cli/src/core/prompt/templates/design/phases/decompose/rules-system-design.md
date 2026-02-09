@@ -173,6 +173,23 @@ DO NOT CREATE tasks for:
 | targetFile | MUST match one of targetFiles |
 | description | ABSTRACT terms + "MAX N lines!" |
 | priority | 200-299 range |
+| exclusive | `true` if task must run alone (e.g., api-contract) |
+| parallelGroup | Group ID for parallel scheduling (tasks with same group conflict) |
+
+### Parallel Execution Hints (`exclusive` and `parallelGroup`)
+
+Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-id>"`.
+
+**`exclusive: true`** — Task must run alone (no concurrent execution):
+- API contract tasks (`api-contract.md`) → ALWAYS exclusive (defines shared interface)
+
+**`parallelGroup: "<group-id>"`** — Tasks with SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
+
+- **"unified"** mode: All tasks target the SAME file → same group ID (e.g., `"system-design"`)
+- **"contract-first"** mode: FE and BE tasks target DIFFERENT files → different group IDs (e.g., `"frontend"`, `"backend"`)
+- **"msa-contract-first"** mode: Each service targets a DIFFERENT file → each service gets its own group ID (e.g., `"be-auth"`, `"be-order"`)
+
+**⚠️ Constraint:** If tasks write to the same file, they MUST share the same `parallelGroup`.
 
 ---
 
@@ -190,6 +207,7 @@ DO NOT CREATE tasks for:
       "id": "design-arch",
       "name": "Design Document: Architecture & Data",
       "targetFile": "system-design.md",
+      "parallelGroup": "system-design",
       "description": "Design system architecture, API integration strategy, and data models. MAX 100 lines! (Total: 200 lines)",
       "priority": 220
     },
@@ -197,6 +215,7 @@ DO NOT CREATE tasks for:
       "id": "design-ui",
       "name": "Design Document: UI Components",
       "targetFile": "system-design.md",
+      "parallelGroup": "system-design",
       "description": "Design component structure, routing, and interaction patterns. MAX 100 lines! (Total: 200 lines, ~100 after task 1)",
       "priority": 240
     }
@@ -216,6 +235,7 @@ DO NOT CREATE tasks for:
       "id": "design-contract",
       "name": "API Contract Definition",
       "targetFile": "api-contract.md",
+      "exclusive": true,
       "description": "Define REST endpoints, DTOs, auth scheme, error format. MAX 120 lines!",
       "priority": 200
     },
@@ -223,6 +243,7 @@ DO NOT CREATE tasks for:
       "id": "design-frontend",
       "name": "Frontend System Design",
       "targetFile": "fe-system-design.md",
+      "parallelGroup": "frontend",
       "description": "Design frontend consuming API contract: components, state, integration. MAX 200 lines!",
       "priority": 220
     },
@@ -230,6 +251,7 @@ DO NOT CREATE tasks for:
       "id": "design-backend",
       "name": "Backend System Design",
       "targetFile": "be-system-design.md",
+      "parallelGroup": "backend",
       "description": "Design backend implementing API contract: services, database, endpoints. MAX 200 lines!",
       "priority": 240
     }
@@ -255,6 +277,7 @@ DO NOT CREATE tasks for:
       "id": "design-contract",
       "name": "API Contract Definition",
       "targetFile": "api-contract.md",
+      "exclusive": true,
       "description": "Define all endpoints (public, internal, inter-service) with Provider/Consumer metadata. Define async events. MAX 200 lines!",
       "priority": 200
     },
@@ -262,6 +285,7 @@ DO NOT CREATE tasks for:
       "id": "design-frontend",
       "name": "Frontend System Design",
       "targetFile": "fe-system-design.md",
+      "parallelGroup": "frontend",
       "description": "Design frontend consuming public API from api-contract.md. MAX 150 lines!",
       "priority": 210
     },
@@ -270,6 +294,7 @@ DO NOT CREATE tasks for:
       "name": "Backend: Auth Service",
       "targetFile": "be-system-design-auth.md",
       "targetService": "auth",
+      "parallelGroup": "be-auth",
       "description": "Design auth service architecture implementing endpoints from api-contract.md. MAX 120 lines!",
       "priority": 220
     },
@@ -278,6 +303,7 @@ DO NOT CREATE tasks for:
       "name": "Backend: Order Service",
       "targetFile": "be-system-design-order.md",
       "targetService": "order",
+      "parallelGroup": "be-order",
       "description": "Design order service architecture implementing endpoints from api-contract.md. MAX 120 lines!",
       "priority": 230
     },
@@ -286,6 +312,7 @@ DO NOT CREATE tasks for:
       "name": "Backend: Payment Service",
       "targetFile": "be-system-design-payment.md",
       "targetService": "payment",
+      "parallelGroup": "be-payment",
       "description": "Design payment service architecture implementing endpoints from api-contract.md. MAX 120 lines!",
       "priority": 240
     }
@@ -338,6 +365,9 @@ Before outputting, verify:
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 - ✅ If reference project mentioned → `references` array included
+- ✅ Every task has either `exclusive: true` OR `parallelGroup: "<id>"`
+- ✅ api-contract tasks have `exclusive: true`
+- ✅ Tasks targeting the same file share the same `parallelGroup`
 
 **MSA-specific validation:**
 - ✅ If `msa-contract-first` → `services` array is NOT empty

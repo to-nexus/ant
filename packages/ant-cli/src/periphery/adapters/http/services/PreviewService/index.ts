@@ -6,9 +6,6 @@
 
 export { PreviewService } from './PreviewService';
 
-/** @deprecated Use PreviewService instead */
-export { PreviewService as DevServerService } from './PreviewService';
-
 // Export types
 export * from './types';
 
