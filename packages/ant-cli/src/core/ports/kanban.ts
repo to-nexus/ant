@@ -12,6 +12,7 @@
  */
 
 import { BaseTask, TaskTokenUsage } from '../types/task';
+import type { JobTiming } from '@ant/shared';
 
 export interface TaskQueueUpdatePort {
   /**
@@ -34,4 +35,11 @@ export interface TaskQueueUpdatePort {
     recursionLimit?: number,
     tokenUsage?: TaskTokenUsage
   ): void;
+
+  /**
+   * Set job-level timing data for inclusion in all subsequent broadcasts.
+   * Called once when jobTiming is initialized (resolve/decompose nodes),
+   * so every SSE broadcast includes timing without per-call overhead.
+   */
+  setJobTiming?(jobTiming: JobTiming): void;
 }

@@ -143,6 +143,11 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   initial.recursionLimit = initial.recursionLimit || finalLimit;
   initial.recursionCount = initial.recursionCount || 0;
   
+  // ✅ Set jobTiming on broadcaster for resume (so SSE broadcasts include timing from first event)
+  if ((initial as any).jobTiming && initial.deps?.kanbanUpdate?.setJobTiming) {
+    initial.deps.kanbanUpdate.setJobTiming((initial as any).jobTiming);
+  }
+  
   // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
   if (!initial.isResume && process.env.ANT_IS_RESUME === 'true') {
     initial.isResume = true;

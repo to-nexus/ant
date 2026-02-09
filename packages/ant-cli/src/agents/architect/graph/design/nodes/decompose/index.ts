@@ -113,6 +113,11 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     }
   }
   
+  // ✅ Set jobTiming on broadcaster so every SSE broadcast includes timing
+  if (state.deps?.kanbanUpdate?.setJobTiming) {
+    state.deps.kanbanUpdate.setJobTiming(newJobTiming);
+  }
+  
   // ✅ NOW send "estimating started" signal with preloaded completed tasks
   if (state._httpJobId && state.deps?.kanbanUpdate) {
     console.log(`\n🎬 [Design Decompose] Signaling estimating started...`);
