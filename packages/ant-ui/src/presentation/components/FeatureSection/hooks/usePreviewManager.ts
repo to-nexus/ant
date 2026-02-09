@@ -6,8 +6,8 @@ import {
   stopPreview, 
   getPreviewStatus
 } from '@/infrastructure/http/api';
-import { DEV_SERVER_MESSAGES } from '../constants/devServer';
-import { analyzeDevServerState, extractErrorFromLogs, extractProgress } from '../utils/devServer';
+import { PREVIEW_MESSAGES } from '../constants/preview';
+import { analyzePreviewState, extractErrorFromLogs, extractProgress } from '../utils/preview';
 import { loadDismissedMessages, saveDismissedMessage, clearDismissedMessagesForServer } from '../utils/dismissedMessages';
 import type { 
   PreviewState, 
@@ -15,12 +15,12 @@ import type {
   PreviewProgress, 
   SetupFailureReasoning,
   UsePreviewManagerResult 
-} from '../types/devServer';
+} from '../types/preview';
 
 /**
- * useDevServerManager
+ * usePreviewManager
  * 
- * Manages dev server lifecycle and state
+ * Manages preview server lifecycle and state
  * 
  * Features:
  * - Initial status check on mount/feature change
@@ -28,7 +28,7 @@ import type {
  * - State analysis from logs
  * - Multi-package progress tracking
  */
-export function useDevServerManager(
+export function usePreviewManager(
   selectedProject: string | undefined,
   selectedFeature: string | undefined
 ): UsePreviewManagerResult {
@@ -48,21 +48,13 @@ export function useDevServerManager(
     : '';
 
   // Derive state from status and logs
-  const state: PreviewState = analyzeDevServerState(
-    previewStatus as any,  // ✅ Type cast for compatibility
+  const state: PreviewState = analyzePreviewState(
+    previewStatus as any,  // Type cast for compatibility
     isPreviewLoading
   );
   
-  // ✅ Get ready state from backend (health check result)
+  // Get ready state from backend (health check result)
   const ready = previewStatus?.ready || false;
-  
-  // Debug logging (disabled for production)
-  // console.log('[useDevServerManager] 🔍 Current state:', {
-  //   state,
-  //   previewStatus,
-  //   isPreviewLoading,
-  //   hasLogs: previewStatus?.logs?.length || 0
-  // });
 
   // Extract progress from logs
   useEffect(() => {
@@ -109,7 +101,7 @@ export function useDevServerManager(
           setPreviewStatus(status);
         })
         .catch(err => {
-          console.error('[useDevServerManager] Status check failed:', err);
+          console.error('[usePreviewManager] Status check failed:', err);
         });
     };
 
@@ -141,7 +133,7 @@ export function useDevServerManager(
     }
   }, [previewStatus?.setupReasoning, serverKey, selectedProject, selectedFeature]);
 
-  // ✅ Subscribe to devServer events via existing unified SSEManager
+  // Subscribe to preview events via existing unified SSEManager
   useEffect(() => {
     if (!selectedProject || !selectedFeature) {
       return;
@@ -153,12 +145,12 @@ export function useDevServerManager(
         const messageData = payload?.data;
 
         if (messageType === 'status') {
-          // ✅ If user just pressed Stop, ignore any transient running:true status that may arrive late.
+          // If user just pressed Stop, ignore any transient running:true status that may arrive late.
           if (Date.now() < stopGuardUntilRef.current && messageData?.running === true) {
             return;
           }
 
-          // ✅ Preserve logs on status updates
+          // Preserve logs on status updates
           const currentStatus = useStore.getState().previewStatus;
           const mergedStatus = {
             ...(currentStatus || {}),
@@ -182,27 +174,22 @@ export function useDevServerManager(
           setPreviewStatus(updated);
         }
       } catch (err) {
-        console.error('[useDevServerManager] devServer handler error:', err);
+        console.error('[usePreviewManager] preview handler error:', err);
       }
     };
 
     sseManager.registerHandler('preview', handler);
-    // IMPORTANT:
-    // Do NOT call sseManager.connect() here.
-    // The unified SSE connection must be owned by the Domain Store (`initializeSSE`).
-    // If we connect early (before kanban/chat handlers are registered), the initial kanban
-    // message can be dropped and never replayed because SSEManager.connect is idempotent.
 
     return () => {
       sseManager.unregisterHandler('preview', handler);
     };
   }, [selectedProject, selectedFeature, setPreviewStatus, setPreviewLoading]);
 
-  // Start dev server
+  // Start preview server
   const startServer = useCallback(async () => {
     if (!selectedProject || !selectedFeature) {
       setError({ 
-        message: DEV_SERVER_MESSAGES.ERROR_NO_PROJECT_FEATURE 
+        message: PREVIEW_MESSAGES.ERROR_NO_PROJECT_FEATURE 
       });
       return;
     }
@@ -216,12 +203,12 @@ export function useDevServerManager(
     setProgress(undefined);
     
     try {
-      // ✅ Ensure we can show install/start progress immediately
+      // Ensure we can show install/start progress immediately
       setPreviewStatus({ running: false, ready: false, logs: [] } as any);
       
       const response = await startPreview(selectedProject, selectedFeature);
       
-      // ✅ Use status from response (backend includes full status)
+      // Use status from response (backend includes full status)
       if (response.status) {
         setPreviewStatus(response.status);
       } else {
@@ -245,18 +232,18 @@ export function useDevServerManager(
       }
       
       setError({
-        message: err.message || DEV_SERVER_MESSAGES.ERROR_UNKNOWN,
+        message: err.message || PREVIEW_MESSAGES.ERROR_UNKNOWN,
         details: err.setupReason || err.response?.data?.error
       });
       setPreviewLoading(false);
     }
   }, [selectedProject, selectedFeature, serverKey, setPreviewLoading, setPreviewStatus]);
 
-  // Stop dev server
+  // Stop preview server
   const stopServer = useCallback(async () => {
     if (!selectedProject || !selectedFeature) return;
 
-    // ✅ Optimistically drop status immediately so the UI stops showing "Running".
+    // Optimistically drop status immediately so the UI stops showing "Running".
     // Also guard against late SSE status updates re-marking it as running.
     stopGuardUntilRef.current = Date.now() + 5000;
     setPreviewStatus(undefined);
@@ -269,7 +256,7 @@ export function useDevServerManager(
       await stopPreview(selectedProject, selectedFeature);
     } catch (err: any) {
       setError({
-        message: DEV_SERVER_MESSAGES.ERROR_STOP_FAILED(err.message || DEV_SERVER_MESSAGES.ERROR_UNKNOWN)
+        message: PREVIEW_MESSAGES.ERROR_STOP_FAILED(err.message || PREVIEW_MESSAGES.ERROR_UNKNOWN)
       });
       // Re-sync status if stop failed
       try {
@@ -287,17 +274,16 @@ export function useDevServerManager(
   const dismissMessage = useCallback(() => {
     const reasoning = previewStatus?.setupReasoning;
     if (reasoning && serverKey) {
-      // Type guard: setupReasoning from backend is already SetupFailureReasoning type
       saveDismissedMessage(serverKey, reasoning as SetupFailureReasoning);
       setIsDismissed(true);
       return;
     }
     
-    // ✅ Allow dismissing non-setup errors as well (session-only)
+    // Allow dismissing non-setup errors as well (session-only)
     setIsDismissed(true);
   }, [previewStatus?.setupReasoning, serverKey]);
 
-  // ✅ Build "Fix All" payload from issues (extensible)
+  // Build "Fix All" payload from issues (extensible)
   const effectiveSuggestedFix = (() => {
     const issues = previewStatus?.issues || [];
     const withFix = issues.filter(i => i.suggestedFix && i.suggestedFix.trim().length > 0);
@@ -313,8 +299,8 @@ export function useDevServerManager(
 
   return {
     state,
-    status: previewStatus as any,  // Type cast for compatibility
-    ready,  // Health check result
+    status: previewStatus as any,
+    ready,
     setupReasoning: previewStatus?.setupReasoning as SetupFailureReasoning | undefined,
     setupReason: previewStatus?.setupReason,
     suggestedFix: effectiveSuggestedFix,

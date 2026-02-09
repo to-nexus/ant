@@ -49,6 +49,7 @@ export class PreviewService {
   private previewServerPackagePorts: Map<string, Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>> = new Map();
   private previewServerIssues: Map<string, PreviewIssue[]> = new Map();
   private previewServerPaths: Map<string, string> = new Map(); // serverKey -> localPath (for infrastructure cleanup)
+  private previewServerNativeBasePath: Map<string, boolean> = new Map(); // serverKey -> true if framework uses native basePath (e.g. Next.js)
   
   // Start/Stop state management
   private startingServers: Set<string> = new Set(); // serverKeys currently in startPreview
@@ -196,7 +197,7 @@ export class PreviewService {
   /**
    * Append log entry and broadcast via Redis Pub/Sub
    * 
-   * Message structure for frontend (useDevServerManager.ts):
+   * Message structure for frontend (usePreviewManager.ts):
    * - SSE type: 'preview' (SSEMessageType)
    * - data.type: 'log' (subtype)
    * - data.data: LogEntry
@@ -227,7 +228,7 @@ export class PreviewService {
   /**
    * Broadcast status update via Redis Pub/Sub
    * 
-   * Message structure for frontend (useDevServerManager.ts):
+   * Message structure for frontend (usePreviewManager.ts):
    * - SSE type: 'preview' (SSEMessageType)
    * - data.type: 'status' (subtype)
    * - data.data: PreviewStatus
@@ -515,6 +516,13 @@ export class PreviewService {
         if (!validation.valid) {
           return this.handleValidationFailure(serverKey, tenantId, userId, projectId, feature, processes, orderedPackages, structure.entry.path, validation);
         }
+        
+        // Track if this project uses native basePath (Next.js with basePath configured).
+        // The proxy uses this to skip HTML rewriting and prefix stripping.
+        if (validation.framework === 'next') {
+          this.previewServerNativeBasePath.set(serverKey, true);
+          logger.info(`[Preview] Next.js with native basePath detected for ${serverKey}`, { component: 'PreviewService' });
+        }
       }
 
       // 7. Non-fatal issues detection
@@ -631,6 +639,7 @@ export class PreviewService {
     this.logManager.clearLogs(serverKey);
     this.previewServerPackagePorts.delete(serverKey);
     this.previewServerIssues.delete(serverKey);
+    this.previewServerNativeBasePath.delete(serverKey);
     
     // Update Redis state to error (don't unregister — let UI see the error reason)
     await this.updatePhase(serverKey, 'error', {
@@ -760,6 +769,7 @@ export class PreviewService {
       this.previewServerPaths.delete(serverKey);
       this.previewServerPackagePorts.delete(serverKey);
       this.previewServerIssues.delete(serverKey);
+      this.previewServerNativeBasePath.delete(serverKey);
       
       // Update Redis to error + broadcast
       await this.updatePhase(serverKey, 'error', {
@@ -849,6 +859,7 @@ export class PreviewService {
     this.logManager.clearLogs(serverKey);
     this.previewServerPackagePorts.delete(serverKey);
     this.previewServerIssues.delete(serverKey);
+    this.previewServerNativeBasePath.delete(serverKey);
     
     logger.info(`Stopped all servers for ${serverKey}`, { component: 'PreviewService' });
     
@@ -969,6 +980,16 @@ export class PreviewService {
   ): LogEntry[] {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     return this.logManager.getLogs(serverKey);
+  }
+  
+  /**
+   * Check if a preview uses native basePath (e.g. Next.js with basePath config).
+   * When true, the proxy should NOT strip the serverKey prefix from request paths
+   * and should NOT rewrite HTML or inject client-side scripts — the framework
+   * already generates all URLs with the correct prefix.
+   */
+  hasNativeBasePath(serverKey: string): boolean {
+    return this.previewServerNativeBasePath.get(serverKey) === true;
   }
   
   /**

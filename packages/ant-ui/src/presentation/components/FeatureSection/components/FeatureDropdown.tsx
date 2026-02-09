@@ -5,11 +5,11 @@ interface FeatureDropdownProps {
   features: Array<{ name: string; path: string }>;
   selectedFeature: string | undefined;
   isPreviewLoading: boolean;
-  devServerRunning: boolean;
+  previewRunning: boolean;
   canChangeFeature: boolean;
   canCreateFeature: boolean;
-  canStartDevServer: boolean;
-  canStopDevServer: boolean;
+  canStartPreview: boolean;
+  canStopPreview: boolean;
   disabledReason?: string;
   createDisabledReason?: string;
   onFeatureChange: (featureName: string | null) => void;
@@ -24,11 +24,11 @@ export function FeatureDropdown({
   features,
   selectedFeature,
   isPreviewLoading,
-  devServerRunning,
+  previewRunning,
   canChangeFeature,
   canCreateFeature,
-  canStartDevServer,
-  canStopDevServer,
+  canStartPreview,
+  canStopPreview,
   disabledReason,
   createDisabledReason,
   onFeatureChange,
@@ -57,12 +57,12 @@ export function FeatureDropdown({
       inputPlaceholder="Feature name..."
       onPlayClick={onPlayClick}
       onStopClick={onStopClick}
-      isPlaying={devServerRunning}
+      isPlaying={previewRunning}
       disabled={!canChangeFeature}
       disabledReason={disabledReason}
       canCreate={canCreateFeature}
       createDisabledReason={createDisabledReason}
-      playButtonDisabled={!canStartDevServer && !canStopDevServer}
+      playButtonDisabled={!canStartPreview && !canStopPreview}
       playButtonLoading={isPreviewLoading}
     />
   );

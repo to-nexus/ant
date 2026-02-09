@@ -1,7 +1,7 @@
 import { Loader2, Package, ExternalLink, AlertCircle, CheckCircle, Wrench, X } from 'lucide-react';
-import { DEV_SERVER_MESSAGES } from '../constants/devServer';
-import { getProgressMessage } from '../utils/devServer';
-import type { PreviewState, PreviewError, PreviewProgress, SetupFailureReasoning } from '../types/devServer';
+import { PREVIEW_MESSAGES } from '../constants/preview';
+import { getProgressMessage } from '../utils/preview';
+import type { PreviewState, PreviewError, PreviewProgress, SetupFailureReasoning } from '../types/preview';
 
 /**
  * Get user-friendly title for setup failure reasoning
@@ -10,6 +10,8 @@ function getSetupFailureTitle(reasoning?: SetupFailureReasoning): string {
   switch (reasoning) {
     case 'basename-missing':
       return 'React Router basename 설정 누락 - 프록시 환경에서 라우팅이 동작하지 않습니다';
+    case 'basepath-missing':
+      return 'Next.js basePath 설정 누락 - SSR 환경에서 에셋 경로 불일치가 발생합니다';
     case 'port-conflict':
       return '포트 충돌 - 다른 프로세스가 이미 사용 중입니다';
     case 'dependency-error':
@@ -19,60 +21,59 @@ function getSetupFailureTitle(reasoning?: SetupFailureReasoning): string {
     case 'framework-unsupported':
       return '지원되지 않는 프레임워크';
     default:
-      return '개발서버 설정 미완료';
+      return '프리뷰 서버 설정 미완료';
   }
 }
 
-interface DevServerStatusPanelProps {
+interface PreviewStatusPanelProps {
   state: PreviewState;
-  ready?: boolean;  // Is dev server ready to accept requests?
-  setupReasoning?: SetupFailureReasoning;  // Categorized failure code
+  ready?: boolean;
+  setupReasoning?: SetupFailureReasoning;
   url?: string;
   error?: PreviewError;
   progress?: PreviewProgress;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
-  packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;  // ✅ NEW: Running packages info
+  packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
   onOpen?: () => void;
-  onFix?: () => void;  // Fix setup handler
-  onDismiss?: () => void;  // ✅ NEW: Dismiss panel
-  fixButtonClicked?: boolean;  // ✅ NEW: Track if fix button was clicked
+  onFix?: () => void;
+  onDismiss?: () => void;
+  fixButtonClicked?: boolean;
 }
 
 /**
- * DevServerStatusPanel
+ * PreviewStatusPanel
  * 
- * Shows dev server status with appropriate UI
+ * Shows preview server status with appropriate UI
  * - idle: nothing shown
  * - installing: progress message (multi-package aware)
  * - starting: progress message (multi-package aware)
  * - running: success message + Open button
  * - error: error message
  */
-export function DevServerStatusPanel({ 
+export function PreviewStatusPanel({ 
   state, 
-  ready = false,  // Default to false
-  setupReasoning,  // Categorized failure code
+  ready = false,
+  setupReasoning,
   url,
   error,
   progress,
   issues,
-  packages,  // ✅ NEW: Running packages info
+  packages,
   onOpen,
   onFix,
-  onDismiss,  // ✅ NEW: Dismiss handler
-  fixButtonClicked = false  // ✅ NEW: Track fix button state
-}: DevServerStatusPanelProps) {
-  // ✅ Only show (n/m) counts for multi-package projects (totalCount > 1)
+  onDismiss,
+  fixButtonClicked = false
+}: PreviewStatusPanelProps) {
   const isMultiPackage = progress && progress.totalCount > 1;
-  const hasMultiplePackages = packages && packages.length > 1;  // ✅ NEW: Check if running with multiple packages
+  const hasMultiplePackages = packages && packages.length > 1;
   
   const startingWithCounts = isMultiPackage
-    ? `${DEV_SERVER_MESSAGES.STATUS_STARTING} (${progress.completedCount}/${progress.totalCount})`
-    : DEV_SERVER_MESSAGES.STATUS_STARTING;
+    ? `${PREVIEW_MESSAGES.STATUS_STARTING} (${progress.completedCount}/${progress.totalCount})`
+    : PREVIEW_MESSAGES.STATUS_STARTING;
   
   const installingWithCounts = isMultiPackage
-    ? `${DEV_SERVER_MESSAGES.STATUS_INSTALLING} (${progress.completedCount}/${progress.totalCount})`
-    : DEV_SERVER_MESSAGES.STATUS_INSTALLING;
+    ? `${PREVIEW_MESSAGES.STATUS_INSTALLING} (${progress.completedCount}/${progress.totalCount})`
+    : PREVIEW_MESSAGES.STATUS_INSTALLING;
 
   // Idle state - show nothing
   if (state === 'idle') {
@@ -81,9 +82,7 @@ export function DevServerStatusPanel({
   
   // Installing dependencies
   if (state === 'installing') {
-    // ✅ Keep message consistent: installing phase should not show "Starting..."
-    // Show (n/m) when we have multi-package progress.
-    const progressMsg = progress ? installingWithCounts : DEV_SERVER_MESSAGES.STATUS_INSTALLING;
+    const progressMsg = progress ? installingWithCounts : PREVIEW_MESSAGES.STATUS_INSTALLING;
     
     return (
       <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-md">
@@ -152,9 +151,7 @@ export function DevServerStatusPanel({
   
   // Running successfully
   if (state === 'running') {
-    // ✅ FIX: When ready, ignore progress from logs and show simple running message
-    // This fixes the "Progress (0/1)" bug on page refresh
-    const progressMsg = ready ? DEV_SERVER_MESSAGES.STATUS_RUNNING : (progress ? getProgressMessage(progress) : DEV_SERVER_MESSAGES.STATUS_RUNNING);
+    const progressMsg = ready ? PREVIEW_MESSAGES.STATUS_RUNNING : (progress ? getProgressMessage(progress) : PREVIEW_MESSAGES.STATUS_RUNNING);
     const warning = issues?.find(i => i.severity === 'warning');
     
     return (
@@ -177,7 +174,7 @@ export function DevServerStatusPanel({
                   className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
                            hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
                            flex items-center gap-1.5"
-                  title="Fix dev server setup"
+                  title="Fix preview setup"
                 >
                   <Wrench size={12} />
                   Fix
@@ -206,7 +203,7 @@ export function DevServerStatusPanel({
                   <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
                     {warning.reasoning === 'api-base-missing'
                       ? 'API 호출 설정이 동적 백엔드 포트(풀스택 dev server)에 맞지 않을 수 있습니다'
-                      : '개발서버 실행 환경에서 추가 설정이 필요할 수 있습니다'}
+                      : '프리뷰 서버 실행 환경에서 추가 설정이 필요할 수 있습니다'}
                   </div>
                   {warning.reason && (
                     <div className="mt-1 text-xs text-yellow-800/80 dark:text-yellow-200/80">
@@ -221,7 +218,7 @@ export function DevServerStatusPanel({
                   className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
                            hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
                            flex items-center gap-1.5"
-                  title="Fix dev server setup"
+                  title="Fix preview setup"
                 >
                   <Wrench size={12} />
                   Fix
@@ -231,7 +228,7 @@ export function DevServerStatusPanel({
           </div>
         )}
         
-        {/* Dev server status */}
+        {/* Preview server status */}
         <div className="p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-md">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -241,27 +238,24 @@ export function DevServerStatusPanel({
                 <Loader2 className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
               )}
               <span className="text-sm font-medium text-green-900 dark:text-green-100">
-                {/* ✅ If processes are up but health-check isn't ready yet, show starting message with (n/m) */}
                 {ready ? progressMsg : startingWithCounts}
               </span>
             </div>
             
-            {/* ✅ Only show Open button when ready */}
             {ready && url && onOpen && (
               <button
                 onClick={onOpen}
                 className="px-3 py-1.5 text-xs font-medium bg-green-600 dark:bg-green-700 text-white rounded 
                          hover:bg-green-700 dark:hover:bg-green-600 transition-colors 
                          flex items-center gap-1.5"
-                title="Open dev server in new tab"
+                title="Open preview in new tab"
               >
                 <ExternalLink size={12} />
-                {DEV_SERVER_MESSAGES.BUTTON_OPEN}
+                {PREVIEW_MESSAGES.BUTTON_OPEN}
               </button>
             )}
           </div>
 
-          {/* ✅ NEW: Show running packages for multi-package projects */}
           {ready && hasMultiplePackages && (
             <div className="mt-3 space-y-1.5">
               {packages!.map((pkg, idx) => (
@@ -295,7 +289,6 @@ export function DevServerStatusPanel({
     const fixableIssues = (issues || []).filter(i => i.suggestedFix && i.suggestedFix.trim().length > 0);
     const issueCount = (issues || []).length;
     
-    // If setupReasoning exists, this is a validation failure (not a general error)
     if (setupReasoning && onFix && !fixButtonClicked) {
       return (
         <div className="p-3 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-md">
@@ -306,7 +299,6 @@ export function DevServerStatusPanel({
                 <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
                   {getSetupFailureTitle(setupReasoning)}
                 </div>
-                {/* ✅ Show issue queue details when available (extensible) */}
                 {issueCount > 1 && (
                   <div className="mt-1 space-y-1">
                     {(issues || [])
@@ -327,7 +319,7 @@ export function DevServerStatusPanel({
                 className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
                          hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
                          flex items-center gap-1.5"
-                title="Fix dev server setup"
+                title="Fix preview setup"
               >
                 <Wrench size={12} />
                 {fixableIssues.length > 1 ? `Fix all (${fixableIssues.length})` : 'Fix'}
@@ -347,7 +339,7 @@ export function DevServerStatusPanel({
       );
     }
     
-    // General error (not validation related) - ✅ Show only main error, no package details
+    // General error
     return (
       <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md">
         <div className="flex items-start justify-between gap-3">
@@ -355,7 +347,7 @@ export function DevServerStatusPanel({
             <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-red-900 dark:text-red-100">
-                {error?.message || DEV_SERVER_MESSAGES.STATUS_FAILED}
+                {error?.message || PREVIEW_MESSAGES.STATUS_FAILED}
               </div>
             </div>
           </div>
