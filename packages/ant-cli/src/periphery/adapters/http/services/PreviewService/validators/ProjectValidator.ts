@@ -4,6 +4,7 @@ import { ValidationResult } from '../types';
 import { PackageDetector } from '../detectors/PackageDetector';
 import { ReactValidator } from './ReactValidator';
 import { VueValidator } from './VueValidator';
+import { NextValidator } from './NextValidator';
 
 /**
  * ProjectValidator
@@ -14,11 +15,13 @@ export class ProjectValidator {
   private packageDetector: PackageDetector;
   private reactValidator: ReactValidator;
   private vueValidator: VueValidator;
+  private nextValidator: NextValidator;
   
   constructor() {
     this.packageDetector = new PackageDetector();
     this.reactValidator = new ReactValidator();
     this.vueValidator = new VueValidator();
+    this.nextValidator = new NextValidator();
   }
   
   /**
@@ -50,8 +53,9 @@ export class ProjectValidator {
         case 'vue':
           return await this.vueValidator.validate(codebasePath);
         case 'next':
+          return await this.nextValidator.validate(codebasePath);
         case 'nuxt':
-          return { valid: true, framework }; // Meta-frameworks handle this automatically
+          return { valid: true, framework }; // Nuxt: add NuxtValidator when needed
         default:
           // Unknown framework - skip validation
           return { valid: true, framework: 'unknown' };

@@ -158,11 +158,13 @@ export class ProcessSpawner {
     let args: string[] = [];
     
     // Determine command based on package type and script content
+    const isNextJs = devScript?.includes('next');
+    
     if (pkg.type === 'frontend') {
       if (devScript?.includes('vite')) {
         command = 'npx';
         args = ['vite', '--port', port.toString(), '--host', '0.0.0.0'];
-      } else if (devScript?.includes('next')) {
+      } else if (isNextJs) {
         command = 'npx';
         args = ['next', 'dev', '-p', port.toString(), '--hostname', '0.0.0.0'];
       } else if (devScript?.includes('react-scripts')) {
@@ -180,6 +182,16 @@ export class ProcessSpawner {
       args = ['run', 'dev'];
     }
     
+    // Next.js basePath: inject NEXT_PUBLIC_BASE_PATH so next.config can read it.
+    // This is the runtime counterpart of the NextValidator's suggested fix.
+    // When next.config.js contains `basePath: process.env.NEXT_PUBLIC_BASE_PATH || ''`,
+    // Next.js will serve all routes and assets under /{serverKey}/ prefix natively,
+    // eliminating the need for proxy-level HTML rewriting and preventing SSR hydration mismatches.
+    const nextJsEnv: Record<string, string> = {};
+    if (isNextJs && options.serverKey) {
+      nextJsEnv.NEXT_PUBLIC_BASE_PATH = `/${options.serverKey}`;
+    }
+    
     const env = {
       ...process.env,
       PORT: port.toString(),
@@ -194,6 +206,7 @@ export class ProcessSpawner {
       CHOKIDAR_USEPOLLING: 'true',
       CHOKIDAR_INTERVAL: '3000',    // 3s interval — preview doesn't need instant HMR
       WATCHPACK_POLLING: 'true',
+      ...nextJsEnv,
       ...(options.extraEnv || {})
     };
     

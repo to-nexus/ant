@@ -94,6 +94,22 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         state.recursionLimit
       );
     }
+    
+    // ✅ CRITICAL: Save checkpoint after task started so session has correct currentTask
+    // Without this, manual cancel during codeGen can't find the in-progress task
+    // (session still has stale currentTask from previous learn node save)
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const { saveCheckpoint } = await import('../checkpoint');
+        await saveCheckpoint({
+          ...state,
+          currentTask: nextTask
+        });
+      } catch (err) {
+        // Non-critical: checkpoint save failure shouldn't block plan execution
+        console.warn(`⚠️  [Plan] Failed to save task-start checkpoint: ${err}`);
+      }
+    }
   }
   
   // Workflow instrumentation

@@ -1,93 +1,61 @@
-# Development Server Configuration (Ant Platform)
+# Development Server: Path Prefix Configuration
 
-**CRITICAL REQUIREMENT FOR FRONTEND PROJECTS:**
+## Principle
 
-When implementing a frontend application (React, Vue, Svelte, etc.) that will be served through the Ant platform's development server proxy, you MUST configure the router to support dynamic basename.
+**Frontend MUST support dynamic path prefix for proxy-based routing.**
 
-## Why This Is Required
+The platform serves each project under a unique proxy path (`/{serverKey}/`).
+Without path prefix configuration, routing and asset loading will break.
 
-The Ant platform serves development servers through a proxy URL like:
-```
-/dev/{tenantId}:{userId}:{projectId}:{feature}/
-```
+---
 
-Without proper basename configuration, client-side routing will fail because the router won't be aware of the proxy prefix.
+## Rendering Type Determines Mechanism
 
-## Implementation Requirements
+**Constraint**: Determine the rendering type FIRST, then apply the correct mechanism.
 
-### For React Projects (React Router v6+)
+| Rendering Type | Path Prefix Source | Injection Time |
+|---------------|-------------------|----------------|
+| **CSR** (client-side only) | `window.__BASENAME__` | Runtime (injected into HTML by proxy) |
+| **SSR** (server + client) | Framework config reading environment variable | Build/startup time (injected as env var) |
 
-1. **Add Window Type Declaration** (typically in `App.tsx` or a separate `global.d.ts`):
+---
 
-```typescript
-// Type declaration for proxy injected basename
-declare global {
-  interface Window {
-    __BASENAME__?: string;
-  }
-}
-```
+## CSR: Runtime Global Variable
 
-2. **Configure BrowserRouter with basename**:
+**Principle**: Client-side router MUST read its base path from `window.__BASENAME__`.
 
-```tsx
-import { BrowserRouter } from 'react-router-dom';
+**Contract**:
+- The proxy injects `window.__BASENAME__` into the HTML `<head>` at runtime
+- Client-side router MUST consume this value as its base/prefix
+- Default MUST be empty string (`''`) when variable is absent (non-Ant execution)
+- TypeScript projects MUST declare the global type
 
-function App() {
-  return (
-    <BrowserRouter basename={window.__BASENAME__ || ''}>
-      {/* Your app routes */}
-    </BrowserRouter>
-  );
-}
-```
+**⚠️ Blind Spot**: Router initialization often happens before DOM is ready. `window.__BASENAME__` is injected as a synchronous `<script>` in `<head>`, so it IS available at module evaluation time.
 
-### For Vue Projects (Vue Router 4+)
+---
 
-```typescript
-import { createRouter, createWebHistory } from 'vue-router';
+## SSR: Framework-Native Path Config
 
-const router = createRouter({
-  history: createWebHistory((window as any).__BASENAME__ || '/'),
-  routes: [
-    // your routes
-  ]
-});
-```
+**Principle**: SSR frameworks MUST use their native path prefix mechanism, NOT `window.__BASENAME__`.
 
-### For Svelte Projects (SvelteKit)
+**⚠️ CRITICAL Blind Spot — SSR Hydration Mismatch**:
+SSR renders HTML on the server, then the client hydrates it. If path prefixes differ between server and client, hydration fails with prop mismatch warnings. Proxy-level URL rewriting (post-render patching) causes exactly this problem because:
+- Server output gets rewritten by proxy (prefixed URLs)
+- Client bundle still has original un-prefixed URLs
+- React/framework detects the mismatch during hydration
 
-```typescript
-// svelte.config.js
-export default {
-  kit: {
-    paths: {
-      base: process.env.BASE_PATH || ''
-    }
-  }
-};
-```
+**Constraint**: Do NOT use `window.__BASENAME__` for SSR frameworks. It only patches the client side.
 
-## What Happens Behind the Scenes
+**Contract**:
+- The platform injects `NEXT_PUBLIC_BASE_PATH` as an environment variable at dev server startup
+- Framework config MUST read this env var and set its native path prefix option
+- Default MUST be empty string when env var is absent (non-Ant execution)
+- This ensures server-rendered HTML and client bundle produce identical URLs
 
-When the development server starts:
-1. The Ant platform proxy intercepts the HTML response
-2. It injects `<script>window.__BASENAME__ = "/dev/...";</script>` into the `<head>`
-3. Your router reads this value and adjusts all navigation accordingly
-
-## Verification
-
-After implementing this, you can verify it works by:
-1. Starting the development server from the Ant UI
-2. Clicking the "Open" button
-3. Verifying that navigation works correctly in the proxied environment
+---
 
 ## When to Skip
 
-You can skip this configuration if:
-- Building a pure backend API (no frontend routing)
-- Building a static site without client-side routing
-- Using a meta-framework that handles this automatically (e.g., Next.js with basePath)
-
-**Remember**: This is a platform requirement, not a project-specific configuration. All frontend projects on the Ant platform need this setup for development server access to work correctly.
+- Pure backend API (no frontend routing)
+- Static site without client-side routing
 

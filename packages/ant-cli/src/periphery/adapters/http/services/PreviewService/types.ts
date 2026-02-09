@@ -40,7 +40,8 @@ export interface ProjectStructure {
  * Used to categorize different types of setup failures and provide appropriate fixes
  */
 export type SetupFailureReasoning = 
-  | 'basename-missing'      // Frontend: Missing basename configuration for proxy
+  | 'basename-missing'      // Frontend (CSR): Missing basename configuration for proxy (React Router, Vue Router)
+  | 'basepath-missing'      // Frontend (SSR): Missing basePath in Next.js config for proxy
   | 'port-conflict'         // Port already in use (future)
   | 'dependency-error'      // npm/pnpm install failed (future)
   | 'config-invalid'        // Invalid vite/webpack config (future)
