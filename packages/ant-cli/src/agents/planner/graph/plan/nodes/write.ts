@@ -35,21 +35,16 @@ export async function writeNode(state: PlanGraphState): Promise<Partial<PlanGrap
   
   console.log(`\n📝 [Planner:Write] Writing PRD draft to ${relativePath}`);
   
-  // Stream file creation to UI
+  // File card streaming was already handled by StreamOrchestrator in generateNode.
+  // Here we only write to disk and send the choice card.
   const chatAPI = getChatAPIClient();
   
   try {
     // Ensure directory exists
     await fs.mkdir(path.dirname(stagingPath), { recursive: true });
     
-    // Show file card in UI
-    await chatAPI.startFileCreation(relativePath);
-    await chatAPI.streamFileContent(relativePath, content);
-    
     // Write file to staging location
     await fs.writeFile(stagingPath, content, 'utf-8');
-    
-    await chatAPI.completeFileCreation(relativePath, content);
     
     console.log(`   ✅ Written ${content.length} chars to staging`);
   } catch (error: any) {

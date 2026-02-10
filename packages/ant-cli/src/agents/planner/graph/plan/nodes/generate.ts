@@ -2,7 +2,8 @@
  * Generate Node
  * 
  * ReAct agent that generates or refines the PRD.
- * Can use tools (workspace read, web search) to gather information.
+ * Uses StreamOrchestrator for real-time file card streaming (same as design job).
+ * LLM wraps PRD output in <file path="outputs/plan/prd-refine.md">...</file> tags.
  */
 
 import * as path from 'path';
@@ -15,6 +16,9 @@ import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
 import { PLANNER_TOOLS } from '../../tools';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
+import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestrator';
+import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
+import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 
 // Template cache
 let planBaseTemplate: Handlebars.TemplateDelegate | null = null;
@@ -58,7 +62,7 @@ function buildSystemPrompt(state: PlanGraphState): string {
 }
 
 /**
- * Generate node - LLM generates/refines PRD with tool support
+ * Generate node - LLM generates/refines PRD with real-time file streaming
  */
 export async function generateNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
   console.log(`\n🤖 [Planner:Generate] ${state.mode === 'generate' ? 'Creating' : 'Refining'} PRD...`);
@@ -96,10 +100,22 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     input_schema: t.parameters,
   }));
   
-  // Setup streaming
-  // NOTE: PRD text is NOT streamed as chat — it goes to the write node as a file card.
-  // Only thinking events and tool-call reasoning are streamed to chat.
+  // Setup StreamOrchestrator for real-time <file> tag streaming (same pattern as design job)
   const chatAPI = getChatAPIClient();
+  const parser = new XMLStreamParser();
+  const renderStrategy = new CommonRenderStrategy(
+    chatAPI,
+    state.language === 'ko' ? 'ko' : 'en',
+    undefined,   // no gitPort — file write is handled by writeNode
+    undefined,   // no fileSystem
+    false,       // writeImmediately: false
+  );
+  const orchestrator = new StreamOrchestrator({
+    parser,
+    renderStrategy,
+    existingFiles: new Set(),
+  });
+  
   let responseText = '';
   let toolCall: { id: string; name: string; args: Record<string, any> } | undefined;
   
@@ -111,13 +127,14 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       tools: toolDefinitions,
       enableThinking: isFirstCall,
     })) {
-      if (event.type === 'text' && event.text) {
-        // Accumulate text — do NOT stream to chat yet (may be the final PRD)
-        responseText += event.text;
-      }
+      // Pass ALL events to StreamOrchestrator for real-time rendering:
+      // - <file> tags → file card streaming (startFileCreation → streamFileContent → completeFileCreation)
+      // - thinking → thinking UI
+      // - text outside <file> → chat response
+      await orchestrator.processEvent(event);
       
-      if (event.type === 'thinking' && event.thinking) {
-        await chatAPI.sendLLMEvent({ type: 'thinking', thinking: event.thinking });
+      if (event.type === 'text' && event.text) {
+        responseText += event.text;
       }
       
       if (event.type === 'tool_use' && event.toolUse) {
@@ -134,6 +151,15 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     throw error;
   }
   
+  // Finalize orchestrator (flush remaining buffer, complete file operations)
+  const hasToolCalls = !!toolCall;
+  await orchestrator.finalize(hasToolCalls);
+  
+  // Extract file content from registry (set by StreamOrchestrator via <file> tags)
+  const files = orchestrator.getRegistry().getAllFiles();
+  const prdFile = files.find(f => f.path.includes('prd-refine'));
+  const generatedDocument = prdFile?.content || undefined;
+  
   // Update conversation history
   const updatedHistory = [...state.conversationHistory];
   
@@ -147,11 +173,6 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
   
   if (toolCall) {
-    // Tool call path: text is reasoning, send to chat
-    if (responseText) {
-      await chatAPI.sendLLMEvent({ type: 'text', text: responseText });
-    }
-    
     updatedHistory.push({
       role: 'assistant',
       content: [
@@ -166,12 +187,12 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     };
   }
   
-  // Final text = PRD document → pass to write node as file (NOT streamed to chat)
+  // Pass generated document to write node for disk write + choice card
   updatedHistory.push({ role: 'assistant', content: responseText });
   
   return {
     conversationHistory: updatedHistory,
-    generatedDocument: responseText,
+    generatedDocument,
     pendingToolCall: undefined,
   };
 }
