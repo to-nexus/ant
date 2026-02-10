@@ -9,6 +9,7 @@ import * as path from 'path';
 import { buildAskGraph } from './graph.js';
 import { AskGraphState, createInitialAskState } from './state.js';
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
+import { setWorkspaceFeaturePath } from './tools.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
@@ -145,6 +146,9 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
   
   // Build graph
   const graph = buildAskGraph();
+  
+  // Set workspace context for workspace tools
+  setWorkspaceFeaturePath(params.workspaceState.featurePath);
   
   // Create initial state
   const initialState = createInitialAskState({
