@@ -110,6 +110,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           <GaugesGroup
             recursionCount={kanbanData.recursionCount}
             recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
+            recursionTaskName={kanbanData.recursionTaskName}
           />
         }
         className={`kanban-board ${splitLayout}`}
@@ -171,6 +172,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           <GaugesGroup
             recursionCount={kanbanData.recursionCount}
             recursionLimit={kanbanData.recursionLimit || systemRecursionLimit}
+            recursionTaskName={kanbanData.recursionTaskName}
           />
         }
       className={`kanban-board ${splitLayout}`}  // ✅ Pass splitLayout

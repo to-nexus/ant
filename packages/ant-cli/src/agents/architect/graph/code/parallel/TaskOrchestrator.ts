@@ -28,6 +28,30 @@ import type {
 } from './types';
 import { getTaskConcurrency } from './types';
 
+/**
+ * Classify whether an error is deterministic (will always fail on retry)
+ * vs transient (may succeed on retry).
+ *
+ * Deterministic errors should NOT be retried — doing so wastes tokens and time.
+ */
+function isDeterministicError(error: Error): boolean {
+  const msg = error.message || '';
+  return (
+    // Anthropic prompt too long
+    /prompt is too long/i.test(msg) ||
+    // Anthropic invalid request (malformed, etc.)
+    /invalid_request_error/i.test(msg) ||
+    // Authentication / permission errors
+    /authentication/i.test(msg) ||
+    /permission denied/i.test(msg) ||
+    /unauthorized/i.test(msg) ||
+    // Model not found / not available
+    /model.*not found/i.test(msg) ||
+    // Explicitly non-retriable HTTP status codes
+    /\b(400|401|403|404)\b.*\{/.test(msg)
+  );
+}
+
 export class TaskOrchestrator<T extends BaseTask> {
   // Shared state (protected by lock)
   private taskQueue: TaskQueue<T>;
@@ -117,6 +141,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       failedTasks: this.failedTasks,
       remainingQueue: this.taskQueue.getAll(),
       tokenUsage: this.accumulatedTokenUsage,
+      hasFailures: this.failedTasks.length > 0,
       ...(this.draining ? { drainReason: this.failedTasks[0]?.error.message || 'unknown' } : {}),
     };
 
@@ -188,24 +213,67 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   /**
-   * Report task failure. Triggers graceful drain.
+   * Report task failure.
+   *
+   * Strategy:
+   * 1. Classify error as deterministic vs transient.
+   * 2. Deterministic errors (prompt too long, 400, auth) → fail immediately, no retry.
+   * 3. Transient errors (timeout, rate limit, 5xx) → re-queue up to MAX_TASK_RETRIES.
+   * 4. Failed tasks stay tracked; orchestrator does NOT drain on failure.
+   *    All in-progress tasks are allowed to complete.
+   * 5. After orchestration finishes, caller checks failedTasks to decide
+   *    whether the job is "completed" or "interrupted".
    */
   async reportFailure(workerId: number, task: T, error: Error): Promise<void> {
-    await this.lock.runExclusive(() => {
+    const MAX_TASK_RETRIES = 2;
+
+    await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
-      this.failedTasks.push({
-        task,
-        error,
-        timestamp: new Date().toISOString(),
-      });
+
+      const attempts = ((task as any)._failedAttempts || 0) + 1;
+      (task as any)._failedAttempts = attempts;
 
       this.callbacks.onTaskFailure?.(task, error, workerId);
 
-      // Enter drain mode: stop assigning new tasks
-      this.draining = true;
-      console.error(`[Orchestrator] Task "${task.name}" FAILED (worker ${workerId}). Draining... running=${this.runningTasks.size}`);
+      const deterministic = isDeterministicError(error);
 
-      // If no more running tasks, we're done
+      if (deterministic || attempts >= MAX_TASK_RETRIES) {
+        // Permanently failed — add to failedTasks list
+        this.failedTasks.push({
+          task,
+          error,
+          timestamp: new Date().toISOString(),
+        });
+
+        if (deterministic) {
+          console.error(
+            `[Orchestrator] Task "${task.name}" FAILED with deterministic error (worker ${workerId}), no retry: ${error.message}`,
+          );
+        } else {
+          console.error(
+            `[Orchestrator] Task "${task.name}" PERMANENTLY FAILED after ${attempts} attempts (worker ${workerId}): ${error.message}`,
+          );
+        }
+      } else {
+        // Transient error — re-queue for retry
+        task.interrupted = true;
+        (task as any).resumeState = undefined; // Fresh start on retry
+        this.taskQueue.push(task);
+        console.warn(
+          `[Orchestrator] Task "${task.name}" FAILED (attempt ${attempts}/${MAX_TASK_RETRIES}, worker ${workerId}): ${error.message} — re-queued for retry`,
+        );
+      }
+
+      // Save checkpoint after failure (ensure state persistence)
+      try {
+        await this.saveCheckpoint();
+      } catch (err) {
+        console.warn(`[Orchestrator] Post-failure checkpoint failed:`, err);
+      }
+
+      // Spawn workers for newly available slots
+      this.spawnAvailableWorkers();
+
       this.checkAllDone();
     });
   }

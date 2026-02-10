@@ -515,14 +515,14 @@ export class PromptEngine {
     violationsText?: string,  // ✅ Formatted violations for retry context
     uiDoc?: string  // ✅ UI spec/assets doc for UI-related tasks
   ): Promise<string> {
-    // ✅ Format projectCodeContext (files array → formatted string)
+    // ✅ Format projectCodeContext as FILE PATHS ONLY (not full content)
+    // Plan node is a strategic planner — CodeGen reads actual files via tools.
+    // Injecting full file content here caused 200K+ token prompts (see commit a2011ff regression).
+    // Original design (commit cdb67fd): plan receives paths, CodeGen reads with read_file tool.
     let formattedCodeContext = '';
     if (projectCodeContext?.files && Array.isArray(projectCodeContext.files) && projectCodeContext.files.length > 0) {
-      const fileList = projectCodeContext.files.map((f: any) => {
-        return `### 📄 \`${f.path}\`\n\n\`\`\`\n${f.content}\n\`\`\`\n`;
-      }).join('\n');
-      
-      formattedCodeContext = `**Files** (${projectCodeContext.files.length} files):\n\n${fileList}`;
+      const pathList = projectCodeContext.files.map((f: any) => `- \`${f.path}\``).join('\n');
+      formattedCodeContext = `**Retrieved Files** (${projectCodeContext.files.length} files):\n\n${pathList}`;
     }
     
     // ✅ Extract directory tree if available

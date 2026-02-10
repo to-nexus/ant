@@ -91,19 +91,18 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   };
   
   // ✅ Select design doc based on task.packages (split injection)
-  // If task.packages is specified, inject only the relevant design docs
-  // Otherwise, fall back to state.design (environment-based selection)
+  // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
+  // If missing, fall back to state.design but warn — this indicates a decompose bug.
   let designDocForTask: string | undefined;
   
   if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
-    // Package-based split injection (fe, fe-*, be, be-*)
+    // Package-based split injection (fe, fe-*, be, be-*, shared)
     designDocForTask = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
     console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → ${designDocForTask.length} chars`);
   } else {
-    // Fallback: this path should not normally be reached.
-    // task.packages should always be set by decompose, and state.designDocs should always be loaded by resolve.
+    // Fallback: all tasks should have packages set by decompose.
     // If this fires, it indicates a decompose bug (missing packages) or resolve bug (missing designDocs).
-    console.warn('⚠️ [CodeGen] Fallback to state.design: task.packages or state.designDocs missing');
+    console.warn('⚠️ [CodeGen] Fallback to state.design: task.packages or state.designDocs missing (decompose bug)');
     console.warn(`   task.id=${state.currentTask?.id}, task.packages=${JSON.stringify(state.currentTask?.packages)}, hasDesignDocs=${!!state.designDocs}`);
     designDocForTask = state.design;
   }
