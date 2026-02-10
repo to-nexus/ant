@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
+import { getSessionFilePathByJob, getInitSessionDirs } from '../../../../../core/utils/sessionPaths';
 
 /**
  * FeatureCrudService
@@ -33,7 +34,7 @@ export class FeatureCrudService {
     userContext: UserContext
   ): Promise<any> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
+    const sessionPath = getSessionFilePathByJob(featurePath, job);
     
     // Check if session file exists
     const exists = await fs.promises.access(sessionPath)
@@ -58,7 +59,7 @@ export class FeatureCrudService {
     userContext: UserContext
   ): Promise<void> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = path.join(featurePath, `sessions/${jobType}.json`);
+    const sessionPath = getSessionFilePathByJob(featurePath, jobType);
     
     try {
       // Read existing session
@@ -137,14 +138,11 @@ export class FeatureCrudService {
     await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/system-design'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/code'), { recursive: true });
     
-    // ✅ Sessions (세션 상태)
-    await fs.promises.mkdir(path.join(featurePath, 'sessions'), { recursive: true });
-    
-    // ✅ Debug (디버깅 자료 - 일시적)
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/prompts'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/plans'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/logs'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'sessions/debug/asks'), { recursive: true });
+    // ✅ Sessions (agent-nested structure)
+    const sessionDirs = getInitSessionDirs(featurePath);
+    for (const dir of sessionDirs) {
+      await fs.promises.mkdir(dir, { recursive: true });
+    }
 
     // Create inputs/sources templates (so users know what to fill)
     const sourcesDir = path.join(featurePath, 'inputs/sources');

@@ -79,8 +79,10 @@ export class WorkflowBridge {
       // Get job status from Redis for accurate job type
       const jobStatus = await stateStore.getJobStatus(jobId);
       const task = jobStatus?.type;
-      const jobType: 'design' | 'code' | 'learn' = 
-        (task === 'design' || task === 'code' || task === 'learn') ? task : (mapping.jobType || 'code');
+      const resolvedJobType = (task === 'design' || task === 'code' || task === 'learn') ? task : mapping.jobType;
+      // Kanban only applies to decomposable jobs
+      if (resolvedJobType !== 'design' && resolvedJobType !== 'code' && resolvedJobType !== 'learn') return;
+      const jobType: 'design' | 'code' | 'learn' = resolvedJobType;
       
       try {
         const kanbanData = await this.deps.kanbanService.getKanbanData(

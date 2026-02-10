@@ -13,7 +13,7 @@ import * as path from 'path';
 import Handlebars from 'handlebars';
 import { AskGraphState, ConversationMessage, ContentBlock } from '../state.js';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
-import { accumulateTokenUsage } from '../../common/llmHelpers.js';
+import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver.js';
 import { formatWorkspaceState } from '../../../../common/nodes/triage/workspaceAnalyzer.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
@@ -82,6 +82,18 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   const llm = state.deps?.llm;
   if (!llm) {
     throw new Error('LLM is required for agent node');
+  }
+  
+  // Detect evaluation request on first call
+  let isEvaluation = state.isEvaluation;
+  let evalType = state.evalType;
+  if (state.conversationHistory.length === 0 && !isEvaluation) {
+    const evalDetection = detectEvaluationRequest(state.question);
+    if (evalDetection) {
+      isEvaluation = true;
+      evalType = evalDetection.type;
+      console.log(`📋 [Ask] Evaluation detected: type=${evalDetection.type}`);
+    }
   }
   
   // Build system prompt
@@ -257,6 +269,8 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     response: toolCall ? undefined : responseText,
     streamingCompleted,
     chatMessageStarted: streamingStarted,  // ✅ Persist across tool calls
+    isEvaluation,   // ✅ Persist evaluation state across nodes
+    evalType,       // ✅ Persist eval type across nodes
     tokenUsage: state.tokenUsage,
   };
 }
@@ -269,4 +283,28 @@ export function routeAfterAgent(state: AskGraphState): 'tool' | 'respond' {
     return 'tool';
   }
   return 'respond';
+}
+
+// ============================================
+// Evaluation Detection
+// ============================================
+
+const EVAL_PATTERNS: Array<{ pattern: RegExp; type: AskGraphState['evalType'] }> = [
+  { pattern: /\bprd\b.*평가|평가.*\bprd\b|evaluate.*\bprd\b|\bprd\b.*evaluate|\bprd\b.*review/i, type: 'prd' },
+  { pattern: /시스템\s*(?:기획|설계).*평가|평가.*시스템\s*(?:기획|설계)|system\s*design.*evaluat|evaluat.*system\s*design/i, type: 'system-design' },
+  { pattern: /ui\s*(?:기획|설계|디자인).*평가|평가.*ui\s*(?:기획|설계|디자인)|ui\s*design.*evaluat|evaluat.*ui\s*design/i, type: 'ui-design' },
+  { pattern: /코드.*평가|평가.*코드|code.*evaluat|evaluat.*code/i, type: 'code' },
+  { pattern: /기획.*평가|평가.*기획|(?:전체|모든).*평가|평가.*(?:전체|모든)|evaluat.*(?:all|plan)|(?:all|plan).*evaluat/i, type: 'all' },
+];
+
+/**
+ * Detect if the question is an evaluation request
+ */
+function detectEvaluationRequest(question: string): { type: NonNullable<AskGraphState['evalType']> } | null {
+  for (const { pattern, type } of EVAL_PATTERNS) {
+    if (pattern.test(question) && type) {
+      return { type };
+    }
+  }
+  return null;
 }

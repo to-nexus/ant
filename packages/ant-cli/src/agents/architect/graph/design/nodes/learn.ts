@@ -146,7 +146,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     sessionId = session.sessionId;
     turnId = session.turns[session.turns.length - 1]?.turnId;
     
-    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/design.json`);
+    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/design.json`);
   }
   
   // 3. Store lessons to vector memory + Index documents

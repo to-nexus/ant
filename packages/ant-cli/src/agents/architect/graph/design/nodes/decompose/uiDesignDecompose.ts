@@ -8,8 +8,8 @@
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../code/state";
-import { JobTimingManager } from "../../../common/timing/JobTimingManager";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
+import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { logErrorHeader } from "../../../code/nodes/shared/errorHandler";
 import {
   parseLLMJsonResponse,

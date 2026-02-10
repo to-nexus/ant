@@ -1,11 +1,12 @@
 import { SessionPort, FileTreeUpdatePort } from "../../../core/ports";
-import { DecomposableJobType } from "../../../core/types/task";
+import { SessionableJobType } from '@ant/shared';
 import { Session, SessionTurn, SessionArtifacts } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
 import { WorkspaceResolver, WorkspacePathResolver, UnifiedWorkspaceResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
+import { getSessionFilePath, getSessionsDir } from "../../../core/utils/sessionPaths";
 
 /**
  * Simple async mutex for serializing file I/O.
@@ -42,10 +43,10 @@ class FileMutex {
  * Implements SessionPort using JSON files in the workspace directory.
  * 
  * File structure:
- * {featurePath}/sessions/{job}.json
+ * {featurePath}/sessions/{agent}/{job}.json
  * 
- * Each job type (design, code, learn) maintains its own session file,
- * preventing conflicts when switching between different job types.
+ * Each sessionable job type (design, code, learn, planning) maintains its own session file
+ * under its owning agent's subdirectory, preventing conflicts across agents and jobs.
  * 
  * Benefits:
  * - Human-readable JSON format
@@ -53,10 +54,11 @@ class FileMutex {
  * - Direct file access
  * - Easy backup and sharing
  * - AI can read directly
- * - Job isolation
+ * - Agent + Job isolation
  */
 export class FileSessionAdapter implements SessionPort {
   private featurePath: string;
+  private agent: string;
   private workspaceResolver: WorkspaceResolver;
   private projectId: string;
   private featureName: string;
@@ -65,8 +67,9 @@ export class FileSessionAdapter implements SessionPort {
   /** Per-job file lock to prevent concurrent read-modify-write race conditions */
   private readonly fileLocks = new Map<string, FileMutex>();
   
-  constructor(featurePath: string, projectId?: string, featureName?: string, fileTreeUpdate?: FileTreeUpdatePort) {
+  constructor(featurePath: string, agent: string, projectId?: string, featureName?: string, fileTreeUpdate?: FileTreeUpdatePort) {
     this.featurePath = featurePath;
+    this.agent = agent;
     // Initialize WorkspaceResolver (unified for all modes)
     const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
     this.workspaceResolver = new UnifiedWorkspaceResolver(workspacesPath);
@@ -86,9 +89,9 @@ export class FileSessionAdapter implements SessionPort {
   }
   
   /**
-   * Get the session file path
+   * Get the session file path (agent-nested)
    */
-  private getSessionPath(project: string, feature: string, job: DecomposableJobType): string {
+  private getSessionPath(project: string, feature: string, job: SessionableJobType): string {
     // featurePath는 WorkspaceResolver로 생성
     if (!project || !feature) {
       throw new Error('getSessionPath: project and feature must be provided');
@@ -100,14 +103,14 @@ export class FileSessionAdapter implements SessionPort {
       workspacePath: ''
     };
     const featurePath = this.workspaceResolver.getFeaturePath(context, project, feature);
-    return path.join(featurePath, "sessions", `${job}.json`);
+    return getSessionFilePath(featurePath, this.agent, job);
   }
   
   /**
    * Get or create a mutex for the given job type.
    * Serializes all file operations for the same session file.
    */
-  private getFileLock(job: DecomposableJobType): FileMutex {
+  private getFileLock(job: SessionableJobType): FileMutex {
     if (!this.fileLocks.has(job)) {
       this.fileLocks.set(job, new FileMutex());
     }
@@ -118,14 +121,14 @@ export class FileSessionAdapter implements SessionPort {
    * Ensure the sessions directory exists
    */
   private async ensureDirectory(project: string, feature: string): Promise<void> {
-    const sessionsDir = path.join(this.featurePath, "sessions");
-    await fs.mkdir(sessionsDir, { recursive: true });
+    const agentDir = getSessionsDir(this.featurePath, this.agent);
+    await fs.mkdir(agentDir, { recursive: true });
   }
   
   /**
    * Load an existing session or create a new one
    */
-  async load(project: string, feature: string, job: DecomposableJobType): Promise<Session> {
+  async load(project: string, feature: string, job: SessionableJobType): Promise<Session> {
     const sessionPath = this.getSessionPath(project, feature, job);
     
     try {
@@ -197,7 +200,7 @@ export class FileSessionAdapter implements SessionPort {
    * The rename operation is atomic on POSIX systems when src and dest are on the
    * same filesystem, ensuring readers always see a complete JSON file.
    */
-  async save(session: Session, job: DecomposableJobType): Promise<void> {
+  async save(session: Session, job: SessionableJobType): Promise<void> {
     await this.ensureDirectory(session.project, session.feature);
     const sessionPath = this.getSessionPath(session.project, session.feature, job);
     
@@ -235,7 +238,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Add a new turn to the session (serialized with per-job lock)
    */
-  async addTurn(project: string, feature: string, job: DecomposableJobType, turn: SessionTurn): Promise<void> {
+  async addTurn(project: string, feature: string, job: SessionableJobType, turn: SessionTurn): Promise<void> {
     const lock = this.getFileLock(job);
     await lock.runExclusive(async () => {
       const session = await this.load(project, feature, job);
@@ -267,7 +270,7 @@ export class FileSessionAdapter implements SessionPort {
   async updateArtifacts(
     project: string,
     feature: string,
-    job: DecomposableJobType,
+    job: SessionableJobType,
     artifacts: Partial<SessionArtifacts> & { state?: any }
   ): Promise<void> {
     const lock = this.getFileLock(job);
@@ -292,7 +295,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Get the last turn from the session
    */
-  async getLastTurn(project: string, feature: string, job: DecomposableJobType): Promise<SessionTurn | null> {
+  async getLastTurn(project: string, feature: string, job: SessionableJobType): Promise<SessionTurn | null> {
     const session = await this.load(project, feature, job);
     if (session.turns.length === 0) {
       return null;
@@ -303,7 +306,7 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Check if a session exists
    */
-  async exists(project: string, feature: string, job: DecomposableJobType): Promise<boolean> {
+  async exists(project: string, feature: string, job: SessionableJobType): Promise<boolean> {
     const sessionPath = this.getSessionPath(project, feature, job);
     try {
       await fs.access(sessionPath);

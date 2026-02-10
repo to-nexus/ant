@@ -37,7 +37,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
   if (state.currentTask) {
     // ✅ Get helpers
     const { TaskTimingHelper } = await import('../code/state');
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../common/llmHelpers');
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
     
     // ✅ Get task-level token usage
     const taskTokenUsage = getTaskTokenUsage(state as any);

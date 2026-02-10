@@ -20,7 +20,7 @@ export interface ChatState {
 export interface PendingChatInput {
   message: string;
   // ✅ Optional: Auto-switch job type
-  jobType?: 'design' | 'code' | 'learn';
+  jobType?: 'design' | 'code' | 'learn' | 'plan';
   // ✅ Optional: Auto-submit after inserting
   autoSubmit?: boolean;
   // ✅ Optional: Source for tracking/debugging

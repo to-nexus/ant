@@ -107,7 +107,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   
   if (!hasViolations && state.currentTask) {
     // ✅ Task succeeded - mark as completed and record timing & token usage
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../common/llmHelpers');
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
     
     // Gather token usage from llmResponse (codeGen) and accumulated task tokens (plan)
     const codeGenTokenUsage = state.llmResponse?.tokenUsage;

@@ -37,7 +37,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private readonly jobId: string;
   private readonly projectId: string;
   private readonly featureName: string;
-  private readonly jobType: DecomposableJobType;
+  private readonly jobType: string;
   private readonly userContext?: UserContext;
   private jobTiming?: JobTiming;  // ✅ Stored once, included in every broadcast
   private estimatingLabel?: string;       // Current non-task node activity label

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
+import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
 
 /**
  * Feature CRUD operations
@@ -189,7 +190,7 @@ export function createFeaturesRoutes(deps: {
       // Write cleared session (using internal method)
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const sessionPath = path.join(featurePath, `sessions/${jobType}.json`);
+      const sessionPath = getSessionFilePathByJob(featurePath, jobType);
       
       await fs.promises.writeFile(sessionPath, JSON.stringify(clearedSession, null, 2), 'utf-8');
       

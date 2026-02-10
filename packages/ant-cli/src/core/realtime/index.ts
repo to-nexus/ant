@@ -106,7 +106,7 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
   // ✅ FileTreeBroadcaster reads file tree from this path.
   // Must use FEATURE_PATH (has inputs/outputs/sessions) not PROJECT_PATH (project root).
   const projectPath = process.env.ANT_FEATURE_PATH || process.env.ANT_PROJECT_PATH;
-  const jobType = process.env.ANT_JOB_TYPE as import('../types/task').DecomposableJobType | undefined;
+  const jobType = process.env.ANT_JOB_TYPE;
   const userId = process.env.ANT_USER_ID;
   const orgId = process.env.ANT_ORG_ID;
   const workspacePath = process.env.ANT_WORKSPACE_PATH;

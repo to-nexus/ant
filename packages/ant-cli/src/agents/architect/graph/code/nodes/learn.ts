@@ -356,7 +356,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     );
     
-    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/code.json`);
+    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/code.json`);
     if (state.taskQueue && !state.taskQueue.isEmpty()) {
       console.log(`💾 State snapshot saved: ${state.completedTasks?.length || 0} completed, ${state.taskQueue.size()} remaining`);
     }

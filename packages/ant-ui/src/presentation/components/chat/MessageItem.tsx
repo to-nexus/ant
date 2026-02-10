@@ -13,6 +13,7 @@ import { WorkingCard } from './WorkingCard';
 import { TerminalCard } from './TerminalCard';
 import { FileCard } from './FileCard';
 import { ToolActionCard } from './ToolActionCard';
+import { ContextLoadedCard } from './ContextLoadedCard';
 import { ChoiceCard } from './ChoiceCard';
 import { TypingIndicator } from './TypingIndicator';
 
@@ -280,6 +281,10 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     case 'learned':
       return <WorkingCard content={content} variant="learned" />;
 
+    // ===== Context Loaded =====
+    case 'context_loaded':
+      return <ContextLoadedCard content={content} />;
+
     // ===== Tool Actions =====
     case 'tool_action':
       return <ToolActionCard content={content} />;
@@ -311,6 +316,18 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     // ===== Triage Choice =====
     case 'triage_choice':
       return <ChoiceCard content={content} variant="triage_choice" messageId={messageId} />;
+
+    // ===== Generic Choice Cards =====
+    case 'choice_card': {
+      const cardType = content.metadata?.cardType;
+      if (cardType === 'eval_save') {
+        return <ChoiceCard content={content} variant="eval_save" messageId={messageId} />;
+      }
+      if (cardType === 'prd_apply') {
+        return <ChoiceCard content={content} variant="prd_apply" messageId={messageId} />;
+      }
+      return null;
+    }
 
     default:
       return null;

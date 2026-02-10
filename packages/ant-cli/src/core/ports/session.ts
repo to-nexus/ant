@@ -1,14 +1,14 @@
 import { Session, SessionTurn, SessionArtifacts } from "../types";
-import { DecomposableJobType } from '../types/task';
+import { SessionableJobType } from '@ant/shared';
 
 /**
  * Session Port
  * 
  * Manages feature development sessions with turn-by-turn history.
  * Sessions are stored in the workspace directory structure:
- * workspace/{project}/{feature}/sessions/{job}.json
+ * workspace/{project}/{feature}/sessions/{agent}/{job}.json
  * 
- * Each decomposable job type (design, code, learn) maintains its own independent session.
+ * Each sessionable job type (design, code, learn, planning) maintains its own session file.
  * Ask jobs don't have sessions.
  * 
  * This port follows the Hexagonal Architecture pattern:
@@ -20,51 +20,51 @@ export interface SessionPort {
    * Load an existing session or create a new one
    * @param project - Project name
    * @param feature - Feature name
-   * @param job - Job type (design, code, or learn)
+   * @param job - Sessionable job type (design, code, learn, planning)
    * @returns Session object
    */
-  load(project: string, feature: string, job: DecomposableJobType): Promise<Session>;
+  load(project: string, feature: string, job: SessionableJobType): Promise<Session>;
   
   /**
    * Save the entire session
    * @param session - Complete session object
-   * @param job - Job type (design, code, or learn)
+   * @param job - Sessionable job type
    */
-  save(session: Session, job: DecomposableJobType): Promise<void>;
+  save(session: Session, job: SessionableJobType): Promise<void>;
   
   /**
    * Add a new turn to the session
    * @param project - Project name
    * @param feature - Feature name
-   * @param job - Job type (design, code, or learn)
+   * @param job - Sessionable job type
    * @param turn - Turn data to add
    */
-  addTurn(project: string, feature: string, job: DecomposableJobType, turn: SessionTurn): Promise<void>;
+  addTurn(project: string, feature: string, job: SessionableJobType, turn: SessionTurn): Promise<void>;
   
   /**
    * Update session artifacts
    * @param project - Project name
    * @param feature - Feature name
-   * @param job - Job type (design, code, or learn)
+   * @param job - Sessionable job type
    * @param artifacts - Artifacts to merge
    */
-  updateArtifacts(project: string, feature: string, job: DecomposableJobType, artifacts: Partial<SessionArtifacts>): Promise<void>;
+  updateArtifacts(project: string, feature: string, job: SessionableJobType, artifacts: Partial<SessionArtifacts>): Promise<void>;
   
   /**
    * Get the last turn from the session
    * @param project - Project name
    * @param feature - Feature name
-   * @param job - Job type (design, code, or learn)
+   * @param job - Sessionable job type
    * @returns Last turn or null if session is empty
    */
-  getLastTurn(project: string, feature: string, job: DecomposableJobType): Promise<SessionTurn | null>;
+  getLastTurn(project: string, feature: string, job: SessionableJobType): Promise<SessionTurn | null>;
   
   /**
    * Check if a session exists
    * @param project - Project name
    * @param feature - Feature name
-   * @param job - Job type (design, code, or learn)
+   * @param job - Sessionable job type
    * @returns True if session file exists
    */
-  exists(project: string, feature: string, job: DecomposableJobType): Promise<boolean>;
+  exists(project: string, feature: string, job: SessionableJobType): Promise<boolean>;
 }

@@ -8,9 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceState } from './types';
-import { ProjectContext } from '../../../architect/types';
-import { GitPort, MemoryPort } from '../../../../core/ports';
-import { FileSystemPort } from '../../../../core/ports/filesystem';
+import { MemoryPort } from '../../../../core/ports';
 
 /**
  * Template marker to detect placeholder files
@@ -18,10 +16,15 @@ import { FileSystemPort } from '../../../../core/ports/filesystem';
 const TEMPLATE_MARKER = '<!-- ant:template -->';
 
 /**
- * Check if file content is a template (placeholder)
+ * Check if file content is a template (placeholder).
+ * A file is considered a template ONLY if the marker is present AND
+ * the actual content (excluding HTML comments) is minimal (<200 chars).
+ * This prevents real documents with a leftover marker from being rejected.
  */
 function isTemplateContent(content: string): boolean {
-  return content.includes(TEMPLATE_MARKER);
+  if (!content.includes(TEMPLATE_MARKER)) return false;
+  const stripped = content.replace(/<!--[\s\S]*?-->/g, '').trim();
+  return stripped.length < 200;
 }
 
 /**
@@ -55,43 +58,25 @@ function hasFilesInDir(dirPath: string): boolean {
 }
 
 /**
- * Analyze workspace and return WorkspaceState
+ * Analyze workspace and return WorkspaceState.
+ * 
+ * @param featurePath - Absolute path to the feature directory (required).
+ *                      This is the single source of truth for workspace location.
+ * @param deps        - Optional dependencies for extended checks (e.g., memory/vector DB).
  */
 export async function analyzeWorkspace(
-  context: ProjectContext,
+  featurePath: string,
   deps?: {
-    git?: GitPort;
-    fileSystem?: FileSystemPort;
     memory?: MemoryPort;
-    workspaceResolver?: any;
+    projectId?: string;
   }
 ): Promise<WorkspaceState> {
-  // Get feature path
-  let featurePath = context.featurePath;
-  
-  console.log(`📂 [WorkspaceAnalyzer] context.featurePath: ${featurePath || '(not set)'}`);
-  console.log(`📂 [WorkspaceAnalyzer] context.project: ${context.project || '(not set)'}, context.featureFolder: ${(context as any).featureFolder || '(not set)'}`);
-  
-  if (!featurePath && deps?.workspaceResolver) {
-    const userContext = {
-      userId: context.userId || 'local',
-      organizationId: context.organizationId || 'local',
-      workspacePath: ''
-    };
-    featurePath = deps.workspaceResolver.getFeaturePath(
-      userContext,
-      context.project,
-      context.featureFolder
-    );
-    console.log(`📂 [WorkspaceAnalyzer] Resolved via workspaceResolver: ${featurePath}`);
-  }
+  console.log(`📂 [WorkspaceAnalyzer] featurePath: ${featurePath || '(not set)'}`);
   
   if (!featurePath) {
-    console.warn('[WorkspaceAnalyzer] Could not determine feature path');
+    console.warn('[WorkspaceAnalyzer] featurePath is empty — returning empty state');
     return createEmptyWorkspaceState();
   }
-  
-  console.log(`📂 [WorkspaceAnalyzer] Final featurePath: ${featurePath}`);
   
   // Initialize state
   const state: WorkspaceState = {
@@ -103,6 +88,7 @@ export async function analyzeWorkspace(
     hasAssets: false,
     hasSystemDesignDoc: false,
     hasUiDocs: false,
+    hasEvals: false,
     hasDesignDoc: false,
     hasCodebase: false
   };
@@ -196,16 +182,28 @@ export async function analyzeWorkspace(
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Check evaluation reports
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const evalsPath = path.join(featurePath, 'outputs', 'evals');
+  if (fs.existsSync(evalsPath)) {
+    const evalFileCount = countFilesInDir(evalsPath, true);
+    state.hasEvals = evalFileCount > 0;
+    if (state.hasEvals) {
+      state.evalCount = evalFileCount;
+    }
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Check codebase indexing (via memory/vector DB)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (deps?.memory) {
     try {
       // Try to query vector DB for codebase content
-      const results = await deps.memory.query('', context.project, { k: 1 });
+      const results = await deps.memory.query('', deps.projectId || '', { k: 1 });
       state.hasCodebase = results && results.length > 0;
       if (state.hasCodebase) {
         // Get approximate indexed file count
-        const allResults = await deps.memory.query('', context.project, { k: 100 });
+        const allResults = await deps.memory.query('', deps.projectId || '', { k: 100 });
         state.indexedFileCount = allResults?.length || 0;
       }
     } catch (error) {
@@ -229,6 +227,7 @@ function createEmptyWorkspaceState(): WorkspaceState {
     hasAssets: false,
     hasSystemDesignDoc: false,
     hasUiDocs: false,
+    hasEvals: false,
     hasDesignDoc: false,
     hasCodebase: false
   };
@@ -268,6 +267,12 @@ export function formatWorkspaceState(state: WorkspaceState): string {
   lines.push(state.hasSystemDesignDoc 
     ? '✅ System design (system-design.md)' 
     : '❌ No system design');
+  
+  lines.push('');
+  lines.push('### Evaluations');
+  lines.push(state.hasEvals 
+    ? `✅ Eval reports: ${state.evalCount || 'available'} files (outputs/evals/)` 
+    : 'ℹ️ No evaluation reports');
   
   lines.push('');
   lines.push('### Codebase');

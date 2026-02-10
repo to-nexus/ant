@@ -1,0 +1,164 @@
+/**
+ * Resolve Node
+ * 
+ * Loads existing PRD, eval reports, and recent session history
+ * to build context for generation/refinement.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { PlanGraphState } from '../state';
+import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
+import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
+import { detectUILocale, getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
+
+export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
+  console.log('\n📋 [Planner:Resolve] Loading context...');
+  
+  // Detect UI locale from directive
+  const uiLocale = detectUILocale(state.overrideDirective || state.directive || '');
+  
+  // Kanban activity banner
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', uiLocale), 'resolve');
+  }
+  
+  // Workflow instrumentation
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve', 0);
+  }
+  
+  const { featurePath } = state;
+  
+  // 1. Load existing PRD (if any)
+  let existingDocument: string | undefined;
+  const prdPath = path.join(featurePath, 'inputs/sources/prd.md');
+  try {
+    existingDocument = fs.readFileSync(prdPath, 'utf-8');
+    
+    // Check if it's just a template: file contains ant:template AND has minimal real content.
+    // Strip HTML comments and whitespace, then check remaining length.
+    // A real PRD with ant:template leftover at the bottom should NOT be treated as empty.
+    if (existingDocument.includes('ant:template')) {
+      const stripped = existingDocument.replace(/<!--[\s\S]*?-->/g, '').trim();
+      if (stripped.length < 200) {
+        console.log('   PRD: Template only (treated as no PRD)');
+        existingDocument = undefined;
+      } else {
+        // Real content exists — strip the template marker and use it
+        existingDocument = existingDocument
+          .replace(/<!--\s*ant:template\s*-->/g, '')
+          .replace(/<!--.*ant:template.*-->/g, '')
+          .trim();
+        console.log(`   PRD: Loaded (${existingDocument.length} chars, ant:template marker stripped)`);
+      }
+    } else {
+      console.log(`   PRD: Loaded (${existingDocument.length} chars)`);
+    }
+  } catch (err: any) {
+    console.log(`   PRD: Not found (${err.code || err.message})`);
+  }
+  
+  // 2. Determine mode
+  const mode = existingDocument ? 'refine' : 'generate';
+  console.log(`   Mode: ${mode}`);
+  
+  // 3. Load eval reports (if any) — skip stale evals (PRD modified after eval)
+  let evalReport: string | undefined;
+  const evalDir = path.join(featurePath, 'outputs/evals/prd');
+  try {
+    const evalFiles = fs.readdirSync(evalDir)
+      .filter(f => f.endsWith('.md'))
+      .sort()
+      .reverse();
+    
+    if (evalFiles.length > 0 && existingDocument) {
+      // Parse eval timestamp from filename: eval-YYYY-MM-DDTHH-MM-SS.md
+      const evalFileName = evalFiles[0];
+      const timestampMatch = evalFileName.match(/eval-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
+      const evalTime = timestampMatch 
+        ? new Date(timestampMatch[1].replace(/-/g, (m, offset) => offset > 9 ? ':' : m)).getTime()
+        : 0;
+      
+      // Compare with PRD modification time
+      const prdMtime = fs.statSync(prdPath).mtimeMs;
+      
+      if (evalTime > 0 && prdMtime > evalTime) {
+        console.log(`   Eval: Skipped stale (${evalFileName}) — PRD modified after eval`);
+      } else {
+        evalReport = fs.readFileSync(path.join(evalDir, evalFileName), 'utf-8');
+        console.log(`   Eval: Loaded latest (${evalFileName})`);
+      }
+    } else if (evalFiles.length > 0) {
+      // No existing document — load eval anyway (edge case)
+      evalReport = fs.readFileSync(path.join(evalDir, evalFiles[0]), 'utf-8');
+      console.log(`   Eval: Loaded latest (${evalFiles[0]})`);
+    }
+  } catch {
+    // No eval reports
+  }
+  
+  // 4. If refine mode with no eval, auto-load PRD rubric for self-diagnosis
+  let rubricContent: string | undefined;
+  if (mode === 'refine' && !evalReport) {
+    try {
+      const docsRoot = WorkspacePathResolver.getDocsRoot();
+      const rubricPath = path.join(docsRoot, 'rubric', 'PRD-RUBRIC.md');
+      rubricContent = fs.readFileSync(rubricPath, 'utf-8');
+      console.log(`   Rubric: Loaded PRD rubric (${rubricContent.length} chars) for self-diagnosis`);
+    } catch {
+      console.log('   Rubric: PRD-RUBRIC.md not found (skipping self-diagnosis)');
+    }
+  }
+  
+  // 5. Load recent session turns (lightweight context)
+  let recentTurnSummaries: string[] | undefined;
+  const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
+  try {
+    const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+    const turns = sessionData.turns || [];
+    if (turns.length > 0) {
+      // Get last 2-3 turn summaries
+      recentTurnSummaries = turns.slice(-3).map((t: any) => 
+        `[Turn ${t.turnId}] ${t.directive?.substring(0, 100) || 'N/A'}`
+      );
+      console.log(`   Session: ${recentTurnSummaries?.length ?? 0} recent turns loaded`);
+    }
+  } catch {
+    // No session history
+  }
+  
+  // Notify user about loaded context
+  const contextItems: Array<{ label: string; detail?: string }> = [];
+  if (existingDocument) {
+    contextItems.push({ label: 'PRD', detail: `${existingDocument.length.toLocaleString()} chars` });
+  }
+  if (evalReport) {
+    const latestEvalFile = fs.readdirSync(evalDir).filter(f => f.endsWith('.md')).sort().reverse()[0];
+    contextItems.push({ label: 'Eval report', detail: latestEvalFile });
+  }
+  if (rubricContent && !evalReport) {
+    contextItems.push({ label: 'PRD rubric', detail: 'self-diagnosis mode' });
+  }
+  if (recentTurnSummaries && recentTurnSummaries.length > 0) {
+    contextItems.push({ label: 'Session history', detail: `${recentTurnSummaries.length} turns` });
+  }
+  if (contextItems.length > 0) {
+    const chatAPI = getChatAPIClient();
+    await chatAPI.showContextLoaded(contextItems);
+  }
+  
+  // Workflow instrumentation
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
+  }
+  
+  return {
+    existingDocument,
+    evalReport,
+    rubricContent,
+    recentTurnSummaries,
+    mode,
+    _uiLocale: uiLocale,
+  };
+}

@@ -1,6 +1,6 @@
 import { ProjectContext } from "../../types";
 import { TriageableState, TriageResult, WorkspaceState } from "../../../common/nodes/triage/types";
-import { TokenUsage } from "../common/llmHelpers";
+import { TokenUsage } from "../../../common/graph/llmHelpers";
 
 export interface LearnCommand {
   action: 'index_branch' | 'index_codebase' | 'learn_files' | 'learn_text';

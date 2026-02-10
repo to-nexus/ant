@@ -5,7 +5,7 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { LLM_TEMPERATURE } from "../../../common/llmConfig";
+import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
 
 /**
  * Call LLM for task decomposition (with streaming for Chat UI)
@@ -64,7 +64,7 @@ export async function callLLMForDecompose(
     }
     
     // ✅ Extract token usage from done event
-    const { extractTokenUsageFromStreamEvent } = await import('../../../common/llmHelpers');
+    const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
     const usage = extractTokenUsageFromStreamEvent(event);
     if (usage) {
       capturedUsage = usage;

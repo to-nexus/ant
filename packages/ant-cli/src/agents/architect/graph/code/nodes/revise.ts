@@ -2,7 +2,7 @@ import { LLMClient } from "../../../../../core/ports";
 import { ArchitectGraphState } from "../state";
 import { CodeTask } from "../../../types/task";
 import { saveCheckpoint } from "./checkpoint";
-import { getEstimatingLabel } from "../../common/timing/estimatingLabels";
+import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 
 /**
  * Revise Node (replaces replanDecision + modifyTasks + clearStateForReplan)

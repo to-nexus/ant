@@ -208,6 +208,12 @@ class AgentRegistryClass {
         }
         break;
         
+      case 'file_exists':
+        if (prereq.path === 'inputs/sources/prd.md') {
+          satisfied = ws.hasPrd;
+        }
+        break;
+        
       case 'has_directive':
         satisfied = ws.hasDirective;
         break;
@@ -284,6 +290,10 @@ class AgentRegistryClass {
     
     if (type === 'file_with_content') {
       if (path === 'inputs/prd.md') return ws.hasPrd;
+    }
+    
+    if (type === 'file_exists') {
+      if (path === 'inputs/sources/prd.md') return ws.hasPrd;
     }
     
     if (type === 'has_directive') {

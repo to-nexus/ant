@@ -1,7 +1,7 @@
 import { LLMClient } from "../../../../../core/ports";
 import { DesignGraphState } from "../state";
 import { DesignTask } from "../../../types/task";
-import { getEstimatingLabel } from "../../common/timing/estimatingLabels";
+import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 
 /**
  * Revise Node for Design Job

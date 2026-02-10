@@ -14,6 +14,7 @@ import { UserContext } from './user';
 export type {
   JobType,
   DecomposableJobType,
+  SessionableJobType,
   JobTiming,
   TaskType,
   TaskStatus,
@@ -24,7 +25,7 @@ export type {
 } from '@ant/shared';
 
 // Re-import for local use in this file
-import type { BaseTask, TaskTokenUsage, DecomposableJobType, KanbanData } from '@ant/shared';
+import type { BaseTask, TaskTokenUsage, DecomposableJobType, SessionableJobType, KanbanData } from '@ant/shared';
 
 // ============================================
 // Task Queue Snapshot (Backend-only: Redis Storage)
@@ -62,7 +63,7 @@ export interface TaskQueueSnapshot {
 export interface JobProjectMapping {
   projectId: string;
   featureName: string;
-  jobType: DecomposableJobType;
+  jobType: SessionableJobType;
   userContext?: UserContext;
 }
 

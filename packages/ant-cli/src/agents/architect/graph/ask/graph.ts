@@ -41,6 +41,11 @@ export function buildAskGraph() {
       streamingCompleted: null as any,
       chatMessageStarted: null as any,
       
+      // Evaluation state
+      isEvaluation: null as any,
+      evalType: null as any,
+      featurePath: null as any,
+      
       // Dependencies
       deps: null as any,
       _httpJobId: null as any,

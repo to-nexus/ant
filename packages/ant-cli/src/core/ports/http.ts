@@ -24,7 +24,7 @@ export interface JobStatus {
 
 export interface ExecuteJobParams {
   agent: 'architect' | 'reviewer' | 'planner' | 'doc';
-  jobType: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // ✅ Type of job to execute (design/code/learn)
+  jobType: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // ✅ Type of job to execute
   project: string;
   feature?: string;  // ✅ Feature name for Kanban tracking
   inputFile?: string;  // ✅ Optional: undefined for chat-initiated jobs with overrideDirective

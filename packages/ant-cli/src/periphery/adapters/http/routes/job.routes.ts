@@ -8,6 +8,7 @@ import type { JobProjectMapping } from '../../../../core/types/task';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
 import { extractUserContext } from './helpers/userContext';
+import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
 
 /**
  * Job execution routes
@@ -19,7 +20,7 @@ export function createJobRoutes(deps: {
   executeJob: (params: ExecuteJobParams) => Promise<any>;
   getJobStatus: (jobId: string) => any;
   getLogs: (jobId: string) => LogEntry[];
-  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn' | 'plan', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
   chatService: import('../services/ChatService').ChatService;
   config?: { mode: 'local' | 'cloud' };
@@ -218,20 +219,19 @@ export function createJobRoutes(deps: {
       const userContext = extractUserContext(req);
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       
-      const sessionDir = path.join(featurePath, 'sessions');
-      
-      let jobType: 'design' | 'code' | 'learn' | null = null;
+      let jobType: string | null = null;
       let sessionData: any = null;
+      let foundAgent: string | null = null;
       
-      for (const type of ['design', 'code', 'learn'] as const) {
-        const sessionPath = path.join(sessionDir, `${type}.json`);
-        if (fs.existsSync(sessionPath)) {
-          const data = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+      for (const entry of getAllSessionPaths(featurePath)) {
+        if (fs.existsSync(entry.path)) {
+          const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
           if (data.state?.jobId && data.state?.interruption) {
-            jobType = type;
+            jobType = entry.job;
+            foundAgent = entry.agent;
             sessionJobId = data.state.jobId;
             sessionData = data;
-            console.log(`   Found interrupted job in ${type}.json`);
+            console.log(`   Found interrupted job in ${entry.agent}/${entry.job}.json`);
             console.log(`   Session jobId: ${sessionJobId}`);
             break;
           }
@@ -275,8 +275,8 @@ export function createJobRoutes(deps: {
       }
       
       const params: ExecuteJobParams = {
-        agent: 'architect',
-        jobType: jobType,
+        agent: (foundAgent || 'architect') as ExecuteJobParams['agent'],
+        jobType: jobType as ExecuteJobParams['jobType'],
         project: projectId,
         feature: featureName,
         inputFile,
@@ -327,19 +327,19 @@ export function createJobRoutes(deps: {
       const userContext = extractUserContext(req);
       
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const sessionDir = path.join(featurePath, 'sessions');
       
-      let jobType: 'design' | 'code' | 'learn' | null = null;
+      let jobType: string | null = null;
       let sessionPath: string | null = null;
+      let foundAgent: string | null = null;
       
-      for (const type of ['design', 'code', 'learn'] as const) {
-        const candidatePath = path.join(sessionDir, `${type}.json`);
-        if (fs.existsSync(candidatePath)) {
-          const sessionData = JSON.parse(fs.readFileSync(candidatePath, 'utf-8'));
+      for (const entry of getAllSessionPaths(featurePath)) {
+        if (fs.existsSync(entry.path)) {
+          const sessionData = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
           if (sessionData.state?.jobId === jobId) {
-            jobType = type;
-            sessionPath = candidatePath;
-            console.log(`   Found job in ${type}.json`);
+            jobType = entry.job;
+            sessionPath = entry.path;
+            foundAgent = entry.agent;
+            console.log(`   Found job in ${entry.agent}/${entry.job}.json`);
             break;
           }
         }
@@ -378,8 +378,8 @@ export function createJobRoutes(deps: {
       const inputFile = undefined;
       
       const params: ExecuteJobParams = {
-        agent: 'architect',
-        jobType: jobType,
+        agent: (foundAgent || 'architect') as ExecuteJobParams['agent'],
+        jobType: jobType as ExecuteJobParams['jobType'],
         project: projectId,
         feature: featureName,
         inputFile: undefined,

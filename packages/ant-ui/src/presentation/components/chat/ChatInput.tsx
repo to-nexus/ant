@@ -153,7 +153,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const metadata: Record<string, { emoji: string; description: string }> = {
       design: { emoji: '🎨', description: 'Create architecture & design' },
       code: { emoji: '💻', description: 'Implement features' },
-      learn: { emoji: '📚', description: 'Analyze & document' }
+      learn: { emoji: '📚', description: 'Analyze & document' },
+      plan: { emoji: '📋', description: 'Create & refine PRD' },
     };
     const meta = metadata[job.value] || { emoji: '🎯', description: job.label };
     return {
@@ -196,7 +197,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   }, [isRunning, showJobMenu, showAgentMenu]);
 
   const handleJobSelect = (jobValue: string) => {
-    setSelectedJobType(jobValue as 'design' | 'code' | 'learn');
+    setSelectedJobType(jobValue as 'design' | 'code' | 'learn' | 'plan');
     setShowJobMenu(false);
   };
 
@@ -207,7 +208,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const agentData = agents.find((a: Agent) => a.value === agentValue);
     const firstJobType = agentData?.jobs?.[0]?.value;
     if (firstJobType) {
-      setSelectedJobType(firstJobType as 'design' | 'code' | 'learn');
+      setSelectedJobType(firstJobType as 'design' | 'code' | 'learn' | 'plan');
     }
   };
 
@@ -323,8 +324,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,
-        jobType: selectedJobType as 'design' | 'code' | 'learn',
-        agent: selectedAgent as 'architect',
+        jobType: selectedJobType,
+        agent: selectedAgent,
         overrideDirective: userMessage,  // ✅ Chat input becomes directive
         chatSource: true                  // ✅ Enable Chat SSE
       });

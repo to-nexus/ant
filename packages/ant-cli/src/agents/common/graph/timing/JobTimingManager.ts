@@ -150,4 +150,3 @@ export class JobTimingManager {
     return pausedJobTiming;
   }
 }
-

@@ -147,7 +147,7 @@ export async function docGen(
       
       if (event.type === 'done') {
         // ✅ Extract token usage
-        const { extractTokenUsageFromStreamEvent } = await import('../../../common/llmHelpers');
+        const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
         
         await chatAPI.sendLLMEvent(event);
@@ -170,7 +170,7 @@ export async function docGen(
     
     // Accumulate token usage to state
     if (capturedUsage) {
-      const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
+      const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
       accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
     }
     

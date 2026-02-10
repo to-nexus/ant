@@ -21,10 +21,11 @@ export interface ChoiceRequest {
  */
 export interface ChoiceResponse {
   type: 'guide' | 'continue' | 'dismiss';
-  message?: string;      // guide/dismiss일 때 메시지
-  action?: ChoiceAction; // continue일 때 수행할 액션
-  suggestedJob?: string; // redirect일 때 전환할 job
-  directive?: string;    // redirect일 때 원래 directive
+  message?: string;        // guide/dismiss: message
+  action?: ChoiceAction;   // continue: action to perform
+  suggestedAgent?: string; // redirect: target agent
+  suggestedJob?: string;   // redirect: target job
+  directive?: string;      // redirect: original directive
 }
 
 /**

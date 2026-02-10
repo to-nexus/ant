@@ -1,0 +1,55 @@
+# Plan Job Definition
+id: plan
+agent: planner
+description: |
+  Creates and refines PRD (Product Requirements Document).
+  Works with non-developers (PMs, business teams) to define product requirements.
+  Uses PRD-as-State pattern: the PRD file is the persistent state across jobs.
+
+modes:
+  - id: generate
+    description: |
+      Creates new PRD from user directive.
+      Generates comprehensive product requirements document from scratch.
+    detection:
+      none_of:
+        - path: inputs/sources/prd.md
+          type: file_exists
+    prerequisites:
+      required:
+        - id: directive
+          type: has_directive
+          description: Product description or requirements entered via chat
+      recommended: []
+    scope:
+      - PRD creation from product description
+      - Requirement definition and scoping
+      - Feature specification
+
+  - id: refine
+    description: |
+      Refines existing PRD based on user feedback or evaluation results.
+      Improves quality, adds missing sections, clarifies requirements.
+    detection:
+      any_of:
+        - path: inputs/sources/prd.md
+          type: file_exists
+    prerequisites:
+      required:
+        - id: existing_prd
+          type: file_exists
+          path: inputs/sources/prd.md
+          description: Existing PRD document
+        - id: directive
+          type: has_directive
+          description: Refinement instructions entered via chat
+      recommended: []
+    scope:
+      - PRD improvement and refinement
+      - Requirement clarification
+      - Section expansion and detail addition
+
+redirect_signals:
+  to_design: User mentions UI design, system architecture, visual specification, or component design
+  to_code: User mentions code implementation, bug fixes, programming, or building features
+  to_learn: User mentions codebase analysis, indexing, or understanding existing code

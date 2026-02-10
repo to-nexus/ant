@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { getSessionFilePathByJob } from '../core/utils/sessionPaths';
 
 /**
  * Auto-detect project name from path
@@ -103,7 +104,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
     // ✅ CRITICAL: Check for resume scenario (session exists with taskQueue OR overrideDirective)
     // If resuming, we don't need design/directive files
     if (task === 'code' || task === 'learn') {
-      const sessionPath = path.join(inputPath, 'sessions', `${task}.json`);
+      const sessionPath = getSessionFilePathByJob(inputPath, task);
       if (fs.existsSync(sessionPath)) {
         try {
           const sessionContent = fs.readFileSync(sessionPath, 'utf-8');

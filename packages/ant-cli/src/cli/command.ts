@@ -5,6 +5,7 @@ import { detectProject, resolveInputFile } from './resolver';
 import { orchestrator } from '../composition/orchestrator';
 import { TaskLogger } from './logger';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { getSessionDebugDir } from '../core/utils/sessionPaths';
 
 /**
  * CLI Command Structure
@@ -160,7 +161,7 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
       featureDir = inputPath || process.cwd();
     }
     
-    const outputDir = path.join(featureDir, 'sessions', 'debug', 'logs');
+    const outputDir = getSessionDebugDir(featureDir, 'architect', 'logs');
     console.log(`📂 [Command] Output directory: ${outputDir}`);
     
     // Start logging

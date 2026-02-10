@@ -38,15 +38,26 @@
 - "Update component code" → `code` (target is source code)
 - If user explicitly mentions "design" or "planning" → `design`
 
+### Step 2.5: Determine Agent Match (for work intent)
+
+**Principle**: First check if the request belongs to the **current agent's** scope. If not, identify which agent owns the capability.
+
+| Observation | Action |
+|-------------|--------|
+| Request matches current agent's job capabilities | Continue to Step 3 |
+| Request belongs to a DIFFERENT agent's scope | Set `redirect` with `suggestedAgent` + `suggestedJob` |
+
+**Constraint**: PRD creation/refinement belongs to `planner` agent. Design, code, and learn belong to `architect` agent. If the current agent cannot handle the request, MUST set `suggestedAgent`.
+
 ### Step 3: Determine Status
 
 | Observation | Status |
 |-------------|--------|
 | Request matches current job capability AND prerequisites present | `proceed` |
-| Request content belongs to DIFFERENT job than current | `redirect` |
+| Request content belongs to DIFFERENT job or agent than current | `redirect` |
 | Request matches current job BUT prerequisites missing | `blocked` |
 
-**Constraint**: If request content requires different job capability than current, MUST set `redirect` with `suggestedJob`.
+**Constraint**: If request content requires different job or agent capability than current, MUST set `redirect` with `suggestedJob` (and `suggestedAgent` if agent differs).
 
 ## SCOPE BOUNDARY (for ask intent)
 
@@ -90,5 +101,6 @@ When user input appears to be:
 ⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → `design` job. But if the output is a quality score → still `ask`
 ⚠️ **Target determines job**: Modifying UI SPEC = design, Modifying SOURCE CODE = code
 ⚠️ **Job mismatch = REDIRECT**: If request belongs to different job than current → MUST `redirect`
+⚠️ **Agent mismatch = REDIRECT**: If request belongs to different agent (e.g., PRD writing to architect) → MUST `redirect` with `suggestedAgent`
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags

@@ -142,12 +142,11 @@ export function DirectoryView({
               // "Clear contents" 대상 폴더들 (폴더는 유지, 하위 파일만 삭제)
               const isClearableDir = 
                 node.type === 'directory' &&
-                pathParts.length === 2 &&
                 (
                   // outputs의 직계 자식 디렉토리들 (design, reports, debug 등)
-                  pathParts[0] === 'outputs' ||
-                  // sessions/log-prompt, sessions/debug
-                  (pathParts[0] === 'sessions' && (pathParts[1] === 'log-prompt' || pathParts[1] === 'debug'))
+                  (pathParts.length === 2 && pathParts[0] === 'outputs') ||
+                  // sessions/{agent}/debug, sessions/{agent}/log-prompt (agent-nested)
+                  (pathParts.length === 3 && pathParts[0] === 'sessions' && (pathParts[2] === 'debug' || pathParts[2] === 'log-prompt'))
                 );
               
               // inputs의 직계 자식 디렉토리는 삭제 불가

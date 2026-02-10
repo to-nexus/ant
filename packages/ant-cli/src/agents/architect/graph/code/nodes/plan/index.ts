@@ -85,7 +85,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     nextTask = TaskTimingHelper.startTask(nextTask);
     
     // ✅ Initialize token usage tracking for new task
-    const { resetTaskTokenUsage } = await import('../../../common/llmHelpers');
+    const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     resetTaskTokenUsage(state as any);
     
     // Update Kanban UI

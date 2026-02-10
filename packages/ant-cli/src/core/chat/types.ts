@@ -25,10 +25,13 @@ export interface MessageContent {
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
      | 'triage_choice'  // Triage redirect/blocked choice
+     | 'choice_card'    // Generic choice card (eval_save, prd_apply, etc.)
      // File Operations - Real-time streaming
      | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
      | 'file_editing' | 'file_updating' | 'file_edit' | 'file_edit_failed'
      | 'file_deleting' | 'file_delete' | 'file_delete_failed'
+     // Context Loaded - Informational notification
+     | 'context_loaded'  // Context loaded notification (eval report, PRD, design docs, etc.)
      // Tool Actions - Cursor/Copilot style
      | 'tool_action'    // Simple tool actions (mkdir, etc.)
      // Tool Results - list_files, search_code
@@ -96,6 +99,8 @@ export interface MessageContentMetadata {
   pattern?: string;       // For searching_code, listing_files
   totalMatches?: number;  // For searched_code
   project?: string;       // For searching_reference
+  // Context Loaded metadata
+  items?: Array<{ label: string; detail?: string }>;  // For context_loaded: loaded items
   // Learn metadata
   taskName?: string;      // For learning
   filesWritten?: number;  // For learned
@@ -209,4 +214,6 @@ export type ChatStatusType =
   | 'searching_reference' | 'searched_reference' 
   | 'tool_action' 
   | 'learning' | 'learned' 
+  | 'context_loaded'  // ✅ Context loaded notification (eval report, PRD, design docs, etc.)
+  | 'choice_card'    // ✅ Generic choice card (eval_save, prd_apply, etc.)
   | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed';

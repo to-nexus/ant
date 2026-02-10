@@ -32,6 +32,10 @@ You analyze user input to determine intent and execution readiness.
 
 {{{jobCapabilities}}}
 
+## AGENT CAPABILITIES
+
+{{{agentCapabilities}}}
+
 ## RESPONSE FORMAT
 
 <triage>
@@ -42,7 +46,8 @@ You analyze user input to determine intent and execution readiness.
   "askResponse": "Brief description of what will be looked up (when inScope=true) OR direct answer (when inScope=false)",
   
   "workStatus": "proceed" | "redirect" | "blocked",
-  "suggestedJob": "design | code | learn",
+  "suggestedAgent": "architect | planner",
+  "suggestedJob": "design | code | learn | planning",
   "redirectReason": "Why redirect is needed",
   "missingPrerequisites": { "required": [], "recommended": [] },
   "canProceed": true | false,

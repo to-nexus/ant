@@ -40,7 +40,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
 
   if (state.currentTask) {
     const { TaskTimingHelper } = await import('../../code/state');
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../common/llmHelpers');
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
 
     const taskTokenUsage = getTaskTokenUsage(state as any);
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);

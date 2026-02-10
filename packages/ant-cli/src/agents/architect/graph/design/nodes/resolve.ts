@@ -2,7 +2,7 @@ import { ArtifactService } from "../../../../../infrastructure/workspace/Artifac
 import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
 import { DesignGraphState } from "../state";
 import * as path from "path";
-import { getEstimatingLabel, detectUILocale } from "../../common/timing/estimatingLabels";
+import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 
 /**
  * Design Resolve Node
@@ -26,7 +26,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   // Without this, design job broadcasts 4 nodes (resolve/triage/detect/decompose)
   // without jobTiming, causing frontend to keep stale completedAt from previous job.
   if (!state.isResume && state._httpJobId) {
-    const { JobTimingManager } = await import('../../common/timing/JobTimingManager');
+    const { JobTimingManager } = await import('../../../../common/graph/timing/JobTimingManager');
     const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId);
     
     // Store on state for downstream nodes (decompose will finalize estimating phase)
@@ -174,11 +174,15 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     if (await fileSystem.fileExists(prdPath)) {
       const raw = await fileSystem.readFile(prdPath);
       if (raw && raw.includes('<!-- ant:template -->')) {
-        throw new Error(
-          "PRD(prd.md)가 아직 템플릿 상태입니다.\n" +
-          "- prd.md 상단의 `<!-- ant:template -->` 줄을 삭제하고 내용을 채워주세요.\n" +
-          "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다."
-        );
+        // Only reject if file has minimal real content (actual template placeholder)
+        const stripped = raw.replace(/<!--[\s\S]*?-->/g, '').trim();
+        if (stripped.length < 200) {
+          throw new Error(
+            "PRD(prd.md)가 아직 템플릿 상태입니다.\n" +
+            "- prd.md 상단의 `<!-- ant:template -->` 줄을 삭제하고 내용을 채워주세요.\n" +
+            "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다."
+          );
+        }
       }
     }
   }

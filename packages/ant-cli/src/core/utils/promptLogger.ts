@@ -15,6 +15,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { getSessionDebugDir } from './sessionPaths';
 
 export interface PromptLogEntry {
   nodeId: string;
@@ -51,7 +52,7 @@ export class PromptLogger {
 
   constructor(options: PromptLoggerOptions) {
     this.options = options;
-    this.logDirPath = path.join(options.featurePath, 'sessions', 'debug', 'prompts');
+    this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'prompts');
     this.logFilePath = path.join(
       this.logDirPath,
       `prompt-${options.jobType}-${options.jobId}.md`

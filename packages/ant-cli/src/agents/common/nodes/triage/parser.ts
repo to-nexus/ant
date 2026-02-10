@@ -11,7 +11,7 @@ import { TriageResult, ChoiceOptions } from './types';
  * @param llmOutput - Raw LLM output containing <triage> block
  * @param currentJob - Current job type (for redirect detection)
  */
-export function parseTriageResponse(llmOutput: string, currentJob?: string): TriageResult | null {
+export function parseTriageResponse(llmOutput: string, currentJob?: string, currentAgent?: string): TriageResult | null {
   // Extract <triage>...</triage> block
   const triageMatch = llmOutput.match(/<triage>([\s\S]*?)<\/triage>/);
   if (!triageMatch) {
@@ -53,16 +53,18 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string): Tri
         parsed.workStatus === 'redirect' ||
         (parsed.suggestedJob && 
          parsed.suggestedJob !== effectiveCurrentJob && 
-         parsed.redirectReason);
+         parsed.redirectReason) ||
+        (parsed.suggestedAgent && parsed.suggestedAgent !== (currentAgent || 'architect'));
       
       // redirect
       if (shouldRedirect) {
         result.workStatus = 'redirect'; // Force redirect
+        result.suggestedAgent = parsed.suggestedAgent;
         result.suggestedJob = parsed.suggestedJob;
         result.redirectReason = parsed.redirectReason;
         result.needsChoice = true;
         result.choiceOptions = buildRedirectChoice(parsed);
-        console.log(`[TriageParser] Forced redirect: suggestedJob=${parsed.suggestedJob}, currentJob=${effectiveCurrentJob}`);
+        console.log(`[TriageParser] Forced redirect: suggestedAgent=${parsed.suggestedAgent || 'same'}, suggestedJob=${parsed.suggestedJob}, currentJob=${effectiveCurrentJob}`);
       }
       
       // blocked
@@ -145,7 +147,8 @@ function buildDisplayMessage(result: TriageResult, parsed: any): string {
   
   // work - redirect
   if (result.workStatus === 'redirect') {
-    return `${result.redirectReason || '다른 job이 더 적합합니다.'}\n\n**${result.suggestedJob}** job으로 전환하시겠습니까?`;
+    const agentPart = result.suggestedAgent ? `**${result.suggestedAgent}** agent / ` : '';
+    return `${result.redirectReason || 'A different agent/job is more suitable.'}\n\n${agentPart}**${result.suggestedJob}** job으로 전환하시겠습니까?`;
   }
   
   // work - blocked

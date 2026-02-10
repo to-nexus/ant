@@ -25,7 +25,7 @@ export async function plan(state: DesignGraphState) {
       currentTask = TaskTimingHelper.startTask(currentTask);
       
       // ✅ Reset task-level token usage tracking
-      const { resetTaskTokenUsage } = await import('../../common/llmHelpers');
+      const { resetTaskTokenUsage } = await import('../../../../common/graph/llmHelpers');
       resetTaskTokenUsage(state as any);
       
       // ✅ CRITICAL: Update Kanban snapshot when task starts
