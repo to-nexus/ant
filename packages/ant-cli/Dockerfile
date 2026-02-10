@@ -80,6 +80,9 @@ COPY --from=builder /app/packages/ant-cli/dist/periphery/profiles ./packages/ant
 COPY --from=builder /app/packages/ant-cli/src ./packages/ant-cli/src
 COPY --from=builder /app/packages/ant-cli/tsconfig.json ./packages/ant-cli/tsconfig.json
 
+# Copy monorepo docs (rubrics, guides, architecture docs used by ask tools)
+COPY docs ./docs
+
 # Create workspace directory
 RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces
 
