@@ -285,12 +285,24 @@ export class ChatStatusHandler {
         return `Found ${filesCount} file(s) in ${project}`;
       }
       
+      case 'context_loaded': {
+        const items = metadata?.items as Array<{ label: string; detail?: string }> | undefined;
+        if (!items || items.length === 0) return 'Context loaded';
+        return items.map(item => 
+          item.detail ? `${item.label} (${item.detail})` : item.label
+        ).join(', ');
+      }
+      
       case 'tool_action':
         return metadata?.content || 'Processing...';
       
       case 'triage_choice':
         // ✅ triage_choice uses message from metadata (the LLM's explanation)
         return metadata?.message || 'Processing...';
+      
+      case 'choice_card':
+        // ✅ choice_card uses title from metadata (generic choice cards: eval_save, prd_apply)
+        return metadata?.title || 'Choice required';
       
       case 'file_create_failed':
       case 'file_edit_failed':

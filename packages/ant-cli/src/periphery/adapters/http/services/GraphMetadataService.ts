@@ -26,6 +26,7 @@ import {
 import { buildCodeGraph } from '../../../../agents/architect/graph/code/graph';
 import { buildDesignGraph } from '../../../../agents/architect/graph/design/graph';
 import { buildLearnGraph } from '../../../../agents/architect/graph/learn/graph';
+import { buildPlanGraph } from '../../../../agents/planner/graph/plan/graph';
 
 /**
  * 공통 Actor 정의
@@ -171,6 +172,28 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
   'architect:learn:store': {
     actors: [COMMON_ACTORS.embedding.id, COMMON_ACTORS.vectorDb.id],
     description: 'Store learnings in vector DB'
+  },
+  
+  // Planner Plan
+  'planner:plan:resolve': {
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
+    description: 'Load existing PRD and session context'
+  },
+  'planner:plan:triage': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Classify intent and check agent/job match'
+  },
+  'planner:plan:generate': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Generate or refine PRD with ReAct loop'
+  },
+  'planner:plan:tool': {
+    actors: [COMMON_ACTORS.fileSystem.id],
+    description: 'Execute tools (read workspace, web search)'
+  },
+  'planner:plan:write': {
+    actors: [COMMON_ACTORS.fileSystem.id],
+    description: 'Write PRD draft to outputs/plan/'
   }
 };
 
@@ -243,6 +266,8 @@ export class GraphMetadataService {
         return buildDesignGraph;
       case 'architect:learn':
         return buildLearnGraph;
+      case 'planner:plan':
+        return buildPlanGraph;
       default:
         return null;
     }

@@ -15,11 +15,11 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState, TaskQueue } from "../../state";
 import { CodeTask } from "../../../../types/task";
-import { JobTimingManager } from "../../../common/timing/JobTimingManager";
+import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
-import { getEstimatingLabel } from "../../../common/timing/estimatingLabels";
+import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 
 // Import submodules
 import { validateTasks } from "./validation";
@@ -277,7 +277,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     
     // ✅ Accumulate decompose token usage to job-level (not task-level, as decompose runs before tasks)
     if (decomposeTokenUsage) {
-      const { finalizeStreamTokenUsage } = await import('../../../common/llmHelpers');
+      const { finalizeStreamTokenUsage } = await import('../../../../../common/graph/llmHelpers');
       finalizeStreamTokenUsage(state as any, decomposeTokenUsage, { taskLevel: false, jobLevel: true });
     }
   } catch (error) {
@@ -332,7 +332,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 8: Handle jobId/jobTiming (for replan scenarios)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const { JobTimingManager } = await import('../../../common/timing/JobTimingManager');
+  const { JobTimingManager } = await import('../../../../../common/graph/timing/JobTimingManager');
   
   // Check if replan preserved jobId/jobTiming
   const replanJobId = (state as any)._replanJobId;

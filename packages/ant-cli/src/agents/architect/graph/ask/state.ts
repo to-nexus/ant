@@ -6,7 +6,7 @@
  */
 
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
-import { TokenUsage } from '../common/llmHelpers.js';
+import { TokenUsage } from '../../../common/graph/llmHelpers.js';
 
 /**
  * Tool call record for debugging
@@ -76,6 +76,10 @@ export interface AskGraphState {
   response?: string;
   streamingCompleted?: boolean;
   
+  // Evaluation state (set by agent node when evaluation request is detected)
+  isEvaluation?: boolean;
+  evalType?: 'prd' | 'system-design' | 'ui-design' | 'code' | 'all';
+  
   // Chat streaming state (to prevent starting new message after tool calls)
   chatMessageStarted?: boolean;
   
@@ -86,6 +90,9 @@ export interface AskGraphState {
   
   // HTTP context
   _httpJobId?: string;
+  
+  // Feature path (for eval save)
+  featurePath?: string;
   
   // Token tracking
   tokenUsage?: TokenUsage;

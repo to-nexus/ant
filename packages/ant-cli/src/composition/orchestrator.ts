@@ -1,6 +1,6 @@
 import { reviewerAgent } from "../agents/reviewer";
 import { architectAgent } from "../agents/architect/index";
-import { plannerAgent } from "../agents/planner";
+import { runPlanGraph } from "../agents/planner";
 import { docAgent } from "../agents/doc";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { createLLMClient } from "../periphery/adapters/llm/LLMClientFactory";
@@ -27,7 +27,7 @@ import * as path from "path";
  */
 export async function orchestrator(params: {
   agent: "architect" | "reviewer" | "planner" | "doc";
-  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc";  // ✅ Type of job to execute
+  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc";
   input: string;
   project?: string;
   feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
@@ -128,8 +128,8 @@ export async function orchestrator(params: {
           console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Design]');
         }
         
-        // ✅ Create session with file tree update support
-        const session = new FileSessionAdapter(featurePath, project, featureName, fileTreeUpdate);
+        // ✅ Create session with file tree update support (agent-nested)
+        const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
         
         // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
         return await architectAgent(
@@ -174,8 +174,8 @@ export async function orchestrator(params: {
           console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Code]');
         }
         
-        // ✅ Create session with file tree update support
-        const session = new FileSessionAdapter(featurePath, project, featureName, fileTreeUpdate);
+        // ✅ Create session with file tree update support (agent-nested)
+        const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
         
         // Mode will be inferred or auto-determined in architect agent
         // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
@@ -203,12 +203,50 @@ export async function orchestrator(params: {
     }
 
     case "planner": {
-      const [issues, commits] = input.split("===COMMITS===");
-      const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const llm = createLLMClient('planner', undefined, undefined, configData);
-      return await plannerAgent({ issues, commits }, project || "default", { memory, llm });
+      
+      // Setup real-time updates via Redis Pub/Sub
+      let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
+      let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
+      let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
+      
+      if (process.env.ANT_REDIS_URL) {
+        try {
+          const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
+          const options = getBroadcasterOptionsFromEnv();
+          if (options) {
+            const broadcasters = createRealtimeBroadcasters(options);
+            kanbanUpdate = broadcasters.kanban;
+            fileTreeUpdate = broadcasters.fileTree;
+            workflowUpdate = broadcasters.workflow;
+            console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Planner]');
+          } else {
+            console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Planner]');
+          }
+        } catch (error: any) {
+          console.log('⚠️  Failed to initialize real-time broadcasters [Planner]:', error?.message);
+        }
+      } else {
+        console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Planner]');
+      }
+      
+      // Create session for planner
+      const session = new FileSessionAdapter(featurePath || '', 'planner', project, feature, fileTreeUpdate);
+      
+      // Detect language from directive
+      const language = /[가-힣]/.test(input) ? 'ko' : 'en';
+      
+      return await runPlanGraph({
+        directive: input,
+        language: language as 'ko' | 'en',
+        workspaceState: { featurePath: featurePath || '' } as any,
+        featurePath: featurePath || '',
+        chatSource: chatSource,
+        deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate },
+        _httpJobId: jobId,
+      });
     }
 
     case "doc": {

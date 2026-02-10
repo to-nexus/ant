@@ -29,7 +29,7 @@ export function useJobExecution() {
   /**
    * Run Job - Start new job or resume interrupted job
    * @param agent - Agent type (e.g., 'architect')
-   * @param jobType - Job type: 'design' | 'code' | 'learn'
+   * @param jobType - Job type: 'design' | 'code' | 'learn' | 'plan'
    * @param directive - Optional override directive (for redirect from triage)
    */
   const runJob = useCallback(async (agent: string, jobType: string, directive?: string) => {
@@ -123,8 +123,8 @@ export function useJobExecution() {
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature!,
-        jobType: jobType as 'design' | 'code' | 'learn',
-        agent: agent as 'architect',
+        jobType: jobType,
+        agent: agent,
         chatSource: true,  // ✅ Enable Chat SSE for all jobs
         overrideDirective: directive  // ✅ Pass directive for redirect
       });

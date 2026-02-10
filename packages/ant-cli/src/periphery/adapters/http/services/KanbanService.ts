@@ -4,6 +4,7 @@ import { WorkspaceResolver } from '../../../../infrastructure/workspace/Workspac
 import { UserContext } from '../../../../core/types/user';
 import { StateStorePort } from '../../../../core/ports/stateStore';
 import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task';
+import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
 
 /**
  * KanbanService
@@ -104,7 +105,7 @@ export class KanbanService {
     }
     
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = `${featurePath}/sessions/${jobType}.json`;
+    const sessionPath = getSessionFilePathByJob(featurePath, jobType);
     this.invalidateSessionCache(sessionPath);
   }
   
@@ -164,7 +165,7 @@ export class KanbanService {
   async getKanbanData(
     projectId: string,
     featureName: string,
-    jobType: 'design' | 'code' | 'learn',
+    jobType: string,
     jobToProject?: Map<string, { projectId: string; featureName: string }>,
     jobs?: Map<string, any>,
     taskQueueSnapshots?: Map<string, any>,
@@ -182,7 +183,7 @@ export class KanbanService {
     }
     
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = `${featurePath}/sessions/${jobType}.json`;
+    const sessionPath = getSessionFilePathByJob(featurePath, jobType);
     
     let sessionData: any = null;
     const safeReadSession = async (): Promise<any | null> => {

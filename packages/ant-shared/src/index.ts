@@ -5,7 +5,7 @@
  * Both @ant/cli and @ant/ui import from this package.
  * 
  * Modules:
- *   - job.ts          : JobType, DecomposableJobType, JobTiming
+ *   - job.ts          : JobType, DecomposableJobType, SessionableJobType, JobTiming
  *   - task.ts         : TaskType, BaseTask, KanbanData, TaskTiming, TaskTokenUsage
  *   - interruption.ts : InterruptionReason, InterruptionDetails
  *   - detection.ts    : DetectionReport, JobMode, JobEnvironment

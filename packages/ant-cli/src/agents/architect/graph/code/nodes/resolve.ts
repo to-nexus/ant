@@ -3,7 +3,7 @@ import { ArchitectGraphState } from "../state";
 import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetriever";
 import { ReferenceContext } from "../../../../../core/codebase/types";
 import * as path from "path";
-import { getEstimatingLabel, detectUILocale } from "../../common/timing/estimatingLabels";
+import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 
 /**
  * Code Resolve Node
@@ -176,7 +176,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
   
   // NEW JOB: Initialize jobId and jobTiming
-  const { JobTimingManager } = await import('../../common/timing/JobTimingManager');
+  const { JobTimingManager } = await import('../../../../common/graph/timing/JobTimingManager');
   const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId!);
   
   // Clear conversation history for NEW JOB

@@ -102,7 +102,7 @@ export interface AuthState {
   userEmail: string | undefined;
   userOrganization: string | undefined;
   selectedAgent: string;
-  selectedJobType: 'design' | 'code' | 'learn';
+  selectedJobType: 'design' | 'code' | 'learn' | 'plan';
 }
 
 export interface ConfigState {

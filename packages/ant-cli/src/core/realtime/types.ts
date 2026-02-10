@@ -115,6 +115,6 @@ export interface BroadcasterOptions {
   jobId: string;
   projectId: string;
   featureName: string;
-  jobType?: DecomposableJobType;
+  jobType?: string;
   userContext: UserContext;
 }

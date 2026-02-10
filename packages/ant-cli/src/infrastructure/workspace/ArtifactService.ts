@@ -23,6 +23,7 @@ import {
   getAllUiContent,
   generateUiSectionsSummary,
 } from "./UiDocParser";
+import { getSessionDebugDir } from "../../core/utils/sessionPaths";
 
 /**
  * Artifact-specific project context.
@@ -43,18 +44,29 @@ export class ArtifactService {
 
   /**
    * Treat "template/placeholder" docs as empty to avoid misleading prompts.
-   * - If TEMPLATE_MARKER is present, it's considered not user-filled yet.
+   * - If TEMPLATE_MARKER is present AND real content is minimal, it's a placeholder.
    * - If content is only HTML comments, it's considered empty as well.
+   * - A real document with a leftover template marker is NOT treated as empty.
    */
   private static normalizeUserDoc(raw: string | null | undefined): string | null {
     if (!raw) return null;
     const trimmed = raw.trim();
     if (!trimmed) return null;
-    if (trimmed.includes(ArtifactService.TEMPLATE_MARKER)) return null;
 
-    // If user left only HTML comments (e.g. "<!-- Add your directive here -->"), treat as empty.
+    // Strip HTML comments to measure actual content
     const withoutComments = trimmed.replace(/<!--[\s\S]*?-->/g, '').trim();
     if (!withoutComments) return null;
+
+    // Template marker present but real content exists → keep the document
+    if (trimmed.includes(ArtifactService.TEMPLATE_MARKER)) {
+      if (withoutComments.length < 200) return null; // genuinely a template
+      // Real content with leftover marker — return content with marker stripped
+      return trimmed
+        .replace(/<!--\s*ant:template\s*-->/g, '')
+        .replace(/<!--.*ant:template.*-->/g, '')
+        .trim();
+    }
+
     return trimmed;
   }
   /**
@@ -646,7 +658,7 @@ export class ArtifactService {
     fileSystem: FileSystemPort
   ): Promise<string> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const reportDirAbs = path.join(featurePathAbs, "sessions/debug/logs");
+    const reportDirAbs = getSessionDebugDir(featurePathAbs, 'architect', 'logs');
     const reportDir = ArtifactService.toWorkspaceRelative(fileSystem, reportDirAbs);
     await fileSystem.createDirectory(reportDir);
     

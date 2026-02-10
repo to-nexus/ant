@@ -410,6 +410,57 @@ export class ChatAPIClient {
     await service?.completeCommand(command, output, exitCode);
   }
 
+  // ============================================================================
+  // Context Loaded Notifications
+  // ============================================================================
+
+  /**
+   * Notify the user that context has been loaded (eval reports, PRD, design docs, etc.)
+   * Unified method for all context-loading notifications across agents.
+   */
+  async showContextLoaded(items: Array<{ label: string; detail?: string }>): Promise<void> {
+    if (!this.enabled || items.length === 0) return;
+    await this.showChatStatus('context_loaded', { items });
+  }
+
+  // ============================================================================
+  // Choice Cards
+  // ============================================================================
+
+  /**
+   * Send a generic choice card to the chat UI.
+   * Used for evaluation save prompts and other interactive choices.
+   */
+  async sendChoiceCard(card: {
+    type: string;
+    title: string;
+    choices: Array<{
+      id: string;
+      label: string;
+      action: string;
+      data?: Record<string, any>;
+    }>;
+  }): Promise<void> {
+    if (!this.enabled) return;
+    // Map card.type to cardType to avoid conflict with MessageContent.type
+    // Include card data in metadata for UI to access
+    const metadata: Record<string, any> = {
+      cardType: card.type,
+      title: card.title,
+      choices: card.choices,
+    };
+    // Spread choice data into metadata for UI access
+    for (const choice of card.choices) {
+      if (choice.data) {
+        // For eval_save: evalType, response (mapped to evalContent)
+        if (choice.data.evalType) metadata.evalType = choice.data.evalType;
+        if (choice.data.response) metadata.evalContent = choice.data.response;
+        if (choice.data.featurePath) metadata.featurePath = choice.data.featurePath;
+      }
+    }
+    await this.showChatStatus('choice_card', metadata);
+  }
+
   /**
    * Check if client is enabled
    */

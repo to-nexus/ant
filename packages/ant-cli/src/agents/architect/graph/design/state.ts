@@ -3,8 +3,8 @@ import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, Memor
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
-import { TokenUsage } from '../common/llmHelpers';
-import { JobTiming } from '../common/timing/JobTimingManager';
+import { TokenUsage } from '../../../common/graph/llmHelpers';
+import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 
 /**

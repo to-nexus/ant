@@ -24,6 +24,7 @@ import { useStore } from '@/domain/store';
 const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
   // Common nodes
   resolve: 1000,
+  triage: 1000,
   decompose: 1000,
   plan: 1000,
   learn: 1000,
@@ -41,6 +42,10 @@ const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
   // Design job nodes
   docGen: 1000,
   writeFiles: 1000,
+  
+  // Planner job nodes
+  generate: 1000,
+  write: 1000,
 };
 
 const DEFAULT_MIN_DISPLAY_TIME = 1000;

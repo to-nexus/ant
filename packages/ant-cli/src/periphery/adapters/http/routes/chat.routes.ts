@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { ChoiceService } from '../../../../infrastructure/choice';
@@ -25,6 +27,7 @@ import { ChoiceAction } from '../../../../agents/common/nodes/triage/types';
 export function createChatRoutes(deps: {
   chatService?: ChatService;
   choiceService?: ChoiceService;
+  workspaceResolver?: any;
 }): Router {
   const router = Router();
   
@@ -280,6 +283,137 @@ export function createChatRoutes(deps: {
       choice,
       resolvedLabel
     });
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/eval-save
+   * Save evaluation report to outputs/evals/{evalType}/
+   * 
+   * Request body:
+   * - evalType: 'prd' | 'system-design' | 'ui-design' | 'code' | 'all'
+   * - content: string (markdown content of evaluation)
+   */
+  router.post('/projects/:id/features/:feature/chat/eval-save', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { evalType, content } = req.body;
+
+    if (!evalType || !content) {
+      res.status(400).json({ error: 'evalType and content are required' });
+      return;
+    }
+
+    const validTypes = ['prd', 'system-design', 'ui-design', 'code', 'all'];
+    if (!validTypes.includes(evalType)) {
+      res.status(400).json({ error: `Invalid evalType. Must be one of: ${validTypes.join(', ')}` });
+      return;
+    }
+
+    const userContext = extractUserContext(req);
+
+    try {
+      // Resolve feature path
+      let featurePath: string;
+      if (deps.workspaceResolver) {
+        featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      } else {
+        // Fallback for local mode
+        const workspaceRoot = process.env.ANT_WORKSPACE_ROOT || process.cwd();
+        featurePath = path.join(workspaceRoot, 'ant-workspaces', projectId, featureName);
+      }
+
+      // Build save path: outputs/evals/{evalType}/eval-{timestamp}.md
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+      const evalDir = path.join(featurePath, 'outputs', 'evals', evalType);
+      const evalFilePath = path.join(evalDir, `eval-${timestamp}.md`);
+      const relativePath = `outputs/evals/${evalType}/eval-${timestamp}.md`;
+
+      // Ensure directory exists
+      await fs.mkdir(evalDir, { recursive: true });
+
+      // Write evaluation report
+      await fs.writeFile(evalFilePath, content, 'utf-8');
+
+      console.log(`📋 [chat.routes] Eval report saved: ${relativePath}`);
+
+      // Update choice card metadata to mark as saved
+      if (deps.chatService) {
+        await deps.chatService.updateLastContentMetadata(
+          projectId,
+          featureName,
+          'choice_card',
+          { choiceSelected: 'save', resolvedLabel: `Saved: ${relativePath}` },
+          userContext
+        );
+      }
+
+      res.json({
+        success: true,
+        path: relativePath,
+        resolvedLabel: `Saved: ${relativePath}`
+      });
+    } catch (error: any) {
+      console.error('[chat.routes] eval-save error:', error);
+      res.status(500).json({ error: 'Failed to save evaluation report' });
+    }
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/prd-apply
+   * Apply PRD draft from outputs/plan/prd-refine.md to inputs/sources/prd.md
+   */
+  router.post('/projects/:id/features/:feature/chat/prd-apply', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const userContext = extractUserContext(req);
+
+    try {
+      // Resolve feature path
+      let featurePath: string;
+      if (deps.workspaceResolver) {
+        featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      } else {
+        const workspaceRoot = process.env.ANT_WORKSPACE_ROOT || process.cwd();
+        featurePath = path.join(workspaceRoot, 'ant-workspaces', projectId, featureName);
+      }
+
+      const sourcePath = path.join(featurePath, 'outputs', 'plan', 'prd-refine.md');
+      const targetPath = path.join(featurePath, 'inputs', 'sources', 'prd.md');
+
+      // Read the draft
+      const draftContent = await fs.readFile(sourcePath, 'utf-8');
+
+      // Ensure target directory exists
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+      // Write to inputs/sources/prd.md
+      await fs.writeFile(targetPath, draftContent, 'utf-8');
+
+      console.log(`📋 [chat.routes] PRD applied: outputs/plan/prd-refine.md → inputs/sources/prd.md`);
+
+      // Update choice card metadata
+      if (deps.chatService) {
+        await deps.chatService.updateLastContentMetadata(
+          projectId,
+          featureName,
+          'choice_card',
+          { choiceSelected: 'apply', resolvedLabel: 'Applied to inputs/sources/prd.md' },
+          userContext
+        );
+      }
+
+      res.json({
+        success: true,
+        resolvedLabel: 'Applied to inputs/sources/prd.md'
+      });
+    } catch (error: any) {
+      console.error('[chat.routes] prd-apply error:', error);
+      if (error.code === 'ENOENT') {
+        res.status(404).json({ error: 'PRD draft not found at outputs/plan/prd-refine.md' });
+      } else {
+        res.status(500).json({ error: 'Failed to apply PRD' });
+      }
+    }
   });
   
   return router;

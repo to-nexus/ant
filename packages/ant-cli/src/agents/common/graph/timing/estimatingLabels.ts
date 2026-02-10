@@ -14,6 +14,9 @@ const LABELS: Record<string, Record<UILocale, string>> = {
   detect:    { ko: '환경 분석 중',         en: 'Analyzing environment' },
   decompose: { ko: '작업 계획 수립 중',    en: 'Planning tasks' },
   revise:    { ko: '작업 계획 재검토 중',   en: 'Revising task plan' },
+  // Planner agent nodes
+  generate:  { ko: 'PRD 생성 중',         en: 'Generating PRD' },
+  write:     { ko: 'PRD 저장 중',         en: 'Saving PRD' },
 };
 
 /**

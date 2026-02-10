@@ -8,8 +8,8 @@
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../code/state";
-import { JobTimingManager } from "../../../common/timing/JobTimingManager";
-import { getEstimatingLabel } from "../../../common/timing/estimatingLabels";
+import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
+import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 import {
   createDefaultTask,
   createExplainTask,

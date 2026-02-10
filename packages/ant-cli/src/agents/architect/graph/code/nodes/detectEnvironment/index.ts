@@ -13,7 +13,7 @@
 import { ArchitectGraphState } from '../../state';
 import { LLMClient } from '../../../../../../core/ports';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../common/llmConfig';
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { 
   createCodeDetectionReport, 
   formatDetectionReportForChat,
@@ -24,7 +24,7 @@ import {
 // Import submodules
 import { parseDetectResponse } from './responseParser';
 import { selectDesignFiles, DesignDocs } from './designSelector';
-import { getEstimatingLabel } from '../../../common/timing/estimatingLabels';
+import { getEstimatingLabel } from '../../../../../common/graph/timing/estimatingLabels';
 
 /**
  * Build filtered design documents from selected file list.
@@ -253,7 +253,7 @@ export async function detectEnvironment(
     }
     
     // ✅ Extract token usage from done event
-    const { extractTokenUsageFromStreamEvent } = await import('../../../common/llmHelpers');
+    const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
     const usage = extractTokenUsageFromStreamEvent(event);
     if (usage) {
       capturedUsage = usage;
@@ -262,7 +262,7 @@ export async function detectEnvironment(
   
   // ✅ Accumulate token usage to job-level (not task-level, as detectEnvironment runs before tasks)
   if (capturedUsage) {
-    const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
+    const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
     console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
   }

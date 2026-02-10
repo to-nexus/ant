@@ -15,8 +15,8 @@ const PROTECTED_ROOT_FOLDERS = [
   'outputs/reports',
   'outputs/debug',
   'outputs/evals',
-  'sessions/debug',
-  'sessions/log-prompt',
+  'sessions/architect/debug',
+  'sessions/architect/log-prompt',
 ];
 
 /**

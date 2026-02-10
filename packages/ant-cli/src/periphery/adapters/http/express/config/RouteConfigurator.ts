@@ -37,7 +37,7 @@ export class RouteConfigurator {
       projectId?: string,
       featureName?: string,
       interruptionReason?: any,
-      explicitJobType?: 'design' | 'code' | 'learn',
+      explicitJobType?: 'design' | 'code' | 'learn' | 'plan',
       userContext?: any
     ) => Promise<void>,
     private readonly watchSessionFile: (

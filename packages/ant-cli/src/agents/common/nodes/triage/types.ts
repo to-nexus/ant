@@ -8,7 +8,7 @@
 import { ProjectContext } from '../../../architect/types';
 import { LLMClient } from '../../../../core/ports';
 import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow';
-import { TokenUsage } from '../../../architect/graph/common/llmHelpers';
+import { TokenUsage } from '../../graph/llmHelpers';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Intent & Status
@@ -124,6 +124,10 @@ export interface WorkspaceState {
   hasSystemDesignDoc: boolean;   // outputs/design/system-design.md
   hasUiDocs: boolean;            // outputs/design/ui-*.json
   
+  // Evaluations
+  hasEvals: boolean;             // outputs/evals/ has any reports
+  evalCount?: number;            // Total eval report files
+  
   // Code job
   hasDesignDoc: boolean;         // Any design doc in outputs/design/
   hasCodebase: boolean;          // Indexed in vector DB
@@ -139,26 +143,30 @@ export interface WorkspaceState {
  * 기존 ArchitectGraphState, DesignGraphState를 확장
  */
 export interface TriageableState {
-  // 기존 필드
+  // Core path — single source of truth for workspace location
+  featurePath?: string;
+  
+  // Legacy context (architect uses full ProjectContext; planner uses minimal object)
   context: ProjectContext;
   directive?: string;  // User instruction (unified: CLI input or chat input)
   deps?: { 
-    llm?: LLMClient; 
+    llm?: LLMClient;
+    memory?: any;
     workflowUpdate?: WorkflowStateUpdatePort;
   };
   _httpJobId?: string;
   tokenUsage?: TokenUsage;
   
-  // Triage 전용
-  skipTriage?: boolean;          // true면 triage 건너뜀
+  // Triage state
+  skipTriage?: boolean;
   triageResult?: TriageResult;
   workspaceState?: WorkspaceState;
-  currentAgent?: string;         // 'architect'
-  currentJob?: string;           // 'design' | 'code' | 'learn'
+  currentAgent?: string;
+  currentJob?: string;
   
   // Chat input
-  overrideDirective?: string;    // 채팅 입력 (directive로 사용)
-  chatSource?: boolean;          // 채팅에서 시작됨
+  overrideDirective?: string;
+  chatSource?: boolean;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

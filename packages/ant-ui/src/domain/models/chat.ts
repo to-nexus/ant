@@ -45,6 +45,8 @@ export type MessageContentType =
   | 'file_deleting'  // File deletion started
   | 'file_delete'    // File deletion complete
   | 'file_delete_failed'  // File deletion failed
+  // Context Loaded - Informational notification for loaded context
+  | 'context_loaded'  // Context loaded notification (eval report, PRD, design docs, etc.)
   // Tool Actions - Cursor/Copilot style (minimal, one-line display)
   | 'tool_action'    // Simple tool actions (mkdir, etc.) - ✓ Created organisms/, templates/
   // Command Execution - Real-time streaming
@@ -52,7 +54,9 @@ export type MessageContentType =
   | 'command_streaming' // Command output streaming
   | 'command'           // Command complete (collapsible)
   // Triage System - User choice
-  | 'triage_choice';    // Triage choice card (with buttons)
+  | 'triage_choice'     // Triage choice card (with buttons)
+  // Generic Choice Cards
+  | 'choice_card';      // Generic choice card (eval_save, prd_apply, etc.)
 
 export interface MessageContent {
   type: MessageContentType;
@@ -100,6 +104,13 @@ export interface MessageContent {
     choiceSelected?: string;  // Selected action (after user choice)
     resolvedLabel?: string;   // Label to display after choice is made
     resolved?: boolean;       // For cancelled: marked true when user resumes/continues (server-set)
+    // Generic Choice Card
+    cardType?: string;        // For choice_card: 'eval_save' | 'prd_apply'
+    title?: string;           // For choice_card: card title
+    evalType?: string;        // For eval_save: type of evaluation
+    evalContent?: string;     // For eval_save: evaluation content to save
+    // Context Loaded
+    items?: Array<{ label: string; detail?: string }>;  // For context_loaded: loaded items
   };
 }
 

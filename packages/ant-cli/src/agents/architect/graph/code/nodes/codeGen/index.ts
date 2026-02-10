@@ -280,7 +280,7 @@ export async function codeGen(
         isDone = true;
         
         // ✅ Extract token usage and accumulate to task-level
-        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage } = await import('../../../common/llmHelpers');
+        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
           accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });

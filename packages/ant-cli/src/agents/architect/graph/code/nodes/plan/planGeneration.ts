@@ -12,8 +12,9 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
+import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -133,7 +134,7 @@ export async function generatePlanText(
   }
   
   // ✅ Use centralized LLM wrapper with automatic token tracking
-  const { invokeWithTracking } = await import('../../../common/llmHelpers');
+  const { invokeWithTracking } = await import('../../../../../common/graph/llmHelpers');
   const response = await invokeWithTracking(
     llmToUse,
     [{ role: 'user', content: prompt }],
@@ -192,8 +193,8 @@ async function savePlanTextForDebug(
       return; // No feature path or jobId available
     }
     
-    // Create sessions/debug/plans/ directory
-    const planTextDir = path.join(featurePath, 'sessions', 'debug', 'plans');
+    // Create sessions/architect/debug/plans/ directory
+    const planTextDir = getSessionDebugDir(featurePath, 'architect', 'plans');
     await fs.mkdir(planTextDir, { recursive: true });
     
     const filepath = path.join(planTextDir, `${jobId}.json`);

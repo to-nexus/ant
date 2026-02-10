@@ -213,6 +213,16 @@ export class WorkspacePathResolver {
   static getProfilesPath(): string {
     return path.join(WorkspacePathResolver.getCliRoot(), 'periphery/profiles');
   }
+  
+  /**
+   * Get monorepo docs directory path
+   * docs/ is at the monorepo root level (sibling of packages/)
+   * @returns Path to docs directory (e.g., /app/docs)
+   */
+  static getDocsRoot(): string {
+    const cliRoot = WorkspacePathResolver.getCliRoot();
+    return path.resolve(cliRoot, '../../../docs');
+  }
 }
 
 

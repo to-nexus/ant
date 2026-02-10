@@ -8,6 +8,7 @@ import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
+import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
 
 /**
  * JobCleanupManager
@@ -29,7 +30,7 @@ export class JobCleanupManager {
     projectId?: string, 
     featureName?: string,
     interruptionReason?: InterruptionDetails,
-    explicitJobType?: 'design' | 'code' | 'learn',
+    explicitJobType?: 'design' | 'code' | 'learn' | 'plan',
     userContext?: UserContext
   ): Promise<void> {
     logger.info(`cleanupJobState`, { 
@@ -65,7 +66,7 @@ export class JobCleanupManager {
     
     // Determine job type
     const jobStatus = this.stateTracker.getJobStatus(jobId);
-    const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn') || 'code';
+    const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn' | 'plan') || 'code';
     
     // End workflow tracking
     await this.deps.workflowStateService.endJob(jobId);
@@ -100,7 +101,7 @@ export class JobCleanupManager {
           mapping.projectId,
           mapping.featureName || 'skeleton'
         );
-        const sessionPath = path.join(featurePath, 'sessions', `${jobType}.json`);
+        const sessionPath = getSessionFilePathByJob(featurePath, jobType);
         
         const sessionData = await this.deps.sessionService.readSessionData(
           mapping.projectId, 
@@ -246,9 +247,10 @@ export class JobCleanupManager {
           await fs.promises.writeFile(sessionPath, JSON.stringify(minimalSession, null, 2), 'utf-8');
         }
         
-        // Broadcast final update
-        if (shouldBroadcast) {
-          await this.broadcastFinalUpdate(mapping, jobType, effectiveUserContext, jobId);
+        // Broadcast final update (only for decomposable jobs that have Kanban)
+        const isDecomposable = jobType !== 'plan';
+        if (shouldBroadcast && isDecomposable) {
+          await this.broadcastFinalUpdate(mapping, jobType as 'design' | 'code' | 'learn', effectiveUserContext, jobId);
         } else {
           this.stateTracker.cleanup(jobId);
         }
@@ -288,7 +290,7 @@ export class JobCleanupManager {
    * Broadcast final Kanban update and cleanup state
    */
   private async broadcastFinalUpdate(
-    mapping: { projectId: string; featureName: string; jobType: 'design' | 'code' | 'learn'; userContext?: UserContext },
+    mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext },
     jobType: 'design' | 'code' | 'learn',
     userContext: UserContext,
     jobId: string

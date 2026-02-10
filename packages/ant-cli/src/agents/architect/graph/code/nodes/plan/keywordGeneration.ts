@@ -12,7 +12,7 @@ import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 
 export interface TaskKeywords {
   errorFiles: string[];  // Files that caused errors (build errors, file operation errors)
@@ -77,7 +77,7 @@ export async function generateTaskKeywords(
 
   try {
     // ✅ Use centralized LLM wrapper with automatic token tracking
-    const { invokeWithTracking } = await import('../../../common/llmHelpers');
+    const { invokeWithTracking } = await import('../../../../../common/graph/llmHelpers');
     const response = await invokeWithTracking(
       llm,
       [{ role: 'user', content: prompt }],

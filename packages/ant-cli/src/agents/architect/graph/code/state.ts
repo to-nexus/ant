@@ -4,7 +4,7 @@ import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
-import { TokenUsage } from '../common/llmHelpers';
+import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)

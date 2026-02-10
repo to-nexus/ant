@@ -6,6 +6,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getSessionDebugDir } from '../../../../core/utils/sessionPaths';
 import { buildAskGraph } from './graph.js';
 import { AskGraphState, createInitialAskState } from './state.js';
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
@@ -76,8 +77,8 @@ async function saveDebugInfo(
   }
   
   try {
-    // Create sessions/debug/asks/ directory
-    const debugDir = path.join(featurePath, 'sessions', 'debug', 'asks');
+    // Create sessions/architect/debug/asks/ directory
+    const debugDir = getSessionDebugDir(featurePath, 'architect', 'asks');
     await fs.mkdir(debugDir, { recursive: true });
     
     // Use jobId or timestamp for filename
@@ -160,6 +161,9 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
     deps: params.deps,
     _httpJobId: params._httpJobId,
   });
+  
+  // Set featurePath for eval save
+  initialState.featurePath = params.workspaceState.featurePath;
   
   // Run graph with recursion limit (default: 100 for Ask job, can be overridden via ASK_RECURSION_LIMIT)
   const recursionLimit = parseInt(process.env.ASK_RECURSION_LIMIT || '100', 10);

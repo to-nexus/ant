@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { Session } from '@/domain/models/session';
-import type { TaskTiming, DecomposableJobType, KanbanData } from '@ant/shared';
+import type { TaskTiming, KanbanData } from '@ant/shared';
 
 // ============================================================================
 // URL Configuration
@@ -221,8 +221,8 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
 export interface ExecuteJobParams {
   projectId: string;
   featureName?: string;  // Optional: if not provided, uses 'skeleton'
-  jobType?: DecomposableJobType | 'review' | 'plan' | 'doc';
-  agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
+  jobType?: string;
+  agent?: string;
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
   overrideDirective?: string;  // ✅ Chat input becomes directive (highest priority)
@@ -547,7 +547,7 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
 export async function clearSessionData(
   projectId: string,
   featureName: string,
-  jobType: 'design' | 'code' | 'learn'
+  jobType: string
 ): Promise<void> {
   const response = await authFetch(
     `${API_BASE()}/projects/${projectId}/features/${featureName}/session?job=${jobType}`,
@@ -588,7 +588,7 @@ export async function stopJob(
   jobId: string, 
   projectId?: string, 
   featureName?: string, 
-  jobType?: 'design' | 'code' | 'learn'
+  jobType?: string
 ): Promise<void> {
   try {
     const response = await authFetch(`${API_BASE()}/jobs/${encodeURIComponent(jobId)}/stop`, {
@@ -810,7 +810,7 @@ export async function deleteFeature(projectId: string, featureName: string): Pro
   }
 }
 
-export async function fetchFeatureSession(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<Session | null> {
+export async function fetchFeatureSession(projectId: string, featureName: string, job: string = 'code'): Promise<Session | null> {
   try {
     const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/session?job=${job}`;  // ✅ Add job query param
     const response = await authFetch(url);
@@ -849,7 +849,7 @@ export type {
  * Fetch complete Kanban board data for a feature
  * Returns ready-to-render data (no client-side merging needed)
  */
-export async function fetchKanbanData(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<KanbanData> {
+export async function fetchKanbanData(projectId: string, featureName: string, job: string = 'code'): Promise<KanbanData> {
   try {
     const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/kanban?job=${job}`;  // ✅ Add job query param
     const response = await authFetch(url);
@@ -1273,7 +1273,7 @@ export async function getPreviewStatus(projectId: string, feature?: string): Pro
 export async function resetJobState(
   projectId: string, 
   featureName: string, 
-  job: 'design' | 'code' | 'learn' = 'code'
+  job: string = 'code'
 ): Promise<void> {
   try {
     // Use the new clearSessionData API
@@ -1999,8 +1999,9 @@ export interface TriageChoiceResponse {
   type: 'guide' | 'continue' | 'dismiss';
   message?: string;
   action?: TriageChoiceAction;
-  suggestedJob?: string;  // For redirect - target job to switch to
-  directive?: string;     // For redirect - original directive to pass to new job
+  suggestedAgent?: string;  // For redirect - target agent to switch to
+  suggestedJob?: string;    // For redirect - target job to switch to
+  directive?: string;       // For redirect - original directive to pass to new job
 }
 
 /**
@@ -2059,6 +2060,71 @@ export async function submitCancelledChoice(
     return await response.json();
   } catch (error: any) {
     console.error('[API] submitCancelledChoice error:', error);
+    throw error;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Eval Save API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Submit eval save choice - save evaluation report to outputs/evals/{evalType}/
+ */
+export async function submitEvalSave(
+  projectId: string,
+  featureName: string,
+  evalType: string,
+  content: string
+): Promise<{ success: boolean; path?: string; resolvedLabel?: string }> {
+  try {
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/eval-save`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ evalType, content })
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('[API] submitEvalSave error:', error);
+    throw error;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PRD Apply API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Submit PRD apply choice - copy outputs/plan/prd-refine.md to inputs/sources/prd.md
+ */
+export async function submitPrdApply(
+  projectId: string,
+  featureName: string
+): Promise<{ success: boolean; resolvedLabel?: string }> {
+  try {
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/prd-apply`,
+      {
+        method: 'POST',
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('[API] submitPrdApply error:', error);
     throw error;
   }
 }

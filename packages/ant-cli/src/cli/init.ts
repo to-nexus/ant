@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { getDefaultWorkspaceConfig } from "../core/types/workspace";
+import { getInitSessionDirs } from '../core/utils/sessionPaths';
 
 /**
  * Initialize a new workspace with boilerplate structure
@@ -123,14 +124,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.mkdirSync(path.join(featureDir, "outputs/evals/system-design"), { recursive: true });
   fs.mkdirSync(path.join(featureDir, "outputs/evals/code"), { recursive: true });
   
-  // ✅ Sessions (세션 상태)
-  fs.mkdirSync(path.join(featureDir, "sessions"), { recursive: true });
-  
-  // ✅ Debug (디버깅 자료 - 일시적)
-  fs.mkdirSync(path.join(featureDir, "sessions/debug/prompts"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "sessions/debug/plans"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "sessions/debug/logs"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "sessions/debug/asks"), { recursive: true });
+  // ✅ Sessions (세션 상태) - agent-nested structure
+  for (const dir of getInitSessionDirs(featureDir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   
   // NOTE: outputs/code, outputs/memory are NOT created
   //       - Code goes directly to repository (config.localPath)

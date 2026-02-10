@@ -16,11 +16,11 @@ import { TriageableState, TriageResult, WorkspaceState } from './types.js';
 import { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
 import { parseTriageResponse } from './parser.js';
 import { AgentRegistry } from './AgentRegistry.js';
-import { accumulateTokenUsage } from '../../../architect/graph/common/llmHelpers.js';
+import { accumulateTokenUsage } from '../../graph/llmHelpers.js';
 import { runAskGraph } from '../../../architect/graph/ask/runner.js';
 import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
-import { getEstimatingLabel } from '../../../architect/graph/common/timing/estimatingLabels.js';
+import { getEstimatingLabel } from '../../graph/timing/estimatingLabels.js';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -89,7 +89,13 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   console.log('📋 Analyzing workspace state...');
   
-  const workspaceState = await analyzeWorkspace(state.context, state.deps as any);
+  // featurePath: use state-level featurePath (simple string channel, reliable in LangGraph)
+  const featurePath = state.featurePath || state.context?.featurePath || '';
+  
+  const workspaceState = await analyzeWorkspace(featurePath, {
+    memory: state.deps?.memory,
+    projectId: state.context?.project,
+  });
   
   // Check if chat input provides directive
   if (state.overrideDirective) {
@@ -161,7 +167,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   console.log(responseText);
   console.log('');
   
-  let triageResult = parseTriageResponse(responseText, currentJob);
+  let triageResult = parseTriageResponse(responseText, currentJob, currentAgent);
   
   if (!triageResult) {
     console.error('❌ [Triage] Failed to parse LLM response:');
@@ -257,6 +263,44 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
  * Build triage prompt with job capabilities
  * Uses template files from core/prompt/templates/triage/
  */
+/**
+ * Generate agent capabilities context for triage prompt.
+ * Describes each agent's scope so the LLM can detect agent mismatch.
+ */
+function generateAgentCapabilities(currentAgent: string): string {
+  const agents: Record<string, { name: string; scope: string[] }> = {
+    architect: {
+      name: 'architect',
+      scope: [
+        'UI design specification (ui-tokens, ui-assets, ui-spec)',
+        'System architecture and API design',
+        'Source code implementation (any language/framework)',
+        'Codebase analysis and indexing',
+      ],
+    },
+    planner: {
+      name: 'planner',
+      scope: [
+        'PRD (Product Requirements Document) creation',
+        'PRD refinement and improvement',
+        'Product requirement definition and scoping',
+      ],
+    },
+  };
+  
+  const lines: string[] = [];
+  lines.push(`Current agent: **${currentAgent}**\n`);
+  
+  for (const [id, agent] of Object.entries(agents)) {
+    const isCurrent = id === currentAgent;
+    lines.push(`### ${agent.name}${isCurrent ? ' (current)' : ''}`);
+    lines.push(`Scope: ${agent.scope.join(', ')}`);
+    lines.push('');
+  }
+  
+  return lines.join('\n');
+}
+
 function buildTriagePrompt(params: {
   userInput: string;
   currentJob: string;
@@ -268,12 +312,16 @@ function buildTriagePrompt(params: {
   
   const { base, rules } = loadTriageTemplates();
   
+  // Generate agent capabilities for cross-agent detection
+  const agentCapabilities = generateAgentCapabilities(currentAgent);
+  
   // Render base template with variables
   const basePrompt = base({
     currentAgent,
     currentJob,
     userInput,
     jobCapabilities,
+    agentCapabilities,
     // Workspace state
     hasPrd: workspaceState.hasPrd,
     prdPath: workspaceState.prdPath || 'available',
@@ -307,6 +355,9 @@ function logTriageResult(result: TriageResult): void {
   } else {
     console.log(`   Work Status: ${result.workStatus}`);
     if (result.workStatus === 'redirect') {
+      if (result.suggestedAgent) {
+        console.log(`   Suggested Agent: ${result.suggestedAgent}`);
+      }
       console.log(`   Suggested Job: ${result.suggestedJob}`);
     }
     if (result.workStatus === 'blocked') {

@@ -65,7 +65,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   // Chat operations
   router.use(createChatRoutes({
     chatService: deps.chatService,
-    choiceService: deps.choiceService
+    choiceService: deps.choiceService,
+    workspaceResolver: deps.workspaceResolver
   }));
   
   // GitHub integration

@@ -4,8 +4,8 @@ import { useStore } from '@/domain/store';
 export interface ExecuteCodeJobOptions {
   projectId?: string;
   featureName?: string;  // Which feature to execute for
-  jobType?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc';  // ✅ Type of job to execute
-  agent?: 'architect' | 'reviewer' | 'planner' | 'doc';
+  jobType?: string;      // ✅ Type of job to execute (design, code, learn, planning, etc.)
+  agent?: string;        // ✅ Agent (architect, planner, etc.)
   mode?: 'generate' | 'refactor' | 'explain';
   language?: string;
   cwd?: string;

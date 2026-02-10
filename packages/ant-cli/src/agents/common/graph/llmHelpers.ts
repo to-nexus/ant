@@ -7,8 +7,8 @@
  * Architecture: docs/architecture/13-token-usage-tracking.md
  */
 
-import { LLMClient, LLMInvokeResult, CacheableContent } from '../../../../core/ports/llm';
-import { TaskTokenUsage } from '../../types/task';
+import { LLMClient, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
+import { TaskTokenUsage } from '@ant/shared';
 
 /**
  * Re-export TaskTokenUsage as TokenUsage for convenience

@@ -8,6 +8,7 @@
 // Prerequisite condition types
 export type PrerequisiteType =
   | 'file_with_content'
+  | 'file_exists'
   | 'directory_with_files'
   | 'has_directive'
   | 'has_git_repository'

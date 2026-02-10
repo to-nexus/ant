@@ -143,7 +143,7 @@ class SSEManager {
   /**
    * Connect to unified SSE endpoint
    */
-  connect(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): void {
+  connect(projectId: string, featureName: string, job: string = 'code'): void {
     // Close existing connection if different project/feature/job
     if (this.unifiedConnection) {
       const currentJob = new URL(this.unifiedConnection.url).searchParams.get('job');
@@ -215,7 +215,7 @@ class SSEManager {
             const savedProjectId = this.unifiedConnection.projectId;
             const savedFeatureName = this.unifiedConnection.featureName;
             const savedUrl = new URL(this.unifiedConnection.url);
-            const savedJob = savedUrl.searchParams.get('job') as 'design' | 'code' | 'learn' || 'code';
+            const savedJob = savedUrl.searchParams.get('job') || 'code';
             
             this.disconnect();
             

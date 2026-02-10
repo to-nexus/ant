@@ -26,7 +26,7 @@ export function createHealthRoutes(): Router {
     });
   });
   
-  // Get available agents
+  // Get available agents (only enabled agents are listed)
   router.get('/agents', (_req: Request, res: Response) => {
     res.json([
       { 
@@ -40,27 +40,11 @@ export function createHealthRoutes(): Router {
         ]
       },
       { 
-        value: 'reviewer', 
-        label: 'Reviewer', 
-        enabled: false,
-        jobs: [
-          { value: 'review', label: 'Review' },
-        ]
-      },
-      { 
         value: 'planner', 
         label: 'Planner', 
-        enabled: false,
+        enabled: true,
         jobs: [
           { value: 'plan', label: 'Plan' },
-        ]
-      },
-      { 
-        value: 'doc', 
-        label: 'Doc', 
-        enabled: false,
-        jobs: [
-          { value: 'doc', label: 'Document' },
         ]
       },
     ]);

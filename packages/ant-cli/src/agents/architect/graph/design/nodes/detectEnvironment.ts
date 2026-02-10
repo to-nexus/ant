@@ -14,10 +14,10 @@ import { DesignGraphState } from "../state";
 import { LLMClient } from "../../../../../core/ports";
 import { PromptEngine } from "../../../../../core/prompt/engine";
 import { logPrompt } from "../../../../../core/utils/promptLogger";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../common/llmConfig";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../common/graph/llmConfig";
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { getEstimatingLabel } from "../../common/timing/estimatingLabels";
+import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 import {
   DetectionReport,
   createUiDesignDetectionReport,
@@ -370,7 +370,7 @@ export async function detectEnvironment(
         response += event.text;
       }
       
-      const { extractTokenUsageFromStreamEvent } = await import("../../common/llmHelpers");
+      const { extractTokenUsageFromStreamEvent } = await import("../../../../common/graph/llmHelpers");
       const usage = extractTokenUsageFromStreamEvent(event);
       if (usage) {
         capturedUsage = usage;
@@ -378,7 +378,7 @@ export async function detectEnvironment(
     }
     
     if (capturedUsage) {
-      const { accumulateTokenUsage } = await import("../../common/llmHelpers");
+      const { accumulateTokenUsage } = await import("../../../../common/graph/llmHelpers");
       accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
       console.log(`   Tokens: ${capturedUsage.totalTokens} total`);
     }

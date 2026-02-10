@@ -35,7 +35,7 @@ export function createSSERoutes(deps: {
   router.get('/projects/:id/features/:feature/stream', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const job = (req.query.job as 'design' | 'code' | 'learn') || 'code';
+    const job = (req.query.job as string) || 'code';
     logger.debug(`Client connecting (job: ${job})`, { component: 'SSE', projectId, featureName });
     
     // ✅ Resolve user context consistently.

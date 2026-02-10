@@ -8,8 +8,8 @@
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../code/state";
-import { JobTimingManager } from "../../../common/timing/JobTimingManager";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../common/llmConfig";
+import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import {
   parseLLMJsonResponse,
   saveCheckpoint,
@@ -328,7 +328,7 @@ export async function decomposeSystemDesign(
       : undefined;
 
     // Reset task-level token usage (will be used by first task in plan node)
-    const { resetTaskTokenUsage } = await import('../../../common/llmHelpers');
+    const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     resetTaskTokenUsage(state as any);
 
     // Finalize estimating phase

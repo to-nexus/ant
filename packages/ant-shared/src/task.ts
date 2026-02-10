@@ -119,7 +119,7 @@ export interface KanbanData {
   estimatingTokenUsage?: TaskTokenUsage;
 
   // Job metadata
-  jobType?: DecomposableJobType;
+  jobType?: string;
 
   // Timing
   totalElapsedTime?: number;

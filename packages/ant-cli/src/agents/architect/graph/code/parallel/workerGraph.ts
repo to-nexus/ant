@@ -97,7 +97,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
 
   if (!hasViolations && state.currentTask) {
     // Task succeeded — gather token usage
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../common/llmHelpers');
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
 
     const codeGenTokenUsage = state.llmResponse?.tokenUsage;
     const planTokenUsage = getTaskTokenUsage(state as any);

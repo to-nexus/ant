@@ -194,7 +194,7 @@ export async function showChatPlaceholder(): Promise<void> {
  */
 export async function trackTokenUsage(state: DesignGraphState, usage: any): Promise<void> {
   if (!usage) return;
-  const { accumulateTokenUsage } = await import('../../../common/llmHelpers');
+  const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
   accumulateTokenUsage(state as any, usage, { taskLevel: false, jobLevel: true });
 }
 

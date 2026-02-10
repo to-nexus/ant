@@ -331,8 +331,9 @@ export class ChoiceService {
     return {
       type: 'continue',
       action: 'redirect',
-      suggestedJob: triageResult.suggestedJob,  // ✅ Include target job
-      directive: originalDirective  // ✅ Include original directive
+      suggestedAgent: triageResult.suggestedAgent,  // ✅ Include target agent (cross-agent redirect)
+      suggestedJob: triageResult.suggestedJob,       // ✅ Include target job
+      directive: originalDirective                    // ✅ Include original directive
     };
   }
   

@@ -1,0 +1,121 @@
+/**
+ * Plan LangGraph
+ * 
+ * Graph: __start__ → resolve → triage → (conditional) → generate ⟷ tool → write → END
+ *                                  ↓ ask → __end__
+ *                                  ↓ redirect → __end__
+ *                                  ↓ blocked → __end__
+ *                                  ↓ proceed → generate
+ * 
+ * Triage handles ask intent (evaluation requests), agent mismatch detection,
+ * and prerequisites checking before proceeding to PRD generation.
+ */
+
+import { StateGraph, END } from '@langchain/langgraph';
+import { PlanGraphState } from './state';
+import { resolveNode } from './nodes/resolve';
+import { generateNode, routeAfterGenerate } from './nodes/generate';
+import { toolNode } from './nodes/tool';
+import { writeNode } from './nodes/write';
+import { triage } from '../../../common/nodes/triage';
+
+/**
+ * Route after triage for planner agent.
+ * Proceeds to 'generate' instead of architect's 'detectEnvironment'.
+ */
+function routeAfterPlannerTriage(state: PlanGraphState): string {
+  const result = state.triageResult;
+  
+  if (!result) {
+    console.log('[PlannerTriageRouter] No triage result, proceeding to generate');
+    return 'generate';
+  }
+  
+  if (result.intent === 'ask') {
+    console.log('[PlannerTriageRouter] ask intent → __end__');
+    return '__end__';
+  }
+  
+  if (result.workStatus === 'proceed') {
+    console.log('[PlannerTriageRouter] work:proceed → generate');
+    return 'generate';
+  }
+  
+  if (result.workStatus === 'redirect') {
+    console.log('[PlannerTriageRouter] work:redirect → __end__ (await choice)');
+    return '__end__';
+  }
+  
+  if (result.workStatus === 'blocked') {
+    console.log('[PlannerTriageRouter] work:blocked → __end__');
+    return '__end__';
+  }
+  
+  console.log('[PlannerTriageRouter] default → generate');
+  return 'generate';
+}
+
+export function buildPlanGraph() {
+  const graph = new StateGraph<PlanGraphState>({
+    channels: {
+      directive: null as any,
+      language: null as any,
+      workspaceState: null as any,
+      featurePath: null as any,
+      mode: null as any,
+      isResume: null as any,
+      existingDocument: null as any,
+      evalReport: null as any,
+      rubricContent: null as any,
+      recentTurnSummaries: null as any,
+      conversationHistory: null as any,
+      pendingToolCall: null as any,
+      generatedDocument: null as any,
+      // TriageableState fields
+      context: null as any,
+      triageResult: null as any,
+      skipTriage: null as any,
+      currentAgent: null as any,
+      currentJob: null as any,
+      overrideDirective: null as any,
+      chatSource: null as any,
+      // UI locale
+      _uiLocale: null as any,
+      // Dependencies
+      deps: null as any,
+      _httpJobId: null as any,
+      tokenUsage: null as any,
+    },
+  });
+  
+  // Add nodes
+  graph.addNode('resolve', resolveNode as any);
+  graph.addNode('triage', triage as any);
+  graph.addNode('generate', generateNode as any);
+  graph.addNode('tool', toolNode as any);
+  graph.addNode('write', writeNode as any);
+  
+  // Edges: resolve → triage → (conditional) → generate ⟷ tool → write
+  graph.addEdge('__start__' as any, 'resolve' as any);
+  graph.addEdge('resolve' as any, 'triage' as any);
+  graph.addConditionalEdges(
+    'triage' as any,
+    routeAfterPlannerTriage as any,
+    {
+      generate: 'generate',
+      __end__: END,
+    } as any
+  );
+  graph.addConditionalEdges(
+    'generate' as any,
+    routeAfterGenerate as any,
+    {
+      tool: 'tool',
+      write: 'write',
+    } as any
+  );
+  graph.addEdge('tool' as any, 'generate' as any);  // ReAct loop
+  graph.addEdge('write' as any, END as any);
+  
+  return graph.compile();
+}

@@ -34,6 +34,12 @@ export async function respondNode(state: AskGraphState): Promise<Partial<AskGrap
     if (DEBUG) {
       console.log('   ✅ Response already streamed by agent node');
     }
+    
+    // Send eval save choice card if this was an evaluation
+    if (state.isEvaluation && state.featurePath) {
+      await sendEvalSaveChoice(state);
+    }
+    
     return {};
   }
   
@@ -53,5 +59,51 @@ export async function respondNode(state: AskGraphState): Promise<Partial<AskGrap
     console.log('   ✅ Response sent to chat (fallback path)');
   }
   
+  // Send eval save choice card if this was an evaluation
+  if (state.isEvaluation && state.featurePath) {
+    await sendEvalSaveChoice(state);
+  }
+  
   return {};
+}
+
+/**
+ * Send a choice card asking the user if they want to save the evaluation report.
+ * Starts a new message, sends the choice card, and finalizes it.
+ */
+async function sendEvalSaveChoice(state: AskGraphState): Promise<void> {
+  const chatAPI = getChatAPIClient();
+  
+  const evalTypeLabel = state.evalType === 'all' ? 'Full Evaluation' : `${state.evalType} Evaluation`;
+  
+  try {
+    await chatAPI.sendChoiceCard({
+      type: 'eval_save',
+      title: state.language === 'ko' 
+        ? `📋 ${evalTypeLabel} 평가 리포트를 저장하시겠습니까?`
+        : `📋 Save ${evalTypeLabel} report?`,
+      choices: [
+        {
+          id: 'save',
+          label: state.language === 'ko' ? '저장' : 'Save',
+          action: 'eval_save',
+          data: {
+            evalType: state.evalType,
+            featurePath: state.featurePath,
+            response: state.response,
+          },
+        },
+        {
+          id: 'skip',
+          label: state.language === 'ko' ? '건너뛰기' : 'Skip',
+          action: 'dismiss',
+        },
+      ],
+    });
+    // Finalize the choice card message (showChatStatus auto-starts a new message)
+    await chatAPI.finalizeMessage();
+    console.log('📋 [Respond] Eval save choice card sent');
+  } catch (error) {
+    console.warn('⚠️ [Respond] Failed to send eval save choice card:', error);
+  }
 }

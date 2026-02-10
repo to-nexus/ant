@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../core/types/user';
+import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
 
 /**
  * SessionService
@@ -43,7 +44,7 @@ export class SessionService {
     // ✅ Multi-tenant safe key (org/user/project/feature/job)
     const key = `${userContext.organizationId}/${userContext.userId}/${projectId}/${featureName}/${job}`;
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
+    const sessionPath = getSessionFilePathByJob(featurePath, job);
     
     // Don't create duplicate watchers
     if (this.sessionWatchers.has(key)) {
@@ -132,7 +133,7 @@ export class SessionService {
     }
     
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
+    const sessionPath = getSessionFilePathByJob(featurePath, job);
     
     const MAX_RETRIES = 3;
     const BASE_DELAY_MS = 500;
@@ -183,7 +184,7 @@ export class SessionService {
     }
     
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = path.join(featurePath, `sessions/${job}.json`);
+    const sessionPath = getSessionFilePathByJob(featurePath, job);
     
     try {
       await fs.promises.access(sessionPath);
@@ -198,12 +199,8 @@ export class SessionService {
    * Used when user explicitly wants to start fresh
    */
   async resetJobState(projectId: string, featureName: string, job: 'design' | 'code' | 'learn' = 'code'): Promise<void> {
-    const sessionPath = path.join(
-      this.workspaceRoot,
-      projectId,
-      featureName,
-      `sessions/${job}.json`
-    );
+    const featurePath = path.join(this.workspaceRoot, projectId, featureName);
+    const sessionPath = getSessionFilePathByJob(featurePath, job);
     
     try {
       // Read existing session

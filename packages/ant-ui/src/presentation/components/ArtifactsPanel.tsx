@@ -146,12 +146,11 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               // "Clear contents" 대상 폴더들 (폴더는 유지, 하위 파일만 삭제)
               const isClearableDir = 
                 node.type === 'directory' &&
-                pathParts.length === 2 &&
                 (
                   // outputs의 직계 자식 디렉토리들 (design, reports, debug 등)
-                  pathParts[0] === 'outputs' ||
-                  // sessions/log-prompt, sessions/debug
-                  (pathParts[0] === 'sessions' && (pathParts[1] === 'log-prompt' || pathParts[1] === 'debug'))
+                  (pathParts.length === 2 && pathParts[0] === 'outputs') ||
+                  // sessions/{agent}/debug, sessions/{agent}/log-prompt (agent-nested)
+                  (pathParts.length === 3 && pathParts[0] === 'sessions' && (pathParts[2] === 'debug' || pathParts[2] === 'log-prompt'))
                 );
               
               // inputs의 직계 자식 디렉토리는 삭제 불가
@@ -405,9 +404,11 @@ export function ArtifactsPanel() {
     node.name === 'sources' || node.name === 'assets' || node.name === 'references'
   );
   
-  // outputs: only show 'design' and 'reports' directories
+  // outputs: show 'design', 'plan', 'evals', and 'reports' directories
   const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
-  const outputsNodes = allOutputsNodes.filter(node => node.name === 'design' || node.name === 'reports');
+  const outputsNodes = allOutputsNodes.filter(node => 
+    node.name === 'design' || node.name === 'plan' || node.name === 'evals' || node.name === 'reports'
+  );
   
   // sessions: show all
   const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
