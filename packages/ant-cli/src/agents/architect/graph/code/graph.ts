@@ -338,7 +338,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     featureName: state.featureName,
     maxRetries: state.maxRetries || 3,
     recursionCount: state.recursionCount || 0,
-    recursionLimit: state.recursionLimit || 100,
+    recursionLimit: state.recursionLimit,  // ✅ Always set by runner.ts from env RECURSION_LIMIT
     _httpJobId: state._httpJobId,
     _uiLocale: state._uiLocale,
     jobId: (state as any).jobId,
@@ -384,6 +384,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   taskQueue: checkpoint.taskQueue,
                   completedTasks: checkpoint.completedTasks.map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
+                  // ✅ Persist failed tasks so they survive process termination
+                  failedTasks: checkpoint.failedTasks.map(f => ({
+                    taskId: f.task.id,
+                    taskName: f.task.name,
+                    error: f.error.message,
+                    timestamp: f.timestamp,
+                  })),
                   tokenUsage: checkpoint.tokenUsage,
                   // ✅ Preserve estimating phase token usage snapshot in checkpoint
                   estimatingTokenUsage: (state as any)._estimatingTokenUsage,
@@ -393,7 +400,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                 },
               },
             );
-            console.log(`💾 [ParallelOrchestrator] Checkpoint saved (${checkpoint.completedTasks.length} completed, ${checkpoint.taskQueue.length} queued)`);
+            const failedCount = checkpoint.failedTasks.length;
+            console.log(`💾 [ParallelOrchestrator] Checkpoint saved (${checkpoint.completedTasks.length} completed, ${checkpoint.taskQueue.length} queued${failedCount > 0 ? `, ${failedCount} failed` : ''})`);
           } catch (err) {
             console.warn(`⚠️ [ParallelOrchestrator] Checkpoint save failed:`, err);
           }
@@ -418,12 +426,61 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   console.log(`   Completed: ${result.completedTasks.length}`);
   console.log(`   Failed: ${result.failedTasks.length}`);
   console.log(`   Remaining: ${result.remainingQueue.length}`);
+  if (result.failedTasks.length > 0) {
+    for (const f of result.failedTasks) {
+      console.error(`   ❌ FAILED: "${f.task.name}" (id=${f.task.id}) — ${f.error.message}`);
+    }
+  }
   if (result.drainReason) {
     console.log(`   Drain reason: ${result.drainReason}`);
   }
 
-  // Remaining tasks are already back in the shared taskQueue reference
-  // (orchestrator uses it directly)
+  // ✅ If any tasks permanently failed, save interrupted state to session
+  // so the job shows as "interrupted" (not "completed") in the UI.
+  // Failed tasks go back to the queue with a _failed flag for visibility.
+  if (result.hasFailures && state.deps?.session && state.context.featureFolder) {
+    try {
+      // Put failed tasks back into the queue (marked as failed) for UI display
+      const failedAsQueue = result.failedTasks.map(f => ({
+        ...f.task,
+        _failed: true,
+        _failureReason: f.error.message,
+      }));
+
+      await state.deps.session.updateArtifacts(
+        state.context.project,
+        state.context.featureFolder,
+        'code',
+        {
+          state: {
+            taskQueue: [...failedAsQueue, ...result.remainingQueue],
+            completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
+            completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+            failedTasks: result.failedTasks.map(f => ({
+              taskId: f.task.id,
+              taskName: f.task.name,
+              error: f.error.message,
+              timestamp: f.timestamp,
+            })),
+            tokenUsage: result.tokenUsage,
+            estimatingTokenUsage: (state as any)._estimatingTokenUsage,
+            jobId: (state as any).jobId,
+            jobTiming: (state as any).jobTiming,
+            parallelMode: true,
+            interruption: {
+              reason: 'tasks_failed',
+              message: `${result.failedTasks.length} task(s) failed during parallel execution`,
+              timestamp: new Date().toISOString(),
+              canResume: true,
+            },
+          },
+        },
+      );
+      console.log(`💾 [ParallelOrchestrator] Saved interrupted state (${result.failedTasks.length} failed tasks)`);
+    } catch (err) {
+      console.warn(`⚠️ [ParallelOrchestrator] Failed to save interrupted state:`, err);
+    }
+  }
 
   return {
     completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],

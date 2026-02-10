@@ -76,14 +76,21 @@ resolve
 - `hasDetectionReport`: `!!state.detectionReport`
 - `hasNewDir`: `!!state.overrideDirective`
 
-### 3.2 전체 노드 흐름
+### 3.2 전체 노드 흐름 (순차 실행)
+
+> **병렬 실행** (`ANT_TASK_CONCURRENCY > 1`)시에는 decompose 이후
+> `parallelOrchestrator` 노드로 분기된다. 상세는 `14-parallel-task-execution.md` 참조.
 
 ```
 __start__ -> resolve -> [4-way router]
-                         +-> triage -> detectEnvironment -> decompose -> plan
+                         +-> triage -> detectEnvironment -> decompose -> [concurrency router]
                          +-> revise -> plan
                          +-> plan (직행)
-                         +-> decompose -> plan
+                         +-> decompose -> [concurrency router]
+
+[concurrency router]
+  +-> ANT_TASK_CONCURRENCY=1 -> plan (순차 루프, 아래 흐름)
+  +-> ANT_TASK_CONCURRENCY>1 -> parallelOrchestrator (14-parallel-task-execution.md)
 
 plan -> codeGen -> [router]
                     +-> tool -> codeGen (loop)

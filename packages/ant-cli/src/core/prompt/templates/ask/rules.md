@@ -61,18 +61,29 @@
 
 | Tool | Purpose |
 |------|---------|
-| `read_ant_source` | Read a file (path, source: cli/ui) |
+| `read_ant_source` | Read a file (path, source: cli/ui/docs) |
 | `list_ant_files` | List directory contents |
-| `search_ant_code` | Search text in source code |
+| `search_ant_code` | Search text in source code or documentation |
+
+### Source Options
+
+| Source | Root Directory | Contains |
+|--------|---------------|----------|
+| `cli` | ant-cli source | Core logic, agents, graphs, nodes, data |
+| `ui` | ant-ui source | UI components, stores, presentation |
+| `docs` | Project docs/ directory | Rubrics, architecture docs, guides |
 
 ### Information Sources
 
 | Topic | Where to Look |
 |-------|---------------|
-| Job definitions | `core/data/triage/jobs/*.yaml` |
-| Workflow graphs | `agents/**/graph.ts` |
-| Node implementations | `agents/**/nodes/**/*.ts` |
-| UI components | `src/presentation/components/` (ant-ui) |
+| Job definitions | `core/data/triage/jobs/*.yaml` (source: cli) |
+| Workflow graphs | `agents/**/graph.ts` (source: cli) |
+| Node implementations | `agents/**/nodes/**/*.ts` (source: cli) |
+| UI components | `src/presentation/components/` (source: ui) |
+| Evaluation rubrics | `rubric/` (source: docs) |
+| Architecture docs | `architecture/` (source: docs) |
+| Project guides | `guides/` (source: docs) |
 
 ---
 

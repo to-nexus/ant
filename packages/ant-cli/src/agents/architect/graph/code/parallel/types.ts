@@ -20,6 +20,8 @@ export interface OrchestratorResult<T extends BaseTask> {
   remainingQueue: T[];
   drainReason?: string;
   tokenUsage: TaskTokenUsage;
+  /** True if any tasks permanently failed — caller should mark job as interrupted */
+  hasFailures: boolean;
 }
 
 /**
@@ -84,7 +86,7 @@ export interface ParallelCheckpoint<T extends BaseTask> {
  * The orchestrator injects this to decouple graph construction.
  */
 export type WorkerGraphBuilder = (includeInstallValidate: boolean) => {
-  invoke: (state: any) => Promise<any>;
+  invoke: (state: any, config?: any) => Promise<any>;
 };
 
 /**

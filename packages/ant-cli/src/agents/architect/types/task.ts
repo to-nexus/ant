@@ -68,6 +68,9 @@ export interface CodeTask extends BaseTask {
    * Target packages for this task (set by decompose LLM).
    * Used for split injection - only specified package design docs are loaded into prompt.
    * 
+   * **REQUIRED**: Every task MUST have packages set by decompose.
+   * If missing, plan/codeGen falls back to state.design (all docs) with a warning.
+   * 
    * ## Normalized Tag Format
    * 
    * | Tag Pattern | Maps To | Description |
@@ -76,6 +79,7 @@ export interface CodeTask extends BaseTask {
    * | `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi frontend (monorepo) |
    * | `be` | `be-system-design.md` | Single backend |
    * | `be-{svc}` | `be-system-design-{svc}.md` | MSA service |
+   * | `shared` | api-contract.md only | Shared/utility package (types, DTOs, configs) |
    * 
    * ## Examples
    * 
@@ -96,12 +100,13 @@ export interface CodeTask extends BaseTask {
    * ### Cross-Tier Integration
    * - `['fe-web', 'be-auth']` → frontend + specific backend service
    * 
-   * ### Default Behavior
-   * - `undefined` → environment-based selection (all relevant docs)
+   * ### Shared / Root Workspace
+   * - `['shared']` → api-contract.md only (no system design doc mapped)
    * 
    * ## Note
    * - `api-contract.md` is ALWAYS injected when any package is specified
-   * - If undefined, falls back to environment-based selection
+   * - `shared` tag has no system design mapping — only api-contract.md is injected
+   * - If undefined, falls back to environment-based selection (all docs) — this is a decompose bug
    */
   packages?: string[];
   

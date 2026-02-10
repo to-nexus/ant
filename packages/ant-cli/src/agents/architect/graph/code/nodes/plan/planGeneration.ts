@@ -70,8 +70,8 @@ export async function generatePlanText(
   }
   
   // ✅ Select design doc based on task.packages (split injection)
-  // If task.packages is specified, inject only the relevant design docs
-  // Otherwise, fall back to state.design (environment-based selection)
+  // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
+  // If missing, fall back to state.design but warn — this indicates a decompose bug.
   let designDoc: string;
   
   if (task.packages && task.packages.length > 0 && state.designDocs) {
@@ -79,10 +79,9 @@ export async function generatePlanText(
     designDoc = buildDesignDocForTask(task.packages, state.designDocs);
     console.log(`📄 [Plan] Split injection: packages=${task.packages.join(', ')} → ${designDoc.length} chars`);
   } else {
-    // Fallback: this path should not normally be reached.
-    // task.packages should always be set by decompose, and state.designDocs should always be loaded by resolve.
+    // Fallback: all tasks should have packages set by decompose.
     // If this fires, it indicates a decompose bug (missing packages) or resolve bug (missing designDocs).
-    console.warn('⚠️ [Plan] Fallback to state.design: task.packages or state.designDocs missing');
+    console.warn('⚠️ [Plan] Fallback to state.design: task.packages or state.designDocs missing (decompose bug)');
     console.warn(`   task.id=${task.id}, task.packages=${JSON.stringify(task.packages)}, hasDesignDocs=${!!state.designDocs}`);
     designDoc = state.design || '';
   }

@@ -109,6 +109,8 @@ export interface KanbanData {
   // Recursion tracking
   recursionCount?: number;
   recursionLimit?: number;
+  /** Active worker's task name for recursion badge display (set by frontend from workflow SSE) */
+  recursionTaskName?: string;
 
   // Token usage (job-level aggregate)
   tokenUsage?: TaskTokenUsage;

@@ -304,11 +304,21 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         return;
       }
       
-      // Merge recursionCount into kanban state
+      // Merge recursionCount into kanban state (with active task name for badge display)
       if (data.recursionCount !== undefined) {
+        // Find the most recently entered node to identify which worker triggered this update
+        const activeNodes: ActiveWorkerNode[] = data.activeNodes || [];
+        let taskName: string | undefined;
+        if (activeNodes.length > 0) {
+          const latestNode = activeNodes.reduce((latest, node) =>
+            new Date(node.enteredAt).getTime() > new Date(latest.enteredAt).getTime() ? node : latest
+          );
+          taskName = latestNode.taskName;
+        }
         useStore.getState().updateKanbanRecursion(
           data.recursionCount,
-          data.recursionLimit
+          data.recursionLimit,
+          taskName
         );
       }
 

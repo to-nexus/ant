@@ -175,6 +175,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     _uiLocale: (state as any)._uiLocale,
     jobId: (state as any).jobId,
     jobTiming: (state as any).jobTiming,
+    // ✅ Pass recursionLimit so worker subgraph uses the correct limit
+    // Without this, LangGraph defaults to 25 which is too low for complex tasks
+    recursionLimit: (state as any).recursionLimit,  // ✅ Always set by runner.ts from env RECURSION_LIMIT
   };
 
   const graphBuilder = createDesignWorkerGraphBuilder();
@@ -214,6 +217,13 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   taskQueue: checkpoint.taskQueue,
                   completedTasks: checkpoint.completedTasks.map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
+                  // ✅ Persist failed tasks so they survive process termination
+                  failedTasks: checkpoint.failedTasks.map(f => ({
+                    taskId: f.task.id,
+                    taskName: f.task.name,
+                    error: f.error.message,
+                    timestamp: f.timestamp,
+                  })),
                   tokenUsage: checkpoint.tokenUsage,
                   // ✅ Preserve estimating phase token usage snapshot in checkpoint
                   estimatingTokenUsage: (state as any)._estimatingTokenUsage,
@@ -223,7 +233,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                 },
               },
             );
-            console.log(`💾 [Design ParallelOrchestrator] Checkpoint saved`);
+            const failedCount = checkpoint.failedTasks.length;
+            console.log(`💾 [Design ParallelOrchestrator] Checkpoint saved (${checkpoint.completedTasks.length} completed, ${checkpoint.taskQueue.length} queued${failedCount > 0 ? `, ${failedCount} failed` : ''})`);
           } catch (err) {
             console.warn(`⚠️ [Design ParallelOrchestrator] Checkpoint save failed:`, err);
           }
@@ -248,6 +259,55 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   console.log(`   Completed: ${result.completedTasks.length}`);
   console.log(`   Failed: ${result.failedTasks.length}`);
   console.log(`   Remaining: ${result.remainingQueue.length}`);
+  if (result.failedTasks.length > 0) {
+    for (const f of result.failedTasks) {
+      console.error(`   ❌ FAILED: "${f.task.name}" (id=${f.task.id}) — ${f.error.message}`);
+    }
+  }
+
+  // ✅ If any tasks permanently failed, save interrupted state to session
+  if (result.hasFailures && state.deps?.session && state.context.featureFolder) {
+    try {
+      const failedAsQueue = result.failedTasks.map(f => ({
+        ...f.task,
+        _failed: true,
+        _failureReason: f.error.message,
+      }));
+
+      await state.deps.session.updateArtifacts(
+        state.context.project,
+        state.context.featureFolder,
+        'design',
+        {
+          state: {
+            taskQueue: [...failedAsQueue, ...result.remainingQueue],
+            completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
+            completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+            failedTasks: result.failedTasks.map(f => ({
+              taskId: f.task.id,
+              taskName: f.task.name,
+              error: f.error.message,
+              timestamp: f.timestamp,
+            })),
+            tokenUsage: result.tokenUsage,
+            estimatingTokenUsage: (state as any)._estimatingTokenUsage,
+            jobId: (state as any).jobId,
+            jobTiming: (state as any).jobTiming,
+            parallelMode: true,
+            interruption: {
+              reason: 'tasks_failed',
+              message: `${result.failedTasks.length} task(s) failed during parallel execution`,
+              timestamp: new Date().toISOString(),
+              canResume: true,
+            },
+          },
+        },
+      );
+      console.log(`💾 [Design ParallelOrchestrator] Saved interrupted state (${result.failedTasks.length} failed tasks)`);
+    } catch (err) {
+      console.warn(`⚠️ [Design ParallelOrchestrator] Failed to save interrupted state:`, err);
+    }
+  }
 
   return {
     completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],

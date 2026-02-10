@@ -481,14 +481,25 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
 interface GaugesGroupProps {
   recursionCount?: number;
   recursionLimit?: number;
+  /** Active worker's task name (truncated, for parallel mode identification) */
+  recursionTaskName?: string;
 }
 
 /**
- * GaugesGroup - Recursion limit gauge only
+ * Truncate text to maxLen characters with ellipsis
+ */
+function truncateText(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen) + '…';
+}
+
+/**
+ * GaugesGroup - Recursion limit gauge with optional worker task name
  */
 export function GaugesGroup({
   recursionCount = 0,
   recursionLimit = 50,
+  recursionTaskName,
 }: GaugesGroupProps) {
   return (
     <>
@@ -504,9 +515,17 @@ export function GaugesGroup({
             }}
           />
         </div>
-        <div className="relative z-10 flex items-center justify-center h-7">
-          <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none">
-            {recursionCount}/{recursionLimit} Recursion
+        <div className="relative z-10 flex items-center justify-center h-7 gap-1.5">
+          {recursionTaskName && (
+            <span
+              className="text-[10px] text-purple-500 dark:text-purple-400 font-medium leading-none truncate max-w-[90px] opacity-80"
+              title={recursionTaskName}
+            >
+              {truncateText(recursionTaskName, 13)}
+            </span>
+          )}
+          <span className="text-xs text-purple-700 dark:text-purple-300 font-medium leading-none whitespace-nowrap">
+            {recursionCount}/{recursionLimit}
           </span>
         </div>
       </div>

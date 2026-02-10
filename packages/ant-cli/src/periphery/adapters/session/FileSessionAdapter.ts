@@ -8,6 +8,35 @@ import { randomUUID } from "crypto";
 import { WorkspaceResolver, WorkspacePathResolver, UnifiedWorkspaceResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
 /**
+ * Simple async mutex for serializing file I/O.
+ * Prevents race conditions when multiple workers call updateArtifacts concurrently.
+ */
+class FileMutex {
+  private locked = false;
+  private waitQueue: Array<() => void> = [];
+
+  async runExclusive<T>(fn: () => T | Promise<T>): Promise<T> {
+    // Acquire
+    if (this.locked) {
+      await new Promise<void>((resolve) => this.waitQueue.push(resolve));
+    } else {
+      this.locked = true;
+    }
+    try {
+      return await fn();
+    } finally {
+      // Release
+      if (this.waitQueue.length > 0) {
+        const next = this.waitQueue.shift()!;
+        next();
+      } else {
+        this.locked = false;
+      }
+    }
+  }
+}
+
+/**
  * File-based Session Adapter
  * 
  * Implements SessionPort using JSON files in the workspace directory.
@@ -32,6 +61,9 @@ export class FileSessionAdapter implements SessionPort {
   private projectId: string;
   private featureName: string;
   private fileTreeUpdate?: FileTreeUpdatePort;
+  
+  /** Per-job file lock to prevent concurrent read-modify-write race conditions */
+  private readonly fileLocks = new Map<string, FileMutex>();
   
   constructor(featurePath: string, projectId?: string, featureName?: string, fileTreeUpdate?: FileTreeUpdatePort) {
     this.featurePath = featurePath;
@@ -69,6 +101,17 @@ export class FileSessionAdapter implements SessionPort {
     };
     const featurePath = this.workspaceResolver.getFeaturePath(context, project, feature);
     return path.join(featurePath, "sessions", `${job}.json`);
+  }
+  
+  /**
+   * Get or create a mutex for the given job type.
+   * Serializes all file operations for the same session file.
+   */
+  private getFileLock(job: DecomposableJobType): FileMutex {
+    if (!this.fileLocks.has(job)) {
+      this.fileLocks.set(job, new FileMutex());
+    }
+    return this.fileLocks.get(job)!;
   }
   
   /**
@@ -148,7 +191,11 @@ export class FileSessionAdapter implements SessionPort {
   }
   
   /**
-   * Save the entire session
+   * Save the entire session (atomic write: temp file + rename).
+   * 
+   * Atomic write prevents partial/corrupt JSON when process is killed mid-write.
+   * The rename operation is atomic on POSIX systems when src and dest are on the
+   * same filesystem, ensuring readers always see a complete JSON file.
    */
   async save(session: Session, job: DecomposableJobType): Promise<void> {
     await this.ensureDirectory(session.project, session.feature);
@@ -165,9 +212,19 @@ export class FileSessionAdapter implements SessionPort {
       throw new Error(`Invalid session data: ${error}`);
     }
     
-    // Write with pretty formatting for human readability
+    // ✅ Atomic write: write to temp file in same directory, then rename
     const content = JSON.stringify(session, null, 2);
-    await fs.writeFile(sessionPath, content, "utf-8");
+    const dir = path.dirname(sessionPath);
+    const tmpPath = path.join(dir, `.${path.basename(sessionPath)}.${process.pid}.tmp`);
+    
+    try {
+      await fs.writeFile(tmpPath, content, "utf-8");
+      await fs.rename(tmpPath, sessionPath);
+    } catch (err) {
+      // Cleanup temp file on failure
+      try { await fs.unlink(tmpPath); } catch { /* ignore */ }
+      throw err;
+    }
     
     // ✅ Notify file tree update
     if (this.fileTreeUpdate) {
@@ -176,30 +233,36 @@ export class FileSessionAdapter implements SessionPort {
   }
   
   /**
-   * Add a new turn to the session
+   * Add a new turn to the session (serialized with per-job lock)
    */
   async addTurn(project: string, feature: string, job: DecomposableJobType, turn: SessionTurn): Promise<void> {
-    const session = await this.load(project, feature, job);
-    
-    // Set turn ID if not provided
-    if (!turn.turnId) {
-      turn.turnId = session.turns.length + 1;
-    }
-    
-    // Set timestamp if not provided
-    if (!turn.timestamp) {
-      turn.timestamp = new Date().toISOString();
-    }
-    
-    session.turns.push(turn);
-    await this.save(session, job);
+    const lock = this.getFileLock(job);
+    await lock.runExclusive(async () => {
+      const session = await this.load(project, feature, job);
+      
+      // Set turn ID if not provided
+      if (!turn.turnId) {
+        turn.turnId = session.turns.length + 1;
+      }
+      
+      // Set timestamp if not provided
+      if (!turn.timestamp) {
+        turn.timestamp = new Date().toISOString();
+      }
+      
+      session.turns.push(turn);
+      await this.save(session, job);
+    });
   }
   
   /**
-   * Update session artifacts
+   * Update session artifacts (serialized with per-job lock)
    * 
    * ✅ ENHANCED: Also handles 'state' field for resuming after recursion limit
    * If artifacts contains 'state', it will be saved to session.state
+   * 
+   * The per-job lock prevents race conditions when multiple workers
+   * call saveCheckpoint → onCheckpoint → updateArtifacts concurrently.
    */
   async updateArtifacts(
     project: string,
@@ -207,20 +270,23 @@ export class FileSessionAdapter implements SessionPort {
     job: DecomposableJobType,
     artifacts: Partial<SessionArtifacts> & { state?: any }
   ): Promise<void> {
-    const session = await this.load(project, feature, job);
-    
-    // Extract state if provided (it's not part of artifacts, but a top-level session field)
-    const { state, ...actualArtifacts } = artifacts as any;
-    
-    // Update artifacts
-    session.artifacts = { ...session.artifacts, ...actualArtifacts };
-    
-    // ✅ Update state if provided (for resuming after recursion limit)
-    if (state !== undefined) {
-      session.state = state;
-    }
-    
-    await this.save(session, job);
+    const lock = this.getFileLock(job);
+    await lock.runExclusive(async () => {
+      const session = await this.load(project, feature, job);
+      
+      // Extract state if provided (it's not part of artifacts, but a top-level session field)
+      const { state, ...actualArtifacts } = artifacts as any;
+      
+      // Update artifacts
+      session.artifacts = { ...session.artifacts, ...actualArtifacts };
+      
+      // ✅ Update state if provided (for resuming after recursion limit)
+      if (state !== undefined) {
+        session.state = state;
+      }
+      
+      await this.save(session, job);
+    });
   }
   
   /**

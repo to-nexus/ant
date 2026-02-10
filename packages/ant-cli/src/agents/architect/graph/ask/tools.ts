@@ -62,9 +62,33 @@ function getUiRoot(): string {
 }
 
 /**
+ * Get monorepo docs root path
+ * docs/ is at the monorepo root level (sibling of packages/)
+ */
+function getDocsRoot(): string {
+  const cliRoot = getCliRoot();
+  // ant-cli/src -> ../../../docs (packages/ant-cli/src -> docs)
+  return path.resolve(cliRoot, '../../../docs');
+}
+
+/** Source type for ask tools */
+type AskSource = 'cli' | 'ui' | 'docs';
+
+/**
+ * Resolve root path for a given source
+ */
+function resolveSourceRoot(source: AskSource): string {
+  switch (source) {
+    case 'cli': return getCliRoot();
+    case 'ui': return getUiRoot();
+    case 'docs': return getDocsRoot();
+  }
+}
+
+/**
  * Validate path against blacklist (security-only filtering)
  */
-function validatePath(relativePath: string, _source: 'cli' | 'ui'): { valid: boolean; reason?: string } {
+function validatePath(relativePath: string, _source: AskSource): { valid: boolean; reason?: string } {
   // Normalize path
   const normalized = path.normalize(relativePath).replace(/\\/g, '/');
   
@@ -107,7 +131,7 @@ export interface ToolResult {
 /**
  * Read a file from Ant source code
  */
-export async function readAntSource(args: { path: string; source?: 'cli' | 'ui' }): Promise<ToolResult> {
+export async function readAntSource(args: { path: string; source?: AskSource }): Promise<ToolResult> {
   const source = args.source || 'cli';
   const relativePath = args.path;
   
@@ -122,7 +146,7 @@ export async function readAntSource(args: { path: string; source?: 'cli' | 'ui' 
   }
   
   // Resolve full path
-  const rootPath = source === 'cli' ? getCliRoot() : getUiRoot();
+  const rootPath = resolveSourceRoot(source);
   const fullPath = path.join(rootPath, relativePath);
   
   // Check file exists
@@ -153,7 +177,7 @@ export async function readAntSource(args: { path: string; source?: 'cli' | 'ui' 
 /**
  * List files in a directory
  */
-export async function listAntFiles(args: { path: string; source?: 'cli' | 'ui' }): Promise<ToolResult> {
+export async function listAntFiles(args: { path: string; source?: AskSource }): Promise<ToolResult> {
   const source = args.source || 'cli';
   const relativePath = args.path;
   
@@ -175,7 +199,7 @@ export async function listAntFiles(args: { path: string; source?: 'cli' | 'ui' }
   }
   
   // Resolve full path
-  const rootPath = source === 'cli' ? getCliRoot() : getUiRoot();
+  const rootPath = resolveSourceRoot(source);
   const fullPath = path.join(rootPath, relativePath);
   
   // Check directory exists
@@ -210,12 +234,12 @@ export async function listAntFiles(args: { path: string; source?: 'cli' | 'ui' }
  */
 export async function searchAntCode(args: { 
   query: string; 
-  source?: 'cli' | 'ui';
+  source?: AskSource;
   filePattern?: string;
 }): Promise<ToolResult> {
   const source = args.source || 'cli';
   const query = args.query;
-  const filePattern = args.filePattern || '*.ts';
+  const filePattern = args.filePattern || (source === 'docs' ? '*.md' : '*.ts');
   
   if (DEBUG) {
     console.log(`🔍 [AskTool] searchAntCode: "${query}" in ${source} (${filePattern})`);
@@ -230,7 +254,7 @@ export async function searchAntCode(args: {
     return { success: false, error: 'Query too long (max 100 chars)' };
   }
   
-  const rootPath = source === 'cli' ? getCliRoot() : getUiRoot();
+  const rootPath = resolveSourceRoot(source);
   
   // Simple recursive search (limited)
   const results: { file: string; line: number; content: string }[] = [];
@@ -315,18 +339,18 @@ export async function searchAntCode(args: {
 export const ASK_TOOLS = [
   {
     name: 'read_ant_source',
-    description: 'Read a file from Ant source code. Use this to understand how Ant works.',
+    description: 'Read a file from Ant source code or documentation. Use this to understand how Ant works.',
     parameters: {
       type: 'object',
       properties: {
         path: {
           type: 'string',
-          description: 'Relative path to the file (e.g., "core/data/triage/jobs/design.yaml")',
+          description: 'Relative path to the file (e.g., "core/data/triage/jobs/design.yaml" for cli, "rubric/PRD_EVALUATION_GUIDE.md" for docs)',
         },
         source: {
           type: 'string',
-          enum: ['cli', 'ui'],
-          description: 'Source package: "cli" for ant-cli, "ui" for ant-ui. Default: cli',
+          enum: ['cli', 'ui', 'docs'],
+          description: 'Source: "cli" for ant-cli source, "ui" for ant-ui source, "docs" for project documentation (docs/ directory including rubrics, architecture, guides). Default: cli',
         },
       },
       required: ['path'],
@@ -334,18 +358,18 @@ export const ASK_TOOLS = [
   },
   {
     name: 'list_ant_files',
-    description: 'List files in a directory of Ant source code.',
+    description: 'List files in a directory of Ant source code or documentation.',
     parameters: {
       type: 'object',
       properties: {
         path: {
           type: 'string',
-          description: 'Relative path to the directory (e.g., "core/data/triage/jobs")',
+          description: 'Relative path to the directory (e.g., "core/data/triage/jobs" for cli, "rubric" for docs)',
         },
         source: {
           type: 'string',
-          enum: ['cli', 'ui'],
-          description: 'Source package: "cli" for ant-cli, "ui" for ant-ui. Default: cli',
+          enum: ['cli', 'ui', 'docs'],
+          description: 'Source: "cli" for ant-cli source, "ui" for ant-ui source, "docs" for project documentation (docs/ directory including rubrics, architecture, guides). Default: cli',
         },
       },
       required: ['path'],
@@ -353,7 +377,7 @@ export const ASK_TOOLS = [
   },
   {
     name: 'search_ant_code',
-    description: 'Search for text in Ant source code.',
+    description: 'Search for text in Ant source code or documentation.',
     parameters: {
       type: 'object',
       properties: {
@@ -363,12 +387,12 @@ export const ASK_TOOLS = [
         },
         source: {
           type: 'string',
-          enum: ['cli', 'ui'],
-          description: 'Source package to search. Default: cli',
+          enum: ['cli', 'ui', 'docs'],
+          description: 'Source to search: "cli" for ant-cli, "ui" for ant-ui, "docs" for project documentation. Default: cli',
         },
         filePattern: {
           type: 'string',
-          description: 'File pattern to match (e.g., "*.yaml", "*.ts"). Default: *.ts',
+          description: 'File pattern to match (e.g., "*.yaml", "*.ts", "*.md"). Default: *.ts for cli/ui, *.md for docs',
         },
       },
       required: ['query'],
@@ -382,11 +406,11 @@ export const ASK_TOOLS = [
 export async function executeTool(name: string, args: Record<string, any>): Promise<ToolResult> {
   switch (name) {
     case 'read_ant_source':
-      return readAntSource(args as { path: string; source?: 'cli' | 'ui' });
+      return readAntSource(args as { path: string; source?: AskSource });
     case 'list_ant_files':
-      return listAntFiles(args as { path: string; source?: 'cli' | 'ui' });
+      return listAntFiles(args as { path: string; source?: AskSource });
     case 'search_ant_code':
-      return searchAntCode(args as { query: string; source?: 'cli' | 'ui'; filePattern?: string });
+      return searchAntCode(args as { query: string; source?: AskSource; filePattern?: string });
     default:
       return { success: false, error: `Unknown tool: ${name}` };
   }

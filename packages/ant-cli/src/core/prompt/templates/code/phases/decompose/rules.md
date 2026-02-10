@@ -223,9 +223,9 @@ CRITICAL:
   ```
 - If `uiSections` is omitted or empty, ALL UI docs are injected (fallback, not recommended for large docs).
 
-**PACKAGE TAG (SPLIT DESIGN DOC INJECTION - MULTI-PACKAGE SUPPORT):**
+**PACKAGE TAG (SPLIT DESIGN DOC INJECTION):**
 
-When the project has multiple frontend packages or backend services (monorepo/MSA), add `"packages": [...]` to specify which design documents should be injected.
+**⚠️ REQUIRED: Every task MUST have `"packages": [...]`** to control which design documents are injected into the plan/codeGen prompt. This is mandatory for all task types (setup, feature, error).
 
 **Tag Format:**
 
@@ -235,9 +235,22 @@ When the project has multiple frontend packages or backend services (monorepo/MS
 | `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi-frontend package (e.g., `fe-web`, `fe-admin`) |
 | `be` | `be-system-design.md` | Single backend |
 | `be-{svc}` | `be-system-design-{svc}.md` | MSA service (e.g., `be-auth`, `be-order`) |
+| `shared` | api-contract.md only | Shared/utility package (types, DTOs, configs) |
+
+- `api-contract.md` is **ALWAYS injected** when any package is specified
+- `shared` tag: no system design doc is mapped — only `api-contract.md` is injected (sufficient for shared types/DTOs)
 
 **Examples:**
 ```json
+// Setup tasks
+{ "packages": ["shared"], "type": "setup", "description": "Initialize monorepo workspace with root configuration" }
+{ "packages": ["shared"], "type": "setup", "description": "Configure shared package for TypeScript type definitions" }
+{ "packages": ["be"], "type": "setup", "description": "Initialize NestJS backend with dependencies" }
+{ "packages": ["fe"], "type": "setup", "description": "Initialize React frontend with dependencies" }
+
+// Shared package tasks (api-contract.md only)
+{ "packages": ["shared"], "description": "Define TypeScript types and DTOs from API contract" }
+
 // Single frontend task
 { "packages": ["fe"], "description": "Implement header component" }
 
@@ -257,16 +270,12 @@ When the project has multiple frontend packages or backend services (monorepo/MS
 { "packages": ["fe-web", "be-auth"], "description": "Frontend auth integration with auth service" }
 ```
 
-**Behavior:**
-- `api-contract.md` is **ALWAYS injected** when any package is specified
-- If `packages` is omitted → all relevant design docs are injected (environment-based)
-- If `packages` is specified → only the specified design docs are injected (token optimization)
-
-**When to use `packages`:**
-- ✅ Multi-frontend monorepo (multiple apps: web, admin, mobile)
-- ✅ MSA backend (multiple services: auth, order, payment)
-- ✅ Cross-tier integration tasks (frontend + specific backend service)
-- ❌ Single frontend + single backend projects (use default behavior)
+**How to choose the right tag:**
+- Task touches frontend code → `fe` (or `fe-{pkg}` for monorepo)
+- Task touches backend code → `be` (or `be-{svc}` for MSA)
+- Task touches shared/common code (types, DTOs, configs) → `shared`
+- Task touches both frontend and backend → `["fe", "be"]`
+- Root workspace setup (monorepo init) → `["shared"]`
 
 **UI TASK DESCRIPTION GUIDELINES (CRITICAL):**
 
