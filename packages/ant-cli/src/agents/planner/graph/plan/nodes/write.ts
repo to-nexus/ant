@@ -56,8 +56,10 @@ export async function writeNode(state: PlanGraphState): Promise<Partial<PlanGrap
   try {
     const session = state.deps?.session;
     if (session) {
-      const projectId = process.env.ANT_PROJECT_ID || 'default';
-      const featureName = process.env.ANT_FEATURE_NAME || 'skeleton';
+      // Use session adapter's stored project/feature (set correctly in constructor)
+      // instead of env var fallbacks which may be 'default'/'skeleton' in local mode
+      const projectId = session.projectId || process.env.ANT_PROJECT_ID || 'default';
+      const featureName = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
       
       await session.addTurn(projectId, featureName, 'plan', {
         directive: state.directive,

@@ -2,12 +2,17 @@
  * Generate Node
  * 
  * ReAct agent that generates or refines the PRD.
- * Uses StreamOrchestrator for real-time file card streaming (same as design job).
+ * Uses StreamOrchestrator for real-time file card streaming (same as design job's docGen).
  * LLM wraps PRD output in <file path="outputs/plan/prd-refine.md">...</file> tags.
+ * 
+ * Unlike design job which uses writeImmediately=true with gitPort/fileSystem,
+ * planner writes to disk after orchestrator.finalize() (single file, no timing difference).
+ * There is no separate write node — this node handles streaming, disk write, choice card, and session.
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 import Handlebars from 'handlebars';
 import { PlanGraphState } from '../state';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers';
@@ -151,15 +156,6 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     throw error;
   }
   
-  // Finalize orchestrator (flush remaining buffer, complete file operations)
-  const hasToolCalls = !!toolCall;
-  await orchestrator.finalize(hasToolCalls);
-  
-  // Extract file content from registry (set by StreamOrchestrator via <file> tags)
-  const files = orchestrator.getRegistry().getAllFiles();
-  const prdFile = files.find(f => f.path.includes('prd-refine'));
-  const generatedDocument = prdFile?.content || undefined;
-  
   // Update conversation history
   const updatedHistory = [...state.conversationHistory];
   
@@ -167,12 +163,17 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     updatedHistory.push({ role: 'user', content: state.directive });
   }
   
-  // Workflow instrumentation
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'generate', 0);
-  }
+  const hasToolCalls = !!toolCall;
   
   if (toolCall) {
+    // Tool call path — finalize orchestrator (keep message open for tool execution)
+    await orchestrator.finalize(true);
+    
+    // Workflow instrumentation
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'generate', 0);
+    }
+    
     updatedHistory.push({
       role: 'assistant',
       content: [
@@ -187,7 +188,84 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     };
   }
   
-  // Pass generated document to write node for disk write + choice card
+  // Final PRD path — finalize orchestrator but keep message open for choice card
+  await orchestrator.finalize(true);
+  
+  // Extract file content from registry (populated by StreamOrchestrator via <file> tags)
+  const files = orchestrator.getRegistry().getAllFiles();
+  const prdFile = files.find(f => f.path.includes('prd-refine'));
+  const generatedDocument = prdFile?.content || undefined;
+  
+  // === Post-stream: disk write + choice card + session (same role as design job's docGen) ===
+  if (generatedDocument) {
+    const stagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
+    
+    // Kanban: show "saving" activity
+    if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+      state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
+    }
+    
+    // Write to disk
+    try {
+      await fsPromises.mkdir(path.dirname(stagingPath), { recursive: true });
+      await fsPromises.writeFile(stagingPath, generatedDocument, 'utf-8');
+      console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to outputs/plan/prd-refine.md`);
+    } catch (error: any) {
+      console.error(`❌ [Planner:Generate] Failed to write PRD: ${error.message}`);
+      throw error;
+    }
+    
+    // Record session turn
+    try {
+      const session = state.deps?.session;
+      if (session) {
+        const projectId = process.env.ANT_PROJECT_ID || 'default';
+        const featureName = process.env.ANT_FEATURE_NAME || 'skeleton';
+        
+        await session.addTurn(projectId, featureName, 'plan', {
+          directive: state.directive,
+          mode: state.mode,
+          timestamp: new Date().toISOString(),
+          tokenUsage: state.tokenUsage,
+        });
+      }
+    } catch (error: any) {
+      console.warn(`⚠️ [Planner:Generate] Failed to record session: ${error.message}`);
+    }
+    
+    // Send PRD apply choice card
+    try {
+      await chatAPI.sendChoiceCard({
+        type: 'prd_apply',
+        title: state.language === 'ko' 
+          ? '📋 PRD를 inputs/sources/prd.md에 적용하시겠습니까?'
+          : '📋 Apply this PRD to inputs/sources/prd.md?',
+        choices: [
+          {
+            id: 'apply',
+            label: state.language === 'ko' ? '적용' : 'Apply',
+            action: 'prd_apply',
+          },
+          {
+            id: 'keep_draft',
+            label: state.language === 'ko' ? '초안 유지' : 'Keep as draft',
+            action: 'dismiss',
+          },
+        ],
+      });
+    } catch (error) {
+      console.warn('⚠️ [Planner:Generate] Failed to send choice card:', error);
+    }
+  }
+  
+  // Finalize message (after choice card)
+  await chatAPI.finalizeMessage();
+  
+  // Workflow instrumentation
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    state.deps.workflowUpdate.exitNode(state._httpJobId, 'generate', 0);
+  }
+  
   updatedHistory.push({ role: 'assistant', content: responseText });
   
   return {
@@ -198,11 +276,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
 }
 
 /**
- * Router: decide next node
+ * Router: decide next node after generate
  */
-export function routeAfterGenerate(state: PlanGraphState): 'tool' | 'write' {
+export function routeAfterGenerate(state: PlanGraphState): 'tool' | '__end__' {
   if (state.pendingToolCall) {
     return 'tool';
   }
-  return 'write';
+  return '__end__';
 }
