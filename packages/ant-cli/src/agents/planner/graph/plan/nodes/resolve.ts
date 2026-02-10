@@ -64,6 +64,8 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   console.log(`   Mode: ${mode}`);
   
   // 3. Load eval reports (if any) — skip stale evals (PRD modified after eval)
+  //    NOTE: Whether to apply eval findings is decided by the LLM based on the user's directive.
+  //    The system always loads available context; the prompt constrains when to use it.
   let evalReport: string | undefined;
   const evalDir = path.join(featurePath, 'outputs/evals/prd');
   try {
@@ -73,14 +75,12 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
       .reverse();
     
     if (evalFiles.length > 0 && existingDocument) {
-      // Parse eval timestamp from filename: eval-YYYY-MM-DDTHH-MM-SS.md
       const evalFileName = evalFiles[0];
       const timestampMatch = evalFileName.match(/eval-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
       const evalTime = timestampMatch 
         ? new Date(timestampMatch[1].replace(/-/g, (m, offset) => offset > 9 ? ':' : m)).getTime()
         : 0;
       
-      // Compare with PRD modification time
       const prdMtime = fs.statSync(prdPath).mtimeMs;
       
       if (evalTime > 0 && prdMtime > evalTime) {
@@ -90,7 +90,6 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
         console.log(`   Eval: Loaded latest (${evalFileName})`);
       }
     } else if (evalFiles.length > 0) {
-      // No existing document — load eval anyway (edge case)
       evalReport = fs.readFileSync(path.join(evalDir, evalFiles[0]), 'utf-8');
       console.log(`   Eval: Loaded latest (${evalFiles[0]})`);
     }
@@ -98,16 +97,16 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     // No eval reports
   }
   
-  // 4. If refine mode with no eval, auto-load PRD rubric for self-diagnosis
+  // 4. If refine mode with no eval, load PRD rubric as reference
   let rubricContent: string | undefined;
   if (mode === 'refine' && !evalReport) {
     try {
       const docsRoot = WorkspacePathResolver.getDocsRoot();
       const rubricPath = path.join(docsRoot, 'rubric', 'PRD-RUBRIC.md');
       rubricContent = fs.readFileSync(rubricPath, 'utf-8');
-      console.log(`   Rubric: Loaded PRD rubric (${rubricContent.length} chars) for self-diagnosis`);
+      console.log(`   Rubric: Loaded PRD rubric (${rubricContent.length} chars)`);
     } catch {
-      console.log('   Rubric: PRD-RUBRIC.md not found (skipping self-diagnosis)');
+      console.log('   Rubric: PRD-RUBRIC.md not found');
     }
   }
   

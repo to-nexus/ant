@@ -29,9 +29,11 @@ No existing PRD found. You are creating a new document from scratch.
 {{/if}}
 
 {{#if hasEvalReport}}
-## 4. Latest Evaluation Report
+## 4. Evaluation Report (Reference)
 
-A previous evaluation of this PRD identified the following issues:
+A previous evaluation of this PRD exists. This is provided as **reference only**.
+
+**IMPORTANT**: Only apply these findings if the user's directive explicitly asks for eval-based or assessment-based improvement. If the directive gives specific instructions (e.g., "fix the SDK path", "add a section about X"), ignore this report and follow the directive only.
 
 ```
 {{{evalReport}}}
@@ -39,11 +41,11 @@ A previous evaluation of this PRD identified the following issues:
 {{/if}}
 
 {{#if hasRubric}}
-## 4. PRD Quality Rubric (Self-Diagnosis)
+## 4. PRD Quality Rubric (Reference)
 
-No previous evaluation report exists. Use the following rubric to self-diagnose the PRD before improving it.
+A quality rubric is available. This is provided as **reference only**.
 
-**Process**: First identify deficiencies against this rubric, then address them in your refined output.
+**IMPORTANT**: Only use this rubric to diagnose and fix deficiencies if the user's directive explicitly asks for quality improvement, rubric-based review, or general PRD enhancement. If the directive gives specific instructions, ignore this rubric and follow the directive only.
 
 {{{rubricContent}}}
 {{/if}}

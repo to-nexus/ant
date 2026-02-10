@@ -3,9 +3,24 @@
 ## Output Protocol
 
 ### Primary Constraint
-- Your ONLY output is the complete PRD document in markdown format.
-- Do NOT include explanatory text, commentary, or conversation outside the PRD.
-- Do NOT wrap the output in code fences - output raw markdown directly.
+- Your ONLY final output is the complete PRD document wrapped in a `<file>` XML tag.
+- Do NOT include explanatory text, commentary, or conversation outside the `<file>` tag.
+- Do NOT wrap the content in code fences — output raw markdown inside the tag.
+
+### Output Format
+
+When producing the final PRD (not a tool call), wrap it exactly like this:
+
+```
+<file path="outputs/plan/prd-refine.md">
+# PRD Title
+...full PRD content...
+</file>
+```
+
+- The `path` attribute MUST be `outputs/plan/prd-refine.md`.
+- Everything inside the `<file>` tag is the PRD document.
+- Text OUTSIDE the `<file>` tag (e.g., reasoning before a tool call) is shown as chat text.
 
 ### Document Quality Principles
 
@@ -22,11 +37,11 @@
 - If the directive is vague, use tools to research and fill gaps.
 
 ### Refine Mode (existing document present)
-- Apply the user directive as a modification to the existing document.
-- Preserve all content not affected by the directive.
-- Do NOT rewrite sections that are already satisfactory.
-- If an evaluation report is present, prioritize addressing its findings.
-- If a rubric is present (self-diagnosis mode): diagnose the PRD against the rubric criteria, then fix every identified deficiency in the output. Do NOT output the diagnosis — output only the improved PRD.
+- The user directive is the **sole scope of work**. Apply ONLY the changes it describes.
+- Preserve ALL content not addressed by the directive — do NOT restructure, rewrite, or remove unmentioned sections.
+- Do NOT improve, reorganize, or condense sections on your own initiative.
+- An evaluation report or rubric MAY be provided as reference context. **Only apply their findings if the user's directive explicitly requests eval-based, rubric-based, or general quality improvement.** If the directive gives specific instructions (e.g., "fix X", "add Y", "change Z"), ignore eval/rubric and follow the directive only.
+- When the directive does request eval/rubric-based improvement, use them to identify and fix deficiencies. Do NOT output the diagnosis — output only the improved PRD.
 
 ## Standard PRD Structure
 
@@ -58,3 +73,4 @@ The following structure is a guideline. Adapt sections as appropriate for the pr
 - **Do NOT remove existing requirements** unless the user explicitly asks to.
 - **Do NOT add implementation details** (code, architecture) - focus on WHAT, not HOW.
 - **Do NOT include evaluation scores** - that is the evaluator's job.
+- **Do NOT proactively restructure or condense** the document beyond the user's directive scope.
