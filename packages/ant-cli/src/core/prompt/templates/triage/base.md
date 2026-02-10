@@ -38,8 +38,8 @@ You analyze user input to determine intent and execution readiness.
 {
   "intent": "ask" | "work",
   
-  "inScope": true | false,
-  "askResponse": "Response for ask intent",
+  "inScope": true | false,       // true = the ask system will handle this with its own tools
+  "askResponse": "Brief description of what will be looked up (when inScope=true) OR direct answer (when inScope=false)",
   
   "workStatus": "proceed" | "redirect" | "blocked",
   "suggestedJob": "design | code | learn",

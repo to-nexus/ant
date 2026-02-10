@@ -157,6 +157,16 @@ An isolated unit of work with:
 - **Current Job**: {{currentJob}}
 - **Current Agent**: {{currentAgent}}
 
+{{#if hasWorkspace}}
+---
+
+## 10. Current Workspace State
+
+The user has an active workspace. You can read workspace files using workspace tools.
+
+{{{workspaceState}}}
+{{/if}}
+
 ---
 
 ## User Question

@@ -69,6 +69,9 @@ export async function analyzeWorkspace(
   // Get feature path
   let featurePath = context.featurePath;
   
+  console.log(`📂 [WorkspaceAnalyzer] context.featurePath: ${featurePath || '(not set)'}`);
+  console.log(`📂 [WorkspaceAnalyzer] context.project: ${context.project || '(not set)'}, context.featureFolder: ${(context as any).featureFolder || '(not set)'}`);
+  
   if (!featurePath && deps?.workspaceResolver) {
     const userContext = {
       userId: context.userId || 'local',
@@ -80,6 +83,7 @@ export async function analyzeWorkspace(
       context.project,
       context.featureFolder
     );
+    console.log(`📂 [WorkspaceAnalyzer] Resolved via workspaceResolver: ${featurePath}`);
   }
   
   if (!featurePath) {
@@ -87,8 +91,11 @@ export async function analyzeWorkspace(
     return createEmptyWorkspaceState();
   }
   
+  console.log(`📂 [WorkspaceAnalyzer] Final featurePath: ${featurePath}`);
+  
   // Initialize state
   const state: WorkspaceState = {
+    featurePath,
     hasPrd: false,
     hasDirective: false,
     hasScreens: false,
@@ -104,9 +111,14 @@ export async function analyzeWorkspace(
   // Check inputs/sources (PRD)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const prdPath = path.join(featurePath, 'inputs', 'sources', 'prd.md');
-  if (fs.existsSync(prdPath)) {
+  const prdExists = fs.existsSync(prdPath);
+  console.log(`📄 [WorkspaceAnalyzer] PRD check: ${prdPath} → exists=${prdExists}`);
+  if (prdExists) {
     const content = fs.readFileSync(prdPath, 'utf-8');
-    state.hasPrd = !isTemplateContent(content) && content.trim().length > 0;
+    const isTemplate = isTemplateContent(content);
+    const hasContent = content.trim().length > 0;
+    state.hasPrd = !isTemplate && hasContent;
+    console.log(`📄 [WorkspaceAnalyzer] PRD content: length=${content.length}, isTemplate=${isTemplate}, hasContent=${hasContent}, hasPrd=${state.hasPrd}`);
     if (state.hasPrd) {
       state.prdPath = prdPath;
     }

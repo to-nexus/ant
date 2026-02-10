@@ -4,12 +4,21 @@
 
 ### Step 1: Observe Intent
 
-| Observe | Intent |
-|---------|--------|
-| Imperative sentences requesting action | `work` |
-| Questions seeking information | `ask` |
+**Principle**: Classify by **what the request produces**, not by the action verb.
 
-**Constraint**: Imperatives = `work`. Questions = `ask`.
+| Expected output | Intent |
+|-----------------|--------|
+| New or modified artifacts (documents, code, specs) | `work` |
+| Explanation of generated artifacts (design docs, code) | `work` |
+| Quality score or assessment against criteria (rubric-based) | `ask` |
+| Questions about Ant system, workflow, or usage | `ask` |
+
+**Constraint**: Do NOT classify by verb alone. The same verb can imply different intents depending on context.
+
+⚠️ **Blind Spot**: Observe whether the user wants **a quality judgment** or **an explanation/modification**:
+- Request to score, grade, or assess quality → `ask` (rubric-based evaluation)
+- Request to explain or describe what was generated → `work` (current job's explain capability)
+- Request to modify or create artifacts → `work` (current job's generation capability)
 
 ### Step 2: Determine Job Match (for work intent)
 
@@ -27,7 +36,7 @@
 **Principle**: 
 - "Update UI spec" → `design` (target is design document)
 - "Update component code" → `code` (target is source code)
-- If user explicitly says "기획" or "design" or "planning" → `design`
+- If user explicitly mentions "design" or "planning" → `design`
 
 ### Step 3: Determine Status
 
@@ -41,13 +50,16 @@
 
 ## SCOPE BOUNDARY (for ask intent)
 
-### In-scope
+### In-scope (`inScope: true`)
 - Workspace state inquiries
 - Workflow guidance
 - Prerequisite requirements
 - Current job capabilities
+- Quality assessment requests (scoring documents against criteria)
 
-### Out-of-scope
+**Constraint**: Quality assessment requests are ALWAYS `inScope: true`, regardless of workspace state. The ask system has its own tools to verify document availability. Do NOT check prerequisites for evaluation — let the ask system handle it.
+
+### Out-of-scope (`inScope: false`)
 - Topics unrelated to the Ant system
 - General knowledge queries
 
@@ -72,8 +84,10 @@ When user input appears to be:
 
 ## CRITICAL REMINDERS
 
-⚠️ **Imperative = WORK**: Action requests are `work`, not `ask`
-⚠️ **Explicit keyword wins**: If user says "기획", "planning", "design" → `design` job, even if action verb sounds like modification
+⚠️ **Artifact output = WORK**: Producing or modifying artifacts → `work`
+⚠️ **Artifact explanation = WORK**: Explaining generated artifacts → `work` (job's explain mode)
+⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → `ask`
+⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → `design` job. But if the output is a quality score → still `ask`
 ⚠️ **Target determines job**: Modifying UI SPEC = design, Modifying SOURCE CODE = code
 ⚠️ **Job mismatch = REDIRECT**: If request belongs to different job than current → MUST `redirect`
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification

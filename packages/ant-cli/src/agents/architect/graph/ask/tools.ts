@@ -159,8 +159,8 @@ export async function readAntSource(args: { path: string; source?: AskSource }):
     const content = fs.readFileSync(fullPath, 'utf-8');
     const sanitized = sanitizeOutput(content);
     
-    // Limit content length
-    const maxLength = 10000;
+    // Limit content length (higher for docs since rubrics/guides need full content)
+    const maxLength = source === 'docs' ? 50000 : 10000;
     if (sanitized.length > maxLength) {
       return {
         success: true,
@@ -345,7 +345,7 @@ export const ASK_TOOLS = [
       properties: {
         path: {
           type: 'string',
-          description: 'Relative path to the file (e.g., "core/data/triage/jobs/design.yaml" for cli, "rubric/PRD_EVALUATION_GUIDE.md" for docs)',
+          description: 'Relative path to the file (e.g., "core/data/triage/jobs/design.yaml" for cli, "rubric/PRD-RUBRIC.md" for docs)',
         },
         source: {
           type: 'string',
@@ -400,6 +400,191 @@ export const ASK_TOOLS = [
   },
 ];
 
+// ============================================================
+// Workspace File Tools (read user's workspace files)
+// ============================================================
+
+/** Workspace context for workspace tools */
+let _workspaceFeaturePath: string | undefined;
+
+/**
+ * Set the workspace feature path for workspace tools.
+ * Must be called before using workspace tools.
+ */
+export function setWorkspaceFeaturePath(featurePath: string | undefined): void {
+  _workspaceFeaturePath = featurePath;
+}
+
+/**
+ * Allowed workspace directories for reading (security whitelist)
+ */
+const ALLOWED_WORKSPACE_DIRS = [
+  'inputs/',    // PRD, directives, references, assets
+  'outputs/',   // Design docs, generated code
+  'sessions/',  // Session state (chat history etc.)
+];
+
+/**
+ * Validate workspace path against whitelist
+ */
+function validateWorkspacePath(relativePath: string): { valid: boolean; reason?: string } {
+  const normalized = path.normalize(relativePath).replace(/\\/g, '/');
+  
+  // Check for path traversal
+  if (normalized.includes('..')) {
+    return { valid: false, reason: 'Path traversal not allowed' };
+  }
+  
+  // Check against allowed directories
+  const isAllowed = ALLOWED_WORKSPACE_DIRS.some(dir => 
+    normalized.startsWith(dir) || normalized === dir.replace('/', '')
+  );
+  
+  if (!isAllowed) {
+    return { valid: false, reason: `Access restricted. Allowed directories: ${ALLOWED_WORKSPACE_DIRS.join(', ')}` };
+  }
+  
+  // Also check blacklist
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return { valid: false, reason: 'Security: access denied' };
+    }
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Read a file from user's workspace
+ */
+export async function readWorkspaceFile(args: { path: string }): Promise<ToolResult> {
+  if (!_workspaceFeaturePath) {
+    return { success: false, error: 'Workspace context not available' };
+  }
+  
+  const relativePath = args.path;
+  
+  if (DEBUG) {
+    console.log(`📖 [AskTool] readWorkspaceFile: ${relativePath}`);
+  }
+  
+  // Validate path
+  const validation = validateWorkspacePath(relativePath);
+  if (!validation.valid) {
+    return { success: false, error: validation.reason };
+  }
+  
+  const fullPath = path.join(_workspaceFeaturePath, relativePath);
+  
+  if (!fs.existsSync(fullPath)) {
+    return { success: false, error: `File not found: ${relativePath}` };
+  }
+  
+  try {
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    const sanitized = sanitizeOutput(content);
+    
+    // Limit content length (larger limit for workspace files like PRDs)
+    const maxLength = 30000;
+    if (sanitized.length > maxLength) {
+      return {
+        success: true,
+        content: sanitized.substring(0, maxLength) + '\n\n[... truncated, file too large ...]',
+      };
+    }
+    
+    return { success: true, content: sanitized };
+  } catch (error: any) {
+    return { success: false, error: `Failed to read file: ${error.message}` };
+  }
+}
+
+/**
+ * List files in user's workspace directory
+ */
+export async function listWorkspaceFiles(args: { path: string }): Promise<ToolResult> {
+  if (!_workspaceFeaturePath) {
+    return { success: false, error: 'Workspace context not available' };
+  }
+  
+  const relativePath = args.path;
+  
+  if (DEBUG) {
+    console.log(`📂 [AskTool] listWorkspaceFiles: ${relativePath}`);
+  }
+  
+  // Validate path
+  const validation = validateWorkspacePath(relativePath);
+  if (!validation.valid) {
+    return { success: false, error: validation.reason };
+  }
+  
+  const fullPath = path.join(_workspaceFeaturePath, relativePath);
+  
+  if (!fs.existsSync(fullPath)) {
+    return { success: false, error: `Directory not found: ${relativePath}` };
+  }
+  
+  if (!fs.statSync(fullPath).isDirectory()) {
+    return { success: false, error: `Not a directory: ${relativePath}` };
+  }
+  
+  try {
+    const entries = fs.readdirSync(fullPath, { withFileTypes: true });
+    const items = entries
+      .filter(e => !e.name.startsWith('.'))
+      .map(e => ({
+        name: e.name,
+        type: e.isDirectory() ? 'dir' : 'file',
+      }));
+    
+    return {
+      success: true,
+      content: JSON.stringify(items, null, 2),
+    };
+  } catch (error: any) {
+    return { success: false, error: `Failed to list directory: ${error.message}` };
+  }
+}
+
+/**
+ * Workspace tool schemas for LLM
+ */
+export const WORKSPACE_TOOLS = [
+  {
+    name: 'read_workspace_file',
+    description: 'Read a file from the user\'s current workspace (feature directory). Use this to read PRDs, design documents, directives, and other workspace files.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Relative path within the feature directory (e.g., "inputs/sources/prd.md", "outputs/design/system-design.md")',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'list_workspace_files',
+    description: 'List files in a directory of the user\'s current workspace (feature directory).',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Relative path to the directory (e.g., "inputs/sources", "outputs/design")',
+        },
+      },
+      required: ['path'],
+    },
+  },
+];
+
+// ============================================================
+// Tool Execution
+// ============================================================
+
 /**
  * Execute a tool by name
  */
@@ -411,6 +596,10 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       return listAntFiles(args as { path: string; source?: AskSource });
     case 'search_ant_code':
       return searchAntCode(args as { query: string; source?: AskSource; filePattern?: string });
+    case 'read_workspace_file':
+      return readWorkspaceFile(args as { path: string });
+    case 'list_workspace_files':
+      return listWorkspaceFiles(args as { path: string });
     default:
       return { success: false, error: `Unknown tool: ${name}` };
   }

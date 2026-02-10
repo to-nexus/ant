@@ -12,9 +12,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
 import { AskGraphState, ConversationMessage, ContentBlock } from '../state.js';
-import { ASK_TOOLS } from '../tools.js';
+import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { accumulateTokenUsage } from '../../common/llmHelpers.js';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver.js';
+import { formatWorkspaceState } from '../../../../common/nodes/triage/workspaceAnalyzer.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -51,11 +52,17 @@ function loadAskTemplates(): { base: Handlebars.TemplateDelegate; rules: string 
 function buildSystemPrompt(state: AskGraphState): string {
   const { base, rules } = loadAskTemplates();
   
+  const hasWorkspace = !!state.workspaceState?.featurePath;
+  
   const basePrompt = base({
     isKorean: state.language === 'ko',
     currentJob: state.currentJob || 'Not selected',
     currentAgent: state.currentAgent || 'architect',
     question: state.question,
+    // Workspace context
+    hasWorkspace,
+    workspaceState: hasWorkspace ? formatWorkspaceState(state.workspaceState) : '',
+    featurePath: state.workspaceState?.featurePath || '',
   });
   
   return `${basePrompt}\n\n---\n\n${rules}`;
@@ -104,8 +111,11 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   let thinkingText = '';
   let toolCall: { id: string; name: string; args: Record<string, any> } | undefined;
   
-  // Convert ASK_TOOLS to ToolDefinition format
-  const toolDefinitions = ASK_TOOLS.map(t => ({
+  // Convert tools to ToolDefinition format
+  // Include workspace tools when workspace context is available
+  const hasWorkspace = !!state.workspaceState?.featurePath;
+  const allTools = hasWorkspace ? [...ASK_TOOLS, ...WORKSPACE_TOOLS] : ASK_TOOLS;
+  const toolDefinitions = allTools.map(t => ({
     name: t.name,
     description: t.description,
     input_schema: t.parameters,
@@ -172,7 +182,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     console.warn('[Agent] Streaming failed, falling back to invoke:', error);
     
     if (llm.invokeWithTools) {
-      const response = await llm.invokeWithTools(messages, ASK_TOOLS, { system: systemPrompt });
+      const response = await llm.invokeWithTools(messages, allTools, { system: systemPrompt });
       responseText = response.content || '';
       
       if (response.toolCalls && response.toolCalls.length > 0) {
