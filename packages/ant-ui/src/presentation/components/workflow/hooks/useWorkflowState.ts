@@ -45,7 +45,6 @@ const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
   
   // Planner job nodes
   generate: 1000,
-  write: 1000,
 };
 
 const DEFAULT_MIN_DISPLAY_TIME = 1000;

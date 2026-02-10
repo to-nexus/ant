@@ -5,7 +5,6 @@ import { parseSession, safeParseSession } from "../../../core/schemas/session.sc
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
-import { WorkspaceResolver, WorkspacePathResolver, UnifiedWorkspaceResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 import { getSessionFilePath, getSessionsDir } from "../../../core/utils/sessionPaths";
 
 /**
@@ -59,9 +58,8 @@ class FileMutex {
 export class FileSessionAdapter implements SessionPort {
   private featurePath: string;
   private agent: string;
-  private workspaceResolver: WorkspaceResolver;
-  private projectId: string;
-  private featureName: string;
+  readonly projectId: string;
+  readonly featureName: string;
   private fileTreeUpdate?: FileTreeUpdatePort;
   
   /** Per-job file lock to prevent concurrent read-modify-write race conditions */
@@ -70,9 +68,6 @@ export class FileSessionAdapter implements SessionPort {
   constructor(featurePath: string, agent: string, projectId?: string, featureName?: string, fileTreeUpdate?: FileTreeUpdatePort) {
     this.featurePath = featurePath;
     this.agent = agent;
-    // Initialize WorkspaceResolver (unified for all modes)
-    const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
-    this.workspaceResolver = new UnifiedWorkspaceResolver(workspacesPath);
     
     // ✅ Extract projectId and featureName from featurePath if not provided
     if (projectId && featureName) {
@@ -90,20 +85,13 @@ export class FileSessionAdapter implements SessionPort {
   
   /**
    * Get the session file path (agent-nested)
+   * 
+   * Uses this.featurePath directly — the constructor already receives the correct
+   * resolved path. Re-resolving via workspaceResolver caused path mismatches
+   * (e.g., USER_ID vs ANT_USER_ID env var differences) leading to silent write failures.
    */
-  private getSessionPath(project: string, feature: string, job: SessionableJobType): string {
-    // featurePath는 WorkspaceResolver로 생성
-    if (!project || !feature) {
-      throw new Error('getSessionPath: project and feature must be provided');
-    }
-    // context는 최소한 userId, organizationId, workspacePath가 필요함
-    const context = {
-      userId: process.env.USER_ID || 'probe',
-      organizationId: process.env.ORG_ID || 'to.nexus',
-      workspacePath: ''
-    };
-    const featurePath = this.workspaceResolver.getFeaturePath(context, project, feature);
-    return getSessionFilePath(featurePath, this.agent, job);
+  private getSessionPath(_project: string, _feature: string, job: SessionableJobType): string {
+    return getSessionFilePath(this.featurePath, this.agent, job);
   }
   
   /**

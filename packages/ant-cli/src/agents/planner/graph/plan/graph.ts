@@ -1,14 +1,14 @@
 /**
  * Plan LangGraph
  * 
- * Graph: __start__ → resolve → triage → (conditional) → generate ⟷ tool → write → END
+ * Graph: __start__ → resolve → triage → (conditional) → generate ⟷ tool → END
  *                                  ↓ ask → __end__
  *                                  ↓ redirect → __end__
  *                                  ↓ blocked → __end__
  *                                  ↓ proceed → generate
  * 
- * Triage handles ask intent (evaluation requests), agent mismatch detection,
- * and prerequisites checking before proceeding to PRD generation.
+ * generate handles: LLM streaming → file card (via StreamOrchestrator) → disk write → choice card → session
+ * No separate write node — same pattern as design job's docGen.
  */
 
 import { StateGraph, END } from '@langchain/langgraph';
@@ -16,7 +16,6 @@ import { PlanGraphState } from './state';
 import { resolveNode } from './nodes/resolve';
 import { generateNode, routeAfterGenerate } from './nodes/generate';
 import { toolNode } from './nodes/tool';
-import { writeNode } from './nodes/write';
 import { triage } from '../../../common/nodes/triage';
 
 /**
@@ -88,14 +87,13 @@ export function buildPlanGraph() {
     },
   });
   
-  // Add nodes
+  // Add nodes (no separate write node — generate handles everything like design job's docGen)
   graph.addNode('resolve', resolveNode as any);
   graph.addNode('triage', triage as any);
   graph.addNode('generate', generateNode as any);
   graph.addNode('tool', toolNode as any);
-  graph.addNode('write', writeNode as any);
   
-  // Edges: resolve → triage → (conditional) → generate ⟷ tool → write
+  // Edges: resolve → triage → (conditional) → generate ⟷ tool → END
   graph.addEdge('__start__' as any, 'resolve' as any);
   graph.addEdge('resolve' as any, 'triage' as any);
   graph.addConditionalEdges(
@@ -111,11 +109,10 @@ export function buildPlanGraph() {
     routeAfterGenerate as any,
     {
       tool: 'tool',
-      write: 'write',
+      __end__: END,
     } as any
   );
   graph.addEdge('tool' as any, 'generate' as any);  // ReAct loop
-  graph.addEdge('write' as any, END as any);
   
   return graph.compile();
 }

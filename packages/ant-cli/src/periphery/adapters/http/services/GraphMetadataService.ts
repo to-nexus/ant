@@ -184,16 +184,12 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     description: 'Classify intent and check agent/job match'
   },
   'planner:plan:generate': {
-    actors: [COMMON_ACTORS.llm.id],
-    description: 'Generate or refine PRD with ReAct loop'
+    actors: [COMMON_ACTORS.llm.id, COMMON_ACTORS.fileSystem.id],
+    description: 'Generate/refine PRD, stream file card, write to disk'
   },
   'planner:plan:tool': {
     actors: [COMMON_ACTORS.fileSystem.id],
     description: 'Execute tools (read workspace, web search)'
-  },
-  'planner:plan:write': {
-    actors: [COMMON_ACTORS.fileSystem.id],
-    description: 'Write PRD draft to outputs/plan/'
   }
 };
 

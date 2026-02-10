@@ -74,23 +74,22 @@ Planner는 PRD를 `outputs/plan/prd-refine.md`에 먼저 저장(staging)한 후,
 | 병렬 실행 | 필요 (멀티 태스크) | 불필요 |
 | 도구 사용 | code tool (파일 읽기/쓰기, 검색) | workspace 읽기 + web search |
 | 세션 상태 | taskQueue, completedTasks, planText... | directive + jobId만 저장 |
-| Graph 노드 수 | 10+ | 5 |
+| Graph 노드 수 | 10+ | 4 |
 
 ### 2.4 Graph 구조
 
 ```
-__start__ → resolve → triage → generate ⟷ tool → write → __end__
+__start__ → resolve → triage → generate ⟷ tool → __end__
                         │
                         ├─(ask)────→ __end__  (평가 등 ask 처리)
                         ├─(redirect)→ __end__  (에이전트 전환 제안)
                         └─(blocked)─→ __end__  (전제조건 미충족)
 ```
 
-- **resolve**: 기존 PRD + eval report + rubric + 최근 턴 이력 로드. `ant:template` 마커 스마트 감지 (200자 미만 실질 콘텐츠만 템플릿으로 간주)
+- **resolve**: 기존 PRD + eval report + rubric + 최근 턴 이력 로드. `ant:template` 마커 스마트 감지 (200자 미만 실질 콘텐츠만 템플릿으로 간주). eval/rubric은 참조용으로 로드되며 적용 여부는 LLM이 사용자 지시에 따라 판단.
 - **triage**: 공유 triage 노드 재사용 (ask/redirect/blocked/proceed 라우팅)
-- **generate**: ReAct agent. LLM 텍스트는 채팅에 스트리밍하지 않음 — 도구 호출 시 reasoning만 스트리밍, 최종 PRD는 write 노드로 전달
+- **generate**: ReAct agent + StreamOrchestrator. Design job의 docGen과 동일한 패턴: LLM이 `<file>` 태그로 PRD를 출력 → 실시간 파일 카드 스트리밍 → 디스크 저장 → choice card → 세션 기록. 별도 write 노드 없음.
 - **tool**: 도구 실행 후 generate로 복귀 (ReAct 루프). 사용 가능 도구: `read_workspace_file`, `list_workspace_files`, `search_web`
-- **write**: `outputs/plan/prd-refine.md` 저장 + 파일 카드 UI 렌더링 + PRD apply choice card + SessionTurn 기록
 
 ### 2.5 확장성
 
