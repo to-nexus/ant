@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PlanGraphState } from '../state';
+import { ConversationEntry } from '../../../../../core/types/session';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { detectUILocale, getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
@@ -129,16 +130,37 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   // Rubric-based improvement should be explicitly requested via the directive.
   const rubricContent: string | undefined = undefined;
   
-  // 5. Load recent session turns (lightweight context)
+  // 5. Load multi-turn conversation + recent session turns
+  let conversation: ConversationEntry[] = [];
+  let isConversationContinuation = false;
   let recentTurnSummaries: string[] | undefined;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
   try {
     const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+    
+    // 5a. Load conversation from session state (multi-turn history)
+    if (sessionData.state?.conversation && Array.isArray(sessionData.state.conversation)) {
+      conversation = sessionData.state.conversation;
+      console.log(`   Conversation: ${conversation.length} entries loaded from session`);
+    }
+    
+    // 5b. If this is a continue (isResume + overrideDirective + existing conversation),
+    //     append the new user message to conversation
+    if (state.isResume && state.overrideDirective && conversation.length > 0) {
+      conversation.push({
+        role: 'user',
+        content: state.overrideDirective,
+        timestamp: new Date().toISOString(),
+      });
+      isConversationContinuation = true;
+      console.log(`   Conversation: Appended new user message (now ${conversation.length} entries)`);
+    }
+    
+    // 5c. Load recent turn summaries (fallback context for non-conversation runs)
     const turns = sessionData.turns || [];
     if (turns.length > 0) {
-      // Get last 2-3 turn summaries
       recentTurnSummaries = turns.slice(-3).map((t: any) => 
-        `[Turn ${t.turnId}] ${t.directive?.substring(0, 100) || 'N/A'}`
+        `[Turn ${t.turnId}] ${t.input?.summary?.substring(0, 100) || 'N/A'}`
       );
       console.log(`   Session: ${recentTurnSummaries?.length ?? 0} recent turns loaded`);
     }
@@ -156,7 +178,9 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     contextItems.push({ label: 'Eval report', detail: latestEvalFile });
   }
   // Rubric context item removed (rubric auto-loading disabled)
-  if (recentTurnSummaries && recentTurnSummaries.length > 0) {
+  if (conversation.length > 0) {
+    contextItems.push({ label: 'Conversation', detail: `${conversation.length} messages` });
+  } else if (recentTurnSummaries && recentTurnSummaries.length > 0) {
     contextItems.push({ label: 'Session history', detail: `${recentTurnSummaries.length} turns` });
   }
   if (contextItems.length > 0) {
@@ -174,6 +198,8 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     evalReport,
     rubricContent,
     recentTurnSummaries,
+    conversation,
+    isConversationContinuation,
     mode,
     _uiLocale: uiLocale,
   };

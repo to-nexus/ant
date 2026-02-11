@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import Handlebars from 'handlebars';
 import { PlanGraphState } from '../state';
+import { ConversationEntry } from '../../../../../core/types/session';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage } from '../../../../common/graph/llmHelpers';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
@@ -50,8 +51,33 @@ function loadPlanTemplates(): { base: Handlebars.TemplateDelegate; rules: string
   return { base: planBaseTemplate, rules: planRulesContent };
 }
 
+/**
+ * Format conversation entries for the system prompt.
+ * Excludes the last user message (which goes into the messages array).
+ */
+function formatConversationForPrompt(conversation: ConversationEntry[]): string {
+  if (!conversation || conversation.length === 0) return '';
+  
+  return conversation.map(entry => {
+    const roleLabel = entry.role === 'user' ? 'User' : 'Assistant';
+    const artifactNote = entry.metadata?.hasArtifact
+      ? ` [produced ${entry.metadata.mode || 'artifact'}]`
+      : '';
+    // Truncate very long assistant responses to avoid context bloat
+    const content = entry.role === 'assistant' && entry.content.length > 500
+      ? entry.content.substring(0, 500) + '...(truncated)'
+      : entry.content;
+    return `**${roleLabel}**${artifactNote}: ${content}`;
+  }).join('\n\n');
+}
+
 function buildSystemPrompt(state: PlanGraphState): string {
   const { base, rules } = loadPlanTemplates();
+  
+  // For conversation continuation: include prior turns as context (exclude last user msg)
+  const conversationForPrompt = state.isConversationContinuation && state.conversation?.length
+    ? state.conversation.slice(0, -1)  // Last user message goes into messages array
+    : [];
   
   const basePrompt = base({
     isKorean: state.language === 'ko',
@@ -65,6 +91,8 @@ function buildSystemPrompt(state: PlanGraphState): string {
     hasRubric: !!state.rubricContent && !state.evalReport,
     recentTurnSummaries: state.recentTurnSummaries?.join('\n') || '',
     hasRecentTurns: (state.recentTurnSummaries?.length || 0) > 0,
+    conversationContext: formatConversationForPrompt(conversationForPrompt),
+    hasConversation: conversationForPrompt.length > 0,
   });
   
   return `${basePrompt}\n\n---\n\n${rules}`;
@@ -104,8 +132,15 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   const messages: Array<{ role: string; content: any }> = [];
   
   if (state.conversationHistory.length === 0) {
-    messages.push({ role: 'user', content: state.directive });
+    // First LLM call in this run:
+    // For conversation continuation, use the latest user message from conversation
+    // For fresh run, use the directive
+    const userMessage = state.isConversationContinuation && state.conversation?.length
+      ? state.conversation[state.conversation.length - 1].content
+      : state.directive;
+    messages.push({ role: 'user', content: userMessage });
   } else {
+    // Subsequent calls in ReAct loop: use accumulated conversationHistory
     messages.push(...state.conversationHistory);
   }
   
@@ -305,6 +340,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       console.warn(`⚠️ [Planner:Generate] Failed to record session: ${error.message}`);
     }
     
+    // Save conversation to session (multi-turn persistence)
+    await saveConversationToSession(state, responseText, generatedDocument);
+    
     // Send PRD apply choice card
     try {
       await chatAPI.sendChoiceCard({
@@ -330,6 +368,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }
   }
   
+  // Save conversation even when no PRD was generated (e.g. clarifying response)
+  if (!generatedDocument) {
+    await saveConversationToSession(state, responseText, undefined);
+  }
+  
   // Finalize message (after choice card)
   await chatAPI.finalizeMessage();
   
@@ -340,13 +383,111 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   updatedHistory.push({ role: 'assistant', content: responseText });
   
+  // Build updated conversation for graph state (mirrors what was saved to session)
+  const updatedConversation: ConversationEntry[] = [...(state.conversation || [])];
+  if (updatedConversation.length === 0 && state.directive) {
+    updatedConversation.push({
+      role: 'user',
+      content: state.directive,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  updatedConversation.push({
+    role: 'assistant',
+    content: responseText,
+    timestamp: new Date().toISOString(),
+    metadata: {
+      hasArtifact: !!generatedDocument,
+      artifactPath: generatedDocument ? 'outputs/plan/prd-refine.md' : undefined,
+      mode: state.mode,
+    },
+  });
+  
   return {
     conversationHistory: updatedHistory,
+    conversation: updatedConversation,
     generatedDocument,
     pendingToolCall: undefined,
     tokenUsage: state.tokenUsage,
     recursionCount,
   };
+}
+
+/**
+ * Save conversation history to session file for multi-turn persistence.
+ * 
+ * On first run: adds user directive + assistant response.
+ * On continuation: adds assistant response (user message was already appended by resolve).
+ */
+async function saveConversationToSession(
+  state: PlanGraphState,
+  responseText: string,
+  generatedDocument: string | undefined,
+): Promise<void> {
+  const featurePath = state.featurePath;
+  const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
+  
+  try {
+    // Build updated conversation
+    const updatedConversation: ConversationEntry[] = [...(state.conversation || [])];
+    
+    // On first run (no existing conversation), add the initial user message
+    if (updatedConversation.length === 0 && state.directive) {
+      updatedConversation.push({
+        role: 'user',
+        content: state.directive,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    
+    // Add assistant response
+    updatedConversation.push({
+      role: 'assistant',
+      content: responseText,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        hasArtifact: !!generatedDocument,
+        artifactPath: generatedDocument ? 'outputs/plan/prd-refine.md' : undefined,
+        mode: state.mode,
+      },
+    });
+    
+    // Read existing session and update state.conversation
+    let sessionData: any = {};
+    try {
+      sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+    } catch {
+      // Session file may not exist yet — create structure
+      sessionData = {
+        sessionId: state._httpJobId || 'plan-session',
+        project: process.env.ANT_PROJECT_ID || 'default',
+        feature: process.env.ANT_FEATURE_NAME || 'skeleton',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        turns: [],
+        artifacts: {},
+        state: {},
+      };
+    }
+    
+    if (!sessionData.state) {
+      sessionData.state = {};
+    }
+    sessionData.state.conversation = updatedConversation;
+    sessionData.state.jobId = state._httpJobId || sessionData.state.jobId;
+    sessionData.updatedAt = new Date().toISOString();
+    
+    // Write atomically (temp file + rename)
+    const sessionDir = path.dirname(sessionPath);
+    await fsPromises.mkdir(sessionDir, { recursive: true });
+    const tmpPath = `${sessionPath}.tmp`;
+    await fsPromises.writeFile(tmpPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+    await fsPromises.rename(tmpPath, sessionPath);
+    
+    console.log(`💬 [Planner:Generate] Conversation saved (${updatedConversation.length} entries)`);
+  } catch (error: any) {
+    console.warn(`⚠️ [Planner:Generate] Failed to save conversation: ${error.message}`);
+  }
 }
 
 /**

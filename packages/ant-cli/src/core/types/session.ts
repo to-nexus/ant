@@ -69,6 +69,29 @@ export interface SessionArtifacts {
 }
 
 // ============================================
+// Multi-Turn Conversation
+// ============================================
+
+/**
+ * A single entry in the agent-user semantic conversation history.
+ * Stored per agent/job session and persisted across job runs.
+ * 
+ * Unlike conversationHistory (Anthropic format with tool_use/tool_result),
+ * this captures only semantic content — user intent and agent responses.
+ * Tool call details are ephemeral within each run's ReAct loop.
+ */
+export interface ConversationEntry {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  metadata?: {
+    hasArtifact?: boolean;   // This turn produced a PRD/design/code artifact
+    artifactPath?: string;   // Path to the produced artifact
+    mode?: string;           // generate, refine, etc.
+  };
+}
+
+// ============================================
 // Session State (Execution Snapshot)
 // ============================================
 
@@ -139,6 +162,9 @@ export interface SessionState {
       estimatedTokens?: number;
     };
   };
+  
+  // Multi-Turn Conversation (cross-run semantic history)
+  conversation?: ConversationEntry[];
 }
 
 // ============================================

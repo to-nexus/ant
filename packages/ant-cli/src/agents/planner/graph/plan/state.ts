@@ -9,6 +9,7 @@
 
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
+import { ConversationEntry } from '../../../../core/types/session';
 
 export interface PlanGraphState {
   // Input
@@ -26,6 +27,10 @@ export interface PlanGraphState {
   evalReport?: string;
   rubricContent?: string;        // PRD rubric (auto-loaded when eval is absent, for self-diagnosis)
   recentTurnSummaries?: string[];
+  
+  // Multi-turn conversation (cross-run semantic history)
+  conversation?: ConversationEntry[];
+  isConversationContinuation?: boolean;
   
   // LLM conversation (ReAct loop)
   conversationHistory: Array<{ role: string; content: any }>;
@@ -89,6 +94,8 @@ export function createInitialPlanState(params: {
     mode: params.mode || 'generate',
     isResume: params.isResume,
     conversationHistory: [],
+    conversation: [],
+    isConversationContinuation: false,
     // TriageableState fields
     context: { featurePath: params.featurePath },
     currentAgent: 'planner',
