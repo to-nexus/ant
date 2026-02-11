@@ -165,22 +165,80 @@ export function getAllSessionPaths(featurePath: string): Array<{ path: string; a
 }
 
 // ============================================
+// Canonical Feature Directories (Single Source of Truth)
+// ============================================
+
+/**
+ * Complete list of canonical (system-managed) directories within a feature.
+ * 
+ * These directories are:
+ * - Created automatically when a feature is initialized
+ * - Preserved on delete (only files inside are removed, directory structure is kept)
+ * - Non-canonical (user-created) directories within these are fully deleted
+ * 
+ * Used by:
+ * - getInitFeatureDirs() — creates all canonical dirs on feature init
+ * - FileOperationService — smart delete preserves canonical dirs
+ */
+export const CANONICAL_FEATURE_DIRS: ReadonlyArray<string> = [
+  // inputs
+  'inputs',
+  'inputs/sources',
+  'inputs/directives',
+  'inputs/directives/design',
+  'inputs/directives/code',
+  'inputs/directives/learn',
+  'inputs/assets',
+  'inputs/references',
+  'inputs/references/screens',
+  'inputs/references/components',
+  // outputs
+  'outputs',
+  'outputs/design',
+  'outputs/evals',
+  'outputs/evals/prd',
+  'outputs/evals/ui-design',
+  'outputs/evals/system-design',
+  'outputs/evals/code',
+  // sessions
+  'sessions',
+  'sessions/architect',
+  'sessions/architect/debug',
+  'sessions/architect/debug/prompts',
+  'sessions/architect/debug/plans',
+  'sessions/architect/debug/logs',
+  'sessions/architect/debug/asks',
+  'sessions/planner',
+  'sessions/planner/debug',
+];
+
+/** Set for O(1) lookup of canonical directories */
+const CANONICAL_FEATURE_DIRS_SET = new Set(CANONICAL_FEATURE_DIRS);
+
+/**
+ * Check if a relative path is a canonical feature directory.
+ * 
+ * @param relativePath - Path relative to feature root (e.g., 'inputs/sources')
+ * @returns true if the path is a canonical directory
+ */
+export function isCanonicalDir(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
+  return CANONICAL_FEATURE_DIRS_SET.has(normalized);
+}
+
+// ============================================
 // Init Directories (for feature creation)
 // ============================================
 
 /**
- * Get all directories that should be created when initializing a feature.
+ * Get all session directories that should be created when initializing a feature.
+ * Derived from CANONICAL_FEATURE_DIRS (sessions/* entries only).
  * 
  * @param featurePath - Absolute path to the feature directory
  * @returns Array of directory paths to create
  */
 export function getInitSessionDirs(featurePath: string): string[] {
-  return [
-    getSessionsDir(featurePath, 'architect'),
-    getSessionDebugDir(featurePath, 'architect', 'prompts'),
-    getSessionDebugDir(featurePath, 'architect', 'plans'),
-    getSessionDebugDir(featurePath, 'architect', 'logs'),
-    getSessionDebugDir(featurePath, 'architect', 'asks'),
-    getSessionsDir(featurePath, 'planner'),
-  ];
+  return CANONICAL_FEATURE_DIRS
+    .filter(d => d.startsWith('sessions/'))
+    .map(d => path.join(featurePath, d));
 }

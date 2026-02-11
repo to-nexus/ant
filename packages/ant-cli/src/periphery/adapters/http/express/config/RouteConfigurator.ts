@@ -259,6 +259,52 @@ export class RouteConfigurator {
           // ✅ Extract jobType from result
           const jobType = data.result?.output?.job as 'design' | 'code' | 'learn' | undefined;
           
+          // ✅ Skip cleanup for inline-ask jobs (stateless, no session/kanban to clean up)
+          // Instead, broadcast a lightweight completion event to the frontend
+          const isInlineAsk = data.result?.output?.intent !== undefined;
+          if (isInlineAsk) {
+            const intent = data.result?.output?.intent;
+            logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent})`, {
+              component: 'RouteConfigurator'
+            });
+            
+            // ✅ Broadcast inline-ask completion to frontend via user-scoped SSE channel
+            try {
+              if (userEmail) {
+                const [userId, organizationId] = userEmail.split('@');
+                if (userId && organizationId) {
+                  const { getRealtimeBroadcastChannel } = await import('../../../../../infrastructure/state/redisConstants');
+                  const channel = getRealtimeBroadcastChannel(organizationId, userId);
+                  const userContext = {
+                    userId,
+                    organizationId,
+                    workspacePath: this.deps.workspaceResolver.getPhysicalWorkspacesPath()
+                  };
+                  await stateStore.publish(channel, {
+                    projectId,
+                    featureName,
+                    type: 'chat',
+                    data: {
+                      type: 'inline_ask_complete',
+                      jobId,
+                      intent,
+                      timestamp: new Date().toISOString(),
+                    },
+                    userContext,
+                  });
+                  logger.info(`Broadcast inline-ask completion: ${jobId} (intent=${intent})`, {
+                    component: 'RouteConfigurator'
+                  });
+                }
+              }
+            } catch (broadcastError) {
+              logger.warn(`Failed to broadcast inline-ask completion: ${jobId}`, {
+                component: 'RouteConfigurator'
+              }, broadcastError);
+            }
+            return;
+          }
+          
           // Skip if user-stopped: Stop route already called cleanupJobState
           // Without this guard, cleanupJobState runs twice → duplicate choice cards
           const wasUserStopped = await stateStore.isUserStopped(jobId);

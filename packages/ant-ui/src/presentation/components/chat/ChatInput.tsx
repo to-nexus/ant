@@ -256,7 +256,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       !kanbanData?.interruption?.message?.includes('completed') &&
       !interruptionWasDismissed;  // ✅ Ignore dismissed interruptions
     
-    // ✅ CASE 1: Continue existing interrupted job with new directive
+    // ✅ CASE 1: Interrupted job exists — run inline-ask to classify intent first
+    // If ask: respond in chat, keep interruption state (choice card stays)
+    // If work: auto-continue the interrupted job (same as before)
     if (currentJobId && hasInterruption) {
       try {
         // ✅ 1. Add user message to chat history
@@ -268,29 +270,31 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           }
         );
         
-        // ✅ 2. Dismiss interruption UI before continuing
-        if (kanbanData?.interruption?.timestamp) {
-          useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-        }
-        
-        // ✅ 3. Set running state immediately
+        // ✅ 2. Set running state immediately (blocks further input)
         useStore.getState().setRunning(true, currentJobId);
         
-        // ✅ 4. Call Continue API (adds directive with highest priority)
-        const { continueJob } = await import('@/infrastructure/http/api');
-        const result = await continueJob(currentJobId, selectedProject, selectedFeature, userMessage, true);
+        // ✅ 3. Store interrupted job context for inline-ask result handling
+        useStore.getState().setInlineAskContext({
+          interruptedJobId: currentJobId,
+          projectId: selectedProject,
+          featureName: selectedFeature,
+          message: userMessage,
+        });
         
-        // ✅ 5. Update with same jobId from server (Continue uses same jobId)
-        useStore.getState().setRunning(true, result.jobId);
+        // ✅ 4. Call Inline Ask API (triage + conditional ask graph)
+        // NOTE: Do NOT dismiss interruption yet — wait for intent result
+        const { inlineAsk } = await import('@/infrastructure/http/api');
+        await inlineAsk(selectedProject, selectedFeature, userMessage, true);
         
-        // ✅ 6. Clear failed state
-        useStore.getState().setLastJobFailed(false);
+        // ✅ 5. SSE handler (sseSlice) will receive inline_ask_complete event
+        // and decide whether to keep interruption (ask) or auto-continue (work)
         
       } catch (error) {
-        console.error('[ChatInput] Failed to continue job:', error);
+        console.error('[ChatInput] Failed to start inline ask:', error);
         useStore.getState().setRunning(false);
+        useStore.getState().setInlineAskContext(null);
         showError(
-          `Continue 실패: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Inline ask 실패: ${error instanceof Error ? error.message : 'Unknown error'}`,
           { title: '오류' }
         );
       }

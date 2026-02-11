@@ -42,7 +42,7 @@ interface JobParams {
   jobId: string;
   projectId: string;
   feature: string;
-  jobType: 'code' | 'design' | 'learn';
+  jobType: 'code' | 'design' | 'learn' | 'inline-ask';
   agent: 'architect' | 'reviewer' | 'planner' | 'doc';
   mode: 'generate' | 'refactor' | 'explain';
   userId: string;

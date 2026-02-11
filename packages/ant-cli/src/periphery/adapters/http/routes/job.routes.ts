@@ -394,5 +394,59 @@ export function createJobRoutes(deps: {
     }
   });
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Inline Ask: Handle ask queries during interrupted jobs
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  router.post('/projects/:id/features/:feature/inline-ask', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { message, chatSource = true } = req.body;
+    
+    console.log(`\n💬 [InlineAskRoute] Inline ask request received`);
+    console.log(`   Project: ${projectId}, Feature: ${featureName}`);
+    console.log(`   Message: ${message?.substring(0, 100)}...`);
+    
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'message is required and must be a string'
+      });
+    }
+    
+    try {
+      const userContext = extractUserContext(req);
+      
+      const params: ExecuteJobParams = {
+        agent: 'architect',
+        jobType: 'inline-ask',
+        project: projectId,
+        feature: featureName,
+        inputFile: undefined,
+        enableEvaluation: false,
+        overrideDirective: message,
+        chatSource,
+        userContext,
+        // ✅ No jobId: always create a new job (don't reuse interrupted job's ID)
+        // ✅ No isResume: this is an independent lightweight job
+      };
+      
+      const result = await deps.executeJob(params);
+      
+      console.log(`   ✅ Inline ask job started: ${result.jobId}`);
+      
+      res.json({
+        success: true,
+        jobId: result.jobId,
+        jobType: 'inline-ask',
+        message: 'Inline ask job started'
+      });
+    } catch (error: any) {
+      console.error(`   ❌ Inline ask failed:`, error);
+      res.status(500).json({ 
+        error: error.message 
+      });
+    }
+  });
+
   return router;
 }

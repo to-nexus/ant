@@ -33,6 +33,13 @@ export interface QueuePosition {
   totalWaiting: number;
 }
 
+export interface InlineAskContext {
+  interruptedJobId: string;
+  projectId: string;
+  featureName: string;
+  message: string;
+}
+
 export interface JobState {
   session: Session | undefined;
   isRunning: boolean;
@@ -50,6 +57,8 @@ export interface JobState {
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
   // ✅ Cloud multi-pod: Protects isRunning from SSE overwrite until actual job starts
   jobStartPending: boolean;
+  // ✅ Inline Ask: Context for handling ask during interrupted jobs
+  inlineAskContext: InlineAskContext | null;
 }
 
 export interface SSEState {
