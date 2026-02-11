@@ -77,7 +77,7 @@ export async function generateQualityReport(
     };
 
     // Save report
-    const reportPath = await saveReport(state.context.project, state.context.featureFolder, featurePath, report, gitPort, fileSystem);
+    const reportPath = await saveReport(state.context.project, state.context.featureFolder, featurePath, report, gitPort, fileSystem, state.deps?.fileTreeUpdate);
     console.log(`📄 Evaluation report saved: ${reportPath}`);
 
     // Print summary
@@ -138,7 +138,8 @@ async function saveReport(
   featurePath: string, 
   report: EvaluationReport, 
   gitPort: GitPort,
-  fileSystem: import('../../../../../../core/ports').FileSystemPort  // ✅ Add fileSystem parameter
+  fileSystem: import('../../../../../../core/ports').FileSystemPort,
+  fileTreeUpdate?: import('../../../../../../core/ports').FileTreeUpdatePort
 ): Promise<string> {
   const outputDir = path.join(featurePath, 'outputs/eval');
   
@@ -153,6 +154,11 @@ async function saveReport(
   const mdPath = path.join(outputDir, 'report.md');
   const markdown = generateMarkdownReport(report);
   await fileSystem.writeFile(mdPath, markdown);
+
+  // ✅ Notify file tree update after report writes
+  if (fileTreeUpdate) {
+    fileTreeUpdate.notifyFileTreeUpdate(project, featureFolder);
+  }
 
   return mdPath;
 }

@@ -13,6 +13,7 @@ import { ChatAPIClient } from '../../adapters/ChatAPIClient';
 import { SpecialTagTransformer } from '../transformers/SpecialTagTransformer';
 import { UserLanguage } from '../../utils/languageDetector';
 import { GitPort, FileSystemPort } from '../../ports';
+import { FileTreeUpdatePort } from '../../ports/fileTree';
 import { ResponseRenderer } from './common/ResponseRenderer';
 import { FileRenderer } from './common/FileRenderer';
 
@@ -30,7 +31,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
     writeImmediately: boolean = false,
     jobType?: 'code' | 'design',
     featurePath?: string,
-    codebasePath?: string
+    codebasePath?: string,
+    fileTreeUpdate?: FileTreeUpdatePort
   ) {
     this.chatAPI = chatAPI;
     
@@ -41,6 +43,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
       chatAPI,
       gitPort,
       fileSystem,
+      fileTreeUpdate,
       writeImmediately,
       jobType,
       featurePath,

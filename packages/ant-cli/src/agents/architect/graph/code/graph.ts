@@ -303,6 +303,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
 async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
   const { TaskOrchestrator: OrchestratorClass } = await import('./parallel/TaskOrchestrator');
   const { createCodeWorkerGraphBuilder } = await import('./parallel/workerGraph');
+  const { registerActiveOrchestrator, unregisterActiveOrchestrator } = await import('../../../../composition/gracefulShutdown');
 
   const maxWorkers = getTaskConcurrency();
   console.log(`\n🔀 [ParallelOrchestrator] Starting with maxWorkers=${maxWorkers}`);
@@ -406,6 +407,17 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             console.warn(`⚠️ [ParallelOrchestrator] Checkpoint save failed:`, err);
           }
         }
+        
+        // ✅ Also save checkpoint snapshot to Redis as backup.
+        // If the session file is corrupted/stale when cleanupJobState reads it,
+        // Redis serves as a fallback to prevent task state loss.
+        if (state.deps?.kanbanUpdate?.saveCheckpointSnapshot && state._httpJobId) {
+          state.deps.kanbanUpdate.saveCheckpointSnapshot(
+            checkpoint.taskQueue,
+            checkpoint.completedTasks,
+            checkpoint.tokenUsage,
+          );
+        }
       },
     },
     {
@@ -414,7 +426,14 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     },
   );
 
-  const result = await orchestrator.run();
+  // Register orchestrator for graceful shutdown (SIGTERM handler)
+  registerActiveOrchestrator(orchestrator);
+  let result;
+  try {
+    result = await orchestrator.run();
+  } finally {
+    unregisterActiveOrchestrator();
+  }
 
   // Clear stale worker entries from WorkflowBroadcaster
   // Workers' last node stays in activeWorkers until explicitly cleared

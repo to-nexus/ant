@@ -184,7 +184,8 @@ export async function codeGen(
     true,  // ✅ writeImmediately: true for code job (no separate writeFiles node)
     'code',  // ✅ jobType: 'code' (no LAST_SECTION handling needed)
     undefined,  // ✅ Code job: no featurePath
-    repoRootForWrites  // ✅ Code job: write files under repoRoot (codebase)
+    repoRootForWrites,  // ✅ Code job: write files under repoRoot (codebase)
+    state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
   );
   
   // ✅ Code job: Build existingFiles from projectCodeContext + referenceCodeContexts

@@ -133,7 +133,8 @@ export class RouteConfigurator {
       choiceService,  // ✅ For triage choice handling (Redis-backed in Cloud mode)
       githubAuthService: this.deps.githubAuthService,
       workspaceRoot: this.config.workspacesPath,
-      workspaceResolver: this.deps.workspaceResolver
+      workspaceResolver: this.deps.workspaceResolver,
+      fileTreeNotifier: this.workflowBridge  // ✅ For file tree updates after file writes (eval-save, prd-apply)
     });
     app.use('/api', apiRoutes);
   }

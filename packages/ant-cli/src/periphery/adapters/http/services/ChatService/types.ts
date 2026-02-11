@@ -27,6 +27,8 @@ export interface MessageContent {
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
      | 'triage_choice'  // Triage redirect/blocked choice
+     | 'choice_card'    // Generic choice card (eval_save, prd_apply, etc.)
+     | 'context_loaded' // Context loaded notification
      // File Operations - Real-time streaming
      | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
      | 'file_editing' | 'file_updating' | 'file_edit' | 'file_edit_failed'
@@ -68,7 +70,15 @@ export interface MessageContent {
       negative: { label: string; action: string };
       fallbackGuide?: string;
     };
-    choiceSelected?: string;  // For triage_choice: selected action
+    choiceSelected?: string;  // For triage_choice/choice_card: selected action
+    resolvedLabel?: string;   // For triage_choice/choice_card: resolved display label
+    // Choice card metadata (for choice_card type)
+    cardType?: string;        // For choice_card: subtype (eval_save, prd_apply)
+    title?: string;           // For choice_card: display title
+    evalType?: string;        // For eval_save: evaluation type (prd, ui-design, etc.)
+    evalContent?: string;     // For eval_save: evaluation content
+    // Context loaded metadata
+    items?: Array<{ label: string; detail?: string }>;  // For context_loaded: loaded items
     durationMs?: number;    // For thinking: duration in milliseconds
     collapsed?: boolean;    // For thinking: marks if the block should be collapsed
     // Indexing metadata (for indexing/indexed types)

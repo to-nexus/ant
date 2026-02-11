@@ -129,19 +129,36 @@ export class JobWorker {
           logger.info(`Killing child process for job: ${jobId} (PID: ${childProcess.pid})`, { component: 'JobWorker', jobId });
           
           try {
-            // Try graceful kill first
+            // Send SIGTERM for graceful shutdown.
+            // The child process (job-runner) has a SIGTERM handler that:
+            // 1. Calls orchestrator.handleInterruption() to push running tasks back
+            // 2. Saves a final checkpoint to the session file
+            // 3. Exits with code 143
             childProcess.kill('SIGTERM');
             
-            // Wait a bit for graceful shutdown
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Wait up to 3s for graceful shutdown (child needs time to save checkpoint).
+            // If the child exits early (graceful shutdown completed), proceed immediately.
+            const GRACEFUL_TIMEOUT_MS = 3000;
+            await new Promise<void>((resolve) => {
+              const timeout = setTimeout(() => {
+                childProcess.removeListener('exit', onExit);
+                resolve();
+              }, GRACEFUL_TIMEOUT_MS);
+              
+              const onExit = () => {
+                clearTimeout(timeout);
+                resolve();
+              };
+              childProcess.once('exit', onExit);
+            });
             
-            // Forcefully kill if still alive
+            // Forcefully kill if still alive after grace period
             try {
               process.kill(childProcess.pid, 0);  // Check if still alive
-              logger.info(`Process still alive, sending SIGKILL: ${jobId}`, { component: 'JobWorker', jobId });
+              logger.info(`Process still alive after ${GRACEFUL_TIMEOUT_MS}ms grace period, sending SIGKILL: ${jobId}`, { component: 'JobWorker', jobId });
               process.kill(childProcess.pid, 'SIGKILL');
             } catch (checkErr: any) {
-              logger.info(`Process already terminated: ${jobId}`, { component: 'JobWorker', jobId });
+              logger.info(`Process exited gracefully: ${jobId}`, { component: 'JobWorker', jobId });
             }
             
             this.runningProcesses.delete(jobId);

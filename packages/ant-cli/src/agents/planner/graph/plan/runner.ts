@@ -8,7 +8,7 @@ import { buildPlanGraph } from './graph';
 import { PlanGraphState, createInitialPlanState } from './state';
 import { WorkspaceState } from '../../../common/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
-import { setPlannerWorkspaceFeaturePath } from '../tools';
+import { setPlannerWorkspaceFeaturePath, setPlannerFileTreeUpdate } from '../tools';
 
 export interface PlanRunnerParams {
   directive: string;
@@ -42,6 +42,8 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   
   // Set workspace path for planner tools (read_workspace_file, list_workspace_files)
   setPlannerWorkspaceFeaturePath(params.featurePath);
+  // Set file tree update port for planner tools (edit_file → notify file tree)
+  setPlannerFileTreeUpdate(params.deps?.fileTreeUpdate);
   
   const graph = buildPlanGraph();
   

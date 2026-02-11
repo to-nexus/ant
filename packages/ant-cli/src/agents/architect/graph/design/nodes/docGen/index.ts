@@ -79,7 +79,9 @@ export async function docGen(
     state.deps?.fileSystem,  // ✅ Pass fileSystem for file operations
     true,  // ✅ writeImmediately: true (design job now writes files immediately like code job)
     'design',  // ✅ jobType: 'design' (for LAST_SECTION metadata handling)
-    state.context.featurePath  // ✅ Feature path for absolute path resolution
+    state.context.featurePath,  // ✅ Feature path for absolute path resolution
+    undefined,  // ✅ Design job: no codebasePath
+    state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
   );
   
   // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)

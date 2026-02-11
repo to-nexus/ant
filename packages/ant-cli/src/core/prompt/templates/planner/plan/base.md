@@ -40,16 +40,6 @@ A previous evaluation of this PRD exists. This is provided as **reference only**
 ```
 {{/if}}
 
-{{#if hasRubric}}
-## 4. PRD Quality Rubric (Reference)
-
-A quality rubric is available. This is provided as **reference only**.
-
-**IMPORTANT**: Only use this rubric to diagnose and fix deficiencies if the user's directive explicitly asks for quality improvement, rubric-based review, or general PRD enhancement. If the directive gives specific instructions, ignore this rubric and follow the directive only.
-
-{{{rubricContent}}}
-{{/if}}
-
 {{#if hasRecentTurns}}
 ## 5. Recent Session History
 

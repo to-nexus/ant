@@ -28,6 +28,7 @@ export function createChatRoutes(deps: {
   chatService?: ChatService;
   choiceService?: ChoiceService;
   workspaceResolver?: any;
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };
 }): Router {
   const router = Router();
   
@@ -237,55 +238,6 @@ export function createChatRoutes(deps: {
   });
 
   /**
-   * POST /projects/:id/features/:feature/chat/cancelled-choice
-   * Handle user choice for cancelled task (Resume/Dismiss)
-   * Called by UI when user clicks Resume or Dismiss
-   * 
-   * Request body:
-   * - jobId: string
-   * - choice: 'resume' | 'dismiss'
-   */
-  router.post('/projects/:id/features/:feature/chat/cancelled-choice', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const { jobId, choice } = req.body;
-
-    if (!deps.chatService) {
-      res.status(503).json({ error: 'Chat service not available' });
-      return;
-    }
-
-    if (!jobId || !choice) {
-      res.status(400).json({ error: 'jobId and choice are required' });
-      return;
-    }
-
-    const validChoices = ['resume', 'dismiss'];
-    if (!validChoices.includes(choice)) {
-      res.status(400).json({ error: `Invalid choice. Must be one of: ${validChoices.join(', ')}` });
-      return;
-    }
-
-    const userContext = extractUserContext(req);
-    const resolvedLabel = choice === 'resume' ? 'Resumed' : 'Dismissed';
-    
-    // Update metadata in chat.json and Redis
-    await deps.chatService.updateLastContentMetadata(
-      projectId,
-      featureName,
-      'cancelled',
-      { choiceSelected: choice, resolvedLabel },
-      userContext
-    );
-
-    res.json({ 
-      success: true, 
-      choice,
-      resolvedLabel
-    });
-  });
-
-  /**
    * POST /projects/:id/features/:feature/chat/eval-save
    * Save evaluation report to outputs/evals/{evalType}/
    * 
@@ -336,14 +288,21 @@ export function createChatRoutes(deps: {
 
       console.log(`📋 [chat.routes] Eval report saved: ${relativePath}`);
 
+      // ✅ Notify file tree update after eval report write
+      if (deps.fileTreeNotifier) {
+        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
+      }
+
       // Update choice card metadata to mark as saved
+      // ✅ metadataFilter ensures we update the correct choice_card (eval_save, not prd_apply)
       if (deps.chatService) {
         await deps.chatService.updateLastContentMetadata(
           projectId,
           featureName,
           'choice_card',
           { choiceSelected: 'save', resolvedLabel: `Saved: ${relativePath}` },
-          userContext
+          userContext,
+          { cardType: 'eval_save' }
         );
       }
 
@@ -391,14 +350,21 @@ export function createChatRoutes(deps: {
 
       console.log(`📋 [chat.routes] PRD applied: outputs/plan/prd-refine.md → inputs/sources/prd.md`);
 
+      // ✅ Notify file tree update after PRD apply write
+      if (deps.fileTreeNotifier) {
+        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
+      }
+
       // Update choice card metadata
+      // ✅ metadataFilter ensures we update the correct choice_card (prd_apply, not eval_save)
       if (deps.chatService) {
         await deps.chatService.updateLastContentMetadata(
           projectId,
           featureName,
           'choice_card',
           { choiceSelected: 'apply', resolvedLabel: 'Applied to inputs/sources/prd.md' },
-          userContext
+          userContext,
+          { cardType: 'prd_apply' }
         );
       }
 
@@ -413,6 +379,52 @@ export function createChatRoutes(deps: {
       } else {
         res.status(500).json({ error: 'Failed to apply PRD' });
       }
+    }
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/chat/dismiss-choice
+   * Unified choice persistence endpoint for ALL choice card types.
+   * Persists the choice state to chat.json + Redis so it survives page refresh in multi-pod.
+   * 
+   * ✅ Replaces the old cancelled-choice endpoint — all choice persistence goes through here.
+   * 
+   * Body: { contentType: string, choiceAction: string, resolvedLabel: string, metadataFilter?: Record<string, string> }
+   *   - contentType: the content.type to find (e.g. 'choice_card', 'triage_choice', 'cancelled')
+   *   - choiceAction: the action to record (e.g. 'resume', 'dismiss', 'keep_draft', 'skip')
+   *   - resolvedLabel: display label (e.g. 'Resumed', 'Dismissed', 'Kept as draft', 'Skipped')
+   *   - metadataFilter: optional metadata fields to match for precise content targeting
+   *     e.g. { cardType: 'eval_save' } for choice_card subtypes
+   *     e.g. { jobId: 'xxx' } for specific cancelled message
+   */
+  router.post('/projects/:id/features/:feature/chat/dismiss-choice', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const userContext = extractUserContext(req);
+    const { contentType, choiceAction, resolvedLabel, metadataFilter } = req.body || {};
+
+    if (!contentType || !choiceAction || !resolvedLabel) {
+      return res.status(400).json({ error: 'contentType, choiceAction, and resolvedLabel are required' });
+    }
+
+    try {
+      if (deps.chatService) {
+        await deps.chatService.updateLastContentMetadata(
+          projectId,
+          featureName,
+          contentType,
+          { choiceSelected: choiceAction, resolvedLabel },
+          userContext,
+          metadataFilter || undefined
+        );
+      }
+
+      console.log(`📋 [chat.routes] Choice persisted: ${contentType}${metadataFilter ? `(${JSON.stringify(metadataFilter)})` : ''} → ${choiceAction} (${resolvedLabel})`);
+
+      res.json({ success: true, choiceAction, resolvedLabel });
+    } catch (error: any) {
+      console.error('[chat.routes] dismiss-choice error:', error);
+      res.status(500).json({ error: 'Failed to persist choice' });
     }
   });
   

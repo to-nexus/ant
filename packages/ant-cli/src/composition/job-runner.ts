@@ -36,6 +36,7 @@ import * as path from 'path';
 import { orchestrator } from './orchestrator';
 import { UnifiedWorkspaceResolver } from '../infrastructure/workspace/WorkspaceResolver';
 import { logger } from '../utils/logger';
+import { handleGracefulShutdown } from './gracefulShutdown';
 
 interface JobParams {
   jobId: string;
@@ -177,6 +178,27 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 }
+
+// ============================================
+// SIGTERM Handler — Graceful Shutdown
+// ============================================
+// When JobWorker sends SIGTERM (user clicked Stop), we attempt to:
+// 1. Interrupt the active orchestrator (push running tasks back to queue)
+// 2. Save a final checkpoint to the session file
+// 3. Exit cleanly with code 143 (128 + SIGTERM signal 15)
+//
+// The orchestrator has 2.5s to complete before we force-exit.
+// JobWorker waits 3s before sending SIGKILL, giving us a safety margin.
+process.on('SIGTERM', async () => {
+  console.log(`\n🛑 [JobRunner] SIGTERM received — starting graceful shutdown...`);
+  try {
+    await handleGracefulShutdown('user_stopped');
+  } catch (error: any) {
+    console.error(`[JobRunner] Graceful shutdown error:`, error?.message);
+  }
+  console.log(`[JobRunner] Exiting with code 143 (SIGTERM)`);
+  process.exit(143);
+});
 
 // Run
 main();

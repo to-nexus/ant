@@ -50,4 +50,22 @@ export interface TaskQueueUpdatePort {
    * @param nodeId - Graph node ID (e.g., "decompose") for UI-specific rendering
    */
   setEstimatingActivity?(label: string, nodeId?: string): void;
+
+  /**
+   * Save a checkpoint snapshot to Redis for disaster recovery.
+   * Unlike updateTaskQueue, this does NOT broadcast via Pub/Sub — it only
+   * persists the snapshot to Redis so that cleanupJobState can use it as
+   * a fallback when the session file is unreadable.
+   * 
+   * Called from the parallel orchestrator's onCheckpoint callback.
+   * 
+   * @param queue - Task queue including running tasks (marked interrupted)
+   * @param completedTasks - Array of completed task objects
+   * @param tokenUsage - Accumulated token usage
+   */
+  saveCheckpointSnapshot?(
+    queue: BaseTask[],
+    completedTasks: BaseTask[],
+    tokenUsage?: TaskTokenUsage
+  ): void;
 }

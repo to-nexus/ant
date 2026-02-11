@@ -223,6 +223,38 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Save a checkpoint snapshot to Redis for disaster recovery.
+   * 
+   * Unlike updateTaskQueue/broadcastKanbanUpdate, this does NOT publish
+   * via Pub/Sub — it only persists the snapshot to Redis. This prevents
+   * UI flicker (briefly showing all tasks as "todo" with none in-progress).
+   * 
+   * The snapshot is read by cleanupJobState as a fallback when the session
+   * file is unreadable (corrupted mid-write, EFS stale read, etc.).
+   */
+  saveCheckpointSnapshot(
+    queue: BaseTask[],
+    completedTasks: BaseTask[],
+    tokenUsage?: TaskTokenUsage
+  ): void {
+    const snapshot: TaskQueueSnapshot = {
+      currentTask: null,           // No "current" — all running tasks are in queue as interrupted
+      currentTasks: undefined,
+      queue,
+      completedTasks,
+      recursionCount: 0,
+      recursionLimit: 50,
+      tokenUsage,
+    };
+
+    const key = `${TASK_QUEUE_KEY_PREFIX}${this.jobId}`;
+    // Fire-and-forget — this is a backup, not critical path
+    this.redis.set(key, JSON.stringify(snapshot), 'EX', TASK_QUEUE_TTL).catch(err => {
+      console.warn(`[KanbanBroadcaster] Failed to save checkpoint snapshot to Redis:`, err.message);
+    });
+  }
+
+  /**
    * Close Redis connections
    */
   async close(): Promise<void> {
