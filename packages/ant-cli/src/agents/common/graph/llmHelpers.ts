@@ -239,8 +239,8 @@ export function updateKanbanTokenUsage(
     state.currentTask,
     queue,
     completedTasks,
-    (state as any).recursionCount,
-    (state as any).recursionLimit,
+    state.recursionCount,
+    state.recursionLimit,
     tokenUsage
   );
 }

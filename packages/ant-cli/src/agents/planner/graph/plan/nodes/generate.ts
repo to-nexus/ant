@@ -74,16 +74,23 @@ function buildSystemPrompt(state: PlanGraphState): string {
  * Generate node - LLM generates/refines PRD with real-time file streaming
  */
 export async function generateNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
-  console.log(`\n🤖 [Planner:Generate] ${state.mode === 'generate' ? 'Creating' : 'Refining'} PRD...`);
+  // Increment recursion count each time generate is entered (ReAct loop)
+  const recursionCount = (state.recursionCount || 0) + 1;
+  
+  console.log(`\n🤖 [Planner:Generate] ${state.mode === 'generate' ? 'Creating' : 'Refining'} PRD... (iteration ${recursionCount}/${state.recursionLimit})`);
   
   // Kanban activity banner
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('generate', state._uiLocale || 'en'), 'generate');
   }
   
-  // Workflow instrumentation
+  // Workflow instrumentation (pass recursion info for badge display)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'generate', 0);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'generate', 0,
+      undefined, undefined,
+      recursionCount, state.recursionLimit,
+    );
   }
   
   const llm = state.deps?.llm;
@@ -130,6 +137,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   const isFirstCall = state.conversationHistory.length === 0;
   
+  // Show placeholder status before LLM streaming (same as codeGen/docGen)
+  await chatAPI.showChatStatus('placeholder');
+  
   try {
     for await (const event of llm.stream(messages, {
       system: systemPrompt,
@@ -148,6 +158,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
+        // Send tool_use to LLMEventHandler (creates file_editing card for edit_file,
+        // tool_action card for read_workspace_file/search_web, etc.)
+        await chatAPI.sendLLMEvent(event);
         toolCall = { id: id || uuidv4(), name, args: input };
       }
       
@@ -155,6 +168,19 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         const capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
           accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
+        }
+        
+        // ✅ Broadcast tokenUsage + recursion to kanban (enables token/recursion badges)
+        if (state.deps?.kanbanUpdate?.updateTaskQueue && state._httpJobId) {
+          state.deps.kanbanUpdate.updateTaskQueue(
+            state._httpJobId,
+            null,           // no currentTask (planner has no task queue)
+            [],             // empty queue
+            [],             // no completed tasks
+            recursionCount,
+            state.recursionLimit,
+            state.tokenUsage,
+          );
         }
       }
     }
@@ -193,6 +219,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       conversationHistory: updatedHistory,
       pendingToolCall: toolCall,
       tokenUsage: state.tokenUsage,
+      recursionCount,
     };
   }
   
@@ -318,6 +345,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     generatedDocument,
     pendingToolCall: undefined,
     tokenUsage: state.tokenUsage,
+    recursionCount,
   };
 }
 

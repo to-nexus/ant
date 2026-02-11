@@ -180,7 +180,7 @@ class SSEManager {
         userEmail = JSON.parse(stored);
       }
     } catch (error) {
-      console.warn('[SSEManager] Failed to get user email:', error);
+      console.warn('[SSE] unified: failed to get user email', error);
     }
     
     // ✅ Build URL with user email as query parameter (for EventSource authentication)
@@ -195,6 +195,7 @@ class SSEManager {
     }
     
     const finalUrl = url.toString();
+    console.log(`[SSE] unified: connecting ${projectId}/${featureName}`);
     
     try {
       const eventSource = new EventSource(finalUrl, {
@@ -206,6 +207,7 @@ class SSEManager {
           this.unifiedConnection.isConnected = true;
           this.unifiedConnection.reconnectAttempts = 0;
         }
+        console.log('[SSE] unified: open');
         // Notify Store that SSE is actually connected (not optimistic)
         this.statusCallback?.('connected');
       };
@@ -215,13 +217,11 @@ class SSEManager {
           const message: SSEMessage = JSON.parse(event.data);
           this.routeMessage(message);
         } catch (error) {
-          console.error(`[SSEManager] Parse error:`, error);
-          console.error('[SSEManager] Raw data:', event.data);
+          console.error('[SSE] unified: parse error', error);
         }
       };
       
-      eventSource.onerror = (error) => {
-        console.error(`[SSEManager] Connection error:`, error);
+      eventSource.onerror = () => {
         // NOTE: Do NOT call statusCallback('error') on every onerror.
         // EventSource fires onerror on transient network issues and the browser
         // auto-reconnects. Setting 'error' would cause connectionStatus flickering
@@ -230,6 +230,7 @@ class SSEManager {
         if (this.unifiedConnection) {
           this.unifiedConnection.isConnected = false;
           this.unifiedConnection.reconnectAttempts++;
+          console.warn(`[SSE] unified: error (attempt ${this.unifiedConnection.reconnectAttempts}/${this.maxReconnectAttempts})`);
           
           if (this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts) {
             // Exponential backoff retry after max attempts
@@ -243,6 +244,7 @@ class SSEManager {
             this.statusCallback?.('error');
             this.disconnect();
             
+            console.log(`[SSE] unified: reconnecting in ${retryDelay}ms`);
             setTimeout(() => {
               this.connect(savedProjectId, savedFeatureName, savedJob);
             }, retryDelay);
@@ -260,7 +262,7 @@ class SSEManager {
       };
       
     } catch (error) {
-      console.error(`[SSEManager] Failed to create EventSource:`, error);
+      console.error('[SSE] unified: failed to create EventSource', error);
     }
   }
   
@@ -280,7 +282,7 @@ class SSEManager {
         userEmail = JSON.parse(stored);
       }
     } catch (error) {
-      console.warn('[SSEManager] Failed to get user email:', error);
+      console.warn('[SSE] workflow: failed to get user email', error);
     }
     
     // ✅ Build URL with user email as query parameter
@@ -294,6 +296,7 @@ class SSEManager {
     }
     
     const finalUrl = url.toString();
+    console.log(`[SSE] workflow(${jobId}): connecting`);
     
     try {
       const eventSource = new EventSource(finalUrl, {
@@ -306,6 +309,7 @@ class SSEManager {
           conn.isConnected = true;
           conn.reconnectAttempts = 0;
         }
+        console.log(`[SSE] workflow(${jobId}): open`);
       };
       
       eventSource.onmessage = (event) => {
@@ -313,7 +317,7 @@ class SSEManager {
           const message: SSEMessage = JSON.parse(event.data);
           this.routeMessage(message);
         } catch (error) {
-          console.error(`[SSEManager] Workflow parse error:`, error);
+          console.error(`[SSE] workflow(${jobId}): parse error`, error);
         }
       };
       
@@ -330,22 +334,21 @@ class SSEManager {
         });
       });
       
-      eventSource.onerror = (error) => {
-        console.error(`[SSEManager] Workflow connection error for ${jobId}:`, error);
+      eventSource.onerror = () => {
         const conn = this.workflowConnections.get(jobId);
         if (conn) {
           conn.isConnected = false;
           conn.reconnectAttempts++;
+          console.warn(`[SSE] workflow(${jobId}): error (attempt ${conn.reconnectAttempts}/${this.maxReconnectAttempts})`);
           
           if (conn.reconnectAttempts >= this.maxReconnectAttempts) {
             // Exponential backoff retry after max attempts
             const retryDelay = Math.min(30000, 1000 * Math.pow(2, conn.reconnectAttempts - this.maxReconnectAttempts));
-            console.log(`[SSEManager] Workflow reconnecting for ${jobId} in ${retryDelay}ms (attempt ${conn.reconnectAttempts})`);
             
             this.disconnectWorkflow(jobId);
             
+            console.log(`[SSE] workflow(${jobId}): reconnecting in ${retryDelay}ms`);
             setTimeout(() => {
-              console.log(`[SSEManager] Workflow reconnecting for ${jobId}...`);
               this.connectWorkflow(jobId);
             }, retryDelay);
           }
@@ -362,7 +365,7 @@ class SSEManager {
       });
       
     } catch (error) {
-      console.error(`[SSEManager] Failed to create workflow EventSource:`, error);
+      console.error(`[SSE] workflow(${jobId}): failed to create EventSource`, error);
     }
   }
   
@@ -382,7 +385,7 @@ class SSEManager {
       try {
         handler(data);
       } catch (error) {
-        console.error(`[SSEManager] Handler error for '${type}':`, error);
+        console.error(`[SSE] handler error for '${type}':`, error);
       }
     });
   }
@@ -392,10 +395,11 @@ class SSEManager {
    */
   disconnect(): void {
     if (this.unifiedConnection) {
+      console.log('[SSE] unified: closed');
       try {
         this.unifiedConnection.eventSource.close();
       } catch (error) {
-        console.error('[SSEManager] Error closing unified connection:', error);
+        // Ignore errors on close
       }
       this.unifiedConnection = null;
       this.statusCallback?.('disconnected');
@@ -408,10 +412,11 @@ class SSEManager {
   disconnectWorkflow(jobId: string): void {
     const conn = this.workflowConnections.get(jobId);
     if (conn) {
+      console.log(`[SSE] workflow(${jobId}): closed`);
       try {
         conn.eventSource.close();
       } catch (error) {
-        console.error('[SSEManager] Error closing workflow connection:', error);
+        // Ignore errors on close
       }
       this.workflowConnections.delete(jobId);
     }
@@ -452,5 +457,5 @@ export const sseManager = new SSEManager();
 // Debug access (개발 환경에서만)
 if (import.meta.env.DEV) {
   (window as any).__sseManager = sseManager;
-  console.log('[SSEManager] Debug mode: sseManager available at window.__sseManager');
+  console.log('[SSE] debug: sseManager available at window.__sseManager');
 }

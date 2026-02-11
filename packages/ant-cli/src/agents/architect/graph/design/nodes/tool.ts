@@ -16,6 +16,9 @@ const toolResultManager = new ToolResultManager(tokenManager);
 export async function tool(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+
   // Get tool calls from llmResponse
   const toolCalls = state.llmResponse?.toolCalls || [];
   
@@ -44,8 +47,8 @@ export async function tool(
       (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
-      (state as any).recursionCount,
-      (state as any).recursionLimit
+      state.recursionCount,
+      state.recursionLimit
     );
   }
   

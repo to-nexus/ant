@@ -128,9 +128,18 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     );
   }, [workflowState?.activeNodes]);
 
+  // Ref to track pending fitView timer (prevents stale fitView from overriding setCenter)
+  const fitViewTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ✅ 페이지 로드/새로고침 시: Job 실행 중이면 활성 노드로 포커스, 아니면 fit to screen
   React.useEffect(() => {
     if (!reactFlowInstance || nodes.length === 0) return;
+    
+    // Clear any pending fitView timer to prevent stale timers from overriding setCenter
+    if (fitViewTimerRef.current) {
+      clearTimeout(fitViewTimerRef.current);
+      fitViewTimerRef.current = null;
+    }
     
     // Job이 실행 중이고 활성 노드가 있으면 포커스
     if (isRunning && trackingTarget) {
@@ -150,9 +159,14 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
       }
     }
     
+    // Job이 실행 중이면 fitView 하지 않고 trackingTarget 도착을 기다림
+    // (Effect 2가 trackingTarget 도착 시 자동으로 setCenter 처리)
+    if (isRunning) return;
+    
     // Job이 멈춘 상태면 fit to screen
-    setTimeout(() => {
+    fitViewTimerRef.current = setTimeout(() => {
       reactFlowInstance.fitView({ padding: 0.1, duration: 400 });
+      fitViewTimerRef.current = null;
     }, 50);
   }, [reactFlowInstance, nodes.length, splitLayout, isRunning, trackingTarget?.nodeId]);
   

@@ -32,6 +32,9 @@ import { buildUiDesignMessages } from './uiDesignPrompt';
 export async function docGen(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   const llmClient = state.deps?.llm;
   const gitPort = state.deps?.git;
   if (!llmClient || !gitPort) {
@@ -64,7 +67,10 @@ export async function docGen(
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'docGen', (state as any).workerId ?? 0, taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'docGen', (state as any).workerId ?? 0, taskInfo,
+      undefined, state.recursionCount, state.recursionLimit
+    );
   }
   
   // ✅ Setup XML Parser + StreamOrchestrator

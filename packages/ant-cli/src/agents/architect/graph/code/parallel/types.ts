@@ -22,6 +22,8 @@ export interface OrchestratorResult<T extends BaseTask> {
   tokenUsage: TaskTokenUsage;
   /** True if any tasks permanently failed — caller should mark job as interrupted */
   hasFailures: boolean;
+  /** True if any task was paused due to recursion limit (queued for resume, not failed) */
+  hasInterruptedTasks: boolean;
 }
 
 /**

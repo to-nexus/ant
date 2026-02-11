@@ -4,6 +4,8 @@
  * Entry point for running Plan LangGraph.
  */
 
+import * as path from 'path';
+import * as fsPromises from 'fs/promises';
 import { buildPlanGraph } from './graph';
 import { PlanGraphState, createInitialPlanState } from './state';
 import { WorkspaceState } from '../../../common/nodes/triage/types';
@@ -26,6 +28,13 @@ export interface PlanRunnerResult {
   generatedDocument?: string;
   mode: string;
   tokenUsage?: any;
+  interruption?: {
+    reason: string;
+    message: string;
+    timestamp: string;
+    canResume: boolean;
+    metadata?: Record<string, any>;
+  };
 }
 
 /**
@@ -59,7 +68,27 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     _httpJobId: params._httpJobId,
   });
   
-  const recursionLimit = parseInt(process.env.PLANNER_RECURSION_LIMIT || '50', 10);
+  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '200', 10);
+  
+  // ✅ Initialize JobTiming on KanbanBroadcaster (same as architect)
+  // This enables the elapsed time badge on the task board header
+  if (params._httpJobId && params.deps?.kanbanUpdate?.setJobTiming) {
+    const { JobTimingManager } = await import('../../../common/graph/timing/JobTimingManager');
+    const { jobTiming } = JobTimingManager.initializeNewJob(params._httpJobId);
+    params.deps.kanbanUpdate.setJobTiming(jobTiming);
+    
+    // Send initial kanban update with recursion info (triggers badge display)
+    if (params.deps.kanbanUpdate.updateTaskQueue) {
+      params.deps.kanbanUpdate.updateTaskQueue(
+        params._httpJobId,
+        null,           // no currentTask (planner has no task queue)
+        [],             // empty queue
+        [],             // no completed tasks
+        0,              // recursionCount starts at 0
+        recursionLimit, // recursionLimit for badge
+      );
+    }
+  }
   
   const chatAPI = getChatAPIClient();
   let finalState: PlanGraphState;
@@ -71,6 +100,55 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       recursionLimit,
     }) as PlanGraphState;
   } catch (error: any) {
+    const isRecursionLimit = error.message?.includes('Recursion limit')
+      || error.message?.includes('recursion limit')
+      || error.message?.includes('recursionLimit');
+    
+    if (isRecursionLimit) {
+      console.log(`⚠️ [Planner] Recursion limit reached (${recursionLimit}). Finalizing with current progress.`);
+      
+      // Read the current staging file which has been edited by all tool calls so far
+      let generatedDocument: string | undefined;
+      const stagingPath = path.join(params.featurePath, 'outputs/plan/prd-refine.md');
+      try {
+        generatedDocument = await fsPromises.readFile(stagingPath, 'utf-8');
+        console.log(`📝 [Planner] Read edited PRD from staging (${generatedDocument.length} chars)`);
+      } catch {
+        console.log(`📝 [Planner] No staging file found`);
+      }
+      
+      // Finalize any active message NORMALLY (not cancelled)
+      if (chatAPI.hasActiveMessage()) {
+        try {
+          await chatAPI.finalizeMessage(false);
+        } catch (cleanupError) {
+          console.warn('⚠️ [Planner] Failed to finalize message:', cleanupError);
+        }
+      }
+      
+      console.log('\n⏸️ Planner Agent paused (recursion limit)');
+      console.log(`   Document length: ${generatedDocument?.length || 0} chars`);
+      
+      // Return with interruption — JobWorker sets status='paused',
+      // then JobCleanupManager creates the Resume/Dismiss choice card automatically.
+      // This matches the code job pattern (architectAgent → interruption → paused).
+      return {
+        generatedDocument,
+        mode: initialState.mode,
+        tokenUsage: initialState.tokenUsage,
+        interruption: {
+          reason: 'recursion_limit',
+          message: `PRD editing paused: recursion limit reached (${recursionLimit} node executions)`,
+          timestamp: new Date().toISOString(),
+          canResume: true,
+          metadata: {
+            recursionLimit,
+          },
+        },
+      };
+    }
+    
+    // Non-recursion-limit errors: cleanup and re-throw
     console.error(`❌ [Planner] Graph execution failed: ${error.message}`);
     
     if (chatAPI.hasActiveMessage()) {

@@ -64,6 +64,10 @@ export interface PlanGraphState {
   
   // Token tracking
   tokenUsage?: TokenUsage;
+  
+  // Recursion tracking (for kanban badge display)
+  recursionCount: number;
+  recursionLimit: number;
 }
 
 export function createInitialPlanState(params: {
@@ -94,5 +98,8 @@ export function createInitialPlanState(params: {
     // Dependencies
     deps: params.deps,
     _httpJobId: params._httpJobId,
+    // Recursion tracking
+    recursionCount: 0,
+    recursionLimit: parseInt(process.env.RECURSION_LIMIT || '200', 10),
   };
 }

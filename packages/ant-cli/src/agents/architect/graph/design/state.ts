@@ -108,6 +108,10 @@ export interface DesignGraphState extends TaskArtifacts {
   // Results (populated by learn node)
   lessons?: string;
   
+  // ✅ Recursion tracking (for UI gauge display)
+  recursionCount?: number;
+  recursionLimit?: number;
+  
   // ✅ For tracking and resume
   _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
   _phaseTimings?: Record<string, number>;  // Per-node ms timings for phaseBreakdown

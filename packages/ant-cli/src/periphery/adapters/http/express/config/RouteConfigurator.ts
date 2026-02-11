@@ -15,7 +15,7 @@ import { ServerConfig, ServerDependencies } from '../types';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { JobExecutionManager } from '../managers/JobExecutionManager';
 import { WorkflowBridge } from '../bridges/WorkflowBridge';
-import { ChoiceService, choiceService as defaultChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
+import { ChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
 
@@ -24,6 +24,10 @@ import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstan
  * 
  * Configures all Express routes and API endpoints.
  * Separates route registration logic from core business logic.
+ * 
+ * NOTE: This system is ALWAYS distributed (Redis + BullMQ + Pub/Sub),
+ * regardless of whether it runs on a single machine or cloud.
+ * See .cursorrules "Unified Distributed System Principle".
  */
 export class RouteConfigurator {
   constructor(
@@ -69,36 +73,22 @@ export class RouteConfigurator {
   }
 
   /**
-   * Setup root routes (mode-specific)
+   * Setup root routes
    */
   private setupRootRoutes(app: Express): void {
-    if (this.config.mode === 'local') {
-      // Local Mode: Redirect root to cloud
-      app.get('/', (req: Request, res: Response) => {
-        res.redirect(this.config.cloudUrl);
+    app.get('/', (req: Request, res: Response) => {
+      res.json({
+        message: 'ANT Works Service',
+        status: 'running'
       });
-    } else {
-      // Cloud Mode: Show /local info page
-      app.get('/local', (req: Request, res: Response) => {
-        res.send(this.getLocalModeInfoPage());
-      });
-      
-      // Cloud Mode: Root serves the main app
-      app.get('/', (req: Request, res: Response) => {
-        res.json({
-          mode: 'cloud',
-          message: 'ANT Works Cloud Service',
-          documentation: '/local'
-        });
-      });
-    }
+    });
   }
 
   /**
-   * Setup auth routes (Cloud mode only)
+   * Setup auth routes
    */
   private setupAuthRoutes(app: Express): void {
-    if (this.config.mode === 'cloud' && this.deps.authService) {
+    if (this.deps.authService) {
       const authRoutes = createAuthRoutes({
         authService: this.deps.authService,
         workspaceResolver: this.deps.workspaceResolver,
@@ -112,41 +102,29 @@ export class RouteConfigurator {
    * Setup unified API routes (health, agents, projects, features, files, chat, github, figma)
    */
   private setupApiRoutes(app: Express): void {
-    // ✅ CRITICAL: Always use Redis-backed ChoiceService if stateStore is available
-    // This ensures Job Worker (which uses Redis) and API Server share the same pending choices
-    // Previously this only worked in cloud mode, causing "가이드 제공됨" in local mode with Redis
-    let choiceService = defaultChoiceService;
-    
     const factory = getInfrastructureFactory();
     const stateStore = factory.getStateStore();
-    if (stateStore) {
-      choiceService = new ChoiceService({ stateStore });
-      logger.info(`[RouteConfigurator] Created ChoiceService with Redis support (mode: ${this.config.mode})`, { component: 'RouteConfigurator' });
-    } else {
-      logger.info(`[RouteConfigurator] Using in-memory ChoiceService (no Redis available)`, { component: 'RouteConfigurator' });
-    }
+    const choiceService = new ChoiceService({ stateStore });
     
     const apiRoutes = createApiRoutes({
       projectService: this.deps.projectService,
       chatService: this.deps.chatService,
-      kanbanService: this.deps.kanbanService,  // ✅ For session cache invalidation on job clear
-      choiceService,  // ✅ For triage choice handling (Redis-backed in Cloud mode)
+      kanbanService: this.deps.kanbanService,
+      choiceService,
       githubAuthService: this.deps.githubAuthService,
       workspaceRoot: this.config.workspacesPath,
       workspaceResolver: this.deps.workspaceResolver,
-      fileTreeNotifier: this.workflowBridge  // ✅ For file tree updates after file writes (eval-save, prd-apply)
+      fileTreeNotifier: this.workflowBridge
     });
     app.use('/api', apiRoutes);
   }
 
   /**
-   * Setup IDE routes (Local mode only)
+   * Setup IDE routes
    */
   private setupIDERoutes(app: Express): void {
-    if (this.config.mode === 'local') {
-      const ideRoutes = createIDERoutes();
-      app.use('/api', ideRoutes);
-    }
+    const ideRoutes = createIDERoutes();
+    app.use('/api', ideRoutes);
   }
 
   /**
@@ -222,21 +200,16 @@ export class RouteConfigurator {
   private setupJobRoutes(app: Express): void {
     const state = this.stateTracker.getState();
     
-    // Cloud mode: enqueue to job queue, Local mode: execute directly
-    const executeJob = this.config.mode === 'cloud'
-      ? this.createCloudExecuteJob()
-      : this.jobManager.executeJob.bind(this.jobManager);
+    // Always enqueue to BullMQ job queue (unified distributed system)
+    const executeJob = this.createExecuteJob();
     
-    // ✅ Get stateStore for Cloud mode (stop signal via Redis)
-    const stateStore = this.config.mode === 'cloud' 
-      ? getInfrastructureFactory().getStateStore() 
-      : undefined;
+    // Always use Redis StateStore
+    const stateStore = getInfrastructureFactory().getStateStore();
     
-    // ✅ Cloud mode: Subscribe to job completion events to update stateTracker and broadcast to SSE
-    // This allows new jobs to start after previous job completes (fixes "Job already running" error)
-    // CRITICAL: Must also call cleanupJobState to broadcast Kanban update to frontend!
-    if (this.config.mode === 'cloud' && stateStore) {
-      stateStore.subscribe(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, async (message: unknown) => {
+    // Subscribe to job completion events via Redis Pub/Sub
+    // This allows new jobs to start after previous job completes and
+    // broadcasts Kanban update to frontend SSE
+    stateStore.subscribe(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, async (message: unknown) => {
         const data = message as { 
           type: string; 
           jobId: string; 
@@ -286,11 +259,9 @@ export class RouteConfigurator {
           // ✅ Extract jobType from result
           const jobType = data.result?.output?.job as 'design' | 'code' | 'learn' | undefined;
           
-          // ✅ CRITICAL: Call cleanupJobState to broadcast Kanban update to frontend SSE
-          // Without this, frontend remains in "running" state even after job completes
-          // ✅ Skip if user-stopped: Stop route already called cleanupJobState
+          // Skip if user-stopped: Stop route already called cleanupJobState
           // Without this guard, cleanupJobState runs twice → duplicate choice cards
-          const wasUserStopped = stateStore ? await stateStore.isUserStopped(jobId) : false;
+          const wasUserStopped = await stateStore.isUserStopped(jobId);
           if (wasUserStopped) {
             logger.info(`Skipping cleanupJobState for user-stopped job: ${jobId} (already handled by stop route)`, {
               component: 'RouteConfigurator'
@@ -339,27 +310,22 @@ export class RouteConfigurator {
           component: 'RouteConfigurator' 
         });
       });
-    }
     
     const jobRoutes = createJobRoutes({
       workspaceResolver: this.deps.workspaceResolver,
       executeJob,
-      getJobStatus: this.jobManager.getJobStatus.bind(this.jobManager),
-      getLogs: this.jobManager.getLogs.bind(this.jobManager),
       cleanupJobState: this.cleanupJobState,
       workflowStateService: this.deps.workflowStateService,
       chatService: this.deps.chatService,
-      config: { mode: this.config.mode },
       stateStore
     });
     app.use('/api', jobRoutes);
   }
   
   /**
-   * Create executeJob function for cloud mode
-   * Enqueues job to BullMQ instead of executing directly
+   * Create executeJob function that enqueues to BullMQ
    */
-  private createCloudExecuteJob() {
+  private createExecuteJob() {
     return async (params: any) => {
       const { getInfrastructureFactory } = await import('../../../../../infrastructure/adapters/InfrastructureFactory');
       const factory = getInfrastructureFactory();
@@ -439,7 +405,7 @@ export class RouteConfigurator {
         jobId
       });
       
-      // Also register in local stateTracker (Local mode)
+      // Register in local stateTracker (cache for Kanban routes)
       this.stateTracker.initializeJob(jobId, params.project, params.feature, params.jobType || 'code', params.userContext);
       
       // ⏱️ DEBUG: Record enqueue completion time
@@ -460,223 +426,4 @@ export class RouteConfigurator {
     };
   }
 
-  /**
-   * Generate Local Mode Info Page HTML
-   */
-  private getLocalModeInfoPage(): string {
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ANT Works - Local Mode</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-      line-height: 1.6;
-      color: #333;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    
-    .container {
-      max-width: 800px;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      padding: 60px;
-      animation: fadeIn 0.5s ease-out;
-    }
-    
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    
-    h1 {
-      font-size: 2.5em;
-      margin-bottom: 20px;
-      color: #667eea;
-      font-weight: 700;
-    }
-    
-    .subtitle {
-      font-size: 1.2em;
-      color: #666;
-      margin-bottom: 40px;
-    }
-    
-    h2 {
-      font-size: 1.8em;
-      margin-top: 40px;
-      margin-bottom: 20px;
-      color: #333;
-      font-weight: 600;
-      border-bottom: 2px solid #667eea;
-      padding-bottom: 10px;
-    }
-    
-    p {
-      margin-bottom: 20px;
-      font-size: 1.1em;
-      color: #555;
-    }
-    
-    .highlight {
-      background: #f0f4ff;
-      border-left: 4px solid #667eea;
-      padding: 20px;
-      border-radius: 8px;
-      margin: 30px 0;
-    }
-    
-    code {
-      background: #f5f5f5;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-family: 'Courier New', monospace;
-      font-size: 0.9em;
-      color: #e83e8c;
-    }
-    
-    .code-block {
-      background: #2d2d2d;
-      color: #f8f8f2;
-      padding: 20px;
-      border-radius: 8px;
-      margin: 20px 0;
-      overflow-x: auto;
-      font-family: 'Courier New', monospace;
-      font-size: 0.95em;
-      line-height: 1.5;
-    }
-    
-    .btn {
-      display: inline-block;
-      background: #667eea;
-      color: white;
-      padding: 15px 30px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 1.1em;
-      transition: all 0.3s ease;
-      margin-top: 20px;
-    }
-    
-    .btn:hover {
-      background: #5568d3;
-      transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-    }
-    
-    ul {
-      list-style: none;
-      padding-left: 0;
-    }
-    
-    li {
-      margin-bottom: 15px;
-      padding-left: 30px;
-      position: relative;
-      font-size: 1.05em;
-      color: #555;
-    }
-    
-    li:before {
-      content: "✓";
-      position: absolute;
-      left: 0;
-      color: #667eea;
-      font-weight: bold;
-      font-size: 1.2em;
-    }
-    
-    .comparison {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin: 30px 0;
-    }
-    
-    .comparison-item {
-      background: #f9f9f9;
-      padding: 20px;
-      border-radius: 8px;
-      border: 2px solid #e0e0e0;
-    }
-    
-    .comparison-item h3 {
-      color: #667eea;
-      margin-bottom: 15px;
-      font-size: 1.3em;
-    }
-    
-    @media (max-width: 768px) {
-      .container {
-        padding: 40px 30px;
-      }
-      
-      h1 {
-        font-size: 2em;
-      }
-      
-      .comparison {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🏠 ANT Works - Local Mode</h1>
-    <p class="subtitle">Run AI-powered development tools on your machine</p>
-    
-    <div class="highlight">
-      <p><strong>⚠️ Important:</strong> Local mode requires running ANT Works on your own machine.</p>
-    </div>
-    
-    <h2>How to Run Local Mode</h2>
-    
-    <div class="code-block">
-# Clone the repository
-git clone https://github.com/to-nexus/ant.git
-cd ant
-
-# Install dependencies
-pnpm install
-
-# Set up environment variables
-cd packages/ant-cli
-cp .env.example .env
-
-# Start local server
-pnpm dev:cli
-    </div>
-    
-    <a href="https://github.com/to-nexus/ant" class="btn" target="_blank">
-      View on GitHub →
-    </a>
-  </div>
-</body>
-</html>
-    `.trim();
-  }
 }

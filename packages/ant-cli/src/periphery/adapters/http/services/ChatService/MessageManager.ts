@@ -456,6 +456,35 @@ export class MessageManager {
     // ✅ Use async version to ensure file/Redis is fully loaded
     const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
     
+    // ✅ Idempotency: skip if an UNRESOLVED cancelled message for this jobId already exists.
+    // Caller guards (Redis lock in cloud, single exit event in local) normally prevent
+    // duplicate calls, but this check provides defense-in-depth.
+    const existing = session.messages.find(
+      (m: ChatMessage) => m.jobId === jobId && m.contents?.some(
+        (c: any) => c.type === 'cancelled' && !c.metadata?.resolved && !c.metadata?.choiceSelected
+      )
+    );
+    if (existing) {
+      logger.info(`Idempotency: cancelled message already exists for job ${jobId}, skipping`, { component: 'MessageManager' });
+      return existing.id;
+    }
+    
+    // ✅ Resolve ALL existing unresolved cancelled messages (from any jobId) before creating a new one.
+    // This prevents orphaned choice cards from previous runs accumulating in the chat.
+    let resolvedCount = 0;
+    for (const msg of session.messages) {
+      if (!msg.contents) continue;
+      for (const content of msg.contents) {
+        if (content.type === 'cancelled' && !content.metadata?.resolved && !content.metadata?.choiceSelected) {
+          content.metadata = { ...content.metadata, resolved: true };
+          resolvedCount++;
+        }
+      }
+    }
+    if (resolvedCount > 0) {
+      logger.info(`Auto-resolved ${resolvedCount} stale cancelled message(s) before creating new one for job ${jobId}`, { component: 'MessageManager' });
+    }
+    
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const cancelledMsg: ChatMessage = {
       id: messageId,

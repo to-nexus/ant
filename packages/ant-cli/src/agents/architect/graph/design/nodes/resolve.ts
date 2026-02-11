@@ -71,9 +71,16 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const jobMode = state.detectionReport?.jobMode;
   const context = state.context;
   
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve', 0);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'resolve', 0,
+      undefined, undefined,
+      state.recursionCount, state.recursionLimit
+    );
   }
   
   // ✅ CRITICAL: Skip artifact loading if resuming (state already restored by runner)

@@ -19,6 +19,7 @@ import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import type { ActiveWorkerNode } from '@/domain/models/workflow';
 import type { HandlerId } from '@/infrastructure/sse/SSEManager';
 import { useStore } from '@/domain/store';
+import { API_BASE } from '@/infrastructure/http/api';
 
 // 노드별 최소 표시 시간 (ms)
 const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
@@ -192,6 +193,22 @@ function activeNodesFingerprint(nodes: ActiveWorkerNode[]): string {
     .join('|');
 }
 
+/**
+ * HTTP fallback: SSE 초기 상태가 핸들러 등록 전에 도착했을 경우를 대비하여
+ * REST API로 워크플로우 현재 상태를 조회한다.
+ * 분산 환경에서도 안전 (Redis 버퍼링 불필요, 기존 엔드포인트 재사용).
+ */
+async function fetchWorkflowState(jobId: string): Promise<WorkflowRealtimeState | null> {
+  try {
+    const base = API_BASE();
+    const res = await fetch(`${base}/jobs/${jobId}/workflow/state`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueue {
   
   const [rawState, setRawState] = useState<WorkflowRealtimeState | null>(null);
@@ -352,8 +369,22 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     };
     
     import('@/infrastructure/sse/SSEManager').then(({ sseManager }) => {
+      // ✅ 연결 보장: updateKanban이 setRunning() 없이 currentJobId를 설정한 경우에도
+      // workflow SSE 연결이 수립되도록 한다. connectWorkflow는 idempotent하므로 안전.
+      if (stableJobId) {
+        sseManager.connectWorkflow(stableJobId);
+      }
+      
       const id = sseManager.registerHandlerWithId('workflow', handleWorkflowMessage);
       handlerIdRef.current = id;
+
+      // HTTP fallback: SSE 연결이 핸들러 등록보다 먼저 수립되어
+      // initial_state 메시지가 드롭되었을 경우를 대비하여 REST API로 현재 상태를 조회한다.
+      if (stableJobId) {
+        fetchWorkflowState(stableJobId).then(state => {
+          if (state) handleWorkflowMessage(state);
+        }).catch(() => { /* SSE will deliver updates if job is still running */ });
+      }
     });
     
     return () => {

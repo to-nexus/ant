@@ -58,6 +58,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       data = { ...data, totalElapsedTime: existingKanban.totalElapsedTime };
     }
     
+    // ✅ Preserve recursion tracking from existing state if not in incoming data.
+    // Workflow SSE (WorkflowBroadcaster) is the source of truth for recursion state via updateKanbanRecursion().
+    // KanbanBroadcaster may not include these fields; preserve to prevent gauge from resetting.
+    if (data.recursionCount === undefined && existingKanban?.recursionCount !== undefined) {
+      data = { ...data, recursionCount: existingKanban.recursionCount };
+    }
+    if (data.recursionLimit === undefined && existingKanban?.recursionLimit !== undefined) {
+      data = { ...data, recursionLimit: existingKanban.recursionLimit };
+    }
+    if (data.recursionTaskName === undefined && existingKanban?.recursionTaskName !== undefined) {
+      data = { ...data, recursionTaskName: existingKanban.recursionTaskName };
+    }
+    
     const kanbanJobId = data.jobId;
     const { selectedProject, selectedFeature } = state;
     const currentFeatureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;

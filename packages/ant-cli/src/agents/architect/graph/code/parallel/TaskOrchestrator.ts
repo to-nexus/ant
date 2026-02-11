@@ -52,6 +52,15 @@ function isDeterministicError(error: Error): boolean {
   );
 }
 
+/**
+ * Check if an error is a LangGraph recursion limit error.
+ * These need special handling: pause (not fail), no retry, resume-ready.
+ */
+function isRecursionLimitError(error: Error): boolean {
+  const msg = error.message || '';
+  return /recursion limit/i.test(msg);
+}
+
 export class TaskOrchestrator<T extends BaseTask> {
   // Shared state (protected by lock)
   private taskQueue: TaskQueue<T>;
@@ -76,6 +85,10 @@ export class TaskOrchestrator<T extends BaseTask> {
   private draining = false;
   private allDoneResolve: (() => void) | null = null;
   private isRunning = false;
+  
+  // ✅ Tracks whether any task was paused due to recursion limit.
+  // Unlike failedTasks (permanent), interrupted tasks remain in the queue for resume.
+  private hasInterruptedTasks = false;
 
   // Configuration
   private readonly config: OrchestratorConfig;
@@ -142,10 +155,11 @@ export class TaskOrchestrator<T extends BaseTask> {
       remainingQueue: this.taskQueue.getAll(),
       tokenUsage: this.accumulatedTokenUsage,
       hasFailures: this.failedTasks.length > 0,
+      hasInterruptedTasks: this.hasInterruptedTasks,
       ...(this.draining ? { drainReason: this.failedTasks[0]?.error.message || 'unknown' } : {}),
     };
 
-    console.log(`[Orchestrator] Finished. completed=${result.completedTasks.length}, failed=${result.failedTasks.length}, remaining=${result.remainingQueue.length}`);
+    console.log(`[Orchestrator] Finished. completed=${result.completedTasks.length}, failed=${result.failedTasks.length}, remaining=${result.remainingQueue.length}, interrupted=${this.hasInterruptedTasks}`);
     return result;
   }
 
@@ -230,10 +244,34 @@ export class TaskOrchestrator<T extends BaseTask> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
 
+      this.callbacks.onTaskFailure?.(task, error, workerId);
+
+      // ✅ Recursion limit: special handling — pause (not fail), no retry.
+      // The task is placed back at the front of the queue as interrupted.
+      // Other workers continue their current tasks; the job will be marked
+      // as interrupted after all workers finish (via hasInterruptedTasks).
+      if (isRecursionLimitError(error)) {
+        task.interrupted = true;
+        this.taskQueue.unshift(task);
+        this.hasInterruptedTasks = true;
+        console.warn(
+          `[Orchestrator] Task "${task.name}" PAUSED (recursion limit reached, worker ${workerId}) — queued for resume`,
+        );
+
+        try {
+          await this.saveCheckpoint({ reason: 'recursion_limit', canResume: true });
+        } catch (err) {
+          console.warn(`[Orchestrator] Post-pause checkpoint failed:`, err);
+        }
+
+        this.broadcastKanban();
+        this.spawnAvailableWorkers();
+        this.checkAllDone();
+        return;
+      }
+
       const attempts = ((task as any)._failedAttempts || 0) + 1;
       (task as any)._failedAttempts = attempts;
-
-      this.callbacks.onTaskFailure?.(task, error, workerId);
 
       const deterministic = isDeterministicError(error);
 

@@ -99,10 +99,10 @@ export class ServerConfigurator {
   }
 
   /**
-   * Setup authentication middleware for Cloud mode
+   * Setup authentication middleware
    */
   private setupAuthentication(app: Express): void {
-    if (this.config.mode !== 'cloud' || !this.deps.authService) {
+    if (!this.deps.authService) {
       return;
     }
 

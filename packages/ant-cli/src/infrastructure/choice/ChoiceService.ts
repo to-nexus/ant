@@ -2,11 +2,8 @@
  * Choice Service
  * 
  * Triage 결과에 따른 사용자 선택 관리
- * - Pending choice 저장/조회
+ * - Pending choice 저장/조회 (Redis)
  * - 선택 처리 및 라우팅
- * 
- * Cloud Mode: Uses Redis for cross-Pod consistency
- * Local Mode: Falls back to in-memory storage
  */
 
 import { ChoiceRequest, ChoiceResponse, PendingChoice } from './types';
@@ -20,23 +17,19 @@ const DEFAULT_EXPIRY_MS = 30 * 60 * 1000;
  * Choice Service Options
  */
 export interface ChoiceServiceOptions {
-  stateStore?: StateStorePort;  // For Cloud mode Redis support
+  stateStore: StateStorePort;
 }
 
 /**
  * Choice Service
+ * Always uses Redis for cross-Pod consistency (unified distributed system).
  */
 export class ChoiceService {
-  private pendingChoices: Map<string, PendingChoice> = new Map();  // Local fallback
-  private stateStore?: StateStorePort;  // Cloud mode Redis
+  private pendingChoices: Map<string, PendingChoice> = new Map();  // Local cache for hot path
+  private stateStore: StateStorePort;
   
-  constructor(options?: ChoiceServiceOptions) {
-    this.stateStore = options?.stateStore;
-    if (this.stateStore) {
-      console.log(`[ChoiceService] Initialized with Redis support (Cloud mode)`);
-    } else {
-      console.log(`[ChoiceService] Initialized with in-memory storage (Local mode)`);
-    }
+  constructor(options: ChoiceServiceOptions) {
+    this.stateStore = options.stateStore;
   }
   
   /**
@@ -74,9 +67,7 @@ export class ChoiceService {
   }
   
   /**
-   * Register a pending choice
-   * Cloud mode: Saves to Redis for cross-Pod access
-   * Local mode: Saves to in-memory Map
+   * Register a pending choice (saves to Redis + local cache)
    */
   async registerPendingChoiceAsync(
     jobId: string,
@@ -89,7 +80,6 @@ export class ChoiceService {
     const now = Date.now();
     const expiresAt = now + DEFAULT_EXPIRY_MS;
     
-    // Always save to local cache for immediate access
     const pendingChoice: PendingChoice = {
       jobId,
       projectId,
@@ -99,26 +89,21 @@ export class ChoiceService {
       createdAt: now,
       expiresAt
     };
+    
+    // Save to local cache for immediate access
     this.pendingChoices.set(key, pendingChoice);
     
-    // Cloud mode: Also save to Redis
-    if (this.stateStore) {
-      try {
-        const redisData: PendingChoiceData = {
-          jobId,
-          projectId,
-          featureName,
-          triageResult: this.toRedisTriageResult(triageResult),
-          originalDirective,
-          createdAt: now,
-          expiresAt
-        };
-        await this.stateStore.setPendingChoice(key, redisData);
-        console.log(`[ChoiceService] Registered pending choice in Redis: ${key}`);
-      } catch (error) {
-        console.error(`[ChoiceService] Failed to save to Redis, using local only:`, error);
-      }
-    }
+    // Save to Redis for cross-Pod consistency
+    const redisData: PendingChoiceData = {
+      jobId,
+      projectId,
+      featureName,
+      triageResult: this.toRedisTriageResult(triageResult),
+      originalDirective,
+      createdAt: now,
+      expiresAt
+    };
+    await this.stateStore.setPendingChoice(key, redisData);
     
     console.log(`[ChoiceService] Registered pending choice for ${key} (directive: ${originalDirective ? 'yes' : 'no'})`);
   }
@@ -139,46 +124,38 @@ export class ChoiceService {
   }
   
   /**
-   * Get pending choice
-   * Cloud mode: Checks Redis first for cross-Pod consistency
-   * Local mode: Uses in-memory Map
+   * Get pending choice from Redis (with local cache fallback for hot path)
    */
   async getPendingChoiceAsync(projectId: string, featureName: string): Promise<PendingChoice | undefined> {
     const key = this.getKey(projectId, featureName);
     
-    // Cloud mode: Try Redis first
-    if (this.stateStore) {
-      try {
-        const redisData = await this.stateStore.getPendingChoice(key);
-        if (redisData) {
-          // Restore to local cache
-          const pending: PendingChoice = {
-            jobId: redisData.jobId,
-            projectId: redisData.projectId,
-            featureName: redisData.featureName,
-            triageResult: this.fromRedisTriageResult(redisData.triageResult),
-            originalDirective: redisData.originalDirective,
-            createdAt: redisData.createdAt,
-            expiresAt: redisData.expiresAt
-          };
-          this.pendingChoices.set(key, pending);
-          console.log(`[ChoiceService] Loaded pending choice from Redis: ${key}`);
-          return pending;
-        }
-      } catch (error) {
-        console.error(`[ChoiceService] Failed to load from Redis, trying local:`, error);
+    // Try Redis first (source of truth)
+    try {
+      const redisData = await this.stateStore.getPendingChoice(key);
+      if (redisData) {
+        const pending: PendingChoice = {
+          jobId: redisData.jobId,
+          projectId: redisData.projectId,
+          featureName: redisData.featureName,
+          triageResult: this.fromRedisTriageResult(redisData.triageResult),
+          originalDirective: redisData.originalDirective,
+          createdAt: redisData.createdAt,
+          expiresAt: redisData.expiresAt
+        };
+        this.pendingChoices.set(key, pending);
+        return pending;
       }
+    } catch (error) {
+      console.error(`[ChoiceService] Failed to load from Redis, trying local cache:`, error);
     }
     
-    // Fallback to local cache
+    // Fallback to local cache (hot path optimization)
     const pending = this.pendingChoices.get(key);
-    
     if (!pending) return undefined;
     
     // Check expiry
     if (Date.now() > pending.expiresAt) {
       this.pendingChoices.delete(key);
-      console.log(`[ChoiceService] Pending choice expired for ${key}`);
       return undefined;
     }
     
@@ -205,50 +182,32 @@ export class ChoiceService {
   }
   
   /**
-   * Clear pending choice
-   * Cloud mode: Removes from both Redis and local cache
+   * Clear pending choice from Redis and local cache
    */
   async clearPendingChoiceAsync(projectId: string, featureName: string): Promise<void> {
     const key = this.getKey(projectId, featureName);
     
-    // Remove from local cache
     this.pendingChoices.delete(key);
-    
-    // Cloud mode: Remove from Redis
-    if (this.stateStore) {
-      try {
-        await this.stateStore.deletePendingChoice(key);
-        console.log(`[ChoiceService] Cleared pending choice from Redis: ${key}`);
-      } catch (error) {
-        console.error(`[ChoiceService] Failed to delete from Redis:`, error);
-      }
-    }
+    await this.stateStore.deletePendingChoice(key);
     
     console.log(`[ChoiceService] Cleared pending choice for ${key}`);
   }
   
   /**
-   * Sync version
+   * Sync version (fire-and-forget Redis deletion)
    */
   clearPendingChoice(projectId: string, featureName: string): void {
     const key = this.getKey(projectId, featureName);
     this.pendingChoices.delete(key);
     
-    // Fire and forget Redis deletion
-    if (this.stateStore) {
-      this.stateStore.deletePendingChoice(key)
-        .catch(err => console.error(`[ChoiceService] Background delete failed:`, err));
-    }
-    
-    console.log(`[ChoiceService] Cleared pending choice for ${key}`);
+    this.stateStore.deletePendingChoice(key)
+      .catch(err => console.error(`[ChoiceService] Background delete failed:`, err));
   }
   
   /**
    * Handle user choice
-   * IMPORTANT: Uses async getPendingChoiceAsync for Cloud mode cross-Pod support
    */
   async handleChoice(request: ChoiceRequest): Promise<ChoiceResponse> {
-    // ✅ CRITICAL: Use async version to check Redis for cross-Pod/restart recovery
     const pending = await this.getPendingChoiceAsync(request.projectId, request.featureName);
     
     if (!pending) {
@@ -264,7 +223,6 @@ export class ChoiceService {
     const { triageResult } = pending;
     const { choice } = request;
     
-    // Clear pending choice (async to clean up Redis)
     await this.clearPendingChoiceAsync(request.projectId, request.featureName);
     
     // Handle based on choice
@@ -404,5 +362,4 @@ export class ChoiceService {
   }
 }
 
-// Export singleton instance
-export const choiceService = new ChoiceService();
+// NOTE: No singleton export — always construct with { stateStore } from InfrastructureFactory

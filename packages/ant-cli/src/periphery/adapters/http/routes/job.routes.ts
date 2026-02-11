@@ -13,54 +13,39 @@ import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/ut
 /**
  * Job execution routes
  * 
- * Cloud-safe: Uses Redis StateStore for cross-pod job state management
+ * Uses Redis StateStore for cross-pod job state management (always distributed).
  */
 export function createJobRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   executeJob: (params: ExecuteJobParams) => Promise<any>;
-  getJobStatus: (jobId: string) => any;
-  getLogs: (jobId: string) => LogEntry[];
   cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn' | 'plan', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
   chatService: import('../services/ChatService').ChatService;
-  config?: { mode: 'local' | 'cloud' };
-  stateStore?: StateStorePort;
+  stateStore: StateStorePort;
 }): Router {
   const router = Router();
   
   /**
-   * Helper: Get job status from StateStore (Cloud) or legacy (Local)
+   * Get job status from Redis StateStore
    */
   async function getJobStatusAsync(jobId: string): Promise<JobStatusData | null> {
-    if (deps.stateStore) {
-      return deps.stateStore.getJobStatus(jobId);
-    }
-    // Legacy fallback (local mode)
-    const status = deps.getJobStatus(jobId);
-    return status || null;
+    return deps.stateStore.getJobStatus(jobId);
   }
   
   /**
-   * Helper: Get job logs from StateStore (Cloud) or legacy (Local)
+   * Get job logs from Redis StateStore
    */
   async function getJobLogsAsync(jobId: string): Promise<LogEntry[]> {
-    if (deps.stateStore) {
-      return deps.stateStore.getJobLogs(jobId);
-    }
-    // Legacy fallback (local mode)
-    return deps.getLogs(jobId);
+    return deps.stateStore.getJobLogs(jobId);
   }
   
   /**
-   * Helper: Check if feature already has a running job
+   * Check if feature already has a running job
    */
   async function checkDuplicateJob(projectId: string, featureName: string): Promise<string | undefined> {
-    if (deps.stateStore) {
-      const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
-      const running = jobs.find(j => j.status === 'running');
-      return running?.jobId;
-    }
-    return undefined;
+    const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+    const running = jobs.find(j => j.status === 'running');
+    return running?.jobId;
   }
   
   // Execute task for a specific feature
@@ -153,32 +138,28 @@ export function createJobRoutes(deps: {
     
     console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
     console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
-    console.log(`   Mode: ${deps.config?.mode || 'local'}`);
-    
     const userContext = extractUserContext(req);
     console.log(`   UserContext: ${userContext.userId}@${userContext.organizationId}`);
     
-    // Mark as user-stopped in Redis (for all modes)
-    if (deps.stateStore) {
-      await deps.stateStore.markUserStopped(jobId);
-      console.log(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
-      
-      // Publish stop signal to Job Workers via Redis Pub/Sub
-      await deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, { 
-        jobId, 
-        projectId, 
-        featureName,
-        timestamp: new Date().toISOString() 
-      });
-      console.log(`   ✅ Published stop signal to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`);
-      
-      // Update job status in Redis
-      await deps.stateStore.updateJobStatus(jobId, {
-        status: 'failed',
-        completedAt: new Date().toISOString(),
-        error: 'Task stopped by user'
-      });
-    }
+    // Mark as user-stopped in Redis
+    await deps.stateStore.markUserStopped(jobId);
+    console.log(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
+    
+    // Publish stop signal to Job Workers via Redis Pub/Sub
+    await deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, { 
+      jobId, 
+      projectId, 
+      featureName,
+      timestamp: new Date().toISOString() 
+    });
+    console.log(`   ✅ Published stop signal to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`);
+    
+    // Update job status in Redis
+    await deps.stateStore.updateJobStatus(jobId, {
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      error: 'Task stopped by user'
+    });
     
     // Clean up task state
     const interruption: InterruptionDetails = {
