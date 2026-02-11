@@ -319,10 +319,12 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
           );
           taskName = latestNode.taskName;
         }
+        // Universal rule: fallback to 'unknown' when no task is selected
+        // (matches WorkflowBroadcaster default: { name: 'unknown' })
         useStore.getState().updateKanbanRecursion(
           data.recursionCount,
           data.recursionLimit,
-          taskName
+          taskName || 'unknown'
         );
       }
 

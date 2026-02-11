@@ -2,8 +2,12 @@
  * Generate Node
  * 
  * ReAct agent that generates or refines the PRD.
- * Uses StreamOrchestrator for real-time file card streaming (same as design job's docGen).
- * LLM wraps PRD output in <file path="outputs/plan/prd-refine.md">...</file> tags.
+ * 
+ * Two output modes:
+ *  - Generate mode: LLM outputs full PRD via <file path="outputs/plan/prd-refine.md">...</file> tags.
+ *    StreamOrchestrator handles real-time file card streaming.
+ *  - Refine mode: LLM uses edit_file tool for targeted search/replace edits on the staging copy.
+ *    After all edits, the staging file is read back as the generated document.
  * 
  * Unlike design job which uses writeImmediately=true with gitPort/fileSystem,
  * planner writes to disk after orchestrator.finalize() (single file, no timing difference).
@@ -15,7 +19,7 @@ import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import Handlebars from 'handlebars';
 import { PlanGraphState } from '../state';
-import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers';
+import { extractTokenUsageFromStreamEvent, accumulateTokenUsage } from '../../../../common/graph/llmHelpers';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
@@ -147,8 +151,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         toolCall = { id: id || uuidv4(), name, args: input };
       }
       
-      if (event.type === 'done' && event.usage) {
-        accumulateTokenUsage(state, event.usage, { taskLevel: false, jobLevel: true });
+      if (event.type === 'done') {
+        const capturedUsage = extractTokenUsageFromStreamEvent(event);
+        if (capturedUsage) {
+          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
+        }
       }
     }
   } catch (error: any) {
@@ -185,6 +192,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     return {
       conversationHistory: updatedHistory,
       pendingToolCall: toolCall,
+      tokenUsage: state.tokenUsage,
     };
   }
   
@@ -194,7 +202,19 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // Extract file content from registry (populated by StreamOrchestrator via <file> tags)
   const files = orchestrator.getRegistry().getAllFiles();
   const prdFile = files.find(f => f.path.includes('prd-refine'));
-  const generatedDocument = prdFile?.content || undefined;
+  let generatedDocument = prdFile?.content || undefined;
+  
+  // Edit-based refine: if no <file> output, read the staging file (modified by edit_file tool calls)
+  if (!generatedDocument && state.mode === 'refine') {
+    const editStagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
+    try {
+      generatedDocument = await fsPromises.readFile(editStagingPath, 'utf-8');
+      console.log(`📝 [Planner:Generate] Read edited PRD from staging (${generatedDocument.length} chars)`);
+    } catch {
+      // No staging file — no edits were made
+      console.log(`📝 [Planner:Generate] No staging file found (no edits made)`);
+    }
+  }
   
   // === Post-stream: disk write + choice card + session (same role as design job's docGen) ===
   if (generatedDocument) {
@@ -205,7 +225,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
     }
     
-    // Write to disk
+    // Write to disk (for <file> tag mode; for edit mode this is a harmless overwrite of same content)
     try {
       await fsPromises.mkdir(path.dirname(stagingPath), { recursive: true });
       await fsPromises.writeFile(stagingPath, generatedDocument, 'utf-8');
@@ -215,18 +235,43 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       throw error;
     }
     
-    // Record session turn
+    // ✅ Notify file tree update (Redis Pub/Sub → Realtime Server → SSE)
+    if (state.deps?.fileTreeUpdate) {
+      const projectId = process.env.ANT_PROJECT_ID;
+      const featureName = process.env.ANT_FEATURE_NAME;
+      if (!projectId || !featureName) {
+        console.warn(`⚠️ [Planner:Generate] Cannot notify file tree: missing ANT_PROJECT_ID or ANT_FEATURE_NAME`);
+      } else {
+        try {
+          state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
+          console.log(`📂 [Planner:Generate] File tree update notified`);
+        } catch (error: any) {
+          console.warn(`⚠️ [Planner:Generate] Failed to notify file tree update: ${error.message}`);
+        }
+      }
+    }
+    
+    // Record session turn (matching SessionTurnSchema: job, input, output required)
     try {
       const session = state.deps?.session;
       if (session) {
-        const projectId = process.env.ANT_PROJECT_ID || 'default';
-        const featureName = process.env.ANT_FEATURE_NAME || 'skeleton';
+        const projectId = session.projectId || process.env.ANT_PROJECT_ID || 'default';
+        const featureName = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
+        
+        const directiveSummary = (state.directive || '').substring(0, 200);
         
         await session.addTurn(projectId, featureName, 'plan', {
-          directive: state.directive,
-          mode: state.mode,
+          turnId: 0, // Will be set by adapter
+          job: 'plan',
           timestamp: new Date().toISOString(),
-          tokenUsage: state.tokenUsage,
+          input: {
+            type: 'directive',
+            source: state.mode === 'refine' ? 'inputs/sources/prd.md' : undefined,
+            summary: directiveSummary,
+          },
+          output: {
+            planSummary: `PRD ${state.mode} completed (${generatedDocument.length} chars)`,
+          },
         });
       }
     } catch (error: any) {
@@ -272,6 +317,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     conversationHistory: updatedHistory,
     generatedDocument,
     pendingToolCall: undefined,
+    tokenUsage: state.tokenUsage,
   };
 }
 
