@@ -444,21 +444,21 @@ export class ModeController {
     }
     
     // 3. Infer from language and context (no design doc or unclear indicators)
-    const language = this.detectLanguage(context);
+    const resolvedLanguage = language ?? this.detectLanguage(context);
     
     // If TypeScript/JavaScript without clear indicators, default to browser (most common)
-    if (language === 'typescript' || language === 'javascript') {
+    if (resolvedLanguage === 'typescript' || resolvedLanguage === 'javascript') {
       console.log('[ModeController] No clear environment indicators, defaulting to: browser');
       return 'browser';
     }
     
     // For backend languages, default to language-specific API environment
-    if (language === 'golang') {
-      console.log(`[ModeController] Backend language (${language}), defaulting to: go-api`);
+    if (resolvedLanguage === 'golang') {
+      console.log(`[ModeController] Backend language (${resolvedLanguage}), defaulting to: go-api`);
       return 'go-api';
     }
-    if (language === 'python' || language === 'rust' || language === 'java') {
-      console.log(`[ModeController] Backend language (${language}), defaulting to: node-api`);
+    if (resolvedLanguage === 'python' || resolvedLanguage === 'rust' || resolvedLanguage === 'java') {
+      console.log(`[ModeController] Backend language (${resolvedLanguage}), defaulting to: node-api`);
       return 'node-api';
     }
     
