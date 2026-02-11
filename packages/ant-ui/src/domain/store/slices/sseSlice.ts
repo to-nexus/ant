@@ -432,14 +432,25 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }
     });
     
+    // Register status callback so connectionStatus reflects actual EventSource state
+    // (not set optimistically before onopen fires)
+    sseManager.setStatusCallback((status) => {
+      const currentStatus = get().connectionStatus;
+      if (currentStatus !== status) {
+        set({ connectionStatus: status });
+        console.log(`[Store] 📡 SSE connection status: ${status}`);
+      }
+    });
+    
     sseManager.connect(state.selectedProject, state.selectedFeature, jobType);
     
     if (state.currentJobId) {
       sseManager.connectWorkflow(state.currentJobId);
     }
     
-    set({ connectionStatus: 'connected' });
-    console.log('[Store] ✅ Unified SSE connection initialized');
+    // NOTE: connectionStatus is now set by SSEManager's onopen callback via statusCallback
+    // (previously set optimistically here before EventSource was actually connected)
+    console.log('[Store] ✅ Unified SSE connection initializing (waiting for onopen...)');
   },
   
   cleanupSSE: () => {
