@@ -292,6 +292,7 @@ export async function orchestrator(params: {
         language: language as 'ko' | 'en',
         workspaceState: { featurePath: featurePath || '' } as any,
         featurePath: featurePath || '',
+        isResume: !!(overrideDirective && jobId),  // continue endpoint sets both
         chatSource: chatSource,
         deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate },
         _httpJobId: jobId,
