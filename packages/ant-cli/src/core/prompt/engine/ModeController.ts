@@ -186,7 +186,7 @@ export class ModeController {
     if (phase === 'execute') {
       // Environment-specific rules (code job only)
       const language = this.detectLanguage(context);
-      const environment = this.detectEnvironment(context);
+      const environment = this.detectEnvironment(context, language);
       
       if (language && job === 'code') {
         const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
@@ -293,19 +293,22 @@ export class ModeController {
    * Detect project environment from codebase profile or design document
    * Always returns an inferred environment (never null)
    */
-  private detectEnvironment(context: AssembledContext): string {
+  private detectEnvironment(context: AssembledContext, language?: string): string {
     // 0. ✨ HIGHEST PRIORITY: Use pre-detected environment from detectEnvironment node (LLM-based)
     // This is more accurate than heuristics as it analyzed the full design document
     const preDetected = (context as any).detectedEnvironment;
     if (preDetected) {
+      // ✅ Language-aware backend environment mapping
+      // Go projects use 'go-api' instead of 'node-api' for correct template path resolution
+      const backendEnv = language === 'golang' ? 'go-api' : 'node-api';
       const envMap: Record<string, string> = {
         'frontend': 'browser',
-        'backend': 'node-api',
+        'backend': backendEnv,
         'fullstack': 'fullstack',
       };
       const mapped = envMap[preDetected];
       if (mapped) {
-        console.log(`[ModeController] Using pre-detected environment from LLM: ${preDetected} -> ${mapped}`);
+        console.log(`[ModeController] Using pre-detected environment from LLM: ${preDetected} -> ${mapped} (language: ${language || 'unknown'})`);
         return mapped;
       }
     }
@@ -327,8 +330,9 @@ export class ModeController {
           fileName.includes('backend-design') ||
           fileName.includes('be-design') ||
           fileName.includes('api-design')) {
-        console.log(`[ModeController] Detected environment from file name (${context.designDocPath}): node-api`);
-        return 'node-api';
+        const backendEnv = language === 'golang' ? 'go-api' : 'node-api';
+        console.log(`[ModeController] Detected environment from file name (${context.designDocPath}): ${backendEnv}`);
+        return backendEnv;
       }
       
       // Fullstack design document
@@ -393,12 +397,14 @@ export class ModeController {
         doc.includes('nestjs') ||
         doc.includes('koa') ||
         doc.includes('hapi') ||
-        doc.includes('database') && (doc.includes('prisma') || doc.includes('typeorm') || doc.includes('mongoose')) ||
+        doc.includes('gin') && doc.includes('go') ||  // Go: Gin framework
+        doc.includes('database') && (doc.includes('prisma') || doc.includes('typeorm') || doc.includes('mongoose') || doc.includes('gorm') || doc.includes('sqlx')) ||
         doc.includes('microservice');
       
       if (isBackendAPI) {
-        console.log('[ModeController] Inferred environment from design doc: node-api');
-        return 'node-api';
+        const backendEnv = language === 'golang' ? 'go-api' : 'node-api';
+        console.log(`[ModeController] Inferred environment from design doc: ${backendEnv}`);
+        return backendEnv;
       }
       
       // Browser SPA indicators
@@ -426,11 +432,14 @@ export class ModeController {
         doc.includes('terminal tool') ||
         doc.includes('npm package') && doc.includes('bin') ||
         doc.includes('commander') ||
-        doc.includes('inquirer');
+        doc.includes('inquirer') ||
+        doc.includes('cobra') ||  // Go: Cobra CLI framework
+        doc.includes('urfave/cli');  // Go: urfave/cli framework
       
       if (isCLI) {
-        console.log('[ModeController] Inferred environment from design doc: node-cli');
-        return 'node-cli';
+        const cliEnv = language === 'golang' ? 'go-cli' : 'node-cli';
+        console.log(`[ModeController] Inferred environment from design doc: ${cliEnv}`);
+        return cliEnv;
       }
     }
     
@@ -443,8 +452,12 @@ export class ModeController {
       return 'browser';
     }
     
-    // For backend languages, default to node-api
-    if (language === 'golang' || language === 'python' || language === 'rust' || language === 'java') {
+    // For backend languages, default to language-specific API environment
+    if (language === 'golang') {
+      console.log(`[ModeController] Backend language (${language}), defaulting to: go-api`);
+      return 'go-api';
+    }
+    if (language === 'python' || language === 'rust' || language === 'java') {
       console.log(`[ModeController] Backend language (${language}), defaulting to: node-api`);
       return 'node-api';
     }
