@@ -279,58 +279,6 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   // ============================================
-  // Interruption handling
-  // ============================================
-
-  /**
-   * Gracefully interrupt all running workers.
-   * Captures each worker's state and pushes interrupted tasks back to queue.
-   */
-  async handleInterruption(reason: string): Promise<void> {
-    await this.lock.runExclusive(async () => {
-      this.draining = true;
-
-      // Signal all workers to stop
-      for (const worker of this.workers.values()) {
-        worker.requestStop();
-      }
-
-      // Wait for workers to finish current operations and capture state
-      for (const [wId, worker] of this.workers) {
-        const task = this.runningTasks.get(wId);
-        if (!task) continue;
-
-        const snapshot = await worker.captureState();
-        task.interrupted = true;
-
-        // Store resume state in the task itself
-        if (snapshot && 'resumeState' in task) {
-          (task as any).resumeState = {
-            planText: snapshot.planText || '',
-            conversationHistory: snapshot.conversationHistory || [],
-            projectCodeContext: snapshot.projectCodeContext,
-            retries: snapshot.retries || 0,
-            violations: snapshot.violations,
-            enforcementHistory: snapshot.enforcementHistory,
-            tokenUsage: snapshot.tokenUsage,
-          };
-        }
-
-        this.taskQueue.push(task);
-        this.runningTasks.delete(wId);
-      }
-
-      // Save checkpoint
-      await this.saveCheckpoint({
-        reason,
-        canResume: true,
-      });
-
-      this.checkAllDone();
-    });
-  }
-
-  // ============================================
   // Internal helpers
   // ============================================
 
@@ -538,5 +486,48 @@ export class TaskOrchestrator<T extends BaseTask> {
 
   isDraining(): boolean {
     return this.draining;
+  }
+
+  // ============================================
+  // Interruption handling
+  // ============================================
+
+  /**
+   * Stop accepting new tasks and halt periodic checkpointing.
+   */
+  private drain(): void {
+    this.draining = true;
+    this.stopPeriodicCheckpoint();
+  }
+
+  /**
+   * Signal all active workers to stop after their current iteration.
+   */
+  private signalWorkersToStop(): void {
+    for (const worker of this.workers.values()) {
+      worker.requestStop();
+    }
+  }
+
+  /**
+   * Handle external interruption (e.g. SIGTERM via graceful shutdown).
+   * 
+   * Flow:
+   *   1. drain()                — stop new task dispatch + periodic checkpoint
+   *   2. signalWorkersToStop()  — workers exit after current iteration
+   *   3. saveCheckpoint()       — running tasks pushed back to queue as interrupted
+   *   4. checkAllDone()         — resolve run() if no running tasks remain
+   * 
+   * Called by gracefulShutdown.ts when the process receives SIGTERM.
+   */
+  async handleInterruption(reason: string): Promise<void> {
+    console.log(`[TaskOrchestrator] handleInterruption called: ${reason}`);
+
+    await this.lock.runExclusive(async () => {
+      this.drain();
+      this.signalWorkersToStop();
+      await this.saveCheckpoint({ reason, canResume: true });
+      this.checkAllDone();
+    });
   }
 }

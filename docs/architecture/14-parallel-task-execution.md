@@ -102,8 +102,22 @@ Worker Thread나 child process를 사용하지 않는다.
 | `requestTask(workerId)` | 충돌 없는 다음 task 할당 |
 | `reportCompletion(workerId, task)` | 완료 처리 + 체크포인트 |
 | `reportFailure(workerId, task, error)` | 에러 분류 + 재시도/영구실패 |
-| `handleInterruption(reason)` | graceful 중단, running task를 큐로 복원 |
+| `handleInterruption(reason)` | graceful 중단 (아래 상세 참조) |
 | `saveCheckpoint()` | 현재 상태를 세션 파일에 저장 |
+
+**handleInterruption 내부 흐름:**
+
+```
+handleInterruption(reason)
+  └─ lock.runExclusive:
+       1. drain()              — draining=true, 주기적 체크포인트 중지
+       2. signalWorkersToStop() — 모든 worker에 requestStop() 호출
+       3. saveCheckpoint()     — running task를 interrupted로 마킹, 큐에 복원
+       4. checkAllDone()       — running task가 0이면 run() resolve
+```
+
+`drain()`과 `signalWorkersToStop()`은 private 헬퍼 메서드로 분리되어 있다.
+`gracefulShutdown.ts`에서 SIGTERM 수신 시 등록된 orchestrator의 `handleInterruption()`을 호출한다.
 
 ### 3.3 TaskWorker
 
@@ -178,7 +192,7 @@ spawnAvailableWorkers():
 | task 완료 | `reportCompletion()` → `saveCheckpoint()` |
 | task 실패 | `reportFailure()` → `saveCheckpoint()` |
 | 주기적 | 60초 interval timer |
-| 사용자 중단 | `handleInterruption()` → `saveCheckpoint()` |
+| 사용자 중단 | `handleInterruption()` → drain + signalStop + saveCheckpoint + checkAllDone |
 | 병렬 실행 완료 (실패 존재) | `parallelOrchestrator` → `updateArtifacts()` |
 
 ### 5.2 체크포인트 내용
