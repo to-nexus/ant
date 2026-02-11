@@ -265,6 +265,10 @@ export async function detectEnvironment(
     const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
     console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
+    // ✅ Push live token update to Kanban UI during estimating phase
+    if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
+      state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+    }
   }
   
   // 3. Parse Response

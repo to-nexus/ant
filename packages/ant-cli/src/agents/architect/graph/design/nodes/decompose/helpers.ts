@@ -196,6 +196,10 @@ export async function trackTokenUsage(state: DesignGraphState, usage: any): Prom
   if (!usage) return;
   const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
   accumulateTokenUsage(state as any, usage, { taskLevel: false, jobLevel: true });
+  // ✅ Push live token update to Kanban UI during estimating phase
+  if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
+    state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+  }
 }
 
 // ============================================

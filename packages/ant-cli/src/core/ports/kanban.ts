@@ -52,6 +52,13 @@ export interface TaskQueueUpdatePort {
   setEstimatingActivity?(label: string, nodeId?: string): void;
 
   /**
+   * Update job-level token usage and re-broadcast if in estimating mode.
+   * Called after accumulateTokenUsage() during the estimating phase
+   * (triage, detectEnvironment, decompose) so the frontend badge updates in real-time.
+   */
+  updateTokenUsage?(tokenUsage: TaskTokenUsage): void;
+
+  /**
    * Save a checkpoint snapshot to Redis for disaster recovery.
    * Unlike updateTaskQueue, this does NOT broadcast via Pub/Sub — it only
    * persists the snapshot to Redis so that cleanupJobState can use it as

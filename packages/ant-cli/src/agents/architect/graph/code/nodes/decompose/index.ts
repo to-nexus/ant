@@ -279,6 +279,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     if (decomposeTokenUsage) {
       const { finalizeStreamTokenUsage } = await import('../../../../../common/graph/llmHelpers');
       finalizeStreamTokenUsage(state as any, decomposeTokenUsage, { taskLevel: false, jobLevel: true });
+      // ✅ Push live token update to Kanban UI during estimating phase
+      if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
+        state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      }
     }
   } catch (error) {
     logErrorHeader('Decompose');
