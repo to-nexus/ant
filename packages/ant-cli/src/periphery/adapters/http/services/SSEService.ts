@@ -109,8 +109,13 @@ export class SSEService {
   /**
    * Register SSE client for a project/feature
    * Subscribes to user-specific channels on first registration
+   * 
+   * CRITICAL: subscribeToUserChannels is awaited to ensure Redis subscription
+   * is active BEFORE returning. This prevents a race condition where updates
+   * published by Job Worker via Redis are lost because the subscription
+   * wasn't established yet when initial state was sent.
    */
-  registerClient(projectId: string, featureName: string, res: Response, userContext: UserContext): void {
+  async registerClient(projectId: string, featureName: string, res: Response, userContext: UserContext): Promise<void> {
     if (!userContext?.organizationId || !userContext?.userId) {
       logger.error('Cannot register client without userContext', { component: 'SSEService', projectId, featureName });
       return;
@@ -125,10 +130,14 @@ export class SSEService {
     this.clients.get(key)!.add(res);
     logger.debug(`Client registered: ${key} (total: ${this.clients.get(key)!.size})`, { component: 'SSEService', projectId, featureName });
     
-    // Subscribe to user-specific channels (if not already subscribed)
-    this.subscribeToUserChannels(userContext).catch(error => {
+    // Subscribe to user-specific channels (MUST await to prevent race condition)
+    // Without await, Redis updates published between subscribe() and initial state
+    // delivery would be permanently lost.
+    try {
+      await this.subscribeToUserChannels(userContext);
+    } catch (error) {
       logger.error('Failed to subscribe to user channels', { component: 'SSEService' }, error);
-    });
+    }
     
     // Handle client disconnect
     res.on('close', () => {
@@ -142,8 +151,11 @@ export class SSEService {
   
   /**
    * Register workflow SSE client for a job
+   * 
+   * CRITICAL: subscribeToUserChannels is awaited to ensure Redis subscription
+   * is active BEFORE returning (same rationale as registerClient).
    */
-  registerWorkflowClient(jobId: string, res: Response, userContext?: UserContext): void {
+  async registerWorkflowClient(jobId: string, res: Response, userContext?: UserContext): Promise<void> {
     if (!this.workflowClients.has(jobId)) {
       this.workflowClients.set(jobId, new Set());
     }
@@ -151,11 +163,13 @@ export class SSEService {
     this.workflowClients.get(jobId)!.add(res);
     logger.debug(`Workflow client registered: ${jobId} (total: ${this.workflowClients.get(jobId)!.size})`, { component: 'SSEService', jobId });
     
-    // Subscribe to user-specific workflow channel
+    // Subscribe to user-specific workflow channel (MUST await to prevent race condition)
     if (userContext?.organizationId && userContext?.userId) {
-      this.subscribeToUserChannels(userContext).catch(error => {
+      try {
+        await this.subscribeToUserChannels(userContext);
+      } catch (error) {
         logger.error('Failed to subscribe to user workflow channels', { component: 'SSEService' }, error);
-      });
+      }
     }
     
     // Handle client disconnect

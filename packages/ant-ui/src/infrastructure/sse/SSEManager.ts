@@ -55,7 +55,11 @@ interface WorkflowConnection {
   url: string;
   jobId: string;
   isConnected: boolean;
+  reconnectAttempts: number;
 }
+
+export type ConnectionStatus = 'connected' | 'disconnected' | 'error';
+export type ConnectionStatusCallback = (status: ConnectionStatus) => void;
 
 class SSEManager {
   // Single unified SSE connection per project/feature
@@ -71,6 +75,17 @@ class SSEManager {
   private handlerRegistry: Map<HandlerId, { type: SSEMessageType; handler: SSEMessageHandler }> = new Map();
   
   private maxReconnectAttempts = 5;
+  
+  // Connection status callback - notifies Store when SSE connection status changes
+  private statusCallback: ConnectionStatusCallback | null = null;
+  
+  /**
+   * Register a callback to be notified when unified SSE connection status changes.
+   * Called from Store's initializeSSE() so connectionStatus reflects actual EventSource state.
+   */
+  setStatusCallback(callback: ConnectionStatusCallback): void {
+    this.statusCallback = callback;
+  }
   
   /**
    * Register message handler for a specific type
@@ -191,6 +206,8 @@ class SSEManager {
           this.unifiedConnection.isConnected = true;
           this.unifiedConnection.reconnectAttempts = 0;
         }
+        // Notify Store that SSE is actually connected (not optimistic)
+        this.statusCallback?.('connected');
       };
       
       eventSource.onmessage = (event) => {
@@ -205,6 +222,11 @@ class SSEManager {
       
       eventSource.onerror = (error) => {
         console.error(`[SSEManager] Connection error:`, error);
+        // NOTE: Do NOT call statusCallback('error') on every onerror.
+        // EventSource fires onerror on transient network issues and the browser
+        // auto-reconnects. Setting 'error' would cause connectionStatus flickering
+        // which breaks useFileTree, useChat, useUIActionPolicy, etc.
+        // Only report 'error' when all reconnection attempts are exhausted.
         if (this.unifiedConnection) {
           this.unifiedConnection.isConnected = false;
           this.unifiedConnection.reconnectAttempts++;
@@ -217,6 +239,8 @@ class SSEManager {
             const savedUrl = new URL(this.unifiedConnection.url);
             const savedJob = savedUrl.searchParams.get('job') || 'code';
             
+            // Report error only when giving up on auto-reconnect
+            this.statusCallback?.('error');
             this.disconnect();
             
             setTimeout(() => {
@@ -280,6 +304,7 @@ class SSEManager {
         const conn = this.workflowConnections.get(jobId);
         if (conn) {
           conn.isConnected = true;
+          conn.reconnectAttempts = 0;
         }
       };
       
@@ -307,14 +332,33 @@ class SSEManager {
       
       eventSource.onerror = (error) => {
         console.error(`[SSEManager] Workflow connection error for ${jobId}:`, error);
-        this.disconnectWorkflow(jobId);
+        const conn = this.workflowConnections.get(jobId);
+        if (conn) {
+          conn.isConnected = false;
+          conn.reconnectAttempts++;
+          
+          if (conn.reconnectAttempts >= this.maxReconnectAttempts) {
+            // Exponential backoff retry after max attempts
+            const retryDelay = Math.min(30000, 1000 * Math.pow(2, conn.reconnectAttempts - this.maxReconnectAttempts));
+            console.log(`[SSEManager] Workflow reconnecting for ${jobId} in ${retryDelay}ms (attempt ${conn.reconnectAttempts})`);
+            
+            this.disconnectWorkflow(jobId);
+            
+            setTimeout(() => {
+              console.log(`[SSEManager] Workflow reconnecting for ${jobId}...`);
+              this.connectWorkflow(jobId);
+            }, retryDelay);
+          }
+          // If under maxReconnectAttempts, EventSource auto-reconnects (browser default)
+        }
       };
       
       this.workflowConnections.set(jobId, {
         eventSource,
         url: finalUrl,
         jobId,
-        isConnected: false
+        isConnected: false,
+        reconnectAttempts: 0
       });
       
     } catch (error) {
@@ -354,6 +398,7 @@ class SSEManager {
         console.error('[SSEManager] Error closing unified connection:', error);
       }
       this.unifiedConnection = null;
+      this.statusCallback?.('disconnected');
     }
   }
   
@@ -383,6 +428,7 @@ class SSEManager {
     });
     
     this.handlers.clear();
+    this.statusCallback = null;
   }
   
   /**

@@ -52,11 +52,11 @@ export function createSSERoutes(deps: {
       'X-Accel-Buffering': 'no'
     });
     
-    // Register client
-    deps.sseService.registerClient(projectId, featureName, res, userContext);
+    // Register client (await ensures Redis Pub/Sub subscription is active before initial state)
+    await deps.sseService.registerClient(projectId, featureName, res, userContext);
     logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
     
-    // Send initial states
+    // Send initial states (Redis subscription is now guaranteed active - no update gap)
     try {
       // 1. Send initial Kanban state
       const kanbanData = await deps.kanbanService.getKanbanData(
@@ -132,10 +132,10 @@ export function createSSERoutes(deps: {
       'X-Accel-Buffering': 'no'
     });
     
-    // Register workflow client (pass userContext for channel subscription)
-    deps.sseService.registerWorkflowClient(jobId, res, userContext);
+    // Register workflow client (await ensures Redis Pub/Sub subscription is active)
+    await deps.sseService.registerWorkflowClient(jobId, res, userContext);
     
-    // Send initial workflow state (if exists) - now async from Redis
+    // Send initial workflow state (if exists) - Redis subscription now guaranteed active
     const initialState = await deps.workflowStateService.getInitialState(jobId);
     if (initialState) {
       // activeActors is already an array (serialized for Redis)
