@@ -123,9 +123,25 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     
     console.log('🤖 [Revise] Asking LLM for decision...');
     
-    const response = await llm.invoke([
-      { role: 'user', content: prompt }
-    ]);
+    let response: string;
+    if (llm.invokeWithUsage) {
+      const result = await llm.invokeWithUsage([
+        { role: 'user', content: prompt }
+      ]);
+      response = result.content;
+      // ✅ Track token usage for revise node
+      if (result.usage) {
+        const { accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
+        accumulateTokenUsage(state as any, result.usage, { taskLevel: false, jobLevel: true });
+        if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
+          state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+        }
+      }
+    } else {
+      response = await llm.invoke([
+        { role: 'user', content: prompt }
+      ]);
+    }
     
     // Parse JSON response
     let decision: {
