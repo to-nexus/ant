@@ -602,47 +602,15 @@ export class ArtifactService {
     designPath: string
   ): Promise<string[]> {
     try {
-      // Use fileSystem to list directory contents
       const exists = await fileSystem.fileExists(designPath);
       if (!exists) return [];
       
-      // Try to list directory - implementation depends on FileSystemPort capabilities
-      const listDir = (fileSystem as any).listDirectory || (fileSystem as any).readdir;
-      if (listDir) {
-        const files = await listDir.call(fileSystem, designPath);
-        return files.filter((f: string) => f.endsWith('.md'));
-      }
-      
-      // Fallback: check known patterns manually
-      const knownPatterns = [
-        'api-contract.md',
-        'fe-system-design.md',
-        'be-system-design.md',
-        'system-design.md',
-      ];
-      
-      // Also check common service names for MSA
-      const commonServices = ['auth', 'user', 'order', 'payment', 'product', 'notification', 'gateway'];
-      const commonFePkgs = ['web', 'admin', 'mobile', 'shared-ui', 'common'];
-      
-      for (const svc of commonServices) {
-        knownPatterns.push(`be-system-design-${svc}.md`);
-      }
-      for (const pkg of commonFePkgs) {
-        knownPatterns.push(`fe-system-design-${pkg}.md`);
-      }
-      
-      const existing: string[] = [];
-      for (const pattern of knownPatterns) {
-        const filePath = path.join(designPath, pattern);
-        if (await fileSystem.fileExists(filePath)) {
-          existing.push(pattern);
-        }
-      }
-      
-      return existing;
+      const entries = await fileSystem.readDirectory(designPath);
+      return entries
+        .filter(e => !e.isDirectory && e.name.endsWith('.md'))
+        .map(e => e.name);
     } catch (error) {
-      console.warn(`⚠️  [ArtifactService] Failed to list design files:`, error);
+      console.error(`❌ [ArtifactService] Failed to list design files at ${designPath}:`, error);
       return [];
     }
   }
