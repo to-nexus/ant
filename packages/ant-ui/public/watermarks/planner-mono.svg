@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="plannerPaperMono" x1="116" y1="92" x2="398" y2="426" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#94A3B8"/>
+      <stop offset="1" stop-color="#64748B"/>
+    </linearGradient>
+  </defs>
+  <rect x="112" y="88" width="288" height="336" rx="24" fill="url(#plannerPaperMono)" opacity="0.85"/>
+  <path d="M192 88H352V180H256C220.654 180 192 151.346 192 116V88Z" fill="#CBD5E1"/>
+  <rect x="160" y="214" width="196" height="14" rx="7" fill="#E2E8F0"/>
+  <rect x="160" y="252" width="170" height="14" rx="7" fill="#E2E8F0"/>
+  <rect x="160" y="290" width="184" height="14" rx="7" fill="#E2E8F0"/>
+  <rect x="160" y="328" width="136" height="14" rx="7" fill="#E2E8F0"/>
+  <circle cx="160" cy="116" r="18" fill="#E2E8F0"/>
+  <rect x="152" y="108" width="16" height="16" rx="3" fill="#94A3B8"/>
+</svg>

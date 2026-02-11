@@ -144,6 +144,7 @@ export function ChatSidebarWrapper({
           projectId={selectedProject}
           featureName={selectedFeature}
           enabled={!isCollapsed}
+          selectedAgent={selectedAgent}
         />
       </div>
     </aside>

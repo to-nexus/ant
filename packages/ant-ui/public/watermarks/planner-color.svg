@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="plannerPaperColor" x1="116" y1="92" x2="398" y2="426" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset="0.55" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <linearGradient id="plannerFoldColor" x1="196" y1="88" x2="352" y2="188" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0E7FF"/>
+      <stop offset="1" stop-color="#BFDBFE"/>
+    </linearGradient>
+  </defs>
+  <rect x="112" y="88" width="288" height="336" rx="24" fill="url(#plannerPaperColor)"/>
+  <path d="M192 88H352V180H256C220.654 180 192 151.346 192 116V88Z" fill="url(#plannerFoldColor)"/>
+  <rect x="160" y="214" width="196" height="14" rx="7" fill="#EEF2FF"/>
+  <rect x="160" y="252" width="170" height="14" rx="7" fill="#EEF2FF"/>
+  <rect x="160" y="290" width="184" height="14" rx="7" fill="#EEF2FF"/>
+  <rect x="160" y="328" width="136" height="14" rx="7" fill="#EEF2FF"/>
+  <circle cx="160" cy="116" r="18" fill="#DBEAFE"/>
+  <rect x="152" y="108" width="16" height="16" rx="3" fill="#4F46E5"/>
+</svg>

@@ -4,7 +4,7 @@
  * Note: Header is managed by parent (App.tsx) using Bar component
  */
 
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { PinnedQuery } from './PinnedQuery';
@@ -17,9 +17,42 @@ interface ChatPanelProps {
   projectId: string | null;
   featureName: string | null;
   enabled: boolean;
+  selectedAgent?: string | null;
 }
 
-export function ChatPanel({ projectId: _projectId, featureName: _featureName, enabled: _enabled }: ChatPanelProps) {
+type WatermarkVariant = 'color' | 'mono';
+
+function getWatermarkStyle(
+  selectedAgent: string | null | undefined,
+  variant: WatermarkVariant
+): CSSProperties | null {
+  const watermarkMap: Record<string, Record<WatermarkVariant, string>> = {
+    planner: {
+      color: '/watermarks/planner-color.svg',
+      mono: '/watermarks/planner-mono.svg',
+    },
+    architect: {
+      color: '/watermarks/architect-color.svg',
+      mono: '/watermarks/architect-mono.svg',
+    },
+  };
+
+  const src = selectedAgent ? watermarkMap[selectedAgent]?.[variant] : null;
+  if (!src) return null;
+
+  return {
+    backgroundImage: `url(${src})`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'center',
+  };
+}
+
+export function ChatPanel({
+  projectId: _projectId,
+  featureName: _featureName,
+  enabled: _enabled,
+  selectedAgent = null,
+}: ChatPanelProps) {
   // ✅ Get chat data from Domain Store (via Application Hook)
   // SSE subscription is managed automatically in Store
   const { messages, isStreaming } = useChat();
@@ -120,10 +153,31 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
     };
   }, [lastAssistantMessage?.id, fileOperationCount]);  // ✅ 파일 operation 개수만 추적
 
+  const hasMessages = messages.length > 0;
+  const emptyStateWatermarkStyle = useMemo(
+    () => getWatermarkStyle(selectedAgent, 'color'),
+    [selectedAgent]
+  );
+  const historyWatermarkStyle = useMemo(
+    () => (hasMessages ? getWatermarkStyle(selectedAgent, 'mono') : null),
+    [hasMessages, selectedAgent]
+  );
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
+        {historyWatermarkStyle && (
+          <div
+            className="absolute inset-0 pointer-events-none opacity-[0.08] dark:opacity-[0.1]"
+            style={{
+              ...historyWatermarkStyle,
+              backgroundSize: '360px 360px',
+            }}
+            aria-hidden="true"
+          />
+        )}
+
         {/* Pinned Query - Absolute overlay to avoid layout feedback loop with Virtuoso */}
         <PinnedQuery query={pinnedQuery} />
 
@@ -131,7 +185,18 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
         {messages.length === 0 && chatPolicy.emptyStateMessage && (
           <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
-              <div className="text-4xl mb-4">💬</div>
+              {emptyStateWatermarkStyle ? (
+                <div
+                  className="mx-auto mb-4 h-14 w-14"
+                  style={{
+                    ...emptyStateWatermarkStyle,
+                    backgroundSize: '56px 56px',
+                  }}
+                  aria-hidden="true"
+                />
+              ) : (
+                <div className="text-4xl mb-4">💬</div>
+              )}
               <p className="text-sm text-gray-600 dark:text-gray-300 shimmer-text">
                 {chatPolicy.emptyStateMessage}
               </p>
@@ -143,8 +208,20 @@ export function ChatPanel({ projectId: _projectId, featureName: _featureName, en
         {messages.length === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
           <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
-              {/* ✨ Animated sparkle with float effect (크기 + 위치 + 회전) */}
-              <div className="text-5xl mb-4 animate-sparkle-float inline-block">✨</div>
+              {emptyStateWatermarkStyle ? (
+                <div
+                  className="mx-auto mb-4 h-28 w-28 watermark-empty-icon"
+                  style={{
+                    ...emptyStateWatermarkStyle,
+                    backgroundSize: '112px 112px',
+                  }}
+                  aria-hidden="true"
+                />
+              ) : (
+                /* ✨ Animated sparkle with float effect (크기 + 위치 + 회전) */
+                <div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon">✨</div>
+              )}
+
               <p className="text-sm text-gray-700 dark:text-gray-200 font-medium mb-2 shimmer-text">
                 Ready to start
               </p>
