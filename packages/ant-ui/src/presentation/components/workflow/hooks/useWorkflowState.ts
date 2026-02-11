@@ -19,7 +19,7 @@ import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import type { ActiveWorkerNode } from '@/domain/models/workflow';
 import type { HandlerId } from '@/infrastructure/sse/SSEManager';
 import { useStore } from '@/domain/store';
-import { API_BASE } from '@/infrastructure/http/api';
+import { API_BASE, authFetch } from '@/infrastructure/http/api';
 
 // 노드별 최소 표시 시간 (ms)
 const NODE_MIN_DISPLAY_TIME: Record<string, number> = {
@@ -201,7 +201,7 @@ function activeNodesFingerprint(nodes: ActiveWorkerNode[]): string {
 async function fetchWorkflowState(jobId: string): Promise<WorkflowRealtimeState | null> {
   try {
     const base = API_BASE();
-    const res = await fetch(`${base}/jobs/${jobId}/workflow/state`);
+    const res = await authFetch(`${base}/jobs/${jobId}/workflow/state`);
     if (!res.ok) return null;
     return await res.json();
   } catch {
