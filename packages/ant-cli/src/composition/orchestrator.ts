@@ -2,6 +2,7 @@ import { reviewerAgent } from "../agents/reviewer";
 import { architectAgent } from "../agents/architect/index";
 import { runPlanGraph } from "../agents/planner";
 import { docAgent } from "../agents/doc";
+import { runInlineAsk } from "../agents/architect/graph/ask/inlineAskRunner";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { createLLMClient } from "../periphery/adapters/llm/LLMClientFactory";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
@@ -27,7 +28,7 @@ import * as path from "path";
  */
 export async function orchestrator(params: {
   agent: "architect" | "reviewer" | "planner" | "doc";
-  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc";
+  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc" | "inline-ask";
   input: string;
   project?: string;
   feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
@@ -46,8 +47,8 @@ export async function orchestrator(params: {
 
   switch (agent) {
     case "architect": {
-      if (!jobType || !['design', 'code', 'learn'].includes(jobType)) {
-        throw new Error(`Architect agent requires jobType: 'design', 'code', or 'learn'`);
+      if (!jobType || !['design', 'code', 'learn', 'inline-ask'].includes(jobType)) {
+        throw new Error(`Architect agent requires jobType: 'design', 'code', 'learn', or 'inline-ask'`);
       }
 
       // Common dependencies for architect
@@ -77,6 +78,54 @@ export async function orchestrator(params: {
           git, 
           config
         });
+      }
+
+      if (jobType === 'inline-ask') {
+        // ✅ Inline Ask: Lightweight job for handling ask during interrupted jobs
+        // No session, no kanban, no fileTree — purely stateless
+        console.log('🔧 [Orchestrator:InlineAsk] Starting inline-ask job...');
+
+        if (!featurePath) {
+          throw new Error('featurePath is required for inline-ask');
+        }
+
+        // ✅ Auto-detect interrupted job type from session files
+        const { getAllSessionPaths } = await import("../core/utils/sessionPaths");
+        const fsSync = await import("fs");
+        let interruptedJob = 'design';
+        let interruptedAgent = 'architect';
+
+        for (const entry of getAllSessionPaths(featurePath)) {
+          if (fsSync.existsSync(entry.path)) {
+            try {
+              const data = JSON.parse(fsSync.readFileSync(entry.path, 'utf-8'));
+              if (data.state?.interruption) {
+                interruptedJob = entry.job;
+                interruptedAgent = entry.agent;
+                console.log(`🔧 [Orchestrator:InlineAsk] Detected interrupted job: ${interruptedAgent}/${interruptedJob}`);
+                break;
+              }
+            } catch {
+              // Skip unreadable session files
+            }
+          }
+        }
+
+        const result = await runInlineAsk({
+          message: overrideDirective || input,
+          featurePath,
+          currentJob: interruptedJob,
+          currentAgent: interruptedAgent,
+          projectId: project,
+          deps: { llm, memory },
+          _httpJobId: jobId,
+        });
+
+        return {
+          status: result.status,
+          intent: result.intent,
+          response: result.response,
+        };
       }
 
       // Design and Code tasks: full dependencies

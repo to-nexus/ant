@@ -20,7 +20,7 @@ import { UserContext } from '../types/user';
 
 export interface JobPayload {
   jobId: string;
-  type: import('../types/task').DecomposableJobType;
+  type: import('../types/task').DecomposableJobType | 'inline-ask';
   agent: 'architect' | 'reviewer' | 'planner' | 'doc';
   projectId: string;
   feature: string;

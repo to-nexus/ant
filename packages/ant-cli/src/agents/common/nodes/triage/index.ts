@@ -153,6 +153,10 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     
     if (response.usage) {
       accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
+      // ✅ Push live token update to Kanban UI during estimating phase
+      if ((state as any).deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
+        (state as any).deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      }
     }
   } else {
     responseText = await llm.invoke([
@@ -301,7 +305,7 @@ function generateAgentCapabilities(currentAgent: string): string {
   return lines.join('\n');
 }
 
-function buildTriagePrompt(params: {
+export function buildTriagePrompt(params: {
   userInput: string;
   currentJob: string;
   currentAgent: string;

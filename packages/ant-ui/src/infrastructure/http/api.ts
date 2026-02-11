@@ -676,6 +676,41 @@ export async function continueJob(
   }
 }
 
+/**
+ * Send an inline ask during an interrupted job.
+ * Runs triage classification: if ask intent, responds in chat; if work intent, signals frontend to continue.
+ * Does NOT affect the interrupted job's state (stateless, no session modification).
+ */
+export async function inlineAsk(
+  projectId: string,
+  featureName: string,
+  message: string,
+  chatSource: boolean = true
+): Promise<{ jobId: string; jobType: string }> {
+  try {
+    console.log(`[api.ts] inlineAsk called: ${projectId}/${featureName}, message length: ${message.length}`);
+    
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/inline-ask`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message, chatSource }),
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(error.error || `Failed to start inline ask: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error starting inline ask:', error);
+    throw error;
+  }
+}
+
 export interface QueueStatus {
   currentTask: {
     name: string;

@@ -2,27 +2,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
-
-/**
- * Protected root folders within inputs/outputs/sessions
- * These folders are preserved when deleted - only their contents are removed
- */
-const PROTECTED_ROOT_FOLDERS = [
-  'inputs/assets',
-  'inputs/references',
-  'inputs/sources',
-  'outputs/design',
-  'outputs/reports',
-  'outputs/debug',
-  'outputs/evals',
-  'sessions/architect/debug',
-  'sessions/architect/log-prompt',
-];
+import { isCanonicalDir } from '../../../../../core/utils/sessionPaths';
 
 /**
  * FileOperationService
  * 
- * Handles file and directory operations within features
+ * Handles file and directory operations within features.
+ * 
+ * Deletion behavior:
+ * - Canonical directories (defined in CANONICAL_FEATURE_DIRS): preserved on delete,
+ *   only files inside are removed. Canonical subdirectories are recursively preserved.
+ * - Non-canonical directories (user-created): fully deleted (rm -rf).
  */
 export class FileOperationService {
   private readonly workspaceResolver: WorkspaceResolver;
@@ -32,27 +22,34 @@ export class FileOperationService {
   }
   
   /**
-   * Check if the path is a protected root folder
+   * Smart-clear a canonical directory: remove files, preserve canonical subdirectories,
+   * and fully delete non-canonical subdirectories.
+   * 
+   * @param dirPath - Absolute path to the directory
+   * @param relativePath - Path relative to feature root (e.g., 'outputs/evals')
    */
-  private isProtectedFolder(relativePath: string): boolean {
-    const normalized = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
-    return PROTECTED_ROOT_FOLDERS.includes(normalized);
-  }
-  
-  /**
-   * Clear directory contents (files and subdirectories) but keep the directory itself
-   */
-  private async clearDirectoryContents(dirPath: string): Promise<void> {
-    const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  private async smartClearDirectory(dirPath: string, relativePath: string): Promise<void> {
+    let items: fs.Dirent[];
+    try {
+      items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    } catch {
+      return; // directory doesn't exist — nothing to clear
+    }
     
     for (const item of items) {
       const itemPath = path.join(dirPath, item.name);
+      const itemRelPath = `${relativePath}/${item.name}`;
       
       if (item.isDirectory()) {
-        // Recursively remove subdirectory
-        await fs.promises.rm(itemPath, { recursive: true, force: true });
+        if (isCanonicalDir(itemRelPath)) {
+          // Canonical subdirectory: recurse — remove files, keep structure
+          await this.smartClearDirectory(itemPath, itemRelPath);
+        } else {
+          // Non-canonical subdirectory: fully delete
+          await fs.promises.rm(itemPath, { recursive: true, force: true });
+        }
       } else {
-        // Remove file
+        // File: delete
         await fs.promises.unlink(itemPath);
       }
     }
@@ -175,8 +172,9 @@ export class FileOperationService {
   
   /**
    * Delete a file or directory
-   * - For protected root folders (inputs/*, outputs/*, sessions/*): clears contents but keeps folder
-   * - For regular files/directories: deletes completely
+   * - Canonical directories: smart-clear (remove files, preserve canonical subdirs, delete non-canonical subdirs)
+   * - Non-canonical directories: fully deleted
+   * - Files: deleted
    */
   async deleteFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<void> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
@@ -190,13 +188,12 @@ export class FileOperationService {
     const stat = await fs.promises.stat(fullPath);
     
     if (stat.isDirectory()) {
-      // Check if this is a protected root folder
-      if (this.isProtectedFolder(filePath)) {
-        // Clear contents but keep the folder
-        await this.clearDirectoryContents(fullPath);
-        console.log(`[FileOperationService] Cleared contents of protected folder: ${filePath}`);
+      if (isCanonicalDir(filePath)) {
+        // Canonical directory: remove files, preserve canonical subdirs
+        await this.smartClearDirectory(fullPath, filePath);
+        console.log(`[FileOperationService] Smart-cleared canonical directory: ${filePath}`);
       } else {
-        // Delete entire directory
+        // Non-canonical directory: fully delete
         await fs.promises.rm(fullPath, { recursive: true, force: true });
         console.log(`[FileOperationService] Deleted directory: ${filePath}`);
       }

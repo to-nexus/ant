@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { JobState, QueuePosition } from '../types';
+import { JobState, QueuePosition, InlineAskContext } from '../types';
 import { Session } from '@/domain/models/session';
 import { JobExecution } from '@/infrastructure/http/cli';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
@@ -13,6 +13,7 @@ export interface JobActions {
   setDismissedInterruptTimestamp: (timestamp: string | null) => void;
   setCurrentJob: (job: JobExecution | null) => void;
   setQueuePosition: (position: QueuePosition | null) => void;
+  setInlineAskContext: (context: InlineAskContext | null) => void;
 }
 
 export type JobSlice = JobState & JobActions;
@@ -37,6 +38,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
   currentMode: undefined,
   // ✅ Cloud multi-pod: Protects isRunning from SSE overwrite until actual job starts
   jobStartPending: false,
+  // ✅ Inline Ask: Context for handling ask during interrupted jobs
+  inlineAskContext: null,
 
   // ==================
   // Actions
@@ -127,6 +130,10 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       queuePosition: position,
       isQueued
     });
+  },
+
+  setInlineAskContext: (context) => {
+    set({ inlineAskContext: context });
   },
 });
 

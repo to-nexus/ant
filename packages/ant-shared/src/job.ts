@@ -5,10 +5,10 @@
  */
 
 /** All job types in the system */
-export type JobType = 'code' | 'design' | 'learn' | 'ask' | 'plan';
+export type JobType = 'code' | 'design' | 'learn' | 'ask' | 'plan' | 'inline-ask';
 
 /** Job types that use task decomposition and Kanban tracking */
-export type DecomposableJobType = Exclude<JobType, 'ask' | 'plan'>;
+export type DecomposableJobType = Exclude<JobType, 'ask' | 'plan' | 'inline-ask'>;
 
 /** Job types that maintain session files (decomposable + planning) */
 export type SessionableJobType = DecomposableJobType | 'plan';
