@@ -6,6 +6,8 @@ import { DesignGraphState } from "../state";
  * NO LLM calls - docGen handles all document generation
  */
 export async function plan(state: DesignGraphState) {
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
 
   // ✅ CRITICAL: Get next task BEFORE enterNode
   // This ensures enterNode is called with correct taskInfo
@@ -78,7 +80,10 @@ export async function plan(state: DesignGraphState) {
     } : undefined;
     
     // ✅ Note: No llmInfo needed - plan node doesn't call LLM
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'plan', (state as any).workerId ?? 0, taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'plan', (state as any).workerId ?? 0, taskInfo,
+      undefined, state.recursionCount, state.recursionLimit
+    );
   }
 
   console.log(`\n✅ [Plan] Task prepared for execution`);

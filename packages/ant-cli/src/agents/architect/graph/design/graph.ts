@@ -20,6 +20,9 @@ import { getTaskConcurrency } from "../code/parallel/types";
  * Consistent with code job's checkTaskStatus node.
  */
 async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -30,7 +33,10 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', 0, taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'checkTaskStatus', 0, taskInfo,
+      undefined, state.recursionCount, state.recursionLimit
+    );
   }
   
   // ✅ Current task completed successfully
@@ -177,7 +183,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     jobTiming: (state as any).jobTiming,
     // ✅ Pass recursionLimit so worker subgraph uses the correct limit
     // Without this, LangGraph defaults to 25 which is too low for complex tasks
-    recursionLimit: (state as any).recursionLimit,  // ✅ Always set by runner.ts from env RECURSION_LIMIT
+    recursionLimit: state.recursionLimit,  // ✅ Always set by runner.ts from env RECURSION_LIMIT
   };
 
   const graphBuilder = createDesignWorkerGraphBuilder();
@@ -386,6 +392,10 @@ export function buildDesignGraph() {
       
       // ✅ Resume flag (set by runner before graph invoke)
       isResume: null as any,
+      
+      // ✅ Recursion tracking (for UI gauge display)
+      recursionCount: null as any,
+      recursionLimit: null as any,
     } as any,
   } as any);
 

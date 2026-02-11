@@ -341,7 +341,12 @@ export class ChatService {
   ): Promise<boolean> {
     const messages = this.getMessages(projectId, featureName, userContext);
     
-    // Find the last message with content of the specified type (+ optional metadata filter)
+    // ✅ Strategy: Find the last ACTIONABLE content (not yet resolved via choiceSelected).
+    // If multiple cancelled/choice cards exist (e.g., due to duplicates or sequential runs),
+    // we must update the one the user is actually interacting with — the last unresolved one.
+    // Fallback: if all are already resolved, update the last match (backward compat).
+    let fallbackMsg: { message: any; contentIdx: number } | null = null;
+    
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
       if (!message.contents) continue;
@@ -359,36 +364,74 @@ export class ChatService {
           if (!matches) continue;
         }
         
-        // Update metadata
-        content.metadata = {
-          ...content.metadata,
-          ...metadataUpdate
-        };
-        
-        // Save to disk AND Redis
-        this.persistence.saveSession(projectId, featureName, messages, userContext);
-        const session = this.sessionManager.getSession(projectId, featureName);
-        if (session) {
-          await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
-            logger.warn('Failed to save metadata update to Redis', { component: 'ChatService' }, err);
-          });
+        // Record first (most recent) match as fallback
+        if (!fallbackMsg) {
+          fallbackMsg = { message, contentIdx: j };
         }
         
-        // Broadcast updated content via SSE so frontend can update the card
-        if (userContext) {
-          this.broadcaster.broadcast(projectId, featureName, {
-            type: 'content_update',
-            messageId: message.id,
-            contentIndex: j,
-            content
-          }, userContext);
+        // Skip already-resolved content — look for the last unresolved one
+        const meta = content.metadata as Record<string, any> | undefined;
+        if (meta?.choiceSelected || meta?.resolved) {
+          continue;
         }
         
-        return true;
+        // Found an unresolved match — update it
+        return this.applyContentMetadataUpdate(
+          projectId, featureName, messages, message, j, content, metadataUpdate, userContext
+        );
       }
     }
     
+    // All matches are already resolved — update the fallback (last match) for backward compat
+    if (fallbackMsg) {
+      const content = fallbackMsg.message.contents[fallbackMsg.contentIdx];
+      return this.applyContentMetadataUpdate(
+        projectId, featureName, messages, fallbackMsg.message, fallbackMsg.contentIdx, content, metadataUpdate, userContext
+      );
+    }
+    
     return false;
+  }
+
+  /**
+   * Apply metadata update to a specific content item, save, and broadcast.
+   */
+  private async applyContentMetadataUpdate(
+    projectId: string,
+    featureName: string,
+    messages: ChatMessage[],
+    message: ChatMessage,
+    contentIndex: number,
+    content: any,
+    metadataUpdate: Record<string, any>,
+    userContext?: UserContext
+  ): Promise<boolean> {
+    // Update metadata
+    content.metadata = {
+      ...content.metadata,
+      ...metadataUpdate
+    };
+    
+    // Save to disk AND Redis
+    this.persistence.saveSession(projectId, featureName, messages, userContext);
+    const session = this.sessionManager.getSession(projectId, featureName);
+    if (session) {
+      await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
+        logger.warn('Failed to save metadata update to Redis', { component: 'ChatService' }, err);
+      });
+    }
+    
+    // Broadcast updated content via SSE so frontend can update the card
+    if (userContext) {
+      this.broadcaster.broadcast(projectId, featureName, {
+        type: 'content_update',
+        messageId: message.id,
+        contentIndex,
+        content
+      }, userContext);
+    }
+    
+    return true;
   }
 
   /**

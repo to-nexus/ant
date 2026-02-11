@@ -131,6 +131,10 @@ export async function runDesignGraph(initial: DesignGraphState) {
     initial.isResume = true;
   }
   
+  // ✅ Initialize recursion tracking in state (for UI gauge display)
+  initial.recursionCount = initial.recursionCount || 0;
+  initial.recursionLimit = initial.recursionLimit || finalLimit;
+  
   // ✅ Set jobTiming on broadcaster for resume (so SSE broadcasts include timing from first event)
   if ((initial as any).jobTiming && initial.deps?.kanbanUpdate?.setJobTiming) {
     initial.deps.kanbanUpdate.setJobTiming((initial as any).jobTiming);

@@ -25,6 +25,9 @@ import type { WorkerGraphBuilder } from '../../code/parallel/types';
  * Lighter version — doesn't pop next task or save global checkpoint.
  */
 async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
+  // ✅ Increment recursion count (per-worker, track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // Workflow instrumentation
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const workerId = (state as any).workerId ?? 0;
@@ -35,7 +38,10 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       description: state.currentTask.description,
       priority: state.currentTask.priority,
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'checkTaskStatus', workerId, taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'checkTaskStatus', workerId, taskInfo,
+      undefined, state.recursionCount, state.recursionLimit
+    );
   }
 
   if (state.currentTask) {

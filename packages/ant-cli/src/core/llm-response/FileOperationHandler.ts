@@ -137,25 +137,31 @@ export class FileOperationHandler {
   ): Promise<boolean> {
     const ctx = this.sessionStore.getContext();
     
-    // Include BOTH in-progress AND completed types to avoid duplicates
-    const allFileTypes = {
-      'create': ['file_creating', 'file_writing', 'file_create'],
-      'edit': ['file_editing', 'file_updating', 'file_edit'],
-      'delete': ['file_deleting', 'file_delete']
+    // Only search for IN-PROGRESS types in fallback (never completed types).
+    // Including completed types (file_edit, file_create, file_delete) would cause
+    // multi-edit scenarios to update an already-completed card instead of the new one.
+    const inProgressFileTypes = {
+      'create': ['file_creating', 'file_writing'],
+      'edit': ['file_editing', 'file_updating'],
+      'delete': ['file_deleting']
     };
     
-    const typesToFind = allFileTypes[operation] || [];
+    const typesToFind = inProgressFileTypes[operation] || [];
     
     // Try to find via activeFileOperations Map (most reliable)
     const activeOp = this.sessionStore.getFileOperation(filePath);
     let existingIndex = activeOp ? activeOp.contentIndex : -1;
     
-    // Fallback to type-based search
+    // Fallback to type-based REVERSE search (find most recent in-progress card, not first)
     if (existingIndex === -1) {
-      existingIndex = session.currentMessage!.contents.findIndex(c => 
-        typesToFind.includes(c.type) && 
-        c.metadata?.filePath === filePath
-      );
+      const contents = session.currentMessage!.contents;
+      for (let i = contents.length - 1; i >= 0; i--) {
+        if (typesToFind.includes(contents[i].type) && 
+            contents[i].metadata?.filePath === filePath) {
+          existingIndex = i;
+          break;
+        }
+      }
     }
     
     if (existingIndex === -1) {

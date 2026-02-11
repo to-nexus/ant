@@ -1,5 +1,41 @@
 # Ant CLI Project Rules
 
+## Unified Distributed System Principle
+
+**Ant is ALWAYS a distributed system. There is NO separate "local mode" implementation.**
+
+Local server and cloud server differ ONLY in where the infrastructure runs (single machine vs. cloud). The architecture is identical: Redis, BullMQ, Pub/Sub, separate API / Worker / Realtime processes on individual ports. Therefore:
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- `if (mode === 'local')` / `if (mode === 'cloud')` conditional branches with different implementations
+- In-memory Maps/Sets as "local mode fallback" when Redis is unavailable
+- `JobExecutionManager` (direct child process spawn) — always use BullMQ job queue
+- `JobStateTracker` in-memory state — always use Redis StateStore
+- Any code path that assumes Redis or BullMQ might not exist
+- Skipping authentication middleware based on mode
+- Separate function/class for local vs. cloud (e.g., `createCloudExecuteJob` vs. `jobManager.executeJob`)
+
+### ✅ CORRECT
+
+- Single code path using Redis, BullMQ, and Pub/Sub unconditionally
+- `StateStore` (Redis) is always available — never `undefined` or behind `if (stateStore)`
+- Job execution always goes through BullMQ queue
+- Job completion always processed via Redis Pub/Sub subscription
+- Authentication always enforced (local uses `local:local` tenant, not "skip auth")
+
+### Why This Matters
+
+Every time a "local-only" fallback is added, it creates a parallel code path that:
+1. Is never tested in production (cloud)
+2. Hides distributed-system bugs that only appear in cloud
+3. Doubles maintenance burden for every feature change
+4. Breaks the guarantee that local testing reflects cloud behavior
+
+**If it doesn't work without Redis, it's broken — fix it, don't add an in-memory fallback.**
+
+---
+
 ## Prompt Template Architecture
 
 This project follows **WHAT/HOW separation principle** for prompt templates.

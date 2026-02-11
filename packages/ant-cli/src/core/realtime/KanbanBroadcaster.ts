@@ -43,6 +43,10 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private estimatingLabel?: string;       // Current non-task node activity label
   private estimatingStartedAt?: string;   // ISO timestamp when current phase started
   private estimatingNodeId?: string;      // Node ID for UI-specific rendering
+  // ✅ Cached metrics — updated by updateTaskQueue, included in every broadcast (incl. setEstimatingActivity)
+  private cachedRecursionCount?: number;
+  private cachedRecursionLimit?: number;
+  private cachedTokenUsage?: TaskTokenUsage;
   
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -90,11 +94,15 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     console.log(`[KanbanBroadcaster] 📊 Activity: ${label} (node: ${nodeId || 'unknown'})`);
     
     // Broadcast immediately so frontend banner updates in real-time
+    // ✅ Include cached metrics so they don't get overwritten with undefined
     this.broadcastKanbanUpdate(
       this.jobId,
       [],    // no current tasks during estimating
       [],    // no tasks yet
       [],    // no completed tasks yet
+      this.cachedRecursionCount,
+      this.cachedRecursionLimit,
+      this.cachedTokenUsage,
     ).catch(err => {
       console.warn(`[KanbanBroadcaster] Failed to broadcast estimating activity:`, err.message);
     });
@@ -113,6 +121,11 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     recursionLimit?: number,
     tokenUsage?: TaskTokenUsage
   ): void {
+    // ✅ Cache metrics so setEstimatingActivity can include them
+    if (recursionCount !== undefined) this.cachedRecursionCount = recursionCount;
+    if (recursionLimit !== undefined) this.cachedRecursionLimit = recursionLimit;
+    if (tokenUsage !== undefined) this.cachedTokenUsage = tokenUsage;
+
     // Normalize to array
     const currentTasks: BaseTask[] = currentTask
       ? (Array.isArray(currentTask) ? currentTask : [currentTask])

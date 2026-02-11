@@ -174,6 +174,15 @@ export class TaskQueue<T extends BaseTask> {
     return this.tasks.splice(index, 1)[0];
   }
   
+  /**
+   * Insert a task at the front of the queue (highest priority position).
+   * Used for interrupted tasks that should be resumed first.
+   * Bypasses priority sort — placed at index 0 unconditionally.
+   */
+  unshift(task: T): void {
+    this.tasks.unshift(task);
+  }
+  
   getAll(): T[] {
     return [...this.tasks];
   }

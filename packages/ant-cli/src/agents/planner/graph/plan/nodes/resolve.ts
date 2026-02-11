@@ -23,9 +23,13 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', uiLocale), 'resolve');
   }
   
-  // Workflow instrumentation
+  // Workflow instrumentation (pass recursion info for badge display)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve', 0);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'resolve', 0,
+      undefined, undefined,
+      state.recursionCount, state.recursionLimit,
+    );
   }
   
   const { featurePath } = state;

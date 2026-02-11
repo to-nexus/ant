@@ -212,9 +212,16 @@ export async function detectEnvironment(
     return { detectionReport: defaultReport, _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart } };
   }
 
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // Workflow UI
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, "detectEnvironment", 0);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, "detectEnvironment", 0,
+      undefined, undefined,
+      state.recursionCount, state.recursionLimit
+    );
   }
 
   try {

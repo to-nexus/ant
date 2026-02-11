@@ -226,11 +226,28 @@ export class KanbanService {
     }
     
     const sessionState = sessionData?.state || {};
-    const sessionJobId = sessionState.jobId;
+    let sessionJobId = sessionState.jobId;
     const sessionTaskQueue = sessionState.taskQueue || [];
     const completedTaskIds = sessionState.completedTasks || [];
     const completedTasksDetails = sessionState.completedTasksDetails || [];
     const currentTask = sessionState.currentTask || null;
+    
+    // ✅ Fallback: 세션 파일에 jobId가 없으면 Redis에서 실행 중인 job 탐색
+    // Planner 등 세션 파일에 jobId를 기록하지 않는 에이전트를 위한 처리
+    if (!sessionJobId && this.stateStore) {
+      try {
+        const featureJobs = await this.stateStore.listJobsByFeature(projectId, featureName);
+        const runningJob = featureJobs.find(
+          j => j.status === 'running' && j.type === jobType
+        );
+        if (runningJob) {
+          sessionJobId = runningJob.jobId;
+          dlog(`   Discovered running job from Redis: ${sessionJobId} (type: ${jobType})`);
+        }
+      } catch (error) {
+        derr(`   Failed to discover running job from Redis:`, error);
+      }
+    }
     
     const hasInterruption = !!sessionState.interruption;
     const hasTasksRemaining = sessionTaskQueue.length > 0 || !!currentTask;

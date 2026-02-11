@@ -170,11 +170,21 @@ async function main(): Promise<void> {
   try {
     await runJob(params);
     
-    // Clean exit
+    // Ensure stdout is fully flushed before exiting.
+    // process.exit() terminates immediately, dropping any data still queued
+    // in libuv's write buffer. For large RESULT JSON (e.g. 28k+ chars of
+    // generatedDocument), the pipe buffer can overflow and libuv queues the
+    // remainder — which is then lost if we exit too soon.
+    await new Promise<void>((resolve) => {
+      process.stdout.write('', () => resolve());
+    });
     process.exit(0);
     
   } catch (error: any) {
     console.error(`Job runner error: ${error.message}`);
+    await new Promise<void>((resolve) => {
+      process.stdout.write('', () => resolve());
+    });
     process.exit(1);
   }
 }

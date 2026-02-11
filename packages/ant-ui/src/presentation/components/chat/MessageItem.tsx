@@ -24,46 +24,16 @@ interface MessageItemProps {
 export function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user';
 
-  // ✅ Deduplicate file operation cards by filePath (keep latest/completed)
-  // This prevents duplicate cards when backend emits multiple events for same file
+  // ✅ No client-side deduplication — backend manages file card lifecycle correctly.
+  // In-progress → completed transitions happen via content_update at the same array index,
+  // so each slot in the contents array already reflects its final state.
+  // Multiple completed operations on the same filePath are independent cards
+  // (e.g., planner editing prd-refine.md multiple times across ReAct iterations).
   const deduplicatedContents = useMemo(() => {
-    const fileOpTypes = [
-      'file_creating', 'file_writing', 'file_create', 'file_create_failed',
-      'file_editing', 'file_updating', 'file_edit', 'file_edit_failed',
-      'file_deleting', 'file_delete', 'file_delete_failed'
-    ];
-    
-    // Completed types take priority over in-progress types
-    const completedTypes = ['file_create', 'file_edit', 'file_delete', 
-                           'file_create_failed', 'file_edit_failed', 'file_delete_failed'];
-    
-    const fileOpByPath = new Map<string, { content: MessageContent; index: number; isCompleted: boolean }>();
-    const nonFileContents: { content: MessageContent; index: number }[] = [];
-    
-    message.contents.forEach((content, index) => {
-      const isFileOp = fileOpTypes.includes(content.type);
-      const filePath = content.metadata?.filePath;
-      
-      if (isFileOp && filePath) {
-        const isCompleted = completedTypes.includes(content.type);
-        const existing = fileOpByPath.get(filePath);
-        
-        // Keep if: no existing, OR current is completed and existing is not, OR both have same status (keep later)
-        if (!existing || (isCompleted && !existing.isCompleted) || (isCompleted === existing.isCompleted)) {
-          fileOpByPath.set(filePath, { content, index, isCompleted });
-        }
-      } else {
-        nonFileContents.push({ content, index });
-      }
-    });
-    
-    // Merge back: non-file contents + deduplicated file contents (sorted by original index)
-    const allContents = [
-      ...nonFileContents,
-      ...Array.from(fileOpByPath.values())
-    ].sort((a, b) => a.index - b.index);
-    
-    return allContents.map(item => ({ content: item.content, originalIndex: item.index }));
+    return message.contents.map((content, index) => ({
+      content,
+      originalIndex: index,
+    }));
   }, [message.contents]);
 
   return (

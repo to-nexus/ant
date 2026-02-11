@@ -18,6 +18,9 @@ import { SessionTurn } from "../../../../../core/types";
  * - No direct file system access
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
@@ -27,7 +30,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       description: state.currentTask.description,
       priority: state.currentTask.priority
     } : undefined;
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'learn', (state as any).workerId ?? 0, taskInfo);
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId, 'learn', (state as any).workerId ?? 0, taskInfo,
+      undefined, state.recursionCount, state.recursionLimit
+    );
   }
   
   // ✅ Update Kanban to show all tasks completed

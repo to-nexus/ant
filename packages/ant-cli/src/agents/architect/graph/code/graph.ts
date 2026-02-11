@@ -367,8 +367,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             currentTasks,
             queue,
             completedTasks,
-            state.recursionCount,
-            state.recursionLimit,
+            undefined,  // recursionCount: Workflow SSE is the source of truth (per-worker count via WorkflowBroadcaster)
+            undefined,  // recursionLimit: Workflow SSE is the source of truth
             tokenUsage,
           );
         }
@@ -445,6 +445,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   console.log(`   Completed: ${result.completedTasks.length}`);
   console.log(`   Failed: ${result.failedTasks.length}`);
   console.log(`   Remaining: ${result.remainingQueue.length}`);
+  console.log(`   Interrupted: ${result.hasInterruptedTasks}`);
   if (result.failedTasks.length > 0) {
     for (const f of result.failedTasks) {
       console.error(`   ❌ FAILED: "${f.task.name}" (id=${f.task.id}) — ${f.error.message}`);
@@ -454,10 +455,54 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     console.log(`   Drain reason: ${result.drainReason}`);
   }
 
-  // ✅ If any tasks permanently failed, save interrupted state to session
-  // so the job shows as "interrupted" (not "completed") in the UI.
+  // ✅ If any tasks were paused due to recursion limit, save interrupted state.
+  // These tasks remain in remainingQueue (with interrupted=true) for resume.
+  if (result.hasInterruptedTasks && state.deps?.session && state.context.featureFolder) {
+    try {
+      const failedAsQueue = result.failedTasks.map(f => ({
+        ...f.task,
+        _failed: true,
+        _failureReason: f.error.message,
+      }));
+
+      await state.deps.session.updateArtifacts(
+        state.context.project,
+        state.context.featureFolder,
+        'code',
+        {
+          state: {
+            taskQueue: [...failedAsQueue, ...result.remainingQueue],
+            completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
+            completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+            failedTasks: result.failedTasks.map(f => ({
+              taskId: f.task.id,
+              taskName: f.task.name,
+              error: f.error.message,
+              timestamp: f.timestamp,
+            })),
+            tokenUsage: result.tokenUsage,
+            estimatingTokenUsage: (state as any)._estimatingTokenUsage,
+            jobId: (state as any).jobId,
+            jobTiming: (state as any).jobTiming,
+            parallelMode: true,
+            interruption: {
+              reason: 'recursion_limit',
+              message: `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
+              timestamp: new Date().toISOString(),
+              canResume: true,
+            },
+          },
+        },
+      );
+      console.log(`💾 [ParallelOrchestrator] Saved interrupted state (recursion limit, ${result.remainingQueue.length} tasks remaining for resume)`);
+    } catch (err) {
+      console.warn(`⚠️ [ParallelOrchestrator] Failed to save interrupted state:`, err);
+    }
+  }
+
+  // ✅ If any tasks permanently failed (non-recursion-limit), save interrupted state.
   // Failed tasks go back to the queue with a _failed flag for visibility.
-  if (result.hasFailures && state.deps?.session && state.context.featureFolder) {
+  if (result.hasFailures && !result.hasInterruptedTasks && state.deps?.session && state.context.featureFolder) {
     try {
       // Put failed tasks back into the queue (marked as failed) for UI display
       const failedAsQueue = result.failedTasks.map(f => ({
@@ -507,6 +552,12 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     failedTasks: result.failedTasks.map(f => f.task) as any,
     currentTask: undefined,
     tokenUsage: result.tokenUsage || (state as any).tokenUsage,
+    interruption: result.hasInterruptedTasks ? {
+      reason: 'recursion_limit',
+      message: `Task(s) paused: recursion limit reached during parallel execution`,
+      timestamp: new Date().toISOString(),
+      canResume: true,
+    } : undefined,
   } as any;
 }
 

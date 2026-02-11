@@ -10,6 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FileTreeUpdatePort } from '../../../core/ports/fileTree';
+import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 
 interface ToolDefinition {
   name: string;
@@ -206,6 +207,10 @@ const editFile: ToolDefinition = {
       return 'Error: Path traversal not allowed';
     }
 
+    // ✅ NOTE: Loading card (file_editing) is already created by tool_use event handler
+    // in generate.ts via chatAPI.sendLLMEvent(event) → LLMEventHandler.handleFileToolUse()
+    const chatAPI = getChatAPIClient();
+    
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const { applySearchReplace } = await import('../../../core/streaming/strategies/common/EditOperations');
@@ -221,8 +226,14 @@ const editFile: ToolDefinition = {
         }
       }
       
+      // ✅ UI notification: file edit complete (file_editing → file_edit with diff)
+      await chatAPI.completeFileEdit(args.path, args.old_str, args.new_str);
+      
       return `✅ Edited ${args.path}. Replaced ${args.old_str.length} → ${args.new_str.length} chars.`;
     } catch (error: any) {
+      // ✅ UI notification: file edit failed (file_editing → file_edit_failed)
+      await chatAPI.failFileEdit(args.path, (error as Error).message);
+      
       if (error.code === 'ENOENT') {
         return `Error: File not found: ${args.path}`;
       }

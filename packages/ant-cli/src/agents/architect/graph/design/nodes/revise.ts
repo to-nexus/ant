@@ -26,6 +26,9 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
   
   const llm = state.deps?.llm as LLMClient;
   
+  // ✅ Increment recursion count (track node execution for UI gauge)
+  state.recursionCount = (state.recursionCount || 0) + 1;
+  
   // ✅ Workflow tracking: enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
@@ -46,7 +49,9 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       'revise',
       0,
       taskInfo,
-      llmInfo
+      llmInfo,
+      state.recursionCount,
+      state.recursionLimit
     );
   }
   
