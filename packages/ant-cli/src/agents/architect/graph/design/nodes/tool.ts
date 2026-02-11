@@ -496,6 +496,12 @@ async function handleEditFile(
     console.log(`✅ [EditFile] Successfully edited ${relativePath}`);
     console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);
     
+    // ✅ Notify file tree update after disk write
+    if (state.deps?.fileTreeUpdate) {
+      const featureName = state.context.featureFolder || 'default';
+      state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
+    }
+    
     // ✅ UI notification: file edit complete
     await chatAPI.completeFileEdit(filePath, old_str, new_str);
     

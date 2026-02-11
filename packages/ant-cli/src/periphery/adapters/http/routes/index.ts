@@ -33,6 +33,7 @@ export interface RoutesDeps {
   githubAuthService?: GitHubAuthService;
   workspaceRoot?: string;  // For Figma OAuth
   workspaceResolver?: any;  // For Figma Files (WorkspaceResolver)
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };  // ✅ For file tree updates after file writes
 }
 
 /**
@@ -66,7 +67,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   router.use(createChatRoutes({
     chatService: deps.chatService,
     choiceService: deps.choiceService,
-    workspaceResolver: deps.workspaceResolver
+    workspaceResolver: deps.workspaceResolver,
+    fileTreeNotifier: deps.fileTreeNotifier
   }));
   
   // GitHub integration

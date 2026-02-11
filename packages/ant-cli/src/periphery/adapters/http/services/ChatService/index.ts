@@ -322,53 +322,69 @@ export class ChatService {
   }
 
   /**
-   * Update metadata of the last content of a specific type in the last message
-   * Used to mark triage_choice as resolved after user selection
+   * Update metadata of the last content of a specific type in the last message.
+   * 
+   * ✅ Multi-pod safe: optional `metadataFilter` ensures the correct content is updated
+   * when multiple contents share the same type (e.g., choice_card with different cardType).
+   * 
+   * @param metadataFilter - Optional filter to match on content.metadata fields.
+   *   Example: { cardType: 'eval_save' } only matches choice_card with that cardType.
+   *   Example: { jobId: 'xxx' } only matches cancelled with that specific jobId.
    */
   async updateLastContentMetadata(
     projectId: string,
     featureName: string,
     contentType: string,
     metadataUpdate: Record<string, any>,
-    userContext?: UserContext
+    userContext?: UserContext,
+    metadataFilter?: Record<string, any>
   ): Promise<boolean> {
     const messages = this.getMessages(projectId, featureName, userContext);
     
-    // Find the last message with content of the specified type
+    // Find the last message with content of the specified type (+ optional metadata filter)
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
       if (!message.contents) continue;
       
       for (let j = message.contents.length - 1; j >= 0; j--) {
         const content = message.contents[j];
-        if (content.type === contentType) {
-          // Update metadata
-          content.metadata = {
-            ...content.metadata,
-            ...metadataUpdate
-          };
-          
-          // Save to disk AND Redis
-          this.persistence.saveSession(projectId, featureName, messages, userContext);
-          const session = this.sessionManager.getSession(projectId, featureName);
-          if (session) {
-            await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
-              logger.warn('Failed to save metadata update to Redis', { component: 'ChatService' }, err);
-            });
-          }
-          
-          // Broadcast updated content via SSE so frontend can update the card
-          if (userContext) {
-            this.broadcaster.broadcast(projectId, featureName, {
-              type: 'content_update',
-              messageId: message.id,
-              contentIndex: j,
-              content
-            }, userContext);
-          }
-          
-          return true;
+        if (content.type !== contentType) continue;
+        
+        // ✅ Multi-pod safety: check metadata filter if provided
+        if (metadataFilter) {
+          const meta = content.metadata as Record<string, any> | undefined;
+          const matches = Object.entries(metadataFilter).every(
+            ([key, value]) => meta?.[key] === value
+          );
+          if (!matches) continue;
         }
+        
+        // Update metadata
+        content.metadata = {
+          ...content.metadata,
+          ...metadataUpdate
+        };
+        
+        // Save to disk AND Redis
+        this.persistence.saveSession(projectId, featureName, messages, userContext);
+        const session = this.sessionManager.getSession(projectId, featureName);
+        if (session) {
+          await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
+            logger.warn('Failed to save metadata update to Redis', { component: 'ChatService' }, err);
+          });
+        }
+        
+        // Broadcast updated content via SSE so frontend can update the card
+        if (userContext) {
+          this.broadcaster.broadcast(projectId, featureName, {
+            type: 'content_update',
+            messageId: message.id,
+            contentIndex: j,
+            content
+          }, userContext);
+        }
+        
+        return true;
       }
     }
     

@@ -2034,35 +2034,6 @@ export async function submitTriageChoice(
   }
 }
 
-/**
- * Submit user's cancelled choice (Resume/Dismiss)
- */
-export async function submitCancelledChoice(
-  projectId: string,
-  featureName: string,
-  jobId: string,
-  choice: 'resume' | 'dismiss'
-): Promise<{ success: boolean; choice: string; resolvedLabel: string }> {
-  try {
-    const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/cancelled-choice`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ jobId, choice })
-      }
-    );
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `HTTP ${response.status}`);
-    }
-    
-    return await response.json();
-  } catch (error: any) {
-    console.error('[API] submitCancelledChoice error:', error);
-    throw error;
-  }
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Eval Save API
@@ -2125,6 +2096,50 @@ export async function submitPrdApply(
     return await response.json();
   } catch (error: any) {
     console.error('[API] submitPrdApply error:', error);
+    throw error;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Generic Choice Dismiss API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Persist any choice card action to backend — survives page refresh in multi-pod.
+ * 
+ * Unified endpoint for ALL choice card types:
+ *   - cancelled: Resume/Dismiss (with metadataFilter: { jobId })
+ *   - choice_card: Save/Skip/Apply/KeepDraft (with metadataFilter: { cardType })
+ *   - triage_choice: handled by its own endpoint (has side effects)
+ * 
+ * @param metadataFilter - Optional filter for precise content targeting.
+ *   Ensures correct content is updated when multiple contents share the same type.
+ */
+export async function submitChoiceDismiss(
+  projectId: string,
+  featureName: string,
+  contentType: string,
+  choiceAction: string,
+  resolvedLabel: string,
+  metadataFilter?: Record<string, string>
+): Promise<{ success: boolean; choiceAction: string; resolvedLabel: string }> {
+  try {
+    const response = await authFetch(
+      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/dismiss-choice`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ contentType, choiceAction, resolvedLabel, metadataFilter })
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error: any) {
+    console.error('[API] submitChoiceDismiss error:', error);
     throw error;
   }
 }

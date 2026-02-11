@@ -63,6 +63,28 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   const mode = existingDocument ? 'refine' : 'generate';
   console.log(`   Mode: ${mode}`);
   
+  // 2b. In refine mode, create staging copy for edit_prd tool
+  if (mode === 'refine' && existingDocument) {
+    const stagingDir = path.join(featurePath, 'outputs/plan');
+    const stagingPath = path.join(stagingDir, 'prd-refine.md');
+    try {
+      fs.mkdirSync(stagingDir, { recursive: true });
+      fs.writeFileSync(stagingPath, existingDocument, 'utf-8');
+      console.log(`   Staging: Created outputs/plan/prd-refine.md (${existingDocument.length} chars)`);
+      
+      // ✅ Notify file tree update after staging copy creation
+      if (state.deps?.fileTreeUpdate) {
+        const projectId = process.env.ANT_PROJECT_ID;
+        const featureName = process.env.ANT_FEATURE_NAME;
+        if (projectId && featureName) {
+          state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
+        }
+      }
+    } catch (error: any) {
+      console.warn(`   ⚠️ Staging: Failed to create staging copy: ${error.message}`);
+    }
+  }
+  
   // 3. Load eval reports (if any) — skip stale evals (PRD modified after eval)
   //    NOTE: Whether to apply eval findings is decided by the LLM based on the user's directive.
   //    The system always loads available context; the prompt constrains when to use it.
@@ -97,18 +119,11 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     // No eval reports
   }
   
-  // 4. If refine mode with no eval, load PRD rubric as reference
-  let rubricContent: string | undefined;
-  if (mode === 'refine' && !evalReport) {
-    try {
-      const docsRoot = WorkspacePathResolver.getDocsRoot();
-      const rubricPath = path.join(docsRoot, 'rubric', 'PRD-RUBRIC.md');
-      rubricContent = fs.readFileSync(rubricPath, 'utf-8');
-      console.log(`   Rubric: Loaded PRD rubric (${rubricContent.length} chars)`);
-    } catch {
-      console.log('   Rubric: PRD-RUBRIC.md not found');
-    }
-  }
+  // 4. Rubric auto-loading removed.
+  // Rubric was injected into the system prompt in refine mode, but LLMs cannot
+  // reliably "ignore" 840 lines of context. It caused unintended document restructuring.
+  // Rubric-based improvement should be explicitly requested via the directive.
+  const rubricContent: string | undefined = undefined;
   
   // 5. Load recent session turns (lightweight context)
   let recentTurnSummaries: string[] | undefined;
@@ -136,9 +151,7 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     const latestEvalFile = fs.readdirSync(evalDir).filter(f => f.endsWith('.md')).sort().reverse()[0];
     contextItems.push({ label: 'Eval report', detail: latestEvalFile });
   }
-  if (rubricContent && !evalReport) {
-    contextItems.push({ label: 'PRD rubric', detail: 'self-diagnosis mode' });
-  }
+  // Rubric context item removed (rubric auto-loading disabled)
   if (recentTurnSummaries && recentTurnSummaries.length > 0) {
     contextItems.push({ label: 'Session history', detail: `${recentTurnSummaries.length} turns` });
   }

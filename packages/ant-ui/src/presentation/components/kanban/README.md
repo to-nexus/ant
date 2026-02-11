@@ -9,7 +9,6 @@ kanban/
 ├── KanbanBoard.tsx         # 메인 orchestrator (SSE, 상태 관리)
 ├── KanbanHeader.tsx        # 헤더 액션 (데이터 소스, 게이지)
 ├── KanbanEstimating.tsx    # Estimating 상태 디스플레이
-├── KanbanPausedPrompt.tsx  # Resume 프롬프트
 ├── KanbanColumns.tsx       # 3칼럼 레이아웃 (To Do, In Progress, Completed)
 ├── index.ts               # Export 정리
 └── README.md              # 이 파일
@@ -36,10 +35,6 @@ kanban/
 ### NodeActivityBanner
 - 현재 실행 중인 비-태스크 노드의 활동 라벨 + 실시간 타이머 표시
 - estimatingLabel/estimatingStartedAt 기반 자동 마운트/해제
-
-### KanbanPausedPrompt
-- Recursion limit 도달 시 표시
-- Resume Task 버튼
 
 ### KanbanColumns
 - 3칼럼 레이아웃

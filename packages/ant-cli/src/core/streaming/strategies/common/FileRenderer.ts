@@ -6,6 +6,7 @@ import * as path from 'path';
 import { ChatAPIClient } from '../../../adapters/ChatAPIClient';
 import { GitPort } from '../../../ports/git';
 import { FileSystemPort } from '../../../ports/filesystem';
+import { FileTreeUpdatePort } from '../../../ports/fileTree';
 import { ParsedAction, FileStreamInfo } from '../../types';
 import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
@@ -14,6 +15,7 @@ export interface FileRendererConfig {
   chatAPI: ChatAPIClient;
   gitPort?: GitPort;
   fileSystem?: FileSystemPort;  // ✅ Add fileSystem
+  fileTreeUpdate?: FileTreeUpdatePort;  // ✅ For real-time file tree updates
   writeImmediately: boolean;
   jobType?: 'code' | 'design';
   featurePath?: string;
@@ -24,6 +26,7 @@ export class FileRenderer {
   private chatAPI: ChatAPIClient;
   private gitPort?: GitPort;
   private fileSystem?: FileSystemPort;  // ✅ Add fileSystem property
+  private fileTreeUpdate?: FileTreeUpdatePort;  // ✅ For real-time file tree updates
   private writeImmediately: boolean;
   private jobType?: 'code' | 'design';
   private featurePath?: string;
@@ -31,6 +34,10 @@ export class FileRenderer {
   
   private activeFiles: Map<string, FileStreamInfo> = new Map();
   private lineBuffers: LineBufferManager = new LineBufferManager();
+  
+  // ✅ Debounced file tree notification (prevents excessive Redis Pub/Sub during streaming)
+  private fileTreeNotifyTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly FILE_TREE_NOTIFY_DEBOUNCE_MS = 2000;
   
   // ✅ Track file operation completion
   
@@ -44,6 +51,7 @@ export class FileRenderer {
     this.chatAPI = config.chatAPI;
     this.gitPort = config.gitPort;
     this.fileSystem = config.fileSystem;  // ✅ Store fileSystem
+    this.fileTreeUpdate = config.fileTreeUpdate;  // ✅ Store fileTreeUpdate
     this.writeImmediately = config.writeImmediately;
     this.jobType = config.jobType;
     this.featurePath = config.featurePath;
@@ -308,6 +316,9 @@ export class FileRenderer {
         if (!this.fileSystem) throw new Error('FileSystemPort not available');
         await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
       }
+      
+      // ✅ Schedule debounced file tree notification after disk write
+      this.scheduleFileTreeNotification();
     }
     
     await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
@@ -477,6 +488,47 @@ export class FileRenderer {
   }
   
   /**
+   * Schedule a debounced file tree notification via Redis Pub/Sub.
+   * Batches rapid consecutive writes into a single notification (2s debounce).
+   */
+  private scheduleFileTreeNotification(): void {
+    if (!this.fileTreeUpdate) return;
+    
+    const projectId = process.env.ANT_PROJECT_ID;
+    const featureName = process.env.ANT_FEATURE_NAME;
+    if (!projectId || !featureName) {
+      console.warn(`[FileRenderer] Cannot notify file tree: missing ANT_PROJECT_ID or ANT_FEATURE_NAME`);
+      return;
+    }
+    
+    if (this.fileTreeNotifyTimer) clearTimeout(this.fileTreeNotifyTimer);
+    this.fileTreeNotifyTimer = setTimeout(() => {
+      this.fileTreeUpdate!.notifyFileTreeUpdate(projectId, featureName);
+      this.fileTreeNotifyTimer = null;
+    }, FileRenderer.FILE_TREE_NOTIFY_DEBOUNCE_MS);
+  }
+  
+  /**
+   * Flush any pending debounced file tree notification immediately.
+   * Called when streaming completes to ensure the final state is broadcast.
+   */
+  flushFileTreeNotification(): void {
+    if (this.fileTreeNotifyTimer) {
+      clearTimeout(this.fileTreeNotifyTimer);
+      this.fileTreeNotifyTimer = null;
+      if (this.fileTreeUpdate) {
+        const projectId = process.env.ANT_PROJECT_ID;
+        const featureName = process.env.ANT_FEATURE_NAME;
+        if (!projectId || !featureName) {
+          console.warn(`[FileRenderer] Cannot flush file tree notify: missing ANT_PROJECT_ID or ANT_FEATURE_NAME`);
+          return;
+        }
+        this.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
+      }
+    }
+  }
+  
+  /**
    * Cleanup resources for a file
    */
   private cleanup(filePath: string): void {
@@ -592,6 +644,9 @@ export class FileRenderer {
     this.activeFiles.clear();
     this.lineBuffers.clearAll();
     this.completionPromises.clear();
+    
+    // ✅ Flush pending file tree notification on finalize
+    this.flushFileTreeNotification();
   }
   
   /**
@@ -621,5 +676,11 @@ export class FileRenderer {
     this.completionResolvers.clear();
     this.completionRejectors.clear();
     this.fileErrors = [];
+    
+    // ✅ Cancel pending file tree notification on reset
+    if (this.fileTreeNotifyTimer) {
+      clearTimeout(this.fileTreeNotifyTimer);
+      this.fileTreeNotifyTimer = null;
+    }
   }
 }

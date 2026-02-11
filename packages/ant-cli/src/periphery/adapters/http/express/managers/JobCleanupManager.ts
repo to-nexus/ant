@@ -11,6 +11,23 @@ import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state
 import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
 
 /**
+ * Atomic file write: write to temp file + rename.
+ * Prevents partial/corrupt JSON when process crashes or is killed mid-write.
+ * The rename operation is atomic on POSIX systems when src and dest are on the same filesystem.
+ */
+async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+  const dir = path.dirname(filePath);
+  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.tmp`);
+  try {
+    await fs.promises.writeFile(tmpPath, content, 'utf-8');
+    await fs.promises.rename(tmpPath, filePath);
+  } catch (err) {
+    try { await fs.promises.unlink(tmpPath); } catch { /* ignore */ }
+    throw err;
+  }
+}
+
+/**
  * JobCleanupManager
  * 
  * Handles job state cleanup when jobs are stopped or completed.
@@ -224,27 +241,77 @@ export class JobCleanupManager {
             });
           }
           
-          // Write updated session
-          await fs.promises.writeFile(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+          // Write updated session (atomic: temp file + rename to prevent corruption)
+          await atomicWriteFile(sessionPath, JSON.stringify(sessionData, null, 2));
         } else if (interruptionReason) {
-          // No session file yet - create minimal session with interruption
-          const minimalSession = {
-            sessionId: crypto.randomUUID(),
-            projectId: mapping.projectId,
-            featureName: mapping.featureName,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            turns: [],
-            state: {
-              taskQueue: [],
-              completedTasks: [],
-              completedTasksDetails: [],
-              interruption: interruptionReason
-            }
-          };
+          // ✅ Session file unreadable (corrupted mid-write, EFS stale, or not yet created).
+          // CRITICAL: Do NOT blindly create a minimal session with empty taskQueue — this
+          // would destroy task state and cause all tasks to disappear from the Kanban.
+          //
+          // Strategy:
+          // 1. Try Redis task queue snapshot as fallback (always up-to-date in distributed mode)
+          // 2. If Redis also has nothing, do NOT overwrite — the session file on disk may
+          //    still be valid (just momentarily unreadable due to EFS propagation).
+          let fallbackTaskQueue: any[] = [];
+          let fallbackCompletedTasks: any[] = [];
+          let hasFallback = false;
           
-          await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true });
-          await fs.promises.writeFile(sessionPath, JSON.stringify(minimalSession, null, 2), 'utf-8');
+          try {
+            const redisSnapshot = await stateStore.getTaskQueue(jobId);
+            if (redisSnapshot) {
+              // Reconstruct taskQueue from Redis live snapshot
+              // Running tasks go back to queue as interrupted
+              const runningTasks = (redisSnapshot.currentTasks || (redisSnapshot.currentTask ? [redisSnapshot.currentTask] : []))
+                .filter(Boolean)
+                .map((t: any) => ({ ...t, interrupted: true }));
+              fallbackTaskQueue = [...runningTasks, ...redisSnapshot.queue];
+              fallbackCompletedTasks = redisSnapshot.completedTasks || [];
+              hasFallback = true;
+              logger.info(`Recovered task state from Redis snapshot`, {
+                component: 'JobCleanupManager',
+                jobId
+              }, {
+                queueSize: fallbackTaskQueue.length,
+                completedCount: fallbackCompletedTasks.length,
+              });
+            }
+          } catch (redisErr) {
+            logger.warn(`Failed to get fallback from Redis`, {
+              component: 'JobCleanupManager',
+              jobId
+            }, redisErr);
+          }
+          
+          if (hasFallback) {
+            const minimalSession = {
+              sessionId: crypto.randomUUID(),
+              projectId: mapping.projectId,
+              featureName: mapping.featureName,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              turns: [],
+              state: {
+                taskQueue: fallbackTaskQueue,
+                completedTasks: fallbackCompletedTasks.map((t: any) => t.id || t),
+                completedTasksDetails: fallbackCompletedTasks,
+                interruption: interruptionReason,
+                parallelMode: true,
+              }
+            };
+            
+            await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true });
+            await atomicWriteFile(sessionPath, JSON.stringify(minimalSession, null, 2));
+          } else {
+            // No Redis fallback available — do NOT overwrite potentially valid session file.
+            // Log a warning so we can diagnose if this path is ever hit.
+            logger.warn(`No session data and no Redis fallback — skipping session write to preserve existing file`, {
+              component: 'JobCleanupManager',
+              jobId
+            }, {
+              sessionPath,
+              interruptionReason: interruptionReason.reason,
+            });
+          }
         }
         
         // Broadcast final update (only for decomposable jobs that have Kanban)
