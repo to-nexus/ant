@@ -7,7 +7,8 @@ import {
   startFigmaOAuth,
   disconnectFigma,
   fetchOrgConfig,
-  updateOrgConfig,
+  fetchUserConfig,
+  updateUserConfig,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
@@ -36,11 +37,12 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const [isCheckingPAT, setIsCheckingPAT] = useState(true);
   const [isSavingPAT, setIsSavingPAT] = useState(false);
   
-  // GitHub Owner (org-level) state
-  const [githubOwner, setGithubOwner] = useState('');
-  const [savedGithubOwner, setSavedGithubOwner] = useState('');
-  const [isLoadingOrgConfig, setIsLoadingOrgConfig] = useState(true);
-  const [isSavingOwner, setIsSavingOwner] = useState(false);
+  // GitHub Owner state
+  const [orgGithubOwner, setOrgGithubOwner] = useState('');       // org-level (read-only)
+  const [userOwnerOverride, setUserOwnerOverride] = useState(''); // user override (editable)
+  const [savedUserOverride, setSavedUserOverride] = useState(''); // saved user override
+  const [isLoadingOwnerConfig, setIsLoadingOwnerConfig] = useState(true);
+  const [isSavingOverride, setIsSavingOverride] = useState(false);
   
   // Figma OAuth state
   const [figmaConfigured, setFigmaConfigured] = useState(false);
@@ -73,22 +75,26 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     loadGitHubPATStatus();
   }, []);
   
-  // Load org config (GitHub Owner) on mount
+  // Load org config (read-only) + user config (editable override) on mount
   useEffect(() => {
-    async function loadOrgConfig() {
-      setIsLoadingOrgConfig(true);
+    async function loadOwnerConfigs() {
+      setIsLoadingOwnerConfig(true);
       try {
-        const config = await fetchOrgConfig();
-        const owner = config.github?.owner || '';
-        setGithubOwner(owner);
-        setSavedGithubOwner(owner);
+        const [orgConfig, userConfig] = await Promise.all([
+          fetchOrgConfig(),
+          fetchUserConfig(),
+        ]);
+        setOrgGithubOwner(orgConfig.github?.owner || '');
+        const override = userConfig.github?.ownerOverride || '';
+        setUserOwnerOverride(override);
+        setSavedUserOverride(override);
       } catch (error) {
-        console.error('Failed to load org config:', error);
+        console.error('Failed to load owner configs:', error);
       } finally {
-        setIsLoadingOrgConfig(false);
+        setIsLoadingOwnerConfig(false);
       }
     }
-    loadOrgConfig();
+    loadOwnerConfigs();
   }, []);
   
   // Load Figma config status on mount
@@ -183,22 +189,22 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     }
   };
 
-  const handleSaveGitHubOwner = async () => {
-    const trimmed = githubOwner.trim();
-    setIsSavingOwner(true);
+  const handleSaveOwnerOverride = async () => {
+    const trimmed = userOwnerOverride.trim();
+    setIsSavingOverride(true);
     try {
-      await updateOrgConfig({ github: { owner: trimmed || undefined } });
-      setSavedGithubOwner(trimmed);
+      await updateUserConfig({ github: { ownerOverride: trimmed || null } });
+      setSavedUserOverride(trimmed);
       if (trimmed) {
-        showSuccess(`GitHub owner set to "${trimmed}". New projects will default to github.com/${trimmed}/{project}`);
+        showSuccess(`GitHub owner override set to "${trimmed}". New projects will use github.com/${trimmed}/{project}`);
       } else {
-        showSuccess('GitHub owner cleared. New projects will not have a default repo URL.');
+        showSuccess(`Owner override cleared. Falling back to organization default${orgGithubOwner ? ` (${orgGithubOwner})` : ''}.`);
       }
     } catch (error: any) {
-      console.error('Failed to save GitHub owner:', error);
-      showError(error.message || 'Failed to save GitHub owner.');
+      console.error('Failed to save owner override:', error);
+      showError(error.message || 'Failed to save owner override.');
     } finally {
-      setIsSavingOwner(false);
+      setIsSavingOverride(false);
     }
   };
 
@@ -339,7 +345,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     </ConfigSection>
   );
 
-  const isGithubOwnerChanged = githubOwner.trim() !== savedGithubOwner;
+  const isOverrideChanged = userOwnerOverride.trim() !== savedUserOverride;
 
   const renderGitHubSection = () => (
     <ConfigSection
@@ -350,7 +356,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         state: isCheckingPAT ? 'checking' : (githubPATConfigured ? 'configured' : 'not-configured'),
         label: githubPATConfigured && githubUsername ? `@${githubUsername}` : undefined,
       }}
-      hint={<>PAT scopes: <code className={ConfigStyles.code}>repo</code></>}
+      hint={undefined}
     >
       {/* ---- Personal Access Token ---- */}
       <div>
@@ -410,67 +416,68 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       {/* ---- Divider ---- */}
       <div className="border-t border-gray-200 dark:border-gray-700" />
 
-      {/* ---- Repository Owners ---- */}
+      {/* ---- Default Repository Owner ---- */}
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-3">
-          Default Repository Owners
+          Default Repository Owner
         </label>
 
-        {/* Organization Owner */}
-        <div className="mb-3">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-              Organization
+        {/* Organization (editable override) */}
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+            Organization
+          </span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            {savedUserOverride ? 'Custom override active' : orgGithubOwner ? 'Using org default' : 'Not configured'}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center flex-1">
+            <span className="px-3 py-2 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
+              github.com/
             </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">Shared across all members</span>
+            <input
+              type="text"
+              value={userOwnerOverride}
+              onChange={(e) => setUserOwnerOverride(e.target.value.replace(/\s/g, ''))}
+              placeholder={orgGithubOwner || githubUsername || 'owner'}
+              disabled={isLoadingOwnerConfig}
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-r-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm disabled:opacity-50"
+            />
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center flex-1">
-              <span className="px-3 py-2 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
-                github.com/
-              </span>
-              <input
-                type="text"
-                value={githubOwner}
-                onChange={(e) => setGithubOwner(e.target.value.replace(/\s/g, ''))}
-                placeholder="org-name"
-                disabled={isLoadingOrgConfig}
-                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-r-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm disabled:opacity-50"
-              />
-            </div>
+          <button
+            onClick={handleSaveOwnerOverride}
+            disabled={isSavingOverride || !isOverrideChanged}
+            className={ConfigStyles.buttonPrimary}
+          >
+            {isSavingOverride ? 'Saving...' : 'Save'}
+          </button>
+          {savedUserOverride && (
             <button
-              onClick={handleSaveGitHubOwner}
-              disabled={isSavingOwner || !isGithubOwnerChanged}
-              className={ConfigStyles.buttonPrimary}
+              onClick={() => {
+                setUserOwnerOverride('');
+                setIsSavingOverride(true);
+                updateUserConfig({ github: { ownerOverride: null } })
+                  .then(() => {
+                    setSavedUserOverride('');
+                    showSuccess(`Reverted to org default${orgGithubOwner ? ` (${orgGithubOwner})` : ''}.`);
+                  })
+                  .catch((err: any) => showError(err.message || 'Failed to clear'))
+                  .finally(() => setIsSavingOverride(false));
+              }}
+              disabled={isSavingOverride}
+              className={ConfigStyles.buttonSecondary}
+              title="Revert to organization default"
             >
-              {isSavingOwner ? 'Saving...' : 'Save'}
+              Reset
             </button>
-            {savedGithubOwner && (
-              <button
-                onClick={() => {
-                  setGithubOwner('');
-                  setIsSavingOwner(true);
-                  updateOrgConfig({ github: { owner: undefined } })
-                    .then(() => {
-                      setSavedGithubOwner('');
-                      showSuccess('Organization owner cleared.');
-                    })
-                    .catch((err: any) => showError(err.message || 'Failed to clear'))
-                    .finally(() => setIsSavingOwner(false));
-                }}
-                disabled={isSavingOwner}
-                className={ConfigStyles.buttonDanger}
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Personal Owner (auto-detected from PAT) */}
-        <div>
+        <div className="mt-3">
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
               Personal
             </span>
             <span className="text-xs text-gray-400 dark:text-gray-500">Auto-detected from PAT</span>
@@ -488,14 +495,6 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             </div>
           </div>
         </div>
-
-        {/* Preview */}
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-          New projects: <code className={ConfigStyles.code}>github.com/{savedGithubOwner || githubUsername || '...'}/{'{project}'}</code>
-          {savedGithubOwner && githubUsername && savedGithubOwner !== githubUsername && (
-            <span className="ml-1">(defaults to organization)</span>
-          )}
-        </p>
       </div>
     </ConfigSection>
   );
