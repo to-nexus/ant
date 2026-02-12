@@ -1,0 +1,37 @@
+{
+  "board": {
+    "title": "Task Board"
+  },
+  "columns": {
+    "todo": "To Do",
+    "inProgress": "In Progress",
+    "completed": "Completed"
+  },
+  "header": {
+    "total": "Total:",
+    "estimatingPhase": "Estimating Phase:",
+    "paused": "Paused:"
+  },
+  "tokenStats": {
+    "input": "Input",
+    "output": "Output",
+    "newCacheMiss": "New (cache-miss):",
+    "cacheHit": "Cache hit:",
+    "cacheCreated": "Cache created:",
+    "cacheHitRate": "Cache hit rate:",
+    "billableInput": "Billable input:",
+    "inputSavings": "Input savings:",
+    "byPhase": "By Phase",
+    "estimating": "Estimating:"
+  },
+  "task": {
+    "paused": "Paused"
+  },
+  "workflow": {
+    "title": "🔄 Agent Workflow",
+    "noSelection": "No Workspace or Feature Selected",
+    "loading": "Loading workflow graph...",
+    "trackNode": "Track current node",
+    "linkedActors": "Linked Actors:"
+  }
+}

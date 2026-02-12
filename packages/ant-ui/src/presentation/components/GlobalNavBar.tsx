@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Settings } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Settings, Globe } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 import { SignUpModal } from './auth/SignUpModal';
 import { SignInModal } from './auth/SignInModal';
 import { signUp, signIn, signOut, checkLocalBackend, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
+import { useTranslation } from 'react-i18next';
+import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
 
 /**
  * Get OAuth backend base URL
@@ -40,9 +42,12 @@ export interface GlobalNavBarProps {
  * ✅ Agent/Job selection and Run/Stop are now in Chat UI
  */
 export function GlobalNavBar({}: GlobalNavBarProps) {
+  const { t } = useTranslation('nav');
   const connectionStatus = useStore((state) => state.connectionStatus);
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
+  const language = useStore((state) => state.language);
+  const setLanguage = useStore((state) => state.setLanguage);
   const mainView = useStore((state) => state.mainView);
   const setMainView = useStore((state) => state.setMainView);
   const selectedProject = useStore((state) => state.selectedProject);
@@ -60,7 +65,21 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const [showSignUpModal, setShowSignUpModal] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
+  const langMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Close language menu on outside click
+  useEffect(() => {
+    if (!showLangMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target as Node)) {
+        setShowLangMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showLangMenu]);
   
   // Check if user is signed in
   const isSignedIn = !!userEmail && !!userOrganization;
@@ -189,7 +208,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const handleCodeIdeViewSwitch = async () => {
     // ✅ Check if project is selected
     if (!selectedProject) {
-      setEditorTooltip('Please select a project first');
+                      setEditorTooltip(t('viewMode.selectProjectFirst'));
       setTimeout(() => setEditorTooltip(null), 3000);
       return;
     }
@@ -217,7 +236,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       useStore.getState().switchToCodeIdeView(instance.workspacePath || `/${selectedProject}`);
     } catch (error: any) {
       console.error('[GlobalNavBar] Failed to open IDE:', error);
-      setEditorTooltip('Failed to open IDE');
+      setEditorTooltip(t('viewMode.failedToOpenIde'));
       useStore.getState().setIdeConnecting(false, error?.message || 'Failed to open IDE');
       setTimeout(() => setEditorTooltip(null), 3000);
     }
@@ -231,7 +250,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
             {/* ANT Logo - Neural Network Pattern */}
             <img 
               src={theme === 'dark' ? '/logo-dark.svg' : '/logo-light.svg'}
-              alt="ANT Works Logo" 
+              alt={t('brand.logoAlt')} 
               className="w-8 h-8" 
             />
             
@@ -249,10 +268,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
-                title={uiSelectedMode !== 'local' ? 'Switch to local backend (or view setup guide)' : 'Currently using local backend'}
+                title={uiSelectedMode !== 'local' ? t('deploymentMode.switchToLocal') : t('deploymentMode.currentlyLocal')}
               >
                 <Monitor className="w-3.5 h-3.5" />
-                Local
+                {t('deploymentMode.local')}
               </button>
               
               {/* Cloud Button */}
@@ -265,10 +284,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
-                title="Switch to cloud backend"
+                title={t('deploymentMode.switchToCloud')}
               >
                 <Cloud className="w-3.5 h-3.5" />
-                Cloud
+                {t('deploymentMode.cloud')}
               </button>
             </div>
             
@@ -286,7 +305,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                 `}
               >
                 <Bot className="w-3.5 h-3.5" />
-                Agents
+                {t('viewMode.agents')}
               </button>
               
               {/* Editor Button */}
@@ -299,10 +318,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 opacity-60 border-transparent'
                   }
                 `}
-                title={selectedProject ? 'Open codebase in editor' : 'Select a project first'}
+                title={selectedProject ? t('viewMode.openEditor') : t('viewMode.selectProjectFirst')}
               >
                 <Code2 className="w-3.5 h-3.5" />
-                Code
+                {t('viewMode.code')}
               </button>
               
               {/* Tooltip for Editor button */}
@@ -316,15 +335,53 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
           </div>
           
           <div className="flex items-center space-x-3">
+            {/* Language Selector */}
+            <div className="relative" ref={langMenuRef}>
+              <button
+                onClick={() => setShowLangMenu(!showLangMenu)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md
+                         bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300
+                         hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700
+                         transition-colors"
+                title={t('language.label')}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                {language.toUpperCase()}
+              </button>
+              {showLangMenu && (
+                <div className="absolute top-full right-0 mt-1 w-32 bg-white dark:bg-gray-800 
+                              rounded-md shadow-lg border border-gray-200 dark:border-gray-700 
+                              py-1 z-50">
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <button
+                      key={lang}
+                      onClick={() => {
+                        setLanguage(lang);
+                        setShowLangMenu(false);
+                      }}
+                      className={`w-full px-3 py-1.5 text-left text-sm transition-colors flex items-center justify-between
+                        ${language === lang 
+                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300' 
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                      {LANGUAGE_LABELS[lang]}
+                      {language === lang && <span className="text-blue-500">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Theme Toggle Switch */}
             <button
               onClick={toggleTheme}
               className="relative inline-flex items-center h-8 rounded-full w-16 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 bg-gray-300 dark:bg-gray-600"
-              aria-label="Toggle theme"
-              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+              aria-label={t('theme.toggle')}
+              title={t('theme.switchTo', { mode: theme === 'light' ? 'dark' : 'light' })}
             >
               {/* Switch Track */}
-              <span className="sr-only">Toggle theme</span>
+              <span className="sr-only">{t('theme.toggle')}</span>
               {/* Switch Thumb */}
               <span
                 className={`${
@@ -356,7 +413,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                       className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 
                                hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
                     >
-                      Sign Up
+                      {t('auth.signUp')}
                     </button>
                     <button
                       onClick={handleSignInClick}
@@ -368,7 +425,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                                rounded-md shadow-md hover:shadow-lg 
                                transition-all duration-200"
                     >
-                      Sign In
+                      {t('auth.signIn')}
                     </button>
                   </div>
                 ) : (
@@ -406,7 +463,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                                    transition-colors"
                         >
                           <Settings className="w-4 h-4" />
-                          Account Configuration
+                          {t('auth.accountConfig')}
                         </button>
                         <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
                         <button
@@ -416,7 +473,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                                    transition-colors"
                         >
                           <LogOut className="w-4 h-4" />
-                          Sign Out
+                          {t('auth.signOut')}
                         </button>
                       </div>
                     )}

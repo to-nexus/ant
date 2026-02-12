@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useAvailableModels } from './hooks/useAvailableModels';
@@ -17,6 +18,7 @@ interface ConfigEditorProps {
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   // onClose is handled by MainPanel tab close button (kept for API compatibility)
   void onClose;
+  const { t } = useTranslation('config');
   const { availableModels, isLoadingModels, defaultModelId } = useAvailableModels();
   const {
     editedConfig,
@@ -105,12 +107,12 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     try {
       const result = await onSave(editedConfig);
       if (result.success) {
-        showSuccess('Configuration saved successfully!');
+        showSuccess(t('projectConfig.saved'));
       } else {
-        showError(result.error || 'Failed to save configuration. Please try again.');
+        showError(result.error || t('projectConfig.saveFailed'));
       }
     } catch (error) {
-      showError('Failed to save configuration. Please try again.');
+      showError(t('projectConfig.saveFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -131,11 +133,11 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
   const handleDiscardChanges = () => {
     if (!hasChanges) return;
-    showConfirm('변경사항을 모두 되돌릴까요?', {
+    showConfirm(t('projectConfig.revertConfirm'), {
       type: 'warning',
-      title: 'Discard changes?',
-      confirmText: 'Discard',
-      cancelText: 'Cancel',
+      title: t('projectConfig.revertConfirm'),
+      confirmText: t('common:button.confirm'),
+      cancelText: t('common:button.cancel'),
       onConfirm: () => {
         setEditedConfig(config);
         setErrors({});

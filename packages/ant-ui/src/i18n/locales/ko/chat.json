@@ -1,0 +1,37 @@
+{
+  "input": {
+    "placeholder": "로그인 후 채팅을 시작하세요...",
+    "send": "전송",
+    "stopJob": "실행 중인 Job 중지"
+  },
+  "sidebar": {
+    "clearHistory": "채팅 기록 삭제",
+    "clearHistoryConfirm": "이 Feature의 모든 채팅 메시지가 영구 삭제됩니다.",
+    "clearHistoryConfirmSub": "계속하시겠습니까?",
+    "clearHistoryFailed": "채팅 기록 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.",
+    "offline": "채팅 오프라인",
+    "expand": "채팅 확장",
+    "collapse": "채팅 축소"
+  },
+  "inlineAsk": {
+    "failed": "Inline ask 실패"
+  },
+  "jobMode": {
+    "design": {
+      "label": "🎨 Design",
+      "description": "아키텍처 및 디자인 생성"
+    },
+    "code": {
+      "label": "💻 Code",
+      "description": "기능 구현"
+    },
+    "learn": {
+      "label": "📚 Learn",
+      "description": "분석 및 문서화"
+    },
+    "plan": {
+      "label": "📋 Plan",
+      "description": "프로젝트 계획 및 로드맵 생성"
+    }
+  }
+}

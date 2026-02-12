@@ -1,0 +1,89 @@
+{
+  "projectConfig": {
+    "title": "Project Config",
+    "saved": "Configuration saved successfully!",
+    "saveFailed": "Failed to save configuration. Please try again.",
+    "revertConfirm": "Revert all changes?",
+    "loading": "Loading project configuration...",
+    "noConfig": "No project configuration loaded."
+  },
+  "accountConfig": {
+    "title": "Account Configuration"
+  },
+  "localBackend": {
+    "title": "Local Backend",
+    "description": "Configure the port for your on-premise ANT backend server",
+    "hint": "Default: {{port}} • Used when \"Local\" mode is selected",
+    "portLabel": "Backend Port",
+    "portSaved": "Local backend port set to {{port}}",
+    "portReset": "Local backend port reset to default",
+    "invalidPort": "Please enter a valid port number (1-65535)"
+  },
+  "github": {
+    "title": "GitHub Integration",
+    "description": "Connect your GitHub account and configure default repository settings",
+    "patPlaceholder": "ghp_••••••••••••••••••••",
+    "enterPat": "Please enter a GitHub Personal Access Token",
+    "savePat": "Save PAT",
+    "saving": "Saving...",
+    "saveFailed": "Failed to save GitHub PAT. Please try again.",
+    "deleteConfirm": "Delete GitHub PAT?",
+    "deleteConfirmMsg": "Are you sure you want to delete the GitHub PAT? This will affect all projects.",
+    "deleteSuccess": "GitHub PAT deleted successfully",
+    "deleteFailed": "Failed to delete GitHub PAT. Please try again.",
+    "autoDetected": "Auto-detected from PAT",
+    "reSavePat": "Re-save PAT to detect",
+    "savePATToDetect": "Save PAT to auto-detect",
+    "revertToDefault": "Revert to organization default",
+    "ownerSaveFailed": "Failed to save owner override.",
+    "clearFailed": "Failed to clear"
+  },
+  "figma": {
+    "title": "Figma Integration",
+    "description": "Connect your Figma account to import designs",
+    "oauthFailed": "Failed to start Figma OAuth. Please try again.",
+    "disconnectConfirm": "Disconnect Figma? This will affect all projects using Figma integration.",
+    "disconnected": "Figma disconnected successfully",
+    "disconnectFailed": "Failed to disconnect Figma. Please try again.",
+    "connected": "Figma account connected. MCP client registration and design import features are coming soon.",
+    "comingSoon": "Coming soon"
+  },
+  "field": {
+    "optional": "Optional"
+  },
+  "llmModels": {
+    "title": "LLM Models by Job and Node",
+    "loading": "Loading available models...",
+    "default": "Default",
+    "decompose": "Decompose",
+    "docGeneration": "Doc Generation",
+    "plan": "Plan",
+    "codeGeneration": "Code Generation"
+  },
+  "git": {
+    "repoSetupRequired": "GitHub repository setup required",
+    "setupStep1": "Set GitHub PAT:",
+    "setupStep1Desc": "Profile menu (top-right) → Account Configuration → GitHub Integration",
+    "setupStep2": "Set Repository URL:",
+    "setupStep2Desc": "Click ⚙️ icon next to project name → GitHub Repository field",
+    "setupComplete": "Once both are configured, Clone/Initialize will be enabled.",
+    "management": "Git management",
+    "notInitialized": "Git not initialized",
+    "configureFirst": "Configure GitHub repo first",
+    "clone": "Clone",
+    "cloneDesc": "Pull existing repo",
+    "initialize": "Initialize",
+    "initializeDesc": "Create new repo & push",
+    "push": "Push",
+    "pushDesc": "Upload changes",
+    "pull": "Pull",
+    "pullDesc": "Download changes",
+    "fetch": "Fetch",
+    "fetchDesc": "Update remote refs",
+    "featuresExist": "Features exist",
+    "deleteFeaturesFirst": "Delete features first to clone/initialize",
+    "currentBranch": "Current branch:",
+    "configRequired": "Configuration required. Click the settings icon above to create one.",
+    "localPathRequired": "Local path not configured. Click the settings icon to set it."
+  }
+}

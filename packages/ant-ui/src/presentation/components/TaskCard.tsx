@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/presentation/components/common/badge';
 import { TaskTimer } from './TaskTimer';
 import { ChevronDown, ChevronRight, Timer, Coins, Package } from 'lucide-react';
@@ -21,6 +22,7 @@ export function TaskCard({
   isExpanded = false,
   onToggleExpand
 }: TaskCardProps) {
+  const { t } = useTranslation('kanban');
   // Get actual running state from store
   const isTaskRunning = useStore((state) => state.isRunning);
   
@@ -154,7 +156,7 @@ export function TaskCard({
                 'text-orange-800 dark:text-orange-200'
               )}>
                 <Timer className="w-3 h-3" />
-                <span className="font-semibold text-xs">Paused</span>
+                <span className="font-semibold text-xs">{t('task.paused')}</span>
               </Badge>
             )}
             

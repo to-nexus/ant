@@ -4,8 +4,10 @@ import { textColors, cn } from '@/shared/utils/design-system';
 import { useAvailableModels } from '../hooks/useAvailableModels';
 import { useCurrentTask } from '../hooks/useCurrentTask';
 import { useModelName } from '../hooks/useModelName';
+import { useTranslation } from 'react-i18next';
 
 export function JobControls() {
+  const { t } = useTranslation('nav');
   const currentJobId = useStore((state) => state.currentJobId);
   const splitLayout = useStore((state) => state.splitLayout);
   const toggleSplitLayout = useStore((state) => state.toggleSplitLayout);
@@ -38,7 +40,7 @@ export function JobControls() {
               ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
           )}
-          title="Horizontal Split (Left/Right)"
+          title={t('splitLayout.horizontal')}
         >
           <Columns className="w-4 h-4" />
         </button>
@@ -50,7 +52,7 @@ export function JobControls() {
               ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
           )}
-          title="Vertical Split (Top/Bottom)"
+          title={t('splitLayout.vertical')}
         >
           <Rows className="w-4 h-4" />
         </button>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ProjectConfig, JobLLMConfig } from '@/infrastructure/http/api';
 import { AvailableModel } from '../hooks/useAvailableModels';
 
@@ -10,26 +11,26 @@ interface LLMModelsSectionProps {
 
 interface NodeConfig {
   key: keyof JobLLMConfig;
-  label: string;
+  labelKey: string;
   description: string;
 }
 
 const DESIGN_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'Default model for all design nodes' },
-  { key: 'decompose', label: 'Decompose', description: 'Task decomposition and planning' },
-  { key: 'docGen', label: 'Doc Generation', description: 'Documentation generation' },
-  { key: 'plan', label: 'Plan', description: 'Context gathering and planning' },
+  { key: 'default', labelKey: 'llmModels.default', description: 'Default model for all design nodes' },
+  { key: 'decompose', labelKey: 'llmModels.decompose', description: 'Task decomposition and planning' },
+  { key: 'docGen', labelKey: 'llmModels.docGeneration', description: 'Documentation generation' },
+  { key: 'plan', labelKey: 'llmModels.plan', description: 'Context gathering and planning' },
 ];
 
 const CODE_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'Default model for all code nodes' },
-  { key: 'decompose', label: 'Decompose', description: 'Task decomposition and planning' },
-  { key: 'codeGen', label: 'Code Generation', description: 'Code generation and editing' },
-  { key: 'plan', label: 'Plan', description: 'Context gathering and planning' },
+  { key: 'default', labelKey: 'llmModels.default', description: 'Default model for all code nodes' },
+  { key: 'decompose', labelKey: 'llmModels.decompose', description: 'Task decomposition and planning' },
+  { key: 'codeGen', labelKey: 'llmModels.codeGeneration', description: 'Code generation and editing' },
+  { key: 'plan', labelKey: 'llmModels.plan', description: 'Context gathering and planning' },
 ];
 
 const LEARN_NODES: NodeConfig[] = [
-  { key: 'default', label: 'Default', description: 'Default model for learning tasks' },
+  { key: 'default', labelKey: 'llmModels.default', description: 'Default model for learning tasks' },
 ];
 
 export function LLMModelsSection({
@@ -38,6 +39,7 @@ export function LLMModelsSection({
   isLoadingModels,
   onModelChange
 }: LLMModelsSectionProps) {
+  const { t } = useTranslation('config');
   const renderJobSection = (
     jobName: string,
     jobKey: 'design' | 'code' | 'learn',
@@ -54,7 +56,7 @@ export function LLMModelsSection({
         {nodes.map(node => (
           <div key={node.key} className="space-y-2">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {node.label}
+              {t(node.labelKey)}
               {node.key === 'default' && <span className="text-red-500 ml-1">*</span>}
             </label>
             {node.description && (
@@ -98,7 +100,7 @@ export function LLMModelsSection({
   return (
     <div className="space-y-4 pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
       <div className="space-y-2">
-        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">LLM Models by Job and Node</h4>
+        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{t('llmModels.title')}</h4>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Configure models for different jobs and nodes. Each job requires a default model. 
           Nodes can optionally use a different model, otherwise they use the job default.
@@ -106,7 +108,7 @@ export function LLMModelsSection({
       </div>
       
       {isLoadingModels ? (
-        <div className="text-sm text-gray-500 dark:text-gray-400">Loading available models...</div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">{t('llmModels.loading')}</div>
       ) : (
         <div className="space-y-4">
           {renderJobSection('Design', 'design', DESIGN_NODES)}

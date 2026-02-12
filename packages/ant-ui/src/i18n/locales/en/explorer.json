@@ -1,0 +1,65 @@
+{
+  "panel": {
+    "title": "Explorer",
+    "collapse": "Collapse Explorer",
+    "expand": "Expand Explorer",
+    "signInRequired": "Sign In Required",
+    "signInHint": "Please sign in to access your projects"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "placeholder": "Select a workspace...",
+    "inputPlaceholder": "Workspace name...",
+    "createFailed": "Failed to create configuration. Please try again."
+  },
+  "feature": {
+    "title": "Features",
+    "placeholder": "Select a feature...",
+    "new": "+ New"
+  },
+  "item": {
+    "deleteConfirm": "Really delete {{name}}?",
+    "deleteWarning": "This action cannot be undone.",
+    "deleteTitle": "Delete?",
+    "deleteFailed": "Failed to delete. Please try again later."
+  },
+  "connection": {
+    "failed": "Connection Failed",
+    "connecting": "Connecting...",
+    "failedDesc": "Unable to connect to ANT server. Please make sure the server is running.",
+    "connectingDesc": "Connecting to ANT server...",
+    "startServer": "Run <1>pnpm dev:cli</1> to start the server",
+    "startServerPlain": "Run pnpm dev:cli to start the server",
+    "error": "Connection Error",
+    "disconnected": "Disconnected",
+    "selectFile": "Select a file from Explorer to edit.",
+    "noConfig": "No project configuration loaded."
+  },
+  "git": {
+    "uncommittedTitle": "Uncommitted Changes Detected",
+    "uncommittedDesc": "You have {{count}} uncommitted change(s).",
+    "uncommittedStash": "Switching to {{name}} will automatically stash your changes.",
+    "switchAnyway": "Switch Anyway",
+    "repoCloned": "Repository cloned",
+    "repoInitialized": "Repository initialized",
+    "actionFailed": "Failed to {{action}}"
+  },
+  "localSetup": {
+    "directAccess": "Direct File Access:",
+    "preferredIde": "Your Preferred IDE:",
+    "fullPrivacy": "Full Privacy:",
+    "noAuth": "No Authentication:",
+    "cloudFrontend": "Cloud Frontend:",
+    "runCommand": "Run pnpm dev:cli",
+    "terminal": "Terminal",
+    "pnpmNote": "Note: If you don't have pnpm...",
+    "localCloudNote": "Local and Cloud servers...",
+    "backendApi": "Backend API on"
+  },
+  "preview": {
+    "fixSetup": "Fix preview setup",
+    "closeWarning": "Close warning",
+    "openNewTab": "Open preview in new tab",
+    "closeError": "Close error"
+  }
+}

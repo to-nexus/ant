@@ -4,6 +4,7 @@ import { ProjectSection } from '../ProjectSection';
 import { FeatureSection } from '../FeatureSection';
 import { ArtifactsPanel } from '../ArtifactsPanel';
 import { useStore } from '@/domain/store';
+import { useTranslation } from 'react-i18next';
 
 interface ExplorerPanelProps {
   isCollapsed: boolean;
@@ -20,6 +21,7 @@ export function ExplorerPanel({
   onCollapse,
   onResizeStart,
 }: ExplorerPanelProps) {
+  const { t } = useTranslation('explorer');
   const backendMode = useStore((state) => state.backendMode);
   const userEmail = useStore((state) => state.userEmail);
   
@@ -40,11 +42,11 @@ export function ExplorerPanel({
             <button
               onClick={onCollapse}
               className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center justify-center w-10 h-10 -ml-4 -my-4"
-              title="Collapse Explorer"
+              title={t('panel.collapse')}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-gray-700 dark:text-gray-200 font-medium">📁 Explorer</span>
+            <span className="text-gray-700 dark:text-gray-200 font-medium">📁 {t('panel.title')}</span>
           </>
         ),
         right: undefined
@@ -56,9 +58,9 @@ export function ExplorerPanel({
             <div className="text-4xl mb-2">
               <LogIn className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600" />
             </div>
-            <div className="text-sm font-medium mb-1">Sign In Required</div>
+            <div className="text-sm font-medium mb-1">{t('panel.signInRequired')}</div>
             <div className="text-xs text-gray-400 dark:text-gray-600">
-              Please sign in to access your projects
+              {t('panel.signInHint')}
             </div>
           </div>
         ) : connectionStatus === 'connected' ? (
@@ -71,7 +73,7 @@ export function ExplorerPanel({
           <div className="text-center text-gray-400 dark:text-gray-500 mt-8">
             <div className="text-4xl mb-2">🔌</div>
             <div className="text-sm">
-              {connectionStatus === 'error' ? 'Connection Error' : 'Disconnected'}
+              {connectionStatus === 'error' ? t('connection.error') : t('connection.disconnected')}
             </div>
           </div>
         )}

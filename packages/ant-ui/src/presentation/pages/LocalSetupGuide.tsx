@@ -1,6 +1,8 @@
+import { useTranslation } from 'react-i18next';
 import { ExternalLink, Terminal, Server, Laptop, CheckCircle, AlertCircle } from 'lucide-react';
 
 export function LocalSetupGuide() {
+  const { t } = useTranslation('explorer');
   const handleBackToHome = () => {
     // Navigate back to home page
     window.history.pushState({}, '', '/');
@@ -35,23 +37,23 @@ export function LocalSetupGuide() {
           <ul className="space-y-2 text-gray-700 dark:text-gray-300">
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>Direct File Access:</strong> Work with your local codebase directly</span>
+              <span><strong>{t('localSetup.directAccess')}</strong> Work with your local codebase directly</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>Your Preferred IDE:</strong> Open files in Cursor, VS Code, or any local editor</span>
+              <span><strong>{t('localSetup.preferredIde')}</strong> Open files in Cursor, VS Code, or any local editor</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>Full Privacy:</strong> All AI processing and data stays on your machine</span>
+              <span><strong>{t('localSetup.fullPrivacy')}</strong> All AI processing and data stays on your machine</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>No Authentication:</strong> Skip sign-up and start coding immediately</span>
+              <span><strong>{t('localSetup.noAuth')}</strong> Skip sign-up and start coding immediately</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>Cloud Frontend:</strong> Use this optimized UI without local setup</span>
+              <span><strong>{t('localSetup.cloudFrontend')}</strong> Use this optimized UI without local setup</span>
             </li>
           </ul>
         </div>
@@ -77,7 +79,7 @@ export function LocalSetupGuide() {
                 </p>
                 <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-gray-600 dark:text-gray-400">Terminal</span>
+                    <span className="text-gray-600 dark:text-gray-400">{t('localSetup.terminal')}</span>
                     <Terminal className="w-4 h-4 text-gray-400" />
                   </div>
                   <code className="text-gray-900 dark:text-gray-100">
@@ -227,7 +229,7 @@ export function LocalSetupGuide() {
                     </code>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Backend API on <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900">http://localhost:4000</code>
+                    {t('localSetup.backendApi')} <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900">http://localhost:4000</code>
                   </p>
                 </div>
 

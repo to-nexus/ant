@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { BoardContainer } from '../BoardContainer';
 import { StatusChip } from '../StatusChip';
 import { useStore } from '@/domain/store';
@@ -19,6 +20,7 @@ interface AgentWorkflowBoardProps {
  * - Real-time progress
  */
 export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
+  const { t } = useTranslation('kanban');
   const selectedAgent = useStore((state) => state.selectedAgent);
   const selectedJobType = useStore((state) => state.selectedJobType);
   
@@ -27,7 +29,7 @@ export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
 
   return (
     <BoardContainer
-      title="🔄 Agent Workflow"
+      title={t('workflow.title')}
       titleActions={
         <div className="flex items-center gap-2">
           {/* Always show selected agent */}

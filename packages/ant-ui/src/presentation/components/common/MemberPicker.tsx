@@ -11,6 +11,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, User, X } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
+import { useTranslation } from 'react-i18next';
 
 interface MemberPickerProps {
   members: Array<{ userId: string; isSelf?: boolean }>;
@@ -27,9 +28,11 @@ export function MemberPicker({
   selectedUserId,
   onSelect,
   onDismiss,
-  placeholder = '멤버 선택',
+  placeholder,
   className,
 }: MemberPickerProps) {
+  const { t } = useTranslation('common');
+  const effectivePlaceholder = placeholder || t('memberPicker.placeholder');
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -107,7 +110,7 @@ export function MemberPicker({
         onClick={handleOpen}
       >
         <User className="w-3.5 h-3.5" />
-        <span className="truncate max-w-[120px]">{selectedUserId || placeholder}</span>
+        <span className="truncate max-w-[120px]">{selectedUserId || effectivePlaceholder}</span>
         {selectedUserId && (
           <X
             className="w-3 h-3 ml-0.5 hover:text-red-500 transition-colors"
@@ -134,7 +137,7 @@ export function MemberPicker({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="이름 검색..."
+              placeholder={t('memberPicker.searchPlaceholder')}
               className="flex-1 text-sm bg-transparent outline-none text-gray-900 dark:text-white placeholder-gray-400"
             />
           </div>
@@ -143,7 +146,7 @@ export function MemberPicker({
           <div className="max-h-[200px] overflow-y-auto py-1">
             {filteredMembers.length === 0 ? (
               <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
-                {search ? '검색 결과가 없습니다' : '멤버가 없습니다'}
+                {search ? t('label.noSearchResults') : t('label.noMembers')}
               </p>
             ) : (
               filteredMembers.map(m => (
@@ -160,7 +163,7 @@ export function MemberPicker({
                   <User className="w-4 h-4 text-gray-400 shrink-0" />
                   <span className="truncate">{m.userId}</span>
                   {m.userId === selectedUserId && (
-                    <span className="ml-auto text-xs text-blue-500">선택됨</span>
+                    <span className="ml-auto text-xs text-blue-500">{t('label.selected')}</span>
                   )}
                 </button>
               ))

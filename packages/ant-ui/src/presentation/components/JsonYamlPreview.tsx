@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import YAML from 'yaml';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 
@@ -119,6 +120,7 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
 }
 
 export function JsonYamlPreview({ content, fileType }: JsonYamlPreviewProps) {
+  const { t } = useTranslation('artifacts');
   const { parsed, error } = useMemo(() => {
     if (!content.trim()) {
       return { parsed: null, error: null };
@@ -131,9 +133,9 @@ export function JsonYamlPreview({ content, fileType }: JsonYamlPreviewProps) {
         return { parsed: YAML.parse(content), error: null };
       }
     } catch (e) {
-      return { parsed: null, error: e instanceof Error ? e.message : 'Parse error' };
+      return { parsed: null, error: e instanceof Error ? e.message : t('editor.parseError') };
     }
-  }, [content, fileType]);
+  }, [content, fileType, t]);
 
   if (error) {
     return (

@@ -17,6 +17,7 @@ import { Folder, FolderOpen, Check, FolderCheck } from 'lucide-react';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { cn } from '@/shared/utils/design-system';
 import type { FileNode } from '@/infrastructure/http/api';
+import { useTranslation } from 'react-i18next';
 
 interface PathPickerProps {
   contextLabel: string;
@@ -74,6 +75,7 @@ export function PathPicker({
   excludePatterns = ['sessions/'],
   maxHeight = 'max-h-48',
 }: PathPickerProps) {
+  const { t } = useTranslation('common');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
 
   // Build tree from either source
@@ -141,7 +143,7 @@ export function PathPicker({
                   ? 'text-blue-600 dark:text-blue-400'
                   : 'text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50'
               )}
-              title="폴더 전체 선택"
+              title={t('pathPicker.selectFolder')}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelect(node.path, 'directory');
@@ -177,7 +179,7 @@ export function PathPicker({
       <div className={cn('overflow-y-auto p-1', maxHeight)}>
         {nodes.length === 0 ? (
           <div className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">
-            항목이 없습니다.
+            {t('label.noItems')}
           </div>
         ) : (
           nodes.map(node => renderNode(node, 0))

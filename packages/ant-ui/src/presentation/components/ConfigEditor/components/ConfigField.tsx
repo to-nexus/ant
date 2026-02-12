@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { ConfigField as ConfigFieldType } from '../configSchema';
 
@@ -31,6 +32,7 @@ export function ConfigField({
   githubOwnerInfo,
   projectName,
 }: ConfigFieldProps) {
+  const { t } = useTranslation('config');
   // Cloud 모드에서 localPath 필드 숨김
   if (!showLocalPath && field.key === 'localPath') {
     return null;
@@ -63,7 +65,7 @@ export function ConfigField({
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
         {!field.required && !hasOwners && (
-          <span className="text-xs text-gray-400 dark:text-gray-500">Optional</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{t('field.optional')}</span>
         )}
       </div>
       

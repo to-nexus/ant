@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Folder, FolderOpen } from 'lucide-react';
 import { FileNode } from '@/infrastructure/http/api';
 import { Button } from '../../common/button';
@@ -26,6 +27,7 @@ export function DirectoryView({
   onUploadFiles, 
   onDelete 
 }: DirectoryViewProps) {
+  const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
@@ -91,7 +93,7 @@ export function DirectoryView({
                     setShowCreateForm(isCreatingInThisDir ? null : node.path);
                     setNewFileName('');
                   }}
-                  title="Create file"
+                  title={t('actions.createFile')}
                 >
                   📄
                 </Button>
@@ -105,7 +107,7 @@ export function DirectoryView({
                     setShowCreateForm(isCreatingInThisDir ? null : node.path);
                     setNewFileName('');
                   }}
-                  title="Create directory"
+                  title={t('actions.createDirectory')}
                 >
                   📁
                 </Button>
@@ -129,7 +131,7 @@ export function DirectoryView({
                     e.stopPropagation();
                     document.getElementById(`upload-${node.path}`)?.click();
                   }}
-                  title="Upload files"
+                  title={t('actions.upload')}
                 >
                   📤
                 </Button>
@@ -164,7 +166,7 @@ export function DirectoryView({
                     className="h-6 w-6 p-0 text-gray-600 hover:text-red-600 hover:bg-red-50"
                     onClick={(e) => {
                       e.stopPropagation();
-                      showConfirm(`Clear all contents in "${node.name}"? This will delete all files and subdirectories.`, {
+                      showConfirm(t('confirm.clearContentsDetail', { name: node.name }), {
                         type: 'warning',
                         title: 'Clear Contents?',
                         confirmText: 'Clear All',
@@ -172,7 +174,7 @@ export function DirectoryView({
                         onConfirm: () => onDelete(node.path)
                       });
                     }}
-                    title="Clear all contents"
+                    title={t('actions.clearContents')}
                   >
                     🗑️
                   </Button>
@@ -192,7 +194,7 @@ export function DirectoryView({
                   className="h-6 w-6 p-0 text-gray-600 hover:text-red-600 hover:bg-red-50"
                   onClick={(e) => {
                     e.stopPropagation();
-                    showConfirm(`Delete ${node.type} "${node.name}"?`, {
+                    showConfirm(t('confirm.deleteItem', { type: node.type, name: node.name }), {
                       type: 'warning',
                       title: 'Delete?',
                       confirmText: 'Delete',

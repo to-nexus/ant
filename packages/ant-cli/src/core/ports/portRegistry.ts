@@ -52,6 +52,11 @@ export interface PreviewState {
   // Issues
   issues: PreviewRuntimeIssue[];
   
+  // Validation failure info (persisted for polling consistency)
+  setupReasoning?: string;
+  setupReason?: string;
+  suggestedFix?: string;
+  
   // Timestamps
   startedAt: Date;
   lastAccessedAt: Date;

@@ -1,0 +1,45 @@
+{
+  "panel": {
+    "title": "아티팩트",
+    "inputs": "Inputs",
+    "outputs": "Outputs",
+    "sessions": "Sessions",
+    "send": "보내기",
+    "receive": "받기"
+  },
+  "actions": {
+    "createFile": "파일 생성",
+    "createDirectory": "폴더 생성",
+    "upload": "업로드",
+    "download": "다운로드",
+    "send": "보내기",
+    "clearContents": "내용 비우기",
+    "delete": "삭제",
+    "openInNewTab": "새 탭에서 열기"
+  },
+  "confirm": {
+    "deleteItem": "{{type}} \"{{name}}\"을(를) 삭제할까요?",
+    "clearContents": "\"{{name}}\"의 내용을 모두 비울까요?",
+    "clearContentsDetail": "\"{{name}}\"의 내용을 모두 비울까요? 모든 파일과 하위 디렉토리가 삭제됩니다."
+  },
+  "error": {
+    "fileCreateFailed": "파일 생성에 실패했습니다.",
+    "dirCreateFailed": "폴더 생성에 실패했습니다.",
+    "deleteFailed": "삭제에 실패했습니다.",
+    "uploadFailed": "업로드에 실패했습니다. 잠시 후 다시 시도해주세요.",
+    "createFailed": "생성에 실패했습니다. 이름을 확인하고 다시 시도해주세요.",
+    "saveFailed": "저장에 실패했습니다.",
+    "fetchSuggestionsFailed": "수정 제안을 가져올 수 없습니다."
+  },
+  "editor": {
+    "placeholder": "파일 내용...",
+    "raw": "Raw (편집 모드)",
+    "preview": "Preview (읽기 전용)",
+    "svgPreviewFailed": "SVG 프리뷰를 불러오지 못했습니다.",
+    "parseError": "파싱 오류"
+  },
+  "featureDetails": {
+    "inputs": "📝 Inputs",
+    "outputs": "📄 Outputs"
+  }
+}

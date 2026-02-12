@@ -1,0 +1,37 @@
+{
+  "board": {
+    "title": "태스크 보드"
+  },
+  "columns": {
+    "todo": "대기",
+    "inProgress": "진행 중",
+    "completed": "완료"
+  },
+  "header": {
+    "total": "전체:",
+    "estimatingPhase": "추정 단계:",
+    "paused": "일시정지:"
+  },
+  "tokenStats": {
+    "input": "입력",
+    "output": "출력",
+    "newCacheMiss": "신규 (캐시 미스):",
+    "cacheHit": "캐시 히트:",
+    "cacheCreated": "캐시 생성:",
+    "cacheHitRate": "캐시 히트율:",
+    "billableInput": "과금 입력:",
+    "inputSavings": "입력 절감:",
+    "byPhase": "단계별",
+    "estimating": "추정:"
+  },
+  "task": {
+    "paused": "일시정지"
+  },
+  "workflow": {
+    "title": "🔄 Agent Workflow",
+    "noSelection": "Workspace 또는 Feature가 선택되지 않았습니다",
+    "loading": "워크플로우 그래프 로딩 중...",
+    "trackNode": "현재 노드 추적",
+    "linkedActors": "연결된 Actor:"
+  }
+}

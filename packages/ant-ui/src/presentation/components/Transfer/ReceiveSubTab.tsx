@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   fetchTransferRequests,
@@ -61,9 +62,9 @@ function groupPendingRequests(requests: TransferRequest[]): RequestGroup[] {
 }
 
 export function ReceiveSubTab() {
+  const { t } = useTranslation('transfer');
   const receivedRequests = useStore((s) => s.receivedRequests);
   const setReceivedRequests = useStore((s) => s.setReceivedRequests);
-  const decrementPendingCount = useStore((s) => s.decrementPendingTransferCount);
   const setPendingCount = useStore((s) => s.setPendingTransferCount);
   const { showConfirm, showError } = useAlertModalContext();
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -81,14 +82,14 @@ export function ReceiveSubTab() {
   const pendingGroups = groupPendingRequests(pendingRequests);
 
   const handleResolveGroup = async (group: RequestGroup, action: 'approve' | 'reject') => {
-    const actionLabel = action === 'approve' ? '승인' : '거절';
+    const actionLabel = action === 'approve' ? t('action.approve') : t('action.reject');
     const count = group.requests.length;
 
-    showConfirm(`${group.sender.userId}의 전송 요청 ${count}건을 ${actionLabel}하시겠습니까?`, {
+    showConfirm(t('confirm.bulkAction', { action: actionLabel, count }), {
       type: action === 'approve' ? 'info' : 'warning',
-      title: `전송 요청 ${actionLabel}`,
-      confirmText: `${actionLabel} (${count}건)`,
-      cancelText: '취소',
+      title: t('confirm.bulkTitle', { action: actionLabel }),
+      confirmText: `${actionLabel} (${count})`,
+      cancelText: t('common:button.cancel'),
       onConfirm: async () => {
         const ids = group.requests.map(r => r.id);
         setLoadingIds(prev => new Set([...prev, ...ids]));
@@ -104,7 +105,7 @@ export function ReceiveSubTab() {
             useStore.getState().refreshFileTree();
           }
         } catch (error: any) {
-          showError(error.message || `${actionLabel}에 실패했습니다.`, { title: '오류' });
+          showError(error.message || t('error.actionFailed', { action: actionLabel }), { title: t('common:error.title') });
           // Refresh anyway to show partial results
           const { requests, pendingCount } = await fetchTransferRequests('received');
           setReceivedRequests(requests);
@@ -124,7 +125,7 @@ export function ReceiveSubTab() {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-400 dark:text-gray-500">
         <MessageCircle className="w-12 h-12 mb-3" />
-        <p className="text-sm">받은 전송 요청이 없습니다.</p>
+        <p className="text-sm">{t('receive.empty')}</p>
       </div>
     );
   }
@@ -135,7 +136,7 @@ export function ReceiveSubTab() {
       {pendingGroups.length > 0 && (
         <section>
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            대기 중 요청 ({pendingRequests.length}건)
+            {t('receive.pending')} ({pendingRequests.length})
           </h4>
           <div className="space-y-3">
             {pendingGroups.map(group => (
@@ -154,7 +155,7 @@ export function ReceiveSubTab() {
       {/* Completed history */}
       {completedRequests.length > 0 && (
         <section>
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">처리 완료</h4>
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('receive.processed')}</h4>
           <div className="space-y-1">
             {completedRequests.map(req => (
               <CompletedRequestRow key={req.id} request={req} />
@@ -173,8 +174,9 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
   onApprove: () => void;
   onReject: () => void;
 }) {
-  const timeAgo = getTimeAgo(group.earliestCreatedAt);
-  const expiresIn = getExpiresIn(group.latestExpiresAt);
+  const { t } = useTranslation('transfer');
+  const timeAgo = getTimeAgo(group.earliestCreatedAt, t);
+  const expiresIn = getExpiresIn(group.latestExpiresAt, t);
   const fileCount = group.requests.length;
 
   return (
@@ -187,11 +189,11 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
             from {group.sender.userId}
           </span>
           <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-            {fileCount}개 항목
+            {t('send.itemCount', { count: fileCount })}
           </span>
         </div>
         <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
-          {timeAgo} · 만료 {expiresIn}
+          {timeAgo} · {t('receive.expired')} {expiresIn}
         </span>
       </div>
 
@@ -222,7 +224,7 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
           disabled={isLoading}
         >
           <CheckCircle className="w-4 h-4 mr-1" />
-          승인 ({fileCount})
+          {t('action.approve')} ({fileCount})
         </Button>
         <Button
           size="sm"
@@ -232,7 +234,7 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
           disabled={isLoading}
         >
           <XCircle className="w-4 h-4 mr-1" />
-          거절
+          {t('action.reject')}
         </Button>
       </div>
     </div>
@@ -241,16 +243,17 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
 
 // ─── Completed Request Row ───
 function CompletedRequestRow({ request }: { request: TransferRequest }) {
+  const { t } = useTranslation('transfer');
   const statusConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-    approved: { icon: <CheckCircle className="w-4 h-4" />, label: '승인함', color: 'text-green-500' },
-    rejected: { icon: <XCircle className="w-4 h-4" />, label: '거절함', color: 'text-red-500' },
-    cancelled: { icon: <Ban className="w-4 h-4" />, label: '취소됨', color: 'text-gray-400' },
-    expired: { icon: <Timer className="w-4 h-4" />, label: '만료됨', color: 'text-gray-400' },
-    completed: { icon: <CheckCircle className="w-4 h-4" />, label: '완료', color: 'text-green-500' },
+    approved: { icon: <CheckCircle className="w-4 h-4" />, label: t('action.approved'), color: 'text-green-500' },
+    rejected: { icon: <XCircle className="w-4 h-4" />, label: t('action.rejected'), color: 'text-red-500' },
+    cancelled: { icon: <Ban className="w-4 h-4" />, label: t('action.cancelled'), color: 'text-gray-400' },
+    expired: { icon: <Timer className="w-4 h-4" />, label: t('receive.expired'), color: 'text-gray-400' },
+    completed: { icon: <CheckCircle className="w-4 h-4" />, label: t('action.completed'), color: 'text-green-500' },
   };
 
   const config = statusConfig[request.status] || statusConfig.completed;
-  const timeAgo = getTimeAgo(request.createdAt);
+  const timeAgo = getTimeAgo(request.createdAt, t);
 
   return (
     <div className="flex items-center justify-between text-sm py-2 px-3 rounded hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -269,21 +272,21 @@ function CompletedRequestRow({ request }: { request: TransferRequest }) {
 }
 
 // ─── Utilities ───
-function getTimeAgo(dateStr: string): string {
+function getTimeAgo(dateStr: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes < 60) return t('common:time.minutesAgo', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
+  if (hours < 24) return t('common:time.hoursAgo', { count: hours });
   const days = Math.floor(hours / 24);
-  return `${days}일 전`;
+  return t('common:time.daysAgo', { count: days });
 }
 
-function getExpiresIn(dateStr: string): string {
+function getExpiresIn(dateStr: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = new Date(dateStr).getTime() - Date.now();
-  if (diff <= 0) return '만료됨';
+  if (diff <= 0) return t('receive.expired');
   const hours = Math.floor(diff / 3600000);
-  if (hours < 24) return `${hours}시간`;
+  if (hours < 24) return t('common:time.hours', { count: hours });
   const days = Math.floor(hours / 24);
-  return `${days}일 ${hours % 24}시간`;
+  return `${t('common:time.days', { count: days })} ${t('common:time.hours', { count: hours % 24 })}`;
 }

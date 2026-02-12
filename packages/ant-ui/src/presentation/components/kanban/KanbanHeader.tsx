@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Timer, Coins } from 'lucide-react';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
 import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
@@ -97,6 +98,7 @@ export function ElapsedTimeBadge({
   inProgressTasks,
   estimatingActivity,
 }: ElapsedTimeBadgeProps) {
+  const { t } = useTranslation('kanban');
   // ✅ Tick every second while running (forces re-render → recalc from Date.now())
   const isRunning = !!jobTiming?.startedAt && !jobTiming?.completedAt && !jobTiming?.pausedAt;
   useRealtimeTick(isRunning);
@@ -129,7 +131,7 @@ export function ElapsedTimeBadge({
       
       {/* Total */}
       <div className="flex justify-between items-center">
-        <span className="text-gray-800 dark:text-gray-100 font-semibold">Total:</span>
+        <span className="text-gray-800 dark:text-gray-100 font-semibold">{t('header.total')}</span>
         <span className="font-mono font-semibold text-lg text-gray-900 dark:text-white">
           {formattedTime}
         </span>
@@ -138,7 +140,7 @@ export function ElapsedTimeBadge({
       {/* Estimating Phase */}
       <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500">
         <div className="flex justify-between items-center font-semibold">
-          <span className="text-gray-800 dark:text-gray-100">Estimating Phase:</span>
+          <span className="text-gray-800 dark:text-gray-100">{t('header.estimatingPhase')}</span>
           <span className="font-mono text-gray-800 dark:text-gray-100">
             {isEstimatingFinalized
               ? formatElapsedTime(estimatingTime, true)
@@ -225,7 +227,7 @@ export function ElapsedTimeBadge({
       {jobTiming.totalPausedDuration > 0 && (
         <div className="pt-1.5 mt-1.5 border-t border-amber-300 dark:border-slate-600 text-xs">
           <div className="flex justify-between">
-            <span className="text-gray-700 dark:text-gray-300">Paused:</span>
+            <span className="text-gray-700 dark:text-gray-300">{t('header.paused')}</span>
             <span className="font-mono text-gray-700 dark:text-gray-300">{formatElapsedTime(jobTiming.totalPausedDuration, true)}</span>
           </div>
         </div>
@@ -278,6 +280,7 @@ interface TokenUsageBadgeProps {
  *   3. Phase Breakdown — estimating + individual tasks
  */
 export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, completedTasks, inProgressTasks }: TokenUsageBadgeProps) {
+  const { t } = useTranslation('kanban');
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
     ...(inProgressTasks?.map(t => t.tokenUsage) || []),
@@ -314,7 +317,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
           {/* ━━ Input Tokens ━━ */}
           <div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-800 dark:text-gray-100 font-semibold">Input</span>
+              <span className="text-gray-800 dark:text-gray-100 font-semibold">{t('tokenStats.input')}</span>
               <span className="font-mono font-semibold text-gray-900 dark:text-white">
                 {formatTokenCount(effective.totalInputProcessed)}
               </span>
@@ -324,14 +327,14 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
             {effective.hasCache ? (
               <div className="pl-2 text-xs space-y-0.5 mt-1">
                 <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">New (cache-miss):</span>
+                  <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.newCacheMiss')}</span>
                   <span className="font-mono text-gray-600 dark:text-gray-400">
                     {formatTokenCount(effective.newInputTokens)}
                   </span>
                 </div>
                 {effective.cacheReadTokens > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Cache hit:</span>
+                    <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.cacheHit')}</span>
                     <span className="font-mono text-gray-600 dark:text-gray-400">
                       {formatTokenCount(effective.cacheReadTokens)}
                     </span>
@@ -339,7 +342,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                 )}
                 {effective.cacheCreationTokens > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Cache created:</span>
+                    <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.cacheCreated')}</span>
                     <span className="font-mono text-gray-600 dark:text-gray-400">
                       {formatTokenCount(effective.cacheCreationTokens)}
                     </span>
@@ -350,21 +353,21 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                 <div className="pt-1 mt-1 border-t border-emerald-200 dark:border-emerald-800 space-y-0.5">
                   {effective.cacheHitRate > 0 && (
                     <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                      <span className="font-semibold">Cache hit rate:</span>
+                      <span className="font-semibold">{t('tokenStats.cacheHitRate')}</span>
                       <span className="font-mono font-semibold">
                         {formatPercent(effective.cacheHitRate)}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Billable input:</span>
+                    <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.billableInput')}</span>
                     <span className="font-mono text-gray-600 dark:text-gray-400">
                       {formatTokenCount(effective.billableInputTokens)}
                     </span>
                   </div>
                   {effective.inputSavingsPercent > 0 && (
                     <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                      <span className="font-semibold">Input savings:</span>
+                      <span className="font-semibold">{t('tokenStats.inputSavings')}</span>
                       <span className="font-mono font-semibold">
                         ~{formatPercent(effective.inputSavingsPercent)}
                       </span>
@@ -382,7 +385,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
           {/* ━━ Output Tokens ━━ */}
           <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
             <div className="flex justify-between items-center">
-              <span className="text-gray-800 dark:text-gray-100 font-semibold">Output</span>
+              <span className="text-gray-800 dark:text-gray-100 font-semibold">{t('tokenStats.output')}</span>
               <span className="font-mono font-semibold text-gray-900 dark:text-white">
                 {formatTokenCount(effective.outputTokens)}
               </span>
@@ -395,13 +398,13 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
           {/* ━━ Phase Breakdown ━━ */}
           {(tokenUsage || taskCount > 0) && (
             <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
-              <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">By Phase</div>
+              <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">{t('tokenStats.byPhase')}</div>
 
               {/* Estimating Phase */}
               {tokenUsage && (
                 <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500 mb-1">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-700 dark:text-gray-200 font-semibold">Estimating:</span>
+                    <span className="text-gray-700 dark:text-gray-200 font-semibold">{t('tokenStats.estimating')}</span>
                     <span className="font-mono text-gray-700 dark:text-gray-200">
                       {formatTokenCount(estimatingInput)} in · {formatTokenCount(estimatingOutput)} out
                     </span>

@@ -15,6 +15,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, ArrowUpRight, Download, FileText, FolderPlus, Upload, Trash2 } from 'lucide-react';
 import { Button } from '../../common/button';
@@ -54,6 +55,7 @@ export function FileActionMenu({
   onClearContents,
   onOpenChange,
 }: FileActionMenuProps) {
+  const { t } = useTranslation('artifacts');
   const [isOpen, setIsOpen] = useState(false);
 
   // Notify parent when open state changes
@@ -78,13 +80,13 @@ export function FileActionMenu({
     // Directory creation actions
     if (nodeType === 'directory') {
       if (onCreateFile) {
-        items.push({ icon: FileText, label: '파일 생성', onClick: onCreateFile });
+        items.push({ icon: FileText, label: t('actions.createFile'), onClick: onCreateFile });
       }
       if (onCreateDirectory) {
-        items.push({ icon: FolderPlus, label: '폴더 생성', onClick: onCreateDirectory });
+        items.push({ icon: FolderPlus, label: t('actions.createDirectory'), onClick: onCreateDirectory });
       }
       if (onUpload) {
-        items.push({ icon: Upload, label: '업로드', onClick: onUpload });
+        items.push({ icon: Upload, label: t('actions.upload'), onClick: onUpload });
       }
       if (items.length > 0) {
         items.push('separator');
@@ -95,7 +97,7 @@ export function FileActionMenu({
     if (!isSessionPath && onSend) {
       items.push({
         icon: ArrowUpRight,
-        label: '보내기',
+        label: t('actions.send'),
         onClick: () => onSend(nodePath, nodeType),
       });
     }
@@ -104,7 +106,7 @@ export function FileActionMenu({
     if (onDownload) {
       items.push({
         icon: Download,
-        label: '다운로드',
+        label: t('actions.download'),
         onClick: () => onDownload(nodePath),
       });
     }
@@ -117,7 +119,7 @@ export function FileActionMenu({
         }
         items.push({
           icon: Trash2,
-          label: '내용 비우기',
+          label: t('actions.clearContents'),
           onClick: onClearContents,
           variant: 'danger',
         });
@@ -127,7 +129,7 @@ export function FileActionMenu({
         }
         items.push({
           icon: Trash2,
-          label: '삭제',
+          label: t('actions.delete'),
           onClick: onDelete,
           variant: 'danger',
         });
@@ -135,7 +137,7 @@ export function FileActionMenu({
     }
 
     return items;
-  }, [nodeType, nodePath, isSessionPath, isProtectedDir, isClearableDir, onCreateFile, onCreateDirectory, onUpload, onSend, onDownload, onDelete, onClearContents]);
+  }, [t, nodeType, nodePath, isSessionPath, isProtectedDir, isClearableDir, onCreateFile, onCreateDirectory, onUpload, onSend, onDownload, onDelete, onClearContents]);
 
   // Compute position: menu opens to the RIGHT of the trigger button, top-aligned.
   // If menu would overflow viewport bottom, flip vertically (bottom-align to button).

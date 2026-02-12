@@ -69,6 +69,7 @@ export interface SSEState {
 
 export interface UIState {
   theme: 'light' | 'dark';
+  language: 'en' | 'ko';
   splitLayout: 'horizontal' | 'vertical';
   mainView: 'agents' | 'codeIde';
   ideBaseUrl: string | undefined; // ✅ Cloud IDE: direct URL returned from /api/cloud-ide/start

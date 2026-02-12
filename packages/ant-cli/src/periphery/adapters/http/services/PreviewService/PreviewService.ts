@@ -673,11 +673,16 @@ export class PreviewService {
       // Best-effort only
     }
     
-    // Write issues to Redis, then update phase to error
+    const combinedSuggestedFix = this.issueDetector.combineIssueFixes(issues);
+    
+    // Write issues + validation info to Redis, then update phase to error
     if (this.portRegistry) {
       try {
         await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, {
-          issues: issues as any
+          issues: issues as any,
+          setupReasoning: validation.reasoning || 'unknown',
+          setupReason: validation.reason,
+          suggestedFix: combinedSuggestedFix,
         });
       } catch { /* best-effort */ }
     }
@@ -687,8 +692,6 @@ export class PreviewService {
       running: false, ready: false,
       error: validation.reason || 'Preview server setup validation failed'
     });
-    
-    const combinedSuggestedFix = this.issueDetector.combineIssueFixes(issues);
     
     return {
       success: false,

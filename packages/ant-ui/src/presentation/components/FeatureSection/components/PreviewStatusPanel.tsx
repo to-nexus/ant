@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Loader2, Package, ExternalLink, AlertCircle, CheckCircle, Wrench, X } from 'lucide-react';
 import { PREVIEW_MESSAGES } from '../constants/preview';
 import { getProgressMessage } from '../utils/preview';
@@ -64,6 +65,7 @@ export function PreviewStatusPanel({
   onDismiss,
   fixButtonClicked = false
 }: PreviewStatusPanelProps) {
+  const { t } = useTranslation('explorer');
   const isMultiPackage = progress && progress.totalCount > 1;
   const hasMultiplePackages = packages && packages.length > 1;
   
@@ -174,7 +176,7 @@ export function PreviewStatusPanel({
                   className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
                            hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
                            flex items-center gap-1.5"
-                  title="Fix preview setup"
+                  title={t('preview.fixSetup')}
                 >
                   <Wrench size={12} />
                   Fix
@@ -183,7 +185,7 @@ export function PreviewStatusPanel({
                   <button
                     onClick={onDismiss}
                     className="p-1.5 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded transition-colors"
-                    title="Close warning"
+                    title={t('preview.closeWarning')}
                   >
                     <X size={14} />
                   </button>
@@ -218,7 +220,7 @@ export function PreviewStatusPanel({
                   className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
                            hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
                            flex items-center gap-1.5"
-                  title="Fix preview setup"
+                  title={t('preview.fixSetup')}
                 >
                   <Wrench size={12} />
                   Fix
@@ -248,7 +250,7 @@ export function PreviewStatusPanel({
                 className="px-3 py-1.5 text-xs font-medium bg-green-600 dark:bg-green-700 text-white rounded 
                          hover:bg-green-700 dark:hover:bg-green-600 transition-colors 
                          flex items-center gap-1.5"
-                title="Open preview in new tab"
+                title={t('preview.openNewTab')}
               >
                 <ExternalLink size={12} />
                 {PREVIEW_MESSAGES.BUTTON_OPEN}
@@ -319,7 +321,7 @@ export function PreviewStatusPanel({
                 className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
                          hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
                          flex items-center gap-1.5"
-                title="Fix preview setup"
+                title={t('preview.fixSetup')}
               >
                 <Wrench size={12} />
                 {fixableIssues.length > 1 ? `Fix all (${fixableIssues.length})` : 'Fix'}
@@ -328,7 +330,7 @@ export function PreviewStatusPanel({
                 <button
                   onClick={onDismiss}
                   className="p-1.5 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded transition-colors"
-                  title="Close warning"
+                  title={t('preview.closeWarning')}
                 >
                   <X size={14} />
                 </button>
@@ -355,7 +357,7 @@ export function PreviewStatusPanel({
             <button
               onClick={onDismiss}
               className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 rounded transition-colors flex-shrink-0"
-              title="Close error"
+              title={t('preview.closeError')}
             >
               <X size={14} />
             </button>

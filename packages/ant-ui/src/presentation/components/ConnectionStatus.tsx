@@ -1,32 +1,36 @@
+import { useTranslation } from 'react-i18next';
+
 interface ConnectionStatusProps {
   status: 'connected' | 'disconnected' | 'error';
 }
 
 export function ConnectionStatus({ status }: ConnectionStatusProps) {
+  const { t } = useTranslation('common');
+
   const getStatusDisplay = () => {
     switch (status) {
       case 'connected':
         return {
           emoji: '🟢',
-          text: 'Connected',
+          text: t('status.connected'),
           className: 'text-green-600'
         };
       case 'disconnected':
         return {
           emoji: '🔴',
-          text: 'Disconnected',
+          text: t('status.disconnected'),
           className: 'text-red-600'
         };
       case 'error':
         return {
           emoji: '🟡',
-          text: 'Connection Error',
+          text: t('status.connectionError'),
           className: 'text-yellow-600'
         };
       default:
         return {
           emoji: '⚪',
-          text: 'Unknown',
+          text: t('status.unknown'),
           className: 'text-gray-600'
         };
     }

@@ -10,6 +10,7 @@ import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { fetchAgents, type Agent, API_BASE, authFetch } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useTranslation } from 'react-i18next';
 
 
 interface ChatInputProps {
@@ -20,6 +21,7 @@ interface ChatInputProps {
 
 export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputProps) {
   const { showError } = useAlertModalContext();
+  const { t } = useTranslation('chat');
   const selectedJobType = useStore((state) => state.selectedJobType);
   const setSelectedJobType = useStore((state) => state.setSelectedJobType);
   const selectedAgent = useStore((state) => state.selectedAgent);  // ✅ Reactive selectedAgent
@@ -151,10 +153,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   // ✅ Add emoji and description for each job
   const jobsWithMetadata = jobs.map((job: { value: string; label: string }) => {
     const metadata: Record<string, { emoji: string; description: string }> = {
-      design: { emoji: '🎨', description: 'Create architecture & design' },
-      code: { emoji: '💻', description: 'Implement features' },
-      learn: { emoji: '📚', description: 'Analyze & document' },
-      plan: { emoji: '📋', description: 'Create & refine PRD' },
+      design: { emoji: '🎨', description: t('jobMode.design.description') },
+      code: { emoji: '💻', description: t('jobMode.code.description') },
+      learn: { emoji: '📚', description: t('jobMode.learn.description') },
+      plan: { emoji: '📋', description: t('jobMode.plan.description') },
     };
     const meta = metadata[job.value] || { emoji: '🎯', description: job.label };
     return {
@@ -294,7 +296,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         useStore.getState().setRunning(false);
         useStore.getState().setInlineAskContext(null);
         showError(
-          `Inline ask 실패: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `${t('inlineAsk.failed')}: ${error instanceof Error ? error.message : 'Unknown error'}`,
           { title: '오류' }
         );
       }
@@ -407,7 +409,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                        focus:outline-none
                        resize-none border-none
                        cursor-not-allowed"
-            placeholder="Please sign in to start chatting..."
+            placeholder={t('input.placeholder')}
             rows={3}
             disabled
             readOnly
@@ -451,7 +453,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                          cursor-not-allowed opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Send</span>
+              <span>{t('input.send')}</span>
             </button>
           </div>
         </div>
@@ -722,7 +724,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                            border border-red-600 dark:border-red-500
                            transition-colors
                            disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Stop the running job"
+                title={t('input.stopJob')}
               >
                 <Square className="w-3 h-3" fill="currentColor" />
                 <span>{isStopping ? 'Stopping...' : 'Stop'}</span>
@@ -743,7 +745,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                 title={chatPolicy.canSendMessage ? "Send message" : "Complete selection to enable"}
               >
                 <Send className="w-3 h-3" />
-                <span>Send</span>
+                <span>{t('input.send')}</span>
               </button>
             )}
           </div>

@@ -6,6 +6,7 @@
 
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+  const { t } = useTranslation('common');
   const modalRef = useRef<HTMLDivElement>(null);
   
   // Close on ESC key
@@ -62,7 +64,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
           <button
             onClick={onClose}
             className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            aria-label="Close modal"
+            aria-label={t('modal.closeModal')}
           >
             <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
           </button>
