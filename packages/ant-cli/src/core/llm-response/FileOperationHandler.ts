@@ -215,7 +215,7 @@ export class FileOperationHandler {
         ctx.featureName,
         session.currentMessage!.id,
         existingIndex,
-        session.currentMessage!.contents[existingIndex],
+        updateContent,
         ctx.userContext
       );
     }
