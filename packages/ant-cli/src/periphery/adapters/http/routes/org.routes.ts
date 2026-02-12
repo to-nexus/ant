@@ -16,6 +16,17 @@ import { extractUserContext } from './helpers/userContext';
 import { CANONICAL_FEATURE_DIRS } from '../../../../core/utils/sessionPaths';
 import { OrgConfig } from '../../../../core/types/orgConfig';
 
+/**
+ * User-level configuration (per-user overrides)
+ * Stored at: {workspaces}/{orgId}/{userId}/.ant/user-config.json
+ */
+interface UserConfig {
+  github?: {
+    /** User-level override for default GitHub owner. Takes precedence over org config. null = clear override. */
+    ownerOverride?: string | null;
+  };
+}
+
 export interface OrgRoutesDeps {
   workspaceResolver: any;
 }
@@ -25,6 +36,36 @@ export interface OrgRoutesDeps {
  */
 function getOrgConfigPath(workspacesPath: string, orgId: string): string {
   return path.join(workspacesPath, orgId, '.ant', 'org-config.json');
+}
+
+/**
+ * Get user config file path
+ */
+function getUserConfigPath(workspacesPath: string, orgId: string, userId: string): string {
+  return path.join(workspacesPath, orgId, userId, '.ant', 'user-config.json');
+}
+
+/**
+ * Read user config from disk
+ */
+async function readUserConfig(workspacesPath: string, orgId: string, userId: string): Promise<UserConfig> {
+  const configPath = getUserConfigPath(workspacesPath, orgId, userId);
+  try {
+    const data = await fs.promises.readFile(configPath, 'utf-8');
+    return JSON.parse(data) as UserConfig;
+  } catch {
+    return {}; // Return empty config if not found
+  }
+}
+
+/**
+ * Write user config to disk
+ */
+async function writeUserConfig(workspacesPath: string, orgId: string, userId: string, config: UserConfig): Promise<void> {
+  const configPath = getUserConfigPath(workspacesPath, orgId, userId);
+  const dir = path.dirname(configPath);
+  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
 }
 
 /**
@@ -216,6 +257,61 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       };
 
       await writeOrgConfig(workspacesPath, orgId, merged);
+      res.json(merged);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ========================================
+  // User Config Endpoints (per-user overrides)
+  // ========================================
+
+  /**
+   * GET /api/user/config
+   * Read user-level configuration (personal overrides).
+   */
+  router.get('/user/config', async (req: Request, res: Response) => {
+    try {
+      const userContext = extractUserContext(req);
+      const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
+
+      const config = await readUserConfig(workspacesPath, userContext.organizationId, userContext.userId);
+      res.json(config);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * PUT /api/user/config
+   * Update user-level configuration (merge with existing).
+   */
+  router.put('/user/config', async (req: Request, res: Response) => {
+    try {
+      const userContext = extractUserContext(req);
+      const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
+
+      const existing = await readUserConfig(workspacesPath, userContext.organizationId, userContext.userId);
+      const updates = req.body as Partial<UserConfig>;
+
+      const merged: UserConfig = {
+        ...existing,
+        github: {
+          ...existing.github,
+          ...updates.github,
+        },
+      };
+
+      // Clean up undefined values
+      if (merged.github && !merged.github.ownerOverride) {
+        delete merged.github.ownerOverride;
+      }
+      if (merged.github && Object.keys(merged.github).length === 0) {
+        delete merged.github;
+      }
+
+      await writeUserConfig(workspacesPath, userContext.organizationId, userContext.userId, merged);
       res.json(merged);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

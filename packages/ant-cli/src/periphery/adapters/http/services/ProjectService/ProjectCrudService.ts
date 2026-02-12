@@ -103,9 +103,11 @@ export class ProjectCrudService {
     // ✅ Determine if Cloud Mode
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
     
-    // ✅ Read org config for default GitHub owner
-    const orgConfig = await this.readOrgConfig(userContext);
-    const defaultGithubRepo = buildDefaultGitHubRepoUrl(orgConfig, sanitizedName);
+    // ✅ Read effective GitHub owner: user override > org config
+    const effectiveOwner = await this.resolveEffectiveGitHubOwner(userContext);
+    const defaultGithubRepo = effectiveOwner
+      ? buildDefaultGitHubRepoUrl({ github: { owner: effectiveOwner } }, sanitizedName)
+      : undefined;
     
     logger.debug('Creating project config', { component: 'ProjectCrudService', organizationId: userContext.organizationId, userId: userContext.userId, projectId: id }, {
       isCloudMode,
@@ -144,16 +146,31 @@ export class ProjectCrudService {
   }
   
   /**
-   * Read organization config from disk
+   * Resolve effective GitHub owner: user override > org config
    */
-  private async readOrgConfig(userContext: UserContext): Promise<OrgConfig | null> {
+  private async resolveEffectiveGitHubOwner(userContext: UserContext): Promise<string | undefined> {
+    const workspacesPath = this.workspaceResolver.getPhysicalWorkspacesPath();
+
+    // 1. Check user-level override first
     try {
-      const workspacesPath = this.workspaceResolver.getPhysicalWorkspacesPath();
-      const orgConfigPath = path.join(workspacesPath, userContext.organizationId, '.ant', 'org-config.json');
-      const data = await fs.promises.readFile(orgConfigPath, 'utf-8');
-      return JSON.parse(data) as OrgConfig;
+      const userConfigPath = path.join(workspacesPath, userContext.organizationId, userContext.userId, '.ant', 'user-config.json');
+      const userData = await fs.promises.readFile(userConfigPath, 'utf-8');
+      const userConfig = JSON.parse(userData);
+      if (userConfig.github?.ownerOverride) {
+        return userConfig.github.ownerOverride;
+      }
     } catch {
-      return null;
+      // No user config or parse error — fall through to org config
+    }
+
+    // 2. Fallback to org config
+    try {
+      const orgConfigPath = path.join(workspacesPath, userContext.organizationId, '.ant', 'org-config.json');
+      const orgData = await fs.promises.readFile(orgConfigPath, 'utf-8');
+      const orgConfig = JSON.parse(orgData) as OrgConfig;
+      return orgConfig.github?.owner;
+    } catch {
+      return undefined;
     }
   }
 

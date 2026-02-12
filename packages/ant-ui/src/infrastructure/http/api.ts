@@ -2345,6 +2345,46 @@ export async function updateOrgConfig(config: Partial<OrgConfig>): Promise<OrgCo
   return response.json();
 }
 
+// ---- User Config (per-user overrides) ----
+
+export interface UserConfig {
+  github?: {
+    /** User-level override for default GitHub owner. Takes precedence over org config. null = clear override. */
+    ownerOverride?: string | null;
+  };
+}
+
+/**
+ * Fetch user-level configuration (personal overrides)
+ */
+export async function fetchUserConfig(): Promise<UserConfig> {
+  try {
+    const response = await authFetch(`${API_BASE()}/user/config`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error fetching user config:', error);
+    return {};
+  }
+}
+
+/**
+ * Update user-level configuration (deep merge)
+ */
+export async function updateUserConfig(config: Partial<UserConfig>): Promise<UserConfig> {
+  const response = await authFetch(`${API_BASE()}/user/config`, {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 // ---- Org Members ----
 
 export async function fetchOrgMembers(): Promise<{ members: Array<{ userId: string; isSelf: boolean }> }> {

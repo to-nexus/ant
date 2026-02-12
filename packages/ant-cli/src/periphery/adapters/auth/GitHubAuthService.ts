@@ -105,7 +105,9 @@ export class GitHubAuthService {
   }
   
   /**
-   * Get GitHub username for user (from stored credentials)
+   * Get GitHub username for user (from stored credentials).
+   * If username is missing (legacy PAT saved before auto-detection),
+   * fetches it from GitHub API and backfills the stored credentials.
    */
   async getUsername(userContext: CredentialUserContext): Promise<string | null> {
     const credContext: UserContext = {
@@ -115,7 +117,23 @@ export class GitHubAuthService {
     };
     
     const credentials = await this.userConfig.credentials.get<GitHubCredentials>(credContext, 'github');
-    return credentials?.username || null;
+    if (!credentials) return null;
+
+    if (credentials.username) return credentials.username;
+
+    // Backfill: fetch username from GitHub API and persist
+    if (credentials.token) {
+      const validation = await this.validatePAT(credentials.token);
+      if (validation.valid && validation.username) {
+        await this.userConfig.credentials.set<GitHubCredentials>(credContext, 'github', {
+          ...credentials,
+          username: validation.username,
+        });
+        return validation.username;
+      }
+    }
+
+    return null;
   }
 
   /**

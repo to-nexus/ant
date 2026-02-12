@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ProjectConfig, fetchOrgConfig, checkGitHubPATStatus } from '@/infrastructure/http/api';
+import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
@@ -31,20 +31,24 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
-  // Load GitHub owner info (org + personal) for quick-fill
+  // Load GitHub owner info (user override > org > personal) for quick-fill
   useEffect(() => {
     async function loadGithubOwners() {
       try {
-        const [orgConfig, patStatus] = await Promise.all([
+        const [orgConfig, userConfig, patStatus] = await Promise.all([
           fetchOrgConfig(),
+          fetchUserConfig(),
           checkGitHubPATStatus(),
         ]);
         const orgOwner = orgConfig.github?.owner;
+        const userOverride = userConfig.github?.ownerOverride;
         const personalOwner = patStatus.username;
-        setGithubOwnerInfo({ orgOwner, personalOwner });
+        // Org button shows effective org owner (user override > org config)
+        const effectiveOrgOwner = userOverride || orgOwner;
+        setGithubOwnerInfo({ orgOwner: effectiveOrgOwner, personalOwner });
 
-        // Auto-fill githubRepo if empty: prefer org, fallback to personal
-        const defaultOwner = orgOwner || personalOwner;
+        // Auto-fill githubRepo if empty: effective org > personal
+        const defaultOwner = effectiveOrgOwner || personalOwner;
         if (defaultOwner) {
           setEditedConfig(prev => {
             if (prev.githubRepo) return prev; // already has a value
