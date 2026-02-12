@@ -22,6 +22,8 @@ interface ParserContext {
   tasksContent: string;  // ✅ NEW: Accumulate tasks content
   insideReferences: boolean;  // ✅ NEW: <references> tag
   referencesContent: string;  // ✅ NEW: Accumulate references content
+  insideClarify: boolean;  // ✅ NEW: <clarify> tag (planner mode — suppress from chat)
+  clarifyContent: string;  // ✅ NEW: Accumulate clarify content (discarded)
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
 }
@@ -37,6 +39,8 @@ export class XMLStreamParser implements IStreamParser {
     tasksContent: '',  // ✅ NEW
     insideReferences: false,  // ✅ NEW
     referencesContent: '',  // ✅ NEW
+    insideClarify: false,  // ✅ NEW
+    clarifyContent: '',  // ✅ NEW
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
   };
@@ -322,6 +326,49 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
+      // 16b. Check for <clarify ...> opening (suppress from chat — post-hoc parsed by generate.ts)
+      if (!this.context.insideClarify && this.buffer.match(/<clarify[\s]/)) {
+        const startIdx = this.buffer.search(/<clarify[\s]/);
+        
+        // Emit any text before <clarify> as response
+        const beforeTag = this.buffer.substring(0, startIdx);
+        if (beforeTag.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: beforeTag }
+          });
+        }
+        
+        this.buffer = this.buffer.substring(startIdx);
+        this.context.insideClarify = true;
+        this.context.clarifyContent = '';  // Reset accumulator
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 16c. Check for </clarify> closing (discard content — not emitted to UI)
+      if (this.context.insideClarify && this.buffer.includes('</clarify>')) {
+        const endIdx = this.buffer.indexOf('</clarify>');
+        
+        this.buffer = this.buffer.substring(endIdx + '</clarify>'.length);
+        this.context.insideClarify = false;
+        
+        // ✅ DISCARD: <clarify> content is NOT emitted to UI.
+        // generate.ts parses it post-stream via parseClarifyBlocks() and sends choice cards.
+        this.context.clarifyContent = '';  // Reset
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 16d. Accumulate content inside <clarify> (suppress)
+      if (this.context.insideClarify && this.buffer.length > 0) {
+        this.context.clarifyContent += this.buffer;
+        this.buffer = '';
+        continue;
+      }
+      
       // 17. Check for <file path="..."> opening
       if (!this.context.insideFile) {
         const fileMatch = this.buffer.match(/<file\s+path="([^"]+)">/);
@@ -598,6 +645,7 @@ export class XMLStreamParser implements IStreamParser {
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
           !this.context.insideLearnCommand &&  // ✅ NEW
+          !this.context.insideClarify &&  // ✅ NEW: suppress <clarify> from chat
           !this.context.insideFile) {
         
         if (this.buffer.length > 0) {
@@ -606,7 +654,7 @@ export class XMLStreamParser implements IStreamParser {
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
           // Note: detect/references tags are NOT parsed - they flow through as normal response for SpecialTagTransformer
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|delete|append|learn_command|done)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|delete|append|learn_command|clarify|done)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
@@ -715,6 +763,10 @@ export class XMLStreamParser implements IStreamParser {
           }
         });
       }
+      // If inside clarify, discard (post-hoc parsing handles it)
+      else if (this.context.insideClarify) {
+        // ✅ DISCARD: clarify content suppressed from UI
+      }
       // Otherwise, emit as response (ONLY if has actual content)
       else if (!this.context.insideTasks && hasActualContent) {
         // Don't emit if inside <tasks> (should be hidden)
@@ -742,6 +794,8 @@ export class XMLStreamParser implements IStreamParser {
       tasksContent: '',  // ✅ NEW
       insideReferences: false,  // ✅ NEW
       referencesContent: '',  // ✅ NEW
+      insideClarify: false,  // ✅ NEW
+      clarifyContent: '',  // ✅ NEW
       currentFilePath: null,
       currentAppendPath: null,
     };

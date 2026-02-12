@@ -30,6 +30,58 @@ import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestr
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Clarify Tag Parser
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ClarifyBlock {
+  question: string;
+  options: string[];
+}
+
+/**
+ * Parse <clarify> blocks from LLM response text.
+ * 
+ * Expected format:
+ *   <clarify question="What is the target platform?">
+ *   <option>Web application</option>
+ *   <option>Mobile app</option>
+ *   </clarify>
+ */
+function parseClarifyBlocks(text: string): ClarifyBlock[] {
+  const blocks: ClarifyBlock[] = [];
+  const clarifyRegex = /<clarify\s+question="([^"]*)">([\s\S]*?)<\/clarify>/g;
+  const optionRegex = /<option>([\s\S]*?)<\/option>/g;
+  
+  let match;
+  while ((match = clarifyRegex.exec(text)) !== null) {
+    const question = match[1].trim();
+    const body = match[2];
+    const options: string[] = [];
+    
+    let optMatch;
+    while ((optMatch = optionRegex.exec(body)) !== null) {
+      const optText = optMatch[1].trim();
+      if (optText) options.push(optText);
+    }
+    // Reset optionRegex lastIndex for next clarify block
+    optionRegex.lastIndex = 0;
+    
+    if (question && options.length > 0) {
+      blocks.push({ question, options });
+    }
+  }
+  
+  return blocks;
+}
+
+/**
+ * Remove <clarify> blocks from response text for clean chat display.
+ */
+function stripClarifyBlocks(text: string): string {
+  return text.replace(/<clarify\s+question="[^"]*">[\s\S]*?<\/clarify>/g, '').trim();
+}
+
 // Template cache
 let planBaseTemplate: Handlebars.TemplateDelegate | null = null;
 let planRulesContent: string | null = null;
@@ -262,6 +314,63 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   // Final PRD path — finalize orchestrator but keep message open for choice card
   await orchestrator.finalize(true);
+  
+  // === Check for <clarify> tags in response (planner generate mode) ===
+  const clarifyBlocks = parseClarifyBlocks(responseText);
+  if (clarifyBlocks.length > 0) {
+    console.log(`💬 [Planner:Generate] Found ${clarifyBlocks.length} clarify block(s), sending choice cards`);
+    
+    // Strip <clarify> tags from response text for clean chat display
+    const cleanedResponseText = stripClarifyBlocks(responseText);
+    
+    // Send all clarify blocks as a single compound card
+    try {
+      await chatAPI.sendClarifyCards(clarifyBlocks);
+    } catch (error) {
+      console.warn('⚠️ [Planner:Generate] Failed to send clarify card:', error);
+    }
+    
+    // Save conversation with clarifying response (no PRD yet)
+    await saveConversationToSession(state, cleanedResponseText, undefined);
+    
+    // Finalize message
+    await chatAPI.finalizeMessage();
+    
+    // Workflow instrumentation
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      state.deps.workflowUpdate.exitNode(state._httpJobId, 'generate', 0);
+    }
+    
+    updatedHistory.push({ role: 'assistant', content: cleanedResponseText });
+    
+    // Build updated conversation for graph state
+    const updatedConversation: ConversationEntry[] = [...(state.conversation || [])];
+    if (updatedConversation.length === 0 && state.directive) {
+      updatedConversation.push({
+        role: 'user',
+        content: state.directive,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    updatedConversation.push({
+      role: 'assistant',
+      content: cleanedResponseText,
+      timestamp: new Date().toISOString(),
+      metadata: {
+        hasArtifact: false,
+        mode: state.mode,
+      },
+    });
+    
+    return {
+      conversationHistory: updatedHistory,
+      conversation: updatedConversation,
+      generatedDocument: undefined,
+      pendingToolCall: undefined,
+      tokenUsage: state.tokenUsage,
+      recursionCount,
+    };
+  }
   
   // Extract file content from registry (populated by StreamOrchestrator via <file> tags)
   const files = orchestrator.getRegistry().getAllFiles();

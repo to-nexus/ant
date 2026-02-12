@@ -3,6 +3,7 @@ import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/W
 import { DesignGraphState } from "../state";
 import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
+import { isTemplateContent } from "../../../../../core/utils/templateDetector";
 
 /**
  * Design Resolve Node
@@ -174,22 +175,17 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   if (jobMode === 'generate' && !prd) {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
     const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
-    // toWorkspaceRelative is private, use relative path directly
     const root = (fileSystem as any).getWorkspaceRoot?.() || '';
     const sourceDir = root ? path.relative(root, sourceDirAbs) : sourceDirAbs;
     const prdPath = path.join(sourceDir, 'prd.md');
     if (await fileSystem.fileExists(prdPath)) {
       const raw = await fileSystem.readFile(prdPath);
-      if (raw && raw.includes('<!-- ant:template -->')) {
-        // Only reject if file has minimal real content (actual template placeholder)
-        const stripped = raw.replace(/<!--[\s\S]*?-->/g, '').trim();
-        if (stripped.length < 200) {
-          throw new Error(
-            "PRD(prd.md)가 아직 템플릿 상태입니다.\n" +
-            "- prd.md 상단의 `<!-- ant:template -->` 줄을 삭제하고 내용을 채워주세요.\n" +
-            "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다."
-          );
-        }
+      if (raw && isTemplateContent(raw)) {
+        throw new Error(
+          "PRD(prd.md)가 아직 템플릿 상태입니다.\n" +
+          "- prd.md 상단의 `<!-- ant:template -->` 줄을 삭제하고 내용을 채워주세요.\n" +
+          "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다."
+        );
       }
     }
   }

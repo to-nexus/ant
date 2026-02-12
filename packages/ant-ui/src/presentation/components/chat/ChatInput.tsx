@@ -29,6 +29,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const isRunning = useStore((state) => state.isRunning);
   const isStopping = useStore((state) => state.isStopping);  // ✅ Use global state
   const backendMode = useStore((state) => state.backendMode);
+  const hasPendingClarify = useStore((state) => Object.keys(state.pendingClarifyAnswers).length > 0);
   const userEmail = useStore((state) => state.userEmail);
   const pendingChatInput = useStore((state) => state.pendingChatInput);  // ✅ Subscribe to Chat service
   const [showJobMenu, setShowJobMenu] = useState(false);
@@ -220,7 +221,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
 
   // ✅ Submit message handler - handles both Continue and New Job
   const handleSubmit = async () => {
-    if (!message.trim() || !chatPolicy.canSendMessage) return;
+    // Allow submit if: has message text OR has pending clarify answers (compound card selections)
+    const hasPendingClarifyNow = Object.keys(useStore.getState().pendingClarifyAnswers).length > 0;
+    if ((!message.trim() && !hasPendingClarifyNow) || !chatPolicy.canSendMessage) return;
     
     const selectedProject = useStore.getState().selectedProject;
     const selectedFeature = useStore.getState().selectedFeature;
@@ -246,8 +249,27 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       return;
     }
     
+    // ✅ Combine pending clarify answers (from compound card) with free text
+    const pendingAnswers = useStore.getState().pendingClarifyAnswers;
+    const pendingQuestions = useStore.getState().pendingClarifyQuestions;
+    const hasPendingClarify = Object.keys(pendingAnswers).length > 0;
+
+    let userMessage = '';
+    if (hasPendingClarify) {
+      const structured = Object.entries(pendingAnswers)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .map(([idx, answer]) => `- ${pendingQuestions[Number(idx)] || `Q${Number(idx) + 1}`}: ${answer}`)
+        .join('\n');
+      userMessage += structured;
+      if (message.trim()) {
+        userMessage += '\n\n' + message.trim();
+      }
+      useStore.getState().clearPendingClarify();
+    } else {
+      userMessage = message;
+    }
+    
     // Clear message immediately for better UX
-    const userMessage = message;
     setMessage('');
     
     // ✅ Check if there's an interrupted job (not completed AND not dismissed)
@@ -734,7 +756,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
               // Submit Button (일반 상태)
               <button
                 onClick={handleSubmit}
-                disabled={!chatPolicy.canSendMessage || !message.trim()}
+                disabled={!chatPolicy.canSendMessage || (!message.trim() && !hasPendingClarify)}
                 className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded
                            bg-blue-500 hover:bg-blue-600 
                            text-white

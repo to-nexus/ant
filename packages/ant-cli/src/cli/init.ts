@@ -140,33 +140,9 @@ export function initFeature(workspaceName: string, featureName: string): void {
 
   // ✅ PRD is canonical single file: prd.md
   const prdTemplate = `<!-- ant:template -->
-<!-- 작성 후 이 줄(ant:template)을 삭제하세요. 남아있으면 시스템이 "비어있는 입력"으로 취급합니다. -->
-
 # ${featureName} - PRD
 
-> ✅ 필수: 이 파일은 항상 존재해야 합니다. (단일 입력 파일: \`inputs/sources/prd.md\`)
-
-## 1) 한 줄 요약
-- 
-
-## 2) 문제/목표
-- **문제**:
-- **목표**:
-- **비목표(이번에 하지 않는 것)**:
-
-## 3) 사용자 시나리오
-- 
-
-## 4) 요구사항 (Functional)
-- 
-
-## 5) 비기능 (Non-Functional)
-- 성능:
-- 접근성:
-- 보안/권한:
-
-## 6) 제약/리스크
-- 
+여기에 PRD를 작성하거나, 플래너 모드로 대화형 생성을 이용하세요.
 `;
   fs.writeFileSync(
     path.join(featureDir, "inputs/sources/prd.md"),
