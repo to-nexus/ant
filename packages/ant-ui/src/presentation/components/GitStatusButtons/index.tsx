@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { useGitHubRepoConfig } from './hooks/useGitHubRepoConfig';
 import { useGitChanges } from './hooks/useGitChanges';
@@ -8,6 +9,7 @@ import { LoadingButton } from './components/LoadingButton';
 import { ActionButton } from './components/ActionButton';
 
 export function GitStatusButtons() {
+  const { t } = useTranslation('explorer');
   const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase } = useStore();
   
   const hasGitHubRepo = useGitHubRepoConfig(selectedProject);
@@ -37,12 +39,12 @@ export function GitStatusButtons() {
 
   // ✅ STEP 1: If GitHub repo is not configured
   if (hasGitHubRepo === false) {
-    return <PlaceholderButton message="Configure GitHub repo first" />;
+    return <PlaceholderButton message={t('config:git.configureFirst')} />;
   }
 
   // ✅ STEP 2: If Git is not initialized (repo configured, but not cloned/initialized)
   if (isGitInitialized === false) {
-    return <PlaceholderButton message="Git not initialized" />;
+    return <PlaceholderButton message={t('config:git.notInitialized')} />;
   }
 
   // If no feature is selected
@@ -57,7 +59,7 @@ export function GitStatusButtons() {
 
   // If data is still loading
   if (!gitChanges || isGitInitialized === null) {
-    return <PlaceholderButton message="Checking..." />;
+    return <PlaceholderButton message={t('common:status.checking')} />;
   }
 
   return (

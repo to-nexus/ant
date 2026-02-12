@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface CreateItemFormProps {
@@ -9,6 +10,7 @@ interface CreateItemFormProps {
 }
 
 export function CreateItemForm({ placeholder, onSubmit, onCancel, isOpen }: CreateItemFormProps) {
+  const { t } = useTranslation('artifacts');
   const [itemName, setItemName] = useState('');
   const [loading, setLoading] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -55,7 +57,7 @@ export function CreateItemForm({ placeholder, onSubmit, onCancel, isOpen }: Crea
       console.error('Failed to create item:', error);
       const anyErr = error as any;
       if (!anyErr?.silent) {
-        showError('생성에 실패했습니다. 이름을 확인하고 다시 시도해주세요.', { title: '오류' });
+        showError(t('error.createFailed'), { title: t('common:error.title') });
       }
     } finally {
       setLoading(false);
@@ -91,7 +93,7 @@ export function CreateItemForm({ placeholder, onSubmit, onCancel, isOpen }: Crea
           onClick={handleSubmit}
           disabled={loading || !itemName.trim()}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-2xl disabled:opacity-30 hover:scale-110 transition-transform"
-          title="Create"
+          title={t('common:button.create')}
         >
           ✅
         </button>

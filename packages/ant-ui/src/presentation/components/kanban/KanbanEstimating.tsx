@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 /**
  * SkeletonCard - Placeholder card during decompose/revise
  * @param delay - Animation delay in milliseconds (for staggered effect)
@@ -43,11 +45,12 @@ function ColumnHeader({ icon, title, count }: { icon: string; title: string; cou
  * is decompose or revise (task generation nodes).
  */
 export function KanbanEstimatingSkeleton() {
+  const { t } = useTranslation('kanban');
   return (
     <div className="grid grid-cols-3 gap-4 pt-4">
       {/* To Do column with skeleton cards */}
       <div className="space-y-3">
-        <ColumnHeader icon="📝" title="To Do" count="···" />
+        <ColumnHeader icon="📝" title={t('columns.todo')} count="···" />
         <div className="space-y-2">
           {/* Staggered animation: 0ms, 200ms, 400ms delays */}
           <SkeletonCard delay={0} />
@@ -58,7 +61,7 @@ export function KanbanEstimatingSkeleton() {
       
       {/* In Progress column (empty) */}
       <div className="space-y-3">
-        <ColumnHeader icon="🔄" title="In Progress" count={0} />
+        <ColumnHeader icon="🔄" title={t('columns.inProgress')} count={0} />
         <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
           Waiting for tasks...
         </div>
@@ -66,7 +69,7 @@ export function KanbanEstimatingSkeleton() {
       
       {/* Completed column (empty) */}
       <div className="space-y-3">
-        <ColumnHeader icon="✅" title="Completed" count={0} />
+        <ColumnHeader icon="✅" title={t('columns.completed')} count={0} />
         <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
           No completed tasks yet
         </div>

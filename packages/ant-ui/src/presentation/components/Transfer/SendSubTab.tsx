@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { PathPicker } from '../common/PathPicker';
 import { MemberPicker } from '../common/MemberPicker';
@@ -34,6 +35,7 @@ import { cn } from '@/shared/utils/design-system';
 import { normalizePaths } from '@/shared/utils/path-utils';
 
 export function SendSubTab() {
+  const { t } = useTranslation('transfer');
   const selectedProject = useStore((s) => s.selectedProject);
   const selectedFeature = useStore((s) => s.selectedFeature);
   const preselected = useStore((s) => s.sendPreselectedSource);
@@ -225,14 +227,14 @@ export function SendSubTab() {
 
   const handleTransfer = async () => {
     if (srcPaths.length === 0) {
-      showError('보낼 파일/디렉토리를 추가하세요.', { title: '전송 오류' });
+      showError(t('error.noItems'), { title: t('error.title') });
       return;
     }
     setIsLoading(true);
     try {
       if (sendTarget === 'self') {
         if (!destProjectId || !destFeatureId) {
-          showError('받을 프로젝트와 피처를 선택하세요.', { title: '전송 오류' });
+          showError(t('error.noDestination'), { title: t('error.title') });
           setIsLoading(false); return;
         }
         for (const item of srcPaths) {
@@ -247,25 +249,25 @@ export function SendSubTab() {
       } else {
         // Use source path as destination path (same relative location)
         if (!targetUserId) {
-          showError('받는 사람을 선택하세요.', { title: '전송 오류' });
+          showError(t('error.noRecipient'), { title: t('error.title') });
           setIsLoading(false); return;
         }
         if (otherUserNotFound) {
-          showError(`"${targetUserId}" 사용자의 워크스페이스가 존재하지 않습니다.`, { title: '전송 불가' });
+          showError(t('error.noWorkspace'), { title: t('error.cannotTransfer') });
           setIsLoading(false); return;
         }
         if (!otherProjectId) {
           showError(otherProjects.length === 0
-            ? `"${targetUserId}" 사용자에게 프로젝트가 없어 전송할 수 없습니다.`
-            : '받는 사람의 프로젝트를 선택하세요.',
-            { title: '전송 오류' });
+            ? t('error.noRecipientProject')
+            : t('error.selectRecipientProject'),
+            { title: t('error.title') });
           setIsLoading(false); return;
         }
         if (!otherFeatureId) {
           showError(otherFeatures.length === 0
-            ? `"${otherProjectId}" 프로젝트에 피처가 없어 전송할 수 없습니다.`
-            : '받는 사람의 피처를 선택하세요.',
-            { title: '전송 오류' });
+            ? t('error.noFeatureInProject')
+            : t('error.selectRecipientFeature'),
+            { title: t('error.title') });
           setIsLoading(false); return;
         }
         for (const item of srcPaths) {
@@ -280,7 +282,7 @@ export function SendSubTab() {
         setSentRequests(requests);
       }
     } catch (error: any) {
-      showError(error.message || '전송에 실패했습니다.', { title: '전송 오류' });
+      showError(error.message || t('error.transferFailed'), { title: t('error.title') });
     } finally {
       setIsLoading(false);
     }
@@ -292,7 +294,7 @@ export function SendSubTab() {
       const { requests } = await fetchTransferRequests('sent');
       setSentRequests(requests);
     } catch (error: any) {
-      showError(error.message, { title: '취소 실패' });
+      showError(error.message, { title: t('error.cancelFailed') });
     }
   };
 
@@ -301,7 +303,7 @@ export function SendSubTab() {
       await deleteTransferRequest(requestId);
       setSentRequests(sentRequests.filter(r => r.id !== requestId));
     } catch (error: any) {
-      showError(error.message, { title: '삭제 실패' });
+      showError(error.message, { title: t('error.deleteFailed') });
     }
   };
 
@@ -311,7 +313,7 @@ export function SendSubTab() {
     <div className="p-4 space-y-4">
       {/* ── 1. Source ── */}
       <section>
-        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">보낼 항목</h4>
+        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.title')}</h4>
         {/* Project / Feature — one line */}
         <InlineProjectFeature
           projectValue={srcProjectId}
@@ -327,7 +329,7 @@ export function SendSubTab() {
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                보낼 내용 ({srcPaths.length}개)
+                {t('send.itemCount', { count: srcPaths.length })}
               </span>
               <button
                 className={cn(
@@ -339,7 +341,7 @@ export function SendSubTab() {
                 onClick={() => setIsAddingPath(!isAddingPath)}
               >
                 <Plus className="w-3.5 h-3.5" />
-                추가
+                {t('send.addButton')}
               </button>
             </div>
 
@@ -347,7 +349,7 @@ export function SendSubTab() {
             {isAddingPath && (
               <div className="mb-2">
                 <PathPicker
-                  contextLabel="보낼 파일/디렉토리 추가"
+                  contextLabel={t('send.addDialog')}
                   fileTree={srcFileTree}
                   selectedPath=""
                   onSelect={handleAddPath}
@@ -365,7 +367,7 @@ export function SendSubTab() {
 
             {srcPaths.length === 0 && !isAddingPath && (
               <p className="text-xs text-gray-400 dark:text-gray-500 py-3 text-center border border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
-                추가 버튼으로 보낼 파일/디렉토리를 선택하세요
+                {t('send.emptyHint')}
               </p>
             )}
           </div>
@@ -374,7 +376,7 @@ export function SendSubTab() {
 
       {/* ── 2. Destination ── */}
       <section>
-        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">받는 곳</h4>
+        <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.destination')}</h4>
 
         {/* Target toggle: 나 / 다른 사람(멤버 이름) */}
         <div className="flex items-center gap-2 mb-3">
@@ -388,7 +390,7 @@ export function SendSubTab() {
               )}
               onClick={() => { setSendTarget('self'); }}
             >
-              나
+              {t('send.self')}
             </button>
             <button
               className={cn(
@@ -399,7 +401,7 @@ export function SendSubTab() {
               )}
               onClick={() => { setSendTarget('other'); setMode('copy'); }}
             >
-              {sendTarget === 'other' && targetUserId ? targetUserId : '다른 사람'}
+              {t('send.others')}
             </button>
           </div>
           {sendTarget === 'other' && (
@@ -408,7 +410,7 @@ export function SendSubTab() {
               selectedUserId={targetUserId}
               onSelect={handleMemberSelect}
               onDismiss={handleMemberDismiss}
-              placeholder="멤버 선택"
+              placeholder={t('send.selectMember')}
             />
           )}
         </div>
@@ -425,14 +427,14 @@ export function SendSubTab() {
               disableFeature={!destProjectId}
             />
             {destProjectId && destFeatures.length === 0 && (
-              <InlineWarning message={`"${destProjectId}" 프로젝트에 피처가 없습니다.`} />
+              <InlineWarning message={t('error.noFeatureInProject')} />
             )}
           </div>
         ) : (
           <div className="space-y-2">
             {/* Workspace not found warning */}
             {otherUserNotFound && targetUserId && (
-              <InlineWarning message={`"${targetUserId}" 사용자의 워크스페이스가 존재하지 않습니다.`} />
+              <InlineWarning message={t('error.noWorkspace')} />
             )}
 
             {!otherUserNotFound && (
@@ -450,12 +452,12 @@ export function SendSubTab() {
 
                 {/* No projects warning */}
                 {targetUserId && otherProjectsLoaded && otherProjects.length === 0 && !otherUserNotFound && (
-                  <InlineWarning message={`"${targetUserId}" 사용자에게 프로젝트가 없습니다. 전송할 수 없습니다.`} />
+                  <InlineWarning message={t('error.noRecipientProject')} />
                 )}
 
                 {/* No features warning */}
                 {otherProjectId && otherFeaturesLoaded && otherFeatures.length === 0 && (
-                  <InlineWarning message={`"${otherProjectId}" 프로젝트에 피처가 없습니다. 전송할 수 없습니다.`} />
+                  <InlineWarning message={t('error.noFeatureInProject')} />
                 )}
 
               </>
@@ -469,17 +471,17 @@ export function SendSubTab() {
         {srcPaths.length > 0 && (
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
             <span className="font-medium text-gray-700 dark:text-gray-300">
-              {srcPaths.length}개 항목
+              {t('send.itemCount', { count: srcPaths.length })}
             </span>
             <ArrowRight className="w-3 h-3 shrink-0" />
             <span className="truncate">
               {sendTarget === 'self'
-                ? (destProjectId && destFeatureId ? `${destProjectId}/${destFeatureId}/` : '(받을 곳 미선택)')
+                ? (destProjectId && destFeatureId ? `${destProjectId}/${destFeatureId}/` : t('send.destinationNotSelected'))
                 : (targetUserId
                     ? `${targetUserId}/${otherProjectId || '…'}/${otherFeatureId || '…'}/`
-                    : '(받을 곳 미선택)')
+                    : t('send.destinationNotSelected'))
               }
-              <span className="text-gray-400 dark:text-gray-500">(동일 경로)</span>
+              <span className="text-gray-400 dark:text-gray-500">{t('send.samePath')}</span>
             </span>
           </div>
         )}
@@ -501,8 +503,8 @@ export function SendSubTab() {
           />
           <span className="text-xs text-gray-400 dark:text-gray-500">
             {sendTarget === 'self'
-              ? '선택한 위치로 즉시 전송됩니다.'
-              : '상대방이 수락하면 복사 전송됩니다. (원본은 유지)'}
+              ? t('confirm.selfTransferHint')
+              : t('confirm.otherTransferHint')}
           </span>
         </div>
       </section>
@@ -510,7 +512,7 @@ export function SendSubTab() {
       {/* ── 4. Sent requests history ── */}
       {sentRequests.length > 0 && (
         <section>
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">보낸 요청 히스토리</h4>
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.history')}</h4>
           <div className="space-y-2">
             {sentRequests.map(req => (
               <SentRequestCard key={req.id} request={req} onCancel={handleCancel} onDelete={handleDelete} />
@@ -538,6 +540,7 @@ function InlineProjectFeature({
   disableProject?: boolean;
   disableFeature?: boolean;
 }) {
+  const { t } = useTranslation('transfer');
   return (
     <div className="flex items-center gap-1.5 max-w-[420px]">
       <select
@@ -550,7 +553,7 @@ function InlineProjectFeature({
         )}
       >
         <option value="">
-          {disableProject ? '—' : projectOptions.length === 0 ? 'Project 없음' : 'Project 선택'}
+          {disableProject ? '—' : projectOptions.length === 0 ? t('send.noProject') : t('send.selectProject')}
         </option>
         {projectOptions.map(id => <option key={id} value={id}>{id}</option>)}
       </select>
@@ -565,7 +568,7 @@ function InlineProjectFeature({
         )}
       >
         <option value="">
-          {disableFeature ? '—' : featureOptions.length === 0 ? 'Feature 없음' : 'Feature 선택'}
+          {disableFeature ? '—' : featureOptions.length === 0 ? t('send.noFeature') : t('send.selectFeature')}
         </option>
         {featureOptions.map(id => <option key={id} value={id}>{id}</option>)}
       </select>
@@ -579,6 +582,7 @@ function SentRequestCard({ request, onCancel, onDelete }: {
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const { t } = useTranslation('transfer');
   const statusIcons: Record<string, React.ReactNode> = {
     pending: <Clock className="w-4 h-4 text-yellow-500" />,
     approved: <CheckCircle className="w-4 h-4 text-green-500" />,
@@ -586,7 +590,7 @@ function SentRequestCard({ request, onCancel, onDelete }: {
     cancelled: <Ban className="w-4 h-4 text-gray-400" />,
     expired: <Timer className="w-4 h-4 text-gray-400" />,
   };
-  const timeAgo = getTimeAgo(request.createdAt);
+  const timeAgo = getTimeAgo(request.createdAt, t);
   const isCompleted = request.status !== 'pending';
 
   return (
@@ -601,13 +605,13 @@ function SentRequestCard({ request, onCancel, onDelete }: {
         <span className="text-xs text-gray-400">{timeAgo}</span>
         {request.status === 'pending' && (
           <button className="text-xs text-red-500 hover:text-red-600 hover:underline"
-            onClick={() => onCancel(request.id)}>취소</button>
+            onClick={() => onCancel(request.id)}>{t('action.cancel')}</button>
         )}
         {isCompleted && (
           <button
             className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => onDelete(request.id)}
-            title="히스토리에서 제거"
+            title={t('send.removeFromHistory')}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -629,6 +633,7 @@ function SplitTransferButton({
   itemCount: number;
   modeLocked?: boolean;
 }) {
+  const { t } = useTranslation('transfer');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -652,14 +657,14 @@ function SplitTransferButton({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [isDropdownOpen]);
 
-  const modeLabel = mode === 'copy' ? '복사' : '이동';
+  const modeLabel = mode === 'copy' ? t('mode.copy') : t('mode.move');
   const buttonLabel = isLoading
-    ? '전송 중...'
-    : `${modeLabel} 전송${itemCount > 0 ? ` (${itemCount})` : ''}`;
+    ? t('action.transferring')
+    : `${modeLabel} ${t('action.transfer')}${itemCount > 0 ? ` (${itemCount})` : ''}`;
 
   const options: Array<{ value: 'copy' | 'move'; label: string; desc: string }> = [
-    { value: 'copy', label: '복사 전송', desc: '원본을 유지하고 대상에 복사합니다' },
-    { value: 'move', label: '이동 전송', desc: '원본을 삭제하고 대상으로 이동합니다' },
+    { value: 'copy', label: t('mode.copyTransfer'), desc: t('mode.copyDesc') },
+    { value: 'move', label: t('mode.moveTransfer'), desc: t('mode.moveDesc') },
   ];
 
   // When modeLocked, render a simple button without dropdown
@@ -733,13 +738,13 @@ function SplitTransferButton({
   );
 }
 
-function getTimeAgo(dateStr: string): string {
+function getTimeAgo(dateStr: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes < 60) return t('common:time.minutesAgo', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
+  if (hours < 24) return t('common:time.hoursAgo', { count: hours });
+  return t('common:time.daysAgo', { count: Math.floor(hours / 24) });
 }
 
 // ─── Inline Warning Banner ───

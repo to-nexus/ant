@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, LucideIcon, Settings, Play, Square, Loader2 } from 'lucide-react';
 import { Button } from '@/presentation/components/common/button';
 import { CreateItemForm } from './CreateItemForm';
@@ -59,6 +60,7 @@ export function ItemDropdown({
   canCreate = true,
   createDisabledReason,
 }: ItemDropdownProps) {
+  const { t } = useTranslation('explorer');
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -110,17 +112,17 @@ export function ItemDropdown({
     showConfirm(
       <>
         <p className="text-sm">
-          정말 <strong>"{itemName}"</strong>을(를) 삭제할까요?
+          {t('item.deleteConfirm', { name: itemName })}
         </p>
         <p className="text-sm mt-2 text-gray-600 dark:text-gray-400">
-          이 작업은 되돌릴 수 없습니다.
+          {t('item.deleteWarning')}
         </p>
       </>,
       {
         type: 'warning',
-        title: 'Delete?',
-        confirmText: 'Delete',
-        cancelText: 'Cancel',
+        title: t('item.deleteTitle'),
+        confirmText: t('common:button.delete'),
+        cancelText: t('common:button.cancel'),
         onConfirm: async () => {
           try {
             await onDelete(itemName);
@@ -130,7 +132,7 @@ export function ItemDropdown({
             onItemCreated?.(); // Refresh list
           } catch (error) {
             console.error('Failed to delete item:', error);
-            showError('삭제에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
+            showError(t('item.deleteFailed'), { title: t('common:error.title') });
           }
         }
       }
@@ -156,7 +158,7 @@ export function ItemDropdown({
               disabled={createDisabled}
               title={createDisabled ? (createDisabledReason || disabledReason || undefined) : undefined}
             >
-              + New
+              {t('feature.new')}
             </Button>
           )}
           {isCreating && (
@@ -165,7 +167,7 @@ export function ItemDropdown({
               variant="outline"
               onClick={handleCloseCreate}
             >
-              Cancel
+              {t('common:button.cancel')}
             </Button>
           )}
         </div>
@@ -215,7 +217,7 @@ export function ItemDropdown({
             disabled={createDisabled}
             title={createDisabled ? (createDisabledReason || disabledReason || undefined) : undefined}
           >
-            + New
+            {t('feature.new')}
           </Button>
         )}
         {isCreating && (
@@ -224,7 +226,7 @@ export function ItemDropdown({
             variant="outline"
             onClick={handleCloseCreate}
           >
-            Cancel
+            {t('common:button.cancel')}
           </Button>
         )}
       </div>

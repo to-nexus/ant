@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, isSvgFilePath, saveFileContent } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
@@ -142,6 +143,7 @@ interface FileEditorPanelProps {
 }
 
 export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
+  const { t } = useTranslation('artifacts');
   const { showError } = useAlertModalContext();
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
@@ -284,7 +286,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
       setHasChanges(false);
     } catch (error) {
       console.error('Failed to save file:', error);
-      showError('저장에 실패했습니다.', { title: '오류' });
+      showError(t('error.saveFailed'), { title: t('common:error.title') });
     } finally {
       setSaving(false);
     }
@@ -335,7 +337,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                     href={binaryPreviewUrl}
                     target="_blank"
                     rel="noreferrer"
-                    title="새 탭에서 열기"
+                    title={t('actions.openInNewTab')}
                   >
                     Open
                   </a>
@@ -354,7 +356,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
-                title="Raw (Edit mode)"
+                title={t('editor.raw')}
               >
                 <FileText className="w-3.5 h-3.5" />
                 Raw
@@ -366,7 +368,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                     ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
-                title="Preview (Read-only)"
+                title={t('editor.preview')}
               >
                 <Eye className="w-3.5 h-3.5" />
                 Preview
@@ -379,7 +381,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden pt-4">
         {loading ? (
-          <div className="text-sm text-gray-500 dark:text-gray-400 p-4">Loading...</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400 p-4">{t('common:status.loading')}</div>
         ) : isBinaryImageFile ? (
           <div className="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             {binaryPreviewUrl ? (
@@ -405,7 +407,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 />
               </div>
             ) : (
-              <div className="text-sm text-gray-500 dark:text-gray-400">SVG 프리뷰를 불러오지 못했습니다.</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">{t('editor.svgPreviewFailed')}</div>
             )}
           </div>
         ) : viewMode === 'preview' && isMarkdownFile ? (

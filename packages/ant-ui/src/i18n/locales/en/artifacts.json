@@ -1,0 +1,45 @@
+{
+  "panel": {
+    "title": "Artifacts",
+    "inputs": "Inputs",
+    "outputs": "Outputs",
+    "sessions": "Sessions",
+    "send": "Send",
+    "receive": "Receive"
+  },
+  "actions": {
+    "createFile": "Create file",
+    "createDirectory": "Create directory",
+    "upload": "Upload",
+    "download": "Download",
+    "send": "Send",
+    "clearContents": "Clear all contents",
+    "delete": "Delete",
+    "openInNewTab": "Open in new tab"
+  },
+  "confirm": {
+    "deleteItem": "Delete {{type}} \"{{name}}\"?",
+    "clearContents": "Clear all contents in \"{{name}}\"?",
+    "clearContentsDetail": "Clear all contents in \"{{name}}\"? This will delete all files and subdirectories."
+  },
+  "error": {
+    "fileCreateFailed": "Failed to create file.",
+    "dirCreateFailed": "Failed to create directory.",
+    "deleteFailed": "Failed to delete.",
+    "uploadFailed": "Upload failed. Please try again later.",
+    "createFailed": "Failed to create. Please check the name and try again.",
+    "saveFailed": "Failed to save.",
+    "fetchSuggestionsFailed": "Unable to fetch suggestions."
+  },
+  "editor": {
+    "placeholder": "File content...",
+    "raw": "Raw (Edit mode)",
+    "preview": "Preview (Read-only)",
+    "svgPreviewFailed": "Failed to load SVG preview.",
+    "parseError": "Parse error"
+  },
+  "featureDetails": {
+    "inputs": "📝 Inputs",
+    "outputs": "📄 Outputs"
+  }
+}

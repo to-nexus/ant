@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { fetchFileContent, saveFileContent } from '@/infrastructure/http/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/presentation/components/common/card';
@@ -6,6 +7,7 @@ import { Button } from '@/presentation/components/common/button';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 export function FileEditor() {
+  const { t } = useTranslation('artifacts');
   const { showError } = useAlertModalContext();
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
@@ -55,7 +57,7 @@ export function FileEditor() {
       setHasChanges(false);
     } catch (error) {
       console.error('Failed to save file:', error);
-      showError('저장에 실패했습니다.', { title: '오류' });
+      showError(t('error.saveFailed'), { title: t('common:error.title') });
     } finally {
       setSaving(false);
     }
@@ -124,7 +126,7 @@ export function FileEditor() {
               border-gray-300 dark:border-gray-600
               focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
               placeholder:text-gray-400 dark:placeholder:text-gray-500"
-            placeholder="File content..."
+            placeholder={t('editor.placeholder')}
             spellCheck={false}
           />
         )}

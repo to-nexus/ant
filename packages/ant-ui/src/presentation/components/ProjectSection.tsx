@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Folder, Github, ChevronDown, Download, Plus, Upload, Download as DownloadIcon, RefreshCw } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { 
@@ -20,6 +21,7 @@ import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 export function ProjectSection() {
+  const { t } = useTranslation('explorer');
   const { 
     projects, 
     selectedProject, 
@@ -111,7 +113,7 @@ export function ProjectSection() {
         await new Promise(resolve => setTimeout(resolve, 100));
       } catch (error) {
         console.error('Failed to create config:', error);
-        showError('Failed to create configuration. Please try again.');
+        showError(t('workspace.createFailed'));
         return;
       }
     }
@@ -146,7 +148,7 @@ export function ProjectSection() {
       if (result.success) {
         // ✅ For clone/init, show success popup (one-time operations)
         if (actionType === 'clone' || actionType === 'init') {
-          showSuccess(`${actionType === 'clone' ? 'Repository cloned' : 'Repository initialized'} successfully`);
+          showSuccess(actionType === 'clone' ? t('git.repoCloned') : t('git.repoInitialized'));
         }
         
         // Refresh Git status after successful operation
@@ -155,10 +157,10 @@ export function ProjectSection() {
         }
       } else {
         // ✅ Errors still shown via popup (important to see)
-        showError(result.error || `Failed to ${actionType}`);
+        showError(result.error || t('git.actionFailed', { action: actionType }));
       }
     } catch (error: any) {
-      showError(error.message || `Failed to ${actionType}`);
+      showError(error.message || t('git.actionFailed', { action: actionType }));
     } finally {
       setIsGitProcessing(false);
       setGitStatusPhase(null);
@@ -206,7 +208,7 @@ export function ProjectSection() {
   return (
     <div>
       <ItemDropdown
-        title="Workspace"
+        title={t('workspace.title')}
         icon={Folder}
         items={projectItems}
         selectedItem={selectedProject}
@@ -214,8 +216,8 @@ export function ProjectSection() {
         onCreate={handleCreateProject}
         onDelete={handleDeleteProject}
         onItemCreated={fetchProjects}
-        placeholder="Select a workspace..."
-        inputPlaceholder="Workspace name..."
+        placeholder={t('workspace.placeholder')}
+        inputPlaceholder={t('workspace.inputPlaceholder')}
         onSettingsClick={handleConfigClick}
         disabled={!policy.canChangeProject}
         disabledReason={policy.disabledReason || undefined}
@@ -237,12 +239,18 @@ export function ProjectSection() {
                 <Tooltip
                   content={
                     <div className="max-w-xs space-y-2">
-                      <p className="font-semibold">Git 저장소 설정이 필요합니다</p>
-                      <ol className="list-decimal list-inside space-y-1 text-xs">
-                        <li><strong>GitHub PAT 설정:</strong> 우측 상단 Settings → GitHub PAT</li>
-                        <li><strong>Repository URL 설정:</strong> 프로젝트 선택 → 우측 상단 톱니바퀴 아이콘 → GitHub Repo URL 입력</li>
+                      <p className="font-semibold">{t('config:git.repoSetupRequired')}</p>
+                      <ol className="list-decimal list-inside space-y-1.5 text-xs">
+                        <li>
+                          <strong>{t('config:git.setupStep1')}</strong>
+                          <div className="ml-4 text-gray-400">{t('config:git.setupStep1Desc')}</div>
+                        </li>
+                        <li>
+                          <strong>{t('config:git.setupStep2')}</strong>
+                          <div className="ml-4 text-gray-400">{t('config:git.setupStep2Desc')}</div>
+                        </li>
                       </ol>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">설정 완료 후 Clone/Initialize 버튼이 활성화됩니다</p>
+                      <p className="text-xs text-gray-400 border-t border-gray-600 pt-1.5">{t('config:git.setupComplete')}</p>
                     </div>
                   }
                   placement="bottom"
@@ -264,7 +272,7 @@ export function ProjectSection() {
                   size="sm"
                   className="px-2.5 py-1.5"
                   disabled={isGitProcessing}
-                  title="Git management"
+                  title={t('config:git.management')}
                 >
                   <Github className="w-4 h-4" />
                   <ChevronDown className="w-3 h-3 ml-1" />
@@ -283,8 +291,8 @@ export function ProjectSection() {
                       >
                         <Download className="w-4 h-4" />
                         <div>
-                          <div className="font-medium">Clone</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Pull existing repo</div>
+                          <div className="font-medium">{t('config:git.clone')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.cloneDesc')}</div>
                         </div>
                       </button>
                       <button
@@ -293,8 +301,8 @@ export function ProjectSection() {
                       >
                         <Plus className="w-4 h-4" />
                         <div>
-                          <div className="font-medium">Initialize</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Create new repo & push</div>
+                          <div className="font-medium">{t('config:git.initialize')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.initializeDesc')}</div>
                         </div>
                       </button>
                     </>
@@ -302,10 +310,10 @@ export function ProjectSection() {
                     // Case 2: No Git, Has Features → Show warning
                     <div className="px-3 py-4 text-center">
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        Features exist
+                        {t('config:git.featuresExist')}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                        Delete features first to clone/initialize
+                        {t('config:git.deleteFeaturesFirst')}
                       </div>
                     </div>
                   ) : (
@@ -317,8 +325,8 @@ export function ProjectSection() {
                       >
                         <Upload className="w-4 h-4" />
                         <div>
-                          <div className="font-medium">Push</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Upload changes</div>
+                          <div className="font-medium">{t('config:git.push')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.pushDesc')}</div>
                         </div>
                       </button>
                       <button
@@ -327,8 +335,8 @@ export function ProjectSection() {
                       >
                         <DownloadIcon className="w-4 h-4" />
                         <div>
-                          <div className="font-medium">Pull</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Download changes</div>
+                          <div className="font-medium">{t('config:git.pull')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.pullDesc')}</div>
                         </div>
                       </button>
                       <button
@@ -337,8 +345,8 @@ export function ProjectSection() {
                       >
                         <RefreshCw className="w-4 h-4" />
                         <div>
-                          <div className="font-medium">Fetch</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">Update remote refs</div>
+                          <div className="font-medium">{t('config:git.fetch')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.fetchDesc')}</div>
                         </div>
                       </button>
                     </>
@@ -351,7 +359,7 @@ export function ProjectSection() {
           {/* Current Branch Display */}
           {gitStatus?.currentBranch && (
             <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400">
-              Current branch: <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
+              {t('config:git.currentBranch')} <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
             </div>
           )}
           
@@ -362,7 +370,7 @@ export function ProjectSection() {
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-orange-700 dark:text-orange-300">
-                    Configuration required. Click the settings icon above to create one.
+                    {t('config:git.configRequired')}
                   </p>
                 </div>
               </div>
@@ -376,7 +384,7 @@ export function ProjectSection() {
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-orange-700 dark:text-orange-300">
-                    Local path not configured. Click the settings icon to set it.
+                    {t('config:git.localPathRequired')}
                   </p>
                 </div>
               </div>

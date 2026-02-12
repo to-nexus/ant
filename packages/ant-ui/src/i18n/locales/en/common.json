@@ -1,0 +1,54 @@
+{
+  "button": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "save": "Save",
+    "close": "Close",
+    "create": "Create",
+    "remove": "Remove",
+    "add": "Add",
+    "confirm": "Confirm",
+    "apply": "Apply",
+    "reset": "Reset"
+  },
+  "status": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "connectionError": "Connection Error",
+    "unknown": "Unknown",
+    "loading": "Loading...",
+    "checking": "Checking..."
+  },
+  "error": {
+    "title": "Error",
+    "unknown": "An unknown error occurred."
+  },
+  "warning": {
+    "title": "Warning"
+  },
+  "label": {
+    "optional": "Optional",
+    "selected": "Selected",
+    "noItems": "No items.",
+    "noSearchResults": "No search results",
+    "noMembers": "No members"
+  },
+  "pathPicker": {
+    "selectFolder": "Select entire folder"
+  },
+  "memberPicker": {
+    "placeholder": "Select member",
+    "searchPlaceholder": "Search name..."
+  },
+  "modal": {
+    "closeModal": "Close modal"
+  },
+  "time": {
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago",
+    "hours": "{{count}}h",
+    "days": "{{count}}d"
+  }
+}

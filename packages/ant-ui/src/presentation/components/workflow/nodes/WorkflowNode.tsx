@@ -6,6 +6,7 @@
  */
 
 import { memo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Handle, Position } from 'reactflow';
 import { Settings } from 'lucide-react';
 import { NodeType, NodeImportance, ActiveWorkerNode } from '@/domain/models/workflow';
@@ -66,6 +67,7 @@ const NODE_SIZE = {
 };
 
 export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
+  const { t } = useTranslation('kanban');
   const splitLayout = useStore(state => state.splitLayout);
   const isExpanded = data.isExpanded || false;
   const size = isExpanded ? NODE_SIZE.expanded : NODE_SIZE.collapsed;
@@ -136,7 +138,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
           {/* Linked Actors */}
           {actorInfoList.length > 0 && (
             <div className="space-y-2">
-              <div className="text-xs font-semibold opacity-70">Linked Actors:</div>
+              <div className="text-xs font-semibold opacity-70">{t('workflow.linkedActors')}</div>
               <div className="flex flex-wrap gap-2">
                 {actorInfoList.map((actor) => (
                   <div 

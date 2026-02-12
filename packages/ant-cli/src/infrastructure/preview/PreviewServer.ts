@@ -340,6 +340,9 @@ export class PreviewServer {
           issues: status.issues || [],
           phase: status.phase,
           error: status.error,
+          setupReasoning: status.setupReasoning,
+          setupReason: status.setupReason,
+          suggestedFix: status.suggestedFix,
           logs: logs.slice(-50)
         });
       } catch (error: any) {

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { 
@@ -34,6 +35,7 @@ export function useFeatureActions(
   showConfirm: ShowConfirmFn,
   showWarning: ShowAlertFn
 ) {
+  const { t } = useTranslation('explorer');
   const setSelectedFeature = useStore((state) => state.setSelectedFeature);
   const fetchFeatures = useStore((state) => state.fetchFeatures);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
@@ -147,21 +149,21 @@ export function useFeatureActions(
               <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                  Uncommitted Changes Detected
+                  {t('git.uncommittedTitle')}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  You have <strong>{totalChanges} uncommitted change{totalChanges > 1 ? 's' : ''}</strong> in the current branch.
+                  {t('git.uncommittedDesc', { count: totalChanges })}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Switching to <strong>{targetBranch}</strong> will automatically stash your changes.
+                  {t('git.uncommittedStash', { name: targetBranch })}
                 </p>
               </div>
             </div>
           </div>,
           {
-            title: 'Warning',
-            confirmText: 'Switch Anyway',
-            cancelText: 'Cancel',
+            title: t('common:warning.title'),
+            confirmText: t('git.switchAnyway'),
+            cancelText: t('common:button.cancel'),
             onConfirm: () => {
               setSelectedFeature(targetFeature);
             },

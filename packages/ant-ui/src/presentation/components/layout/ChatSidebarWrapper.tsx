@@ -4,6 +4,7 @@ import { ChatPanel } from '../chat/ChatPanel';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ChatSidebarWrapperProps {
   isCollapsed: boolean;
@@ -32,6 +33,7 @@ export function ChatSidebarWrapper({
   const isRunning = useStore((state) => state.isRunning);
   const { showConfirm, showError } = useAlertModalContext();
   const [isClearing, setIsClearing] = useState(false);
+  const { t } = useTranslation('chat');
   
   // ✅ Clear chat history handler
   const handleClearChat = async () => {
@@ -39,8 +41,8 @@ export function ChatSidebarWrapper({
     
     showConfirm(
       <>
-        <p>This will permanently delete all chat messages for this feature.</p>
-        <p className="mt-2 font-medium">Are you sure?</p>
+        <p>{t('sidebar.clearHistoryConfirm')}</p>
+        <p className="mt-2 font-medium">{t('sidebar.clearHistoryConfirmSub')}</p>
       </>,
       {
         type: 'warning',
@@ -55,7 +57,7 @@ export function ChatSidebarWrapper({
             console.log('[ChatSidebar] ✅ Chat history cleared');
           } catch (error) {
             console.error('[ChatSidebar] Failed to clear chat:', error);
-            showError('채팅 기록 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
+            showError(t('sidebar.clearHistoryFailed'), { title: t('common:error.title') });
           } finally {
             setIsClearing(false);
           }
@@ -71,7 +73,7 @@ export function ChatSidebarWrapper({
         <button
           onClick={onExpand}
           className="h-10 w-10 flex items-center justify-center border-b border-gray-200 dark:border-[#30363d] bg-gray-50 dark:bg-[#0d1117] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-          title="Expand Chat"
+          title={t('sidebar.expand')}
         >
           <ChevronRight className="w-4 h-4 rotate-180" />
         </button>
@@ -101,7 +103,7 @@ export function ChatSidebarWrapper({
             {!selectedAgent ? (
               <>
                 <WifiOff className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                <span className="text-gray-700 dark:text-gray-200 font-medium">Chat is Offline</span>
+                <span className="text-gray-700 dark:text-gray-200 font-medium">{t('sidebar.offline')}</span>
               </>
             ) : (
               <>
@@ -121,7 +123,7 @@ export function ChatSidebarWrapper({
                 onClick={handleClearChat}
                 disabled={isClearing}
                 className="text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center justify-center w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Clear Chat History"
+                title={t('sidebar.clearHistory')}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -131,7 +133,7 @@ export function ChatSidebarWrapper({
             <button
               onClick={onCollapse}
               className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors flex items-center justify-center w-10 h-10 -mr-4 -my-4"
-              title="Collapse Chat"
+              title={t('sidebar.collapse')}
             >
               <ChevronRight className="w-4 h-4" />
             </button>

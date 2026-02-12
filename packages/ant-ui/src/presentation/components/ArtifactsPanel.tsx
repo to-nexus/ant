@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
@@ -24,6 +25,7 @@ interface DirectoryViewProps {
 }
 
 function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete, onSend, onDownload, isSessionSection }: DirectoryViewProps) {
+  const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
@@ -147,7 +149,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                     document.getElementById(`upload-${node.path}`)?.click();
                   } : undefined}
                   onDelete={onDelete && !isProtected && !isClearable ? () => {
-                    showConfirm(`Delete ${node.type} "${node.name}"?`, {
+                    showConfirm(t('confirm.deleteItem', { type: node.type, name: node.name }), {
                       type: 'warning',
                       title: 'Delete?',
                       confirmText: 'Delete',
@@ -156,7 +158,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                     });
                   } : undefined}
                   onClearContents={isClearable && onDelete ? () => {
-                    showConfirm(`Clear all contents in "${node.name}"?`, {
+                    showConfirm(t('confirm.clearContents', { name: node.name }), {
                       type: 'warning',
                       title: 'Clear Contents?',
                       confirmText: 'Clear All',
@@ -275,6 +277,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // ✅ UI Action Policy
   const policy = useUIActionPolicy();
   const { showError } = useAlertModalContext();
+  const { t } = useTranslation('artifacts');
 
   // Hide button labels when explorer is narrow
   const isNarrow = explorerWidth < 260;
@@ -314,7 +317,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create file:', error);
-      showError('파일 생성에 실패했습니다.', { title: '오류' });
+      showError(t('error.fileCreateFailed'), { title: t('common:error.title') });
     }
   };
 
@@ -327,7 +330,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create directory:', error);
-      showError('폴더 생성에 실패했습니다.', { title: '오류' });
+      showError(t('error.dirCreateFailed'), { title: t('common:error.title') });
     }
   };
 
@@ -342,7 +345,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
-      showError('삭제에 실패했습니다.', { title: '오류' });
+      showError(t('error.deleteFailed'), { title: t('common:error.title') });
     }
   };
 
@@ -381,7 +384,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to upload files:', error);
-      showError('업로드에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
+      showError(t('error.uploadFailed'), { title: t('common:error.title') });
     }
   };
 
@@ -411,24 +414,24 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       <h3 className="flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-white">
         <span className="flex items-center gap-2 min-w-0">
           <Package className="h-4 w-4 shrink-0" />
-          <span className="truncate">Artifacts</span>
+          <span className="truncate">{t('panel.title')}</span>
         </span>
         <span className="flex items-center gap-1.5 shrink-0">
           <button
             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
             onClick={() => openTransferTab({ subTab: 'send' })}
-            title="Send"
+            title={t('panel.send')}
           >
             <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
-            {!isNarrow && <span>Send</span>}
+            {!isNarrow && <span>{t('panel.send')}</span>}
           </button>
           <button
             className="relative inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
             onClick={() => openTransferTab({ subTab: 'receive' })}
-            title="Receive"
+            title={t('panel.receive')}
           >
             <ArrowDownLeft className="h-3.5 w-3.5 shrink-0" />
-            {!isNarrow && <span>Receive</span>}
+            {!isNarrow && <span>{t('panel.receive')}</span>}
             {pendingTransferCount > 0 && (
               <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
                 {pendingTransferCount > 99 ? '99+' : pendingTransferCount}
@@ -439,7 +442,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       </h3>
       <div className="space-y-3">
         <DirectoryView
-          title="Inputs"
+          title={t('panel.inputs')}
           nodes={inputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
@@ -451,7 +454,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDownload={handleDownload}
         />
         <DirectoryView
-          title="Outputs"
+          title={t('panel.outputs')}
           nodes={outputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
@@ -463,7 +466,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDownload={handleDownload}
         />
         <DirectoryView
-          title="Sessions"
+          title={t('panel.sessions')}
           nodes={sessionsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}

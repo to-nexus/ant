@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -18,6 +19,7 @@ export function FeatureSection() {
     fetchFeatures,
   } = useStore();
   
+  const { t } = useTranslation('artifacts');
   const policy = useUIActionPolicy();
   const { showConfirm, showWarning, showError } = useAlertModalContext();
   
@@ -56,7 +58,7 @@ export function FeatureSection() {
   // Fix dev server setup handler (uses Chat service)
   const handleFixSetup = () => {
     if (!suggestedFix) {
-      showError('수정 제안을 가져올 수 없습니다.', { title: '오류' });
+      showError(t('error.fetchSuggestionsFailed'), { title: t('common:error.title') });
       return;
     }
     

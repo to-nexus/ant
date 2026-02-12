@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { Loader2 } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export interface SignInModalProps {
 }
 
 export function SignInModal({ isOpen, onClose, onSignIn }: SignInModalProps) {
+  const { t } = useTranslation('auth');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -25,14 +27,14 @@ export function SignInModal({ isOpen, onClose, onSignIn }: SignInModalProps) {
     
     // Email validation
     if (!email.includes('@')) {
-      setError('Invalid email format');
+      setError(t('signIn.invalidEmail'));
       return;
     }
     
     // Validate organization (must be to.nexus)
     const domain = email.split('@')[1];
     if (domain !== 'to.nexus') {
-      setError('Only to.nexus organization is currently supported');
+      setError(t('signIn.unsupportedOrg'));
       return;
     }
     
@@ -43,25 +45,25 @@ export function SignInModal({ isOpen, onClose, onSignIn }: SignInModalProps) {
       setEmail('');
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Sign in failed');
+      setError(err.message || t('signIn.failed'));
     } finally {
       setLoading(false);
     }
   };
   
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Sign In" size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('signIn.title')} size="sm">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="signin-email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Email Address
+            {t('signIn.emailLabel')}
           </label>
           <input
             id="signin-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="username@to.nexus"
+            placeholder={t('signIn.emailPlaceholder')}
             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                      bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                      focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent
@@ -71,7 +73,7 @@ export function SignInModal({ isOpen, onClose, onSignIn }: SignInModalProps) {
             autoFocus
           />
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Currently only <strong>@to.nexus</strong> organization is supported
+            {t('signIn.orgNote')}
           </p>
         </div>
         
@@ -90,7 +92,7 @@ export function SignInModal({ isOpen, onClose, onSignIn }: SignInModalProps) {
                      text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700
                      disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            Cancel
+            {t('common:button.cancel')}
           </button>
           <button
             type="submit"
@@ -100,7 +102,7 @@ export function SignInModal({ isOpen, onClose, onSignIn }: SignInModalProps) {
                      transition-colors flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            Sign In
+            {t('signIn.button')}
           </button>
         </div>
       </form>

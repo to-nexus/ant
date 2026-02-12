@@ -4,6 +4,7 @@ import { Briefcase, Settings, FileEdit, User, ArrowLeftRight } from 'lucide-reac
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { TabButton } from './components/TabButton';
 import { JobControls } from './components/JobControls';
+import { useTranslation } from 'react-i18next';
 
 /**
  * MainPanelTabsBar - Tab navigation for Main Panel
@@ -17,6 +18,7 @@ import { JobControls } from './components/JobControls';
  * (shows empty job state without removing the tab itself).
  */
 export function MainPanelTabsBar() {
+  const { t } = useTranslation('nav');
   const activeTab = useStore((state) => state.mainPanelActiveTab);
   const openTabs = useStore((state) => state.mainPanelOpenTabs);
   const tabOrder = useStore((state) => state.mainPanelTabOrder);
@@ -29,32 +31,32 @@ export function MainPanelTabsBar() {
 
   // Job tab label: show full ID when active, abbreviated when inactive
   const getJobTabLabel = () => {
-    if (!currentJobId || isJobTabCleared) return 'Job';
+    if (!currentJobId || isJobTabCleared) return t('tabs.job');
     
     if (activeTab === 'job') {
-      return `Job (${currentJobId})`;
+      return `${t('tabs.job')} (${currentJobId})`;
     } else {
-      return `Job (${currentJobId.slice(0, 8)}...)`;
+      return `${t('tabs.job')} (${currentJobId.slice(0, 8)}...)`;
     }
   };
 
   const handleJobTabClose = () => {
     showConfirm(
       <>
-        <p>This will remove the current job and clear all session data:</p>
+        <p>{t('tabs.removeJobDesc')}</p>
         <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
-          <li>Job ID and progress will be removed</li>
-          <li>Task board will be cleared</li>
-          <li>Chat history will be deleted</li>
-          <li>Session files will be reset</li>
+          <li>{t('tabs.removeJobItem1')}</li>
+          <li>{t('tabs.removeJobItem2')}</li>
+          <li>{t('tabs.removeJobItem3')}</li>
+          <li>{t('tabs.removeJobItem4')}</li>
         </ul>
-        <p className="mt-3 font-medium">Are you sure you want to continue?</p>
+        <p className="mt-3 font-medium">{t('tabs.removeJobConfirm')}</p>
       </>,
       {
         type: 'warning',
-        title: 'Remove Job?',
-        confirmText: 'Remove',
-        cancelText: 'Cancel',
+        title: t('tabs.removeJob'),
+        confirmText: t('common:button.remove'),
+        cancelText: t('common:button.cancel'),
         onConfirm: async () => {
           await clearJobTab();
         }
@@ -69,19 +71,19 @@ export function MainPanelTabsBar() {
     const tabConfig = {
       projectConfig: {
         icon: Settings,
-        label: 'Project Config'
+        label: t('tabs.projectConfig')
       },
       accountConfig: {
         icon: User,
-        label: 'Account Config'
+        label: t('tabs.accountConfig')
       },
       fileEdit: {
         icon: FileEdit,
-        label: 'FileEdit'
+        label: t('tabs.fileEdit')
       },
       transfer: {
         icon: ArrowLeftRight,
-        label: 'Transfer'
+        label: t('tabs.transfer')
       }
     }[tabKey];
 
@@ -110,7 +112,7 @@ export function MainPanelTabsBar() {
           isJobTab={true}
           showText={activeTab === 'job'}
           showCloseButton={!!currentJobId}
-          title={currentJobId && !isJobTabCleared ? `Job ID: ${currentJobId}` : 'Job'}
+          title={currentJobId && !isJobTabCleared ? `Job ID: ${currentJobId}` : t('tabs.job')}
           onClick={() => selectMainPanelTab('job')}
           onClose={handleJobTabClose}
         />

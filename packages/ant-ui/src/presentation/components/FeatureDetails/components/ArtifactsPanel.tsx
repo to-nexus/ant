@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Package } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../common/card';
 import { FileNode } from '@/infrastructure/http/api';
@@ -30,6 +31,8 @@ export function ArtifactsPanel({
   onUploadFiles,
   onDelete
 }: ArtifactsPanelProps) {
+  const { t } = useTranslation('artifacts');
+
   return (
     <Card>
       <CardHeader>
@@ -47,7 +50,7 @@ export function ArtifactsPanel({
         ) : (
           <>
             <DirectoryView
-              title="📝 Inputs"
+              title={t('featureDetails.inputs')}
               nodes={inputsNodes}
               onFileSelect={onFileSelect}
               selectedFile={selectedFile}
@@ -57,7 +60,7 @@ export function ArtifactsPanel({
               onDelete={onDelete}
             />
             <DirectoryView
-              title="📄 Outputs"
+              title={t('featureDetails.outputs')}
               nodes={outputsNodes}
               onFileSelect={onFileSelect}
               selectedFile={selectedFile}

@@ -1,6 +1,7 @@
 import ReactDOM from 'react-dom/client';
 import App from './presentation/App';
 import './index.css';
+import './i18n';
 
 // ✅ Disable browser's automatic scroll restoration
 // This prevents conflicts with Virtuoso's scroll management in chat

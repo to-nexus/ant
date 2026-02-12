@@ -7,6 +7,7 @@
 
 import { useCallback } from 'react';
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import './workflow-controls.css';
 import ReactFlow, {
   Background,
@@ -41,6 +42,7 @@ interface WorkflowVisualizationProps {
 }
 
 export function WorkflowVisualization({ workflowState }: WorkflowVisualizationProps) {
+  const { t } = useTranslation('kanban');
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
   const selectedAgent = useStore(state => state.selectedAgent);
@@ -261,7 +263,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
         <div className="text-center max-w-md">
           <div className="text-gray-400 dark:text-gray-600 text-6xl mb-4">🔄</div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            No Workspace or Feature Selected
+            {t('workflow.noSelection')}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Select a workspace and feature to view the agent workflow graph.
@@ -277,7 +279,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading workflow graph...</p>
+          <p className="text-gray-600 dark:text-gray-400">{t('workflow.loading')}</p>
         </div>
       </div>
     );
@@ -349,7 +351,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
           {/* ✅ 현재 노드 추적 버튼 */}
           <ControlButton
             onClick={handleTrackCurrentNode}
-            title="Track current node"
+            title={t('workflow.trackNode')}
             className="workflow-control-button"
           >
             <Play className="w-3.5 h-3.5" />

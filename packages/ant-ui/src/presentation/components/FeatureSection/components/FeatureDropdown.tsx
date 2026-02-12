@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { GitBranch } from 'lucide-react';
 import { ItemDropdown } from '../../ItemDropdown';
 
@@ -38,6 +39,7 @@ export function FeatureDropdown({
   onPlayClick,
   onStopClick
 }: FeatureDropdownProps) {
+  const { t } = useTranslation('explorer');
   // Filter out 'main' feature (internal use only)
   const featureItems = features
     .filter((f) => f.name !== 'main')
@@ -45,7 +47,7 @@ export function FeatureDropdown({
 
   return (
     <ItemDropdown
-      title="Features"
+      title={t('feature.title')}
       icon={GitBranch}
       items={featureItems}
       selectedItem={selectedFeature}
@@ -53,7 +55,7 @@ export function FeatureDropdown({
       onCreate={onCreate}
       onDelete={onDelete}
       onItemCreated={onItemCreated}
-      placeholder="Select a feature..."
+      placeholder={t('feature.placeholder')}
       inputPlaceholder="Feature name..."
       onPlayClick={onPlayClick}
       onStopClick={onStopClick}

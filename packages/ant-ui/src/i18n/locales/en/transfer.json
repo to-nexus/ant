@@ -1,0 +1,71 @@
+{
+  "send": {
+    "title": "Send Items",
+    "itemCount": "{{count}} item(s)",
+    "addItems": "Add items to send",
+    "addButton": "Add",
+    "addDialog": "Add files/directories to send",
+    "emptyHint": "Use the Add button to select files/directories to send",
+    "destination": "Destination",
+    "self": "Self",
+    "others": "Others",
+    "selectMember": "Select member",
+    "selectProject": "Select project",
+    "selectFeature": "Select feature",
+    "noProject": "No Project",
+    "noFeature": "No Feature",
+    "destinationNotSelected": "(destination not selected)",
+    "samePath": "(same path)",
+    "history": "Sent Request History",
+    "removeFromHistory": "Remove from history"
+  },
+  "receive": {
+    "title": "Received Transfer Requests",
+    "empty": "No received transfer requests.",
+    "pending": "Pending Requests",
+    "processed": "Processed",
+    "expired": "Expired"
+  },
+  "mode": {
+    "copy": "Copy",
+    "move": "Move",
+    "copyTransfer": "Copy Transfer",
+    "copyDesc": "Copy to destination while keeping the original",
+    "moveTransfer": "Move Transfer",
+    "moveDesc": "Delete original and move to destination"
+  },
+  "action": {
+    "transfer": "Transfer",
+    "transferring": "Transferring...",
+    "approve": "Approve",
+    "reject": "Reject",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "cancelled": "Cancelled",
+    "completed": "Completed"
+  },
+  "confirm": {
+    "bulkAction": "{{action}} {{count}} transfer request(s)?",
+    "bulkTitle": "Transfer Request {{action}}",
+    "selfTransferHint": "Items will be transferred immediately to the selected location.",
+    "otherTransferHint": "The transfer will be sent once the recipient accepts. (Original is preserved)"
+  },
+  "error": {
+    "noItems": "Please add files/directories to send.",
+    "title": "Transfer Error",
+    "noDestination": "Please select a destination project and feature.",
+    "noRecipient": "Please select a recipient.",
+    "noWorkspace": "User's workspace does not exist.",
+    "noRecipientProject": "Recipient has no projects, unable to transfer.",
+    "selectRecipientProject": "Please select the recipient's project.",
+    "noFeatureInProject": "No features in the project, unable to transfer.",
+    "selectRecipientFeature": "Please select the recipient's feature.",
+    "transferFailed": "Transfer failed.",
+    "cancelFailed": "Cancel failed",
+    "deleteFailed": "Delete failed",
+    "actionFailed": "{{action}} failed.",
+    "cannotTransfer": "Cannot transfer"
+  }
+}

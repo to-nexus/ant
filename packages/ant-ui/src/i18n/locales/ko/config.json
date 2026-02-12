@@ -1,0 +1,89 @@
+{
+  "projectConfig": {
+    "title": "프로젝트 설정",
+    "saved": "설정이 저장되었습니다!",
+    "saveFailed": "설정 저장에 실패했습니다. 다시 시도해주세요.",
+    "revertConfirm": "변경사항을 모두 되돌릴까요?",
+    "loading": "프로젝트 설정 로딩 중...",
+    "noConfig": "프로젝트 설정이 로드되지 않았습니다."
+  },
+  "accountConfig": {
+    "title": "계정 설정"
+  },
+  "localBackend": {
+    "title": "로컬 백엔드",
+    "description": "온프레미스 ANT 백엔드 서버의 포트를 설정합니다",
+    "hint": "기본값: {{port}} • \"Local\" 모드 선택 시 사용",
+    "portLabel": "백엔드 포트",
+    "portSaved": "로컬 백엔드 포트가 {{port}}(으)로 설정되었습니다",
+    "portReset": "로컬 백엔드 포트가 기본값으로 리셋되었습니다",
+    "invalidPort": "유효한 포트 번호를 입력하세요 (1-65535)"
+  },
+  "github": {
+    "title": "GitHub 연동",
+    "description": "GitHub 계정을 연결하고 기본 리포지토리 설정을 구성합니다",
+    "patPlaceholder": "ghp_••••••••••••••••••••",
+    "enterPat": "GitHub Personal Access Token을 입력해주세요",
+    "savePat": "PAT 저장",
+    "saving": "저장 중...",
+    "saveFailed": "GitHub PAT 저장에 실패했습니다. 다시 시도해주세요.",
+    "deleteConfirm": "GitHub PAT를 삭제할까요?",
+    "deleteConfirmMsg": "GitHub PAT을 삭제할까요? 모든 프로젝트에 영향이 있습니다.",
+    "deleteSuccess": "GitHub PAT이 삭제되었습니다",
+    "deleteFailed": "GitHub PAT 삭제에 실패했습니다. 다시 시도해주세요.",
+    "autoDetected": "PAT에서 자동 감지됨",
+    "reSavePat": "PAT을 다시 저장하여 감지",
+    "savePATToDetect": "PAT을 저장하면 자동 감지됩니다",
+    "revertToDefault": "조직 기본값으로 되돌리기",
+    "ownerSaveFailed": "Owner 설정 저장에 실패했습니다.",
+    "clearFailed": "초기화에 실패했습니다"
+  },
+  "figma": {
+    "title": "Figma 연동",
+    "description": "Figma 계정을 연결하여 디자인을 임포트합니다",
+    "oauthFailed": "Figma OAuth 시작에 실패했습니다. 다시 시도해주세요.",
+    "disconnectConfirm": "Figma 연결을 해제할까요? Figma 연동을 사용하는 모든 프로젝트에 영향이 있습니다.",
+    "disconnected": "Figma 연결이 해제되었습니다",
+    "disconnectFailed": "Figma 연결 해제에 실패했습니다. 다시 시도해주세요.",
+    "connected": "Figma 계정이 연결되었습니다. MCP 클라이언트 등록 후 디자인 임포트 기능이 지원될 예정입니다.",
+    "comingSoon": "기능 지원 예정"
+  },
+  "field": {
+    "optional": "선택 사항"
+  },
+  "llmModels": {
+    "title": "Job 및 Node별 LLM 모델",
+    "loading": "사용 가능한 모델 로딩 중...",
+    "default": "기본",
+    "decompose": "Decompose",
+    "docGeneration": "문서 생성",
+    "plan": "Plan",
+    "codeGeneration": "코드 생성"
+  },
+  "git": {
+    "repoSetupRequired": "GitHub 리포지토리 설정이 필요합니다",
+    "setupStep1": "GitHub PAT 등록:",
+    "setupStep1Desc": "우측 상단 프로필 메뉴 → 계정 설정 → GitHub Integration",
+    "setupStep2": "Repository URL 설정:",
+    "setupStep2Desc": "프로젝트명 옆 ⚙️ 아이콘 클릭 → GitHub Repository 필드 입력",
+    "setupComplete": "두 항목을 모두 설정하면 Clone/Initialize가 활성화됩니다.",
+    "management": "Git 관리",
+    "notInitialized": "Git 초기화되지 않음",
+    "configureFirst": "GitHub 리포지토리를 먼저 설정하세요",
+    "clone": "Clone",
+    "cloneDesc": "기존 리포지토리 Pull",
+    "initialize": "Initialize",
+    "initializeDesc": "새 리포지토리 생성 및 Push",
+    "push": "Push",
+    "pushDesc": "변경사항 업로드",
+    "pull": "Pull",
+    "pullDesc": "변경사항 다운로드",
+    "fetch": "Fetch",
+    "fetchDesc": "원격 참조 업데이트",
+    "featuresExist": "Feature가 존재합니다",
+    "deleteFeaturesFirst": "Clone/Initialize하려면 먼저 Feature를 삭제하세요",
+    "currentBranch": "현재 브랜치:",
+    "configRequired": "설정이 필요합니다. 위의 ⚙️ 아이콘을 클릭하여 설정을 생성하세요.",
+    "localPathRequired": "로컬 경로가 설정되지 않았습니다. ⚙️ 아이콘을 클릭하여 설정하세요."
+  }
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   checkGitHubPATStatus, 
   saveGitHubPAT, 
@@ -20,6 +21,7 @@ interface AccountConfigEditorProps {
 }
 
 export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorProps) {
+  const { t } = useTranslation('config');
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
   
   // Local backend port state from store
@@ -168,7 +170,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
 
   const handleSaveGitHubPAT = async () => {
     if (!githubPAT.trim()) {
-      showError('Please enter a GitHub Personal Access Token');
+      showError(t('github.enterPat'));
       return;
     }
     
@@ -183,7 +185,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         : 'GitHub PAT saved successfully!');
     } catch (error: any) {
       console.error('Failed to save GitHub PAT:', error);
-      showError(error.message || 'Failed to save GitHub PAT. Please try again.');
+      showError(error.message || t('github.saveFailed'));
     } finally {
       setIsSavingPAT(false);
     }
@@ -202,18 +204,18 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       }
     } catch (error: any) {
       console.error('Failed to save owner override:', error);
-      showError(error.message || 'Failed to save owner override.');
+      showError(error.message || t('github.ownerSaveFailed'));
     } finally {
       setIsSavingOverride(false);
     }
   };
 
   const handleDeleteGitHubPAT = async () => {
-    showConfirm('GitHub PAT을 삭제할까요? 모든 프로젝트에 영향이 있습니다.', {
+    showConfirm(t('github.deleteConfirmMsg'), {
       type: 'warning',
-      title: 'Delete GitHub PAT?',
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
+      title: t('github.deleteConfirm'),
+      confirmText: t('common:button.delete'),
+      cancelText: t('common:button.cancel'),
       onConfirm: async () => {
         setIsSavingPAT(true);
         try {
@@ -221,10 +223,10 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           setGithubPATConfigured(false);
           setGithubUsername(undefined);
           setGithubPAT('');
-          showSuccess('GitHub PAT deleted successfully');
+          showSuccess(t('github.deleteSuccess'));
         } catch (error: any) {
           console.error('Failed to delete GitHub PAT:', error);
-          showError(error.message || 'Failed to delete GitHub PAT. Please try again.');
+          showError(error.message || t('github.deleteFailed'));
         } finally {
           setIsSavingPAT(false);
         }
@@ -239,16 +241,16 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       // OAuth flow will trigger postMessage when complete
     } catch (error: any) {
       console.error('[AccountConfigEditor] Failed to start Figma OAuth:', error);
-      showError(error.message || 'Failed to start Figma OAuth. Please try again.');
+      showError(error.message || t('figma.oauthFailed'));
     }
   };
 
   const handleDisconnectFigma = async () => {
-    showConfirm('Figma 연결을 해제할까요? Figma 연동을 사용하는 모든 프로젝트에 영향이 있습니다.', {
+    showConfirm(t('figma.disconnectConfirm'), {
       type: 'warning',
-      title: 'Disconnect Figma?',
-      confirmText: 'Disconnect',
-      cancelText: 'Cancel',
+      title: t('figma.disconnectConfirm'),
+      confirmText: t('common:button.delete'),
+      cancelText: t('common:button.cancel'),
       onConfirm: async () => {
         setIsDisconnectingFigma(true);
         try {
@@ -258,10 +260,10 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           setFigmaUserEmail(undefined);
           setFigmaUserId(undefined);
           setFigmaConnectedAt(undefined);
-          showSuccess('Figma disconnected successfully');
+          showSuccess(t('figma.disconnected'));
         } catch (error: any) {
           console.error('[AccountConfigEditor] Failed to disconnect Figma:', error);
-          showError(error.message || 'Failed to disconnect Figma. Please try again.');
+          showError(error.message || t('figma.disconnectFailed'));
         } finally {
           setIsDisconnectingFigma(false);
         }
@@ -278,19 +280,19 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const handleSavePort = () => {
     const port = parseInt(portInput, 10);
     if (isNaN(port) || port < 1 || port > 65535) {
-      showError('Please enter a valid port number (1-65535)');
+      showError(t('localBackend.invalidPort'));
       return;
     }
     setLocalBackendPort(port);
     setIsPortChanged(false);
-    showSuccess(`Local backend port set to ${port}`);
+    showSuccess(t('localBackend.portSaved', { port }));
   };
 
   const handleResetPort = () => {
     setPortInput(String(DEFAULT_LOCAL_BACKEND_PORT));
     setLocalBackendPort(DEFAULT_LOCAL_BACKEND_PORT);
     setIsPortChanged(false);
-    showSuccess(`Local backend port reset to default (${DEFAULT_LOCAL_BACKEND_PORT})`);
+    showSuccess(t('localBackend.portReset'));
   };
 
   // ============================================
@@ -300,13 +302,13 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const renderLocalBackendSection = () => (
     <ConfigSection
       icon={<ConfigIcons.LocalBackend />}
-      title="Local Backend"
-      description="Configure the port for your on-premise ANT backend server"
+      title={t('localBackend.title')}
+      description={t('localBackend.description')}
       hint={<>Default: <code className={ConfigStyles.code}>{DEFAULT_LOCAL_BACKEND_PORT}</code> • Used when "Local" mode is selected</>}
     >
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-          Backend Port
+          {t('localBackend.portLabel')}
         </label>
         <div className="flex items-center gap-3">
           <div className="flex items-center">
@@ -331,7 +333,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             disabled={!isPortChanged}
             className={ConfigStyles.buttonPrimary}
           >
-            Save
+            {t('common:button.save')}
           </button>
           <button
             onClick={handleResetPort}
@@ -350,8 +352,8 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const renderGitHubSection = () => (
     <ConfigSection
       icon={<ConfigIcons.GitHub />}
-      title="GitHub Integration"
-      description="Connect your GitHub account and configure default repository settings"
+      title={t('github.title')}
+      description={t('github.description')}
       status={{
         state: isCheckingPAT ? 'checking' : (githubPATConfigured ? 'configured' : 'not-configured'),
         label: githubPATConfigured && githubUsername ? `@${githubUsername}` : undefined,
@@ -398,7 +400,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
                 disabled={isSavingPAT || !githubPAT.trim()}
                 className={ConfigStyles.buttonPrimary}
               >
-                {isSavingPAT ? 'Saving...' : 'Save PAT'}
+                {isSavingPAT ? t('github.saving') : t('github.savePat')}
               </button>
               <a
                 href="https://github.com/settings/tokens/new?scopes=repo&description=ANT%20CLI%20Access"
@@ -450,7 +452,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             disabled={isSavingOverride || !isOverrideChanged}
             className={ConfigStyles.buttonPrimary}
           >
-            {isSavingOverride ? 'Saving...' : 'Save'}
+            {isSavingOverride ? t('github.saving') : t('common:button.save')}
           </button>
           {savedUserOverride && (
             <button
@@ -462,12 +464,12 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
                     setSavedUserOverride('');
                     showSuccess(`Reverted to org default${orgGithubOwner ? ` (${orgGithubOwner})` : ''}.`);
                   })
-                  .catch((err: any) => showError(err.message || 'Failed to clear'))
+                  .catch((err: any) => showError(err.message || t('github.clearFailed')))
                   .finally(() => setIsSavingOverride(false));
               }}
               disabled={isSavingOverride}
               className={ConfigStyles.buttonSecondary}
-              title="Revert to organization default"
+              title={t('github.revertToDefault')}
             >
               Reset
             </button>
@@ -480,7 +482,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
               Personal
             </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">Auto-detected from PAT</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">{t('github.autoDetected')}</span>
           </div>
           <div className="flex items-center">
             <span className="px-3 py-2 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
@@ -491,7 +493,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
                 ? 'bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white' 
                 : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500 italic'
             }`}>
-              {githubUsername || (githubPATConfigured ? 'Re-save PAT to detect' : 'Save PAT to auto-detect')}
+              {githubUsername || (githubPATConfigured ? t('github.reSavePat') : t('github.savePATToDetect'))}
             </div>
           </div>
         </div>
@@ -502,15 +504,15 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const renderFigmaSection = () => (
     <ConfigSection
       icon={<ConfigIcons.Figma />}
-      title="Figma Integration"
-      description="Connect your Figma account to import designs"
+      title={t('figma.title')}
+      description={t('figma.description')}
       status={{
         state: isCheckingFigma ? 'checking' : (figmaConfigured ? 'configured' : 'not-configured'),
         label: figmaConfigured ? '✓ Connected' : 'Not connected',
       }}
       extraBadge={figmaConfigured ? (
         <span className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-          기능 지원 예정
+          {t('figma.comingSoon')}
         </span>
       ) : undefined}
       hint="OAuth 2.0 authentication • Managed securely by Figma"
@@ -538,7 +540,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             </button>
           </div>
           <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-            Figma 계정이 연결되었습니다. MCP 클라이언트 등록 후 디자인 임포트 기능이 지원될 예정입니다.
+            {t('figma.connected')}
           </p>
         </div>
       ) : (
@@ -560,7 +562,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-900 dark:text-white">
             <span>👤</span>
-            <span>Account Configuration</span>
+            <span>{t('accountConfig.title')}</span>
           </h3>
         </div>
       </div>

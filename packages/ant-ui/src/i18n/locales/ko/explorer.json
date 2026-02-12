@@ -1,0 +1,65 @@
+{
+  "panel": {
+    "title": "탐색기",
+    "collapse": "탐색기 접기",
+    "expand": "탐색기 펼치기",
+    "signInRequired": "로그인 필요",
+    "signInHint": "프로젝트에 접근하려면 로그인하세요"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "placeholder": "Workspace 선택...",
+    "inputPlaceholder": "Workspace 이름...",
+    "createFailed": "설정 생성에 실패했습니다. 다시 시도해주세요."
+  },
+  "feature": {
+    "title": "Features",
+    "placeholder": "Feature 선택...",
+    "new": "+ 새로 만들기"
+  },
+  "item": {
+    "deleteConfirm": "정말 {{name}}을(를) 삭제할까요?",
+    "deleteWarning": "이 작업은 되돌릴 수 없습니다.",
+    "deleteTitle": "삭제할까요?",
+    "deleteFailed": "삭제에 실패했습니다. 잠시 후 다시 시도해주세요."
+  },
+  "connection": {
+    "failed": "연결 실패",
+    "connecting": "연결 중...",
+    "failedDesc": "ANT 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.",
+    "connectingDesc": "ANT 서버에 연결 중...",
+    "startServer": "<1>pnpm dev:cli</1>를 실행하여 서버를 시작하세요",
+    "startServerPlain": "pnpm dev:cli를 실행하여 서버를 시작하세요",
+    "error": "연결 오류",
+    "disconnected": "연결 끊김",
+    "selectFile": "탐색기에서 파일을 선택하여 편집하세요.",
+    "noConfig": "프로젝트 설정이 로드되지 않았습니다."
+  },
+  "git": {
+    "uncommittedTitle": "커밋되지 않은 변경사항 감지",
+    "uncommittedDesc": "커밋되지 않은 변경사항이 {{count}}개 있습니다.",
+    "uncommittedStash": "{{name}}(으)로 전환하면 변경사항이 자동으로 stash됩니다.",
+    "switchAnyway": "그래도 전환",
+    "repoCloned": "리포지토리가 Clone되었습니다",
+    "repoInitialized": "리포지토리가 초기화되었습니다",
+    "actionFailed": "{{action}}에 실패했습니다"
+  },
+  "localSetup": {
+    "directAccess": "직접 파일 접근:",
+    "preferredIde": "선호하는 IDE:",
+    "fullPrivacy": "완전한 프라이버시:",
+    "noAuth": "인증 불필요:",
+    "cloudFrontend": "클라우드 프론트엔드:",
+    "runCommand": "pnpm dev:cli 실행",
+    "terminal": "터미널",
+    "pnpmNote": "참고: pnpm이 없는 경우...",
+    "localCloudNote": "Local과 Cloud 서버...",
+    "backendApi": "백엔드 API:"
+  },
+  "preview": {
+    "fixSetup": "프리뷰 설정 수정",
+    "closeWarning": "경고 닫기",
+    "openNewTab": "새 탭에서 프리뷰 열기",
+    "closeError": "오류 닫기"
+  }
+}

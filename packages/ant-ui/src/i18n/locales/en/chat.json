@@ -1,0 +1,37 @@
+{
+  "input": {
+    "placeholder": "Please sign in to start chatting...",
+    "send": "Send",
+    "stopJob": "Stop the running job"
+  },
+  "sidebar": {
+    "clearHistory": "Clear Chat History",
+    "clearHistoryConfirm": "This will permanently delete all chat messages for this feature.",
+    "clearHistoryConfirmSub": "Are you sure?",
+    "clearHistoryFailed": "Failed to clear chat history. Please try again later.",
+    "offline": "Chat is Offline",
+    "expand": "Expand Chat",
+    "collapse": "Collapse Chat"
+  },
+  "inlineAsk": {
+    "failed": "Inline ask failed"
+  },
+  "jobMode": {
+    "design": {
+      "label": "🎨 Design",
+      "description": "Create architecture & design"
+    },
+    "code": {
+      "label": "💻 Code",
+      "description": "Implement features"
+    },
+    "learn": {
+      "label": "📚 Learn",
+      "description": "Analyze & document"
+    },
+    "plan": {
+      "label": "📋 Plan",
+      "description": "Creates project plans & roadmaps"
+    }
+  }
+}

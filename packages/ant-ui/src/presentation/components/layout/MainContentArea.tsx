@@ -11,6 +11,7 @@ import { useStore } from '@/domain/store';
 import type { ProjectConfig } from '@/infrastructure/http/api';
 import type { KanbanData } from '@/infrastructure/http/api';
 import type { WorkflowRealtimeState } from '@/domain/models/workflow';
+import { useTranslation } from 'react-i18next';
 
 interface MainContentAreaProps {
   projectConfigData: ProjectConfig | null;
@@ -33,6 +34,7 @@ export function MainContentArea({
   kanbanData,
   workflowState,
 }: MainContentAreaProps) {
+  const { t } = useTranslation('explorer');
   const activeTab = useStore((s) => s.mainPanelActiveTab);
   const openTabs = useStore((s) => s.mainPanelOpenTabs);
   const isJobTabCleared = useStore((s) => s.isJobTabCleared);
@@ -52,16 +54,16 @@ export function MainContentArea({
           <div className="text-center">
             <div className="text-6xl mb-4">🔌</div>
             <h2 className="text-2xl font-semibold text-gray-700 dark:text-gray-200 mb-2">
-              {connectionStatus === 'error' ? 'Connection Failed' : 'Connecting...'}
+              {connectionStatus === 'error' ? t('connection.failed') : t('connection.connecting')}
             </h2>
             <p className="text-gray-500 dark:text-gray-400">
               {connectionStatus === 'error' 
-                ? 'Unable to connect to ANT server. Please make sure the server is running.' 
-                : 'Connecting to ANT server...'}
+                ? t('connection.failedDesc')
+                : t('connection.connectingDesc')}
             </p>
             {connectionStatus === 'error' && (
               <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
-                Run <code className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded">pnpm dev:cli</code> to start the server
+                {t('connection.startServerPlain')}
               </p>
             )}
           </div>
@@ -70,7 +72,7 @@ export function MainContentArea({
         <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
           {isLoadingProjectConfig ? (
             <div className="flex items-center justify-center h-full">
-              <div className="text-gray-500 dark:text-gray-400">Loading project configuration...</div>
+              <div className="text-gray-500 dark:text-gray-400">{t('connection.noConfig')}</div>
             </div>
           ) : projectConfigData ? (
             <ConfigEditor
@@ -81,7 +83,7 @@ export function MainContentArea({
             />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-              No project configuration loaded.
+              {t('connection.noConfig')}
             </div>
           )}
         </div>
@@ -97,7 +99,7 @@ export function MainContentArea({
             <FileEditorPanel onClose={() => useStore.getState().closeMainPanelTab('fileEdit')} />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-              Select a file from Explorer to edit.
+              {t('connection.selectFile')}
             </div>
           )}
         </div>

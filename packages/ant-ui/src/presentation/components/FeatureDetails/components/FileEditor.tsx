@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../common/button';
 import { Card, CardHeader, CardTitle, CardContent } from '../../common/card';
 
@@ -24,6 +25,8 @@ export function FileEditor({
   onSave,
   onRevert
 }: FileEditorProps) {
+  const { t } = useTranslation('artifacts');
+
   return (
     <Card className="flex-1">
       <CardHeader>
@@ -42,7 +45,7 @@ export function FileEditor({
                 target="_blank"
                 rel="noreferrer"
                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline self-center"
-                title="새 탭에서 열기"
+                title={t('actions.openInNewTab')}
               >
                 Open
               </a>
@@ -85,7 +88,7 @@ export function FileEditor({
             value={editedContent}
             onChange={(e) => onContentChange(e.target.value)}
             className="w-full h-64 p-3 font-mono text-sm border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="File content..."
+            placeholder={t('editor.placeholder')}
             spellCheck={false}
           />
         )}

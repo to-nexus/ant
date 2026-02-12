@@ -2,10 +2,12 @@ import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
+import i18n from '@/i18n';
 
 export interface UIActions {
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
+  setLanguage: (language: 'en' | 'ko') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
   setMainView: (mode: 'agents' | 'codeIde') => void;
   setIdeBaseUrl: (url: string | undefined) => void;
@@ -22,6 +24,22 @@ export interface UIActions {
 }
 
 export type UISlice = UIState & UIActions;
+
+// Helper to get initial language from localStorage
+const getInitialLanguage = (): 'en' | 'ko' => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.LANGUAGE);
+    if (stored === '"en"' || stored === '"ko"') {
+      return JSON.parse(stored);
+    }
+    if (stored === 'en' || stored === 'ko') {
+      return stored;
+    }
+  } catch (error) {
+    console.error('Failed to read language from localStorage:', error);
+  }
+  return 'en';
+};
 
 // Helper to get initial theme from localStorage or system preference
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -57,6 +75,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   // State
   // ==================
   theme: getInitialTheme(),
+  language: getInitialLanguage(),
   splitLayout: 'vertical',
   mainView: 'agents',
   ideBaseUrl: undefined,
@@ -85,6 +104,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set({ theme });
     saveToStorage(STORAGE_KEYS.THEME, theme);
     applyTheme(theme);
+  },
+
+  setLanguage: (language) => {
+    set({ language });
+    saveToStorage(STORAGE_KEYS.LANGUAGE, language);
+    i18n.changeLanguage(language);
   },
 
   toggleSplitLayout: (layout) => {

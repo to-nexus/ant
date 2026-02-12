@@ -229,6 +229,14 @@ export function usePreviewManager(
           issues: err.issues,
           logs: []
         });
+      } else {
+        // Network/timeout error — backend might still be running.
+        // Re-sync from server before clearing loading to avoid
+        // a window where the Start button is incorrectly enabled.
+        try {
+          const currentStatus = await getPreviewStatus(selectedProject, selectedFeature);
+          setPreviewStatus(currentStatus);
+        } catch { /* ignore — next poll will catch up */ }
       }
       
       setError({

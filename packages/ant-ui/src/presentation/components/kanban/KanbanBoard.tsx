@@ -1,5 +1,6 @@
 import { useStore } from '@/domain/store';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { KanbanData } from '@/infrastructure/http/api';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { BoardContainer } from '../BoardContainer';
@@ -22,6 +23,7 @@ interface KanbanBoardProps {
  * - 애니메이션과 UI 로직만 관리 (Single Responsibility)
  */
 export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
+  const { t } = useTranslation('kanban');
   const splitLayout = useStore((state) => state.splitLayout);
   const systemRecursionLimit = useStore((state) => state.recursionLimit);  // ✅ Get system recursion limit
   const [newlyCompletedIds, setNewlyCompletedIds] = useState<Set<string>>(new Set());
@@ -73,7 +75,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   if (kanbanData.isEstimating) {
     return (
       <BoardContainer 
-        title="Task Board"
+        title={t('board.title')}
         titleActions={
           <>
             <ElapsedTimeBadge

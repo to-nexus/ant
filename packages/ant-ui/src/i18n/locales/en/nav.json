@@ -1,0 +1,53 @@
+{
+  "brand": {
+    "title": "ANT Works",
+    "logoAlt": "ANT Works Logo"
+  },
+  "deploymentMode": {
+    "local": "Local",
+    "cloud": "Cloud",
+    "switchToLocal": "Switch to local backend (or view setup guide)",
+    "currentlyLocal": "Currently using local backend",
+    "switchToCloud": "Switch to cloud backend"
+  },
+  "viewMode": {
+    "agents": "Agents",
+    "code": "Code",
+    "openEditor": "Open codebase in editor",
+    "selectProjectFirst": "Select a project first",
+    "failedToOpenIde": "Failed to open IDE"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "switchTo": "Switch to {{mode}} mode"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "ko": "한국어"
+  },
+  "auth": {
+    "signUp": "Sign Up",
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "accountConfig": "Account Configuration"
+  },
+  "tabs": {
+    "job": "Job",
+    "projectConfig": "Project Config",
+    "accountConfig": "Account Config",
+    "fileEdit": "FileEdit",
+    "transfer": "Transfer",
+    "removeJob": "Remove Job?",
+    "removeJobDesc": "This will remove the current job and clear all session data:",
+    "removeJobItem1": "Job ID and progress will be removed",
+    "removeJobItem2": "Task board will be cleared",
+    "removeJobItem3": "Chat history will be deleted",
+    "removeJobItem4": "Session files will be reset",
+    "removeJobConfirm": "Are you sure you want to continue?"
+  },
+  "splitLayout": {
+    "horizontal": "Horizontal Split (Left/Right)",
+    "vertical": "Vertical Split (Top/Bottom)"
+  }
+}
