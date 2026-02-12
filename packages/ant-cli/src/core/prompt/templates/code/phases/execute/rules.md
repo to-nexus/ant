@@ -174,15 +174,21 @@ code...
 | `mkdir` | Create directory |
 
 ────────────────────────────────────────────────────────────────────────────────
-### Package Manager Detection
+### Build System / Package Manager Detection
 
-**Before running install/build commands:**
+**Before running install/build commands, identify the project's build system:**
 
-| Indicator | Package Manager |
-|-----------|-----------------|
-| `pnpm-workspace.yaml` | pnpm |
+| Indicator | Build System / Package Manager |
+|-----------|-------------------------------|
+| `pnpm-workspace.yaml` or `pnpm-lock.yaml` | pnpm |
 | `yarn.lock` | yarn |
 | `package-lock.json` | npm |
+| `go.mod` | Go modules (`go get`, `go mod tidy`, `go build`) |
+| `Cargo.toml` | Cargo (`cargo build`, `cargo run`) |
+| `requirements.txt` or `pyproject.toml` | pip / poetry |
+| `Makefile` | Make (check targets: `make build`, `make run`) |
+
+**Principle**: Do NOT assume a package manager. Observe project files to determine the correct tool.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### Decision Tree
@@ -406,7 +412,7 @@ const speed = PADDLE_SPEED;
 |----------|-----------|
 | `<file>` on existing file | `edit_file` tool |
 | `edit_file` without reading | `read_file` first |
-| `npm install` in pnpm project | Check lock file → use correct package manager |
+| Wrong package manager/build tool | Detect from project files → use correct tool |
 | Hardcoded values when constants exist | Import and use constants |
 | Create file without integration | Import and use in entry point |
 | Asset TODO placeholders | Copy asset file, then reference |

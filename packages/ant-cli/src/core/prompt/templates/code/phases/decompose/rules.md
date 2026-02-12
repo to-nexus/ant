@@ -79,7 +79,7 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "priority": 1000,
     "exclusive": true,
     "ui": false,
-    "description": "Run build/lint/type-check commands on EXISTING codebase. DO NOT write new code or create new projects. Only verify: npm run build, npm run lint, npm run dev."
+    "description": "Run the project's build, lint, and dev commands on EXISTING codebase. DO NOT write new code or create new projects. Discover commands from project config (package.json scripts, Makefile targets, go.mod, etc.)."
   }
 ]
 </tasks>
@@ -127,16 +127,16 @@ Then output the task list wrapped in <tasks> tags with valid JSON:
     "priority": 1000,
     "exclusive": true,
     "ui": false,
-    "description": "Run build/lint/type-check on EXISTING codebase to confirm fix. DO NOT write new code or create new projects. Fix remaining errors if build fails."
+    "description": "Run the project's build and lint commands on EXISTING codebase to confirm fix. DO NOT write new code or create new projects. Fix remaining errors if build fails."
   }
 ]
 </tasks>
 
 **🚨 CRITICAL: Final Verification Task Principles**
 The `final-verification` task has a SPECIFIC and LIMITED scope:
-1. **ONLY run verification commands**: `npm run build`, `npm run lint`, `npm run dev`, `npm run type-check`
+1. **ONLY run verification commands**: Discover build/lint/dev commands from the project's config files and run them
 2. **DO NOT write new code** - only fix errors found by verification commands
-3. **DO NOT create new projects** - never use `npx create-*`, `npm init`, `yarn create`
+3. **DO NOT create new projects** - never use project scaffolding tools
 4. **DO NOT add new features** - only ensure existing code works
 5. **If build fails**: fix the SPECIFIC error mentioned, then re-run build
 

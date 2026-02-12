@@ -93,7 +93,8 @@ export class GitHubAuthService {
       'github',
       {
         token: pat,
-        tokenType: 'pat'
+        tokenType: 'pat',
+        username: validation.username
       }
     );
     
@@ -103,6 +104,20 @@ export class GitHubAuthService {
     };
   }
   
+  /**
+   * Get GitHub username for user (from stored credentials)
+   */
+  async getUsername(userContext: CredentialUserContext): Promise<string | null> {
+    const credContext: UserContext = {
+      organizationId: userContext.org,
+      userId: userContext.user,
+      workspacePath: ''
+    };
+    
+    const credentials = await this.userConfig.credentials.get<GitHubCredentials>(credContext, 'github');
+    return credentials?.username || null;
+  }
+
   /**
    * Get PAT for user
    */

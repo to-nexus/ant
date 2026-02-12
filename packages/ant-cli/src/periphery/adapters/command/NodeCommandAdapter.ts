@@ -43,8 +43,15 @@ export class NodeCommandAdapter implements CommandPort {
     // Version control
     'git',
     
-    // Runtime
+    // Runtime - Node.js
     'node',
+    
+    // Runtime - Go
+    'go',      // go build, go run, go mod tidy, go vet, go test, go get
+    'air',     // Go hot-reload dev server (cosmtrek/air)
+    
+    // Build tools
+    'make',    // Makefile targets (build, lint, test, run, etc.)
     
     // File operations
     'rm',      // File/directory removal

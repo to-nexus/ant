@@ -59,6 +59,47 @@ export interface FileSystemPort {
   listFiles(path: string, exclude?: string[]): Promise<string[]>;
   
   /**
+   * Check if path is a directory
+   * @param path - Path (relative to workspace root)
+   * @returns true if directory, false if file or not found
+   */
+  isDirectory(path: string): Promise<boolean>;
+  
+  /**
+   * Copy a single file (binary-safe)
+   * @param src - Source file path (relative to workspace root)
+   * @param dest - Destination file path (relative to workspace root)
+   * @param overwrite - If true (default), overwrite existing file
+   */
+  copyFile(src: string, dest: string, overwrite?: boolean): Promise<void>;
+  
+  /**
+   * Move a single file
+   * Uses rename when possible, falls back to copy+delete.
+   * @param src - Source file path (relative to workspace root)
+   * @param dest - Destination file path (relative to workspace root)
+   * @param overwrite - If true (default), overwrite existing file
+   */
+  moveFile(src: string, dest: string, overwrite?: boolean): Promise<void>;
+  
+  /**
+   * Copy a directory recursively with merge semantics.
+   * - Files in src overwrite files in dest
+   * - Files/subdirectories only in dest are preserved
+   * @param src - Source directory path (relative to workspace root)
+   * @param dest - Destination directory path (relative to workspace root)
+   */
+  copyDirectory(src: string, dest: string): Promise<void>;
+  
+  /**
+   * Move a directory recursively with merge semantics.
+   * Equivalent to copyDirectory + remove source.
+   * @param src - Source directory path (relative to workspace root)
+   * @param dest - Destination directory path (relative to workspace root)
+   */
+  moveDirectory(src: string, dest: string): Promise<void>;
+  
+  /**
    * Get workspace root path (for debugging/logging only)
    * ⚠️ Do not use for file operations - always use relative paths
    */

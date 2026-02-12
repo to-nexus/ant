@@ -52,4 +52,5 @@ export interface ServerDependencies {
   workflowStateService: any;
   githubAuthService: any;
   jobPrerequisitesAdapter: any;
+  transferService?: any;
 }

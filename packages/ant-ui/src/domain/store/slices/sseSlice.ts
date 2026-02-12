@@ -493,6 +493,22 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }
     });
     
+    // Transfer SSE handler
+    sseManager.registerHandler('transfer', (data: any) => {
+      if (data.type === 'transfer-request-new') {
+        get().incrementPendingTransferCount();
+      } else if (data.type === 'transfer-request-cancelled') {
+        get().decrementPendingTransferCount();
+      } else if (data.type === 'transfer-request-resolved') {
+        // Refresh sent requests to update status
+        import('@/infrastructure/http/api').then(({ fetchTransferRequests }) => {
+          fetchTransferRequests('sent').then(({ requests }) => {
+            get().setSentRequests(requests);
+          }).catch(() => {});
+        });
+      }
+    });
+    
     // Register status callback so connectionStatus reflects actual EventSource state
     // (not set optimistically before onopen fires)
     sseManager.setStatusCallback((status) => {

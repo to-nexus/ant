@@ -66,10 +66,12 @@ export function createGitHubRoutes(deps: {
       };
       
       const hasPAT = await deps.githubAuthService.hasPAT(userContext);
+      const username = hasPAT ? await deps.githubAuthService.getUsername(userContext) : null;
       
       res.json({ 
         configured: hasPAT,
-        message: hasPAT ? 'PAT configured' : 'PAT not configured'
+        message: hasPAT ? 'PAT configured' : 'PAT not configured',
+        username: username || undefined
       });
     } catch (error: any) {
       console.error('Error checking PAT status:', error);

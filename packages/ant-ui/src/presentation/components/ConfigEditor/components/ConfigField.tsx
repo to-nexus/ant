@@ -1,6 +1,11 @@
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { ConfigField as ConfigFieldType } from '../configSchema';
 
+export interface GitHubOwnerInfo {
+  orgOwner?: string;      // Organization-level GitHub owner
+  personalOwner?: string; // Personal GitHub username (from PAT)
+}
+
 interface ConfigFieldProps {
   field: ConfigFieldType;
   value: any;
@@ -9,6 +14,10 @@ interface ConfigFieldProps {
   isRepoTypeDisabled: boolean;
   showLocalPath: boolean;
   onChange: (key: keyof ProjectConfig, value: any) => void;
+  /** GitHub owner info for githubRepo quick-fill */
+  githubOwnerInfo?: GitHubOwnerInfo;
+  /** Project name for building default URL */
+  projectName?: string;
 }
 
 export function ConfigField({
@@ -18,12 +27,33 @@ export function ConfigField({
   errorMessage,
   isRepoTypeDisabled,
   showLocalPath,
-  onChange
+  onChange,
+  githubOwnerInfo,
+  projectName,
 }: ConfigFieldProps) {
   // Cloud 모드에서 localPath 필드 숨김
   if (!showLocalPath && field.key === 'localPath') {
     return null;
   }
+
+  // githubRepo 필드: Owner 토글 버튼 추가
+  const isGithubRepoField = field.key === 'githubRepo';
+  const orgOwner = githubOwnerInfo?.orgOwner;
+  const personalOwner = githubOwnerInfo?.personalOwner;
+  const hasOwners = isGithubRepoField && (orgOwner || personalOwner);
+
+  const applyOwner = (owner: string) => {
+    const repoName = projectName || 'my-project';
+    onChange(field.key, `https://github.com/${owner}/${repoName}`);
+  };
+
+  // Detect which owner is currently active
+  const currentValue = typeof value === 'string' ? value : '';
+  const activeOwner = orgOwner && currentValue.includes(`github.com/${orgOwner}/`)
+    ? 'org'
+    : personalOwner && currentValue.includes(`github.com/${personalOwner}/`)
+      ? 'personal'
+      : null;
 
   return (
     <div className="space-y-2">
@@ -32,7 +62,7 @@ export function ConfigField({
           {field.label}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
-        {!field.required && (
+        {!field.required && !hasOwners && (
           <span className="text-xs text-gray-400 dark:text-gray-500">Optional</span>
         )}
       </div>
@@ -42,6 +72,38 @@ export function ConfigField({
           {field.description}
           {isRepoTypeDisabled && field.key === 'repoType' && ' (Fixed in Cloud Mode)'}
         </p>
+      )}
+
+      {/* Owner quick-fill buttons for githubRepo */}
+      {hasOwners && (
+        <div className="flex items-center gap-2">
+          {orgOwner && (
+            <button
+              type="button"
+              onClick={() => applyOwner(orgOwner)}
+              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                activeOwner === 'org'
+                  ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-400 font-medium'
+                  : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              Organization: {orgOwner}
+            </button>
+          )}
+          {personalOwner && (
+            <button
+              type="button"
+              onClick={() => applyOwner(personalOwner)}
+              className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+                activeOwner === 'personal'
+                  ? 'bg-green-50 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 font-medium'
+                  : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              Personal: {personalOwner}
+            </button>
+          )}
+        </div>
       )}
       
       {field.type === 'text' && (
@@ -62,7 +124,9 @@ export function ConfigField({
           placeholder={
             field.key === 'localPath' 
               ? '~/dev/my-repo or ../my-repo or /absolute/path' 
-              : field.label
+              : field.key === 'githubRepo'
+                ? 'https://github.com/owner/repo'
+                : field.label
           }
         />
       )}

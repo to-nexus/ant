@@ -185,6 +185,125 @@ export class FileSystemAdapter implements FileSystemPort {
     return results;
   }
   
+  async isDirectory(relativePath: string): Promise<boolean> {
+    try {
+      const fullPath = this.resolvePath(relativePath);
+      const stat = await fs.promises.stat(fullPath);
+      return stat.isDirectory();
+    } catch {
+      return false;
+    }
+  }
+  
+  async copyFile(src: string, dest: string, overwrite = true): Promise<void> {
+    const srcPath = this.resolvePath(src);
+    const destPath = this.resolvePath(dest);
+    
+    // Check source exists
+    try {
+      await fs.promises.access(srcPath);
+    } catch {
+      throw new Error(`Source file not found: ${src}`);
+    }
+    
+    // Check overwrite
+    if (!overwrite) {
+      try {
+        await fs.promises.access(destPath);
+        throw new Error(`Destination file already exists: ${dest}`);
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') throw error;
+        // ENOENT = file doesn't exist, proceed
+      }
+    }
+    
+    // Ensure parent directory exists
+    await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+    
+    // Binary-safe copy using fs.promises.copyFile
+    const flags = overwrite ? 0 : fs.constants.COPYFILE_EXCL;
+    await fs.promises.copyFile(srcPath, destPath, flags);
+  }
+  
+  async moveFile(src: string, dest: string, overwrite = true): Promise<void> {
+    const srcPath = this.resolvePath(src);
+    const destPath = this.resolvePath(dest);
+    
+    // Check source exists
+    try {
+      await fs.promises.access(srcPath);
+    } catch {
+      throw new Error(`Source file not found: ${src}`);
+    }
+    
+    // Check overwrite
+    if (!overwrite) {
+      try {
+        await fs.promises.access(destPath);
+        throw new Error(`Destination file already exists: ${dest}`);
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+    
+    // Ensure parent directory exists
+    await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+    
+    try {
+      // Try atomic rename (works on same filesystem/mount)
+      await fs.promises.rename(srcPath, destPath);
+    } catch (error: any) {
+      // EXDEV = cross-device link, fall back to copy + delete
+      if (error.code === 'EXDEV') {
+        await fs.promises.copyFile(srcPath, destPath);
+        await fs.promises.unlink(srcPath);
+      } else {
+        throw error;
+      }
+    }
+  }
+  
+  async copyDirectory(src: string, dest: string): Promise<void> {
+    const srcPath = this.resolvePath(src);
+    const destPath = this.resolvePath(dest);
+    
+    // Verify source is a directory
+    const srcStat = await fs.promises.stat(srcPath);
+    if (!srcStat.isDirectory()) {
+      throw new Error(`Source is not a directory: ${src}`);
+    }
+    
+    // Ensure destination directory exists
+    await fs.promises.mkdir(destPath, { recursive: true });
+    
+    // Recursive merge: iterate source entries, preserve dest-only entries
+    const entries = await fs.promises.readdir(srcPath, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      const srcEntryPath = path.join(srcPath, entry.name);
+      const destEntryPath = path.join(destPath, entry.name);
+      
+      if (entry.isDirectory()) {
+        // Recursive merge for subdirectories
+        await this.copyDirectory(
+          path.relative(this.basePath, srcEntryPath),
+          path.relative(this.basePath, destEntryPath)
+        );
+      } else {
+        // Overwrite file (binary-safe)
+        await fs.promises.copyFile(srcEntryPath, destEntryPath);
+      }
+    }
+  }
+  
+  async moveDirectory(src: string, dest: string): Promise<void> {
+    // Merge copy first, then remove source
+    await this.copyDirectory(src, dest);
+    
+    const srcPath = this.resolvePath(src);
+    await fs.promises.rm(srcPath, { recursive: true, force: true });
+  }
+  
   getWorkspaceRoot(): string {
     return this.basePath;
   }

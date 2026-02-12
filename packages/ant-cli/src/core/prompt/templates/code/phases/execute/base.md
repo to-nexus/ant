@@ -66,8 +66,8 @@ When error occurs:
 
 ### 2. CONFIG OVER CODE
 **Prefer configuration changes over source code modifications.**
-- Build errors? → Check tsconfig.json, package.json first
-- Module errors? → Check moduleResolution, paths, aliases
+- Build errors? → Check project config files first (package.json, go.mod, Cargo.toml, Makefile, etc.)
+- Module errors? → Check module resolution settings, paths, aliases in project config
 - Runtime errors? → Check environment variables, config files
 - **Only modify source code when configuration cannot solve it.**
 
@@ -151,8 +151,8 @@ Create config files only. **NO source code, NO tests.**
 - ❌ NO scaffold/placeholder code
 
 **Files to Create:**
-- `package.json` - Dependencies and scripts
-- `tsconfig.json` (if TypeScript) - Compiler configuration
+- Dependency/module config (e.g., `package.json`, `go.mod`, `Cargo.toml`, `requirements.txt`)
+- Compiler/runtime config (e.g., `tsconfig.json` for TypeScript)
 - Build tool config (framework-specific)
 - `.gitignore` - Version control exclusions
 - `.env.example` - Environment variable template
@@ -180,7 +180,7 @@ Follow the framework/language-specific setup instructions from:
 - ✅ Use exact versions from design doc if specified
 
 **⛔ FORBIDDEN in Setup Task:**
-- `npm run build`, `npm run dev`, `npm start` - verification happens in final-verification task
+- Build/dev/start commands (e.g., `npm run build`, `go build`, `cargo build`) - verification happens in final-verification task
 - `docker compose up`, `docker compose down` - infrastructure startup happens in preview/verification
 - ONLY dependency install is allowed
 - Do NOT verify build success - just install dependencies and complete
@@ -202,7 +202,7 @@ Follow the framework/language-specific setup instructions from:
 │ ⛔ FORBIDDEN: NO BUILD, NO DEV SERVER, NO RUNTIME VERIFICATION             │
 │                                                                             │
 │ Feature tasks = CODE ONLY. Verification happens in final-verification.     │
-│ Running `npm run build`, `npm run dev`, or similar = PROTOCOL VIOLATION    │
+│ Running any build/dev/start command = PROTOCOL VIOLATION                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 **Your scope:** Write/edit source code files ONLY
@@ -231,7 +231,7 @@ MODIFY: app/page.tsx - Add import and render new component
 
 **Actions:** Write code → Modify as planned → Verify integration by reading file → Output `<done>true</done>`
 
-⛔ **NEVER:** `npm run build`, `npm run dev`, `yarn build`, `pnpm dev`, etc.
+⛔ **NEVER** run build, dev, or start commands in feature tasks (e.g., `npm run build`, `go build`, `cargo build`, `make build`, etc.)
 
 **⚠️ If you accidentally ran build/dev server and it failed:**
 - DO NOT retry - just ignore the failure and complete the task
@@ -377,7 +377,7 @@ Static analysis cannot validate behavioral correctness.
 
 **✅ Build/Dev Server ALLOWED in Error Tasks:**
 - Behavioral bugs require runtime verification
-- You MAY run `npm run build`, `npm run dev` to verify fix
+- You MAY run the project's build and dev commands to verify fix
 - Apply EARLY-EXIT RULE: If build passes but dev server fails once, acknowledge and complete
 
 **Note:** Detailed behavioral debugging guidance is conditionally included by ModeController for refactor mode.

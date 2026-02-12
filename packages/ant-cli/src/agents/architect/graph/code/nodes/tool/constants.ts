@@ -14,6 +14,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 };
 
 export const LONG_RUNNING_PATTERNS = [
+  // ── Node.js / Frontend ──
   /npm\s+run\s+dev\b/,
   /npm\s+run\s+serve\b/,
   /npm\s+run\s+start\b/,
@@ -40,6 +41,13 @@ export const LONG_RUNNING_PATTERNS = [
   /npx\s+react-scripts\s+start\b/,
   /vite\s*$/,
   /vite\s+preview\b/,
+
+  // ── Go ──
+  /go\s+run\s+/,                // go run main.go, go run ./cmd/server
+  /\bair\b/,                     // air (Go hot-reload dev server)
+
+  // ── Makefile (cross-language) ──
+  /make\s+(run|serve|dev)\b/,   // make run, make serve, make dev
 ];
 
 export const ERROR_PATTERNS = /error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Transform failed|Unexpected|Exception/i;

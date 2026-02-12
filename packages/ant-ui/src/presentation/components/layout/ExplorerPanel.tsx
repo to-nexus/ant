@@ -65,7 +65,7 @@ export function ExplorerPanel({
           <>
             <ProjectSection />
             <FeatureSection />
-            <ArtifactsPanel />
+            <ArtifactsPanel explorerWidth={width} />
           </>
         ) : (
           <div className="text-center text-gray-400 dark:text-gray-500 mt-8">

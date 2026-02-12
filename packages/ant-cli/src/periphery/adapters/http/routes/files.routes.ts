@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import multer from 'multer';
+import archiver from 'archiver';
 import { ProjectService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 
@@ -282,6 +283,86 @@ export function createFilesRoutes(deps: {
     }
   });
   
+  // ============================================
+  // Download file or directory (local download)
+  // ============================================
+
+  /**
+   * GET /projects/:id/features/:feature/download?path=<relativePath>
+   * 
+   * - File: sends as attachment (binary)
+   * - Directory: sends as zip stream (sessions/ excluded)
+   */
+  router.get('/projects/:id/features/:feature/download', async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const relativePath = req.query.path as string;
+
+      if (!relativePath) {
+        return res.status(400).json({ error: 'path query parameter is required' });
+      }
+
+      const userContext = extractUserContext(req);
+      const workspaceResolver = (deps.projectService as any).workspaceResolver;
+      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const fullPath = resolveSafePath(featurePath, relativePath);
+
+      // Check existence
+      try {
+        await fs.promises.access(fullPath);
+      } catch {
+        return res.status(404).json({ error: 'File or directory not found' });
+      }
+
+      const stat = await fs.promises.stat(fullPath);
+
+      if (stat.isDirectory()) {
+        // Directory: zip streaming
+        const dirName = path.basename(relativePath) || featureName;
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(dirName)}.zip"`);
+
+        const archive = archiver('zip', { zlib: { level: 6 } });
+
+        archive.on('error', (err: Error) => {
+          console.error('[files.routes] Archive error:', err);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Archive creation failed' });
+          }
+        });
+
+        archive.pipe(res);
+
+        // Add directory contents, excluding sessions/
+        archive.directory(fullPath, false, (entry) => {
+          // Exclude sessions/ directory and its contents
+          if (entry.name === 'sessions' || entry.name.startsWith('sessions/') || entry.name.startsWith('sessions\\')) {
+            return false;
+          }
+          return entry;
+        });
+
+        await archive.finalize();
+      } else {
+        // File: send as attachment
+        const fileName = path.basename(relativePath);
+        const mimeType = getMimeTypeFromPath(fullPath);
+        
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+        res.setHeader('Content-Length', stat.size);
+
+        const stream = fs.createReadStream(fullPath);
+        stream.pipe(res);
+      }
+    } catch (error: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message });
+      }
+    }
+  });
+
   return router;
 }
 

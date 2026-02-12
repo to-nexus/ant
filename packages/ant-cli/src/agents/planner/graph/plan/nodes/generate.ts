@@ -168,7 +168,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   });
   
   let responseText = '';
-  let toolCall: { id: string; name: string; args: Record<string, any> } | undefined;
+  const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
   
   const isFirstCall = state.conversationHistory.length === 0;
   
@@ -193,10 +193,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
-        // Send tool_use to LLMEventHandler (creates file_editing card for edit_file,
-        // tool_action card for read_workspace_file/search_web, etc.)
-        await chatAPI.sendLLMEvent(event);
-        toolCall = { id: id || uuidv4(), name, args: input };
+        // Send only the first tool_use to UI (standard pattern: system drops subsequent calls)
+        if (toolCalls.length === 0) {
+          await chatAPI.sendLLMEvent(event);
+        }
+        toolCalls.push({ id: id || uuidv4(), name, args: input });
       }
       
       if (event.type === 'done') {
@@ -231,7 +232,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     updatedHistory.push({ role: 'user', content: state.directive });
   }
   
-  const hasToolCalls = !!toolCall;
+  // Only process first tool call (standard pattern: Code/Design jobs do the same)
+  const toolCall = toolCalls.length > 0 ? toolCalls[0] : undefined;
   
   if (toolCall) {
     // Tool call path — finalize orchestrator (keep message open for tool execution)

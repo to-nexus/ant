@@ -5,7 +5,9 @@ import {
   deleteGitHubPAT,
   checkFigmaConfigStatus,
   startFigmaOAuth,
-  disconnectFigma
+  disconnectFigma,
+  fetchOrgConfig,
+  updateOrgConfig,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
@@ -30,8 +32,15 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   // GitHub PAT state
   const [githubPAT, setGithubPAT] = useState('');
   const [githubPATConfigured, setGithubPATConfigured] = useState(false);
+  const [githubUsername, setGithubUsername] = useState<string | undefined>();
   const [isCheckingPAT, setIsCheckingPAT] = useState(true);
   const [isSavingPAT, setIsSavingPAT] = useState(false);
+  
+  // GitHub Owner (org-level) state
+  const [githubOwner, setGithubOwner] = useState('');
+  const [savedGithubOwner, setSavedGithubOwner] = useState('');
+  const [isLoadingOrgConfig, setIsLoadingOrgConfig] = useState(true);
+  const [isSavingOwner, setIsSavingOwner] = useState(false);
   
   // Figma OAuth state
   const [figmaConfigured, setFigmaConfigured] = useState(false);
@@ -54,6 +63,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       try {
         const status = await checkGitHubPATStatus();
         setGithubPATConfigured(status.configured);
+        setGithubUsername(status.username);
       } catch (error) {
         console.error('Failed to check GitHub PAT status:', error);
       } finally {
@@ -61,6 +71,24 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       }
     }
     loadGitHubPATStatus();
+  }, []);
+  
+  // Load org config (GitHub Owner) on mount
+  useEffect(() => {
+    async function loadOrgConfig() {
+      setIsLoadingOrgConfig(true);
+      try {
+        const config = await fetchOrgConfig();
+        const owner = config.github?.owner || '';
+        setGithubOwner(owner);
+        setSavedGithubOwner(owner);
+      } catch (error) {
+        console.error('Failed to load org config:', error);
+      } finally {
+        setIsLoadingOrgConfig(false);
+      }
+    }
+    loadOrgConfig();
   }, []);
   
   // Load Figma config status on mount
@@ -140,15 +168,37 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     
     setIsSavingPAT(true);
     try {
-      await saveGitHubPAT(githubPAT.trim());
+      const result = await saveGitHubPAT(githubPAT.trim());
       setGithubPATConfigured(true);
+      setGithubUsername(result.username);
       setGithubPAT(''); // Clear input after successful save
-      showSuccess('GitHub PAT saved successfully!');
+      showSuccess(result.username 
+        ? `GitHub PAT saved! Connected as @${result.username}` 
+        : 'GitHub PAT saved successfully!');
     } catch (error: any) {
       console.error('Failed to save GitHub PAT:', error);
       showError(error.message || 'Failed to save GitHub PAT. Please try again.');
     } finally {
       setIsSavingPAT(false);
+    }
+  };
+
+  const handleSaveGitHubOwner = async () => {
+    const trimmed = githubOwner.trim();
+    setIsSavingOwner(true);
+    try {
+      await updateOrgConfig({ github: { owner: trimmed || undefined } });
+      setSavedGithubOwner(trimmed);
+      if (trimmed) {
+        showSuccess(`GitHub owner set to "${trimmed}". New projects will default to github.com/${trimmed}/{project}`);
+      } else {
+        showSuccess('GitHub owner cleared. New projects will not have a default repo URL.');
+      }
+    } catch (error: any) {
+      console.error('Failed to save GitHub owner:', error);
+      showError(error.message || 'Failed to save GitHub owner.');
+    } finally {
+      setIsSavingOwner(false);
     }
   };
 
@@ -163,6 +213,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         try {
           await deleteGitHubPAT();
           setGithubPATConfigured(false);
+          setGithubUsername(undefined);
           setGithubPAT('');
           showSuccess('GitHub PAT deleted successfully');
         } catch (error: any) {
@@ -288,28 +339,36 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     </ConfigSection>
   );
 
+  const isGithubOwnerChanged = githubOwner.trim() !== savedGithubOwner;
+
   const renderGitHubSection = () => (
     <ConfigSection
       icon={<ConfigIcons.GitHub />}
       title="GitHub Integration"
-      description="Connect your GitHub account to enable repository sync"
+      description="Connect your GitHub account and configure default repository settings"
       status={{
         state: isCheckingPAT ? 'checking' : (githubPATConfigured ? 'configured' : 'not-configured'),
+        label: githubPATConfigured && githubUsername ? `@${githubUsername}` : undefined,
       }}
-      hint={<>Required scopes: <code className={ConfigStyles.code}>repo</code></>}
+      hint={<>PAT scopes: <code className={ConfigStyles.code}>repo</code></>}
     >
+      {/* ---- Personal Access Token ---- */}
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
           Personal Access Token
         </label>
         {githubPATConfigured ? (
           <div className="flex items-center gap-3">
-            <input
-              type="password"
-              value="••••••••••••••••••••"
-              disabled
-              className={`flex-1 ${ConfigStyles.inputDisabled}`}
-            />
+            <div className={`flex-1 ${ConfigStyles.inputDisabled}`}>
+              {githubUsername ? (
+                <span>
+                  <span className="text-gray-900 dark:text-gray-200 font-medium">@{githubUsername}</span>
+                  <span className="text-gray-400 dark:text-gray-500 ml-2">••••••••</span>
+                </span>
+              ) : (
+                <span className="text-gray-400">••••••••••••••••••••</span>
+              )}
+            </div>
             <button
               onClick={handleDeleteGitHubPAT}
               disabled={isSavingPAT}
@@ -346,6 +405,97 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             </div>
           </div>
         )}
+      </div>
+
+      {/* ---- Divider ---- */}
+      <div className="border-t border-gray-200 dark:border-gray-700" />
+
+      {/* ---- Repository Owners ---- */}
+      <div>
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-3">
+          Default Repository Owners
+        </label>
+
+        {/* Organization Owner */}
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+              Organization
+            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">Shared across all members</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center flex-1">
+              <span className="px-3 py-2 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
+                github.com/
+              </span>
+              <input
+                type="text"
+                value={githubOwner}
+                onChange={(e) => setGithubOwner(e.target.value.replace(/\s/g, ''))}
+                placeholder="org-name"
+                disabled={isLoadingOrgConfig}
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-r-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm disabled:opacity-50"
+              />
+            </div>
+            <button
+              onClick={handleSaveGitHubOwner}
+              disabled={isSavingOwner || !isGithubOwnerChanged}
+              className={ConfigStyles.buttonPrimary}
+            >
+              {isSavingOwner ? 'Saving...' : 'Save'}
+            </button>
+            {savedGithubOwner && (
+              <button
+                onClick={() => {
+                  setGithubOwner('');
+                  setIsSavingOwner(true);
+                  updateOrgConfig({ github: { owner: undefined } })
+                    .then(() => {
+                      setSavedGithubOwner('');
+                      showSuccess('Organization owner cleared.');
+                    })
+                    .catch((err: any) => showError(err.message || 'Failed to clear'))
+                    .finally(() => setIsSavingOwner(false));
+                }}
+                disabled={isSavingOwner}
+                className={ConfigStyles.buttonDanger}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Personal Owner (auto-detected from PAT) */}
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+              Personal
+            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">Auto-detected from PAT</span>
+          </div>
+          <div className="flex items-center">
+            <span className="px-3 py-2 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm whitespace-nowrap">
+              github.com/
+            </span>
+            <div className={`flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-r-md text-sm ${
+              githubUsername 
+                ? 'bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white' 
+                : 'bg-gray-50 dark:bg-gray-900 text-gray-400 dark:text-gray-500 italic'
+            }`}>
+              {githubUsername || (githubPATConfigured ? 'Re-save PAT to detect' : 'Save PAT to auto-detect')}
+            </div>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+          New projects: <code className={ConfigStyles.code}>github.com/{savedGithubOwner || githubUsername || '...'}/{'{project}'}</code>
+          {savedGithubOwner && githubUsername && savedGithubOwner !== githubUsername && (
+            <span className="ml-1">(defaults to organization)</span>
+          )}
+        </p>
       </div>
     </ConfigSection>
   );
