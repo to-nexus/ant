@@ -8,13 +8,12 @@ import { ValidationResult } from '../types';
  * Validates Next.js projects for basePath configuration.
  * 
  * Next.js serves all assets (images, CSS, JS) and routes with the basePath prefix
- * at the framework level — both during SSR and CSR. Without basePath, the preview proxy's
- * post-render HTML rewriting causes hydration mismatches:
- *   Server: "/serverKey/logos/logo.svg"  (proxy-rewritten)
- *   Client: "/logos/logo.svg"            (React bundle, un-prefixed)
+ * at the framework level — both during SSR and CSR. Without basePath, the preview
+ * proxy cannot route requests correctly because Next.js won't recognize the prefixed URLs.
  * 
- * Unlike CSR-only frameworks (React Router) that use window.__BASENAME__,
- * Next.js requires `basePath` in next.config to avoid SSR hydration issues.
+ * Required configuration:
+ * - `basePath: process.env.NEXT_PUBLIC_BASE_PATH || ''` in next.config
+ * - `images: { unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH }` (recommended)
  */
 export class NextValidator {
   private readonly configCandidates = [
@@ -40,8 +39,6 @@ export class NextValidator {
    * Check if the config file contains basePath configuration
    */
   private hasBasePathConfig(content: string): boolean {
-    // Match basePath as an object property: basePath: or basePath =
-    // Also match quoted variants: "basePath": or 'basePath':
     return (
       /basePath\s*[:=]/.test(content) ||
       /["']basePath["']\s*[:=]/.test(content)
@@ -69,16 +66,31 @@ export class NextValidator {
         reasoning: 'basepath-missing',
         reason: 'Missing basePath in Next.js config for dev server proxy',
         missingFiles: ['next.config.js (or next.config.mjs / next.config.ts)'],
-        suggestedFix: this.buildSuggestedFix(false),
+        suggestedFix: this.buildSuggestedFix(false, false),
       };
     }
     
     try {
       const content = await fs.promises.readFile(configPath, 'utf-8');
       
-      if (this.hasBasePathConfig(content)) {
-        // basePath is present — valid
+      const hasBasePath = this.hasBasePathConfig(content);
+      const readsEnv = this.readsEnvBasePath(content);
+      
+      if (hasBasePath && readsEnv) {
+        // basePath is present AND reads from NEXT_PUBLIC_BASE_PATH — valid
         return { valid: true, framework: 'next' };
+      }
+      
+      if (hasBasePath && !readsEnv) {
+        // basePath exists but is hardcoded (not from env var)
+        return {
+          valid: false,
+          framework: 'next',
+          reasoning: 'basepath-missing',
+          reason: 'basePath in Next.js config must read from NEXT_PUBLIC_BASE_PATH environment variable',
+          missingFiles: [path.basename(configPath)],
+          suggestedFix: this.buildSuggestedFix(true, true),
+        };
       }
       
       // Config exists but no basePath
@@ -88,7 +100,7 @@ export class NextValidator {
         reasoning: 'basepath-missing',
         reason: 'Missing basePath in Next.js config for dev server proxy',
         missingFiles: [path.basename(configPath)],
-        suggestedFix: this.buildSuggestedFix(true),
+        suggestedFix: this.buildSuggestedFix(true, false),
       };
     } catch {
       // Can't read config — don't block
@@ -99,17 +111,21 @@ export class NextValidator {
   /**
    * Build LLM-ready suggested fix instruction
    */
-  private buildSuggestedFix(configExists: boolean): string {
+  private buildSuggestedFix(configExists: boolean, hasHardcodedBasePath: boolean): string {
     const lines: string[] = [
-      'This preview server runs in the Ant platform\'s proxy environment (/:serverKey/).',
+      'This preview server runs in the Ant platform\'s proxy environment (/:urlKey/).',
       '',
       'Next.js requires `basePath` in its config so that ALL URLs (routes, assets, images)',
       'are generated with the correct prefix — both during server-side rendering and client-side hydration.',
-      'Without this, SSR hydration mismatches will occur.',
       '',
     ];
     
-    if (configExists) {
+    if (hasHardcodedBasePath) {
+      lines.push(
+        'The `basePath` in your config appears to be hardcoded. It must read from the',
+        '`NEXT_PUBLIC_BASE_PATH` environment variable so the Ant platform can inject the correct value:',
+      );
+    } else if (configExists) {
       lines.push(
         'Please add `basePath` and `images` to the existing Next.js config file:',
       );

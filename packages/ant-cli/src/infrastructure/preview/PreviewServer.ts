@@ -28,6 +28,7 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { parsePreviewKey } from '../state/redisKeyUtils';
+import { toUrlKey, fromUrlKey, isUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -214,7 +215,7 @@ export class PreviewServer {
     });
 
     // Preview Proxy - MUST be before body parsers
-    // Routes: /:key/* where key = tenantId:userId:projectId:feature
+    // Routes: /:urlKey/* where urlKey = tenantId--userId--projectId--feature
     // 별도 호스트 (ant-preview.crosstoken.io) 이므로 pathPrefix 불필요
     this.app.use(createPreviewProxyMiddleware({
       portRegistry: this.stateStore,
@@ -309,6 +310,7 @@ export class PreviewServer {
         const userContext = this.extractUserContext(req);
         const feature = req.query.feature as string || 'main';
         const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
+        const urlKey = toUrlKey(serverKey);
 
         // getPreviewStatus reads from Redis (source of truth), with local memory fallback.
         // This guarantees consistent state across pods in multi-pod deployments.
@@ -331,7 +333,7 @@ export class PreviewServer {
           running: status.running,
           ready: status.ready,
           port: status.port || null,
-          url: status.port ? `/${serverKey}` : null,
+          url: status.port ? `/${urlKey}` : null,
           processCount: status.processCount || 0,
           backendPort: status.backendPort || null,
           packages: status.packages || [],
@@ -430,14 +432,14 @@ export class PreviewServer {
           const segments = urlPath.split('/').filter(Boolean);
           const firstSegment = segments[0] || '';
 
-          // Check if first segment is a serverKey (contains colons)
-          if (!firstSegment.includes(':')) {
+          // Check if first segment is a URL-safe serverKey (contains double-dashes)
+          if (!isUrlKey(firstSegment)) {
             socket.destroy();
             return;
           }
 
-          const serverKey = firstSegment;
-          const parsed = parsePreviewKey(serverKey);
+          const internalKey = fromUrlKey(firstSegment);
+          const parsed = parsePreviewKey(internalKey);
           if (!parsed) {
             socket.destroy();
             return;
@@ -453,16 +455,8 @@ export class PreviewServer {
           const targetHost = mapping.host || 'localhost';
           const targetPort = mapping.port;
 
-          // Determine target path based on nativeBasePath
-          // nativeBasePath: dev server expects /{serverKey}/ prefix → keep it
-          // non-nativeBasePath: dev server expects bare path → strip prefix
-          let targetPath = urlPath;
-          if (!mapping.nativeBasePath) {
-            const prefix = `/${serverKey}`;
-            if (targetPath.startsWith(prefix)) {
-              targetPath = targetPath.slice(prefix.length) || '/';
-            }
-          }
+          // All frameworks use native base path — always keep the prefix
+          const targetPath = urlPath;
 
           logger.debug(`[PreviewServer] WS upgrade: ${urlPath} → ${targetHost}:${targetPort}${targetPath}`, {
             component: 'PreviewServer'

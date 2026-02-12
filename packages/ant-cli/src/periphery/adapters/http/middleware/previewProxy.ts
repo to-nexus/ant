@@ -2,26 +2,30 @@
  * PreviewProxyMiddleware
  * 
  * Express middleware to proxy preview requests on a dedicated host (ant-preview.crosstoken.io).
- * Dynamically routes /:serverKey/* to the appropriate dev server port.
+ * Dynamically routes /:urlKey/* to the appropriate dev server port.
+ * 
+ * All frameworks (Vite, Next.js, etc.) use native base path configuration,
+ * so the proxy always keeps the URL key prefix and streams responses without
+ * any HTML rewriting or script injection.
+ * 
+ * URL key format: "org--user--project--feature" (double-dash separated, URL-safe)
+ * Internal key:   "org:user:project:feature" (colon separated, Redis)
  * 
  * Example:
- * /acme:alice:todo-app:feature-login → localhost:30001
- * /acme:alice:todo-app:feature-login/src/main.tsx → localhost:30001/src/main.tsx
- * 
- * For SSR resources without serverKey (e.g., /_next/chunk.js),
- * uses Referer header to determine the correct dev server.
+ * /to.nexus--probe--todo-app--feature-login → localhost:30001/to.nexus--probe--todo-app--feature-login
  */
 
 import { Request, Response as ExpressResponse, NextFunction } from 'express';
+import { Readable } from 'stream';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
-import { parsePreviewKey } from '../../../../infrastructure/state/redisKeyUtils';
+import { fromUrlKey, isUrlKey, parseUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 
 function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Known API/system paths that should NOT be treated as serverKey */
+/** Known API/system paths that should NOT be treated as urlKey */
 const RESERVED_PATHS = ['/projects/', '/admin/', '/health'];
 
 export interface PreviewProxyConfig {
@@ -29,7 +33,7 @@ export interface PreviewProxyConfig {
   pathPrefix?: string;  // Default: '' (no prefix, dedicated host)
   /**
    * Optional resolver for backend port (fullstack).
-   * If provided, /:serverKey/api/* can be routed to backend instead of the entry (frontend) port.
+   * If provided, /:urlKey/api/* can be routed to backend instead of the entry (frontend) port.
    */
   getBackendPort?: (args: {
     tenantId: string;
@@ -40,38 +44,6 @@ export interface PreviewProxyConfig {
   }) => number | undefined | null | Promise<number | undefined | null>;
 }
 
-/**
- * Check if a path segment looks like a serverKey (contains colons)
- * ServerKey format: tenantId:userId:projectId:feature
- */
-function isServerKey(segment: string): boolean {
-  return segment.includes(':') && parsePreviewKey(segment) !== null;
-}
-
-/**
- * Extract serverKey from Referer header.
- * Looks for the first path segment that matches serverKey format (contains colons).
- */
-function extractServerKeyFromReferer(refererStr: string): string | null {
-  try {
-    const url = new URL(refererStr);
-    const segments = url.pathname.split('/').filter(Boolean);
-    for (const segment of segments) {
-      if (isServerKey(segment)) {
-        return segment;
-      }
-    }
-  } catch {
-    // Not a valid URL, try regex fallback
-    const match = refererStr.match(/\/([^/]*:[^/]*:[^/]*:[^/]*)/);
-    if (match) return match[1];
-  }
-  return null;
-}
-
-/**
- * Create preview proxy middleware
- */
 // Headers that must NOT be forwarded to upstream (hop-by-hop, HTTP/2 forbidden)
 const HOP_BY_HOP_HEADERS = new Set([
   'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate',
@@ -95,6 +67,28 @@ function buildCleanHeaders(req: Request, targetHost: string, targetPort: number)
   return headers;
 }
 
+/**
+ * Extract URL key from Referer header.
+ * Looks for the first path segment that matches urlKey format (contains double-dashes).
+ */
+function extractUrlKeyFromReferer(refererStr: string): string | null {
+  try {
+    const url = new URL(refererStr);
+    const segments = url.pathname.split('/').filter(Boolean);
+    for (const segment of segments) {
+      if (isUrlKey(segment)) {
+        return segment;
+      }
+    }
+  } catch {
+    // Not a valid URL
+  }
+  return null;
+}
+
+/**
+ * Create preview proxy middleware
+ */
 export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
   const { portRegistry, pathPrefix = '', getBackendPort } = config;
   
@@ -104,41 +98,48 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return next();
     }
     
-    // ✅ Extract first path segment to check if it's a serverKey
+    // ✅ Extract first path segment to check if it's a urlKey
     const urlPath = req.url.split('?')[0];
     const pathAfterPrefix = pathPrefix ? urlPath.substring(pathPrefix.length) : urlPath;
     const segments = pathAfterPrefix.split('/').filter(Boolean);
     const firstSegment = segments[0] || '';
-    const hasServerKeyInPath = firstSegment && isServerKey(firstSegment);
+    const hasUrlKeyInPath = firstSegment && isUrlKey(firstSegment);
     
-    // ✅ Handle requests without serverKey in path
-    // On a dedicated preview host, ANY non-reserved request without a serverKey
+    // ── Fallback: handle requests without urlKey in path ──
+    // On a dedicated preview host, ANY non-reserved request without a urlKey
     // likely belongs to a preview project (SSR assets, static files, CSS url() refs, etc.).
     // Determine the correct dev server from Referer header or preview cookie.
-    if (!hasServerKeyInPath) {
+    if (!hasUrlKeyInPath) {
       const referer = req.headers.referer || req.headers.referrer;
       const refererStr = Array.isArray(referer) ? referer[0] : referer;
       
-      // 1. Try extracting serverKey from Referer (most reliable, project-specific)
-      let serverKey: string | null = null;
+      // 1. Try extracting urlKey from Referer (most reliable, project-specific)
+      let urlKey: string | null = null;
       if (refererStr) {
-        serverKey = extractServerKeyFromReferer(refererStr);
+        urlKey = extractUrlKeyFromReferer(refererStr);
       }
       
       // 2. Fallback: check preview cookie (handles CSS sub-resource chain)
-      // When CSS is loaded via fallback (URL without serverKey), its url() sub-resources
-      // have the CSS URL as referer — no serverKey. The cookie bridges this gap.
-      if (!serverKey) {
+      // Cookie stores the internal key (colon-separated) — convert to urlKey for path prepend
+      if (!urlKey) {
         const cookieMatch = (req.headers.cookie || '').match(/__ant_preview_sk=([^;]+)/);
         if (cookieMatch) {
           try {
-            serverKey = decodeURIComponent(cookieMatch[1]);
+            const cookieValue = decodeURIComponent(cookieMatch[1]);
+            if (isUrlKey(cookieValue)) {
+              // Already a urlKey (double-dash format)
+              urlKey = cookieValue;
+            } else {
+              // Internal key (colon-separated) — convert to urlKey
+              const { toUrlKey } = require('../services/PreviewService/utils/serverKeyUtils');
+              urlKey = toUrlKey(cookieValue);
+            }
           } catch { /* invalid cookie value */ }
         }
       }
       
-      if (serverKey) {
-        const parsed = parsePreviewKey(serverKey);
+      if (urlKey) {
+        const parsed = parseUrlKey(urlKey);
         if (parsed) {
           const { tenantId, userId, projectId, feature } = parsed;
           
@@ -148,36 +149,18 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               const host = mapping.host || 'localhost';
               const cleanHeaders = buildCleanHeaders(req, host, mapping.port);
               
-              // For nativeBasePath projects (e.g. Next.js with basePath), the dev server
-              // only serves assets under /{basePath}/... so we must prepend the serverKey.
-              let resolvedUrl = req.url;
-              if (mapping.nativeBasePath) {
-                resolvedUrl = `/${serverKey}${req.url}`;
-              }
+              // All frameworks use native base path — always prepend the urlKey
+              const resolvedUrl = `/${urlKey}${req.url}`;
               
               const targetUrl = `http://${host}:${mapping.port}${resolvedUrl}`;
-              logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (fallback${mapping.nativeBasePath ? ', native basePath' : ''})`, { component: 'PreviewProxy' });
+              logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (fallback)`, { component: 'PreviewProxy' });
               
-              let response = await fetch(targetUrl, {
+              const response = await fetch(targetUrl, {
                 method: req.method,
                 headers: cleanHeaders,
               });
               
-              // Retry with serverKey prepend if 404 and we didn't already prepend.
-              // Covers: nativeBasePath not yet stored in Redis (deployment timing),
-              // or preview started before nativeBasePath code was deployed.
-              if (response.status === 404 && !mapping.nativeBasePath) {
-                const retryUrl = `http://${host}:${mapping.port}/${serverKey}${req.url}`;
-                logger.debug(`[Preview] Retrying with basePath prepend: ${retryUrl}`, { component: 'PreviewProxy' });
-                const retryResponse = await fetch(retryUrl, {
-                  method: req.method,
-                  headers: cleanHeaders,
-                });
-                if (retryResponse.status !== 404) {
-                  response = retryResponse;
-                }
-              }
-              
+              // Stream response
               res.status(response.status);
               response.headers.forEach((value: string, key: string) => {
                 const lower = key.toLowerCase();
@@ -185,9 +168,12 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
                 res.setHeader(key, value);
               });
               
-              const buffer = Buffer.from(await response.arrayBuffer());
-              res.setHeader('content-length', buffer.length);
-              res.send(buffer);
+              if (response.body) {
+                const nodeStream = Readable.fromWeb(response.body as any);
+                nodeStream.pipe(res);
+              } else {
+                res.end();
+              }
               return;
             }
           } catch (error: any) {
@@ -195,54 +181,49 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           }
         }
       }
-      // No serverKey found or routing failed — fall through to Express
+      // No urlKey found or routing failed — fall through to Express
       return next();
     }
     
-    // ── Main proxy logic: /:serverKey/* ──
+    // ── Main proxy logic: /:urlKey/* ──
     
-    const serverKey = firstSegment;
+    const urlKey = firstSegment;
     logger.warn(`[Preview] PROXY: ${req.method} ${req.url}`, { component: 'PreviewProxy' });
-    logger.debug(`serverKey=${serverKey}`, { component: 'PreviewProxy' });
     
-    const parsed = parsePreviewKey(serverKey);
+    const parsed = parseUrlKey(urlKey);
     if (!parsed) {
-      logger.warn(`Invalid serverKey format: ${serverKey}`, { component: 'PreviewProxy' });
+      logger.warn(`Invalid urlKey format: ${urlKey}`, { component: 'PreviewProxy' });
       res.status(400).json({
         error: 'Invalid server key format',
-        message: 'Expected format: tenantId:userId:projectId:feature',
-        received: serverKey
+        message: 'Expected URL key format: tenantId--userId--projectId--feature',
+        received: urlKey
       });
       return;
     }
     
     const { tenantId, userId, projectId, feature } = parsed;
+    const internalKey = fromUrlKey(urlKey);
     
-    logger.debug(`Parsed serverKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
+    logger.debug(`Parsed urlKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
     
     // Lookup entry (frontend) port and host from registry
     let port: number;
     let previewHost: string;
-    let nativeBasePath = false;
     try {
       const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
       
       if (!mapping) {
-        logger.warn(`No preview found for ${serverKey}`, { component: 'PreviewProxy' });
+        logger.warn(`No preview found for ${internalKey}`, { component: 'PreviewProxy' });
         res.status(404).json({
           error: 'Preview not found',
-          message: `No preview running for ${serverKey}`,
-          serverKey
+          message: `No preview running for ${internalKey}`,
+          serverKey: internalKey
         });
         return;
       }
       port = mapping.port;
       previewHost = mapping.host || 'localhost';
-      // Read nativeBasePath from Redis state (set by PreviewService during startup).
-      // Multi-pod consistent — any pod's proxy can read this flag.
-      // When true, the dev server expects the full /{serverKey}/ prefix as its basePath.
-      nativeBasePath = mapping.nativeBasePath === true;
-      logger.warn(`[Preview] Found: ${serverKey} -> ${previewHost}:${port}${nativeBasePath ? ' (native basePath)' : ''}`, { component: 'PreviewProxy' });
+      logger.warn(`[Preview] Found: ${internalKey} -> ${previewHost}:${port}`, { component: 'PreviewProxy' });
       
       // Update last access time
       await portRegistry.touchPreview(tenantId, userId, projectId, feature);
@@ -256,53 +237,19 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return;
     }
     
-    // ✅ Strip /:serverKey from path for dev server (handle accidental double-prefix)
-    // Skip stripping for native basePath — the dev server expects the prefix as its basePath.
-    const prefix = `${pathPrefix}/${serverKey}`;
-    let targetPath = req.url;
-    if (!nativeBasePath) {
-      while (targetPath.startsWith(prefix)) {
-        targetPath = targetPath.slice(prefix.length) || '/';
-      }
-    }
+    // All frameworks use native base path — always keep the prefix
+    const targetPath = req.url;
     
-    // ✅ Fix Next.js Image Optimization with basePath
-    // Next.js _next/image handler internally fetches images using the `url` query param,
-    // but uses `new URL(url, origin)` which ignores basePath for absolute paths (starting with /).
-    // This causes a 400 "not a valid image" because the internal fetch hits the wrong path.
-    // Fix: prepend basePath to the `url` param so the internal fetch resolves correctly.
-    if (nativeBasePath) {
-      const imageApiPrefix = `/${serverKey}/_next/image`;
-      if (targetPath.startsWith(imageApiPrefix)) {
-        try {
-          const urlObj = new URL(targetPath, 'http://localhost');
-          const imageUrl = urlObj.searchParams.get('url');
-          if (imageUrl && !imageUrl.startsWith(`/${serverKey}`)) {
-            urlObj.searchParams.set('url', `/${serverKey}${imageUrl}`);
-            targetPath = urlObj.pathname + urlObj.search;
-            logger.debug(`[Preview] Rewrote _next/image url: ${imageUrl} -> /${serverKey}${imageUrl}`, { component: 'PreviewProxy' });
-          }
-        } catch {
-          // URL parse error — proceed without rewrite
-        }
-      }
-    }
-
     // ✅ Fullstack support: check if project has a backend
     let targetPort = port;
-    let isFullstack = false;
     
     if (typeof getBackendPort === 'function') {
       try {
-        const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey });
+        const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
         if (typeof backendPort === 'number' && backendPort > 0) {
-          isFullstack = true;
-          
           // Route /api/* requests to backend port
-          // For native basePath, strip the prefix to check for /api/
-          const pathForApiCheck = nativeBasePath
-            ? targetPath.replace(new RegExp(`^/${escapeRegExp(serverKey)}`), '')
-            : targetPath;
+          // Strip the urlKey prefix to check for /api/
+          const pathForApiCheck = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '');
           const isApiRequest = pathForApiCheck === '/api' || pathForApiCheck.startsWith('/api/');
           if (isApiRequest) {
             targetPort = backendPort;
@@ -314,9 +261,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
     }
 
-    const targetUrl = `http://${previewHost}:${port}${targetPath}`;
     const effectiveTargetUrl = `http://${previewHost}:${targetPort}${targetPath}`;
-    logger.warn(`[Preview] Target: ${effectiveTargetUrl}${nativeBasePath ? ' (native basePath)' : ''}`, { component: 'PreviewProxy' });
+    logger.warn(`[Preview] Target: ${effectiveTargetUrl}`, { component: 'PreviewProxy' });
     
     try {
       // ✅ Retry logic for preview server startup race condition
@@ -327,8 +273,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const method = (req.method || 'GET').toUpperCase();
       const hasRequestBody = !['GET', 'HEAD', 'OPTIONS'].includes(method);
       
-      // Build clean headers - exclude hop-by-hop headers (not allowed in HTTP/2)
-      const cleanHeaders = buildCleanHeaders(req, 'localhost', targetPort);
+      // Build clean headers — use actual previewHost (not localhost)
+      const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -354,191 +300,33 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const contentType = response.headers.get('content-type') || '';
       logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: 'PreviewProxy' });
       
-      // Copy status and headers
+      // Copy status and headers (strip hop-by-hop and caching headers)
       res.status(response.status);
       response.headers.forEach((value: string, key: string) => {
         const lower = key.toLowerCase();
         if (['etag', 'if-none-match', 'if-modified-since', 'last-modified'].includes(lower)) return;
-        if (['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
+        if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
         res.setHeader(key, value);
       });
       
       res.setHeader('cache-control', 'no-cache, no-store, must-revalidate');
       
-      // Set preview cookie so sub-resource requests can find the serverKey.
-      // This is critical for CSS url() references: the browser's Referer for those
-      // is the CSS file's URL (which may not contain the serverKey), so the cookie
-      // provides a reliable fallback for the referer-based routing.
+      // Set preview cookie so sub-resource requests can find the urlKey.
+      // Cookie path is scoped to /{urlKey} to prevent cross-project pollution.
       if (contentType.includes('text/html')) {
-        res.setHeader('Set-Cookie', `__ant_preview_sk=${encodeURIComponent(serverKey)}; Path=/; SameSite=Lax`);
+        res.setHeader('Set-Cookie', `__ant_preview_sk=${encodeURIComponent(internalKey)}; Path=/${urlKey}; SameSite=Lax`);
       }
       
-      // ✅ For nativeBasePath + HTML: inject ONLY a WebSocket fix script (no path rewriting).
-      // Next.js normalizedAssetPrefix strips leading '/' from basePath, then URL.canParse()
-      // treats "to.nexus:probe:..." as a valid URL scheme (because 'to.nexus' matches [a-z][a-z0-9+\-.]* ).
-      // This makes HMR WebSocket construction fail with "scheme 'to.nexus' is not allowed".
-      // Fix: patch WebSocket constructor to prepend wss://host when the URL has no valid scheme.
-      if (nativeBasePath && contentType.includes('text/html')) {
-        const text = await response.text();
-        const wsFixScript = `<script>(function(){var O=window.WebSocket;window.WebSocket=function(u,p){try{return p!==void 0?new O(u,p):new O(u)}catch(e){if(e.name==='SyntaxError'&&typeof u==='string'&&!/^wss?:\\/\\//.test(u)){var f=(location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/'+u;return p!==void 0?new O(f,p):new O(f)}throw e}};window.WebSocket.prototype=O.prototype;window.WebSocket.CONNECTING=O.CONNECTING;window.WebSocket.OPEN=O.OPEN;window.WebSocket.CLOSING=O.CLOSING;window.WebSocket.CLOSED=O.CLOSED})()</script>`;
-        const headMatch = text.match(/<head[^>]*>/i);
-        let patched = text;
-        if (headMatch) {
-          const insertPos = headMatch.index! + headMatch[0].length;
-          patched = text.substring(0, insertPos) + wsFixScript + text.substring(insertPos);
-          logger.debug(`[Preview] Injected WebSocket fix for nativeBasePath`, { component: 'PreviewProxy' });
-        }
-        res.setHeader('content-length', Buffer.byteLength(patched));
-        res.send(patched);
-      }
-      // Check if content needs rewriting (HTML, JS, CSS)
-      // Skip rewriting for native basePath — the framework already generates all URLs with the prefix.
-      else if (!nativeBasePath && (
-                           contentType.includes('text/html') || 
-                           contentType.includes('javascript') || 
-                           contentType.includes('text/javascript') ||
-                           contentType.includes('application/javascript') ||
-                           contentType.includes('text/css'))) {
-        const text = await response.text();
-        logger.debug(`Rewriting ${text.length} bytes`, { component: 'PreviewProxy' });
-        
-        let rewritten = text;
-        
-        // ✅ Inject path rewrite script for client-side requests (HTML only)
-        // This handles React hydration overwriting paths back to original values
-        if (contentType.includes('text/html')) {
-          const basePath = `/${serverKey}`;
-          const clientScript = `<script>
-(function() {
-  var BASE = "${basePath}";
-  
-  // Rewrite path if needed
-  function rewrite(path) {
-    if (typeof path !== 'string') return path;
-    if (path.startsWith('/') && !path.startsWith('//') && !path.startsWith(BASE)) {
-      return BASE + path;
-    }
-    return path;
-  }
-  
-  // Override fetch
-  var origFetch = window.fetch;
-  window.fetch = function(input, init) {
-    if (typeof input === 'string') input = rewrite(input);
-    else if (input && input.url) input = new Request(rewrite(input.url), input);
-    return origFetch.call(this, input, init);
-  };
-  
-  // Override XMLHttpRequest
-  var origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    arguments[1] = rewrite(url);
-    return origOpen.apply(this, arguments);
-  };
-  
-  // Rewrite element src/href
-  function fixEl(el) {
-    if (!el || el.nodeType !== 1) return;
-    ['src', 'href'].forEach(function(attr) {
-      var val = el.getAttribute(attr);
-      if (val && val.startsWith('/') && !val.startsWith('//') && !val.startsWith(BASE)) {
-        el.setAttribute(attr, BASE + val);
-      }
-    });
-  }
-  
-  // Observe DOM changes (React hydration)
-  var observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(m) {
-      m.addedNodes.forEach(fixEl);
-      if (m.type === 'attributes' && (m.attributeName === 'src' || m.attributeName === 'href')) {
-        fixEl(m.target);
-      }
-    });
-  });
-  
-  function startObserving() {
-    observer.observe(document.documentElement, {
-      childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'href']
-    });
-    // Fix existing elements
-    document.querySelectorAll('[src], [href]').forEach(fixEl);
-  }
-  
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startObserving);
-  } else {
-    startObserving();
-  }
-  
-  window.__BASENAME__ = BASE;
-})();
-</script>`;
-          
-          const headMatch = rewritten.match(/<head[^>]*>/i);
-          if (headMatch) {
-            const insertPos = headMatch.index! + headMatch[0].length;
-            rewritten = rewritten.substring(0, insertPos) + clientScript + rewritten.substring(insertPos);
-            logger.debug(`Injected client-side path rewrite script`, { component: 'PreviewProxy' });
-          }
-        }
-        
-        // ✅ Rewrite absolute paths to include /:serverKey/ prefix
-        // This ensures all resources (images, CSS, JS) are routed correctly
-        const replacement = `/${serverKey}/`;
-        const escapedAlready = escapeRegExp(`${serverKey}/`);
-        
-        // HTML attributes: src, href, action
-        const htmlAttrRe = new RegExp(`((?:src|href|action)=["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        rewritten = rewritten.replace(htmlAttrRe, `$1${replacement}`);
-        
-        // JS imports
-        const fromRe = new RegExp(`((?:import\\s+[^"']+\\s+)?from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const importLineRe = new RegExp(`((?:^|\\n|;)\\s*import\\s+["'])\\/(?!\\/|${escapedAlready})`, 'gm');
-        const importFnRe = new RegExp(`(import\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const exportFromRe = new RegExp(`(export\\s+\\*\\s+from\\s+["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const globRe = new RegExp(`(import\\.meta\\.glob\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        const newUrlRe = new RegExp(`(new\\s+URL\\s*\\(\\s*["'])\\/(?!\\/|${escapedAlready})`, 'g');
-        
-        rewritten = rewritten
-          .replace(fromRe, `$1${replacement}`)
-          .replace(importLineRe, `$1${replacement}`)
-          .replace(importFnRe, `$1${replacement}`)
-          .replace(exportFromRe, `$1${replacement}`)
-          .replace(globRe, `$1${replacement}`)
-          .replace(newUrlRe, `$1${replacement}`);
-
-        // Rewrite runtime absolute asset references
-        const assetLiteralRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})(assets\\/[^"']*)\\1`, 'g');
-        rewritten = rewritten.replace(assetLiteralRe, `$1${replacement}$2$1`);
-
-        const staticExt = '(?:png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|woff2?|ttf|otf|eot)';
-        const staticLiteralRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})([^"'\`]+\\.${staticExt})\\1`, 'g');
-        rewritten = rewritten.replace(staticLiteralRe, `$1${replacement}$2$1`);
-
-        const nextInternalRe = new RegExp(`(["'\`])\\/(?!\\/|${escapedAlready})(_next\\/[^"'\`]*)\\1`, 'g');
-        rewritten = rewritten.replace(nextInternalRe, `$1${replacement}$2$1`);
-
-        // CSS url() rewrite
-        const cssUrlRe = new RegExp(`url\\(\\s*(["']?)\\/(?!\\/|${escapedAlready})([^"')]+\\.${staticExt})\\1\\s*\\)`, 'g');
-        rewritten = rewritten.replace(cssUrlRe, `url($1${replacement}$2$1)`);
-
-        // Frontend-only convenience: rewrite relative API calls
-        if (!isFullstack) {
-          const apiSlashRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\/`, 'g');
-          const apiExactRe = new RegExp(`(["'])\\/(?!\\/|${escapedAlready})api\\1`, 'g');
-          rewritten = rewritten
-            .replace(apiSlashRe, `$1${replacement}api/`)
-            .replace(apiExactRe, `$1${replacement}api$1`);
-        }
-        
-        res.setHeader('content-length', Buffer.byteLength(rewritten));
-        res.send(rewritten);
+      // ✅ Stream response body directly — no buffering, no rewriting.
+      // This preserves Streaming SSR (React 18 Suspense) and avoids
+      // the overhead of reading the entire response into memory.
+      if (response.body) {
+        // Strip content-length since we might be in chunked mode
+        res.removeHeader('content-length');
+        const nodeStream = Readable.fromWeb(response.body as any);
+        nodeStream.pipe(res);
       } else {
-        // Pass through binary content
-        const buffer = Buffer.from(await response.arrayBuffer());
-        res.setHeader('content-length', buffer.length);
-        res.send(buffer);
+        res.end();
       }
     } catch (error: any) {
       // Log detailed error including cause for debugging
@@ -554,4 +342,3 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     }
   };
 }
-

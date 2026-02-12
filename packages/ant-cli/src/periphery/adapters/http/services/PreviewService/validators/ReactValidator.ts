@@ -5,7 +5,13 @@ import { ValidationResult } from '../types';
 /**
  * ReactValidator
  * 
- * Validates React projects for dev server basename configuration
+ * Validates React (Vite) projects for native base path configuration.
+ * 
+ * All frameworks now use native base path via environment variables:
+ * - Vite: `base: process.env.VITE_BASE_PATH || '/'` in vite.config
+ * - React Router: `basename={import.meta.env.VITE_BASE_PATH || ''}`
+ * 
+ * The proxy no longer injects `window.__BASENAME__` or rewrites HTML.
  */
 export class ReactValidator {
   private maxFilesToScan = 250;
@@ -19,14 +25,13 @@ export class ReactValidator {
         const raw = await fs.promises.readFile(pkgPath, 'utf-8');
         const pkg = JSON.parse(raw);
         const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
-        // React Router v6+ typical packages
         if (deps['react-router-dom'] || deps['react-router']) return true;
       }
     } catch {
       // ignore and fall back to code scan
     }
     
-    // Fallback: source scan for imports/usages (handles unusual monorepo setups)
+    // Fallback: source scan for imports/usages
     const srcPath = path.join(codebasePath, 'src');
     if (!fs.existsSync(srcPath)) return false;
     
@@ -91,138 +96,168 @@ export class ReactValidator {
     return result;
   }
   
-  private hasRouterBasenameConfig(content: string): boolean {
-    // BrowserRouter basename prop
-    const browserRouterBasename =
-      content.includes('<BrowserRouter') &&
-      (content.includes('basename=') || content.includes('basename ='));
-    
-    // Data router basename option (react-router-dom v6.4+)
-    const dataRouterBasename =
-      content.includes('createBrowserRouter') &&
-      (content.includes('basename:') || content.includes('basename :'));
-    
-    return browserRouterBasename || dataRouterBasename;
+  /**
+   * Check if vite.config reads VITE_BASE_PATH for base
+   */
+  private async hasViteBaseConfig(codebasePath: string): Promise<boolean> {
+    const candidates = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs'];
+    for (const candidate of candidates) {
+      const configPath = path.join(codebasePath, candidate);
+      if (!fs.existsSync(configPath)) continue;
+      try {
+        const content = await fs.promises.readFile(configPath, 'utf-8');
+        // Check for `base:` config that reads VITE_BASE_PATH
+        if (content.includes('VITE_BASE_PATH') && /base\s*[:=]/.test(content)) {
+          return true;
+        }
+      } catch {
+        // skip
+      }
+    }
+    return false;
   }
   
-  private hasWindowBasenameUsage(content: string): boolean {
-    return content.includes('window.__BASENAME__');
-  }
-  
-  private hasWindowBasenameType(content: string): boolean {
+  /**
+   * Check if router uses basename from VITE_BASE_PATH env
+   */
+  private hasRouterEnvBasename(content: string): boolean {
+    // Check for basename reading from import.meta.env.VITE_BASE_PATH or ANT_BASE_PATH
     return (
-      (content.includes('interface Window') || content.includes('declare global')) &&
-      content.includes('__BASENAME__')
+      (content.includes('basename') &&
+       (content.includes('VITE_BASE_PATH') || content.includes('ANT_BASE_PATH')))
     );
   }
   
   /**
-   * Validate React project for basename configuration
+   * Legacy check: still accept window.__BASENAME__ for backward compatibility
+   * (projects generated before the unified base path approach)
+   */
+  private hasLegacyBasenameConfig(content: string): boolean {
+    return content.includes('__BASENAME__') && content.includes('basename');
+  }
+  
+  /**
+   * Validate React project for base path configuration
    */
   async validate(codebasePath: string): Promise<ValidationResult> {
-    // ✅ If the project does not use React Router, basename configuration is NOT required.
-    // This avoids false positives for single-page React apps without client-side routing.
+    // If the project does not use React Router, basename configuration is NOT required
     const hasRouter = await this.usesReactRouter(codebasePath);
     if (!hasRouter) {
+      // Still check for Vite base config (needed for asset paths even without router)
+      const hasViteBase = await this.hasViteBaseConfig(codebasePath);
+      if (!hasViteBase) {
+        return {
+          valid: false,
+          framework: 'react',
+          reasoning: 'basepath-missing',
+          reason: 'Missing Vite base path configuration for dev server proxy',
+          suggestedFix: this.buildViteBaseSuggestedFix(),
+        };
+      }
       return { valid: true, framework: 'react' };
     }
 
-    const srcPath = path.join(codebasePath, 'src');
-    const possibleFiles = ['App.tsx', 'App.jsx', 'main.tsx', 'main.jsx', 'index.tsx', 'index.jsx'];
-    const missingFiles: string[] = [];
+    // Check Vite base config
+    const hasViteBase = await this.hasViteBaseConfig(codebasePath);
     
+    // Check router basename config
     let hasBasenameConfig = false;
-    let hasWindowType = false;
-    let usesWindowBasename = false;
-    
-    for (const file of possibleFiles) {
-      const filePath = path.join(srcPath, file);
-      if (!fs.existsSync(filePath)) continue;
-      
-      try {
-        const stat = await fs.promises.stat(filePath);
-        if (stat.size > this.maxFileSizeBytes) continue;
-        const content = await fs.promises.readFile(filePath, 'utf-8');
-        
-        // Check for basename configuration (prefer fast-path on common entry files)
-        if (this.hasRouterBasenameConfig(content)) {
-          hasBasenameConfig = true;
-        }
-        
-        if (this.hasWindowBasenameUsage(content)) {
-          usesWindowBasename = true;
-        }
-        
-        // Check for Window type declaration (may live outside entry files)
-        if (this.hasWindowBasenameType(content)) {
-          hasWindowType = true;
-        }
-      } catch (error) {
-        // Skip file if read fails
-      }
-    }
-    
-    // ✅ If not found in typical entry files, scan src recursively.
-    // Many projects place Router config under src/presentation/router.tsx etc.
-    if (!hasBasenameConfig || !hasWindowType || !usesWindowBasename) {
-      if (fs.existsSync(srcPath)) {
-        const files = await this.collectSourceFiles(srcPath);
-        
-        for (const filePath of files) {
-          try {
-            const stat = await fs.promises.stat(filePath);
-            if (stat.size > this.maxFileSizeBytes) continue;
-            
-            const content = await fs.promises.readFile(filePath, 'utf-8');
-            
-            if (!hasBasenameConfig && this.hasRouterBasenameConfig(content)) {
-              hasBasenameConfig = true;
-            }
-            
-            if (!usesWindowBasename && this.hasWindowBasenameUsage(content)) {
-              usesWindowBasename = true;
-            }
-            
-            if (!hasWindowType && this.hasWindowBasenameType(content)) {
-              hasWindowType = true;
-            }
-            
-            if (hasBasenameConfig && hasWindowType && usesWindowBasename) {
-              break;
-            }
-          } catch {
-            // Skip
+    const srcPath = path.join(codebasePath, 'src');
+    if (fs.existsSync(srcPath)) {
+      const files = await this.collectSourceFiles(srcPath);
+      for (const filePath of files) {
+        try {
+          const stat = await fs.promises.stat(filePath);
+          if (stat.size > this.maxFileSizeBytes) continue;
+          const content = await fs.promises.readFile(filePath, 'utf-8');
+          if (this.hasRouterEnvBasename(content) || this.hasLegacyBasenameConfig(content)) {
+            hasBasenameConfig = true;
+            break;
           }
+        } catch {
+          // skip
         }
       }
     }
     
-    if (!hasBasenameConfig) {
+    if (!hasViteBase || !hasBasenameConfig) {
       return {
         valid: false,
         framework: 'react',
-        reasoning: 'basename-missing',
-        reason: 'Missing basename configuration for dev server proxy',
-        missingFiles: ['A router entry under src/ (e.g., App.tsx, main.tsx, presentation/router.tsx)'],
-        suggestedFix: `This preview server runs in Ant platform's proxy environment (/:serverKey/).
-
-Please add basename configuration for React Router to recognize the proxy path.`.trim()
-      };
-    }
-    
-    // Only require Window type when the project actually reads window.__BASENAME__
-    if (usesWindowBasename && !hasWindowType) {
-      return {
-        valid: false,
-        framework: 'react',
-        reasoning: 'basename-missing',
-        reason: 'Missing Window.__BASENAME__ type declaration for dev server proxy',
-        missingFiles: ['Any TS file under src/ (e.g., global.d.ts or router file)'],
-        suggestedFix: `Please add type declaration for window.__BASENAME__ so TypeScript can recognize it.`.trim()
+        reasoning: 'basepath-missing',
+        reason: 'Missing base path configuration for dev server proxy',
+        suggestedFix: this.buildFullSuggestedFix(!hasViteBase, !hasBasenameConfig),
       };
     }
     
     return { valid: true, framework: 'react' };
   }
+  
+  private buildViteBaseSuggestedFix(): string {
+    return [
+      'This preview server runs in the Ant platform\'s proxy environment (/:urlKey/).',
+      '',
+      'Please add `base` to your Vite config so all asset paths include the proxy prefix:',
+      '',
+      '```js',
+      '// vite.config.ts',
+      'export default defineConfig({',
+      '  base: process.env.VITE_BASE_PATH || \'/\',',
+      '  // ... other config',
+      '})',
+      '```',
+      '',
+      'The `VITE_BASE_PATH` environment variable is injected automatically by the Ant platform.',
+      'When running outside Ant, it defaults to \'/\' (no prefix).',
+    ].join('\n');
+  }
+  
+  private buildFullSuggestedFix(missingViteBase: boolean, missingRouterBasename: boolean): string {
+    const lines: string[] = [
+      'This preview server runs in the Ant platform\'s proxy environment (/:urlKey/).',
+      '',
+    ];
+    
+    if (missingViteBase) {
+      lines.push(
+        '1. Add `base` to your Vite config:',
+        '',
+        '```js',
+        '// vite.config.ts',
+        'export default defineConfig({',
+        '  base: process.env.VITE_BASE_PATH || \'/\',',
+        '})',
+        '```',
+        '',
+      );
+    }
+    
+    if (missingRouterBasename) {
+      lines.push(
+        `${missingViteBase ? '2' : '1'}. Add basename to your React Router:`,
+        '',
+        '```tsx',
+        '// Router setup',
+        '<BrowserRouter basename={import.meta.env.VITE_BASE_PATH || \'\'}>',
+        '  {/* routes */}',
+        '</BrowserRouter>',
+        '```',
+        '',
+        'Or for data router (v6.4+):',
+        '```tsx',
+        'const router = createBrowserRouter(routes, {',
+        '  basename: import.meta.env.VITE_BASE_PATH || \'\'',
+        '});',
+        '```',
+        '',
+      );
+    }
+    
+    lines.push(
+      'The `VITE_BASE_PATH` environment variable is injected automatically by the Ant platform.',
+      'When running outside Ant, it defaults to empty/\'/\' (no prefix).',
+    );
+    
+    return lines.join('\n');
+  }
 }
-
