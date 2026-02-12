@@ -508,6 +508,11 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         state: isCheckingFigma ? 'checking' : (figmaConfigured ? 'configured' : 'not-configured'),
         label: figmaConfigured ? '✓ Connected' : 'Not connected',
       }}
+      extraBadge={figmaConfigured ? (
+        <span className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+          기능 지원 예정
+        </span>
+      ) : undefined}
       hint="OAuth 2.0 authentication • Managed securely by Figma"
     >
       {figmaConfigured ? (
@@ -532,6 +537,9 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
               {isDisconnectingFigma ? 'Disconnecting...' : 'Disconnect'}
             </button>
           </div>
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+            Figma 계정이 연결되었습니다. MCP 클라이언트 등록 후 디자인 임포트 기능이 지원될 예정입니다.
+          </p>
         </div>
       ) : (
         <div>
@@ -559,14 +567,14 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       
       <div className="flex-1 overflow-y-auto p-6">
         <div className="space-y-8">
-          {/* Local Backend Section */}
+          {/* GitHub Integration Section */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6 first:border-t-0 first:pt-0">
-            {renderLocalBackendSection()}
+            {renderGitHubSection()}
           </div>
           
-          {/* GitHub Integration Section */}
+          {/* Local Backend Section */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-            {renderGitHubSection()}
+            {renderLocalBackendSection()}
           </div>
           
           {/* Figma Integration Section */}

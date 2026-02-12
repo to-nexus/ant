@@ -261,5 +261,44 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
     }
   });
 
+  // ============================================
+  // Delete Transfer Request (Remove from history)
+  // ============================================
+
+  /**
+   * DELETE /api/artifacts/transfer-requests/:id
+   * Delete a completed transfer request from history.
+   * Only the sender can delete their own sent requests.
+   * Only non-pending requests can be deleted (approved/rejected/expired/cancelled).
+   */
+  router.delete('/artifacts/transfer-requests/:id', async (req: Request, res: Response) => {
+    try {
+      const userContext = extractUserContext(req);
+      const requestId = req.params.id;
+
+      // Verify the request exists and belongs to the sender
+      const request = await stateStore.getTransferRequest(requestId);
+      if (!request) {
+        return res.status(404).json({ error: 'NOT_FOUND', message: '전송 요청을 찾을 수 없습니다.' });
+      }
+
+      // Only sender can delete
+      if (request.sender.userId !== userContext.userId || request.sender.orgId !== userContext.organizationId) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '본인이 보낸 요청만 삭제할 수 있습니다.' });
+      }
+
+      // Only completed (non-pending) requests can be deleted
+      if (request.status === 'pending') {
+        return res.status(400).json({ error: 'INVALID_STATUS', message: '대기 중인 요청은 취소만 가능합니다.' });
+      }
+
+      await stateStore.deleteTransferRequest(requestId);
+
+      res.json({ success: true, id: requestId });
+    } catch (error: any) {
+      sendTransferError(res, error);
+    }
+  });
+
   return router;
 }
