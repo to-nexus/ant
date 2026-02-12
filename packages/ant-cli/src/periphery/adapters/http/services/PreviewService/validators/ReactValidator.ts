@@ -128,13 +128,6 @@ export class ReactValidator {
     );
   }
   
-  /**
-   * Legacy check: still accept window.__BASENAME__ for backward compatibility
-   * (projects generated before the unified base path approach)
-   */
-  private hasLegacyBasenameConfig(content: string): boolean {
-    return content.includes('__BASENAME__') && content.includes('basename');
-  }
   
   /**
    * Validate React project for base path configuration
@@ -170,7 +163,7 @@ export class ReactValidator {
           const stat = await fs.promises.stat(filePath);
           if (stat.size > this.maxFileSizeBytes) continue;
           const content = await fs.promises.readFile(filePath, 'utf-8');
-          if (this.hasRouterEnvBasename(content) || this.hasLegacyBasenameConfig(content)) {
+          if (this.hasRouterEnvBasename(content)) {
             hasBasenameConfig = true;
             break;
           }

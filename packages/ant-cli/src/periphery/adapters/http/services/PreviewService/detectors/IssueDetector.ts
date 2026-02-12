@@ -81,12 +81,21 @@ export class IssueDetector {
         severity: 'warning',
         reason,
         suggestedFix: [
-          'This project runs as a fullstack dev server under the Ant platform with dynamic backend ports.',
-          'Please update the frontend so API requests can target the backend address injected at runtime.',
+          'This project runs as a fullstack dev server under the Ant platform.',
+          'The frontend must read the backend API base URL from the environment.',
           '',
-          '- Prefer reading a runtime-injected API base URL (Vite projects typically use `import.meta.env` variables).',
-          '- Alternatively, route API calls through a stable relative path (e.g., `/api`) and rely on dev/proxy routing.',
-          "- Keep non-Ant execution working by preserving the project's existing defaults/behavior.",
+          'Use `import.meta.env.VITE_API_BASE_URL` as the prefix for all API calls:',
+          '',
+          '```typescript',
+          "const API_BASE = import.meta.env.VITE_API_BASE_URL || '';",
+          'fetch(`${API_BASE}/api/users`)',
+          '```',
+          '',
+          'The `VITE_API_BASE_URL` is injected automatically by the Ant platform at runtime.',
+          'When running outside Ant, it defaults to empty string (direct localhost access).',
+          '',
+          'Alternatively, route API calls through a stable relative path (e.g., `/api`)',
+          'and rely on Vite dev server proxy routing.',
         ].join('\n')
       };
     } catch {

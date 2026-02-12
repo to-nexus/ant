@@ -108,8 +108,8 @@ export function usePreviewManager(
     // Initial sync
     syncStatus();
     
-    // Periodic sync every 30s — recovers from missed SSE events
-    const intervalId = setInterval(syncStatus, 30_000);
+    // Periodic sync every 5s — recovers from missed SSE events
+    const intervalId = setInterval(syncStatus, 5_000);
     
     return () => clearInterval(intervalId);
   }, [selectedProject, selectedFeature, setPreviewStatus]);

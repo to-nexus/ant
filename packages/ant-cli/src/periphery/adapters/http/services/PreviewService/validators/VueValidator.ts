@@ -55,8 +55,7 @@ export class VueValidator {
         
         // Check for createWebHistory reading from env var
         if (content.includes('createWebHistory') &&
-            (content.includes('VITE_BASE_PATH') || content.includes('ANT_BASE_PATH') ||
-             content.includes('__BASENAME__'))) {  // legacy compat
+            (content.includes('VITE_BASE_PATH') || content.includes('ANT_BASE_PATH'))) {
           hasRouterBase = true;
           break;
         }
