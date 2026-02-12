@@ -186,6 +186,33 @@ export function createProjectsRoutes(deps: {
     }
   });
 
+  // Publish existing codebase to a new GitHub repository
+  // Unlike initialize, this allows features to already exist and creates branches for them.
+  router.post('/projects/:id/publish', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    try {
+      const userContext = extractUserContext(req);
+      const { activeFeature } = req.body || {};
+      
+      logger.info(`Publishing codebase to GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
+      
+      await deps.projectService.publishToGitHub(projectId, userContext, activeFeature);
+      res.json({ success: true, message: 'Codebase published to GitHub successfully' });
+    } catch (error: any) {
+      logger.warn(`Publish failed: ${error.message}`, { component: 'Projects', projectId }, error);
+      
+      if (error.message.includes('not configured') || error.message.includes('not found')) {
+        res.status(400).json({ success: false, error: error.message });
+      } else if (error.message.includes('already initialized') || error.message.includes('already exists')) {
+        res.status(409).json({ success: false, error: error.message });
+      } else if (error.message.includes('authentication failed')) {
+        res.status(401).json({ success: false, error: error.message });
+      } else {
+        res.status(500).json({ success: false, error: error.message });
+      }
+    }
+  });
+
   // Push to GitHub
   router.post('/projects/:id/push', async (req: Request, res: Response) => {
     const projectId = req.params.id;
@@ -317,6 +344,19 @@ export function createProjectsRoutes(deps: {
         currentBranch: result.currentBranch
       });
     } catch (error: any) {
+      // ✅ Graceful handling: if Git is not initialized, skip branch switch silently
+      // This supports the "work first, git later" workflow where features exist without Git.
+      if (error.message?.includes('not initialized') || error.message?.includes('Repository not initialized')) {
+        logger.info(`Git not initialized, skipping branch switch for ${featureName}`, { component: 'Projects', projectId, featureName });
+        res.json({ 
+          success: true, 
+          message: 'Feature selected (Git not initialized, branch switch skipped)', 
+          branchName: featureName,
+          currentBranch: null
+        });
+        return;
+      }
+      
       logger.warn(`Branch switch failed: ${error.message}`, { component: 'Projects', projectId, featureName }, error);
       
       res.status(400).json({ success: false, error: error.message });

@@ -4,7 +4,7 @@ import { getGitStatus } from '@/infrastructure/http/api';
 
 export interface GitActions {
   setGitStatusLoading: (loading: boolean) => void;
-  setGitStatusPhase: (phase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | null) => void;
+  setGitStatusPhase: (phase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | 'publishing' | null) => void;
   setGitStatus: (status: GitStatus | null) => void;  // ✅ Single setter for Git status
   fetchGitStatus: (projectId: string) => Promise<void>;  // ✅ Fetch and update Git status
   refreshGitStatus: () => void;  // ✅ Helper to trigger refresh

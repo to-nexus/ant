@@ -17,8 +17,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   // ==================
   userEmail: undefined,
   userOrganization: undefined,
-  selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'architect',
-  selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan') || 'code',
+  selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'planner',
+  selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan') || 'plan',
 
   // ==================
   // Actions

@@ -8,6 +8,7 @@ import { PullOperation } from './operations/PullOperation';
 import { FetchOperation } from './operations/FetchOperation';
 import { SyncOperation } from './operations/SyncOperation';
 import { CommitOperation } from './operations/CommitOperation';
+import { PublishOperation } from './operations/PublishOperation';
 
 /**
  * RemoteService (Facade)
@@ -26,6 +27,7 @@ export class RemoteService {
   private readonly fetchOp: FetchOperation;
   private readonly syncOp: SyncOperation;
   private readonly commitOp: CommitOperation;
+  private readonly publishOp: PublishOperation;
 
   constructor(
     workspaceResolver: WorkspaceResolver,
@@ -39,6 +41,7 @@ export class RemoteService {
     this.fetchOp = new FetchOperation(workspaceResolver, githubAuthService);
     this.syncOp = new SyncOperation(workspaceResolver, githubAuthService);
     this.commitOp = new CommitOperation(workspaceResolver);
+    this.publishOp = new PublishOperation(workspaceResolver, githubAuthService, onIndexingTrigger);
   }
 
   /**
@@ -108,6 +111,14 @@ export class RemoteService {
     message?: string
   ): Promise<{ success: boolean; commitHash?: string }> {
     return this.commitOp.execute(projectId, userContext, message);
+  }
+
+  /**
+   * Publish existing codebase to a new GitHub repository.
+   * Unlike init, this allows features to already exist and creates branches for them.
+   */
+  async publishToGitHub(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {
+    return this.publishOp.execute(projectId, userContext, activeFeature);
   }
 }
 

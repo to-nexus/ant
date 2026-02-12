@@ -129,6 +129,10 @@ export class GitService {
     return this.remote.commitChanges(projectId, userContext, message);
   }
 
+  async publishToGitHub(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {
+    return this.remote.publishToGitHub(projectId, userContext, activeFeature);
+  }
+
   // =====================================
   // Indexing Operations
   // =====================================

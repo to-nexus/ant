@@ -229,5 +229,9 @@ export class ProjectService {
   ): Promise<{ success: boolean; commitHash?: string }> {
     return this.git.commitChanges(projectId, userContext, message);
   }
+  
+  async publishToGitHub(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {
+    return this.git.publishToGitHub(projectId, userContext, activeFeature);
+  }
 }
 

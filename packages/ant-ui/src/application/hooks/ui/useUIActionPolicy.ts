@@ -166,15 +166,13 @@ export function useUIActionPolicy(): UIActionPolicy {
   /**
    * Rule 7: Feature 생성 조건
    * - 작업 중이 아니고(파일/브랜치 변화),
-   * - project 선택됨,
-   * - Cloud 모드에서는 Git repo가 init/clone 되어 있어야 함
+   * - project 선택됨
+   * - Git 없이도 피처 생성 허용 (나중에 Publish to Git으로 연동 가능)
    */
   const canCreateFeature =
     !isWorkInProgress &&
     canPerformAnyAction &&
-    !!selectedProject &&
-    (backendMode !== 'cloud' ? true : !!gitStatus?.hasGit) &&
-    (backendMode !== 'cloud' ? true : !isGitStatusLoading);
+    !!selectedProject;
   
   // ============================================
   // Disabled Reason (비활성화 사유 메시지)
@@ -205,10 +203,6 @@ export function useUIActionPolicy(): UIActionPolicy {
     createFeatureDisabledReason = 'Task is running';
   } else if (!selectedProject) {
     createFeatureDisabledReason = 'Select workspace first';
-  } else if (backendMode === 'cloud' && isGitStatusLoading) {
-    createFeatureDisabledReason = 'Checking Git status...';
-  } else if (backendMode === 'cloud' && !gitStatus?.hasGit) {
-    createFeatureDisabledReason = 'Clone/Initialize Git repo first';
   }
   
   // ============================================
