@@ -236,7 +236,7 @@ export class PreviewService {
           type: 'log',    // subtype for frontend handler
           data: logEntry
         }
-      }).catch(err => logger.warn('Failed to publish preview log', { component: 'PreviewService' }, err));
+      }).catch(err => logger.error(`[Preview] PUBLISH log failed for ${serverKey}`, { component: 'PreviewService' }, err));
     }
   }
   
@@ -268,7 +268,7 @@ export class PreviewService {
         }
       }).then(() => {
         logger.debug(`[Preview] Published to ${channel}: ${projectId}/${feature}`, { component: 'PreviewService' });
-      }).catch(err => logger.warn('Failed to publish preview status', { component: 'PreviewService' }, err));
+      }).catch(err => logger.error(`[Preview] PUBLISH failed for ${serverKey} on channel ${channel}`, { component: 'PreviewService' }, err));
     } else {
       logger.warn(`[Preview] No stateStore, cannot broadcast: ${serverKey}`, { component: 'PreviewService' });
     }
@@ -462,7 +462,7 @@ export class PreviewService {
         
         const extraEnv: Record<string, string | undefined> = {};
         if (pkg.type === 'frontend' && backendPort) {
-          extraEnv.VITE_API_BASE_URL = `/${serverKey}`;
+          extraEnv.VITE_API_BASE_URL = `/${toUrlKey(serverKey)}`;
         }
         
         const childProcess = this.processSpawner.spawn(pkg, pkgPort, {

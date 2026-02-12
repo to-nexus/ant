@@ -146,10 +146,14 @@ export function useUIActionPolicy(): UIActionPolicy {
    * Rule 5: Preview 시작 조건
    * - NOT job running (작업 실행 중 아님)
    * - NOT preview loading (프리뷰 시작/중단 중 아님)
+   * - NOT in transitional phase (installing, starting, validating)
    * - NOT disconnected
    * - project 선택됨
    */
-  const canStartPreview = !isRunning && !isPreviewLoading && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false);
+  const isPreviewTransitioning = ['installing', 'starting', 'validating'].includes(
+    (previewStatus as any)?.phase ?? ''
+  );
+  const canStartPreview = !isRunning && !isPreviewLoading && !isPreviewTransitioning && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false);
   
   /**
    * Rule 6: Preview 중단 조건

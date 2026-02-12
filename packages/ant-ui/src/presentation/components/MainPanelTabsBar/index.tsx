@@ -32,9 +32,9 @@ export function MainPanelTabsBar() {
     if (!currentJobId || isJobTabCleared) return 'Job';
     
     if (activeTab === 'job') {
-      return `Job ${currentJobId}`;
+      return `Job (${currentJobId})`;
     } else {
-      return `Job ${currentJobId.slice(0, 8)}...`;
+      return `Job (${currentJobId.slice(0, 8)}...)`;
     }
   };
 
@@ -91,7 +91,7 @@ export function MainPanelTabsBar() {
         icon={tabConfig.icon}
         label={tabConfig.label}
         isActive={activeTab === tabKey}
-        showText={activeTab !== 'job'}
+        showText={activeTab === tabKey}
         showCloseButton={true}
         onClick={() => selectMainPanelTab(tabKey)}
         onClose={() => closeMainPanelTab(tabKey)}
@@ -108,7 +108,7 @@ export function MainPanelTabsBar() {
           label={getJobTabLabel()}
           isActive={activeTab === 'job'}
           isJobTab={true}
-          showText={true}
+          showText={activeTab === 'job'}
           showCloseButton={!!currentJobId}
           title={currentJobId && !isJobTabCleared ? `Job ID: ${currentJobId}` : 'Job'}
           onClick={() => selectMainPanelTab('job')}

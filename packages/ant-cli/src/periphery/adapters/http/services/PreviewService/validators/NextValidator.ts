@@ -103,8 +103,14 @@ export class NextValidator {
         suggestedFix: this.buildSuggestedFix(true, false),
       };
     } catch {
-      // Can't read config — don't block
-      return { valid: true, framework: 'next' };
+      // Config file exists but can't be read — treat as invalid so the user is notified
+      return {
+        valid: false,
+        framework: 'next',
+        reasoning: 'basepath-missing',
+        reason: 'Could not read Next.js config file to verify basePath configuration',
+        suggestedFix: this.buildSuggestedFix(true, false),
+      };
     }
   }
   
