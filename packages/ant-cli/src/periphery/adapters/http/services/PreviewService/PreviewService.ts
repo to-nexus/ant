@@ -7,7 +7,7 @@ import { PortManager } from '../../../../../infrastructure/networking/PortManage
 import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase } from '../../../../../core/ports/portRegistry';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
-import { createServerKey, parseServerKey } from './utils/serverKeyUtils';
+import { createServerKey, parseServerKey, toUrlKey } from './utils/serverKeyUtils';
 import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
 import { ProjectValidator } from './validators/ProjectValidator';
@@ -153,7 +153,7 @@ export class PreviewService {
             phase: state.phase,
             error: state.error,
             port: state.port || undefined,
-            url: state.port ? `/${serverKey}` : undefined,
+            url: state.port ? `/${toUrlKey(serverKey)}` : undefined,
             packages: state.packages || [],
             issues: state.issues || [],
           };
@@ -314,7 +314,8 @@ export class PreviewService {
     logger.warn(`[Preview] startPreview: ${tenantId}:${userId}:${projectId}:${feature}`, { component: 'PreviewService' });
     
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
-    const proxyUrl = `/${serverKey}`;
+    const urlKey = toUrlKey(serverKey);
+    const proxyUrl = `/${urlKey}`;
     
     // ── Distributed lock: prevent multi-pod race ──
     // Only one pod should handle start for a given serverKey at a time.
@@ -534,20 +535,9 @@ export class PreviewService {
           return this.handleValidationFailure(serverKey, tenantId, userId, projectId, feature, processes, orderedPackages, structure.entry.path, validation);
         }
         
-        // Track if this project uses native basePath (Next.js with basePath configured).
-        // Stored in Redis so any pod's proxy can read it for correct routing.
-        if (validation.framework === 'next') {
-          try {
-            const parsed = parseServerKey(serverKey);
-            if (parsed && this.portRegistry) {
-              await this.portRegistry.updatePreview(parsed.tenantId, parsed.userId, parsed.projectId, parsed.feature, {
-                nativeBasePath: true
-              });
-            }
-          } catch {
-            // best-effort; proxy will fall back to standard rewriting
-          }
-          logger.info(`[Preview] Next.js with native basePath detected for ${serverKey}`, { component: 'PreviewService' });
+        // Log framework detection (all frameworks now use native base path via env var)
+        if (validation.framework) {
+          logger.info(`[Preview] Framework detected: ${validation.framework} for ${serverKey}`, { component: 'PreviewService' });
         }
       }
 
@@ -960,7 +950,7 @@ export class PreviewService {
             phase: redisState.phase || (redisState.ready ? 'running' : redisState.running ? 'starting' : 'idle'),
             error: redisState.error,
             port: redisState.port || undefined,
-            url: redisState.port ? `/${serverKey}` : undefined,
+            url: redisState.port ? `/${toUrlKey(serverKey)}` : undefined,
             processCount: aliveProcesses.length || (redisState.packages?.length || 0),
             backendPort: redisState.backendPort,
             packages: redisState.packages || [],
@@ -1004,23 +994,8 @@ export class PreviewService {
     return this.logManager.getLogs(serverKey);
   }
   
-  /**
-   * Check if a preview uses native basePath (e.g. Next.js with basePath config).
-   * Reads from Redis for multi-pod consistency.
-   * When true, the proxy should NOT strip the serverKey prefix from request paths
-   * and should NOT rewrite HTML or inject client-side scripts — the framework
-   * already generates all URLs with the correct prefix.
-   */
-  async hasNativeBasePath(serverKey: string): Promise<boolean> {
-    try {
-      const parsed = parseServerKey(serverKey);
-      if (!parsed || !this.portRegistry) return false;
-      const state = await this.portRegistry.getPreview(parsed.tenantId, parsed.userId, parsed.projectId, parsed.feature);
-      return state?.nativeBasePath === true;
-    } catch {
-      return false;
-    }
-  }
+  // nativeBasePath check removed — all frameworks now use native base path via env var injection.
+  // The proxy always keeps the URL key prefix and streams responses without rewriting.
   
   /**
    * Stream logs via SSE (used by RealtimeServer only)

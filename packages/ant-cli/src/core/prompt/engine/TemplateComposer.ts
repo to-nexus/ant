@@ -393,8 +393,8 @@ export class TemplateComposer {
       'service-guide': {},
       'game-domain-guide': {},
       'service-domain-guide': {},
-      'dev-server-setup': {},  // ✅ Dev server basename setup for frontend routing
-      'dev-server-env-contract': {}  // ✅ Dev server runtime contract (dynamic ports / API base injection)
+      'preview-setup': {},  // ✅ Preview base path setup for frontend routing
+      'preview-env-contract': {}  // ✅ Preview runtime contract (base path, dynamic ports, API base)
     };
     
     return varMap[filename] || {};

@@ -1,5 +1,6 @@
 import { spawn, ChildProcess, execSync } from 'child_process';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
+import { toUrlKey } from '../utils/serverKeyUtils';
 import { logger } from '../../../../../../utils/logger';
 
 export interface SpawnOptions {
@@ -182,14 +183,28 @@ export class ProcessSpawner {
       args = ['run', 'dev'];
     }
     
-    // Next.js basePath: inject NEXT_PUBLIC_BASE_PATH so next.config can read it.
-    // This is the runtime counterpart of the NextValidator's suggested fix.
-    // When next.config.js contains `basePath: process.env.NEXT_PUBLIC_BASE_PATH || ''`,
-    // Next.js will serve all routes and assets under /{serverKey}/ prefix natively,
-    // eliminating the need for proxy-level HTML rewriting and preventing SSR hydration mismatches.
-    const nextJsEnv: Record<string, string> = {};
-    if (isNextJs && options.serverKey) {
-      nextJsEnv.NEXT_PUBLIC_BASE_PATH = `/${options.serverKey}`;
+    // Inject base path environment variables for ALL frontend frameworks.
+    // Every framework uses its native base path mechanism so that
+    // the proxy can always keep the URL key prefix and stream responses
+    // without any HTML rewriting.
+    //
+    // Framework-specific env vars:
+    //   Next.js:  NEXT_PUBLIC_BASE_PATH  → next.config.js basePath
+    //   Vite:     VITE_BASE_PATH         → vite.config.ts base
+    // Universal:  ANT_BASE_PATH          → generic fallback for custom setups
+    const basePathEnv: Record<string, string> = {};
+    if (pkg.type === 'frontend' && options.serverKey) {
+      const urlKey = toUrlKey(options.serverKey);
+      const basePath = `/${urlKey}`;
+
+      // Universal env var (always injected for frontend packages)
+      basePathEnv.ANT_BASE_PATH = basePath;
+
+      if (isNextJs) {
+        basePathEnv.NEXT_PUBLIC_BASE_PATH = basePath;
+      } else if (devScript?.includes('vite')) {
+        basePathEnv.VITE_BASE_PATH = basePath;
+      }
     }
     
     const env = {
@@ -206,7 +221,7 @@ export class ProcessSpawner {
       CHOKIDAR_USEPOLLING: 'true',
       CHOKIDAR_INTERVAL: '3000',    // 3s interval — preview doesn't need instant HMR
       WATCHPACK_POLLING: 'true',
-      ...nextJsEnv,
+      ...basePathEnv,
       ...(options.extraEnv || {})
     };
     

@@ -42,8 +42,9 @@ export interface PreviewState {
   phase: PreviewPhase;
   error?: string;                  // Error message when phase is 'error'
   
-  // Framework hints (for proxy routing)
-  nativeBasePath?: boolean;        // true if framework uses native basePath (e.g. Next.js with basePath config)
+  // nativeBasePath removed — all frameworks now use native base path via env var injection.
+  // Kept as optional field for backward compat with existing Redis entries during rollout.
+  nativeBasePath?: boolean;
   
   // Packages
   packages: PreviewPackage[];

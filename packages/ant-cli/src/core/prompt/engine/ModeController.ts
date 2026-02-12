@@ -193,12 +193,12 @@ export class ModeController {
         injections.push(envPath);
         console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
         
-        // ✅ NEW: Dev server setup for frontend projects
+        // ✅ Preview setup for frontend projects (base path + env contract)
         if (environment === 'browser' || environment === 'fullstack') {
-          injections.push(`${jobPrefix}/dev-server-setup`);
-          console.log(`[ModeController] Adding dev-server-setup for frontend environment`);
-          // ✅ NEW: Dev server runtime contract (dynamic env injection: API base, ports)
-          injections.push(`${jobPrefix}/dev-server-env-contract`);
+          injections.push(`${jobPrefix}/preview-setup`);
+          console.log(`[ModeController] Adding preview-setup for frontend environment`);
+          // ✅ Preview runtime contract (dynamic env injection: base path, API base, ports)
+          injections.push(`${jobPrefix}/preview-env-contract`);
         }
       }
       
