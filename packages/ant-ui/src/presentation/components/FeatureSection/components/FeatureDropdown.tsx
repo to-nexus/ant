@@ -56,7 +56,7 @@ export function FeatureDropdown({
       onDelete={onDelete}
       onItemCreated={onItemCreated}
       placeholder={t('feature.placeholder')}
-      inputPlaceholder="Feature name..."
+      inputPlaceholder={t('featureDropdown.featureNamePlaceholder')}
       onPlayClick={onPlayClick}
       onStopClick={onStopClick}
       isPlaying={previewRunning}

@@ -90,7 +90,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     
     CONFIG_SCHEMA.forEach(field => {
       if (field.required && !editedConfig[field.key]) {
-        newErrors[field.key] = `${field.label} is required`;
+        newErrors[field.key] = t('projectEditor.fieldRequired', { field: t(field.label) });
       }
     });
     

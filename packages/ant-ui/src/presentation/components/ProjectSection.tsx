@@ -10,6 +10,7 @@ import {
   ProjectConfig,
   cloneGitHubRepo,
   initializeGitHubRepo,
+  publishToGitHub,
   pushToGitHub,
   pullFromGitHub
 } from '@/infrastructure/http/api';
@@ -25,6 +26,7 @@ export function ProjectSection() {
   const { 
     projects, 
     selectedProject, 
+    selectedFeature,
     setSelectedProject, 
     fetchProjects, 
     openMainPanelTab,
@@ -124,7 +126,7 @@ export function ProjectSection() {
   // Git handlers
   const handleGitAction = async (
     action: () => Promise<any>, 
-    actionType: 'fetch' | 'push' | 'pull' | 'clone' | 'init',
+    actionType: 'fetch' | 'push' | 'pull' | 'clone' | 'init' | 'publish',
     shouldRefreshGitStatus = true
   ) => {
     if (!selectedProject) return;
@@ -138,7 +140,8 @@ export function ProjectSection() {
       'push': 'pushing',
       'pull': 'pulling',
       'clone': 'cloning',
-      'init': 'initializing'
+      'init': 'initializing',
+      'publish': 'publishing'
     } as const;
     
     setGitStatusPhase(phaseMap[actionType]);
@@ -146,9 +149,14 @@ export function ProjectSection() {
     try {
       const result = await action();
       if (result.success) {
-        // ✅ For clone/init, show success popup (one-time operations)
-        if (actionType === 'clone' || actionType === 'init') {
-          showSuccess(actionType === 'clone' ? t('git.repoCloned') : t('git.repoInitialized'));
+        // ✅ For clone/init/publish, show success popup (one-time operations)
+        if (actionType === 'clone' || actionType === 'init' || actionType === 'publish') {
+          const successMessages = {
+            'clone': t('git.repoCloned'),
+            'init': t('git.repoInitialized'),
+            'publish': t('git.repoPublished')
+          } as const;
+          showSuccess(successMessages[actionType]);
         }
         
         // Refresh Git status after successful operation
@@ -177,6 +185,12 @@ export function ProjectSection() {
     () => initializeGitHubRepo(selectedProject!),
     'init',
     true  // Refresh Git status after init
+  );
+
+  const handlePublish = () => handleGitAction(
+    () => publishToGitHub(selectedProject!, selectedFeature || undefined),
+    'publish',
+    true  // Refresh Git status after publish
   );
 
   const handlePush = () => handleGitAction(
@@ -307,15 +321,29 @@ export function ProjectSection() {
                       </button>
                     </>
                   ) : !gitStatus?.hasGit && gitStatus?.hasFeatures ? (
-                    // Case 2: No Git, Has Features → Show warning
-                    <div className="px-3 py-4 text-center">
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {t('config:git.featuresExist')}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                        {t('config:git.deleteFeaturesFirst')}
-                      </div>
-                    </div>
+                    // Case 2: No Git, Has Features → Show Publish + Clone options
+                    <>
+                      <button
+                        onClick={handlePublish}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">{t('config:git.publish')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.publishDesc')}</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={handleClone}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Download className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">{t('config:git.clone')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.cloneDesc')}</div>
+                        </div>
+                      </button>
+                    </>
                   ) : (
                     // Case 3: Has Git → Show Push/Pull/Fetch
                     <>

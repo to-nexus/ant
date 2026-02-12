@@ -5,6 +5,7 @@ import { UnifiedTask } from '@/domain/models/task';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import type { ActiveWorkerNode } from '@/domain/models/workflow';
 import { useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 
 /**
@@ -65,6 +66,7 @@ export function KanbanColumns({
   onShineComplete,
   onInProgressAnimationComplete
 }: KanbanColumnsProps) {
+  const { t } = useTranslation('kanban');
   const isHorizontalSplit = splitLayout === 'horizontal';
   
   // ✅ Sort todo tasks by priority before rendering
@@ -129,7 +131,7 @@ export function KanbanColumns({
         }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 To Do</h3>
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">📝 {t('columns.todo')}</h3>
             <Badge variant="secondary" className="text-xs">
               {sortedTodoTasks.length}
             </Badge>
@@ -166,7 +168,7 @@ export function KanbanColumns({
             })}
             {sortedTodoTasks.length === 0 && !isHorizontalSplit && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
-                No pending tasks
+                {t('columns.noPendingTasks')}
               </div>
             )}
           </div>
@@ -179,7 +181,7 @@ export function KanbanColumns({
         }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 In Progress</h3>
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">🚀 {t('columns.inProgress')}</h3>
             <Badge variant="secondary" className="text-xs">
               {inProgressTasks.length}
             </Badge>
@@ -223,7 +225,7 @@ export function KanbanColumns({
             })}
             {inProgressTasks.length === 0 && !isHorizontalSplit && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
-                No task in progress
+                {t('columns.noTaskInProgress')}
               </div>
             )}
           </div>
@@ -236,7 +238,7 @@ export function KanbanColumns({
         }>
           {/* Column Header */}
           <div className="flex items-center gap-2 mb-3 shrink-0">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ Completed</h3>
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">✅ {t('columns.completed')}</h3>
             <Badge variant="secondary" className="text-xs">
               {completedTasks.length}
             </Badge>
@@ -318,7 +320,7 @@ export function KanbanColumns({
             })}
             {completedTasks.length === 0 && !isHorizontalSplit && (
               <div className="text-center text-gray-500 dark:text-gray-400 text-sm py-8">
-                No completed tasks yet
+                {t('columns.noCompletedTasks')}
               </div>
             )}
           </div>

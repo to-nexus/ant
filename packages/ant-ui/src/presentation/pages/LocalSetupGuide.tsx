@@ -20,11 +20,10 @@ export function LocalSetupGuide() {
             <Laptop className="w-8 h-8 text-blue-600 dark:text-blue-400" />
           </div>
           <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-            Connect to Your Local Backend
+            {t('localSetup.heroTitle')}
           </h2>
           <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-            Run the ANT backend and IDE servers locally to work with your local codebase 
-            while using this cloud-hosted frontend.
+            {t('localSetup.heroDesc')}
           </p>
         </div>
 
@@ -32,28 +31,28 @@ export function LocalSetupGuide() {
         <div className="mb-12 p-6 rounded-xl bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700">
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-            Benefits of Local Backend
+            {t('localSetup.benefitsTitle')}
           </h3>
           <ul className="space-y-2 text-gray-700 dark:text-gray-300">
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>{t('localSetup.directAccess')}</strong> Work with your local codebase directly</span>
+              <span><strong>{t('localSetup.directAccess')}</strong> {t('localSetup.directAccessDesc')}</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>{t('localSetup.preferredIde')}</strong> Open files in Cursor, VS Code, or any local editor</span>
+              <span><strong>{t('localSetup.preferredIde')}</strong> {t('localSetup.preferredIdeDesc')}</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>{t('localSetup.fullPrivacy')}</strong> All AI processing and data stays on your machine</span>
+              <span><strong>{t('localSetup.fullPrivacy')}</strong> {t('localSetup.fullPrivacyDesc')}</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>{t('localSetup.noAuth')}</strong> Skip sign-up and start coding immediately</span>
+              <span><strong>{t('localSetup.noAuth')}</strong> {t('localSetup.noAuthDesc')}</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-600 dark:text-green-400">✓</span>
-              <span><strong>{t('localSetup.cloudFrontend')}</strong> Use this optimized UI without local setup</span>
+              <span><strong>{t('localSetup.cloudFrontend')}</strong> {t('localSetup.cloudFrontendDesc')}</span>
             </li>
           </ul>
         </div>
@@ -61,7 +60,7 @@ export function LocalSetupGuide() {
         {/* Setup Steps */}
         <div className="space-y-6">
           <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Setup Instructions
+            {t('localSetup.setupInstructions')}
           </h3>
 
           {/* Step 1 */}
@@ -72,10 +71,10 @@ export function LocalSetupGuide() {
               </div>
               <div className="flex-1">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  Clone the Repository
+                  {t('localSetup.cloneRepo')}
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-3">
-                  Clone the ANT Works repository from GitHub to your local machine.
+                  {t('localSetup.cloneRepoDesc')}
                 </p>
                 <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -95,7 +94,7 @@ export function LocalSetupGuide() {
                   className="inline-flex items-center gap-2 mt-3 text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  View on GitHub
+                  {t('localSetup.viewOnGithub')}
                 </a>
               </div>
             </div>
@@ -109,10 +108,10 @@ export function LocalSetupGuide() {
               </div>
               <div className="flex-1">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  Install Dependencies
+                  {t('localSetup.installDeps')}
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-3">
-                  Install all required packages using pnpm (Node.js v22+ required).
+                  {t('localSetup.installDepsDesc')}
                 </p>
                 <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm mb-3">
                   <code className="text-gray-900 dark:text-gray-100">
@@ -123,7 +122,7 @@ export function LocalSetupGuide() {
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                     <p className="text-sm text-amber-700 dark:text-amber-300">
-                      <strong>Note:</strong> If you don't have pnpm, install it with: <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900">npm install -g pnpm</code>
+                      <strong>Note:</strong> {t('localSetup.pnpmNote')} <code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900">npm install -g pnpm</code>
                     </p>
                   </div>
                 </div>
@@ -139,10 +138,10 @@ export function LocalSetupGuide() {
               </div>
               <div className="flex-1">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  Configure Environment
+                  {t('localSetup.configEnv')}
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-3">
-                  Copy the example config and set up your API keys.
+                  {t('localSetup.configEnvDesc')}
                 </p>
                 
                 <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-xs mb-3">
@@ -178,8 +177,7 @@ export function LocalSetupGuide() {
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      <strong>Note:</strong> Local and Cloud servers use the same infrastructure (Redis + Preview Worker). 
-                      Only authentication differs (<code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900">local:local</code> auto vs OAuth).
+                      <strong>Note:</strong> {t('localSetup.localCloudNote')} (<code className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900">local:local</code> auto vs OAuth)
                     </p>
                   </div>
                 </div>
@@ -195,17 +193,17 @@ export function LocalSetupGuide() {
               </div>
               <div className="flex-1">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  Start Local Services
+                  {t('localSetup.startServices')}
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-3">
-                  Launch required services. Each command should run in a separate terminal.
+                  {t('localSetup.startServicesDesc')}
                 </p>
                 
                 {/* Redis */}
                 <div className="mb-4">
                   <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                     <Server className="w-4 h-4" />
-                    1. Start Redis (Required)
+                    {t('localSetup.startRedis')}
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
@@ -213,7 +211,7 @@ export function LocalSetupGuide() {
                     </code>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Redis is used for state management and job queue.
+                    {t('localSetup.redisDesc')}
                   </p>
                 </div>
 
@@ -221,7 +219,7 @@ export function LocalSetupGuide() {
                 <div className="mb-4">
                   <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                     <Server className="w-4 h-4" />
-                    2. Start API Server (Required)
+                    {t('localSetup.startApi')}
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
@@ -237,7 +235,7 @@ export function LocalSetupGuide() {
                 <div className="mb-4">
                   <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                     <Server className="w-4 h-4" />
-                    3. Start Job Worker (Required)
+                    {t('localSetup.startWorker')}
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
@@ -245,7 +243,7 @@ export function LocalSetupGuide() {
                     </code>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Processes AI jobs from the queue.
+                    {t('localSetup.workerDesc')}
                   </p>
                 </div>
 
@@ -253,7 +251,7 @@ export function LocalSetupGuide() {
                 <div>
                   <h5 className="font-medium text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                     <Laptop className="w-4 h-4" />
-                    4. Start Preview Worker (Required)
+                    {t('localSetup.startPreview')}
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
@@ -276,28 +274,28 @@ export function LocalSetupGuide() {
               </div>
               <div className="flex-1">
                 <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                  Connect to Your Local Backend
+                  {t('localSetup.connectTitle')}
                 </h4>
                 <p className="text-gray-600 dark:text-gray-400 mb-3">
-                  Once your local servers are running, switch to Local mode in the navigation bar at the top.
+                  {t('localSetup.connectDesc')}
                 </p>
                 <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                   <div className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <p className="font-medium text-green-900 dark:text-green-100 mb-2">
-                        Ready to connect!
+                        {t('localSetup.readyToConnect')}
                       </p>
                       <ol className="text-sm text-green-800 dark:text-green-200 space-y-1 list-decimal list-inside">
-                        <li>Click the <strong>"Local"</strong> button in the top navigation bar</li>
-                        <li>The page will automatically connect to your local backend</li>
-                        <li>Start working with your local codebase!</li>
+                        <li>{t('localSetup.step1Connect')}</li>
+                        <li>{t('localSetup.step2Connect')}</li>
+                        <li>{t('localSetup.step3Connect')}</li>
                       </ol>
                     </div>
                   </div>
                 </div>
                 <div className="mt-4 space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                  <div className="font-medium text-gray-900 dark:text-white mb-2">Local Services:</div>
+                  <div className="font-medium text-gray-900 dark:text-white mb-2">{t('localSetup.localServices')}</div>
                   <div>• Redis: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">localhost:6379</code></div>
                   <div>• API Server: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:4000</code></div>
                   <div>• Preview Worker: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:8080</code></div>
@@ -310,7 +308,7 @@ export function LocalSetupGuide() {
         {/* Additional Resources */}
         <div className="mt-12 p-6 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
           <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-3">
-            Need Help?
+            {t('localSetup.needHelp')}
           </h3>
           <div className="space-y-2 text-blue-800 dark:text-blue-200">
             <a
@@ -320,7 +318,7 @@ export function LocalSetupGuide() {
               className="flex items-center gap-2 hover:underline"
             >
               <ExternalLink className="w-4 h-4" />
-              Read the Documentation
+              {t('localSetup.readDocs')}
             </a>
             <a
               href="https://github.com/to-nexus/ant/issues"
@@ -329,7 +327,7 @@ export function LocalSetupGuide() {
               className="flex items-center gap-2 hover:underline"
             >
               <ExternalLink className="w-4 h-4" />
-              Report an Issue
+              {t('localSetup.reportIssue')}
             </a>
           </div>
         </div>
@@ -340,7 +338,7 @@ export function LocalSetupGuide() {
             onClick={handleBackToHome}
             className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
           >
-            ← Back to Home
+            {t('localSetup.backToHome')}
           </button>
         </div>
       </main>
@@ -349,14 +347,13 @@ export function LocalSetupGuide() {
       <footer className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 mt-12">
         <div className="max-w-5xl mx-auto px-6 py-6 text-center text-sm text-gray-600 dark:text-gray-400">
           <p>
-            ANT Works - AI-Native Development Platform
+            {t('localSetup.footer')}
           </p>
           <p className="mt-1">
-            © 2025 Nexus. Open Source under MIT License.
+            {t('localSetup.copyright')}
           </p>
         </div>
       </footer>
     </div>
   );
 }
-

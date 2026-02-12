@@ -141,7 +141,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         setFigmaConnectedAt(status.updatedAt);
         
         if (status.configured) {
-          showSuccess(`Figma connected as ${status.email}!`);
+          showSuccess(t('account.figmaConnectedAs', { email: status.email }));
         }
       } catch (error) {
         console.error('[AccountConfigEditor] Failed to reload Figma status:', error);
@@ -181,8 +181,8 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       setGithubUsername(result.username);
       setGithubPAT(''); // Clear input after successful save
       showSuccess(result.username 
-        ? `GitHub PAT saved! Connected as @${result.username}` 
-        : 'GitHub PAT saved successfully!');
+        ? t('account.patSavedWithUser', { username: result.username }) 
+        : t('account.patSaved'));
     } catch (error: any) {
       console.error('Failed to save GitHub PAT:', error);
       showError(error.message || t('github.saveFailed'));
@@ -198,9 +198,9 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       await updateUserConfig({ github: { ownerOverride: trimmed || null } });
       setSavedUserOverride(trimmed);
       if (trimmed) {
-        showSuccess(`GitHub owner override set to "${trimmed}". New projects will use github.com/${trimmed}/{project}`);
+        showSuccess(t('account.ownerOverrideSet', { owner: trimmed }));
       } else {
-        showSuccess(`Owner override cleared. Falling back to organization default${orgGithubOwner ? ` (${orgGithubOwner})` : ''}.`);
+        showSuccess(t('account.ownerOverrideCleared', { suffix: orgGithubOwner ? ` (${orgGithubOwner})` : '' }));
       }
     } catch (error: any) {
       console.error('Failed to save owner override:', error);
@@ -304,7 +304,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       icon={<ConfigIcons.LocalBackend />}
       title={t('localBackend.title')}
       description={t('localBackend.description')}
-      hint={<>Default: <code className={ConfigStyles.code}>{DEFAULT_LOCAL_BACKEND_PORT}</code> • Used when "Local" mode is selected</>}
+      hint={t('localBackend.hint', { port: DEFAULT_LOCAL_BACKEND_PORT })}
     >
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
@@ -340,7 +340,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             disabled={localBackendPort === DEFAULT_LOCAL_BACKEND_PORT}
             className={ConfigStyles.buttonSecondary}
           >
-            Reset
+            {t('common:button.reset')}
           </button>
         </div>
       </div>
@@ -363,7 +363,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       {/* ---- Personal Access Token ---- */}
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-          Personal Access Token
+          {t('account.patLabel')}
         </label>
         {githubPATConfigured ? (
           <div className="flex items-center gap-3">
@@ -382,7 +382,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
               disabled={isSavingPAT}
               className={ConfigStyles.buttonDanger}
             >
-              Delete
+              {t('account.deleteButton')}
             </button>
           </div>
         ) : (
@@ -408,7 +408,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
                 rel="noopener noreferrer"
                 className={ConfigStyles.buttonSecondary}
               >
-                Generate Token →
+                {t('account.generateToken')}
               </a>
             </div>
           </div>
@@ -421,16 +421,16 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       {/* ---- Default Repository Owner ---- */}
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-3">
-          Default Repository Owner
+          {t('account.defaultRepoOwner')}
         </label>
 
         {/* Organization (editable override) */}
         <div className="flex items-center gap-2 mb-1.5">
           <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-            Organization
+            {t('account.organizationBadge')}
           </span>
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            {savedUserOverride ? 'Custom override active' : orgGithubOwner ? 'Using org default' : 'Not configured'}
+            {savedUserOverride ? t('account.customOverrideActive') : orgGithubOwner ? t('account.usingOrgDefault') : t('account.notConfigured')}
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -462,7 +462,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
                 updateUserConfig({ github: { ownerOverride: null } })
                   .then(() => {
                     setSavedUserOverride('');
-                    showSuccess(`Reverted to org default${orgGithubOwner ? ` (${orgGithubOwner})` : ''}.`);
+                    showSuccess(t('account.revertedToOrgDefault', { suffix: orgGithubOwner ? ` (${orgGithubOwner})` : '' }));
                   })
                   .catch((err: any) => showError(err.message || t('github.clearFailed')))
                   .finally(() => setIsSavingOverride(false));
@@ -471,7 +471,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
               className={ConfigStyles.buttonSecondary}
               title={t('github.revertToDefault')}
             >
-              Reset
+              {t('common:button.reset')}
             </button>
           )}
         </div>
@@ -480,7 +480,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         <div className="mt-3">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-              Personal
+              {t('account.personalBadge')}
             </span>
             <span className="text-xs text-gray-400 dark:text-gray-500">{t('github.autoDetected')}</span>
           </div>
@@ -508,26 +508,26 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       description={t('figma.description')}
       status={{
         state: isCheckingFigma ? 'checking' : (figmaConfigured ? 'configured' : 'not-configured'),
-        label: figmaConfigured ? '✓ Connected' : 'Not connected',
+        label: figmaConfigured ? t('account.figmaConnected') : t('account.figmaNotConnected'),
       }}
       extraBadge={figmaConfigured ? (
         <span className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
           {t('figma.comingSoon')}
         </span>
       ) : undefined}
-      hint="OAuth 2.0 authentication • Managed securely by Figma"
+      hint={t('account.figmaOauthHint')}
     >
       {figmaConfigured ? (
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-            Connected Account
+            {t('account.connectedAccount')}
           </label>
           <div className="flex items-center gap-3">
             <div className={`flex-1 ${ConfigStyles.inputDisabled}`}>
-              {figmaUserEmail || figmaUserId || 'Connected'}
+              {figmaUserEmail || figmaUserId || t('account.connectedFallback')}
               {figmaConnectedAt && (
                 <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                  (Connected: {new Date(figmaConnectedAt).toLocaleDateString()})
+                  {t('account.connectedDate', { date: new Date(figmaConnectedAt).toLocaleDateString() })}
                 </span>
               )}
             </div>
@@ -536,7 +536,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
               disabled={isDisconnectingFigma}
               className={ConfigStyles.buttonDanger}
             >
-              {isDisconnectingFigma ? 'Disconnecting...' : 'Disconnect'}
+              {isDisconnectingFigma ? t('account.disconnecting') : t('account.disconnect')}
             </button>
           </div>
           <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
@@ -549,7 +549,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             onClick={handleConnectFigma}
             className={ConfigStyles.buttonPurple}
           >
-            Connect Figma Account
+            {t('account.connectFigma')}
           </button>
         </div>
       )}

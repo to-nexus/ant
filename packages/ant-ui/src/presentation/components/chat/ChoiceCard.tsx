@@ -26,7 +26,7 @@ import {
 } from '@/infrastructure/http/api';
 import type { MessageContent } from '@/domain/models/chat';
 
-type ChoiceVariant = 'triage_choice' | 'cancelled' | 'eval_save' | 'prd_apply';
+type ChoiceVariant = 'triage_choice' | 'cancelled' | 'eval_save' | 'prd_apply' | 'clarifying';
 
 interface ChoiceCardProps {
   content: MessageContent;
@@ -307,6 +307,8 @@ export function ChoiceCard({ content, variant, messageId }: ChoiceCardProps) {
       return <EvalSaveChoiceVariant content={content} messageId={messageId} />;
     case 'prd_apply':
       return <PrdApplyChoiceVariant content={content} messageId={messageId} />;
+    case 'clarifying':
+      return <ClarifyingVariant content={content} messageId={messageId} />;
     default:
       return null;
   }
@@ -665,6 +667,130 @@ function PrdApplyChoiceVariant({ content, messageId }: { content: MessageContent
         isLoading={state.isLoading}
         onPositive={handleApply}
         onNegative={handleKeepDraft}
+      />
+    </ChoiceCardShell>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Layout: MultiOptionLayout (vertical N-option + free input)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function MultiOptionLayout({
+  options,
+  freeInputLabel,
+  isLoading,
+  onSelect,
+  onFreeInput,
+  theme,
+}: {
+  options: string[];
+  freeInputLabel: string;
+  isLoading: boolean;
+  onSelect: (option: string) => void;
+  onFreeInput: () => void;
+  theme: ThemeColor;
+}) {
+  const t = THEMES[theme];
+  return (
+    <div className="flex flex-col gap-2">
+      {options.map((option, idx) => (
+        <button
+          key={idx}
+          type="button"
+          onClick={() => onSelect(option)}
+          disabled={isLoading}
+          className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 text-left ${t.buttonBg} text-white ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
+        >
+          {isLoading ? (
+            <span className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              {option}
+            </span>
+          ) : (
+            option
+          )}
+        </button>
+      ))}
+      {/* Free input option */}
+      <button
+        type="button"
+        onClick={onFreeInput}
+        disabled={isLoading}
+        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 text-left bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 border border-dashed border-gray-300 dark:border-gray-500 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
+      >
+        ✏️ {freeInputLabel}
+      </button>
+    </div>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Variant: Clarifying Question (violet theme)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function ClarifyingVariant({ content, messageId }: { content: MessageContent; messageId: string }) {
+  const selectedProject = useStore(state => state.selectedProject);
+  const selectedFeature = useStore(state => state.selectedFeature);
+  const selectedAgent = useStore(state => state.selectedAgent);
+  const selectedJobType = useStore(state => state.selectedJobType);
+  const { runJob } = useJobExecution();
+
+  const state = useChoiceCardState({
+    content, messageId,
+    contentType: 'choice_card',
+    contentFilter: (c: MessageContent) => c.type === 'choice_card' && c.metadata?.cardType === 'clarifying',
+    metadataFilter: { cardType: 'clarifying' },
+  });
+
+  const question = content.metadata?.clarifyQuestion || content.content || 'Question';
+  const options = content.metadata?.clarifyOptions || [];
+
+  const handleSelect = async (option: string) => {
+    if (!selectedProject || !selectedFeature || state.isSelected) return;
+
+    state.setIsLoading(true);
+    state.setLocalSelectedChoice(option);
+    state.setLocalResolvedLabel(option);
+    state.persistChoice(option, option);
+    await state.persistToBackend(option, option);
+
+    try {
+      // Submit the selected option as a new user message and continue the planner job
+      await runJob(selectedAgent, selectedJobType, option);
+    } catch (error) {
+      console.error('[ChoiceCard:Clarifying] Failed:', error);
+    } finally {
+      state.setIsLoading(false);
+    }
+  };
+
+  const handleFreeInput = () => {
+    // Focus the chat input — the user will type their own answer
+    // The ChatInput component handles submission as a normal message
+    const chatInput = document.querySelector<HTMLTextAreaElement>('[data-chat-input]');
+    if (chatInput) {
+      chatInput.focus();
+      chatInput.placeholder = question;
+    }
+  };
+
+  return (
+    <ChoiceCardShell
+      theme="violet"
+      icon={<span className="text-sm">💬</span>}
+      title={question}
+      isSelected={state.isSelected}
+      resolvedLabel={state.resolvedLabel}
+      resolvedIcon={null}
+    >
+      <MultiOptionLayout
+        options={options}
+        freeInputLabel="직접 입력..."
+        isLoading={state.isLoading}
+        onSelect={handleSelect}
+        onFreeInput={handleFreeInput}
+        theme="violet"
       />
     </ChoiceCardShell>
   );

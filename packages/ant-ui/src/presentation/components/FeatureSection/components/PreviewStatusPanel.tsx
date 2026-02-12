@@ -1,28 +1,27 @@
 import { useTranslation } from 'react-i18next';
 import { Loader2, Package, ExternalLink, AlertCircle, CheckCircle, Wrench, X } from 'lucide-react';
-import { PREVIEW_MESSAGES } from '../constants/preview';
 import { getProgressMessage } from '../utils/preview';
 import type { PreviewState, PreviewError, PreviewProgress, SetupFailureReasoning } from '../types/preview';
 
 /**
  * Get user-friendly title for setup failure reasoning
  */
-function getSetupFailureTitle(reasoning?: SetupFailureReasoning): string {
+function getSetupFailureTitle(reasoning: SetupFailureReasoning | undefined, t: (key: string) => string): string {
   switch (reasoning) {
     case 'basename-missing':
-      return 'React Router basename 설정 누락 - 프록시 환경에서 라우팅이 동작하지 않습니다';
+      return t('preview.basenameMissing');
     case 'basepath-missing':
-      return 'Next.js basePath 설정 누락 - SSR 환경에서 에셋 경로 불일치가 발생합니다';
+      return t('preview.basepathMissing');
     case 'port-conflict':
-      return '포트 충돌 - 다른 프로세스가 이미 사용 중입니다';
+      return t('preview.portConflict');
     case 'dependency-error':
-      return '의존성 설치 실패';
+      return t('preview.dependencyError');
     case 'config-invalid':
-      return '설정 파일 오류';
+      return t('preview.configInvalid');
     case 'framework-unsupported':
-      return '지원되지 않는 프레임워크';
+      return t('preview.frameworkUnsupported');
     default:
-      return '프리뷰 서버 설정 미완료';
+      return t('preview.setupIncomplete');
   }
 }
 
@@ -70,12 +69,12 @@ export function PreviewStatusPanel({
   const hasMultiplePackages = packages && packages.length > 1;
   
   const startingWithCounts = isMultiPackage
-    ? `${PREVIEW_MESSAGES.STATUS_STARTING} (${progress.completedCount}/${progress.totalCount})`
-    : PREVIEW_MESSAGES.STATUS_STARTING;
+    ? `${t('preview.starting')} (${progress.completedCount}/${progress.totalCount})`
+    : t('preview.starting');
   
   const installingWithCounts = isMultiPackage
-    ? `${PREVIEW_MESSAGES.STATUS_INSTALLING} (${progress.completedCount}/${progress.totalCount})`
-    : PREVIEW_MESSAGES.STATUS_INSTALLING;
+    ? `${t('preview.installing')} (${progress.completedCount}/${progress.totalCount})`
+    : t('preview.installing');
 
   // Idle state - show nothing
   if (state === 'idle') {
@@ -84,7 +83,7 @@ export function PreviewStatusPanel({
   
   // Installing dependencies
   if (state === 'installing') {
-    const progressMsg = progress ? installingWithCounts : PREVIEW_MESSAGES.STATUS_INSTALLING;
+    const progressMsg = progress ? installingWithCounts : t('preview.installing');
     
     return (
       <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-md">
@@ -153,7 +152,7 @@ export function PreviewStatusPanel({
   
   // Running successfully
   if (state === 'running') {
-    const progressMsg = ready ? PREVIEW_MESSAGES.STATUS_RUNNING : (progress ? getProgressMessage(progress) : PREVIEW_MESSAGES.STATUS_RUNNING);
+    const progressMsg = ready ? t('preview.running') : (progress ? getProgressMessage(progress) : t('preview.running'));
     const warning = issues?.find(i => i.severity === 'warning');
     
     return (
@@ -166,47 +165,47 @@ export function PreviewStatusPanel({
                 <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                    {getSetupFailureTitle(setupReasoning)}
-                  </div>
+                    {getSetupFailureTitle(setupReasoning, t)}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                onClick={onFix}
+                className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
+                         hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
+                         flex items-center gap-1.5"
+                title={t('preview.fixSetup')}
+              >
+                <Wrench size={12} />
+                {t('preview.fix')}
+              </button>
+              {onDismiss && (
                 <button
-                  onClick={onFix}
-                  className="px-3 py-1.5 text-xs font-medium bg-yellow-600 dark:bg-yellow-700 text-white rounded 
-                           hover:bg-yellow-700 dark:hover:bg-yellow-600 transition-colors 
-                           flex items-center gap-1.5"
-                  title={t('preview.fixSetup')}
+                  onClick={onDismiss}
+                  className="p-1.5 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded transition-colors"
+                  title={t('preview.closeWarning')}
                 >
-                  <Wrench size={12} />
-                  Fix
+                  <X size={14} />
                 </button>
-                {onDismiss && (
-                  <button
-                    onClick={onDismiss}
-                    className="p-1.5 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/50 rounded transition-colors"
-                    title={t('preview.closeWarning')}
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Non-fatal warning (e.g. API base not configured for dynamic backend port) */}
-        {!setupReasoning && warning?.suggestedFix && onFix && !fixButtonClicked && (
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-md">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2 flex-1 min-w-0">
-                <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                    {warning.reasoning === 'api-base-missing'
-                      ? 'API 호출 설정이 동적 백엔드 포트(풀스택 dev server)에 맞지 않을 수 있습니다'
-                      : '프리뷰 서버 실행 환경에서 추가 설정이 필요할 수 있습니다'}
-                  </div>
+      {/* Non-fatal warning (e.g. API base not configured for dynamic backend port) */}
+      {!setupReasoning && warning?.suggestedFix && onFix && !fixButtonClicked && (
+        <div className="p-3 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-md">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2 flex-1 min-w-0">
+              <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
+                  {warning.reasoning === 'api-base-missing'
+                    ? t('preview.apiBaseMissing')
+                    : t('preview.additionalSetupNeeded')}
+                </div>
                   {warning.reason && (
                     <div className="mt-1 text-xs text-yellow-800/80 dark:text-yellow-200/80">
                       {warning.reason}
@@ -223,7 +222,7 @@ export function PreviewStatusPanel({
                   title={t('preview.fixSetup')}
                 >
                   <Wrench size={12} />
-                  Fix
+                  {t('preview.fix')}
                 </button>
               </div>
             </div>
@@ -253,7 +252,7 @@ export function PreviewStatusPanel({
                 title={t('preview.openNewTab')}
               >
                 <ExternalLink size={12} />
-                {PREVIEW_MESSAGES.BUTTON_OPEN}
+                {t('preview.open')}
               </button>
             )}
           </div>
@@ -299,7 +298,7 @@ export function PreviewStatusPanel({
               <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                  {getSetupFailureTitle(setupReasoning)}
+                  {getSetupFailureTitle(setupReasoning, t)}
                 </div>
                 {issueCount > 1 && (
                   <div className="mt-1 space-y-1">
@@ -324,7 +323,7 @@ export function PreviewStatusPanel({
                 title={t('preview.fixSetup')}
               >
                 <Wrench size={12} />
-                {fixableIssues.length > 1 ? `Fix all (${fixableIssues.length})` : 'Fix'}
+                {fixableIssues.length > 1 ? t('preview.fixAll', { count: fixableIssues.length }) : t('preview.fix')}
               </button>
               {onDismiss && (
                 <button
@@ -349,7 +348,7 @@ export function PreviewStatusPanel({
             <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-red-900 dark:text-red-100">
-                {error?.message || PREVIEW_MESSAGES.STATUS_FAILED}
+                {error?.message || t('preview.notRunning')}
               </div>
             </div>
           </div>

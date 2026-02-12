@@ -14,7 +14,7 @@
     "agents": "Agents",
     "code": "Code",
     "openEditor": "Open codebase in editor",
-    "selectProjectFirst": "Select a project first",
+    "selectProjectFirst": "Select a workspace first",
     "failedToOpenIde": "Failed to open IDE"
   },
   "theme": {
@@ -33,8 +33,10 @@
     "accountConfig": "Account Configuration"
   },
   "tabs": {
+    "removeJobId": "Remove job ID",
+    "closeTab": "Close {{label}} tab",
     "job": "Job",
-    "projectConfig": "Project Config",
+    "projectConfig": "Workspace Config",
     "accountConfig": "Account Config",
     "fileEdit": "FileEdit",
     "transfer": "Transfer",

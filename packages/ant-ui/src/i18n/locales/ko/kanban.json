@@ -5,12 +5,19 @@
   "columns": {
     "todo": "대기",
     "inProgress": "진행 중",
-    "completed": "완료"
+    "completed": "완료",
+    "noPendingTasks": "대기 중인 태스크 없음",
+    "noTaskInProgress": "진행 중인 태스크 없음",
+    "noCompletedTasks": "완료된 태스크 없음",
+    "waitingForTasks": "태스크 대기 중..."
   },
   "header": {
     "total": "전체:",
     "estimatingPhase": "추정 단계:",
-    "paused": "일시정지:"
+    "paused": "일시정지:",
+    "timeBreakdown": "시간 분석",
+    "tokenUsage": "토큰 사용량",
+    "tasksCount": "태스크 ({{count}}):"
   },
   "tokenStats": {
     "input": "입력",
@@ -22,16 +29,36 @@
     "billableInput": "과금 입력:",
     "inputSavings": "입력 절감:",
     "byPhase": "단계별",
-    "estimating": "추정:"
+    "estimating": "추정:",
+    "noCacheActivity": "캐시 활동 없음",
+    "outputDescription": "캐시 불가 · 입력 대비 5배 가격",
+    "noTokenData": "토큰 사용 데이터 없음"
   },
   "task": {
     "paused": "일시정지"
   },
+  "activeNode": {
+    "node": "노드:",
+    "actors": "Actor:"
+  },
   "workflow": {
-    "title": "🔄 Agent Workflow",
-    "noSelection": "Workspace 또는 Feature가 선택되지 않았습니다",
-    "loading": "워크플로우 그래프 로딩 중...",
+    "title": "🔄 에이전트 작업흐름",
+    "noSelection": "워크스페이스 또는 피처가 선택되지 않았습니다",
+    "loading": "작업흐름 그래프 로딩 중...",
     "trackNode": "현재 노드 추적",
-    "linkedActors": "연결된 Actor:"
+    "linkedActors": "연결된 Actor:",
+    "selectWorkspaceFeature": "작업흐름 그래프를 보려면 워크스페이스와 피처를 선택하세요.",
+    "failedToLoad": "작업흐름 로드 실패",
+    "noWorkflowAvailable": "사용 가능한 작업흐름 없음",
+    "selectAgentJob": "작업흐름 그래프를 보려면 에이전트와 작업을 선택하세요.",
+    "agent": "에이전트: {{name}}",
+    "job": "작업: {{name}}",
+    "running": "실행 중",
+    "idle": "대기",
+    "active": "활성",
+    "provider": "Provider:",
+    "modelSystem": "모델/시스템:",
+    "details": "상세:",
+    "loadingText": "로딩 중..."
   }
 }

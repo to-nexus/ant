@@ -63,7 +63,7 @@ export function KanbanEstimatingSkeleton() {
       <div className="space-y-3">
         <ColumnHeader icon="🔄" title={t('columns.inProgress')} count={0} />
         <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-          Waiting for tasks...
+          {t('columns.waitingForTasks')}
         </div>
       </div>
       
@@ -71,7 +71,7 @@ export function KanbanEstimatingSkeleton() {
       <div className="space-y-3">
         <ColumnHeader icon="✅" title={t('columns.completed')} count={0} />
         <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-          No completed tasks yet
+          {t('columns.noCompletedTasks')}
         </div>
       </div>
     </div>

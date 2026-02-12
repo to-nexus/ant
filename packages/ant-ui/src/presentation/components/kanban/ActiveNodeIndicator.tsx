@@ -10,6 +10,7 @@
  */
 
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useStore } from '@/domain/store';
 
@@ -18,6 +19,7 @@ interface ActiveNodeIndicatorProps {
 }
 
 function ActiveNodeIndicatorComponent({ displayedState }: ActiveNodeIndicatorProps) {
+  const { t } = useTranslation('kanban');
   const isRunning = useStore(state => state.isRunning);
   const isStopping = useStore(state => state.isStopping);
   
@@ -46,7 +48,7 @@ function ActiveNodeIndicatorComponent({ displayedState }: ActiveNodeIndicatorPro
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
               </div>
               <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                Node:
+                {t('activeNode.node')}
               </span>
             </div>
             <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">
@@ -69,7 +71,7 @@ function ActiveNodeIndicatorComponent({ displayedState }: ActiveNodeIndicatorPro
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
               </div>
               <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                Actors:
+                {t('activeNode.actors')}
               </span>
             </div>
             <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold">

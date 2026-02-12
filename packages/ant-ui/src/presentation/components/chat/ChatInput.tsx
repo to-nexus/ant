@@ -132,10 +132,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   // ✅ Add emoji and description for each agent
   const agentsWithMetadata = agents.map((agent: Agent) => {
     const metadata: Record<string, { emoji: string; description: string }> = {
-      architect: { emoji: '🤖', description: 'Optimized for coding tasks' },
-      planner: { emoji: '📋', description: 'Creates project plans & roadmaps' },
-      reviewer: { emoji: '🔍', description: 'Reviews code & provides feedback' },
-      doc: { emoji: '📝', description: 'Generates documentation' }
+      architect: { emoji: '🤖', description: t('agent.architect') },
+      planner: { emoji: '📋', description: t('agent.planner') },
+      reviewer: { emoji: '🔍', description: t('agent.reviewer') },
+      doc: { emoji: '📝', description: t('agent.doc') }
     };
     const meta = metadata[agent.value] || { emoji: '🤖', description: agent.label };
     return {
@@ -297,7 +297,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         useStore.getState().setInlineAskContext(null);
         showError(
           `${t('inlineAsk.failed')}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          { title: '오류' }
+          { title: t('common:error.title') }
         );
       }
       return;
@@ -480,7 +480,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             
             {/* File count summary */}
             <span className="font-medium">
-              {totalChangedFiles} File{totalChangedFiles > 1 ? 's' : ''} Edited
+              {t('input.filesEdited', { count: totalChangedFiles })}
             </span>
             
             {/* Operation badges */}
@@ -582,6 +582,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         
         {/* Input Area - Disabled during job run, but resize always works */}
         <textarea
+          data-chat-input
           style={{ height: `${textareaHeight}px` }}
           className="w-full px-3 py-2.5 text-sm
                      bg-transparent text-gray-900 dark:text-gray-100
@@ -727,7 +728,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                 title={t('input.stopJob')}
               >
                 <Square className="w-3 h-3" fill="currentColor" />
-                <span>{isStopping ? 'Stopping...' : 'Stop'}</span>
+                <span>{isStopping ? t('input.stopping') : t('input.stop')}</span>
               </button>
             ) : (
               // Submit Button (일반 상태)
@@ -742,7 +743,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                            disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-200 
                            disabled:dark:bg-gray-700 disabled:text-gray-400 disabled:dark:text-gray-500
                            disabled:border-gray-300 disabled:dark:border-gray-600"
-                title={chatPolicy.canSendMessage ? "Send message" : "Complete selection to enable"}
+                title={chatPolicy.canSendMessage ? t('input.sendMessage') : t('input.completeSelection')}
               >
                 <Send className="w-3 h-3" />
                 <span>{t('input.send')}</span>

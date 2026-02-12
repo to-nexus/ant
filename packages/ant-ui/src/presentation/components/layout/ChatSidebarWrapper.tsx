@@ -46,9 +46,9 @@ export function ChatSidebarWrapper({
       </>,
       {
         type: 'warning',
-        title: 'Clear Chat History?',
-        confirmText: 'Clear',
-        cancelText: 'Cancel',
+        title: t('sidebar.clearHistory'),
+        confirmText: t('common:button.delete'),
+        cancelText: t('common:button.cancel'),
         onConfirm: async () => {
           try {
             setIsClearing(true);
@@ -109,7 +109,7 @@ export function ChatSidebarWrapper({
               <>
                 <span className="text-2xl">💬</span>
                 <span className="text-gray-700 dark:text-gray-200 font-medium">
-                  Chat with {selectedAgent.charAt(0).toUpperCase() + selectedAgent.slice(1)}
+                  {t('sidebar.chatWith', { agent: selectedAgent.charAt(0).toUpperCase() + selectedAgent.slice(1) })}
                 </span>
               </>
             )}

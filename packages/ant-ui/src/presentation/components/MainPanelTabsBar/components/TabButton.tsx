@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { X, LucideIcon } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
 
@@ -24,6 +25,7 @@ export function TabButton({
   onClick,
   onClose
 }: TabButtonProps) {
+  const { t } = useTranslation('nav');
   return (
     <div
       className={cn(
@@ -52,7 +54,7 @@ export function TabButton({
             'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
             !showText && 'hidden'
           )}
-          title={isJobTab ? "Remove job ID" : `Close ${label.toLowerCase()} tab`}
+          title={isJobTab ? t('tabs.removeJobId') : t('tabs.closeTab', { label: label.toLowerCase() })}
         >
           <X className="w-3.5 h-3.5" />
         </button>

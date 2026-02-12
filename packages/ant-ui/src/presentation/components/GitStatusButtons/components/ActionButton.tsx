@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { GitCommit, Upload, Download, RefreshCw, Check } from 'lucide-react';
 import { Button } from '../../common/button';
 import { GitChanges } from '../hooks/useGitChanges';
@@ -26,6 +27,7 @@ export function ActionButton({
   onPull,
   onSync
 }: ActionButtonProps) {
+  const { t } = useTranslation('explorer');
   const isGitStatusLoading = useStore((state) => state.isGitStatusLoading);
   const totalChanges = gitChanges.staged.length + gitChanges.unstaged.length + gitChanges.untracked.length;
 
@@ -44,13 +46,13 @@ export function ActionButton({
                      text-emerald-600 dark:text-emerald-400
                      transition-colors"
           disabled={isCommitting || isGitStatusLoading}
-          title={isGitStatusLoading ? 'Updating Git status...' : undefined}
+          title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
         >
           <GitCommit className="w-3.5 h-3.5" />
           {isCommitting ? (
-            'Committing...'
+            t('git.committing')
           ) : (
-            <span>Commit ({totalChanges}) {totalChanges === 1 ? 'file' : 'files'}</span>
+            <span>{t('git.commitFiles', { count: totalChanges, files: totalChanges === 1 ? t('git.file') : t('git.files') })}</span>
           )}
         </Button>
       </div>
@@ -72,14 +74,14 @@ export function ActionButton({
                      text-emerald-600 dark:text-emerald-400
                      transition-colors"
           disabled={isSyncing || isGitStatusLoading}
-          title={isGitStatusLoading ? 'Updating Git status...' : 'Pull then push'}
+          title={isGitStatusLoading ? t('git.updatingStatus') : t('git.pullThenPush')}
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
           {isSyncing ? (
-            'Syncing from remote'
+            t('git.syncingFromRemote')
           ) : (
             <span className="flex items-center gap-2">
-              Sync
+              {t('git.sync')}
               <span className="flex items-center gap-1">
                 <Upload className="w-3 h-3" />
                 {gitChanges.ahead}
@@ -110,16 +112,16 @@ export function ActionButton({
                      text-emerald-600 dark:text-emerald-400
                      transition-colors"
           disabled={isPushing || isGitStatusLoading}
-          title={isGitStatusLoading ? 'Updating Git status...' : undefined}
+          title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
         >
           {isPushing ? (
             <span className="flex items-center gap-1.5">
               <Upload className="w-3.5 h-3.5" />
-              Pushing {gitChanges.ahead} {gitChanges.ahead === 1 ? 'commit' : 'commits'}
+              {t('git.pushingCommits', { count: gitChanges.ahead, commits: gitChanges.ahead === 1 ? t('git.commit') : t('git.commits') })}
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
-              Push
+              {t('config:git.push')}
               <Upload className="w-3 h-3" />
               {gitChanges.ahead}
             </span>
@@ -144,16 +146,16 @@ export function ActionButton({
                      text-emerald-600 dark:text-emerald-400
                      transition-colors"
           disabled={isPulling || isGitStatusLoading}
-          title={isGitStatusLoading ? 'Updating Git status...' : undefined}
+          title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
         >
           {isPulling ? (
             <span className="flex items-center gap-1.5">
               <Download className="w-3.5 h-3.5" />
-              Pulling from remote
+              {t('git.pullingFromRemote')}
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
-              Pull
+              {t('config:git.pull')}
               <Download className="w-3 h-3" />
               {gitChanges.behind}
             </span>
@@ -177,7 +179,7 @@ export function ActionButton({
                    bg-gray-50 dark:bg-gray-800/50"
       >
         <Check className="w-3.5 h-3.5" />
-        <span>No changes</span>
+        <span>{t('git.noChanges')}</span>
       </Button>
     </div>
   );

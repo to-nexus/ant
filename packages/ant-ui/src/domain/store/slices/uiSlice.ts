@@ -38,7 +38,7 @@ const getInitialLanguage = (): 'en' | 'ko' => {
   } catch (error) {
     console.error('Failed to read language from localStorage:', error);
   }
-  return 'en';
+  return 'ko';
 };
 
 // Helper to get initial theme from localStorage or system preference

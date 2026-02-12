@@ -122,7 +122,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
               <div className="mt-2 flex items-center gap-2">
                 <Settings className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
                 <span className="text-xs text-green-600 dark:text-green-400 font-bold">
-                  Active
+                  {t('workflow.active')}
                 </span>
               </div>
             )}
@@ -201,7 +201,7 @@ export const WorkflowNode = memo(({ data }: WorkflowNodeProps) => {
           <div className="mt-2 flex items-center gap-1.5">
             <Settings className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
             <span className="text-xs text-green-600 dark:text-green-400 font-bold">
-              Active
+              {t('workflow.active')}
             </span>
           </div>
         )}

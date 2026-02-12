@@ -6,6 +6,7 @@
  */
 
 import React, { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Handle, Position } from 'reactflow';
 import { Settings } from 'lucide-react';
 import { ActorType } from '@/domain/models/workflow';
@@ -52,6 +53,7 @@ const ACTOR_COLORS_DARK: Record<ActorType, string> = {
 
 export const ActorNode = memo(({ data }: ActorNodeProps) => {
   const { splitLayout, selectedProject, selectedFeature } = useStore();
+  const { t } = useTranslation('kanban');
   const [isExpanded, setIsExpanded] = React.useState(data.isExpanded || false);
   const [config, setConfig] = React.useState<any>(null);
   
@@ -162,20 +164,20 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
             {/* Details */}
             <div className="space-y-2 text-xs text-gray-800 dark:text-gray-200">
               <div>
-                <div className="font-semibold opacity-70 mb-1">Provider:</div>
+                <div className="font-semibold opacity-70 mb-1">{t('workflow.provider')}</div>
                 <div className="opacity-90">
                   {data.actorId === 'llm' && !data.llmInfo ? (
-                    <span className="text-gray-400 dark:text-gray-500 italic">Loading...</span>
+                    <span className="text-gray-400 dark:text-gray-500 italic">{t('workflow.loadingText')}</span>
                   ) : (
                     actorInfo.provider
                   )}
                 </div>
               </div>
               <div>
-                <div className="font-semibold opacity-70 mb-1">Model/System:</div>
+                <div className="font-semibold opacity-70 mb-1">{t('workflow.modelSystem')}</div>
                 <div className="opacity-90">
                   {data.actorId === 'llm' && !data.llmInfo ? (
-                    <span className="text-gray-400 dark:text-gray-500 italic">Loading...</span>
+                    <span className="text-gray-400 dark:text-gray-500 italic">{t('workflow.loadingText')}</span>
                   ) : (
                     actorInfo.model
                   )}
@@ -183,7 +185,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
               </div>
               {actorInfo.details && (
                 <div>
-                  <div className="font-semibold opacity-70 mb-1">Details:</div>
+                  <div className="font-semibold opacity-70 mb-1">{t('workflow.details')}</div>
                   <div className="opacity-90 break-all">{actorInfo.details}</div>
                 </div>
               )}
@@ -228,16 +230,16 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
           {/* Details */}
           <div className="space-y-2 text-xs text-gray-800 dark:text-gray-200">
             <div>
-              <div className="font-semibold opacity-70 mb-1">Provider:</div>
+              <div className="font-semibold opacity-70 mb-1">{t('workflow.provider')}</div>
               <div className="opacity-90">{actorInfo.provider}</div>
             </div>
             <div>
-              <div className="font-semibold opacity-70 mb-1">Model/System:</div>
+              <div className="font-semibold opacity-70 mb-1">{t('workflow.modelSystem')}</div>
               <div className="opacity-90">{actorInfo.model}</div>
             </div>
             {actorInfo.details && (
               <div>
-                <div className="font-semibold opacity-70 mb-1">Details:</div>
+                <div className="font-semibold opacity-70 mb-1">{t('workflow.details')}</div>
                 <div className="opacity-90 break-all">{actorInfo.details}</div>
               </div>
             )}

@@ -53,8 +53,8 @@ export function useFeatureActions(
     if (backendMode === 'cloud') {
       if (!gitStatus?.hasGit) {
         showWarning(
-          'Cloud 모드에서는 Git 저장소가 init/clone 된 뒤에만 feature를 생성할 수 있습니다. 먼저 Workspace의 Git 메뉴에서 Clone 또는 Initialize를 진행해주세요.',
-          { title: 'Git 저장소가 필요합니다', confirmText: '확인' }
+          t('git.gitRepoRequired'),
+          { title: t('git.gitRepoRequiredTitle'), confirmText: t('common:button.ok') }
         );
         // Throw a "silent" error so CreateItemForm does not show error modal
         // and the create form stays open.
