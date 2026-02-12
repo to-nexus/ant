@@ -9,23 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceState } from './types';
 import { MemoryPort } from '../../../../core/ports';
-
-/**
- * Template marker to detect placeholder files
- */
-const TEMPLATE_MARKER = '<!-- ant:template -->';
-
-/**
- * Check if file content is a template (placeholder).
- * A file is considered a template ONLY if the marker is present AND
- * the actual content (excluding HTML comments) is minimal (<200 chars).
- * This prevents real documents with a leftover marker from being rejected.
- */
-function isTemplateContent(content: string): boolean {
-  if (!content.includes(TEMPLATE_MARKER)) return false;
-  const stripped = content.replace(/<!--[\s\S]*?-->/g, '').trim();
-  return stripped.length < 200;
-}
+import { isTemplateContent } from '../../../../core/utils/templateDetector';
 
 /**
  * Count files in a directory (non-recursive by default)

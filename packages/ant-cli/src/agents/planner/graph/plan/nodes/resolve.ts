@@ -12,6 +12,7 @@ import { ConversationEntry } from '../../../../../core/types/session';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { detectUILocale, getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
+import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 
 export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
   console.log('\n📋 [Planner:Resolve] Loading context...');
@@ -39,26 +40,12 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   let existingDocument: string | undefined;
   const prdPath = path.join(featurePath, 'inputs/sources/prd.md');
   try {
-    existingDocument = fs.readFileSync(prdPath, 'utf-8');
-    
-    // Check if it's just a template: file contains ant:template AND has minimal real content.
-    // Strip HTML comments and whitespace, then check remaining length.
-    // A real PRD with ant:template leftover at the bottom should NOT be treated as empty.
-    if (existingDocument.includes('ant:template')) {
-      const stripped = existingDocument.replace(/<!--[\s\S]*?-->/g, '').trim();
-      if (stripped.length < 200) {
-        console.log('   PRD: Template only (treated as no PRD)');
-        existingDocument = undefined;
-      } else {
-        // Real content exists — strip the template marker and use it
-        existingDocument = existingDocument
-          .replace(/<!--\s*ant:template\s*-->/g, '')
-          .replace(/<!--.*ant:template.*-->/g, '')
-          .trim();
-        console.log(`   PRD: Loaded (${existingDocument.length} chars, ant:template marker stripped)`);
-      }
-    } else {
+    const raw = fs.readFileSync(prdPath, 'utf-8');
+    existingDocument = normalizeTemplateDoc(raw) ?? undefined;
+    if (existingDocument) {
       console.log(`   PRD: Loaded (${existingDocument.length} chars)`);
+    } else {
+      console.log('   PRD: Template only (treated as no PRD)');
     }
   } catch (err: any) {
     console.log(`   PRD: Not found (${err.code || err.message})`);

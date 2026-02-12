@@ -87,6 +87,9 @@ export interface UIState {
   };
   mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer'>;
   isJobTabCleared: boolean;
+  // ✅ Pending clarify answers (shared between compound ChoiceCard and ChatInput)
+  pendingClarifyAnswers: Record<number, string>;  // questionIndex → selected answer
+  pendingClarifyQuestions: string[];  // original question texts (for combining with free input)
 }
 
 export interface GitStatus {

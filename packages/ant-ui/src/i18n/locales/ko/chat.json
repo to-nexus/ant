@@ -24,7 +24,7 @@
   },
   "agent": {
     "architect": "코딩 작업에 최적화",
-    "planner": "프로젝트 계획 및 로드맵 생성",
+    "planner": "PRD(제품 요구사항 정의서) 작성 및 개선",
     "reviewer": "코드 리뷰 및 피드백 제공",
     "doc": "문서 생성"
   },
@@ -43,8 +43,19 @@
     },
     "plan": {
       "label": "📋 Plan",
-      "description": "프로젝트 계획 및 로드맵 생성"
+      "description": "제품 요구사항 정의 및 개선"
     }
+  },
+  "clarify": {
+    "freeInput": "직접 입력...",
+    "title": "PRD 작성을 위해 {{count}}가지 질문",
+    "submitting": "제출 중...",
+    "submitAll": "모든 답변 제출 ({{answered}}/{{total}})",
+    "submitPartial": "답변 제출 ({{answered}}/{{total}})",
+    "submitEmpty": "질문에 답변해주세요 (0/{{total}})",
+    "resolvedAll": "{{total}}개 질문 모두 응답",
+    "resolvedPartial": "{{answered}}/{{total}}개 질문 응답",
+    "partialHint": "답변하지 않은 질문은 건너뜁니다. 채팅창에 자유 입력도 가능합니다."
   },
   "policy": {
     "signInPlaceholder": "로그인 후 채팅을 시작하세요...",

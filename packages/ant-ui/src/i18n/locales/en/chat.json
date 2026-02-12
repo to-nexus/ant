@@ -24,7 +24,7 @@
   },
   "agent": {
     "architect": "Optimized for coding tasks",
-    "planner": "Creates project plans & roadmaps",
+    "planner": "Creates & refines PRDs (product requirements)",
     "reviewer": "Reviews code & provides feedback",
     "doc": "Generates documentation"
   },
@@ -43,8 +43,19 @@
     },
     "plan": {
       "label": "📋 Plan",
-      "description": "Creates project plans & roadmaps"
+      "description": "Define & refine product requirements"
     }
+  },
+  "clarify": {
+    "freeInput": "Type your answer...",
+    "title": "{{count}} questions for PRD",
+    "submitting": "Submitting...",
+    "submitAll": "Submit all answers ({{answered}}/{{total}})",
+    "submitPartial": "Submit answers ({{answered}}/{{total}})",
+    "submitEmpty": "Please answer the questions (0/{{total}})",
+    "resolvedAll": "All {{total}} questions answered",
+    "resolvedPartial": "{{answered}}/{{total}} questions answered",
+    "partialHint": "Unanswered questions will be skipped. You can also type freely in the chat input."
   },
   "policy": {
     "signInPlaceholder": "Please sign in to start chatting...",

@@ -21,6 +21,11 @@ export interface UIActions {
   closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => void;
   clearJobTab: () => Promise<void>;
   restoreJobTab: () => void;
+  // ✅ Pending clarify answers (compound ChoiceCard ↔ ChatInput shared state)
+  setPendingClarifyAnswer: (index: number, answer: string) => void;
+  removePendingClarifyAnswer: (index: number) => void;
+  setPendingClarifyContext: (questions: string[]) => void;
+  clearPendingClarify: () => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -88,6 +93,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false },
   mainPanelTabOrder: [],
   isJobTabCleared: false,
+  pendingClarifyAnswers: {},
+  pendingClarifyQuestions: [],
 
   // ==================
   // Actions
@@ -262,6 +269,29 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   restoreJobTab: () => {
     set({ isJobTabCleared: false });
+  },
+
+  // ✅ Pending clarify answers
+  setPendingClarifyAnswer: (index: number, answer: string) => {
+    set((s: any) => ({
+      pendingClarifyAnswers: { ...s.pendingClarifyAnswers, [index]: answer },
+    }));
+  },
+
+  removePendingClarifyAnswer: (index: number) => {
+    set((s: any) => {
+      const next = { ...s.pendingClarifyAnswers };
+      delete next[index];
+      return { pendingClarifyAnswers: next };
+    });
+  },
+
+  setPendingClarifyContext: (questions: string[]) => {
+    set({ pendingClarifyQuestions: questions });
+  },
+
+  clearPendingClarify: () => {
+    set({ pendingClarifyAnswers: {}, pendingClarifyQuestions: [] });
   },
 });
 
