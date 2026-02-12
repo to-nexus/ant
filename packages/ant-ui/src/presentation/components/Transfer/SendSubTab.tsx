@@ -18,6 +18,7 @@ import {
   requestTransfer,
   fetchTransferRequests,
   cancelTransferRequest,
+  deleteTransferRequest,
   fetchOrgMembers,
   fetchMemberProjects,
   fetchMemberFeatures,
@@ -26,7 +27,7 @@ import {
   type TransferRequest,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { Clock, CheckCircle, XCircle, Ban, Timer, ArrowRight, Plus, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, Ban, Timer, ArrowRight, Plus, ChevronDown, AlertTriangle, X } from 'lucide-react';
 import { TransferFileList, countFilesUnderPath } from './TransferFileList';
 import { Button } from '../common/button';
 import { cn } from '@/shared/utils/design-system';
@@ -295,6 +296,15 @@ export function SendSubTab() {
     }
   };
 
+  const handleDelete = async (requestId: string) => {
+    try {
+      await deleteTransferRequest(requestId);
+      setSentRequests(sentRequests.filter(r => r.id !== requestId));
+    } catch (error: any) {
+      showError(error.message, { title: '삭제 실패' });
+    }
+  };
+
   const otherMembers = members.filter(m => !m.isSelf);
 
   return (
@@ -474,25 +484,27 @@ export function SendSubTab() {
           </div>
         )}
 
-        {/* Split button: [전송하기 ▾] with mode dropdown */}
-        <SplitTransferButton
-          mode={mode}
-          onModeChange={setMode}
-          onClick={handleTransfer}
-          disabled={
-            isLoading ||
-            srcPaths.length === 0 ||
-            (sendTarget === 'other' && (otherUserNotFound || !targetUserId || !otherProjectId || !otherFeatureId))
-          }
-          isLoading={isLoading}
-          itemCount={srcPaths.length}
-          modeLocked={sendTarget === 'other'}
-        />
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          {sendTarget === 'self'
-            ? '선택한 위치로 즉시 전송됩니다.'
-            : '상대방이 수락하면 복사 전송됩니다. (원본은 유지)'}
-        </p>
+        {/* Split button: [전송하기 ▾] with mode dropdown + inline hint */}
+        <div className="flex items-center gap-3">
+          <SplitTransferButton
+            mode={mode}
+            onModeChange={setMode}
+            onClick={handleTransfer}
+            disabled={
+              isLoading ||
+              srcPaths.length === 0 ||
+              (sendTarget === 'other' && (otherUserNotFound || !targetUserId || !otherProjectId || !otherFeatureId))
+            }
+            isLoading={isLoading}
+            itemCount={srcPaths.length}
+            modeLocked={sendTarget === 'other'}
+          />
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            {sendTarget === 'self'
+              ? '선택한 위치로 즉시 전송됩니다.'
+              : '상대방이 수락하면 복사 전송됩니다. (원본은 유지)'}
+          </span>
+        </div>
       </section>
 
       {/* ── 4. Sent requests history ── */}
@@ -501,7 +513,7 @@ export function SendSubTab() {
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">보낸 요청 히스토리</h4>
           <div className="space-y-2">
             {sentRequests.map(req => (
-              <SentRequestCard key={req.id} request={req} onCancel={handleCancel} />
+              <SentRequestCard key={req.id} request={req} onCancel={handleCancel} onDelete={handleDelete} />
             ))}
           </div>
         </section>
@@ -562,7 +574,11 @@ function InlineProjectFeature({
 }
 
 // ─── Sent request card ───
-function SentRequestCard({ request, onCancel }: { request: TransferRequest; onCancel: (id: string) => void }) {
+function SentRequestCard({ request, onCancel, onDelete }: {
+  request: TransferRequest;
+  onCancel: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
   const statusIcons: Record<string, React.ReactNode> = {
     pending: <Clock className="w-4 h-4 text-yellow-500" />,
     approved: <CheckCircle className="w-4 h-4 text-green-500" />,
@@ -571,20 +587,30 @@ function SentRequestCard({ request, onCancel }: { request: TransferRequest; onCa
     expired: <Timer className="w-4 h-4 text-gray-400" />,
   };
   const timeAgo = getTimeAgo(request.createdAt);
+  const isCompleted = request.status !== 'pending';
 
   return (
-    <div className="flex items-center justify-between text-sm py-2 px-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-      <div className="flex items-center gap-2">
+    <div className="group flex items-center justify-between text-sm py-2 px-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+      <div className="flex items-center gap-2 min-w-0">
         {statusIcons[request.status] || null}
-        <span className="text-gray-700 dark:text-gray-300">
+        <span className="text-gray-700 dark:text-gray-300 truncate">
           → {request.recipient.userId} / {request.destination.path}
         </span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <span className="text-xs text-gray-400">{timeAgo}</span>
         {request.status === 'pending' && (
           <button className="text-xs text-red-500 hover:text-red-600 hover:underline"
             onClick={() => onCancel(request.id)}>취소</button>
+        )}
+        {isCompleted && (
+          <button
+            className="p-0.5 rounded text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={() => onDelete(request.id)}
+            title="히스토리에서 제거"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         )}
       </div>
     </div>

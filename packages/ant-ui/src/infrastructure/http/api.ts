@@ -2295,6 +2295,20 @@ export async function cancelTransferRequest(requestId: string): Promise<Transfer
 }
 
 /**
+ * Delete a completed transfer request from history (sender only)
+ */
+export async function deleteTransferRequest(requestId: string): Promise<{ success: boolean; id: string }> {
+  const response = await authFetch(`${API_BASE()}/artifacts/transfer-requests/${requestId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
  * Download a file or directory
  */
 export function getDownloadUrl(projectId: string, featureName: string, filePath: string): string {

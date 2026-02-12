@@ -48,6 +48,8 @@ export interface ConfigSectionProps {
     state: 'configured' | 'not-configured' | 'checking';
     label?: string;
   };
+  /** Extra badge shown next to the status badge */
+  extraBadge?: ReactNode;
   /** Main control area content */
   children: ReactNode;
   /** Footer hint text */
@@ -59,6 +61,7 @@ export function ConfigSection({
   title,
   description,
   status,
+  extraBadge,
   children,
   hint,
 }: ConfigSectionProps) {
@@ -79,6 +82,7 @@ export function ConfigSection({
           {status && (
             <StatusBadge status={status.state} label={status.label} />
           )}
+          {extraBadge}
         </div>
         
         {/* Description */}
