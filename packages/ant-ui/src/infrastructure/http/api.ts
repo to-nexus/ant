@@ -1707,6 +1707,37 @@ export async function initializeGitHubRepo(projectId: string): Promise<{ success
 }
 
 /**
+ * Publish existing codebase to a new GitHub repository.
+ * Unlike initialize, this allows features to already exist and creates branches for them.
+ */
+export async function publishToGitHub(projectId: string, activeFeature?: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activeFeature })
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error publishing to GitHub:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
+/**
  * Push changes to GitHub
  */
 export async function pushToGitHub(projectId: string): Promise<{ success: boolean; error?: string }> {
