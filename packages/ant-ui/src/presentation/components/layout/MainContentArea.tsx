@@ -6,6 +6,7 @@ import { AgentWorkflowBoard } from '../workflow';
 import { ConfigEditor } from '../ConfigEditor';
 import { AccountConfigEditor } from '../AccountConfigEditor';
 import { FileEditorPanel } from '../FileEditorPanel';
+import { TransferTab } from '../Transfer/TransferTab';
 import { useStore } from '@/domain/store';
 import type { ProjectConfig } from '@/infrastructure/http/api';
 import type { KanbanData } from '@/infrastructure/http/api';
@@ -99,6 +100,10 @@ export function MainContentArea({
               Select a file from Explorer to edit.
             </div>
           )}
+        </div>
+      ) : activeTab === 'transfer' && openTabs.transfer ? (
+        <div className="flex-1 h-full overflow-hidden">
+          <TransferTab />
         </div>
       ) : (
         <div className="flex-1 h-full">

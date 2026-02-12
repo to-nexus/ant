@@ -29,6 +29,7 @@ import {
   PendingChoiceData
 } from '../../core/ports/stateStore';
 import type { TaskQueueSnapshot, JobProjectMapping } from '../../core/types/task';
+import type { TransferRequest } from '../../core/types/transfer';
 import { 
   PortRegistryPort, 
   PreviewState, 
@@ -834,6 +835,208 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async deletePendingChoice(choiceKey: string): Promise<void> {
     await this.redis.del(this.key(REDIS_KEYS.CHOICE.PENDING, choiceKey));
     logger.debug(`Pending choice deleted: ${choiceKey}`, { component: 'RedisStateStore' });
+  }
+
+  // ============================================
+  // Transfer Request Management
+  // ============================================
+
+  /**
+   * Create a transfer request in Redis
+   */
+  async createTransferRequest(request: TransferRequest): Promise<void> {
+    const key = this.key(REDIS_KEYS.TRANSFER.REQUEST, request.id);
+    
+    await this.redis.setex(
+      key,
+      REDIS_TTL.TRANSFER.REQUEST,
+      JSON.stringify(request)
+    );
+    
+    // Add to recipient index
+    const recipientKey = this.key(
+      REDIS_KEYS.TRANSFER.BY_RECIPIENT, 
+      request.recipient.orgId, 
+      request.recipient.userId
+    );
+    await this.redis.sadd(recipientKey, request.id);
+    await this.redis.expire(recipientKey, REDIS_TTL.TRANSFER.REQUEST);
+    
+    // Add to sender index
+    const senderKey = this.key(
+      REDIS_KEYS.TRANSFER.BY_SENDER, 
+      request.sender.orgId, 
+      request.sender.userId
+    );
+    await this.redis.sadd(senderKey, request.id);
+    await this.redis.expire(senderKey, REDIS_TTL.TRANSFER.REQUEST);
+    
+    logger.debug(`📦 [Transfer] Request created: ${request.id}`, { component: 'RedisStateStore' });
+  }
+
+  /**
+   * Get a transfer request by ID
+   */
+  async getTransferRequest(requestId: string): Promise<TransferRequest | null> {
+    const data = await this.redis.get(this.key(REDIS_KEYS.TRANSFER.REQUEST, requestId));
+    if (!data) return null;
+    
+    try {
+      return JSON.parse(data) as TransferRequest;
+    } catch (e) {
+      logger.error(`Failed to parse transfer request: ${requestId}`, { component: 'RedisStateStore' }, e);
+      return null;
+    }
+  }
+
+  /**
+   * Update transfer request status
+   */
+  async updateTransferRequestStatus(
+    requestId: string, 
+    status: TransferRequest['status']
+  ): Promise<TransferRequest | null> {
+    const request = await this.getTransferRequest(requestId);
+    if (!request) return null;
+    
+    request.status = status;
+    
+    await this.redis.setex(
+      this.key(REDIS_KEYS.TRANSFER.REQUEST, requestId),
+      REDIS_TTL.TRANSFER.REQUEST,
+      JSON.stringify(request)
+    );
+    
+    logger.debug(`📦 [Transfer] Request ${requestId} status → ${status}`, { component: 'RedisStateStore' });
+    return request;
+  }
+
+  /**
+   * Get all transfer requests for a recipient (pending or all)
+   */
+  async getTransferRequestsByRecipient(
+    orgId: string, 
+    userId: string, 
+    statusFilter?: TransferRequest['status']
+  ): Promise<TransferRequest[]> {
+    const recipientKey = this.key(REDIS_KEYS.TRANSFER.BY_RECIPIENT, orgId, userId);
+    const requestIds = await this.redis.smembers(recipientKey);
+    
+    if (requestIds.length === 0) return [];
+    
+    const pipeline = this.redis.pipeline();
+    for (const id of requestIds) {
+      pipeline.get(this.key(REDIS_KEYS.TRANSFER.REQUEST, id));
+    }
+    const results = await pipeline.exec();
+    
+    const requests: TransferRequest[] = [];
+    const expiredIds: string[] = [];
+    
+    for (let i = 0; i < requestIds.length; i++) {
+      const [err, data] = results![i];
+      if (err || !data) {
+        // Request expired from Redis, clean up index
+        expiredIds.push(requestIds[i]);
+        continue;
+      }
+      try {
+        const request = JSON.parse(data as string) as TransferRequest;
+        if (!statusFilter || request.status === statusFilter) {
+          requests.push(request);
+        }
+      } catch {
+        expiredIds.push(requestIds[i]);
+      }
+    }
+    
+    // Cleanup stale index entries
+    if (expiredIds.length > 0) {
+      await this.redis.srem(recipientKey, ...expiredIds);
+    }
+    
+    return requests;
+  }
+
+  /**
+   * Get all transfer requests sent by a user
+   */
+  async getTransferRequestsBySender(
+    orgId: string, 
+    userId: string, 
+    statusFilter?: TransferRequest['status']
+  ): Promise<TransferRequest[]> {
+    const senderKey = this.key(REDIS_KEYS.TRANSFER.BY_SENDER, orgId, userId);
+    const requestIds = await this.redis.smembers(senderKey);
+    
+    if (requestIds.length === 0) return [];
+    
+    const pipeline = this.redis.pipeline();
+    for (const id of requestIds) {
+      pipeline.get(this.key(REDIS_KEYS.TRANSFER.REQUEST, id));
+    }
+    const results = await pipeline.exec();
+    
+    const requests: TransferRequest[] = [];
+    const expiredIds: string[] = [];
+    
+    for (let i = 0; i < requestIds.length; i++) {
+      const [err, data] = results![i];
+      if (err || !data) {
+        expiredIds.push(requestIds[i]);
+        continue;
+      }
+      try {
+        const request = JSON.parse(data as string) as TransferRequest;
+        if (!statusFilter || request.status === statusFilter) {
+          requests.push(request);
+        }
+      } catch {
+        expiredIds.push(requestIds[i]);
+      }
+    }
+    
+    if (expiredIds.length > 0) {
+      await this.redis.srem(senderKey, ...expiredIds);
+    }
+    
+    return requests;
+  }
+
+  /**
+   * Delete a transfer request and remove from indexes
+   */
+  async deleteTransferRequest(requestId: string): Promise<void> {
+    const request = await this.getTransferRequest(requestId);
+    if (!request) return;
+    
+    // Remove from indexes
+    const recipientKey = this.key(
+      REDIS_KEYS.TRANSFER.BY_RECIPIENT, 
+      request.recipient.orgId, 
+      request.recipient.userId
+    );
+    const senderKey = this.key(
+      REDIS_KEYS.TRANSFER.BY_SENDER, 
+      request.sender.orgId, 
+      request.sender.userId
+    );
+    
+    await Promise.all([
+      this.redis.del(this.key(REDIS_KEYS.TRANSFER.REQUEST, requestId)),
+      this.redis.srem(recipientKey, requestId),
+      this.redis.srem(senderKey, requestId),
+    ]);
+    
+    logger.debug(`📦 [Transfer] Request deleted: ${requestId}`, { component: 'RedisStateStore' });
+  }
+
+  /**
+   * Count pending transfer requests for a recipient (for badge)
+   */
+  async countPendingTransferRequests(orgId: string, userId: string): Promise<number> {
+    const requests = await this.getTransferRequestsByRecipient(orgId, userId, 'pending');
+    return requests.length;
   }
 
   // ============================================

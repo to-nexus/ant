@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { ProjectConfig } from '@/infrastructure/http/api';
+import { useState, useEffect } from 'react';
+import { ProjectConfig, fetchOrgConfig, checkGitHubPATStatus } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
 import { CONFIG_SCHEMA } from './configSchema';
 import { ConfigEditorHeader } from './components/ConfigEditorHeader';
-import { ConfigField } from './components/ConfigField';
+import { ConfigField, GitHubOwnerInfo } from './components/ConfigField';
 import { LLMModelsSection } from './components/LLMModelsSection';
 
 interface ConfigEditorProps {
@@ -28,7 +28,36 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   } = useConfigEditor(config, defaultModelId);
   
   const [isSaving, setIsSaving] = useState(false);
+  const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
+
+  // Load GitHub owner info (org + personal) for quick-fill
+  useEffect(() => {
+    async function loadGithubOwners() {
+      try {
+        const [orgConfig, patStatus] = await Promise.all([
+          fetchOrgConfig(),
+          checkGitHubPATStatus(),
+        ]);
+        const orgOwner = orgConfig.github?.owner;
+        const personalOwner = patStatus.username;
+        setGithubOwnerInfo({ orgOwner, personalOwner });
+
+        // Auto-fill githubRepo if empty: prefer org, fallback to personal
+        const defaultOwner = orgOwner || personalOwner;
+        if (defaultOwner) {
+          setEditedConfig(prev => {
+            if (prev.githubRepo) return prev; // already has a value
+            const repoName = prev.repositoryName || 'my-project';
+            return { ...prev, githubRepo: `https://github.com/${defaultOwner}/${repoName}` };
+          });
+        }
+      } catch (error) {
+        console.error('[ConfigEditor] Failed to load GitHub owners:', error);
+      }
+    }
+    loadGithubOwners();
+  }, []);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
     setEditedConfig(prev => {
@@ -136,6 +165,8 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               isRepoTypeDisabled={isRepoTypeDisabled(field.key)}
               showLocalPath={backendMode !== 'cloud'}
               onChange={handleChange}
+              githubOwnerInfo={githubOwnerInfo}
+              projectName={editedConfig.repositoryName}
             />
           ))}
           

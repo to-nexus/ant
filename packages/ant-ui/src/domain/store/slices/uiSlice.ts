@@ -14,9 +14,9 @@ export interface UIActions {
   setIdeConnecting: (connecting: boolean, error?: string) => void;
   setIdeFrameLoaded: (loaded: boolean) => void;
   reloadIdeFrame: () => void;
-  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
-  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
-  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit') => void;
+  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => void;
+  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => void;
+  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => void;
   clearJobTab: () => Promise<void>;
   restoreJobTab: () => void;
 }
@@ -66,7 +66,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   ideConnectError: undefined,
   ideFrameLoaded: false,
   mainPanelActiveTab: 'job',
-  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false },
+  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false },
   mainPanelTabOrder: [],
   isJobTabCleared: false,
 
@@ -92,8 +92,24 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   setMainView: (mode) => {
+    const prev = get().mainView;
     set({ mainView: mode });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, mode);
+
+    // IDE -> Agents 전환 시 stale 데이터 refresh
+    if (prev === 'codeIde' && mode === 'agents') {
+      const state = get();
+      if (state.connectionStatus === 'connected' && state.selectedProject && state.selectedFeature) {
+        // File tree refresh
+        state.refreshFileTree();
+        // Transfer count refresh
+        import('@/infrastructure/http/api').then(({ fetchTransferRequests }) => {
+          fetchTransferRequests('received')
+            .then(({ pendingCount }: { pendingCount: number }) => state.setPendingTransferCount(pendingCount))
+            .catch(() => {});
+        });
+      }
+    }
   },
 
   setIdeBaseUrl: (url) => {

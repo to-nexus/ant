@@ -2,7 +2,7 @@
  * Install Dependencies Node
  * 
  * Handles post-validation tasks:
- * 1. Package installation (if package.json changed)
+ * 1. Package installation based on detected project language
  * 
  * This runs AFTER validation to ensure we don't install dependencies
  * for invalid code (ellipsis, excessive deletion, etc.)
@@ -10,9 +10,17 @@
  * ✅ Hexagonal Architecture Compliance:
  * - Uses CommandPort for command execution
  * - Uses GitPort for file operations
+ * 
+ * ✅ Multi-language support via ProjectRuntime abstraction:
+ * - Node.js/TypeScript: npm/pnpm/yarn install with dev-deps handling
+ * - Go: go mod tidy
+ * - Other languages: generic install via ProjectRuntimeConfig
  */
 
 import { ArchitectGraphState, Violation } from "../state";
+import { detectProject } from "./diagnostics";
+import { Language } from "./diagnostics/types";
+import { getProjectRuntime, ProjectRuntimeConfig } from "./projectRuntime";
 
 export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Increment recursion count (track every node execution)
@@ -74,215 +82,77 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
   console.log(`📂 Target directory: ${resolvedPath}`);
 
   try {
-    // 1. Check if package.json was generated or modified
-    const files = state.projectCodeContext?.files || [];
-    const hasPackageJson = files.some(f => 
-      f.path.endsWith('package.json')
-    );
+    // ✅ Detect project language and get runtime config
+    const projectDetection = await detectProject(resolvedPath, gitPort, fileSystem);
+    const runtime = getProjectRuntime(projectDetection);
+    
+    console.log(`🔍 Detected: ${projectDetection.language} (config: ${runtime.dependency.configFile || 'none'})`);
 
-    // ✅ CRITICAL: Also check if node_modules exists (for first-time setup or after cleanup)
-    const nodeModulesPath = p.join(resolvedPath, 'node_modules');
-    // ✅ FIXED: fileSystem.basePath might be projectPath, so get full relative path from basePath
+    // ✅ Check if the dependency config file was modified in current task
+    const files = state.projectCodeContext?.files || [];
+    const configChanged = runtime.dependency.configFile
+      ? files.some(f => f.path.endsWith(runtime.dependency.configFile))
+      : false;
+
+    // ✅ Check if local cache directory exists (language-specific)
     const fileSystemBase = fileSystem.getWorkspaceRoot();
-    const nodeModulesRelative = p.relative(fileSystemBase, nodeModulesPath);
-    const nodeModulesExists = await fileSystem.fileExists(nodeModulesRelative);
+    let cacheDirExists = true;  // Default true for languages with no local cache
+    if (runtime.dependency.localCacheDir) {
+      const cacheDirPath = p.join(resolvedPath, runtime.dependency.localCacheDir);
+      const cacheDirRelative = p.relative(fileSystemBase, cacheDirPath);
+      cacheDirExists = await fileSystem.fileExists(cacheDirRelative);
+    }
 
     // ✅ Detect final/integration tasks
     const isFinalTask = state.currentTask?.name?.toLowerCase().includes('final') ||
                         state.currentTask?.name?.toLowerCase().includes('integration') ||
                         state.currentTask?.name?.toLowerCase().includes('verification');
 
-    // ✅ OPTION 2: Install strategy based on task type
-    let shouldInstall: boolean;
-    
-    if (isFinalTask) {
-      // Final/Integration task → ALWAYS install (verification requires fresh build)
-      shouldInstall = true;
-      console.log('📦 Final verification task - forcing fresh dependency installation for build validation');
-    } else {
-      // Regular task → Install ONLY if package.json changed OR node_modules missing
-      shouldInstall = hasPackageJson || !nodeModulesExists;
-      
-      if (shouldInstall) {
-        if (hasPackageJson) {
-          console.log('📦 Detected package.json changes in current task');
-        }
-        if (!nodeModulesExists) {
-          console.log('📦 node_modules not found - dependencies need to be installed');
-        }
-      }
-    }
+    // ✅ Use runtime config to decide if install is needed
+    const shouldInstall = runtime.dependency.shouldInstall({
+      configChanged,
+      cacheDirExists,
+      isFinalTask: !!isFinalTask,
+    });
 
-    if (shouldInstall) {
-      // Check if package.json exists in target directory
-      const pkgJsonPath = p.join(resolvedPath, 'package.json');
-      // ✅ FIXED: Use fileSystem basePath for relative path
-      const fileSystemBase = fileSystem.getWorkspaceRoot();
-      const pkgJsonRelative = p.relative(fileSystemBase, pkgJsonPath);
-      const pkgExists = await fileSystem.fileExists(pkgJsonRelative);
-
-      if (pkgExists) {
-        // Detect package manager
-        const pm = await commandPort.detectPackageManager(resolvedPath);
-        
-        if (pm) {
-          console.log(`📦 Installing dependencies with ${pm}...`);
-          
-          // ✅ Modern install policy (refactor):
-          // - Many environments set `npm config set omit dev`, causing Vite/TS to disappear.
-          // - For our code+UI workflows we almost always need devDependencies.
-          // - Therefore force dev deps unless explicitly running production-only.
-          let installCommand = `${pm} install`;
-          const forceDevDeps =
-            pm === 'npm' &&
-            process.env.NODE_ENV !== 'production';
-
-          if (process.env.NODE_ENV === 'production') {
-            console.warn('⚠️  NODE_ENV=production detected - forcing devDependencies installation');
-            installCommand = `${pm} install --include=dev`;
-          } else if (forceDevDeps) {
-            installCommand = `${pm} install --include=dev`;
-          }
-          
-          const result = await commandPort.execute(installCommand, {
-            cwd: resolvedPath,
-            timeout: 10 * 60 * 1000, // 10 minutes for install
-          });
-
-          if (result.success) {
-            console.log('✅ npm install completed');
-            
-            // ✅ Show last 10 lines of stdout (not just 5)
-            if (result.stdout) {
-              const lines = result.stdout.split('\n').filter(l => l.trim());
-              console.log(lines.slice(-10).join('\n'));
-            }
-            
-            // ✅ Check stderr for warnings (even on success)
-            if (result.stderr && result.stderr.trim().length > 0) {
-              console.log('\n⚠️  npm warnings/messages:');
-              const lines = result.stderr.split('\n').filter(l => l.trim());
-              console.log(lines.slice(-10).join('\n'));
-            }
-            
-            // ✅ CRITICAL: Verify devDependencies were actually installed
-            const fullOutput = (result.stdout || '') + '\n' + (result.stderr || '');
-            
-            // Check for NODE_ENV production warning
-            if (process.env.NODE_ENV === 'production' || 
-                fullOutput.toLowerCase().includes('node_env') ||
-                fullOutput.includes('skipping devDependencies')) {
-              
-              console.warn('\n⚠️  WARNING: Detected potential devDependencies installation issue');
-              console.warn(`   NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
-              
-              // ✅ CRITICAL FIX: Check if TypeScript exists in LOCAL node_modules (not global)
-              const tscPath = p.join(resolvedPath, 'node_modules', 'typescript');
-              const tscExists = await fileSystem.fileExists(p.relative(repoRoot, tscPath));
-              
-              if (!tscExists) {
-                console.error('❌ CRITICAL: TypeScript not found after npm install');
-                console.log('🔧 AUTOMATIC FIX: Running npm install --include=dev\n');
-                
-                // ✅ AGENT ACTION: Automatically install devDependencies
-                const fixResult = await commandPort.execute(`${pm} install --include=dev`, {
-                  cwd: resolvedPath,
-                  timeout: 10 * 60 * 1000
-                });
-                
-                if (fixResult.success) {
-                  console.log('✅ devDependencies installation completed');
-                  
-                  // Show last few lines
-                  if (fixResult.stdout) {
-                    const lines = fixResult.stdout.split('\n').filter(l => l.trim());
-                    console.log(lines.slice(-5).join('\n'));
-                  }
-                  
-                  // Verify TypeScript again in LOCAL node_modules
-                  const tscPathAgain = p.join(resolvedPath, 'node_modules', 'typescript');
-                  const tscExistsAgain = await fileSystem.fileExists(p.relative(repoRoot, tscPathAgain));
-                  
-                  if (tscExistsAgain) {
-                    console.log('\n✅ TypeScript successfully installed in local node_modules');
-                    console.log('✅ Environment issue automatically resolved!\n');
-                  } else {
-                    // Still failed - deeper issue
-                    console.error('❌ TypeScript still not available after --include=dev');
-                    
-                    violations.push({
-                      type: 'environment_issue',
-                      severity: 'critical',
-                      message: `TypeScript installation failed even after npm install --include=dev.
-
-This indicates a deeper environment issue that requires manual intervention.
-
-Please check:
-1. File permissions in ${resolvedPath}
-2. npm configuration: npm config list
-3. .npmrc file settings
-4. Node.js version compatibility`,
-                      suggestedFix: 'Manual environment troubleshooting required',
-                      isRetryable: false
-                    });
-                  }
-                } else {
-                  // npm install --include=dev itself failed
-                  console.error('❌ npm install --include=dev failed');
-                  console.error(fixResult.stderr);
-                  
-                  violations.push({
-                    type: 'environment_issue',
-                    severity: 'critical',
-                    message: `Automatic fix attempt failed: ${fixResult.stderr}`,
-                    suggestedFix: 'Manual intervention required',
-                    isRetryable: false
-                  });
-                }
-              } else {
-                console.log('✅ TypeScript found in local node_modules');
-              }
-            }
-            
-          } else {
-            console.error('❌ Dependency installation failed:');
-            console.error(result.stderr);
-            
-            // ✅ Add to violations so LLM can see and fix
-            violations.push({
-              type: 'missing_dependency',
-              severity: 'critical',
-              message: `Dependency installation failed:\n${result.stderr}`,
-              suggestedFix: 'Check package.json for incorrect package versions or missing packages',
-              isRetryable: false  // Needs fixing package.json
-            });
-          }
-        } else {
-          console.log('⚠️  Could not detect package manager');
-        }
-      } else {
-        console.log('⚠️  package.json not found in target directory');
-        // 🚨 For final verification, missing package.json means the project is not runnable.
-        // This MUST surface as a violation; otherwise the job can be incorrectly marked as success.
-        if (isFinalTask) {
-          violations.push({
-            type: 'missing_file',
-            severity: 'critical',
-            message: `Final verification requires a runnable Node-based project, but package.json was not found in the codebase.\n\nExpected at:\n- ${pkgJsonPath}\n\nThis usually means setup task wrote files to the wrong directory (project root instead of codebase) or skipped dependency scaffolding.`,
-            suggestedFix: 'Create package.json in the codebase root and ensure all generated files are written under the codebase directory.',
-            isRetryable: false
-          });
-        }
-      }
-    } else {
-      // ✅ Skip install: package.json unchanged AND node_modules exists
+    if (!shouldInstall) {
       if (state.currentTask?.type === 'feature') {
-        console.log('⏭️  Skipping dependency installation (package.json unchanged and node_modules exists)');
+        console.log(`⏭️  Skipping dependency installation (${runtime.dependency.configFile} unchanged${runtime.dependency.localCacheDir ? ` and ${runtime.dependency.localCacheDir} exists` : ''})`);
         console.log(`   Task: ${state.currentTask.name}`);
-        console.log(`   Type: ${state.currentTask.type}`);
-        console.log(`   Rationale: Feature tasks only need install if dependencies change or node_modules missing\n`);
+        console.log(`   Type: ${state.currentTask.type}\n`);
       } else {
-        console.log('⏭️  No package.json changes detected and node_modules exists');
+        console.log(`⏭️  No ${runtime.dependency.configFile || 'dependency config'} changes detected, skipping install`);
+      }
+    } else {
+      if (isFinalTask) {
+        console.log('📦 Final verification task - forcing fresh dependency installation for build validation');
+      } else if (configChanged) {
+        console.log(`📦 Detected ${runtime.dependency.configFile} changes in current task`);
+      } else if (!cacheDirExists && runtime.dependency.localCacheDir) {
+        console.log(`📦 ${runtime.dependency.localCacheDir} not found - dependencies need to be installed`);
+      }
+
+      // ✅ Route to language-specific install handler
+      switch (projectDetection.language) {
+        case Language.TYPESCRIPT:
+        case Language.JAVASCRIPT:
+          await handleNodeInstall(
+            resolvedPath, repoRoot, fileSystem, commandPort, violations, isFinalTask, p
+          );
+          break;
+
+        case Language.GO:
+          await handleGoInstall(
+            runtime, resolvedPath, commandPort, violations, p
+          );
+          break;
+
+        default:
+          // Generic: attempt install if runtime provides a command
+          await handleGenericInstall(
+            runtime, resolvedPath, commandPort, violations, isFinalTask
+          );
+          break;
       }
     }
 
@@ -309,3 +179,241 @@ Please check:
   };
 }
 
+// ─────────────────────────────────────────────────────────────
+// Node.js / TypeScript install handler
+// ─────────────────────────────────────────────────────────────
+
+async function handleNodeInstall(
+  resolvedPath: string,
+  repoRoot: string,
+  fileSystem: any,
+  commandPort: any,
+  violations: Violation[],
+  isFinalTask: boolean | undefined,
+  p: any,
+): Promise<void> {
+  const pkgJsonPath = p.join(resolvedPath, 'package.json');
+  const fileSystemBase = fileSystem.getWorkspaceRoot();
+  const pkgJsonRelative = p.relative(fileSystemBase, pkgJsonPath);
+  const pkgExists = await fileSystem.fileExists(pkgJsonRelative);
+
+  if (!pkgExists) {
+    console.log('⚠️  package.json not found in target directory');
+    if (isFinalTask) {
+      violations.push({
+        type: 'missing_file',
+        severity: 'critical',
+        message: `Final verification requires a runnable Node-based project, but package.json was not found in the codebase.\n\nExpected at:\n- ${pkgJsonPath}\n\nThis usually means setup task wrote files to the wrong directory (project root instead of codebase) or skipped dependency scaffolding.`,
+        suggestedFix: 'Create package.json in the codebase root and ensure all generated files are written under the codebase directory.',
+        isRetryable: false
+      });
+    }
+    return;
+  }
+
+  // Detect package manager
+  const pm = await commandPort.detectPackageManager(resolvedPath);
+  if (!pm) {
+    console.log('⚠️  Could not detect package manager');
+    return;
+  }
+
+  console.log(`📦 Installing dependencies with ${pm}...`);
+  
+  // ✅ Modern install policy:
+  // - Many environments set `npm config set omit dev`, causing Vite/TS to disappear.
+  // - For our code+UI workflows we almost always need devDependencies.
+  let installCommand = `${pm} install`;
+  const forceDevDeps =
+    pm === 'npm' &&
+    process.env.NODE_ENV !== 'production';
+
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('⚠️  NODE_ENV=production detected - forcing devDependencies installation');
+    installCommand = `${pm} install --include=dev`;
+  } else if (forceDevDeps) {
+    installCommand = `${pm} install --include=dev`;
+  }
+  
+  const result = await commandPort.execute(installCommand, {
+    cwd: resolvedPath,
+    timeout: 10 * 60 * 1000,
+  });
+
+  if (result.success) {
+    console.log('✅ npm install completed');
+    
+    if (result.stdout) {
+      const lines = result.stdout.split('\n').filter((l: string) => l.trim());
+      console.log(lines.slice(-10).join('\n'));
+    }
+    
+    if (result.stderr && result.stderr.trim().length > 0) {
+      console.log('\n⚠️  npm warnings/messages:');
+      const lines = result.stderr.split('\n').filter((l: string) => l.trim());
+      console.log(lines.slice(-10).join('\n'));
+    }
+    
+    // ✅ CRITICAL: Verify devDependencies were actually installed
+    const fullOutput = (result.stdout || '') + '\n' + (result.stderr || '');
+    
+    if (process.env.NODE_ENV === 'production' || 
+        fullOutput.toLowerCase().includes('node_env') ||
+        fullOutput.includes('skipping devDependencies')) {
+      
+      console.warn('\n⚠️  WARNING: Detected potential devDependencies installation issue');
+      console.warn(`   NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
+      
+      const tscPath = p.join(resolvedPath, 'node_modules', 'typescript');
+      const tscExists = await fileSystem.fileExists(p.relative(repoRoot, tscPath));
+      
+      if (!tscExists) {
+        console.error('❌ CRITICAL: TypeScript not found after npm install');
+        console.log('🔧 AUTOMATIC FIX: Running npm install --include=dev\n');
+        
+        const fixResult = await commandPort.execute(`${pm} install --include=dev`, {
+          cwd: resolvedPath,
+          timeout: 10 * 60 * 1000
+        });
+        
+        if (fixResult.success) {
+          console.log('✅ devDependencies installation completed');
+          
+          if (fixResult.stdout) {
+            const lines = fixResult.stdout.split('\n').filter((l: string) => l.trim());
+            console.log(lines.slice(-5).join('\n'));
+          }
+          
+          const tscPathAgain = p.join(resolvedPath, 'node_modules', 'typescript');
+          const tscExistsAgain = await fileSystem.fileExists(p.relative(repoRoot, tscPathAgain));
+          
+          if (tscExistsAgain) {
+            console.log('\n✅ TypeScript successfully installed in local node_modules');
+            console.log('✅ Environment issue automatically resolved!\n');
+          } else {
+            console.error('❌ TypeScript still not available after --include=dev');
+            violations.push({
+              type: 'environment_issue',
+              severity: 'critical',
+              message: `TypeScript installation failed even after npm install --include=dev.\n\nThis indicates a deeper environment issue that requires manual intervention.\n\nPlease check:\n1. File permissions in ${resolvedPath}\n2. npm configuration: npm config list\n3. .npmrc file settings\n4. Node.js version compatibility`,
+              suggestedFix: 'Manual environment troubleshooting required',
+              isRetryable: false
+            });
+          }
+        } else {
+          console.error('❌ npm install --include=dev failed');
+          console.error(fixResult.stderr);
+          violations.push({
+            type: 'environment_issue',
+            severity: 'critical',
+            message: `Automatic fix attempt failed: ${fixResult.stderr}`,
+            suggestedFix: 'Manual intervention required',
+            isRetryable: false
+          });
+        }
+      } else {
+        console.log('✅ TypeScript found in local node_modules');
+      }
+    }
+    
+  } else {
+    console.error('❌ Dependency installation failed:');
+    console.error(result.stderr);
+    violations.push({
+      type: 'missing_dependency',
+      severity: 'critical',
+      message: `Dependency installation failed:\n${result.stderr}`,
+      suggestedFix: 'Check package.json for incorrect package versions or missing packages',
+      isRetryable: false
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Go install handler
+// ─────────────────────────────────────────────────────────────
+
+async function handleGoInstall(
+  runtime: ProjectRuntimeConfig,
+  resolvedPath: string,
+  commandPort: any,
+  violations: Violation[],
+  p: any,
+): Promise<void> {
+  const goModPath = p.join(resolvedPath, runtime.dependency.configFile);
+
+  console.log(`📦 Running ${runtime.dependency.getInstallCommand()}...`);
+
+  const result = await commandPort.execute(runtime.dependency.getInstallCommand(), {
+    cwd: resolvedPath,
+    timeout: 5 * 60 * 1000,  // 5 minutes for go mod tidy
+  });
+
+  if (result.success) {
+    console.log('✅ Go module dependencies resolved');
+    
+    if (result.stdout) {
+      const lines = result.stdout.split('\n').filter((l: string) => l.trim());
+      if (lines.length > 0) {
+        console.log(lines.slice(-10).join('\n'));
+      }
+    }
+    
+    // go mod tidy outputs warnings to stderr (e.g. unused modules)
+    if (result.stderr && result.stderr.trim().length > 0) {
+      console.log('\n⚠️  go mod tidy messages:');
+      const lines = result.stderr.split('\n').filter((l: string) => l.trim());
+      console.log(lines.slice(-10).join('\n'));
+    }
+  } else {
+    console.error('❌ Go dependency resolution failed:');
+    console.error(result.stderr);
+    violations.push({
+      type: 'missing_dependency',
+      severity: 'critical',
+      message: `Go dependency resolution failed:\n${result.stderr || result.stdout}`,
+      suggestedFix: `Check ${runtime.dependency.configFile} for incorrect module paths or version constraints. Run 'go mod tidy' locally to diagnose.`,
+      isRetryable: false
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Generic install handler (fallback for other languages)
+// ─────────────────────────────────────────────────────────────
+
+async function handleGenericInstall(
+  runtime: ProjectRuntimeConfig,
+  resolvedPath: string,
+  commandPort: any,
+  violations: Violation[],
+  isFinalTask: boolean | undefined,
+): Promise<void> {
+  const installCmd = runtime.dependency.getInstallCommand();
+  
+  if (!installCmd) {
+    console.log(`⚠️  No install command defined for ${runtime.language}, skipping`);
+    return;
+  }
+
+  console.log(`📦 Running: ${installCmd}`);
+
+  const result = await commandPort.execute(installCmd, {
+    cwd: resolvedPath,
+    timeout: 10 * 60 * 1000,
+  });
+
+  if (result.success) {
+    console.log(`✅ Dependency installation completed for ${runtime.language}`);
+  } else {
+    console.error(`❌ Dependency installation failed for ${runtime.language}:`);
+    console.error(result.stderr);
+    violations.push({
+      type: 'missing_dependency',
+      severity: 'critical',
+      message: `Dependency installation failed (${runtime.language}):\n${result.stderr || result.stdout}`,
+      suggestedFix: `Check ${runtime.dependency.configFile} for errors`,
+      isRetryable: false
+    });
+  }
+}

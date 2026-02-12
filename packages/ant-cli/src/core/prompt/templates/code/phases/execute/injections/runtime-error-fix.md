@@ -1,27 +1,18 @@
 ````markdown
-## 🔧 RUNTIME ERROR FIX
+## RUNTIME ERROR FIX
 
 **Fixing runtime errors from actual execution.**
 
-### Path Alias Errors
+### Module/Import Resolution Errors
 
-**Symptom:** `Can't resolve '@/components/X'` or import errors
+**Symptom:** Cannot resolve module, unresolved import, file not found
 
 **Check:**
-1. File exists at target path?
-2. Path alias configured in `tsconfig.json`?
+1. Does the target file/module exist at the referenced path?
+2. Is the module resolution configured correctly in the project's config files?
+3. Are path aliases defined and consistent between compiler config and build tool config?
 
-**Fix tsconfig.json:**
-```json
-{
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
-```
+**Principle**: Module resolution settings vary by language and build tool. Observe the project's existing configuration before applying fixes.
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -29,9 +20,10 @@
 
 | Issue | Fix |
 |-------|-----|
-| Missing dependency | `npm install <package>` |
-| Wrong import path | Check file path, extension (.ts vs .tsx), export name |
-| DevDeps missing | `npm install --include=dev` |
+| Missing dependency | Install using the project's package manager (see Build System Detection in rules) |
+| Wrong import path | Check file path, extension, and export name |
+| Dev dependencies missing | Reinstall with dev dependencies included |
+| Module not found | Verify module exists, check resolution config |
 
 ────────────────────────────────────────────────────────────────────────────────
 

@@ -77,13 +77,14 @@ export interface UIState {
   ideConnecting: boolean; // ✅ show skeleton while IDE container is starting
   ideConnectError: string | undefined;
   ideFrameLoaded: boolean; // ✅ iframe onLoad succeeded (prevents unnecessary auto-retries)
-  mainPanelActiveTab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit';
+  mainPanelActiveTab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer';
   mainPanelOpenTabs: {
     projectConfig: boolean;
     accountConfig: boolean;
     fileEdit: boolean;
+    transfer: boolean;
   };
-  mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit'>;
+  mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer'>;
   isJobTabCleared: boolean;
 }
 

@@ -1,11 +1,10 @@
 /**
  * Runtime Validate Node
  * 
- * Performs runtime validation by actually running:
- * 1. Type check (tsc --noEmit)
- * 2. Build (npm run build, etc)
- * 3. Lint (eslint)
- * 4. Tests (optional)
+ * Performs runtime validation by actually running language-appropriate checks:
+ * - Node.js/TypeScript: tsc --noEmit, eslint, npm run build
+ * - Go: go vet ./..., go build ./...
+ * - Other languages: uses ProjectRuntimeConfig to determine commands
  * 
  * This node executes build tools and collects errors, then uses the
  * diagnostics system to parse and categorize them.
@@ -13,6 +12,8 @@
  * ✅ Hexagonal Architecture Compliance:
  * - Uses CommandPort for command execution
  * - Uses GitPort for file operations
+ * 
+ * ✅ Multi-language support via ProjectRuntime abstraction
  */
 
 import path from "path";
@@ -24,11 +25,13 @@ import {
   ErrorLayer, 
   Framework,
 } from "../diagnostics";
+import { Language } from "../diagnostics/types";
 import { errorStatsCollector } from "../diagnostics/errorStats";
 import { ErrorParserFactory } from "../diagnostics/parsers";
 import { RuntimeValidationResult } from "./types";
 import { detectRecentToolFailures } from "./utils";
 import { convertDiagnosesToViolations } from "./violations";
+import { getProjectRuntime, type ProjectRuntimeConfig } from "../projectRuntime";
 
 /**
  * Runtime validation - run actual build/lint/test
@@ -110,15 +113,20 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   console.log(`\n📋 Running runtime validation in: ${resolvedPath}`);
   console.log(`   🔒 Final Verification: comprehensive build check\n`);
 
-  // ✅ RUNTIME VALIDATION: Full validation (TypeScript + Build + Lint)
-  console.log('🔍 Runtime validation mode (full)');
-  console.log('   ✅ TypeScript type check');
-  console.log('   ✅ Build execution');
-  console.log('   ✅ Lint checks\n');
-
   // ✅ Detect project type first
   const projectDetection = await detectProject(resolvedPath, gitPort, fileSystem);
+  const runtime = getProjectRuntime(projectDetection);
   console.log(`🔍 Detected: ${projectDetection.language} + ${projectDetection.buildTool} (${projectDetection.packageManager})`);
+
+  // ✅ RUNTIME VALIDATION: Show applicable checks
+  console.log('🔍 Runtime validation mode (full)');
+  if (runtime.validation.typeCheck) console.log(`   ✅ ${runtime.validation.typeCheck.name}`);
+  if (runtime.validation.lint) console.log(`   ✅ ${runtime.validation.lint.name}`);
+  if (runtime.validation.build) console.log(`   ✅ ${runtime.validation.build.name}`);
+  if (!runtime.validation.typeCheck && !runtime.validation.lint && !runtime.validation.build) {
+    console.log(`   ⚠️  No validation steps configured for ${projectDetection.language}`);
+  }
+  console.log('');
 
   const result: RuntimeValidationResult = {
     passed: true,
@@ -132,16 +140,16 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   };
 
   try {
-    // 1. Type Check (tsc --noEmit)
-    await runTypeCheck(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, p);
+    // 1. Type Check (language-specific: tsc --noEmit / go vet ./... / etc.)
+    await runTypeCheck(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, runtime, p);
     
     // Return early if ENVIRONMENT error detected in type check
     if (result.diagnoses?.some(d => d.layer === ErrorLayer.ENVIRONMENT && !d.canLLMFix)) {
       return handleEnvironmentError(state, result);
     }
 
-    // 2. Lint (if .eslintrc exists)
-    await runLint(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, p);
+    // 2. Lint (language-specific: eslint / golangci-lint / etc.)
+    await runLint(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, runtime, p);
 
     // 2.5. Pre-build Compatibility Check (catches config incompatibilities early)
     // This detects known problematic settings BEFORE build fails
@@ -172,8 +180,8 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
       };
     }
 
-    // 3. Build (package.json scripts)
-    const buildSuccess = await runBuild(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, p);
+    // 3. Build (language-specific: npm run build / go build ./... / etc.)
+    const buildSuccess = await runBuild(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, runtime, p);
     
     // Return early if build succeeded after auto-fix
     if (buildSuccess === 'auto_fixed') {
@@ -189,10 +197,13 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
       return handleEnvironmentError(state, result);
     }
 
-    // 4. Static asset integrity check (principle-based, catches silent runtime 404)
-    // - Build can succeed even when runtime assets 404 (e.g., '/x.webp' referenced but file missing in public/)
-    // - This prevents regressions like "background image missing" without breaking compilation.
-    const missingStaticAssets = await findMissingPublicAssetReferences(repoRoot, fileSystem, p);
+    // 4. Static asset integrity check (frontend-only: catches silent runtime 404)
+    // Only applicable for projects with a public/ directory (frontend/fullstack Node.js)
+    const isFrontendProject = projectDetection.language === Language.TYPESCRIPT ||
+                               projectDetection.language === Language.JAVASCRIPT;
+    const missingStaticAssets = isFrontendProject
+      ? await findMissingPublicAssetReferences(repoRoot, fileSystem, p)
+      : [];
     if (missingStaticAssets.length > 0) {
       const preview = missingStaticAssets.slice(0, 12);
       const lines = preview.map(m => `- ${m.file}: ${m.assetPath} (expected: public/${m.assetPath.replace(/^\//, '')})`);
@@ -228,15 +239,17 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     console.error('⚠️  Dynamic validation error:', error.message);
 
     // 🚨 CRITICAL: Do not silently succeed.
-    // If runtime validation cannot run (e.g., missing package.json), surface a violation so the job cannot be marked "success".
+    const configHint = runtime.dependency.configFile
+      ? `missing ${runtime.dependency.configFile} in codebase root`
+      : 'missing project configuration';
     return {
       ...state,
       violations: [
         {
           type: 'build_error',
           severity: 'critical',
-          message: `Runtime validation failed to execute:\n${error?.message || String(error)}\n\nCommon cause: missing package.json in codebase root.`,
-          suggestedFix: 'Ensure package.json exists in the codebase root and rerun final verification.',
+          message: `Runtime validation failed to execute:\n${error?.message || String(error)}\n\nCommon cause: ${configHint}.`,
+          suggestedFix: `Ensure ${runtime.dependency.configFile || 'project config'} exists in the codebase root and rerun final verification.`,
           isRetryable: false
         }
       ]
@@ -360,7 +373,10 @@ async function collectFilesRecursive(dir: string, fileSystem: any): Promise<stri
 }
 
 /**
- * Run TypeScript type check
+ * Run type check (language-specific via ProjectRuntimeConfig)
+ * - Node.js/TypeScript: npx tsc --noEmit
+ * - Go: go vet ./...
+ * - Skipped if runtime.validation.typeCheck is null
  */
 async function runTypeCheck(
   result: RuntimeValidationResult,
@@ -369,30 +385,44 @@ async function runTypeCheck(
   fileSystem: any,
   commandPort: any,
   projectDetection: any,
+  runtime: ProjectRuntimeConfig,
   p: any
 ): Promise<void> {
-  const hasTypeScript = await fileSystem.fileExists(
-    p.relative(repoRoot, p.join(resolvedPath, 'tsconfig.json'))
-  );
-
-  if (!hasTypeScript) {
+  const typeCheckConfig = runtime.validation.typeCheck;
+  if (!typeCheckConfig) {
     return;
   }
 
-  console.log('📘 Running TypeScript type check...');
+  // Check if any indicator file exists
+  let hasIndicator = false;
+  for (const indicator of typeCheckConfig.indicators) {
+    if (await fileSystem.fileExists(p.relative(repoRoot, p.join(resolvedPath, indicator)))) {
+      hasIndicator = true;
+      break;
+    }
+  }
+
+  if (!hasIndicator) {
+    console.log(`ℹ️  ${typeCheckConfig.name} skipped (no ${typeCheckConfig.indicators.join('/')} found)`);
+    return;
+  }
+
+  const command = typeCheckConfig.getCommand();
+  console.log(`📘 Running ${typeCheckConfig.name}...`);
   
-  const typeCheckResult = await commandPort.execute('npx tsc --noEmit', {
+  const typeCheckResult = await commandPort.execute(command, {
     cwd: resolvedPath,
     timeout: 2 * 60 * 1000, // 2 minutes
   });
 
   if (!typeCheckResult.success) {
     result.passed = false;
-    // ✅ TypeScript outputs errors to STDOUT, not stderr!
+    // TypeScript outputs errors to STDOUT; Go vet outputs to stderr. Combine both.
     const errorOutput = typeCheckResult.stdout || typeCheckResult.stderr;
     
-    // ✅ Use new TypeScript parser
-    const parser = ErrorParserFactory.create('typescript', {
+    // Use parser from runtime config (falls back to generic if not specified)
+    const parserType = typeCheckConfig.parserType || 'generic';
+    const parser = ErrorParserFactory.create(parserType, {
       projectRoot: resolvedPath,
       maxErrors: 50
     });
@@ -401,9 +431,9 @@ async function runTypeCheck(
     // Convert parsed errors to formatted strings
     result.typeErrors = parser.format(parsedErrors);
     
-    // ✅ Use diagnostics system
+    // Use diagnostics system
     const diagnosis = diagnoseError(errorOutput, {
-      command: 'npx tsc --noEmit',
+      command,
       workDir: resolvedPath,
       output: errorOutput,
       projectDetection,
@@ -412,16 +442,15 @@ async function runTypeCheck(
     if (diagnosis) {
       result.diagnoses!.push(diagnosis);
       
-      // ✅ Record error statistics
       errorStatsCollector.recordError(diagnosis, {
-        command: 'npx tsc --noEmit',
+        command,
         workDir: resolvedPath,
         language: projectDetection.language,
         buildTool: projectDetection.buildTool,
         packageManager: projectDetection.packageManager,
       });
       
-      // Check for ENVIRONMENT layer errors (e.g., tsc not found)
+      // Check for ENVIRONMENT layer errors
       if (diagnosis.layer === ErrorLayer.ENVIRONMENT) {
         console.error('🚨 ENVIRONMENT ISSUE DETECTED - User intervention required!');
         console.error(`   ${diagnosis.message}`);
@@ -430,18 +459,21 @@ async function runTypeCheck(
       }
     }
     
-    console.error('❌ Type check failed:');
+    console.error(`❌ ${typeCheckConfig.name} failed:`);
     result.typeErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
     if (result.typeErrors!.length > 10) {
       console.error(`   ... and ${result.typeErrors!.length - 10} more errors`);
     }
   } else {
-    console.log('✅ Type check passed');
+    console.log(`✅ ${typeCheckConfig.name} passed`);
   }
 }
 
 /**
- * Run ESLint
+ * Run lint (language-specific via ProjectRuntimeConfig)
+ * - Node.js/TypeScript: npx eslint
+ * - Go: null (golangci-lint is external, not guaranteed)
+ * - Skipped if runtime.validation.lint is null
  */
 async function runLint(
   result: RuntimeValidationResult,
@@ -450,36 +482,47 @@ async function runLint(
   fileSystem: any,
   commandPort: any,
   projectDetection: any,
+  runtime: ProjectRuntimeConfig,
   p: any
 ): Promise<void> {
-  const hasESLint = await fileSystem.fileExists(
-    p.relative(repoRoot, p.join(resolvedPath, '.eslintrc.json'))
-  ) || await fileSystem.fileExists(
-    p.relative(repoRoot, p.join(resolvedPath, '.eslintrc.js'))
-  );
-
-  if (!hasESLint) {
-    console.log('ℹ️  ESLint not configured, skipping lint check');
+  const lintConfig = runtime.validation.lint;
+  if (!lintConfig) {
+    console.log(`ℹ️  Lint not configured for ${projectDetection.language}, skipping`);
     return;
   }
 
-  console.log('📋 Running ESLint...');
+  // Check if any indicator file exists
+  let hasIndicator = false;
+  for (const indicator of lintConfig.indicators) {
+    if (await fileSystem.fileExists(p.relative(repoRoot, p.join(resolvedPath, indicator)))) {
+      hasIndicator = true;
+      break;
+    }
+  }
+
+  if (!hasIndicator) {
+    console.log(`ℹ️  ${lintConfig.name} not configured, skipping lint check`);
+    return;
+  }
+
+  const command = lintConfig.getCommand();
+  console.log(`📋 Running ${lintConfig.name}...`);
   
-  const lintResult = await commandPort.execute('npx eslint . --ext .ts,.tsx,.js,.jsx', {
+  const lintResult = await commandPort.execute(command, {
     cwd: resolvedPath,
     timeout: 2 * 60 * 1000,
   });
 
   if (!lintResult.success) {
-    // ⚠️  Check if errors are in build artifacts (configuration issue)
-    const isBuildArtifactError = /\/(dist|build|node_modules|\.next|\.nuxt|out)\//i.test(lintResult.stdout);
+    // ⚠️  Check if errors are in build artifacts (ESLint-specific configuration issue)
+    const isESLint = lintConfig.parserType === 'eslint';
+    const isBuildArtifactError = isESLint && /\/(dist|build|node_modules|\.next|\.nuxt|out)\//i.test(lintResult.stdout);
     
     if (isBuildArtifactError) {
       console.error('⚠️  ESLint Configuration Error Detected!');
       console.error('   ESLint is checking build artifacts (dist/, node_modules/, etc.)');
       console.error('   This indicates missing ignorePatterns in .eslintrc.json');
       
-      // Create a configuration-specific diagnosis
       const configDiagnosis = {
         type: 'lint_error',
         layer: ErrorLayer.CONFIGURATION,
@@ -501,17 +544,17 @@ async function runLint(
       console.error(`   💡 Fix: ${configDiagnosis.suggestedActions[0]}`);
     } else {
       // Parse lint errors for diagnostics
-      const lintParser = ErrorParserFactory.create('eslint', {
+      const parserType = lintConfig.parserType || 'generic';
+      const lintParser = ErrorParserFactory.create(parserType, {
         projectRoot: resolvedPath,
         maxErrors: 50
       });
       const parsedLintErrors = lintParser.parse(lintResult.stdout);
       result.lintErrors = lintParser.format(parsedLintErrors);
       
-      // Only add diagnostic if there are actual errors to report
       if (result.lintErrors && result.lintErrors.length > 0) {
         const diagnosis = diagnoseError(lintResult.stdout, {
-          command: 'npx eslint',
+          command,
           workDir: resolvedPath,
           output: lintResult.stdout,
           projectDetection,
@@ -520,9 +563,8 @@ async function runLint(
         if (diagnosis) {
           result.diagnoses!.push(diagnosis);
           
-          // ✅ Record error statistics
           errorStatsCollector.recordError(diagnosis, {
-            command: 'npx eslint',
+            command,
             workDir: resolvedPath,
             language: projectDetection.language,
             buildTool: projectDetection.buildTool,
@@ -530,7 +572,7 @@ async function runLint(
           });
         }
         
-        console.error('⚠️  Lint failed (non-blocking):');
+        console.error(`⚠️  ${lintConfig.name} failed (non-blocking):`);
         result.lintErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
         if (result.lintErrors!.length > 10) {
           console.error(`   ... and ${result.lintErrors!.length - 10} more errors`);
@@ -540,15 +582,18 @@ async function runLint(
       
       // ✅ CRITICAL: Do NOT set result.passed = false for lint-only failures
       // Let the validation level filtering handle this (FUNCTIONAL level ignores lint)
-      // result.passed stays true unless type check or build failed
     }
   } else {
-    console.log('✅ Lint passed');
+    console.log(`✅ ${lintConfig.name} passed`);
   }
 }
 
 /**
- * Run build
+ * Run build (language-specific via ProjectRuntimeConfig)
+ * - Node.js: checks package.json scripts.build, uses PM, supports auto-fix
+ * - Go: go build ./..., no PM needed
+ * - Other: uses runtime.validation.build config
+ * 
  * @returns 'auto_fixed' if build succeeded after auto-fix, undefined otherwise
  */
 async function runBuild(
@@ -558,77 +603,100 @@ async function runBuild(
   fileSystem: any,
   commandPort: any,
   projectDetection: any,
+  runtime: ProjectRuntimeConfig,
   p: any
 ): Promise<'auto_fixed' | undefined> {
-  const pkgJsonPath = p.join(resolvedPath, 'package.json');
-  const pkgExists = await fileSystem.fileExists(p.relative(repoRoot, pkgJsonPath));
-
-  if (!pkgExists) {
+  const buildConfig = runtime.validation.build;
+  if (!buildConfig) {
     return;
   }
 
-  const pkgContent = await fileSystem.readFile(p.relative(repoRoot, pkgJsonPath));
-  if (!pkgContent) {
+  // Check if any indicator file exists
+  let hasIndicator = false;
+  for (const indicator of buildConfig.indicators) {
+    if (await fileSystem.fileExists(p.relative(repoRoot, p.join(resolvedPath, indicator)))) {
+      hasIndicator = true;
+      break;
+    }
+  }
+
+  if (!hasIndicator) {
     return;
   }
 
-  try {
-    const pkg = JSON.parse(pkgContent);
-    
-    // Check for build script
-    if (!pkg.scripts?.build) {
+  // ─── Node.js-specific: check for scripts.build in package.json ───
+  const isNodeProject = projectDetection.language === Language.TYPESCRIPT ||
+                         projectDetection.language === Language.JAVASCRIPT;
+  let buildCommand: string;
+  let pm: string | null = null;
+
+  if (isNodeProject) {
+    const pkgJsonPath = p.join(resolvedPath, 'package.json');
+    const pkgContent = await fileSystem.readFile(p.relative(repoRoot, pkgJsonPath));
+    if (!pkgContent) return;
+
+    try {
+      const pkg = JSON.parse(pkgContent);
+      if (!pkg.scripts?.build) return;
+    } catch {
       return;
     }
 
-    console.log('🔨 Running build...');
-    
-    const pm = await commandPort.detectPackageManager(resolvedPath);
-    const buildResult = await commandPort.execute(`${pm} run build`, {
-      cwd: resolvedPath,
-      timeout: 5 * 60 * 1000, // 5 minutes
-    });
+    pm = await commandPort.detectPackageManager(resolvedPath);
+    buildCommand = buildConfig.getCommand(pm || undefined);
+  } else {
+    // Go, Rust, etc. - use runtime config directly
+    buildCommand = buildConfig.getCommand();
+  }
 
-    if (!buildResult.success) {
-      result.passed = false;
-      // ✅ Build tools may output errors to stdout or stderr - combine both
-      const errorOutput = [buildResult.stderr, buildResult.stdout]
-        .filter(s => s && s.trim().length > 0)
-        .join('\n\n');
+  console.log(`🔨 Running ${buildConfig.name}...`);
+  
+  const buildResult = await commandPort.execute(buildCommand, {
+    cwd: resolvedPath,
+    timeout: 5 * 60 * 1000, // 5 minutes
+  });
+
+  if (!buildResult.success) {
+    result.passed = false;
+    // Build tools may output errors to stdout or stderr - combine both
+    const errorOutput = [buildResult.stderr, buildResult.stdout]
+      .filter((s: string) => s && s.trim().length > 0)
+      .join('\n\n');
+    
+    // Use diagnostics system
+    const diagnosis = diagnoseError(errorOutput, {
+      command: buildCommand,
+      workDir: resolvedPath,
+      output: errorOutput,
+      projectDetection,
+    });
+    
+    if (diagnosis) {
+      result.diagnoses!.push(diagnosis);
       
-      // ✅ Use diagnostics system
-      const diagnosis = diagnoseError(errorOutput, {
-        command: `${pm} run build`,
+      errorStatsCollector.recordError(diagnosis, {
+        command: buildCommand,
         workDir: resolvedPath,
-        output: errorOutput,
-        projectDetection,
+        language: projectDetection.language,
+        buildTool: projectDetection.buildTool,
+        packageManager: projectDetection.packageManager,
       });
       
-      if (diagnosis) {
-        result.diagnoses!.push(diagnosis);
+      // Check for ENVIRONMENT layer errors
+      if (diagnosis.layer === ErrorLayer.ENVIRONMENT) {
+        console.error('🚨 ENVIRONMENT ISSUE DETECTED!');
+        console.error(`   ${diagnosis.message}`);
+        console.error('   Root cause:', diagnosis.rootCause);
+        diagnosis.suggestedActions.forEach(action => console.error(`   • ${action}`));
         
-        // ✅ Record error statistics
-        errorStatsCollector.recordError(diagnosis, {
-          command: `${pm} run build`,
-          workDir: resolvedPath,
-          language: projectDetection.language,
-          buildTool: projectDetection.buildTool,
-          packageManager: projectDetection.packageManager,
-        });
-        
-        // Check for ENVIRONMENT layer errors
-        if (diagnosis.layer === ErrorLayer.ENVIRONMENT) {
-          console.error('🚨 ENVIRONMENT ISSUE DETECTED!');
-          console.error(`   ${diagnosis.message}`);
-          console.error('   Root cause:', diagnosis.rootCause);
-          diagnosis.suggestedActions.forEach(action => console.error(`   • ${action}`));
-          
-          // ✅ Check if this is a corrupted dependency issue (auto-fixable)
+        // Node.js-specific: auto-fix corrupted dependencies
+        if (isNodeProject && pm) {
           const isCorruptedDependency = diagnosis.message.toLowerCase().includes('corrupted') ||
                                          diagnosis.message.toLowerCase().includes('rollup') ||
                                          diagnosis.type === 'environment_issue';
           
           if (isCorruptedDependency && diagnosis.canLLMFix) {
-            const autoFixed = await attemptAutoFix(commandPort, resolvedPath, pm);
+            const autoFixed = await attemptNodeAutoFix(commandPort, resolvedPath, pm);
             if (autoFixed) {
               result.passed = true;
               result.buildErrors = [];
@@ -637,35 +705,34 @@ async function runBuild(
           }
         }
       }
-      
-      // ✅ Use new Vite parser for build errors
-      const buildParser = ErrorParserFactory.create('vite', {
-        projectRoot: resolvedPath,
-        maxErrors: 50
-      });
-      const parsedBuildErrors = buildParser.parse(errorOutput);
-      result.buildErrors = buildParser.format(parsedBuildErrors);
-      
-      // ⚠️ CRITICAL: If parser failed to extract errors, use raw output
-      if (result.buildErrors!.length === 0 && errorOutput && errorOutput.trim().length > 0) {
-        console.warn('⚠️  Build error parser returned no errors, using raw output');
-        result.buildErrors = [errorOutput];
-      }
-      
-      console.error('❌ Build failed:');
-      if (result.buildErrors && result.buildErrors.length > 0) {
-        result.buildErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
-        if (result.buildErrors!.length > 10) {
-          console.error(`   ... and ${result.buildErrors!.length - 10} more errors`);
-        }
-      } else {
-        console.error('   (No specific error messages captured)');
+    }
+    
+    // Use parser from runtime config
+    const parserType = buildConfig.parserType || 'generic';
+    const buildParser = ErrorParserFactory.create(parserType, {
+      projectRoot: resolvedPath,
+      maxErrors: 50
+    });
+    const parsedBuildErrors = buildParser.parse(errorOutput);
+    result.buildErrors = buildParser.format(parsedBuildErrors);
+    
+    // CRITICAL: If parser failed to extract errors, use raw output
+    if (result.buildErrors!.length === 0 && errorOutput && errorOutput.trim().length > 0) {
+      console.warn('⚠️  Build error parser returned no errors, using raw output');
+      result.buildErrors = [errorOutput];
+    }
+    
+    console.error(`❌ ${buildConfig.name} failed:`);
+    if (result.buildErrors && result.buildErrors.length > 0) {
+      result.buildErrors!.slice(0, 10).forEach(err => console.error(`   ${err}`));
+      if (result.buildErrors!.length > 10) {
+        console.error(`   ... and ${result.buildErrors!.length - 10} more errors`);
       }
     } else {
-      console.log('✅ Build passed');
+      console.error('   (No specific error messages captured)');
     }
-  } catch {
-    // Ignore parse errors
+  } else {
+    console.log(`✅ ${buildConfig.name} passed`);
   }
 }
 
@@ -789,9 +856,10 @@ function parseNextConfig(content: string): any {
 }
 
 /**
- * Attempt to auto-fix corrupted dependencies
+ * Attempt to auto-fix corrupted Node.js dependencies
+ * Node.js-specific: removes node_modules, clears cache, reinstalls
  */
-async function attemptAutoFix(
+async function attemptNodeAutoFix(
   commandPort: any,
   resolvedPath: string,
   pm: string

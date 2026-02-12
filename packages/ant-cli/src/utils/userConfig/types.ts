@@ -22,6 +22,7 @@ export interface UserCredentials {
 export interface GitHubCredentials {
   token: string;              // Personal Access Token (암호화됨)
   tokenType?: 'pat' | 'oauth';
+  username?: string;          // GitHub username (auto-detected from PAT validation)
   updatedAt: string;
 }
 

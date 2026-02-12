@@ -114,7 +114,9 @@ export class RouteConfigurator {
       githubAuthService: this.deps.githubAuthService,
       workspaceRoot: this.config.workspacesPath,
       workspaceResolver: this.deps.workspaceResolver,
-      fileTreeNotifier: this.workflowBridge
+      fileTreeNotifier: this.workflowBridge,
+      transferService: this.deps.transferService,
+      stateStore: getInfrastructureFactory().getStateStore(),
     });
     app.use('/api', apiRoutes);
   }

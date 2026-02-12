@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Package, Folder, FolderOpen } from 'lucide-react';
+import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, FileNode } from '@/infrastructure/http/api';
+import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
 
 interface DirectoryViewProps {
   title: string;
@@ -17,13 +18,17 @@ interface DirectoryViewProps {
   onCreateDirectory?: (dirPath: string, dirName: string) => void;
   onUploadFiles?: (dirPath: string, files: FileList) => void;
   onDelete?: (filePath: string) => void;
+  onSend?: (path: string, type: 'file' | 'directory') => void;
+  onDownload?: (path: string) => void;
+  isSessionSection?: boolean;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete, onSend, onDownload, isSessionSection }: DirectoryViewProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
   const [newFileName, setNewFileName] = useState('');
+  const [activeMenuPath, setActiveMenuPath] = useState<string | null>(null);
   const { showConfirm } = useAlertModalContext();
 
   const toggleDirectory = (path: string) => {
@@ -41,17 +46,23 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isSelected = node.type === 'file' && selectedFile === node.path;
     const isCreatingInThisDir = showCreateForm === node.path;
     const isDirectory = node.type === 'directory';
+    const isMenuActive = activeMenuPath === node.path;
 
     return (
       <div key={node.path}>
         <div
           className={cn(
             'flex items-center justify-between group py-1.5 px-2 rounded transition-colors',
+            // Base state: selected > expanded dir > default
             isSelected 
               ? 'bg-blue-100 dark:bg-blue-900 border-l-2 border-blue-500 dark:border-blue-400 font-medium text-blue-900 dark:text-blue-100' 
               : isDirectory && isExpanded
                 ? 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                : 'hover:bg-gray-100 dark:hover:bg-gray-800',
+            // Menu active overlay: ring + subtle bg (additive, works with any base state)
+            isMenuActive && (isSelected
+              ? 'ring-1 ring-blue-400 dark:ring-blue-500'
+              : 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300 dark:ring-amber-600')
           )}
           style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
         >
@@ -82,120 +93,60 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             <span className={cn('text-sm', textColors.primary)}>{node.name}</span>
           </div>
           
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {node.type === 'directory' && onCreateFile && (
-              <>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCreateType('file');
-                    setShowCreateForm(isCreatingInThisDir ? null : node.path);
-                    setNewFileName('');
-                  }}
-                  title="Create file"
-                >
-                  📄
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCreateType('directory');
-                    setShowCreateForm(isCreatingInThisDir ? null : node.path);
-                    setNewFileName('');
-                  }}
-                  title="Create directory"
-                >
-                  📁
-                </Button>
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  id={`upload-${node.path}`}
-                  onChange={(e) => {
-                    if (e.target.files && onUploadFiles) {
-                      onUploadFiles(node.path, e.target.files);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-950"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    document.getElementById(`upload-${node.path}`)?.click();
-                  }}
-                  title="Upload files"
-                >
-                  📤
-                </Button>
-              </>
-            )}
-            {/* 삭제 버튼 로직 */}
-            {onDelete && (() => {
+          {/* Hidden file input for uploads */}
+          {node.type === 'directory' && onUploadFiles && (
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              id={`upload-${node.path}`}
+              onChange={(e) => {
+                if (e.target.files && onUploadFiles) {
+                  onUploadFiles(node.path, e.target.files);
+                  e.target.value = '';
+                }
+              }}
+            />
+          )}
+          <div className={cn("flex items-center gap-1 transition-opacity", isMenuActive ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+            {(() => {
               const pathParts = node.path.split('/');
-              
-              // "Clear contents" 대상 폴더들 (폴더는 유지, 하위 파일만 삭제)
-              const isClearableDir = 
+              const isSession = isSessionSection || node.path.startsWith('sessions');
+              const isClearable = 
                 node.type === 'directory' &&
                 (
-                  // outputs의 직계 자식 디렉토리들 (design, reports, debug 등)
                   (pathParts.length === 2 && pathParts[0] === 'outputs') ||
-                  // sessions/{agent}/debug, sessions/{agent}/log-prompt (agent-nested)
                   (pathParts.length === 3 && pathParts[0] === 'sessions' && (pathParts[2] === 'debug' || pathParts[2] === 'log-prompt'))
                 );
-              
-              // inputs의 직계 자식 디렉토리는 삭제 불가
-              const isProtectedInputsDir = 
+              const isProtected = 
                 node.type === 'directory' && 
                 pathParts.length === 2 && 
                 pathParts[0] === 'inputs';
-              
-              if (isClearableDir) {
-                // 하위 파일 전체 삭제 버튼 (폴더는 유지)
-                return (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      showConfirm(`Clear all contents in "${node.name}"? This will delete all files and subdirectories.`, {
-                        type: 'warning',
-                        title: 'Clear Contents?',
-                        confirmText: 'Clear All',
-                        cancelText: 'Cancel',
-                        onConfirm: () => onDelete(node.path)
-                      });
-                    }}
-                    title="Clear all contents"
-                  >
-                    🗑️
-                  </Button>
-                );
-              }
-              
-              // inputs의 직계 자식 디렉토리는 버튼 없음
-              if (isProtectedInputsDir) {
-                return null;
-              }
-              
-              // 일반 파일/폴더: 삭제 버튼
+
               return (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 w-6 p-0 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                <FileActionMenu
+                  nodePath={node.path}
+                  nodeType={node.type as 'file' | 'directory'}
+                  nodeName={node.name}
+                  isSessionPath={isSession}
+                  isProtectedDir={isProtected}
+                  isClearableDir={isClearable}
+                  onSend={onSend}
+                  onDownload={onDownload}
+                  onCreateFile={node.type === 'directory' && onCreateFile ? () => {
+                    setCreateType('file');
+                    setShowCreateForm(isCreatingInThisDir ? null : node.path);
+                    setNewFileName('');
+                  } : undefined}
+                  onCreateDirectory={node.type === 'directory' && onCreateDirectory ? () => {
+                    setCreateType('directory');
+                    setShowCreateForm(isCreatingInThisDir ? null : node.path);
+                    setNewFileName('');
+                  } : undefined}
+                  onUpload={node.type === 'directory' && onUploadFiles ? () => {
+                    document.getElementById(`upload-${node.path}`)?.click();
+                  } : undefined}
+                  onDelete={onDelete && !isProtected && !isClearable ? () => {
                     showConfirm(`Delete ${node.type} "${node.name}"?`, {
                       type: 'warning',
                       title: 'Delete?',
@@ -203,11 +154,18 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                       cancelText: 'Cancel',
                       onConfirm: () => onDelete(node.path)
                     });
-                  }}
-                  title={`Delete ${node.type}`}
-                >
-                  🗑️
-                </Button>
+                  } : undefined}
+                  onClearContents={isClearable && onDelete ? () => {
+                    showConfirm(`Clear all contents in "${node.name}"?`, {
+                      type: 'warning',
+                      title: 'Clear Contents?',
+                      confirmText: 'Clear All',
+                      cancelText: 'Cancel',
+                      onConfirm: () => onDelete(node.path)
+                    });
+                  } : undefined}
+                  onOpenChange={(open) => setActiveMenuPath(open ? node.path : null)}
+                />
               );
             })()}
           </div>
@@ -300,7 +258,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   );
 }
 
-export function ArtifactsPanel() {
+export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
@@ -310,10 +268,16 @@ export function ArtifactsPanel() {
   const refreshFileTree = useStore((state) => state.refreshFileTree);
   const connectionStatus = useStore((state) => state.connectionStatus);
   const isSessionRestoring = useStore((state) => state.isSessionRestoring);
+  const openTransferTab = useStore((state) => state.openTransferTab);
+  const pendingTransferCount = useStore((state) => state.pendingTransferCount);
+  const setPendingTransferCount = useStore((state) => state.setPendingTransferCount);
   
   // ✅ UI Action Policy
   const policy = useUIActionPolicy();
   const { showError } = useAlertModalContext();
+
+  // Hide button labels when explorer is narrow
+  const isNarrow = explorerWidth < 260;
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
@@ -328,6 +292,16 @@ export function ArtifactsPanel() {
 
     refreshFileTree();
   }, [selectedProject, selectedFeature, connectionStatus, isSessionRestoring, refreshFileTree]);
+
+  // Fetch pending transfer count when connection is ready and session restore is complete
+  useEffect(() => {
+    if (connectionStatus !== 'connected') return;
+    if (!selectedProject || !selectedFeature) return;
+    if (isSessionRestoring) return;
+    fetchTransferRequests('received')
+      .then(({ pendingCount }) => setPendingTransferCount(pendingCount))
+      .catch(() => {});
+  }, [connectionStatus, selectedProject, selectedFeature, isSessionRestoring, setPendingTransferCount]);
 
   // Note: Real-time file tree updates are now handled by the unified SSE connection in the store
 
@@ -380,6 +354,25 @@ export function ArtifactsPanel() {
     }
   };
 
+  const handleSend = (path: string, type: 'file' | 'directory') => {
+    if (!selectedProject || !selectedFeature) return;
+    openTransferTab({
+      subTab: 'send',
+      preselectedSource: {
+        projectId: selectedProject,
+        featureId: selectedFeature,
+        path,
+        type,
+      },
+    });
+  };
+
+  const handleDownload = (path: string) => {
+    if (!selectedProject || !selectedFeature) return;
+    const url = getDownloadUrl(selectedProject, selectedFeature, path);
+    window.open(url, '_blank');
+  };
+
   const handleUploadFiles = async (dirPath: string, files: FileList) => {
     if (!selectedProject || !selectedFeature) return;
     
@@ -415,9 +408,34 @@ export function ArtifactsPanel() {
 
   return (
     <div className="space-y-3">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-        <Package className="h-4 w-4" />
-        Artifacts
+      <h3 className="flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-white">
+        <span className="flex items-center gap-2 min-w-0">
+          <Package className="h-4 w-4 shrink-0" />
+          <span className="truncate">Artifacts</span>
+        </span>
+        <span className="flex items-center gap-1.5 shrink-0">
+          <button
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+            onClick={() => openTransferTab({ subTab: 'send' })}
+            title="Send"
+          >
+            <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
+            {!isNarrow && <span>Send</span>}
+          </button>
+          <button
+            className="relative inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+            onClick={() => openTransferTab({ subTab: 'receive' })}
+            title="Receive"
+          >
+            <ArrowDownLeft className="h-3.5 w-3.5 shrink-0" />
+            {!isNarrow && <span>Receive</span>}
+            {pendingTransferCount > 0 && (
+              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {pendingTransferCount > 99 ? '99+' : pendingTransferCount}
+              </span>
+            )}
+          </button>
+        </span>
       </h3>
       <div className="space-y-3">
         <DirectoryView
@@ -425,33 +443,36 @@ export function ArtifactsPanel() {
           nodes={inputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
-          // ✅ UI Policy: 파일 조작은 작업 진행 중에 비활성화
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
           onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
           onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
+          onSend={handleSend}
+          onDownload={handleDownload}
         />
         <DirectoryView
           title="Outputs"
           nodes={outputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
-          // ✅ UI Policy: 파일 조작은 작업 진행 중에 비활성화
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
           onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
           onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
+          onSend={handleSend}
+          onDownload={handleDownload}
         />
         <DirectoryView
           title="Sessions"
           nodes={sessionsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
-          // ✅ Sessions: read-only except deletion (allow users to clear old session files)
           onCreateFile={undefined}
           onCreateDirectory={undefined}
           onUploadFiles={undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
+          onDownload={handleDownload}
+          isSessionSection={true}
         />
       </div>
     </div>

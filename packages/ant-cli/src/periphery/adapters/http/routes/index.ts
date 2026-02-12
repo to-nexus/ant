@@ -11,6 +11,8 @@ import { createGitHubRoutes } from './github.routes';
 import { createFigmaOAuthRoutes } from './figma-oauth.routes';
 import { createFigmaFilesRoutes } from './figma-files.routes';
 import { createModelsRoutes } from './models.routes';
+import { createTransferRoutes } from './transfer.routes';
+import { createOrgRoutes } from './org.routes';
 
 // ✅ Re-export existing routes
 // Note: Preview routes moved to ant-preview service (see 10-cloud-architecture.md)
@@ -34,6 +36,8 @@ export interface RoutesDeps {
   workspaceRoot?: string;  // For Figma OAuth
   workspaceResolver?: any;  // For Figma Files (WorkspaceResolver)
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };  // ✅ For file tree updates after file writes
+  transferService?: any;  // ArtifactTransferService for transfer operations
+  stateStore?: any;  // RedisStateStore for transfer state management
 }
 
 /**
@@ -91,6 +95,21 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   
   // Models API
   router.use(createModelsRoutes());
+  
+  // Transfer API
+  if (deps.transferService && deps.stateStore) {
+    router.use(createTransferRoutes({
+      transferService: deps.transferService,
+      stateStore: deps.stateStore,
+    }));
+  }
+  
+  // Organization member exploration API
+  if (deps.workspaceResolver) {
+    router.use(createOrgRoutes({
+      workspaceResolver: deps.workspaceResolver,
+    }));
+  }
   
   return router;
 }

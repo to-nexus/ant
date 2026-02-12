@@ -30,10 +30,13 @@ import {
 } from '../constants';
 
 // 🚨 INTERACTIVE COMMAND DETECTION: Commands that require user input will hang forever
-// These patterns detect commands that typically prompt for input
+// These patterns detect commands that typically prompt for input (cross-language)
 const INTERACTIVE_COMMAND_PATTERNS = [
+  // Node.js
   /\bnpm\s+init\b(?!\s+(-y|--yes))/i,    // npm init without -y
   /\byarn\s+init\b(?!\s+(-y|--yes))/i,   // yarn init without -y
+  // Go (go mod init requires module name argument)
+  /\bgo\s+mod\s+init\s*$/i,              // go mod init without module name
 ];
 
 export async function handleRunCommand(
@@ -97,7 +100,8 @@ Or use a different approach that doesn't require initialization.`;
   const isLongRunning = LONG_RUNNING_PATTERNS.some(pattern => pattern.test(normalizedCommand));
 
   // Longer timeouts for dependency installation (frequently > 10 minutes on cold caches)
-  const isInstallCommand = /\b(npm|pnpm|yarn)\s+(ci|install)\b/.test(normalizedCommand);
+  const isInstallCommand = /\b(npm|pnpm|yarn)\s+(ci|install)\b/.test(normalizedCommand) ||
+                           /\bgo\s+mod\s+(tidy|download)\b/.test(normalizedCommand);
   const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
   
   // ✅ Resolve working directory - PROJECT ROOT is the base

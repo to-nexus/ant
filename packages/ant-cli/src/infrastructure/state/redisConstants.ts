@@ -18,6 +18,7 @@ export const REDIS_DOMAINS = {
   CHOICE: `${APP_PREFIX}:choice`,
   INFRA: `${APP_PREFIX}:infra`,
   INDEX: `${APP_PREFIX}:index`,
+  TRANSFER: `${APP_PREFIX}:transfer`,
 } as const;
 
 // ============================================
@@ -84,6 +85,18 @@ export const REDIS_KEYS = {
     /** Jobs by feature index - ant:index:jobsByFeature:{projectId}:{featureName} */
     JOBS_BY_FEATURE: `${REDIS_DOMAINS.INDEX}:jobsByFeature:`,
   },
+  
+  /** Transfer keys (ant:transfer:*) */
+  TRANSFER: {
+    /** Transfer request metadata - ant:transfer:request:{requestId} */
+    REQUEST: `${REDIS_DOMAINS.TRANSFER}:request:`,
+    /** Distributed lock for destination path - ant:transfer:lock:{lockKey} */
+    LOCK: `${REDIS_DOMAINS.TRANSFER}:lock:`,
+    /** SET of request IDs by recipient - ant:transfer:byRecipient:{orgId}:{userId} */
+    BY_RECIPIENT: `${REDIS_DOMAINS.TRANSFER}:byRecipient:`,
+    /** SET of request IDs by sender - ant:transfer:bySender:{orgId}:{userId} */
+    BY_SENDER: `${REDIS_DOMAINS.TRANSFER}:bySender:`,
+  },
 } as const;
 
 // ============================================
@@ -115,6 +128,12 @@ export const REDIS_TTL = {
   /** Infrastructure TTLs */
   INFRA: {
     PORT_MAPPING: 24 * 60 * 60,  // 24 hours
+  },
+  
+  /** Transfer TTLs */
+  TRANSFER: {
+    REQUEST: 7 * 24 * 60 * 60,   // 7 days
+    LOCK: 300,                     // 5 minutes
   },
 } as const;
 

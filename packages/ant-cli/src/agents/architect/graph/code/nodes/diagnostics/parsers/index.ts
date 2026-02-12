@@ -8,8 +8,9 @@ import { BaseErrorParser, ErrorParserOptions } from './base';
 import { TypeScriptErrorParser } from './typescript';
 import { ViteErrorParser } from './vite';
 import { ESLintErrorParser } from './eslint';
+import { GoErrorParser } from './go';
 
-export type ParserType = 'typescript' | 'vite' | 'eslint' | 'webpack' | 'rollup' | 'generic';
+export type ParserType = 'typescript' | 'vite' | 'eslint' | 'go' | 'webpack' | 'rollup' | 'generic';
 
 export class ErrorParserFactory {
   /**
@@ -25,6 +26,9 @@ export class ErrorParserFactory {
       
       case 'eslint':
         return new ESLintErrorParser(options);
+      
+      case 'go':
+        return new GoErrorParser(options);
       
       case 'webpack':
       case 'rollup':
@@ -54,6 +58,11 @@ export class ErrorParserFactory {
     // ESLint
     if (lower.includes('eslint') || /\d+:\d+\s+(error|warning)/.test(output)) {
       return 'eslint';
+    }
+    
+    // Go (compiler errors: file.go:line:col: message)
+    if (/\.go:\d+:\d+:/.test(output) || lower.includes('go build') || lower.includes('go vet')) {
+      return 'go';
     }
     
     // Webpack
@@ -108,5 +117,5 @@ class GenericErrorParser extends BaseErrorParser {
 }
 
 // Re-export types and classes
-export { BaseErrorParser, TypeScriptErrorParser, ViteErrorParser, ESLintErrorParser };
+export { BaseErrorParser, TypeScriptErrorParser, ViteErrorParser, ESLintErrorParser, GoErrorParser };
 export type { ParsedError, ErrorParserOptions } from './base';

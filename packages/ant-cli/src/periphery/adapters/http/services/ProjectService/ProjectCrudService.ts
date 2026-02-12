@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
+import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/orgConfig';
 import { logger } from '../../../../../utils/logger';
 
 /**
@@ -102,9 +103,14 @@ export class ProjectCrudService {
     // ✅ Determine if Cloud Mode
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
     
+    // ✅ Read org config for default GitHub owner
+    const orgConfig = await this.readOrgConfig(userContext);
+    const defaultGithubRepo = buildDefaultGitHubRepoUrl(orgConfig, sanitizedName);
+    
     logger.debug('Creating project config', { component: 'ProjectCrudService', organizationId: userContext.organizationId, userId: userContext.userId, projectId: id }, {
       isCloudMode,
-      defaultModel
+      defaultModel,
+      defaultGithubRepo,
     });
     
     // ✅ Create config based on mode
@@ -113,6 +119,8 @@ export class ProjectCrudService {
       repoType: isCloudMode ? 'cloud' : 'local',
       // ✅ Only include localPath for local mode
       ...(isCloudMode ? {} : { localPath: `../${sanitizedName}` }),
+      // ✅ Auto-set githubRepo from org config (if GitHub owner is configured)
+      ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
       branchBase: 'main',
       autoLearn: true,
       llmModels: {
@@ -135,6 +143,20 @@ export class ProjectCrudService {
     );
   }
   
+  /**
+   * Read organization config from disk
+   */
+  private async readOrgConfig(userContext: UserContext): Promise<OrgConfig | null> {
+    try {
+      const workspacesPath = this.workspaceResolver.getPhysicalWorkspacesPath();
+      const orgConfigPath = path.join(workspacesPath, userContext.organizationId, '.ant', 'org-config.json');
+      const data = await fs.promises.readFile(orgConfigPath, 'utf-8');
+      return JSON.parse(data) as OrgConfig;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Delete a project
    */

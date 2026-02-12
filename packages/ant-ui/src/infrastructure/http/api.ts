@@ -1541,6 +1541,7 @@ export async function startCloudIDE(projectId: string, featureName: string = 'ma
 export interface GitHubPATStatus {
   configured: boolean;
   message: string;
+  username?: string;  // GitHub username (auto-detected from PAT)
 }
 
 export interface SavePATResult {
@@ -2177,4 +2178,204 @@ export async function submitChoiceDismiss(
     console.error('[API] submitChoiceDismiss error:', error);
     throw error;
   }
+}
+
+// ============================================================================
+// Transfer API
+// ============================================================================
+
+export interface TransferRequest {
+  id: string;
+  sender: { orgId: string; userId: string };
+  recipient: { orgId: string; userId: string };
+  source: { projectId: string; featureId: string; path: string };
+  destination: { projectId: string; featureId: string; path: string };
+  mode: 'copy' | 'move';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired' | 'completed';
+  createdAt: string;
+  expiresAt: string;
+  payloadPath: string;
+  /** Number of files in the payload (for directory transfers) */
+  fileCount?: number;
+}
+
+export interface TransferResult {
+  success: boolean;
+  filesTransferred: number;
+  skipped?: string[];
+  errors?: string[];
+}
+
+/**
+ * Self-transfer (immediate, no approval)
+ */
+export async function transferArtifact(params: {
+  source: { projectId: string; featureId: string; path: string };
+  destination: { projectId: string; featureId: string; path: string };
+  mode: 'copy' | 'move';
+}): Promise<TransferResult> {
+  const response = await authFetch(`${API_BASE()}/artifacts/transfer`, {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Cross-user transfer request (requires approval)
+ */
+export async function requestTransfer(params: {
+  recipient: { userId: string; orgId?: string };
+  source: { projectId: string; featureId: string; path: string };
+  destination: { projectId: string; featureId: string; path: string };
+}): Promise<TransferRequest> {
+  const response = await authFetch(`${API_BASE()}/artifacts/transfer-request`, {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * List transfer requests (received or sent)
+ */
+export async function fetchTransferRequests(
+  direction: 'received' | 'sent' = 'received',
+  status?: string
+): Promise<{ requests: TransferRequest[]; count: number; pendingCount: number }> {
+  const params = new URLSearchParams({ direction });
+  if (status) params.set('status', status);
+  
+  const response = await authFetch(`${API_BASE()}/artifacts/transfer-requests?${params}`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Resolve (approve/reject) a transfer request
+ */
+export async function resolveTransferRequest(
+  requestId: string,
+  action: 'approve' | 'reject'
+): Promise<TransferRequest> {
+  const response = await authFetch(`${API_BASE()}/artifacts/transfer-requests/${requestId}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Cancel a pending transfer request
+ */
+export async function cancelTransferRequest(requestId: string): Promise<TransferRequest> {
+  const response = await authFetch(`${API_BASE()}/artifacts/transfer-requests/${requestId}/cancel`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * Download a file or directory
+ */
+export function getDownloadUrl(projectId: string, featureName: string, filePath: string): string {
+  return `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/download?path=${encodeURIComponent(filePath)}`;
+}
+
+// ============================================================================
+// Organization API
+// ============================================================================
+
+// ---- Org Config ----
+
+export interface OrgConfig {
+  github?: {
+    /** Default GitHub owner (user or organization) for new projects */
+    owner?: string;
+  };
+}
+
+/**
+ * Fetch organization-level configuration
+ */
+export async function fetchOrgConfig(): Promise<OrgConfig> {
+  try {
+    const response = await authFetch(`${API_BASE()}/org/config`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error: any) {
+    console.error('Error fetching org config:', error);
+    return {};
+  }
+}
+
+/**
+ * Update organization-level configuration (deep merge)
+ */
+export async function updateOrgConfig(config: Partial<OrgConfig>): Promise<OrgConfig> {
+  const response = await authFetch(`${API_BASE()}/org/config`, {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+// ---- Org Members ----
+
+export async function fetchOrgMembers(): Promise<{ members: Array<{ userId: string; isSelf: boolean }> }> {
+  const response = await authFetch(`${API_BASE()}/org/members`);
+  if (!response.ok) throw new Error('Failed to fetch org members');
+  return response.json();
+}
+
+export async function fetchMemberProjects(userId: string): Promise<{ projects: Array<{ projectId: string }> }> {
+  const response = await authFetch(`${API_BASE()}/org/members/${userId}/projects`);
+  if (!response.ok) throw new Error('Failed to fetch member projects');
+  return response.json();
+}
+
+export async function fetchMemberFeatures(
+  userId: string,
+  projectId: string
+): Promise<{ features: Array<{ featureId: string }> }> {
+  const response = await authFetch(`${API_BASE()}/org/members/${userId}/projects/${projectId}/features`);
+  if (!response.ok) throw new Error('Failed to fetch member features');
+  return response.json();
+}
+
+export async function fetchMemberDirectories(
+  userId: string,
+  projectId: string,
+  featureId: string
+): Promise<{ directories: string[] }> {
+  const response = await authFetch(
+    `${API_BASE()}/org/members/${userId}/projects/${projectId}/features/${featureId}/directories`
+  );
+  if (!response.ok) throw new Error('Failed to fetch directories');
+  return response.json();
 }

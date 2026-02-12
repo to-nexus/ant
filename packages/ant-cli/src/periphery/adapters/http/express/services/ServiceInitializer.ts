@@ -19,6 +19,8 @@ import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { PortRegistryPort } from '../../../../../core/ports/portRegistry';
+import { ArtifactTransferService } from '../../../../../infrastructure/workspace/ArtifactTransferService';
+import { RedisStateStore } from '../../../../../infrastructure/state/RedisStateStore';
 
 /**
  * Initialize all services and dependencies for the Express server
@@ -108,6 +110,12 @@ export function initializeServices(
   
   const jobPrerequisitesAdapter = new FileJobPrerequisitesAdapter(workspaceResolver);
   
+  // Initialize ArtifactTransferService
+  const transferService = new ArtifactTransferService(
+    workspaceResolver, 
+    stateStore as unknown as RedisStateStore
+  );
+  
   return {
     workspaceService,
     workspaceResolver,
@@ -124,6 +132,7 @@ export function initializeServices(
     graphMetadataService,
     workflowStateService,
     githubAuthService,
-    jobPrerequisitesAdapter
+    jobPrerequisitesAdapter,
+    transferService
   };
 }
