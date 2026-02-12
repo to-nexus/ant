@@ -33,13 +33,37 @@
   },
   "editor": {
     "placeholder": "File content...",
-    "raw": "Raw (Edit mode)",
-    "preview": "Preview (Read-only)",
+    "raw": "Raw",
+    "preview": "Preview",
     "svgPreviewFailed": "Failed to load SVG preview.",
     "parseError": "Parse error"
   },
   "featureDetails": {
+    "title": "Feature Details",
+    "selectPrompt": "Select a workspace and feature to view details",
     "inputs": "📝 Inputs",
-    "outputs": "📄 Outputs"
+    "outputs": "📄 Outputs",
+    "artifacts": "Artifacts",
+    "noFiles": "No files in {{title}}"
+  },
+  "fileEditor": {
+    "title": "File Editor",
+    "modified": "● Modified",
+    "open": "Open",
+    "revert": "Revert",
+    "saving": "Saving...",
+    "save": "Save",
+    "imageLoading": "Loading image preview...",
+    "folderPlaceholder": "folder-name",
+    "filePlaceholder": "filename.md"
+  },
+  "confirm": {
+    "deleteItem": "Delete {{type}} \"{{name}}\"?",
+    "deleteTitle": "Delete?",
+    "clearContents": "Clear all contents in \"{{name}}\"?",
+    "clearContentsTitle": "Clear Contents?",
+    "clearAll": "Clear All",
+    "clearContentsDetail": "Clear all contents in \"{{name}}\"? This will delete all files and subdirectories.",
+    "deleteType": "Delete {{type}}"
   }
 }

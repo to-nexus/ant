@@ -126,7 +126,7 @@ export function ElapsedTimeBadge({
   const tooltipContent = (
     <div className="space-y-2 min-w-[320px] max-h-[80vh] overflow-y-auto">
       <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
-        Time Breakdown
+        {t('header.timeBreakdown')}
       </div>
       
       {/* Total */}
@@ -183,7 +183,7 @@ export function ElapsedTimeBadge({
       {taskCount > 0 && (
         <div className="pl-2 border-l-2 border-blue-400 dark:border-blue-500">
           <div className="flex justify-between items-center font-semibold">
-            <span className="text-gray-800 dark:text-gray-100">Tasks ({taskCount}):</span>
+            <span className="text-gray-800 dark:text-gray-100">{t('header.tasksCount', { count: taskCount })}</span>
             <span className="font-mono text-gray-800 dark:text-gray-100">
               {formatElapsedTime(tasksTotal, true)}
             </span>
@@ -309,7 +309,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
   const tooltipContent = (
     <div className="space-y-2 min-w-[340px] max-h-[80vh] overflow-y-auto">
       <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
-        Token Usage
+        {t('header.tokenUsage')}
       </div>
 
       {hasTokenData ? (
@@ -377,7 +377,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
               </div>
             ) : (
               <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 italic">
-                No cache activity
+                {t('tokenStats.noCacheActivity')}
               </div>
             )}
           </div>
@@ -391,7 +391,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
               </span>
             </div>
             <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 italic">
-              Not cacheable · 5x input price
+              {t('tokenStats.outputDescription')}
             </div>
           </div>
 
@@ -417,7 +417,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                 <div className="pl-2 space-y-0.5 border-l-2 border-blue-400 dark:border-blue-500">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-700 dark:text-gray-200 font-semibold">
-                      Tasks ({taskCount}):
+                      {t('header.tasksCount', { count: taskCount })}
                     </span>
                     <span className="font-mono text-gray-700 dark:text-gray-200">
                       {formatTokenCount(tasks.totalInputProcessed)} in · {formatTokenCount(tasks.outputTokens)} out
@@ -459,7 +459,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
         </>
       ) : (
         <div className="text-gray-600 dark:text-gray-400 text-sm italic">
-          No token usage data yet
+          {t('tokenStats.noTokenData')}
         </div>
       )}
     </div>

@@ -359,7 +359,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 title={t('editor.raw')}
               >
                 <FileText className="w-3.5 h-3.5" />
-                Raw
+                {t('editor.raw')}
               </button>
               <button
                 onClick={() => handleViewModeChange('preview')}
@@ -371,7 +371,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 title={t('editor.preview')}
               >
                 <Eye className="w-3.5 h-3.5" />
-                Preview
+                {t('editor.preview')}
               </button>
             </div>
           )}
@@ -446,14 +446,14 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 onClick={loadFileContent}
                 disabled={loading || saving || !hasChanges}
               >
-                Revert
+                {t('fileEditor.revert')}
               </Button>
               <Button
                 size="sm"
                 onClick={handleSave}
                 disabled={loading || saving || !hasChanges}
               >
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? t('fileEditor.saving') : t('fileEditor.save')}
               </Button>
             </div>
           </>

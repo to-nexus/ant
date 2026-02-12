@@ -2,9 +2,15 @@
   "input": {
     "placeholder": "Please sign in to start chatting...",
     "send": "Send",
-    "stopJob": "Stop the running job"
+    "sendMessage": "Send message",
+    "completeSelection": "Complete selection to enable",
+    "stopJob": "Stop the running job",
+    "stop": "Stop",
+    "stopping": "Stopping...",
+    "filesEdited": "{{count}} File(s) Edited"
   },
   "sidebar": {
+    "chatWith": "Chat with {{agent}}",
     "clearHistory": "Clear Chat History",
     "clearHistoryConfirm": "This will permanently delete all chat messages for this feature.",
     "clearHistoryConfirmSub": "Are you sure?",
@@ -15,6 +21,12 @@
   },
   "inlineAsk": {
     "failed": "Inline ask failed"
+  },
+  "agent": {
+    "architect": "Optimized for coding tasks",
+    "planner": "Creates project plans & roadmaps",
+    "reviewer": "Reviews code & provides feedback",
+    "doc": "Generates documentation"
   },
   "jobMode": {
     "design": {
@@ -33,5 +45,24 @@
       "label": "📋 Plan",
       "description": "Creates project plans & roadmaps"
     }
+  },
+  "policy": {
+    "signInPlaceholder": "Please sign in to start chatting...",
+    "signInMessage": "Please sign in from the navigation bar to continue",
+    "selectAgentPlaceholder": "Select an agent to start chatting...",
+    "selectAgentMessage": "Please select an agent from the navigation bar",
+    "selectWorkspacePlaceholder": "Select a workspace to continue...",
+    "selectWorkspaceMessage": "Please select a workspace from the navigation bar",
+    "selectFeaturePlaceholder": "Select a feature to continue...",
+    "selectFeatureMessage": "Please select a feature from the navigation bar",
+    "selectJobPlaceholder": "Select a job type to continue...",
+    "selectJobMessage": "Please select a job type from the selector below",
+    "jobRunningPlaceholder": "Job is running. Stop the job to send a new message...",
+    "queueWaitingPlaceholder": "Waiting in queue ({{position}}/{{total}}). Stop to cancel...",
+    "interruptedPlaceholder": "Send a message to continue with additional feedback...",
+    "firstMessagePlaceholder": "Start your conversation with the agent...",
+    "continuePlaceholder": "Continue your conversation...",
+    "readyToStart": "Ready to start",
+    "readyEmptyState": "Start chatting to collaborate with the agent"
   }
 }

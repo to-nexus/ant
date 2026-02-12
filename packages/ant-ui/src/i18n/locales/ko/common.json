@@ -44,6 +44,14 @@
   "modal": {
     "closeModal": "모달 닫기"
   },
+  "fileBrowser": {
+    "title": "파일 브라우저",
+    "selectPrompt": "워크스페이스와 피처를 선택하여 파일을 탐색하세요"
+  },
+  "sessionView": {
+    "noSession": "세션 없음",
+    "noSessionDesc": "활성 세션이 없습니다. 워크스페이스를 선택하여 세션 상세를 확인하세요."
+  },
   "time": {
     "minutesAgo": "{{count}}분 전",
     "hoursAgo": "{{count}}시간 전",

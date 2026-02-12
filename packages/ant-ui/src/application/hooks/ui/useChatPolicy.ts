@@ -5,6 +5,7 @@
  */
 
 import { useStore } from '@/domain/store';
+import { useTranslation } from 'react-i18next';
 
 export interface ChatPolicy {
   // Header
@@ -31,6 +32,7 @@ export interface ChatPolicy {
 }
 
 export function useChatPolicy(messageCount: number = 0): ChatPolicy {
+  const { t } = useTranslation('chat');
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedAgent = useStore((state) => state.selectedAgent);
@@ -55,14 +57,14 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   // ✅ Not authenticated in cloud mode
   if (!isAuthenticated) {
     return {
-      headerText: 'Chat is Offline',
+      headerText: t('sidebar.offline'),
       isOffline: true,
       canSendMessage: false,
-      inputPlaceholder: 'Please sign in to start chatting...',
+      inputPlaceholder: t('policy.signInPlaceholder'),
       canResizeInput: true,  // ✅ Always allow resize
-      emptyStateMessage: 'Please sign in from the navigation bar to continue',
+      emptyStateMessage: t('policy.signInMessage'),
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedJobType || 'Job',
+      jobButtonLabel: selectedJobType || t('sidebar.offline'),
       canChangeJob: false,
       reason: 'not-authenticated'
     };
@@ -71,14 +73,14 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   // Agent 미선택
   if (!selectedAgent) {
     return {
-      headerText: 'Chat is Offline',
+      headerText: t('sidebar.offline'),
       isOffline: true,
       canSendMessage: false,
-      inputPlaceholder: 'Select an agent to start chatting...',
+      inputPlaceholder: t('policy.selectAgentPlaceholder'),
       canResizeInput: true,  // ✅ Always allow resize
-      emptyStateMessage: 'Please select an agent from the navigation bar',
+      emptyStateMessage: t('policy.selectAgentMessage'),
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedJobType || 'Job',
+      jobButtonLabel: selectedJobType || t('sidebar.offline'),
       canChangeJob: true,
       reason: 'no-agent'
     };
@@ -87,30 +89,30 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   // Workspace (Project) 미선택
   if (!selectedProject) {
     return {
-      headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
+      headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
       isOffline: false,
       canSendMessage: false,
-      inputPlaceholder: 'Select a workspace to continue...',
+      inputPlaceholder: t('policy.selectWorkspacePlaceholder'),
       canResizeInput: true,  // ✅ Always allow resize
-      emptyStateMessage: 'Please select a workspace from the navigation bar',
+      emptyStateMessage: t('policy.selectWorkspaceMessage'),
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedJobType || 'Job',
+      jobButtonLabel: selectedJobType || t('sidebar.offline'),
       canChangeJob: true,
       reason: 'no-workspace'
     };
   }
 
-  // Project 선택 but Feature 미선택
+  // Workspace 선택 but Feature 미선택
   if (!selectedFeature) {
     return {
-      headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
+      headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
       isOffline: false,
       canSendMessage: false,
-      inputPlaceholder: 'Select a project to continue...',
+      inputPlaceholder: t('policy.selectFeaturePlaceholder'),
       canResizeInput: true,  // ✅ Always allow resize
-      emptyStateMessage: 'Please select a project from the navigation bar',
+      emptyStateMessage: t('policy.selectFeatureMessage'),
       readyEmptyStateMessage: null,
-      jobButtonLabel: selectedJobType || 'Job',
+      jobButtonLabel: selectedJobType || t('sidebar.offline'),
       canChangeJob: true,
       reason: 'no-project'
     };
@@ -119,14 +121,14 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   // Job 미선택 (이론상 불가능하지만 방어 코드)
   if (!selectedJobType) {
     return {
-      headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
+      headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
       isOffline: false,
       canSendMessage: false,
-      inputPlaceholder: 'Select a job type to continue...',
+      inputPlaceholder: t('policy.selectJobPlaceholder'),
       canResizeInput: true,  // ✅ Always allow resize
-      emptyStateMessage: 'Please select a job type from the selector below',
+      emptyStateMessage: t('policy.selectJobMessage'),
       readyEmptyStateMessage: null,
-      jobButtonLabel: 'Job',
+      jobButtonLabel: t('sidebar.offline'),
       canChangeJob: true,
       reason: 'no-job'
     };
@@ -135,13 +137,16 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   // ✅ Job 진행 중 - 입력 차단 BUT Resize 가능
   if (isRunning) {
     // Build placeholder based on queue status
-    let placeholder = 'Job is running. Stop the job to send a new message...';
+    let placeholder = t('policy.jobRunningPlaceholder');
     if (isQueued && queuePosition?.position) {
-      placeholder = `Waiting in queue (${queuePosition.position}/${queuePosition.totalWaiting}). Stop to cancel...`;
+      placeholder = t('policy.queueWaitingPlaceholder', { 
+        position: queuePosition.position, 
+        total: queuePosition.totalWaiting 
+      });
     }
     
     return {
-      headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
+      headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
       isOffline: false,
       canSendMessage: false,  // ❌ 입력 차단
       inputPlaceholder: placeholder,
@@ -157,10 +162,10 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   // ✅ Job 중단 상태 - Continue 가능 (최신 directive 추가)
   if (hasInterruption) {
     return {
-      headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
+      headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
       isOffline: false,
       canSendMessage: true,  // ✅ Send로 Continue 가능 (directive 추가)
-      inputPlaceholder: 'Send a message to continue with additional feedback...',
+      inputPlaceholder: t('policy.interruptedPlaceholder'),
       canResizeInput: true,  // ✅ Always allow resize
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
@@ -174,15 +179,15 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   const isFirstMessage = messageCount === 0;
   
   return {
-    headerText: `Chat with ${getAgentDisplayName(selectedAgent)}`,
+    headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
     isOffline: false,
     canSendMessage: true,
     inputPlaceholder: isFirstMessage 
-      ? 'Start your conversation with the agent...' 
-      : 'Continue your conversation...',
+      ? t('policy.firstMessagePlaceholder')
+      : t('policy.continuePlaceholder'),
     canResizeInput: true,  // ✅ Always allow resize
     emptyStateMessage: null,
-    readyEmptyStateMessage: 'Start chatting to collaborate with the agent',
+    readyEmptyStateMessage: t('policy.readyEmptyState'),
     jobButtonLabel: selectedJobType,
     canChangeJob: true,  // ✅ 정상 상태에선 변경 가능
     reason: 'ready'
@@ -202,4 +207,3 @@ function getAgentDisplayName(agentId: string): string {
   
   return agentNames[agentId] || agentId.charAt(0).toUpperCase() + agentId.slice(1);
 }
-

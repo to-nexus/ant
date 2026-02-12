@@ -1,9 +1,9 @@
 {
   "panel": {
     "title": "아티팩트",
-    "inputs": "Inputs",
-    "outputs": "Outputs",
-    "sessions": "Sessions",
+    "inputs": "입력",
+    "outputs": "출력",
+    "sessions": "세션",
     "send": "보내기",
     "receive": "받기"
   },
@@ -33,13 +33,37 @@
   },
   "editor": {
     "placeholder": "파일 내용...",
-    "raw": "Raw (편집 모드)",
-    "preview": "Preview (읽기 전용)",
+    "raw": "편집",
+    "preview": "미리보기",
     "svgPreviewFailed": "SVG 프리뷰를 불러오지 못했습니다.",
     "parseError": "파싱 오류"
   },
   "featureDetails": {
-    "inputs": "📝 Inputs",
-    "outputs": "📄 Outputs"
+    "title": "피처 상세",
+    "selectPrompt": "워크스페이스와 피처를 선택하여 상세 정보를 확인하세요",
+    "inputs": "📝 입력",
+    "outputs": "📄 출력",
+    "artifacts": "아티팩트",
+    "noFiles": "{{title}}에 파일이 없습니다"
+  },
+  "fileEditor": {
+    "title": "파일 편집기",
+    "modified": "● 수정됨",
+    "open": "열기",
+    "revert": "되돌리기",
+    "saving": "저장 중...",
+    "save": "저장",
+    "imageLoading": "이미지 프리뷰를 불러오는 중...",
+    "folderPlaceholder": "폴더명",
+    "filePlaceholder": "파일명.md"
+  },
+  "confirm": {
+    "deleteItem": "{{type}} \"{{name}}\"을(를) 삭제할까요?",
+    "deleteTitle": "삭제할까요?",
+    "clearContents": "\"{{name}}\"의 내용을 모두 비울까요?",
+    "clearContentsTitle": "내용 비우기?",
+    "clearAll": "모두 비우기",
+    "clearContentsDetail": "\"{{name}}\"의 내용을 모두 비울까요? 모든 파일과 하위 디렉토리가 삭제됩니다.",
+    "deleteType": "{{type}} 삭제"
   }
 }

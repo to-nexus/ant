@@ -5,12 +5,19 @@
   "columns": {
     "todo": "To Do",
     "inProgress": "In Progress",
-    "completed": "Completed"
+    "completed": "Completed",
+    "noPendingTasks": "No pending tasks",
+    "noTaskInProgress": "No task in progress",
+    "noCompletedTasks": "No completed tasks yet",
+    "waitingForTasks": "Waiting for tasks..."
   },
   "header": {
     "total": "Total:",
     "estimatingPhase": "Estimating Phase:",
-    "paused": "Paused:"
+    "paused": "Paused:",
+    "timeBreakdown": "Time Breakdown",
+    "tokenUsage": "Token Usage",
+    "tasksCount": "Tasks ({{count}}):"
   },
   "tokenStats": {
     "input": "Input",
@@ -22,16 +29,36 @@
     "billableInput": "Billable input:",
     "inputSavings": "Input savings:",
     "byPhase": "By Phase",
-    "estimating": "Estimating:"
+    "estimating": "Estimating:",
+    "noCacheActivity": "No cache activity",
+    "outputDescription": "Not cacheable · 5x input price",
+    "noTokenData": "No token usage data yet"
   },
   "task": {
     "paused": "Paused"
+  },
+  "activeNode": {
+    "node": "Node:",
+    "actors": "Actors:"
   },
   "workflow": {
     "title": "🔄 Agent Workflow",
     "noSelection": "No Workspace or Feature Selected",
     "loading": "Loading workflow graph...",
     "trackNode": "Track current node",
-    "linkedActors": "Linked Actors:"
+    "linkedActors": "Linked Actors:",
+    "selectWorkspaceFeature": "Select a workspace and feature to view the agent workflow graph.",
+    "failedToLoad": "Failed to Load Workflow",
+    "noWorkflowAvailable": "No Workflow Available",
+    "selectAgentJob": "Select an agent and job to view the workflow graph.",
+    "agent": "Agent: {{name}}",
+    "job": "Job: {{name}}",
+    "running": "Running",
+    "idle": "Idle",
+    "active": "Active",
+    "provider": "Provider:",
+    "modelSystem": "Model/System:",
+    "details": "Details:",
+    "loadingText": "Loading..."
   }
 }

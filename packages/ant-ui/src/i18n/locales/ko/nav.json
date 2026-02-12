@@ -4,17 +4,17 @@
     "logoAlt": "ANT Works 로고"
   },
   "deploymentMode": {
-    "local": "Local",
-    "cloud": "Cloud",
+    "local": "로컬",
+    "cloud": "클라우드",
     "switchToLocal": "로컬 백엔드로 전환 (또는 설정 가이드 보기)",
     "currentlyLocal": "현재 로컬 백엔드 사용 중",
     "switchToCloud": "클라우드 백엔드로 전환"
   },
   "viewMode": {
-    "agents": "Agents",
-    "code": "Code",
+    "agents": "에이전트",
+    "code": "코드",
     "openEditor": "에디터에서 코드베이스 열기",
-    "selectProjectFirst": "프로젝트를 먼저 선택하세요",
+    "selectProjectFirst": "워크스페이스를 먼저 선택하세요",
     "failedToOpenIde": "IDE 열기 실패"
   },
   "theme": {
@@ -33,14 +33,16 @@
     "accountConfig": "계정 설정"
   },
   "tabs": {
-    "job": "Job",
-    "projectConfig": "프로젝트 설정",
+    "removeJobId": "작업 ID 제거",
+    "closeTab": "{{label}} 탭 닫기",
+    "job": "작업",
+    "projectConfig": "워크스페이스 설정",
     "accountConfig": "계정 설정",
     "fileEdit": "파일 편집",
     "transfer": "전송",
-    "removeJob": "Job 제거",
-    "removeJobDesc": "현재 Job을 제거하고 모든 세션 데이터를 삭제합니다:",
-    "removeJobItem1": "Job ID와 진행 상황이 제거됩니다",
+    "removeJob": "작업 제거",
+    "removeJobDesc": "현재 작업을 제거하고 모든 세션 데이터를 삭제합니다:",
+    "removeJobItem1": "작업 ID와 진행 상황이 제거됩니다",
     "removeJobItem2": "태스크 보드가 초기화됩니다",
     "removeJobItem3": "채팅 기록이 삭제됩니다",
     "removeJobItem4": "세션 파일이 리셋됩니다",

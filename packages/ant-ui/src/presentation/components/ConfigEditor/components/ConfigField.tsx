@@ -61,7 +61,7 @@ export function ConfigField({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {field.label}
+          {t(field.label)}
           {field.required && <span className="text-red-500 ml-1">*</span>}
         </label>
         {!field.required && !hasOwners && (
@@ -71,8 +71,8 @@ export function ConfigField({
       
       {field.description && (
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          {field.description}
-          {isRepoTypeDisabled && field.key === 'repoType' && ' (Fixed in Cloud Mode)'}
+          {t(field.description)}
+          {isRepoTypeDisabled && field.key === 'repoType' && ` ${t('projectEditor.fixedInCloudMode')}`}
         </p>
       )}
 
@@ -89,7 +89,7 @@ export function ConfigField({
                   : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
-              Organization: {orgOwner}
+              {t('projectEditor.organization', { name: orgOwner })}
             </button>
           )}
           {personalOwner && (
@@ -102,7 +102,7 @@ export function ConfigField({
                   : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
-              Personal: {personalOwner}
+              {t('projectEditor.personal', { name: personalOwner })}
             </button>
           )}
         </div>
@@ -125,10 +125,10 @@ export function ConfigField({
             placeholder:text-gray-400 dark:placeholder:text-gray-500`}
           placeholder={
             field.key === 'localPath' 
-              ? '~/dev/my-repo or ../my-repo or /absolute/path' 
+              ? t('projectEditor.localPathPlaceholder') 
               : field.key === 'githubRepo'
-                ? 'https://github.com/owner/repo'
-                : field.label
+                ? t('projectEditor.githubRepoPlaceholder')
+                : t(field.label)
           }
         />
       )}
@@ -149,7 +149,7 @@ export function ConfigField({
             ${isRepoTypeDisabled ? 'opacity-50 cursor-not-allowed' : ''}
             focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400`}
         >
-          {!isRepoTypeDisabled && <option value="">-- Select --</option>}
+          {!isRepoTypeDisabled && <option value="">{t('projectEditor.selectOption')}</option>}
           {field.options?.map(option => (
             <option key={option} value={option}>
               {option}
@@ -167,7 +167,7 @@ export function ConfigField({
             className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-400 dark:bg-gray-700"
           />
           <span className="text-sm text-gray-600 dark:text-gray-300">
-            Enabled
+            {t('projectEditor.enabled')}
           </span>
         </label>
       )}

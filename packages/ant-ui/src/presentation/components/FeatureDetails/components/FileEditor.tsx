@@ -32,10 +32,10 @@ export function FileEditor({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg">File Editor</CardTitle>
+            <CardTitle className="text-lg">{t('fileEditor.title')}</CardTitle>
             <div className="text-xs text-muted-foreground mt-1">
               {selectedFile}
-              {hasChanges && <span className="text-orange-500 ml-2">● Modified</span>}
+              {hasChanges && <span className="text-orange-500 ml-2">{t('fileEditor.modified')}</span>}
             </div>
           </div>
           <div className="flex gap-2">
@@ -47,7 +47,7 @@ export function FileEditor({
                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline self-center"
                 title={t('actions.openInNewTab')}
               >
-                Open
+                {t('fileEditor.open')}
               </a>
             )}
             <Button
@@ -56,14 +56,14 @@ export function FileEditor({
               onClick={onRevert}
               disabled={saving || (!hasChanges && !isImageFile)}
             >
-              Revert
+              {t('fileEditor.revert')}
             </Button>
             <Button
               size="sm"
               onClick={onSave}
               disabled={saving || !hasChanges || isImageFile}
             >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? t('fileEditor.saving') : t('fileEditor.save')}
             </Button>
           </div>
         </div>
@@ -80,7 +80,7 @@ export function FileEditor({
                 />
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">이미지 프리뷰를 불러오는 중...</div>
+              <div className="text-sm text-muted-foreground">{t('fileEditor.imageLoading')}</div>
             )}
           </div>
         ) : (

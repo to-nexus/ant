@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 interface ConfigEditorHeaderProps {
   hasChanges: boolean;
   isSaving: boolean;
@@ -11,12 +13,13 @@ export function ConfigEditorHeader({
   onSave,
   onDiscardChanges
 }: ConfigEditorHeaderProps) {
+  const { t } = useTranslation('config');
   return (
     <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-900 dark:text-white">
           <span>⚙️</span>
-          <span>Project Configuration</span>
+          <span>{t('projectEditor.header')}</span>
         </h3>
         <div className="flex items-center gap-4">
           <button
@@ -29,8 +32,8 @@ export function ConfigEditorHeader({
             }`}
             title={
               !hasChanges
-                ? 'No changes to discard'
-                : 'Discard Changes'
+                ? t('projectEditor.noChangesToDiscard')
+                : t('projectEditor.discardChanges')
             }
           >
             ↺
@@ -45,10 +48,10 @@ export function ConfigEditorHeader({
             }`}
             title={
               isSaving
-                ? 'Saving...'
+                ? t('projectEditor.saving')
                 : !hasChanges
-                ? 'No changes to save'
-                : 'Save Changes'
+                ? t('projectEditor.noChangesToSave')
+                : t('projectEditor.saveChanges')
             }
           >
             ✓

@@ -38,7 +38,7 @@ export function ArtifactsPanel({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Package className="h-5 w-5" />
-          Artifacts
+          {t('featureDetails.artifacts')}
         </CardTitle>
         <div className="text-xs text-muted-foreground">
           {selectedProject} / {selectedFeature}
@@ -46,7 +46,7 @@ export function ArtifactsPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         {loading ? (
-          <div className="text-sm text-muted-foreground">Loading...</div>
+          <div className="text-sm text-muted-foreground">{t('common:status.loading')}</div>
         ) : (
           <>
             <DirectoryView

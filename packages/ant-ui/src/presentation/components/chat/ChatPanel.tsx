@@ -5,6 +5,7 @@
  */
 
 import { useMemo, useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { PinnedQuery } from './PinnedQuery';
@@ -53,6 +54,8 @@ export function ChatPanel({
   enabled: _enabled,
   selectedAgent = null,
 }: ChatPanelProps) {
+  const { t } = useTranslation('chat');
+  
   // ✅ Get chat data from Domain Store (via Application Hook)
   // SSE subscription is managed automatically in Store
   const { messages, isStreaming } = useChat();
@@ -223,7 +226,7 @@ export function ChatPanel({
               )}
 
               <p className="text-sm text-gray-700 dark:text-gray-200 font-medium mb-2 shimmer-text">
-                Ready to start
+                {t('policy.readyToStart')}
               </p>
               <p className="text-xs text-gray-600 dark:text-gray-300 shimmer-text">
                 {chatPolicy.readyEmptyStateMessage}

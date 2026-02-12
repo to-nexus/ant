@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { fetchFileTree, FileNode } from '@/infrastructure/http/api';
 import { Card, CardHeader, CardTitle, CardContent } from '@/presentation/components/common/card';
@@ -64,6 +65,7 @@ function FileTreeNode({ node, level, onFileSelect, selectedFile }: FileTreeNodeP
 }
 
 export function FileBrowser() {
+  const { t } = useTranslation('common');
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
@@ -103,11 +105,11 @@ export function FileBrowser() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>File Browser</CardTitle>
+          <CardTitle>{t('fileBrowser.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground">
-            Select a project and feature to browse files
+            {t('fileBrowser.selectPrompt')}
           </div>
         </CardContent>
       </Card>

@@ -168,9 +168,9 @@ export function DirectoryView({
                       e.stopPropagation();
                       showConfirm(t('confirm.clearContentsDetail', { name: node.name }), {
                         type: 'warning',
-                        title: 'Clear Contents?',
-                        confirmText: 'Clear All',
-                        cancelText: 'Cancel',
+                        title: t('confirm.clearContentsTitle'),
+                        confirmText: t('confirm.clearAll'),
+                        cancelText: t('common:button.cancel'),
                         onConfirm: () => onDelete(node.path)
                       });
                     }}
@@ -196,13 +196,13 @@ export function DirectoryView({
                     e.stopPropagation();
                     showConfirm(t('confirm.deleteItem', { type: node.type, name: node.name }), {
                       type: 'warning',
-                      title: 'Delete?',
-                      confirmText: 'Delete',
-                      cancelText: 'Cancel',
+                      title: t('confirm.deleteTitle'),
+                      confirmText: t('common:button.delete'),
+                      cancelText: t('common:button.cancel'),
                       onConfirm: () => onDelete(node.path)
                     });
                   }}
-                  title={`Delete ${node.type}`}
+                  title={t('confirm.deleteType', { type: node.type })}
                 >
                   🗑️
                 </Button>
@@ -219,7 +219,7 @@ export function DirectoryView({
               </span>
               <input
                 type="text"
-                placeholder={createType === 'directory' ? "folder-name" : "filename.md"}
+                placeholder={createType === 'directory' ? t('fileEditor.folderPlaceholder') : t('fileEditor.filePlaceholder')}
                 value={newFileName}
                 onChange={(e) => setNewFileName(e.target.value)}
                 onKeyDown={(e) => {
@@ -285,7 +285,7 @@ export function DirectoryView({
   if (nodes.length === 0) {
     return (
       <div className="text-sm text-muted-foreground p-4">
-        No files in {title.toLowerCase()}
+        {t('featureDetails.noFiles', { title: title.toLowerCase() })}
       </div>
     );
   }

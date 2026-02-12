@@ -35,20 +35,20 @@ export function AgentWorkflowBoard({ workflowState }: AgentWorkflowBoardProps) {
           {/* Always show selected agent */}
           <StatusChip 
             variant="info" 
-            label={`Agent: ${capitalize(selectedAgent)}`}
+            label={t('workflow.agent', { name: capitalize(selectedAgent) })}
             hideDot
           />
           {/* Always show selected work type (job) */}
           <StatusChip 
             variant="success" 
-            label={`Job: ${capitalize(selectedJobType)}`}
+            label={t('workflow.job', { name: capitalize(selectedJobType) })}
             hideDot
           />
           {/* Show Status (Running / Idle) - dot 표시 필요 */}
           {/* ✅ UI Policy 준수 */}
           <StatusChip 
             variant={policy.isRunning ? "live" : "session"} 
-            label={policy.isRunning ? "Running" : "Idle"}
+            label={policy.isRunning ? t('workflow.running') : t('workflow.idle')}
           />
         </div>
       }

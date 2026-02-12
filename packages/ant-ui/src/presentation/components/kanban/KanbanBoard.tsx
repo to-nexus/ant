@@ -136,7 +136,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   // ✅ Main Kanban Board UI
   return (
     <BoardContainer 
-      title="Task Board"
+      title={t('board.title')}
       titleActions={
         <>
           <ElapsedTimeBadge

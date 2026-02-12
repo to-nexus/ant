@@ -16,21 +16,21 @@ interface NodeConfig {
 }
 
 const DESIGN_NODES: NodeConfig[] = [
-  { key: 'default', labelKey: 'llmModels.default', description: 'Default model for all design nodes' },
-  { key: 'decompose', labelKey: 'llmModels.decompose', description: 'Task decomposition and planning' },
-  { key: 'docGen', labelKey: 'llmModels.docGeneration', description: 'Documentation generation' },
-  { key: 'plan', labelKey: 'llmModels.plan', description: 'Context gathering and planning' },
+  { key: 'default', labelKey: 'llmModels.default', description: 'llmModels.defaultDesignDesc' },
+  { key: 'decompose', labelKey: 'llmModels.decompose', description: 'llmModels.decomposeDesc' },
+  { key: 'docGen', labelKey: 'llmModels.docGeneration', description: 'llmModels.docGenDesc' },
+  { key: 'plan', labelKey: 'llmModels.plan', description: 'llmModels.planDesc' },
 ];
 
 const CODE_NODES: NodeConfig[] = [
-  { key: 'default', labelKey: 'llmModels.default', description: 'Default model for all code nodes' },
-  { key: 'decompose', labelKey: 'llmModels.decompose', description: 'Task decomposition and planning' },
-  { key: 'codeGen', labelKey: 'llmModels.codeGeneration', description: 'Code generation and editing' },
-  { key: 'plan', labelKey: 'llmModels.plan', description: 'Context gathering and planning' },
+  { key: 'default', labelKey: 'llmModels.default', description: 'llmModels.defaultCodeDesc' },
+  { key: 'decompose', labelKey: 'llmModels.decompose', description: 'llmModels.decomposeDesc' },
+  { key: 'codeGen', labelKey: 'llmModels.codeGeneration', description: 'llmModels.codeGenDesc' },
+  { key: 'plan', labelKey: 'llmModels.plan', description: 'llmModels.planDesc' },
 ];
 
 const LEARN_NODES: NodeConfig[] = [
-  { key: 'default', labelKey: 'llmModels.default', description: 'Default model for learning tasks' },
+  { key: 'default', labelKey: 'llmModels.default', description: 'llmModels.defaultLearnDesc' },
 ];
 
 export function LLMModelsSection({
@@ -50,7 +50,7 @@ export function LLMModelsSection({
     return (
       <div key={jobKey} className="space-y-3 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
         <h5 className="text-sm font-semibold text-gray-900 dark:text-white capitalize">
-          {jobName} Job
+          {t('projectEditor.jobTitle', { name: jobName })}
         </h5>
         
         {nodes.map(node => (
@@ -60,7 +60,7 @@ export function LLMModelsSection({
               {node.key === 'default' && <span className="text-red-500 ml-1">*</span>}
             </label>
             {node.description && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">{node.description}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t(node.description)}</p>
             )}
             <select
               value={jobConfig?.[node.key] || ''}
@@ -72,7 +72,7 @@ export function LLMModelsSection({
               {node.key === 'default' ? (
                 // Default is required, no empty option
                 <>
-                  {!jobConfig?.[node.key] && <option value="">-- Select Model --</option>}
+                  {!jobConfig?.[node.key] && <option value="">{t('projectEditor.selectModel')}</option>}
                   {availableModels.map(model => (
                     <option key={model.id} value={model.id}>
                       {model.displayName}
@@ -82,7 +82,7 @@ export function LLMModelsSection({
               ) : (
                 // Other nodes are optional, can use job default
                 <>
-                  <option value="">-- Use Job Default --</option>
+                  <option value="">{t('projectEditor.useJobDefault')}</option>
                   {availableModels.map(model => (
                     <option key={model.id} value={model.id}>
                       {model.displayName}
@@ -102,8 +102,7 @@ export function LLMModelsSection({
       <div className="space-y-2">
         <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{t('llmModels.title')}</h4>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Configure models for different jobs and nodes. Each job requires a default model. 
-          Nodes can optionally use a different model, otherwise they use the job default.
+          {t('projectEditor.llmDescription')}
         </p>
       </div>
       

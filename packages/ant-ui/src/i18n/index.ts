@@ -60,7 +60,7 @@ i18n
         explorer: koExplorer,
       },
     },
-    fallbackLng: 'en',
+    fallbackLng: 'ko',
     defaultNS: 'common',
     ns: ['common', 'nav', 'chat', 'config', 'kanban', 'artifacts', 'transfer', 'auth', 'explorer'],
     detection: {

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Session } from '@/domain/models/session';
 import { Card, CardHeader, CardTitle, CardContent } from '@/presentation/components/common/card';
 import { Badge } from '@/presentation/components/common/badge';
@@ -34,15 +35,17 @@ function getStatusVariant(status: Session['status']): 'default' | 'secondary' | 
 }
 
 export function SessionView({ session }: SessionViewProps) {
+  const { t } = useTranslation('common');
+  
   if (!session) {
     return (
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>No Session</CardTitle>
+          <CardTitle>{t('sessionView.noSession')}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">
-            No active session available. Please select a project to view session details.
+            {t('sessionView.noSessionDesc')}
           </p>
         </CardContent>
       </Card>

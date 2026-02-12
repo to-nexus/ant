@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { Card, CardHeader, CardTitle, CardContent } from '../common/card';
 import { useFileTree } from './hooks/useFileTree';
@@ -8,6 +9,7 @@ import { ArtifactsPanel } from './components/ArtifactsPanel';
 import { FileEditor } from './components/FileEditor';
 
 export function FeatureDetails() {
+  const { t } = useTranslation('artifacts');
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
@@ -38,11 +40,11 @@ export function FeatureDetails() {
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Feature Details</CardTitle>
+            <CardTitle>{t('featureDetails.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-sm text-muted-foreground">
-              Select a project and feature to view details
+              {t('featureDetails.selectPrompt')}
             </div>
           </CardContent>
         </Card>

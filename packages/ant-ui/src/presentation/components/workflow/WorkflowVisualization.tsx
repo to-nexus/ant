@@ -266,7 +266,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
             {t('workflow.noSelection')}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Select a workspace and feature to view the agent workflow graph.
+            {t('workflow.selectWorkspaceFeature')}
           </p>
         </div>
       </div>
@@ -292,7 +292,7 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
         <div className="text-center max-w-md">
           <div className="text-red-500 dark:text-red-400 text-4xl mb-4">⚠️</div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            Failed to Load Workflow
+            {t('workflow.failedToLoad')}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
             {error.message}
@@ -309,10 +309,10 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
         <div className="text-center max-w-md">
           <div className="text-gray-400 dark:text-gray-600 text-6xl mb-4">🔄</div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            No Workflow Available
+            {t('workflow.noWorkflowAvailable')}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Select an agent and job to view the workflow graph.
+            {t('workflow.selectAgentJob')}
           </p>
         </div>
       </div>

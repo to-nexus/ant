@@ -2,11 +2,17 @@
   "input": {
     "placeholder": "로그인 후 채팅을 시작하세요...",
     "send": "전송",
-    "stopJob": "실행 중인 Job 중지"
+    "sendMessage": "메시지 전송",
+    "completeSelection": "선택을 완료하면 활성화됩니다",
+    "stopJob": "실행 중인 작업 중지",
+    "stop": "중지",
+    "stopping": "중지 중...",
+    "filesEdited": "{{count}}개 파일 편집됨"
   },
   "sidebar": {
+    "chatWith": "{{agent}}와 채팅",
     "clearHistory": "채팅 기록 삭제",
-    "clearHistoryConfirm": "이 Feature의 모든 채팅 메시지가 영구 삭제됩니다.",
+    "clearHistoryConfirm": "이 피처의 모든 채팅 메시지가 영구 삭제됩니다.",
     "clearHistoryConfirmSub": "계속하시겠습니까?",
     "clearHistoryFailed": "채팅 기록 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.",
     "offline": "채팅 오프라인",
@@ -15,6 +21,12 @@
   },
   "inlineAsk": {
     "failed": "Inline ask 실패"
+  },
+  "agent": {
+    "architect": "코딩 작업에 최적화",
+    "planner": "프로젝트 계획 및 로드맵 생성",
+    "reviewer": "코드 리뷰 및 피드백 제공",
+    "doc": "문서 생성"
   },
   "jobMode": {
     "design": {
@@ -33,5 +45,24 @@
       "label": "📋 Plan",
       "description": "프로젝트 계획 및 로드맵 생성"
     }
+  },
+  "policy": {
+    "signInPlaceholder": "로그인 후 채팅을 시작하세요...",
+    "signInMessage": "네비게이션 바에서 로그인해주세요",
+    "selectAgentPlaceholder": "에이전트를 선택하여 채팅을 시작하세요...",
+    "selectAgentMessage": "네비게이션 바에서 에이전트를 선택해주세요",
+    "selectWorkspacePlaceholder": "워크스페이스를 선택하여 계속하세요...",
+    "selectWorkspaceMessage": "네비게이션 바에서 워크스페이스를 선택해주세요",
+    "selectFeaturePlaceholder": "피처를 선택하여 계속하세요...",
+    "selectFeatureMessage": "네비게이션 바에서 피처를 선택해주세요",
+    "selectJobPlaceholder": "작업 유형을 선택하여 계속하세요...",
+    "selectJobMessage": "아래 선택기에서 작업 유형을 선택해주세요",
+    "jobRunningPlaceholder": "작업 실행 중입니다. 새 메시지를 보내려면 작업을 중지하세요...",
+    "queueWaitingPlaceholder": "큐 대기 중 ({{position}}/{{total}}). 중지하여 취소...",
+    "interruptedPlaceholder": "추가 피드백과 함께 메시지를 보내 계속하세요...",
+    "firstMessagePlaceholder": "에이전트와 대화를 시작하세요...",
+    "continuePlaceholder": "대화를 이어가세요...",
+    "readyToStart": "시작 준비 완료",
+    "readyEmptyState": "에이전트와 협업하려면 채팅을 시작하세요"
   }
 }

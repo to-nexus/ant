@@ -44,6 +44,14 @@
   "modal": {
     "closeModal": "Close modal"
   },
+  "fileBrowser": {
+    "title": "File Browser",
+    "selectPrompt": "Select a workspace and feature to browse files"
+  },
+  "sessionView": {
+    "noSession": "No Session",
+    "noSessionDesc": "No active session available. Please select a workspace to view session details."
+  },
   "time": {
     "minutesAgo": "{{count}}m ago",
     "hoursAgo": "{{count}}h ago",

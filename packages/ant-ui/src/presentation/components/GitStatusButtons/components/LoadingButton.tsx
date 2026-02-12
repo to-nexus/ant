@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '../../common/button';
 import { useStore } from '@/domain/store';
@@ -7,29 +8,30 @@ interface LoadingButtonProps {
 }
 
 export function LoadingButton({ isFetchingChanges }: LoadingButtonProps) {
+  const { t } = useTranslation('explorer');
   const { isGitStatusLoading, gitStatusPhase } = useStore();
   
-  let loadingMessage = 'Updating...';
+  let loadingMessage = t('git.updating');
   
   // ✅ Unified phase-based messages
   if (gitStatusPhase === 'fetching') {
-    loadingMessage = 'Fetching...';
+    loadingMessage = t('git.fetching');
   } else if (gitStatusPhase === 'pushing') {
-    loadingMessage = 'Pushing...';
+    loadingMessage = t('git.pushing');
   } else if (gitStatusPhase === 'pulling') {
-    loadingMessage = 'Pulling...';
+    loadingMessage = t('git.pulling');
   } else if (gitStatusPhase === 'committing') {
-    loadingMessage = 'Committing...';
+    loadingMessage = t('git.committing');
   } else if (gitStatusPhase === 'syncing') {
-    loadingMessage = 'Syncing...';
+    loadingMessage = t('git.syncing');
   } else if (gitStatusPhase === 'switching') {
-    loadingMessage = 'Switching...';
+    loadingMessage = t('git.switching');
   } else if (gitStatusPhase === 'initializing') {
-    loadingMessage = 'Initializing...';
+    loadingMessage = t('git.initializing');
   } else if (gitStatusPhase === 'cloning') {
-    loadingMessage = 'Cloning...';
+    loadingMessage = t('git.cloning');
   } else if (isFetchingChanges && !isGitStatusLoading) {
-    loadingMessage = 'Checking...';
+    loadingMessage = t('git.checking');
   }
   
   return (

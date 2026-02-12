@@ -46,8 +46,8 @@ export function ItemDropdown({
   onCreate,
   onDelete,
   onItemCreated,
-  placeholder = 'Select an item...',
-  inputPlaceholder = 'Item name...',
+  placeholder,
+  inputPlaceholder,
   renderCreateForm,
   onSettingsClick,
   onPlayClick,
@@ -61,6 +61,8 @@ export function ItemDropdown({
   createDisabledReason,
 }: ItemDropdownProps) {
   const { t } = useTranslation('explorer');
+  const resolvedPlaceholder = placeholder || t('item.selectPlaceholder');
+  const resolvedInputPlaceholder = inputPlaceholder || t('item.inputPlaceholder');
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -179,11 +181,11 @@ export function ItemDropdown({
               isOpen: isCreating,
               onSubmit: handleCreate,
               onCancel: handleCancelCreate,
-              placeholder: inputPlaceholder,
+              placeholder: resolvedInputPlaceholder,
             })
           ) : (
             <CreateItemForm
-              placeholder={inputPlaceholder}
+              placeholder={resolvedInputPlaceholder}
               onSubmit={handleCreate}
               onCancel={handleCancelCreate}
               isOpen={isCreating}
@@ -191,7 +193,7 @@ export function ItemDropdown({
           )}
           {!isCreating && (
             <div className={cn('p-3 text-center text-sm', textColors.tertiary)}>
-              No {title.toLowerCase()} found
+              {t('item.noItemsFound', { title: title.toLowerCase() })}
             </div>
           )}
         </div>
@@ -238,11 +240,11 @@ export function ItemDropdown({
             isOpen: isCreating,
             onSubmit: handleCreate,
             onCancel: handleCancelCreate,
-            placeholder: inputPlaceholder,
+            placeholder: resolvedInputPlaceholder,
           })
         ) : (
           <CreateItemForm
-            placeholder={inputPlaceholder}
+            placeholder={resolvedInputPlaceholder}
             onSubmit={handleCreate}
             onCancel={handleCancelCreate}
             isOpen={isCreating}
@@ -258,7 +260,7 @@ export function ItemDropdown({
             title={disabled ? disabledReason : undefined}
           >
             <span className="truncate">
-              {selectedItem || placeholder}
+              {selectedItem || resolvedPlaceholder}
             </span>
           </Button>
           
@@ -286,10 +288,10 @@ export function ItemDropdown({
                 }`}
                 title={
                   playButtonLoading 
-                    ? (isPlaying ? 'Stopping preview server...' : 'Starting preview server...')
+                    ? (isPlaying ? t('dropdown.stoppingPreview') : t('dropdown.startingPreview'))
                     : playButtonDisabled
-                      ? 'Cannot start/stop dev server (task running or not available)'
-                      : (isPlaying ? 'Stop dev server' : 'Start dev server')
+                      ? t('dropdown.cannotStartStop')
+                      : (isPlaying ? t('dropdown.stopDevServer') : t('dropdown.startDevServer'))
                 }
               >
                 {playButtonLoading ? (
@@ -312,7 +314,7 @@ export function ItemDropdown({
                 }}
                 disabled={disabled}
                 className="p-1 hover:bg-gray-50 dark:hover:bg-[#30363d] rounded transition-colors pointer-events-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                title={disabled ? disabledReason : "Settings"}
+                title={disabled ? disabledReason : t('item.settings')}
               >
                 <Settings className="h-4 w-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" />
               </button>
@@ -343,7 +345,7 @@ export function ItemDropdown({
                     setIsOpen(false);
                   }}
                 >
-                  {placeholder}
+                  {resolvedPlaceholder}
                 </button>
               </div>
               
@@ -373,7 +375,7 @@ export function ItemDropdown({
                         e.stopPropagation();
                         handleDelete(item.name);
                       }}
-                      title={`Delete ${title.toLowerCase()}`}
+                      title={t('item.deleteItem', { title: title.toLowerCase() })}
                     >
                       🗑️
                     </button>

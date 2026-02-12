@@ -12,52 +12,52 @@ export interface ConfigField {
 export const CONFIG_SCHEMA: ConfigField[] = [
   {
     key: 'repositoryName',
-    label: 'Repository Name',
+    label: 'schema.repositoryName',
     type: 'text',
     required: true,
-    description: 'Name of the codebase/repository'
+    description: 'schema.repositoryNameDesc'
   },
   {
     key: 'repoType',
-    label: 'Repository Type',
+    label: 'schema.repositoryType',
     type: 'select',
     required: false,
     options: ['local', 'cloud', 'github'],
-    description: 'Type of repository (local, cloud, or GitHub)'
+    description: 'schema.repositoryTypeDesc'
   },
   {
     key: 'localPath',
-    label: 'Local Path',
+    label: 'schema.localPath',
     type: 'text',
     required: false,
-    description: 'Path to local repository. Supports: absolute (/Users/...), home (~/ ), or relative from ant-cli (../../../my-repo)'
+    description: 'schema.localPathDesc'
   },
   {
     key: 'githubRepo',
-    label: 'GitHub Repository',
+    label: 'schema.githubRepo',
     type: 'text',
     required: false,
-    description: 'GitHub repository URL (for github repo type)'
+    description: 'schema.githubRepoDesc'
   },
   {
     key: 'branchBase',
-    label: 'Base Branch',
+    label: 'schema.baseBranch',
     type: 'text',
     required: true,
-    description: 'Base branch name (e.g., main, master)'
+    description: 'schema.baseBranchDesc'
   },
   {
     key: 'autoLearn',
-    label: 'Auto Learn',
+    label: 'schema.autoLearn',
     type: 'boolean',
     required: true,
-    description: 'Enable automatic learning from code changes'
+    description: 'schema.autoLearnDesc'
   },
   {
     key: 'strictValidation',
-    label: 'Strict Validation',
+    label: 'schema.strictValidation',
     type: 'boolean',
     required: false,
-    description: 'Enable strict validation mode'
+    description: 'schema.strictValidationDesc'
   }
 ];

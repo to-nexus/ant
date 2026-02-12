@@ -13,7 +13,7 @@ export const PREVIEW_MESSAGES = {
   BUTTON_OPEN: 'Open',
   
   // Errors
-  ERROR_NO_PROJECT_FEATURE: 'Please select a project and feature first',
+  ERROR_NO_PROJECT_FEATURE: 'Please select a workspace and feature first',
   ERROR_START_FAILED: 'Failed to start preview',
   ERROR_STOP_FAILED: (message: string) => `Failed to stop preview: ${message}`,
   ERROR_UNKNOWN: 'Unknown error occurred',

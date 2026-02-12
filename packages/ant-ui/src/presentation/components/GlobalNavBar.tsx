@@ -346,7 +346,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                 title={t('language.label')}
               >
                 <Globe className="w-3.5 h-3.5" />
-                {language.toUpperCase()}
+                {LANGUAGE_LABELS[language]}
               </button>
               {showLangMenu && (
                 <div className="absolute top-full right-0 mt-1 w-32 bg-white dark:bg-gray-800 
