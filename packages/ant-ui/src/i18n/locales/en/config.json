@@ -134,7 +134,10 @@
     "resetAccountConfirmMsg": "This will delete:\n• All workspaces and features\n• All session files and chat history\n• User configuration\n\nGit repositories will be preserved.\n\nThis action cannot be undone.",
     "resetAccountSuccess": "Account reset successfully. The page will reload.",
     "resetAccountFailed": "Failed to reset account. Please try again.",
-    "resetting": "Resetting..."
+    "resetting": "Resetting...",
+    "resetStepDeleting": "Deleting workspaces and sessions",
+    "resetStepClearing": "Clearing local cache",
+    "resetStepDone": "Done, reloading..."
   },
   "git": {
     "repoSetupRequired": "GitHub repository setup required",

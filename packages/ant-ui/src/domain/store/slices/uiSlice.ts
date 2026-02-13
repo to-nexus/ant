@@ -28,6 +28,8 @@ export interface UIActions {
   clearPendingClarify: () => void;
   // ✅ Onboarding skip
   setOnboardingSkipped: (skipped: boolean) => void;
+  // ✅ QuickStart with existing project
+  setQuickStartProjectId: (projectId: string | undefined) => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -98,6 +100,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   pendingClarifyAnswers: {},
   pendingClarifyQuestions: [],
   onboardingSkipped: false,
+  quickStartProjectId: undefined,
 
   // ==================
   // Actions
@@ -299,6 +302,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   setOnboardingSkipped: (skipped: boolean) => {
     set({ onboardingSkipped: skipped });
+  },
+
+  setQuickStartProjectId: (projectId: string | undefined) => {
+    set({ quickStartProjectId: projectId });
   },
 });
 

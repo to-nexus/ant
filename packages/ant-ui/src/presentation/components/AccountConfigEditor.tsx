@@ -58,6 +58,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   
   // Account reset state
   const [isResettingAccount, setIsResettingAccount] = useState(false);
+  const [resetPhase, setResetPhase] = useState<'idle' | 'deleting' | 'clearing' | 'done'>('idle');
   
   // Sync port input with store value
   useEffect(() => {
@@ -308,16 +309,21 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       cancelText: t('common:button.cancel'),
       onConfirm: async () => {
         setIsResettingAccount(true);
+        setResetPhase('deleting');
         try {
           console.log('[AccountConfigEditor] Resetting account...');
           const result = await resetUserAccount();
           
           if (!result.success) {
+            setResetPhase('idle');
             showError(result.error || t('account.resetAccountFailed'));
             return;
           }
           
           console.log('[AccountConfigEditor] Account reset successful');
+          
+          // Phase 2: Clearing local state
+          setResetPhase('clearing');
           
           // Clear persisted project/feature state from storage
           removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
@@ -326,7 +332,11 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           // Reset zustand store state
           reset();
           
-          // Fade-out transition then full reload
+          await new Promise((r) => setTimeout(r, 600));
+          
+          // Phase 3: Done — fade out and reload
+          setResetPhase('done');
+          
           document.body.style.transition = 'opacity 0.5s ease';
           document.body.style.opacity = '0';
           
@@ -335,8 +345,8 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           }, 500);
         } catch (error: any) {
           console.error('[AccountConfigEditor] Failed to reset account:', error);
+          setResetPhase('idle');
           showError(error.message || t('account.resetAccountFailed'));
-        } finally {
           setIsResettingAccount(false);
         }
       }
@@ -632,8 +642,74 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     </div>
   );
 
+  const resetSteps = [
+    { key: 'deleting' as const, label: t('account.resetStepDeleting') },
+    { key: 'clearing' as const, label: t('account.resetStepClearing') },
+    { key: 'done' as const, label: t('account.resetStepDone') },
+  ];
+
   return (
-    <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-gray-800">
+    <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-gray-800 relative">
+      {/* Fullscreen dim overlay during reset */}
+      {isResettingAccount && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 mx-4 max-w-sm w-full text-center">
+            {/* Spinner */}
+            {resetPhase !== 'done' && (
+              <div className="mx-auto mb-5 w-10 h-10 border-3 border-gray-200 dark:border-gray-600 border-t-red-500 rounded-full animate-spin" />
+            )}
+            {resetPhase === 'done' && (
+              <div className="mx-auto mb-5 w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            )}
+
+            <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+              {t('account.resetting')}
+            </h4>
+
+            {/* Step indicators */}
+            <div className="space-y-2.5 text-left">
+              {resetSteps.map((step) => {
+                const stepOrder = resetSteps.findIndex((s) => s.key === step.key);
+                const currentOrder = resetSteps.findIndex((s) => s.key === resetPhase);
+                const isDone = currentOrder > stepOrder;
+                const isCurrent = resetPhase === step.key;
+
+                return (
+                  <div key={step.key} className="flex items-center gap-2.5">
+                    {isDone ? (
+                      <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    ) : isCurrent ? (
+                      <div className="w-5 h-5 rounded-full border-2 border-red-400 dark:border-red-500 flex items-center justify-center flex-shrink-0">
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      </div>
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-gray-200 dark:border-gray-600 flex-shrink-0" />
+                    )}
+                    <span className={`text-sm ${
+                      isCurrent 
+                        ? 'text-gray-900 dark:text-white font-medium' 
+                        : isDone 
+                          ? 'text-gray-500 dark:text-gray-400' 
+                          : 'text-gray-300 dark:text-gray-600'
+                    }`}>
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-900 dark:text-white">

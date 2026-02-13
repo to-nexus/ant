@@ -119,16 +119,18 @@ function AmbientCanvas() {
 }
 
 // ─── Ordered steps for the progress checklist ───────────────────────
-const STEP_KEYS = ['workspace', 'feature', 'plan', 'switching'] as const;
-type StepKey = (typeof STEP_KEYS)[number];
+const STEP_KEYS_FULL = ['workspace', 'feature', 'plan', 'switching'] as const;
+const STEP_KEYS_FEATURE_ONLY = ['feature', 'plan', 'switching'] as const;
+type StepKey = 'workspace' | 'feature' | 'plan' | 'switching';
 
 function getStepStatus(
   step: StepKey,
-  activeStep: StepKey | 'idle'
+  activeStep: StepKey | 'idle',
+  stepKeys: readonly StepKey[]
 ): 'pending' | 'active' | 'done' {
   if (activeStep === 'idle') return 'pending';
-  const activeIdx = STEP_KEYS.indexOf(activeStep as StepKey);
-  const stepIdx = STEP_KEYS.indexOf(step);
+  const activeIdx = stepKeys.indexOf(activeStep as StepKey);
+  const stepIdx = stepKeys.indexOf(step);
   if (stepIdx < activeIdx) return 'done';
   if (stepIdx === activeIdx) return 'active';
   return 'pending';
@@ -180,10 +182,11 @@ function StepRow({
 
 // ─── Main Component ─────────────────────────────────────────────────
 export interface QuickStartProps {
+  existingProjectId?: string;  // If set, skip workspace creation and use this project
   onSkip?: () => void;
 }
 
-export function QuickStart({ onSkip }: QuickStartProps) {
+export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
   const { t } = useTranslation('onboarding');
   const [input, setInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -201,6 +204,10 @@ export function QuickStart({ onSkip }: QuickStartProps) {
   const fetchProjects = useStore((state) => state.fetchProjects);
   const setRunning = useStore((state) => state.setRunning);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
+  const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
+
+  // Dynamic steps: skip workspace creation when using an existing project
+  const stepKeys = existingProjectId ? STEP_KEYS_FEATURE_ONLY : STEP_KEYS_FULL;
 
   // Auto-focus the textarea
   useEffect(() => {
@@ -228,30 +235,38 @@ export function QuickStart({ onSkip }: QuickStartProps) {
     setIsExiting(false);
 
     try {
-      const name = extractNameFromEmail(userEmail);
-      let projectId = `${name}-sketch`;
+      let projectId: string;
 
-      if (projects.includes(projectId)) {
-        let suffix = 1;
-        while (projects.includes(`${projectId}-${suffix}`)) {
-          suffix++;
+      if (existingProjectId) {
+        // ✅ Use existing project — skip workspace creation
+        projectId = existingProjectId;
+        console.log(`[QuickStart] Using existing project: ${projectId}`);
+      } else {
+        // ✅ Create new project
+        const name = extractNameFromEmail(userEmail);
+        projectId = `${name}-sketch`;
+
+        if (projects.includes(projectId)) {
+          let suffix = 1;
+          while (projects.includes(`${projectId}-${suffix}`)) {
+            suffix++;
+          }
+          projectId = `${projectId}-${suffix}`;
         }
-        projectId = `${projectId}-${suffix}`;
+
+        setActiveStep('workspace');
+        console.log(`[QuickStart] Creating project: ${projectId}`);
+        await Promise.all([createProject(projectId), delay(1200)]);
       }
 
       const featureName = 'skeleton';
 
-      // Step 1: workspace
-      setActiveStep('workspace');
-      console.log(`[QuickStart] Creating project: ${projectId}`);
-      await Promise.all([createProject(projectId), delay(1200)]);
-
-      // Step 2: feature
+      // Step: feature
       setActiveStep('feature');
       console.log(`[QuickStart] Creating feature: ${featureName}`);
       await Promise.all([createFeature(projectId, featureName), delay(1000)]);
 
-      // Step 3: plan
+      // Step: plan
       setActiveStep('plan');
       setSelectedAgent('planner');
       setSelectedJobType('plan');
@@ -283,13 +298,16 @@ export function QuickStart({ onSkip }: QuickStartProps) {
       });
       await delay(1000);
 
-      // Step 4: switching
+      // Step: switching
       setActiveStep('switching');
       await delay(800);
 
       // Fade out before switching to the normal UI
       setIsExiting(true);
       await delay(400);
+
+      // Clear quickStartProjectId so App transitions away from QuickStart
+      setQuickStartProjectId(undefined);
 
       // Now allow App to transition away from QuickStart
       await fetchProjects();
@@ -299,7 +317,7 @@ export function QuickStart({ onSkip }: QuickStartProps) {
       setIsSubmitting(false);
       setActiveStep('idle');
     }
-  }, [input, isSubmitting, userEmail, projects, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, t]);
+  }, [input, isSubmitting, userEmail, existingProjectId, projects, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -506,11 +524,11 @@ export function QuickStart({ onSkip }: QuickStartProps) {
                 className="space-y-3 bg-white/60 dark:bg-white/5 backdrop-blur-md rounded-xl px-6 py-4 border border-gray-200/50 dark:border-gray-700/30"
                 style={{ animation: 'qsFadeInUp 0.4s ease-out both' }}
               >
-                {STEP_KEYS.map((step) => (
+                {stepKeys.map((step) => (
                   <StepRow
                     key={step}
                     label={t(`quickstart.steps.${step}`)}
-                    status={getStepStatus(step, activeStep)}
+                    status={getStepStatus(step, activeStep, stepKeys)}
                   />
                 ))}
               </div>
