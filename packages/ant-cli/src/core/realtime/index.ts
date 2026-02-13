@@ -35,19 +35,23 @@ export * from './types';
 export { KanbanBroadcaster } from './KanbanBroadcaster';
 export { WorkflowBroadcaster } from './WorkflowBroadcaster';
 export { FileTreeBroadcaster } from './FileTreeBroadcaster';
+export { PreviewBroadcaster } from './PreviewBroadcaster';
 
 import { KanbanBroadcaster } from './KanbanBroadcaster';
 import { WorkflowBroadcaster } from './WorkflowBroadcaster';
 import { FileTreeBroadcaster } from './FileTreeBroadcaster';
+import { PreviewBroadcaster } from './PreviewBroadcaster';
 import { BroadcasterOptions } from './types';
 import { TaskQueueUpdatePort } from '../ports';
 import { WorkflowStateUpdatePort } from '../ports/workflow';
 import { FileTreeUpdatePort } from '../ports/fileTree';
+import { PreviewUpdatePort } from '../ports/preview';
 
 export interface RealtimeBroadcasters {
   kanban: TaskQueueUpdatePort;
   workflow: WorkflowStateUpdatePort;
   fileTree: FileTreeUpdatePort;
+  preview: PreviewUpdatePort;
   close: () => Promise<void>;
 }
 
@@ -68,16 +72,19 @@ export function createRealtimeBroadcasters(
   const kanban = new KanbanBroadcaster(options);
   const workflow = new WorkflowBroadcaster(options);
   const fileTree = new FileTreeBroadcaster(options);
+  const preview = new PreviewBroadcaster(options);
 
   return {
     kanban,
     workflow,
     fileTree,
+    preview,
     close: async () => {
       await Promise.all([
         kanban.close(),
         workflow.close(),
         fileTree.close(),
+        preview.close(),
       ]);
     },
   };

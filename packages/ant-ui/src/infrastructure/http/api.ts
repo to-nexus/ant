@@ -344,6 +344,7 @@ export interface PreviewStatus {
   error?: string;  // Error message from backend (install failure, health check failure, etc.)
   structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
   linkedBackend?: LinkedBackendConfig | null;
+  canStart?: boolean;  // Whether preview server can be started (filesystem-based check)
 }
 
 export interface PreviewConfig {

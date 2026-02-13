@@ -149,11 +149,13 @@ export function useUIActionPolicy(): UIActionPolicy {
    * - NOT in transitional phase (installing, starting, validating)
    * - NOT disconnected
    * - project 선택됨
+   * - Backend reports canStart (filesystem has runnable scripts)
    */
   const isPreviewTransitioning = ['installing', 'starting', 'validating'].includes(
     (previewStatus as any)?.phase ?? ''
   );
-  const canStartPreview = !isRunning && !isPreviewLoading && !isPreviewTransitioning && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false);
+  const backendCanStart = previewStatus?.canStart ?? false;
+  const canStartPreview = !isRunning && !isPreviewLoading && !isPreviewTransitioning && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false) && backendCanStart;
   
   /**
    * Rule 6: Preview 중단 조건

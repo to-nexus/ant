@@ -197,6 +197,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
     workflowUpdate?: import('../../../../core/ports').WorkflowStateUpdatePort;  // ✅ For real-time workflow visualization
+    previewUpdate?: import('../../../../core/ports/preview').PreviewUpdatePort;  // ✅ For preview structureType broadcast
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   

@@ -31,6 +31,7 @@ export async function architectAgent(
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
     workflowUpdate?: import('../../core/ports/workflow').WorkflowStateUpdatePort;  // ✅ For real-time workflow tracking
+    previewUpdate?: import('../../core/ports/preview').PreviewUpdatePort;  // ✅ For preview structureType broadcast
     workspaceResolver?: any;
     userContext?: import('../../core/types/user').UserContext;  // ✅ User context (Cloud or Local)
     overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
@@ -398,7 +399,8 @@ export async function architectAgent(
             workspaceResolver: deps?.workspaceResolver,  // ✅ For path resolution
             kanbanUpdate: deps?.kanbanUpdate,  // ✅ Pass Kanban update port (undefined in child process)
             fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ Pass file tree update port (undefined in child process)
-            workflowUpdate: deps?.workflowUpdate  // ✅ Pass workflow update port for Agent Workflow visualization
+            workflowUpdate: deps?.workflowUpdate,  // ✅ Pass workflow update port for Agent Workflow visualization
+            previewUpdate: deps?.previewUpdate,    // ✅ For preview structureType broadcast
           },
           gitPort: deps?.git,
           planText: "",

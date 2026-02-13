@@ -407,6 +407,25 @@ export async function detectEnvironment(
     console.log(`   📊 Combined Design Context: ${tokenEstimate.toLocaleString()} tokens (${selectedDesignFiles.length} documents)\n`);
   }
   
+  // ✅ Broadcast structureType to frontend via SSE (for Preview Config canStart)
+  if (state.deps?.previewUpdate && state.context) {
+    const envToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
+      frontend: 'frontend-only',
+      backend: 'backend-only',
+      fullstack: 'fullstack',
+    };
+    const structureType = envToStructure[detectionReport.environment as string];
+    if (structureType) {
+      state.deps.previewUpdate.broadcastStructureType(
+        state.context.project,
+        state.context.featureFolder || 'main',
+        structureType,
+        (state as any).userContext
+      );
+      console.log(`📡 [DetectEnv] Broadcast structureType=${structureType} via SSE`);
+    }
+  }
+
   // Save detectionReport to session (enables decompose-direct routing on resume)
   if (state.deps?.session && state.context.featureFolder) {
     try {

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { GitBranch } from 'lucide-react';
+import { GitBranch, Monitor } from 'lucide-react';
 import { ItemDropdown } from '../../ItemDropdown';
 
 interface FeatureDropdownProps {
@@ -62,6 +62,7 @@ export function FeatureDropdown({
       onPlayClick={onPlayClick}
       onStopClick={onStopClick}
       onSettingsClick={onSettingsClick}
+      settingsIcon={Monitor}
       isPlaying={previewRunning}
       disabled={!canChangeFeature}
       disabledReason={disabledReason}

@@ -13,6 +13,7 @@ import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAda
 import { NodeCommandAdapter } from "../periphery/adapters/command/NodeCommandAdapter";
 import { TaskQueueUpdatePort, FileTreeUpdatePort } from "../core/ports";
 import { WorkflowStateUpdatePort } from "../core/ports/workflow";
+import { PreviewUpdatePort } from "../core/ports/preview";
 import { getChatAPIClient } from "../core/adapters/ChatAPIClient";
 import * as path from "path";
 
@@ -201,6 +202,7 @@ export async function orchestrator(params: {
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
         let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
+        let previewUpdate: PreviewUpdatePort | undefined = undefined;
         
         if (process.env.ANT_REDIS_URL) {
           try {
@@ -212,6 +214,7 @@ export async function orchestrator(params: {
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
               workflowUpdate = broadcasters.workflow;
+              previewUpdate = broadcasters.preview;
               console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Code]');
             } else {
               console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Code]');
@@ -233,7 +236,7 @@ export async function orchestrator(params: {
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature, featurePath },
+          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature, featurePath },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           jobId              // ✅ Pass jobId for real-time updates and resume

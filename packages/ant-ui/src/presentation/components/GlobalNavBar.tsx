@@ -462,7 +462,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                                    hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 
                                    transition-colors"
                         >
-                          <Settings className="w-4 h-4" />
+                          <User className="w-4 h-4" />
                           {t('auth.accountConfig')}
                         </button>
                         <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
