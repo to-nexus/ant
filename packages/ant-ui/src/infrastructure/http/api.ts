@@ -2260,14 +2260,15 @@ export async function submitChoiceDismiss(
   contentType: string,
   choiceAction: string,
   resolvedLabel: string,
-  metadataFilter?: Record<string, string>
+  metadataFilter?: Record<string, string>,
+  extraMetadata?: Record<string, any>
 ): Promise<{ success: boolean; choiceAction: string; resolvedLabel: string }> {
   try {
     const response = await authFetch(
       `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/dismiss-choice`,
       {
         method: 'POST',
-        body: JSON.stringify({ contentType, choiceAction, resolvedLabel, metadataFilter })
+        body: JSON.stringify({ contentType, choiceAction, resolvedLabel, metadataFilter, extraMetadata })
       }
     );
     
