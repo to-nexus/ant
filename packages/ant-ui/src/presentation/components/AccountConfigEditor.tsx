@@ -14,7 +14,7 @@ import {
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
-import { DEFAULT_LOCAL_BACKEND_PORT } from '@/domain/store/storage';
+import { DEFAULT_LOCAL_BACKEND_PORT, STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
 import { ConfigSection, ConfigIcons, ConfigStyles } from './ConfigSection';
 
 interface AccountConfigEditorProps {
@@ -28,6 +28,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   // Local backend port state from store
   const localBackendPort = useStore((state) => state.localBackendPort);
   const setLocalBackendPort = useStore((state) => state.setLocalBackendPort);
+  const reset = useStore((state) => state.reset);
   
   // Local backend port input state
   const [portInput, setPortInput] = useState(String(localBackendPort));
@@ -316,13 +317,22 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             return;
           }
           
-          console.log('[AccountConfigEditor] ✅ Account reset successful');
-          showSuccess(t('account.resetAccountSuccess'));
+          console.log('[AccountConfigEditor] Account reset successful');
           
-          // Reload page after a short delay
+          // Clear persisted project/feature state from storage
+          removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
+          removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
+          
+          // Reset zustand store state
+          reset();
+          
+          // Fade-out transition then full reload
+          document.body.style.transition = 'opacity 0.5s ease';
+          document.body.style.opacity = '0';
+          
           setTimeout(() => {
             window.location.reload();
-          }, 1500);
+          }, 500);
         } catch (error: any) {
           console.error('[AccountConfigEditor] Failed to reset account:', error);
           showError(error.message || t('account.resetAccountFailed'));
