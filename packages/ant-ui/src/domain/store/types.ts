@@ -92,6 +92,8 @@ export interface UIState {
   // ✅ Pending clarify answers (shared between compound ChoiceCard and ChatInput)
   pendingClarifyAnswers: Record<number, string>;  // questionIndex → selected answer
   pendingClarifyQuestions: string[];  // original question texts (for combining with free input)
+  // ✅ Onboarding skip (user chose to skip QuickStart and go to empty workspace)
+  onboardingSkipped: boolean;
 }
 
 export interface GitStatus {

@@ -13,7 +13,7 @@
  *   - Backend saves to chat.json + Redis + broadcasts via SSE
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, Loader2, XCircle, Save, FileCheck } from 'lucide-react';
 import { useStore } from '@/domain/store';
@@ -860,11 +860,12 @@ function ClarifyingVariant({ content, messageId }: { content: MessageContent; me
   const hasAnyAnswer = answeredCount > 0;
 
   // Register question texts in store on mount (for ChatInput hybrid submit)
-  useState(() => {
+  useEffect(() => {
     if (blocks.length > 0 && !cardState.isSelected) {
-      setPendingClarifyContext(blocks.map(b => b.question));
+      setPendingClarifyContext(blocks.map((b: { question: string }) => b.question));
     }
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleOptionSelect = (questionIndex: number, answer: string) => {
     setPendingClarifyAnswer(questionIndex, answer);

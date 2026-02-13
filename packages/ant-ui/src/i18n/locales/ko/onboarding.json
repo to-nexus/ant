@@ -1,24 +1,33 @@
 {
   "welcome": {
-    "headline": "아이디어에서 구현까지,\n대화 한 번이면 충분합니다",
-    "subheadline": "제품 기획부터 구현까지 — 당신의 비전을 이해하는 AI 에이전트와 함께하세요.",
-    "feature1": "기획 & 설계",
-    "feature1Desc": "아이디어를 설명하면 AI 에이전트가 상세한 제품 기획서와 시스템 설계를 만들어 드립니다.",
-    "feature2": "개발 & 배포",
-    "feature2Desc": "프로덕션 수준의 코드, 테스트, 문서를 자동으로 생성합니다.",
-    "feature3": "협업",
-    "feature3Desc": "AI 에이전트와 팀원처럼 함께 일하세요 — 리뷰하고, 반복하고, 함께 개선합니다.",
+    "headline": "아이디어를 스펙으로,\n스펙을 제품으로.",
+    "subheadline": "대화로 PRD와 설계를 만들고, 스펙에 맞춰 구현과 산출물을 쌓아갑니다.",
+    "feature1": "PRD & 설계",
+    "feature1Desc": "아이디어를 PRD로 구체화하고, 시스템 설계까지 연결합니다.",
+    "feature2": "구현 & 검증",
+    "feature2Desc": "스펙에 맞춰 코드, 테스트, 문서를 생성하고 품질을 검증합니다.",
+    "feature3": "리뷰 & 반복",
+    "feature3Desc": "산출물을 함께 리뷰하고, 반복적으로 스펙을 정교화합니다.",
     "getStarted": "시작하기",
     "alreadyHaveAccount": "이미 계정이 있으신가요?",
     "signIn": "로그인"
   },
   "quickstart": {
     "prompt": "어떤 서비스를 만들어볼까요?",
-    "promptSub": "아이디어를 설명해주세요 — ANT가 기획하고 만들어 드립니다.",
+    "promptSub": "아이디어를 설명해주세요 — 먼저 PRD/계획을 만들고 바로 시작합니다.",
     "placeholder": "예: 칸반보드와 팀 협업 기능이 있는 태스크 관리 앱...",
     "submit": "시작하기",
     "creating": "워크스페이스를 준비하고 있습니다...",
+    "steps": {
+      "workspace": "워크스페이스 생성 중",
+      "feature": "피처 생성 중",
+      "plan": "플랜 작업 시작 중",
+      "switching": "화면 준비 중"
+    },
     "error": "문제가 발생했습니다. 다시 시도해주세요.",
-    "errorRetry": "다시 시도"
+    "errorRetry": "다시 시도",
+    "skipToWorkspace": "워크스페이스로 이동",
+    "goToOnboarding": "프로젝트 시작하기",
+    "goToOnboardingHint": "AI와 함께 새 프로젝트를 만들어보세요"
   }
 }

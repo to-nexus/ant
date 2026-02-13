@@ -19,49 +19,21 @@ export type ShowConfirmFn = (
   }
 ) => void;
 
-export type ShowAlertFn = (
-  message: string | ReactNode,
-  options?: {
-    title?: string;
-    confirmText?: string;
-    showIcon?: boolean;
-  }
-) => void;
-
 export function useFeatureActions(
   selectedProject: string | undefined,
   _selectedFeature: string | undefined,  // Used by parent
   baseBranch: string,
   showConfirm: ShowConfirmFn,
-  showWarning: ShowAlertFn
 ) {
   const { t } = useTranslation('explorer');
   const setSelectedFeature = useStore((state) => state.setSelectedFeature);
   const fetchFeatures = useStore((state) => state.fetchFeatures);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
   const setBypassFetchTimer = useStore((state) => state.setBypassFetchTimer);
-  const backendMode = useStore((state) => state.backendMode);
-  const gitStatus = useStore((state) => state.gitStatus);
 
   const handleCreateFeature = async (featureName: string) => {
     if (!selectedProject) {
       throw new Error('No project selected');
-    }
-
-    // ✅ Cloud mode guard: require Git repo init/clone before allowing feature creation
-    // Rationale: in cloud workflows, features are branches and require a real Git repo.
-    if (backendMode === 'cloud') {
-      if (!gitStatus?.hasGit) {
-        showWarning(
-          t('git.gitRepoRequired'),
-          { title: t('git.gitRepoRequiredTitle'), confirmText: t('common:button.ok') }
-        );
-        // Throw a "silent" error so CreateItemForm does not show error modal
-        // and the create form stays open.
-        const err: any = new Error('Git repo not initialized');
-        err.silent = true;
-        throw err;
-      }
     }
     
     console.log(`[useFeatureActions] 🆕 Creating feature: ${featureName}`);

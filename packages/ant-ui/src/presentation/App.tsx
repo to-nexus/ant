@@ -15,8 +15,14 @@ import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
 import { LocalSetupGuide } from '@/presentation/pages/LocalSetupGuide';
-import { ChevronRight } from 'lucide-react';
+import { WelcomePage } from '@/presentation/pages/WelcomePage';
+import { QuickStart } from '@/presentation/pages/QuickStart';
+import { ChevronRight, Loader2 } from 'lucide-react';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
+// STORAGE_KEYS/loadFromStorage no longer needed in App — QuickStart handles its own persistence
+import { signUp, signIn, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
+import { SignUpModal } from '@/presentation/components/auth/SignUpModal';
+import { SignInModal } from '@/presentation/components/auth/SignInModal';
 
 function App() {
   // ✅ Route handling: Track current path
@@ -98,6 +104,105 @@ function App() {
   const setSession = useStore((state) => state.setSession);
   const splitLayout = useStore((state) => state.splitLayout);
   const mainView = useStore((state) => state.mainView);
+  
+  // ✅ Onboarding state
+  const userEmail = useStore((state) => state.userEmail);
+  const backendMode = useStore((state) => state.backendMode);
+  const projects = useStore((state) => state.projects);
+  const projectsLoaded = useStore((state) => state.projectsLoaded);
+  const setUser = useStore((state) => state.setUser);
+  
+  // Auth modals for WelcomePage
+  const [showSignUpModal, setShowSignUpModal] = useState(false);
+  const [showSignInModal, setShowSignInModal] = useState(false);
+  
+  const onboardingSkipped = useStore((state) => state.onboardingSkipped);
+  const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
+
+  const shouldShowWelcome = backendMode === 'cloud' && !userEmail;
+  // ✅ QuickStart shows whenever authenticated user has zero projects (and not manually skipped)
+  const shouldShowQuickStart = !!userEmail && projectsLoaded && projects.length === 0 && !onboardingSkipped;
+  // Reset skip flag when projects appear (user created one via QuickStart or externally)
+  useEffect(() => {
+    if (projects.length > 0 && onboardingSkipped) setOnboardingSkipped(false);
+  }, [projects.length, onboardingSkipped, setOnboardingSkipped]);
+
+  // ✅ Asymmetric cross-fade between QuickStart ↔ normal UI
+  //   Entering QuickStart: instant switch + fade-in (no gap → no flash)
+  //   Leaving  QuickStart: fade-out current → swap → fade-in new (350ms)
+  const prevShowQuickStartRef = useRef(shouldShowQuickStart);
+  const [deferredShowQuickStart, setDeferredShowQuickStart] = useState(shouldShowQuickStart);
+  const [viewOpacity, setViewOpacity] = useState<'opacity-0' | 'opacity-100'>('opacity-100');
+
+  useEffect(() => {
+    const prev = prevShowQuickStartRef.current;
+    prevShowQuickStartRef.current = shouldShowQuickStart;
+
+    if (prev === shouldShowQuickStart) return;
+
+    if (shouldShowQuickStart) {
+      // ✅ ENTERING QuickStart — switch immediately, then fade in
+      setDeferredShowQuickStart(true);
+      setViewOpacity('opacity-0');
+      requestAnimationFrame(() => setViewOpacity('opacity-100'));
+    } else {
+      // ✅ LEAVING QuickStart — fade out, then swap, then fade in
+      setViewOpacity('opacity-0');
+      const timer = setTimeout(() => {
+        setDeferredShowQuickStart(false);
+        requestAnimationFrame(() => setViewOpacity('opacity-100'));
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldShowQuickStart]);
+  
+  // ✅ Auth handlers for WelcomePage (mirrored from GlobalNavBar)
+  const getOAuthBackendBase = (): string => {
+    const mode = getBackendMode();
+    if (mode === 'cloud') {
+      return import.meta.env.VITE_CLOUD_BACKEND_BASE || '';
+    }
+    const port = getLocalBackendPort();
+    return `http://localhost:${port}`;
+  };
+  
+  const handleWelcomeSignUp = () => {
+    const skipAuth = import.meta.env.VITE_SKIP_AUTH_FOR_LOCALHOST === 'true';
+    if (skipAuth) {
+      setShowSignUpModal(true);
+    } else {
+      const backendBase = getOAuthBackendBase();
+      window.location.href = `${backendBase}/api/auth/google`;
+    }
+  };
+  
+  const handleWelcomeSignIn = () => {
+    const skipAuth = import.meta.env.VITE_SKIP_AUTH_FOR_LOCALHOST === 'true';
+    if (skipAuth) {
+      setShowSignInModal(true);
+    } else {
+      const backendBase = getOAuthBackendBase();
+      window.location.href = `${backendBase}/api/auth/google`;
+    }
+  };
+  
+  const handleAuthSignUp = async (email: string) => {
+    const response = await signUp(email);
+    if (response.success && response.user) {
+      setUser(response.user.email, response.user.organization);
+      const fetchProjects = useStore.getState().fetchProjects;
+      await fetchProjects();
+    }
+  };
+  
+  const handleAuthSignIn = async (email: string) => {
+    const response = await signIn(email);
+    if (response.success && response.user) {
+      setUser(response.user.email, response.user.organization);
+      const fetchProjects = useStore.getState().fetchProjects;
+      await fetchProjects();
+    }
+  };
   const ideBaseUrl = useStore((state) => state.ideBaseUrl);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
   const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
@@ -289,6 +394,55 @@ function App() {
     );
   }
 
+  // ✅ Onboarding: WelcomePage for unauthenticated cloud users
+  if (shouldShowWelcome) {
+    return (
+      <AlertModalProvider>
+        <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+          <GlobalNavBar />
+          <WelcomePage onSignUp={handleWelcomeSignUp} onSignIn={handleWelcomeSignIn} />
+          <SignUpModal
+            isOpen={showSignUpModal}
+            onClose={() => setShowSignUpModal(false)}
+            onSignUp={handleAuthSignUp}
+          />
+          <SignInModal
+            isOpen={showSignInModal}
+            onClose={() => setShowSignInModal(false)}
+            onSignIn={handleAuthSignIn}
+          />
+        </div>
+      </AlertModalProvider>
+    );
+  }
+
+  // ✅ Loading gate: authenticated but projects not yet loaded — prevent normal UI flash
+  if (!!userEmail && !projectsLoaded) {
+    return (
+      <AlertModalProvider>
+        <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+          <GlobalNavBar />
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400 dark:text-gray-500" />
+          </div>
+        </div>
+      </AlertModalProvider>
+    );
+  }
+
+  // ✅ Onboarding: QuickStart for authenticated users with no projects
+  // shouldShowQuickStart → immediate entry; deferredShowQuickStart → holds during fade-out
+  if (shouldShowQuickStart || deferredShowQuickStart) {
+    return (
+      <AlertModalProvider>
+        <div className={`h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-all duration-350 ${viewOpacity}`}>
+          <GlobalNavBar />
+          <QuickStart onSkip={() => setOnboardingSkipped(true)} />
+        </div>
+      </AlertModalProvider>
+    );
+  }
+
   return (
     <AlertModalProvider>
       <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
@@ -300,7 +454,7 @@ function App() {
           // ✅ Editor View: OpenVSCode Server iframe
           // ✅ CRITICAL: Use ideReloadTimestamp in key and src to force reload
           // Docker container is shared, timestamp forces VS Code to reload workspace
-          <div className="flex-1 pt-16">
+          <div className={`flex-1 pt-16 transition-opacity duration-350 ${viewOpacity}`}>
             {ideConnecting || !ideBaseUrl ? (
               <div className="w-full h-full flex items-center justify-center">
                 <div className="max-w-lg w-full px-6">
@@ -329,7 +483,7 @@ function App() {
           </div>
         ) : (
           // ✅ Agents View: Original UI
-        <div className="flex-1 flex gap-0 overflow-hidden pt-16">
+        <div className={`flex-1 flex gap-0 overflow-hidden pt-16 transition-opacity duration-350 ${viewOpacity}`}>
           {/* Explorer Panel */}
           <ExplorerPanel
             isCollapsed={isExplorerCollapsed}

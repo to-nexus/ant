@@ -101,6 +101,13 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
       removeFromStorage(STORAGE_KEYS.TASK_MODE);
       
+      // ✅ Defense: Force-clear kanban estimating state when job stops
+      // Prevents stale estimating banner (e.g. "PRD 생성 중") when backend misses clearEstimatingActivity()
+      const kanban = get().kanban;
+      if (kanban?.isEstimating) {
+        set({ kanban: { ...kanban, isEstimating: false, estimatingLabel: undefined, estimatingStartedAt: undefined, estimatingNodeId: undefined } });
+      }
+      
       if (prevJobId) {
         console.log('[Store] 🔌 Disconnecting workflow SSE for jobId:', prevJobId);
         sseManager.disconnectWorkflow(prevJobId);
