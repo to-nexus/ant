@@ -207,6 +207,20 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.callbacks.onTaskComplete?.(task, workerId);
       this.broadcastKanban();
 
+      // ✅ If this task was previously interrupted (e.g. recursion limit retry),
+      // check whether ALL interrupted tasks have now been resolved.
+      // Without this, hasInterruptedTasks stays true even after retried tasks succeed,
+      // causing a spurious "Task cancelled" card despite all tasks completing.
+      if (task.interrupted && this.hasInterruptedTasks) {
+        const hasRemainingInterrupted =
+          this.taskQueue.getAll().some(t => t.interrupted) ||
+          Array.from(this.runningTasks.values()).some(t => t.interrupted);
+        if (!hasRemainingInterrupted) {
+          this.hasInterruptedTasks = false;
+          console.log(`[Orchestrator] All previously-interrupted tasks resolved → hasInterruptedTasks = false`);
+        }
+      }
+
       console.log(`[Orchestrator] Task "${task.name}" completed by worker ${workerId}. running=${this.runningTasks.size}, queue=${this.taskQueue.size()}`);
 
       // ✅ Save checkpoint after each task completion
