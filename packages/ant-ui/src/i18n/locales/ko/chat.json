@@ -55,7 +55,8 @@
     "submitEmpty": "질문에 답변해주세요 (0/{{total}})",
     "resolvedAll": "{{total}}개 질문 모두 응답",
     "resolvedPartial": "{{answered}}/{{total}}개 질문 응답",
-    "partialHint": "답변하지 않은 질문은 건너뜁니다. 채팅창에 자유 입력도 가능합니다."
+    "partialHint": "답변하지 않은 질문은 건너뜁니다. 채팅창에 자유 입력도 가능합니다.",
+    "skipped": "건너뜀"
   },
   "policy": {
     "signInPlaceholder": "로그인 후 채팅을 시작하세요...",
