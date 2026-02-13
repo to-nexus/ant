@@ -123,6 +123,7 @@ export interface PendingChoiceTriageResult {
   choiceOptions?: {
     positive?: { label: string; action: string };
     negative?: { label: string; action: string };
+    neutral?: { label: string; action: string };
     fallbackGuide?: string;
   };
 }

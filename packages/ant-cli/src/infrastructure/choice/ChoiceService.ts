@@ -231,7 +231,7 @@ export class ChoiceService {
         return this.handleGuide(triageResult);
         
       case 'proceed':
-        return this.handleProceed(triageResult);
+        return this.handleProceed(triageResult, pending.originalDirective);
         
       case 'proceedAnyway':
         return this.handleProceedAnyway(triageResult);
@@ -263,12 +263,13 @@ export class ChoiceService {
   }
   
   /**
-   * Handle proceed choice
+   * Handle proceed choice (continue with current agent/job despite redirect suggestion)
    */
-  private handleProceed(triageResult: TriageResult): ChoiceResponse {
+  private handleProceed(triageResult: TriageResult, originalDirective?: string): ChoiceResponse {
     return {
       type: 'continue',
-      action: 'proceed'
+      action: 'proceed',
+      directive: originalDirective
     };
   }
   

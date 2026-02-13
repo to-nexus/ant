@@ -294,6 +294,77 @@ function TwoButtonLayout({
   );
 }
 
+/** Vertical three-button layout for triage redirect with proceed option */
+function VerticalChoiceLayout({
+  positiveLabel,
+  neutralLabel,
+  negativeLabel,
+  isLoading,
+  loadingAction,
+  onPositive,
+  onNeutral,
+  onNegative,
+  theme,
+}: {
+  positiveLabel: string;
+  neutralLabel: string;
+  negativeLabel: string;
+  isLoading: boolean;
+  loadingAction: 'positive' | 'neutral' | null;
+  onPositive: () => void;
+  onNeutral: () => void;
+  onNegative: () => void;
+  theme: ThemeColor;
+}) {
+  const t = THEMES[theme];
+  const disabled = isLoading;
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Positive: primary action (e.g. 전환) */}
+      <button
+        type="button"
+        onClick={onPositive}
+        disabled={disabled}
+        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 ${t.buttonBg} text-white ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
+      >
+        {isLoading && loadingAction === 'positive' ? (
+          <span className="flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            처리 중...
+          </span>
+        ) : (
+          positiveLabel
+        )}
+      </button>
+      {/* Neutral: continue with current mode (e.g. 현재 모드로 진행) */}
+      <button
+        type="button"
+        onClick={onNeutral}
+        disabled={disabled}
+        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 border ${t.border} text-gray-700 dark:text-gray-200 bg-transparent ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:shadow-sm'}`}
+      >
+        {isLoading && loadingAction === 'neutral' ? (
+          <span className="flex items-center justify-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            처리 중...
+          </span>
+        ) : (
+          neutralLabel
+        )}
+      </button>
+      {/* Negative: dismiss */}
+      <button
+        type="button"
+        onClick={onNegative}
+        disabled={disabled}
+        className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'}`}
+      >
+        {negativeLabel}
+      </button>
+    </div>
+  );
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Public Entry Point
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -322,6 +393,7 @@ export function ChoiceCard({ content, variant, messageId }: ChoiceCardProps) {
 function TriageChoiceVariant({ content, messageId }: { content: MessageContent; messageId: string }) {
   const setSelectedJobType = useStore(state => state.setSelectedJobType);
   const { runJob } = useJobExecution();
+  const [loadingAction, setLoadingAction] = useState<'positive' | 'neutral' | null>(null);
 
   const state = useChoiceCardState({
     content, messageId,
@@ -332,10 +404,13 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
   const options = content.metadata?.choiceOptions;
   if (!options) return null;
 
+  const hasNeutral = !!options.neutral;
+
   const handlePositive = async () => {
     if (!state.selectedProject || !state.selectedFeature || !jobId || state.isSelected) return;
 
     state.setIsLoading(true);
+    setLoadingAction('positive');
     state.setLocalSelectedChoice(options.positive.action);
 
     try {
@@ -371,6 +446,40 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
       state.setLocalResolvedLabel(null);
     } finally {
       state.setIsLoading(false);
+      setLoadingAction(null);
+    }
+  };
+
+  const handleNeutral = async () => {
+    if (!options.neutral) return;
+    if (!state.selectedProject || !state.selectedFeature || !jobId || state.isSelected) return;
+
+    state.setIsLoading(true);
+    setLoadingAction('neutral');
+    state.setLocalSelectedChoice(options.neutral.action);
+
+    try {
+      const response = await submitTriageChoice(
+        state.selectedProject, state.selectedFeature, jobId,
+        options.neutral.action as TriageChoiceAction
+      );
+
+      // Handle proceed: continue with current agent/job
+      if (response.type === 'continue' && response.action === 'proceed') {
+        const currentAgent = useStore.getState().selectedAgent;
+        const currentJob = useStore.getState().selectedJobType;
+        const label = '현재 모드로 진행';
+        state.setLocalResolvedLabel(label);
+        state.persistChoice(options.neutral.action, label);
+        await runJob(currentAgent, currentJob, response.directive);
+      }
+    } catch (error) {
+      console.error('[ChoiceCard:Triage] Neutral failed:', error);
+      state.setLocalSelectedChoice(null);
+      state.setLocalResolvedLabel(null);
+    } finally {
+      state.setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
@@ -416,15 +525,29 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
       resolvedLabel={displayResolvedLabel || null}
       resolvedIcon={state.selectedChoice === options.negative.action ? 'dismiss' : null}
     >
-      <TwoButtonLayout
-        theme="blue"
-        positiveLabel={options.positive.label}
-        positiveLoadingLabel="처리 중..."
-        negativeLabel={options.negative.label}
-        isLoading={state.isLoading}
-        onPositive={handlePositive}
-        onNegative={handleNegative}
-      />
+      {hasNeutral ? (
+        <VerticalChoiceLayout
+          theme="blue"
+          positiveLabel={options.positive.label}
+          neutralLabel={options.neutral!.label}
+          negativeLabel={options.negative.label}
+          isLoading={state.isLoading}
+          loadingAction={loadingAction}
+          onPositive={handlePositive}
+          onNeutral={handleNeutral}
+          onNegative={handleNegative}
+        />
+      ) : (
+        <TwoButtonLayout
+          theme="blue"
+          positiveLabel={options.positive.label}
+          positiveLoadingLabel="처리 중..."
+          negativeLabel={options.negative.label}
+          isLoading={state.isLoading}
+          onPositive={handlePositive}
+          onNegative={handleNegative}
+        />
+      )}
     </ChoiceCardShell>
   );
 }

@@ -55,6 +55,10 @@ export interface ChoiceOptions {
     label: string;      // "Dismiss", "취소"
     action: ChoiceAction;  // 'guide' or 'dismiss'
   };
+  neutral?: {
+    label: string;      // "현재 모드로 진행"
+    action: ChoiceAction;  // 'proceed' - continue with current agent/job
+  };
   fallbackGuide?: string;  // Optional - for 'guide' action
 }
 
