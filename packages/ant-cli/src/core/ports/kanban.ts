@@ -52,6 +52,12 @@ export interface TaskQueueUpdatePort {
   setEstimatingActivity?(label: string, nodeId?: string): void;
 
   /**
+   * Clear the estimating activity label and broadcast the cleared state.
+   * Call when the graph terminates without producing tasks (e.g., triage → ask/redirect/blocked → __end__).
+   */
+  clearEstimatingActivity?(): void;
+
+  /**
    * Update job-level token usage and re-broadcast if in estimating mode.
    * Called after accumulateTokenUsage() during the estimating phase
    * (triage, detectEnvironment, decompose) so the frontend badge updates in real-time.
