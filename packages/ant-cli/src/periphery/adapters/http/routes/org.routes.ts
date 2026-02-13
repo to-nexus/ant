@@ -318,5 +318,89 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
     }
   });
 
+  /**
+   * POST /api/user/reset
+   * Reset user account: delete all workspaces, sessions, and user config.
+   * Git repositories are preserved.
+   */
+  router.post('/user/reset', async (req: Request, res: Response) => {
+    try {
+      const userContext = extractUserContext(req);
+      const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
+      const userWorkspacePath = path.join(workspacesPath, userContext.organizationId, userContext.userId);
+
+      console.log(`[UserReset] Starting account reset for user ${userContext.userId} in org ${userContext.organizationId}`);
+
+      if (!fs.existsSync(userWorkspacePath)) {
+        console.log('[UserReset] User workspace not found, nothing to reset');
+        res.json({ success: true, message: 'No data to reset' });
+        return;
+      }
+
+      // Read all project directories
+      const projectDirs = fs.readdirSync(userWorkspacePath, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory() && dirent.name !== '.ant')
+        .map(dirent => dirent.name);
+
+      console.log(`[UserReset] Found ${projectDirs.length} projects to delete`);
+
+      // Delete each project's workspace data
+      for (const projectId of projectDirs) {
+        const projectPath = path.join(userWorkspacePath, projectId);
+        
+        // Read feature directories
+        const featureDirs = fs.existsSync(projectPath)
+          ? fs.readdirSync(projectPath, { withFileTypes: true })
+              .filter(dirent => dirent.isDirectory())
+              .map(dirent => dirent.name)
+          : [];
+
+        console.log(`[UserReset] Project ${projectId}: deleting ${featureDirs.length} features`);
+
+        // Delete each feature's session/workspace data (preserve Git)
+        for (const featureName of featureDirs) {
+          const featurePath = path.join(projectPath, featureName);
+          
+          // Delete session files (outputs, inputs, .ant-session)
+          const sessionDirs = ['outputs', 'inputs', '.ant-session'];
+          for (const dir of sessionDirs) {
+            const dirPath = path.join(featurePath, dir);
+            if (fs.existsSync(dirPath)) {
+              await fs.promises.rm(dirPath, { recursive: true, force: true });
+              console.log(`[UserReset] Deleted ${projectId}/${featureName}/${dir}`);
+            }
+          }
+        }
+
+        // Delete the entire project directory (features are now empty)
+        await fs.promises.rm(projectPath, { recursive: true, force: true });
+        console.log(`[UserReset] Deleted project ${projectId}`);
+      }
+
+      // Delete user config
+      const userConfigPath = getUserConfigPath(workspacesPath, userContext.organizationId, userContext.userId);
+      if (fs.existsSync(userConfigPath)) {
+        await fs.promises.unlink(userConfigPath);
+        console.log('[UserReset] Deleted user-config.json');
+      }
+
+      // Delete .ant directory if it exists and is now empty
+      const antDirPath = path.join(userWorkspacePath, '.ant');
+      if (fs.existsSync(antDirPath)) {
+        const antDirContents = fs.readdirSync(antDirPath);
+        if (antDirContents.length === 0) {
+          await fs.promises.rmdir(antDirPath);
+          console.log('[UserReset] Deleted empty .ant directory');
+        }
+      }
+
+      console.log('[UserReset] ✅ Account reset complete');
+      res.json({ success: true, message: 'Account reset successfully' });
+    } catch (error: any) {
+      console.error('[UserReset] Failed:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   return router;
 }
