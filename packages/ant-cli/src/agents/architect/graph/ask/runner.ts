@@ -2,6 +2,11 @@
  * Ask Graph Runner
  * 
  * Entry point for running Ask LangGraph from triage node.
+ * 
+ * Security guardrails are handled at the prompt level (ask/rules.md)
+ * where the LLM can make context-aware decisions. No hardcoded regex
+ * filters — they cause false positives on legitimate code instructions
+ * (env vars, auth implementation as project spec, etc.).
  */
 
 import * as fs from 'fs/promises';
@@ -14,21 +19,6 @@ import { setWorkspaceFeaturePath } from './tools.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
-
-/**
- * Forbidden question patterns (security filter)
- */
-const FORBIDDEN_QUESTION_PATTERNS = [
-  /api\s*key/i,
-  /secret/i,
-  /password/i,
-  /credential/i,
-  /token.*생성/i,
-  /인증.*구현/i,
-  /auth.*implement/i,
-  /환경\s*변수/i,
-  /\.env/i,
-];
 
 export interface AskRunnerParams {
   question: string;
@@ -43,14 +33,6 @@ export interface AskRunnerParams {
 export interface AskRunnerResult {
   response: string;
   toolCallCount: number;
-  blocked?: boolean;
-}
-
-/**
- * Check if question is about sensitive topics
- */
-function isQuestionForbidden(question: string): boolean {
-  return FORBIDDEN_QUESTION_PATTERNS.some(pattern => pattern.test(question));
 }
 
 /**
@@ -123,27 +105,6 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
   
   console.log(`📝 Question: ${params.question.substring(0, 50)}${params.question.length > 50 ? '...' : ''}`);
   console.log(`🌐 Language: ${params.language}\n`);
-  
-  // Security: Check forbidden questions
-  if (isQuestionForbidden(params.question)) {
-    console.log('🚫 Question blocked (security filter)');
-    
-    const blockedResponse = params.language === 'ko'
-      ? '죄송합니다. 보안 관련 질문에는 답변할 수 없습니다. 일반적인 Ant 사용법에 대해 질문해 주세요.'
-      : 'Sorry, I cannot answer security-related questions. Please ask about general Ant usage.';
-    
-    // Use singleton ChatAPIClient (same as Code Job)
-    const chatAPI = getChatAPIClient();
-    await chatAPI.startMessage();
-    await chatAPI.sendLLMEvent({ type: 'text', text: blockedResponse });
-    await chatAPI.finalizeMessage();
-    
-    return {
-      response: blockedResponse,
-      toolCallCount: 0,
-      blocked: true,
-    };
-  }
   
   // Build graph
   const graph = buildAskGraph();
