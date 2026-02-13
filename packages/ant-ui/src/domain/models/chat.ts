@@ -111,6 +111,7 @@ export interface MessageContent {
     evalContent?: string;     // For eval_save: evaluation content to save
     // Clarifying Choice Card — compound card (planner generate mode)
     clarifyBlocks?: Array<{ question: string; options: string[] }>;  // For clarifying: all questions + options
+    resolvedAnswers?: Record<number, string>;  // For clarifying: per-question answers after submission
     // Context Loaded
     items?: Array<{ label: string; detail?: string }>;  // For context_loaded: loaded items
   };
