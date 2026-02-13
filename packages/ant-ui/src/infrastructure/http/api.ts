@@ -2502,6 +2502,35 @@ export async function updateUserConfig(config: Partial<UserConfig>): Promise<Use
   return response.json();
 }
 
+/**
+ * Reset user account: delete all workspaces, sessions, and user config.
+ * Git repositories are preserved.
+ */
+export async function resetUserAccount(): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const response = await authFetch(`${API_BASE()}/user/reset`, {
+      method: 'POST',
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`
+      };
+    }
+    
+    return { success: true, message: result.message };
+  } catch (error: any) {
+    console.error('Error resetting user account:', error);
+    return {
+      success: false,
+      error: error.message || 'Network error'
+    };
+  }
+}
+
 // ---- Org Members ----
 
 export async function fetchOrgMembers(): Promise<{ members: Array<{ userId: string; isSelf: boolean }> }> {

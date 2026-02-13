@@ -127,7 +127,14 @@
     "disconnecting": "Disconnecting...",
     "disconnect": "Disconnect",
     "connectFigma": "Connect Figma Account",
-    "figmaConnectedAs": "Figma connected as {{email}}!"
+    "figmaConnectedAs": "Figma connected as {{email}}!",
+    "resetAccount": "Reset Account",
+    "resetAccountDesc": "Delete all workspaces, sessions, and settings. Git repositories will be preserved.",
+    "resetAccountConfirm": "Are you sure you want to reset your account?",
+    "resetAccountConfirmMsg": "This will delete:\n• All workspaces and features\n• All session files and chat history\n• User configuration\n\nGit repositories will be preserved.\n\nThis action cannot be undone.",
+    "resetAccountSuccess": "Account reset successfully. The page will reload.",
+    "resetAccountFailed": "Failed to reset account. Please try again.",
+    "resetting": "Resetting..."
   },
   "git": {
     "repoSetupRequired": "GitHub repository setup required",
