@@ -9,6 +9,7 @@ import type { ChatMessage } from '@/domain/models/chat';
 
 export interface ProjectState {
   projects: string[];
+  projectsLoaded: boolean;  // ✅ true after first fetchProjects completes (prevents QuickStart flash)
   selectedProject: string | undefined;
   selectedFeature: string | undefined;
   features: Feature[];

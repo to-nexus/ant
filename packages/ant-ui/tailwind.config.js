@@ -202,6 +202,11 @@ export default {
             opacity: '1',
             transform: 'scale(1)'
           }
+        },
+        // ✨ Glow rotation for QuickStart input border
+        'glow-spin': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' }
         }
       },
       animation: {
@@ -211,7 +216,8 @@ export default {
         'pulse-gentle': 'pulse-gentle 2.5s ease-in-out infinite',
         'bounce-gentle': 'bounce-gentle 2s ease-in-out infinite',
         'sparkle-float': 'sparkle-float 3s ease-in-out infinite',
-        'typing-dot': 'typing-dot 1.4s ease-in-out infinite'
+        'typing-dot': 'typing-dot 1.4s ease-in-out infinite',
+        'glow-spin': 'glow-spin 3s linear infinite'
       }
     }
   },
