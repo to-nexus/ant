@@ -21,7 +21,7 @@ export function FeatureSection() {
   
   const { t } = useTranslation('artifacts');
   const policy = useUIActionPolicy();
-  const { showConfirm, showWarning, showError } = useAlertModalContext();
+  const { showConfirm, showError } = useAlertModalContext();
   
   // Custom hooks
   const baseBranch = useBaseBranch(selectedProject);
@@ -44,7 +44,7 @@ export function FeatureSection() {
     handleCreateFeature,
     handleDeleteFeature,
     handleFeatureChange
-  } = useFeatureActions(selectedProject, selectedFeature, baseBranch, showConfirm, showWarning);
+  } = useFeatureActions(selectedProject, selectedFeature, baseBranch, showConfirm);
   
   // Branch manager (auto-checkout)
   useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);

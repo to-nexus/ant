@@ -267,6 +267,34 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       useStore.getState().clearPendingClarify();
     } else {
       userMessage = message;
+      
+      // ✅ Auto-expire unresolved clarify cards when user submits without answering
+      // This prevents stale interactive cards from triggering unexpected jobs later
+      if (pendingQuestions.length > 0) {
+        const messages = useStore.getState().chatMessages;
+        for (const msg of messages) {
+          const clarifyIdx = msg.contents.findIndex(
+            (c: any) => c.type === 'choice_card' && c.metadata?.cardType === 'clarifying' && !c.metadata?.choiceSelected
+          );
+          if (clarifyIdx !== -1) {
+            const updatedContents = [...msg.contents];
+            // Empty resolvedAnswers = all questions skipped (missing key → null via ?? operator)
+            const resolvedAnswers: Record<number, string> = {};
+            updatedContents[clarifyIdx] = {
+              ...updatedContents[clarifyIdx],
+              metadata: {
+                ...updatedContents[clarifyIdx].metadata,
+                choiceSelected: 'skipped',
+                resolvedLabel: t('clarify.allSkipped'),
+                resolvedAnswers,
+              },
+            };
+            useStore.getState().updateChatMessage(msg.id, { contents: updatedContents });
+            break;
+          }
+        }
+        useStore.getState().clearPendingClarify();
+      }
     }
     
     // Clear message immediately for better UX

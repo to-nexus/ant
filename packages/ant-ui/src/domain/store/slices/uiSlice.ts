@@ -26,6 +26,8 @@ export interface UIActions {
   removePendingClarifyAnswer: (index: number) => void;
   setPendingClarifyContext: (questions: string[]) => void;
   clearPendingClarify: () => void;
+  // ✅ Onboarding skip
+  setOnboardingSkipped: (skipped: boolean) => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -95,6 +97,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   isJobTabCleared: false,
   pendingClarifyAnswers: {},
   pendingClarifyQuestions: [],
+  onboardingSkipped: false,
 
   // ==================
   // Actions
@@ -292,6 +295,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   clearPendingClarify: () => {
     set({ pendingClarifyAnswers: {}, pendingClarifyQuestions: [] });
+  },
+
+  setOnboardingSkipped: (skipped: boolean) => {
+    set({ onboardingSkipped: skipped });
   },
 });
 

@@ -135,7 +135,9 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       // Debug logging (disabled for production)
       // console.log(`[Store] ✅ Job completed for ${currentFeatureKey}`);
       set({ 
-        kanban: data,
+        // ✅ Defense: Force-clear estimating state on job completion
+        // Prevents stale "PRD 생성 중" banner when backend misses clearEstimatingActivity()
+        kanban: { ...data, isEstimating: false, estimatingLabel: undefined, estimatingStartedAt: undefined, estimatingNodeId: undefined },
         runningJobsByFeature: updatedRunningJobs,
         currentJobId: kanbanJobId,
         isRunning: false,

@@ -336,6 +336,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     // Finalize message
     await chatAPI.finalizeMessage();
     
+    // ✅ Clear estimating activity when clarify ends the graph (no tasks will be created)
+    if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
+      state.deps.kanbanUpdate.clearEstimatingActivity();
+    }
+    
     // Workflow instrumentation
     if (state.deps?.workflowUpdate && state._httpJobId) {
       state.deps.workflowUpdate.exitNode(state._httpJobId, 'generate', 0);

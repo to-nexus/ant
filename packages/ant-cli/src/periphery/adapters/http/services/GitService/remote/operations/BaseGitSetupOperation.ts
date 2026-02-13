@@ -159,9 +159,13 @@ export abstract class BaseGitSetupOperation {
       console.log(`[${this.operationName}] ✅ GitHub repository created`);
     } catch (error: any) {
       const errorMsg = error.message || error.toString();
-      if (!errorMsg.includes('already exists') && !errorMsg.includes('name already exists')) {
-        console.warn(`[${this.operationName}] Could not create GitHub repo:`, errorMsg);
+      // Only ignore "already exists" errors — the repo is usable in that case
+      if (errorMsg.includes('already exists') || errorMsg.includes('name already exists')) {
+        console.log(`[${this.operationName}] GitHub repo already exists, continuing...`);
+        return;
       }
+      // All other errors must propagate so the caller sees the real failure
+      throw error;
     }
   }
 

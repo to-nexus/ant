@@ -56,7 +56,8 @@
     "resolvedAll": "All {{total}} questions answered",
     "resolvedPartial": "{{answered}}/{{total}} questions answered",
     "partialHint": "Unanswered questions will be skipped. You can also type freely in the chat input.",
-    "skipped": "Skipped"
+    "skipped": "Skipped",
+    "allSkipped": "All questions skipped"
   },
   "policy": {
     "signInPlaceholder": "Please sign in to start chatting...",

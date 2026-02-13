@@ -1,24 +1,33 @@
 {
   "welcome": {
-    "headline": "Idea to Implementation,\nOne Conversation Away",
-    "subheadline": "From product planning to full implementation — collaborate with AI agents that understand your vision.",
-    "feature1": "Plan & Design",
-    "feature1Desc": "Describe your idea and let AI agents create detailed product specs and system designs.",
-    "feature2": "Build & Ship",
-    "feature2Desc": "Automatically generate production-ready code, tests, and documentation.",
-    "feature3": "Collaborate",
-    "feature3Desc": "Work with AI agents like team members — review, iterate, and refine together.",
+    "headline": "Ideas to Specs.\nSpecs to Product.",
+    "subheadline": "Draft PRDs and system specs through conversation, then build implementation and deliverables aligned to the spec.",
+    "feature1": "PRD & Specs",
+    "feature1Desc": "Turn an idea into a PRD, and connect it to system design.",
+    "feature2": "Implement & Validate",
+    "feature2Desc": "Generate code, tests, and documentation aligned to your spec.",
+    "feature3": "Review & Iterate",
+    "feature3Desc": "Review outputs together and iteratively refine the spec.",
     "getStarted": "Get Started",
     "alreadyHaveAccount": "Already have an account?",
     "signIn": "Sign In"
   },
   "quickstart": {
     "prompt": "What would you like to build?",
-    "promptSub": "Describe your idea — ANT will plan and build it for you.",
+    "promptSub": "Describe your idea — we'll draft a PRD and kick off a plan job.",
     "placeholder": "e.g. A task management app with kanban boards and team collaboration...",
     "submit": "Start Building",
     "creating": "Setting up your workspace...",
+    "steps": {
+      "workspace": "Creating workspace",
+      "feature": "Creating feature",
+      "plan": "Starting plan job",
+      "switching": "Preparing workspace UI"
+    },
     "error": "Something went wrong. Please try again.",
-    "errorRetry": "Retry"
+    "errorRetry": "Retry",
+    "skipToWorkspace": "Go to workspace",
+    "goToOnboarding": "Start a project",
+    "goToOnboardingHint": "Create a new project with AI"
   }
 }
