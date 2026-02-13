@@ -212,12 +212,18 @@ export interface StateStorePort {
   updateTaskQueue(jobId: string, snapshot: TaskQueueSnapshot): Promise<void>;
   
   /**
-   * Get task queue snapshot
+   * Get task queue snapshot (live, from broadcasts)
    */
   getTaskQueue(jobId: string): Promise<TaskQueueSnapshot | null>;
   
   /**
-   * Delete task queue snapshot
+   * Get task queue checkpoint snapshot (disaster recovery fallback).
+   * Falls back to live snapshot if checkpoint doesn't exist.
+   */
+  getTaskQueueCheckpoint(jobId: string): Promise<TaskQueueSnapshot | null>;
+  
+  /**
+   * Delete task queue snapshot (both live and checkpoint)
    */
   deleteTaskQueue(jobId: string): Promise<void>;
 

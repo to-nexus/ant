@@ -39,6 +39,7 @@ export { getRealtimeBroadcastChannel, getRealtimeWorkflowChannel };
 
 // Keys (for direct Redis access in Broadcasters)
 export const TASK_QUEUE_KEY_PREFIX = REDIS_KEYS.JOB.TASK_QUEUE;
+export const TASK_QUEUE_CHECKPOINT_KEY_PREFIX = REDIS_KEYS.JOB.TASK_QUEUE_CHECKPOINT;
 export const WORKFLOW_STATE_KEY_PREFIX = REDIS_KEYS.JOB.WORKFLOW;
 
 // TTLs
