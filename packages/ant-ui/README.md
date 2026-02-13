@@ -399,3 +399,4 @@ This is an MVP implementation focused on core file-based monitoring functionalit
 - Mobile responsive layout
 
 For bug reports and feature requests, please open an issue in the repository.
+===
