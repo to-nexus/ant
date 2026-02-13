@@ -26,6 +26,7 @@ import type { JobTiming } from '@ant/shared';
 import { 
   getRealtimeBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
+  TASK_QUEUE_CHECKPOINT_KEY_PREFIX,
   TASK_QUEUE_TTL,
   BroadcasterOptions 
 } from './types';
@@ -310,7 +311,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage,
     };
 
-    const key = `${TASK_QUEUE_KEY_PREFIX}${this.jobId}`;
+    // ✅ Use SEPARATE Redis key for checkpoint snapshots (disaster recovery only).
+    // CRITICAL: Must NOT use the same key as broadcastKanbanUpdate (TASK_QUEUE_KEY_PREFIX).
+    // Checkpoint snapshots contain running tasks marked as "interrupted" in the queue
+    // (for disaster recovery). If written to the live key, a page refresh between
+    // checkpoint and the next broadcast would show all running tasks as "interrupted".
+    const key = `${TASK_QUEUE_CHECKPOINT_KEY_PREFIX}${this.jobId}`;
     // Fire-and-forget — this is a backup, not critical path
     this.redis.set(key, JSON.stringify(snapshot), 'EX', TASK_QUEUE_TTL).catch(err => {
       console.warn(`[KanbanBroadcaster] Failed to save checkpoint snapshot to Redis:`, err.message);

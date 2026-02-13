@@ -257,15 +257,25 @@ export class JobCleanupManager {
           let hasFallback = false;
           
           try {
-            const redisSnapshot = await stateStore.getTaskQueue(jobId);
+            // ✅ Use checkpoint snapshot (separate key from live Kanban snapshot).
+            // Checkpoint already has running tasks placed back in queue as interrupted,
+            // so no reconstruction is needed. Falls back to live snapshot if no checkpoint.
+            const redisSnapshot = await stateStore.getTaskQueueCheckpoint(jobId);
             if (redisSnapshot) {
-              // Reconstruct taskQueue from Redis live snapshot
-              // Running tasks go back to queue as interrupted
-              const runningTasks = (redisSnapshot.currentTasks || (redisSnapshot.currentTask ? [redisSnapshot.currentTask] : []))
-                .filter(Boolean)
-                .map((t: any) => ({ ...t, interrupted: true }));
-              fallbackTaskQueue = [...runningTasks, ...redisSnapshot.queue];
-              fallbackCompletedTasks = redisSnapshot.completedTasks || [];
+              // Checkpoint: running tasks are already in queue as interrupted
+              // Live snapshot: running tasks are in currentTask(s), need reconstruction
+              const isCheckpoint = !redisSnapshot.currentTask && !redisSnapshot.currentTasks?.length;
+              if (isCheckpoint) {
+                fallbackTaskQueue = redisSnapshot.queue || [];
+                fallbackCompletedTasks = redisSnapshot.completedTasks || [];
+              } else {
+                // Fell back to live snapshot — reconstruct interrupted queue
+                const runningTasks = (redisSnapshot.currentTasks || (redisSnapshot.currentTask ? [redisSnapshot.currentTask] : []))
+                  .filter(Boolean)
+                  .map((t: any) => ({ ...t, interrupted: true }));
+                fallbackTaskQueue = [...runningTasks, ...redisSnapshot.queue];
+                fallbackCompletedTasks = redisSnapshot.completedTasks || [];
+              }
               hasFallback = true;
               logger.info(`Recovered task state from Redis snapshot`, {
                 component: 'JobCleanupManager',
@@ -273,6 +283,7 @@ export class JobCleanupManager {
               }, {
                 queueSize: fallbackTaskQueue.length,
                 completedCount: fallbackCompletedTasks.length,
+                source: isCheckpoint ? 'checkpoint' : 'live',
               });
             }
           } catch (redisErr) {

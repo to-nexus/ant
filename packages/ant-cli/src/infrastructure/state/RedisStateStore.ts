@@ -252,9 +252,24 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     return data ? JSON.parse(data) : null;
   }
 
+  /**
+   * Get checkpoint snapshot (disaster recovery fallback).
+   * Stored separately from live snapshot to avoid polluting Kanban state on refresh.
+   * Falls back to live snapshot if checkpoint doesn't exist.
+   */
+  async getTaskQueueCheckpoint(jobId: string): Promise<TaskQueueSnapshot | null> {
+    const checkpointKey = this.key(REDIS_KEYS.JOB.TASK_QUEUE_CHECKPOINT, jobId);
+    const checkpointData = await this.redis.get(checkpointKey);
+    if (checkpointData) return JSON.parse(checkpointData);
+    
+    // Fallback to live snapshot (backward compatibility)
+    return this.getTaskQueue(jobId);
+  }
+
   async deleteTaskQueue(jobId: string): Promise<void> {
     const key = this.key(REDIS_KEYS.JOB.TASK_QUEUE, jobId);
-    await this.redis.del(key);
+    const checkpointKey = this.key(REDIS_KEYS.JOB.TASK_QUEUE_CHECKPOINT, jobId);
+    await Promise.all([this.redis.del(key), this.redis.del(checkpointKey)]);
   }
 
   // ============================================

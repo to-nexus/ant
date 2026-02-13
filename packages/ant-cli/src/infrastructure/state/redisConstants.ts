@@ -39,8 +39,10 @@ export const REDIS_KEYS = {
     STATUS: `${REDIS_DOMAINS.JOB}:status:`,
     /** Job execution logs - ant:job:logs:{jobId} */
     LOGS: `${REDIS_DOMAINS.JOB}:logs:`,
-    /** Kanban task queue snapshot - ant:job:taskQueue:{jobId} */
+    /** Kanban task queue snapshot (live, from broadcasts) - ant:job:taskQueue:{jobId} */
     TASK_QUEUE: `${REDIS_DOMAINS.JOB}:taskQueue:`,
+    /** Kanban task queue checkpoint (disaster recovery only) - ant:job:taskQueueCheckpoint:{jobId} */
+    TASK_QUEUE_CHECKPOINT: `${REDIS_DOMAINS.JOB}:taskQueueCheckpoint:`,
     /** Job to project/feature mapping - ant:job:mapping:{jobId} */
     MAPPING: `${REDIS_DOMAINS.JOB}:mapping:`,
     /** User stop flag - ant:job:userStopped:{jobId} */
