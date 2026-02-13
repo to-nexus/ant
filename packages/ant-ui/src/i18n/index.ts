@@ -12,6 +12,7 @@ import enArtifacts from './locales/en/artifacts.json';
 import enTransfer from './locales/en/transfer.json';
 import enAuth from './locales/en/auth.json';
 import enExplorer from './locales/en/explorer.json';
+import enOnboarding from './locales/en/onboarding.json';
 
 // Korean locale imports
 import koCommon from './locales/ko/common.json';
@@ -23,6 +24,7 @@ import koArtifacts from './locales/ko/artifacts.json';
 import koTransfer from './locales/ko/transfer.json';
 import koAuth from './locales/ko/auth.json';
 import koExplorer from './locales/ko/explorer.json';
+import koOnboarding from './locales/ko/onboarding.json';
 
 export const SUPPORTED_LANGUAGES = ['en', 'ko'] as const;
 export type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
@@ -47,6 +49,7 @@ i18n
         transfer: enTransfer,
         auth: enAuth,
         explorer: enExplorer,
+        onboarding: enOnboarding,
       },
       ko: {
         common: koCommon,
@@ -58,11 +61,12 @@ i18n
         transfer: koTransfer,
         auth: koAuth,
         explorer: koExplorer,
+        onboarding: koOnboarding,
       },
     },
     fallbackLng: 'ko',
     defaultNS: 'common',
-    ns: ['common', 'nav', 'chat', 'config', 'kanban', 'artifacts', 'transfer', 'auth', 'explorer'],
+    ns: ['common', 'nav', 'chat', 'config', 'kanban', 'artifacts', 'transfer', 'auth', 'explorer', 'onboarding'],
     detection: {
       order: ['localStorage'],
       lookupLocalStorage: 'ant-ui:language',

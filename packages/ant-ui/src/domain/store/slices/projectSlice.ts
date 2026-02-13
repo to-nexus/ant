@@ -27,6 +27,7 @@ export const createProjectSlice: StateCreator<
   // State
   // ==================
   projects: [],
+  projectsLoaded: false,
   selectedProject: undefined,
   selectedFeature: undefined,
   features: [],
@@ -46,16 +47,16 @@ export const createProjectSlice: StateCreator<
       // Cloud mode requires authentication
       if (state.backendMode === 'cloud' && !state.userEmail) {
         console.log('[Store] Skipping fetchProjects: Cloud mode requires authentication');
-        set({ projects: [] });
+        set({ projects: [], projectsLoaded: true });
         return;
       }
       
       const { listProjects } = await import('@/infrastructure/http/projects');
       const projectList = await listProjects();
-      set({ projects: projectList });
+      set({ projects: projectList, projectsLoaded: true });
     } catch (error) {
       console.error('Failed to fetch projects:', error);
-      set({ projects: [] });
+      set({ projects: [], projectsLoaded: true });
     }
   },
 

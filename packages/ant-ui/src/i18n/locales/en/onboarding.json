@@ -1,0 +1,24 @@
+{
+  "welcome": {
+    "headline": "Idea to Implementation,\nOne Conversation Away",
+    "subheadline": "From product planning to full implementation — collaborate with AI agents that understand your vision.",
+    "feature1": "Plan & Design",
+    "feature1Desc": "Describe your idea and let AI agents create detailed product specs and system designs.",
+    "feature2": "Build & Ship",
+    "feature2Desc": "Automatically generate production-ready code, tests, and documentation.",
+    "feature3": "Collaborate",
+    "feature3Desc": "Work with AI agents like team members — review, iterate, and refine together.",
+    "getStarted": "Get Started",
+    "alreadyHaveAccount": "Already have an account?",
+    "signIn": "Sign In"
+  },
+  "quickstart": {
+    "prompt": "What would you like to build?",
+    "promptSub": "Describe your idea — ANT will plan and build it for you.",
+    "placeholder": "e.g. A task management app with kanban boards and team collaboration...",
+    "submit": "Start Building",
+    "creating": "Setting up your workspace...",
+    "error": "Something went wrong. Please try again.",
+    "errorRetry": "Retry"
+  }
+}
