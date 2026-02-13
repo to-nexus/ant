@@ -118,10 +118,13 @@ function App() {
   
   const onboardingSkipped = useStore((state) => state.onboardingSkipped);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
+  const quickStartProjectId = useStore((state) => state.quickStartProjectId);
+  const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
 
   const shouldShowWelcome = backendMode === 'cloud' && !userEmail;
-  // ✅ QuickStart shows whenever authenticated user has zero projects (and not manually skipped)
-  const shouldShowQuickStart = !!userEmail && projectsLoaded && projects.length === 0 && !onboardingSkipped;
+  // ✅ QuickStart: zero projects (auto) OR opt-in with existing project (quickStartProjectId set)
+  const shouldShowQuickStart = !!userEmail && projectsLoaded && !onboardingSkipped
+    && (projects.length === 0 || !!quickStartProjectId);
   // Reset skip flag when projects appear (user created one via QuickStart or externally)
   useEffect(() => {
     if (projects.length > 0 && onboardingSkipped) setOnboardingSkipped(false);
@@ -430,14 +433,20 @@ function App() {
     );
   }
 
-  // ✅ Onboarding: QuickStart for authenticated users with no projects
+  // ✅ Onboarding: QuickStart for authenticated users with no projects OR opt-in with existing project
   // shouldShowQuickStart → immediate entry; deferredShowQuickStart → holds during fade-out
   if (shouldShowQuickStart || deferredShowQuickStart) {
     return (
       <AlertModalProvider>
         <div className={`h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-all duration-350 ${viewOpacity}`}>
           <GlobalNavBar />
-          <QuickStart onSkip={() => setOnboardingSkipped(true)} />
+          <QuickStart
+            existingProjectId={quickStartProjectId}
+            onSkip={() => {
+              setQuickStartProjectId(undefined);
+              setOnboardingSkipped(true);
+            }}
+          />
         </div>
       </AlertModalProvider>
     );

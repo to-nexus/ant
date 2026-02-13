@@ -94,6 +94,8 @@ export interface UIState {
   pendingClarifyQuestions: string[];  // original question texts (for combining with free input)
   // ✅ Onboarding skip (user chose to skip QuickStart and go to empty workspace)
   onboardingSkipped: boolean;
+  // ✅ QuickStart with existing project (non-null triggers QuickStart for that project)
+  quickStartProjectId: string | undefined;
 }
 
 export interface GitStatus {

@@ -134,7 +134,10 @@
     "resetAccountConfirmMsg": "다음 항목이 삭제됩니다:\n• 모든 워크스페이스와 피처\n• 모든 세션 파일 및 채팅 기록\n• 사용자 설정\n\nGit 리포지토리는 보존됩니다.\n\n이 작업은 되돌릴 수 없습니다.",
     "resetAccountSuccess": "계정이 초기화되었습니다. 페이지를 새로고침합니다.",
     "resetAccountFailed": "계정 초기화에 실패했습니다. 다시 시도해주세요.",
-    "resetting": "초기화 중..."
+    "resetting": "초기화 중...",
+    "resetStepDeleting": "워크스페이스 및 세션 삭제",
+    "resetStepClearing": "로컬 캐시 정리",
+    "resetStepDone": "완료, 새로고침 중..."
   },
   "git": {
     "repoSetupRequired": "GitHub 리포지토리 설정이 필요합니다",
