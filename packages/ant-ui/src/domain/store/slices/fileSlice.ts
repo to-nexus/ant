@@ -9,6 +9,8 @@ export interface FileActions {
   setFileContent: (content: FileContent | undefined) => void;
   triggerFileReload: (filePath?: string | undefined) => void;
   setLastViewMode: (mode: 'raw' | 'preview') => void;
+  setUnseenArtifacts: (paths: string[]) => void;
+  markArtifactsSeen: (paths: string[]) => void;
 }
 
 export type FileSlice = FileState & FileActions;
@@ -23,6 +25,7 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   fileReloadTrigger: 0,
   fileReloadTarget: undefined,
   lastViewMode: 'raw',
+  unseenArtifacts: [],
 
   // ==================
   // Actions
@@ -98,6 +101,33 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
 
   setLastViewMode: (mode) => {
     set({ lastViewMode: mode });
+  },
+
+  setUnseenArtifacts: (paths) => {
+    set({ unseenArtifacts: paths });
+  },
+
+  markArtifactsSeen: (paths) => {
+    // Optimistic update: remove from local state immediately
+    const current: string[] = get().unseenArtifacts || [];
+    const pathSet = new Set(paths);
+    const updated = current.filter((p: string) => !pathSet.has(p));
+    set({ unseenArtifacts: updated });
+
+    // Fire API call in background
+    const { selectedProject, selectedFeature } = get();
+    if (selectedProject && selectedFeature) {
+      import('@/infrastructure/http/api').then(({ authFetch, API_BASE }) => {
+        authFetch(
+          `${API_BASE()}/projects/${encodeURIComponent(selectedProject)}/features/${encodeURIComponent(selectedFeature)}/mark-seen`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+          }
+        ).catch(() => {});
+      });
+    }
   },
 });
 

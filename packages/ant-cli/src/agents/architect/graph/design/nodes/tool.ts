@@ -503,6 +503,13 @@ async function handleEditFile(
     if (state.deps?.fileTreeUpdate) {
       const featureName = state.context.featureFolder || 'default';
       state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
+      
+      // ✅ Add unseen artifact notification for design files
+      if ('addUnseenArtifacts' in state.deps.fileTreeUpdate && filePath.startsWith('outputs/')) {
+        (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
+          state.context.project, featureName, [filePath]
+        );
+      }
     }
     
     // ✅ UI notification: file edit complete

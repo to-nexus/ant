@@ -423,6 +423,13 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         try {
           state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
           console.log(`📂 [Planner:Generate] File tree update notified`);
+          
+          // ✅ Add unseen artifact notification for PRD file
+          if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
+            (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
+              projectId, featureName, ['outputs/plan/prd-refine.md']
+            );
+          }
         } catch (error: any) {
           console.warn(`⚠️ [Planner:Generate] Failed to notify file tree update: ${error.message}`);
         }

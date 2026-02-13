@@ -258,6 +258,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sseManager.clearHandlers('kanban');
     sseManager.clearHandlers('chat');
     sseManager.clearHandlers('fileTree');
+    sseManager.clearHandlers('unseenArtifacts');
     
     sseManager.registerHandler('kanban', (data: KanbanData) => {
       get().updateKanban(data);
@@ -492,6 +493,14 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       if (data.type === 'initial' || data.type === 'update') {
         const tree = data.tree || data.fileTree;
         get().setFileTree(tree);
+      }
+    });
+    
+    // Unseen artifacts SSE handler (badge notifications)
+    sseManager.registerHandler('unseenArtifacts', (data: any) => {
+      if (data.type === 'initial' || data.type === 'update') {
+        const paths = data.paths || [];
+        get().setUnseenArtifacts(paths);
       }
     });
     

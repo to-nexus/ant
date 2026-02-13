@@ -26,6 +26,7 @@ export interface FileState {
   fileReloadTrigger: number;
   fileReloadTarget: string | undefined;
   lastViewMode: 'raw' | 'preview';
+  unseenArtifacts: string[];  // Unseen artifact file paths for badge notifications
 }
 
 export interface QueuePosition {

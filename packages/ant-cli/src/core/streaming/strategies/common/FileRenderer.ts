@@ -39,6 +39,9 @@ export class FileRenderer {
   private fileTreeNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly FILE_TREE_NOTIFY_DEBOUNCE_MS = 2000;
   
+  // ✅ Track unseen artifact paths for badge notifications
+  private pendingUnseenPaths: Set<string> = new Set();
+  
   // ✅ Track file operation completion
   
   // ✅ Track file operation errors (don't throw, collect for violation)
@@ -319,6 +322,11 @@ export class FileRenderer {
       
       // ✅ Schedule debounced file tree notification after disk write
       this.scheduleFileTreeNotification();
+      
+      // ✅ Track output files as unseen artifacts for badge notification
+      if (filePath.startsWith('outputs/')) {
+        this.pendingUnseenPaths.add(filePath);
+      }
     }
     
     await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
@@ -526,6 +534,27 @@ export class FileRenderer {
         this.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
       }
     }
+    
+    // ✅ Flush pending unseen artifact notifications
+    this.flushUnseenArtifacts();
+  }
+  
+  /**
+   * Flush accumulated unseen artifact paths via FileTreeBroadcaster.
+   */
+  private flushUnseenArtifacts(): void {
+    if (this.pendingUnseenPaths.size === 0) return;
+    if (!this.fileTreeUpdate || !('addUnseenArtifacts' in this.fileTreeUpdate)) return;
+    
+    const projectId = process.env.ANT_PROJECT_ID;
+    const featureName = process.env.ANT_FEATURE_NAME;
+    if (!projectId || !featureName) return;
+    
+    const paths = Array.from(this.pendingUnseenPaths);
+    this.pendingUnseenPaths.clear();
+    
+    (this.fileTreeUpdate as any).addUnseenArtifacts(projectId, featureName, paths)
+      .catch((err: any) => console.warn(`[FileRenderer] Failed to flush unseen artifacts: ${err.message}`));
   }
   
   /**

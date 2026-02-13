@@ -73,6 +73,7 @@ export const createProjectSlice: StateCreator<
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
       if (state.setFileContent) state.setFileContent(undefined);
+      if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       if (state.setRunning) state.setRunning(false);
       
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
@@ -103,6 +104,7 @@ export const createProjectSlice: StateCreator<
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
       if (state.setFileContent) state.setFileContent(undefined);
+      if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       
       saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
       
@@ -190,6 +192,7 @@ export const createProjectSlice: StateCreator<
     if (state.selectFile) state.selectFile(undefined);
     if (state.setFileTree) state.setFileTree([]);
     if (state.setFileContent) state.setFileContent(undefined);
+    if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
     if (state.setRunning) {
       // Only update isRunning flag, don't call full setRunning
       set({ isRunning: newFeatureIsRunning } as any);

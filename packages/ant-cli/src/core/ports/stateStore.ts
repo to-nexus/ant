@@ -447,6 +447,32 @@ export interface StateStorePort {
   deletePendingChoice(choiceKey: string): Promise<void>;
   
   // ============================================
+  // Unseen Artifacts Management
+  // ============================================
+
+  /**
+   * Add unseen artifact paths for a user/project/feature.
+   * Used when jobs generate output files (plan, design, eval).
+   */
+  addUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void>;
+
+  /**
+   * Remove unseen artifact paths (mark as seen).
+   * Called when user views files in the ArtifactsPanel.
+   */
+  removeUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void>;
+
+  /**
+   * Get all unseen artifact paths for a user/project/feature.
+   */
+  getUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<string[]>;
+
+  /**
+   * Clear all unseen artifacts for a user/project/feature.
+   */
+  clearUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<void>;
+
+  // ============================================
   // Pub/Sub (for Cloud Mode real-time updates)
   // ============================================
   
