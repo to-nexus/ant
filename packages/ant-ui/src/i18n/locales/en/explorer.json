@@ -22,6 +22,8 @@
     "deleteWarning": "This action cannot be undone.",
     "deleteTitle": "Delete?",
     "deleteFailed": "Failed to delete. Please try again later.",
+    "deleteSuccess": "{{name}} has been deleted.",
+    "deleteSuccessTitle": "Deleted",
     "noItemsFound": "No {{title}} found",
     "selectPlaceholder": "Select an item...",
     "inputPlaceholder": "Item name...",

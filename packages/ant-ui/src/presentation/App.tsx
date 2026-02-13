@@ -19,6 +19,7 @@ import { WelcomePage } from '@/presentation/pages/WelcomePage';
 import { QuickStart } from '@/presentation/pages/QuickStart';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
+import { ToastProvider } from '@/presentation/providers/ToastProvider';
 // STORAGE_KEYS/loadFromStorage no longer needed in App — QuickStart handles its own persistence
 import { signUp, signIn, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
 import { SignUpModal } from '@/presentation/components/auth/SignUpModal';
@@ -388,48 +389,54 @@ function App() {
   // ✅ Show local setup guide for /local path
   if (currentPath === '/local') {
     return (
-      <AlertModalProvider>
-        <>
-          <GlobalNavBar />
-          <LocalSetupGuide />
-        </>
-      </AlertModalProvider>
+      <ToastProvider>
+        <AlertModalProvider>
+          <>
+            <GlobalNavBar />
+            <LocalSetupGuide />
+          </>
+        </AlertModalProvider>
+      </ToastProvider>
     );
   }
 
   // ✅ Onboarding: WelcomePage for unauthenticated cloud users
   if (shouldShowWelcome) {
     return (
-      <AlertModalProvider>
-        <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
-          <GlobalNavBar />
-          <WelcomePage onSignUp={handleWelcomeSignUp} onSignIn={handleWelcomeSignIn} />
-          <SignUpModal
-            isOpen={showSignUpModal}
-            onClose={() => setShowSignUpModal(false)}
-            onSignUp={handleAuthSignUp}
-          />
-          <SignInModal
-            isOpen={showSignInModal}
-            onClose={() => setShowSignInModal(false)}
-            onSignIn={handleAuthSignIn}
-          />
-        </div>
-      </AlertModalProvider>
+      <ToastProvider>
+        <AlertModalProvider>
+          <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+            <GlobalNavBar />
+            <WelcomePage onSignUp={handleWelcomeSignUp} onSignIn={handleWelcomeSignIn} />
+            <SignUpModal
+              isOpen={showSignUpModal}
+              onClose={() => setShowSignUpModal(false)}
+              onSignUp={handleAuthSignUp}
+            />
+            <SignInModal
+              isOpen={showSignInModal}
+              onClose={() => setShowSignInModal(false)}
+              onSignIn={handleAuthSignIn}
+            />
+          </div>
+        </AlertModalProvider>
+      </ToastProvider>
     );
   }
 
   // ✅ Loading gate: authenticated but projects not yet loaded — prevent normal UI flash
   if (!!userEmail && !projectsLoaded) {
     return (
-      <AlertModalProvider>
-        <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
-          <GlobalNavBar />
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-gray-400 dark:text-gray-500" />
+      <ToastProvider>
+        <AlertModalProvider>
+          <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+            <GlobalNavBar />
+            <div className="flex-1 flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400 dark:text-gray-500" />
+            </div>
           </div>
-        </div>
-      </AlertModalProvider>
+        </AlertModalProvider>
+      </ToastProvider>
     );
   }
 
@@ -437,22 +444,25 @@ function App() {
   // shouldShowQuickStart → immediate entry; deferredShowQuickStart → holds during fade-out
   if (shouldShowQuickStart || deferredShowQuickStart) {
     return (
-      <AlertModalProvider>
-        <div className={`h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-all duration-350 ${viewOpacity}`}>
-          <GlobalNavBar />
-          <QuickStart
-            existingProjectId={quickStartProjectId}
-            onSkip={() => {
-              setQuickStartProjectId(undefined);
-              setOnboardingSkipped(true);
-            }}
-          />
-        </div>
-      </AlertModalProvider>
+      <ToastProvider>
+        <AlertModalProvider>
+          <div className={`h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-all duration-350 ${viewOpacity}`}>
+            <GlobalNavBar />
+            <QuickStart
+              existingProjectId={quickStartProjectId}
+              onSkip={() => {
+                setQuickStartProjectId(undefined);
+                setOnboardingSkipped(true);
+              }}
+            />
+          </div>
+        </AlertModalProvider>
+      </ToastProvider>
     );
   }
 
   return (
+    <ToastProvider>
     <AlertModalProvider>
       <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
         {/* ✅ GNB uses hooks directly - no props needed */}
@@ -545,6 +555,7 @@ function App() {
         )}
       </div>
     </AlertModalProvider>
+    </ToastProvider>
   );
 }
 
