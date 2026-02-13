@@ -24,6 +24,7 @@ export * from "./jobPrerequisites";
 export * from "./auth";
 export * from "./queue";
 export * from "./workspace";
+export * from "./preview";               // Preview update broadcasting
 export * from "./portRegistry";         // Preview/IDE state management
 export * from "./stateStore";           // Cloud Scalability - StateStorePort
 export * from "./ideOrchestrator";      // Cloud Scalability - IDEOrchestratorPort

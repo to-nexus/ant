@@ -412,7 +412,8 @@ export function PreviewConfigEditor() {
             {!isRunning ? (
               <button
                 onClick={handleStart}
-                disabled={isPreviewLoading}
+                disabled={isPreviewLoading || !(status?.canStart ?? false)}
+                title={!(status?.canStart ?? false) ? 'No runnable project detected (needs package.json with dev/start script)' : undefined}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                          bg-green-600 text-white hover:bg-green-700
                          disabled:opacity-50 disabled:cursor-not-allowed

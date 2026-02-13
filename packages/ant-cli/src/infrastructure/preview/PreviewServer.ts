@@ -18,6 +18,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
 import { IncomingMessage } from 'http';
@@ -329,6 +330,17 @@ export class PreviewServer {
           feature
         );
 
+        // Compute canStart: lightweight filesystem check when idle
+        let canStart = false;
+        if (!status.running && status.phase !== 'installing' && status.phase !== 'starting') {
+          try {
+            const workspacePath = this.resolveWorkspacePath(userContext, projectId);
+            canStart = await this.checkCanStart(workspacePath);
+          } catch {
+            // Filesystem check failure → canStart remains false
+          }
+        }
+
         res.json({
           running: status.running,
           ready: status.ready,
@@ -345,6 +357,7 @@ export class PreviewServer {
           suggestedFix: status.suggestedFix,
           structureType: status.structureType || null,
           linkedBackend: status.linkedBackend || null,
+          canStart,
           logs: logs.slice(-50)
         });
       } catch (error: any) {
@@ -584,6 +597,64 @@ export class PreviewServer {
         }
       });
     });
+  }
+
+  /**
+   * Check if preview can be started (lightweight filesystem check).
+   * Returns true if workspace has a package.json with dev/start scripts,
+   * or a Makefile/go.mod indicating a runnable project.
+   */
+  private async checkCanStart(workspacePath: string): Promise<boolean> {
+    try {
+      // Check package.json with dev/start scripts
+      const pkgJsonPath = path.join(workspacePath, 'package.json');
+      try {
+        const content = await fs.promises.readFile(pkgJsonPath, 'utf-8');
+        const pkg = JSON.parse(content);
+        if (pkg.scripts && (pkg.scripts.dev || pkg.scripts.start)) {
+          return true;
+        }
+      } catch { /* no package.json or parse error */ }
+
+      // Check for Go project (go.mod)
+      try {
+        await fs.promises.access(path.join(workspacePath, 'go.mod'));
+        return true;
+      } catch { /* no go.mod */ }
+
+      // Check for Makefile with run/dev target
+      try {
+        const makefile = await fs.promises.readFile(path.join(workspacePath, 'Makefile'), 'utf-8');
+        if (/^(run|dev|serve):/m.test(makefile)) {
+          return true;
+        }
+      } catch { /* no Makefile */ }
+
+      // Check monorepo: any workspace package.json with dev/start
+      const dirs = ['packages', 'apps'];
+      for (const dir of dirs) {
+        try {
+          const entries = await fs.promises.readdir(path.join(workspacePath, dir), { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory()) {
+              try {
+                const subPkg = await fs.promises.readFile(
+                  path.join(workspacePath, dir, entry.name, 'package.json'), 'utf-8'
+                );
+                const parsed = JSON.parse(subPkg);
+                if (parsed.scripts && (parsed.scripts.dev || parsed.scripts.start)) {
+                  return true;
+                }
+              } catch { /* skip */ }
+            }
+          }
+        } catch { /* dir doesn't exist */ }
+      }
+
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   /**

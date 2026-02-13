@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, LucideIcon, Settings, Play, Square, Loader2 } from 'lucide-react';
+import type { ElementType } from 'react';
 import { Button } from '@/presentation/components/common/button';
 import { CreateItemForm } from './CreateItemForm';
 import { textColors, cn } from '@/shared/utils/design-system';
@@ -25,6 +26,7 @@ interface ItemDropdownProps {
     placeholder: string;
   }) => React.ReactNode;
   onSettingsClick?: () => void;
+  settingsIcon?: ElementType;  // Custom icon for settings button (default: Settings gear)
   onPlayClick?: () => void;
   onStopClick?: () => void;
   isPlaying?: boolean;
@@ -50,6 +52,7 @@ export function ItemDropdown({
   inputPlaceholder,
   renderCreateForm,
   onSettingsClick,
+  settingsIcon: SettingsIcon = Settings,
   onPlayClick,
   onStopClick,
   isPlaying = false,
@@ -316,7 +319,7 @@ export function ItemDropdown({
                 className="p-1 hover:bg-gray-50 dark:hover:bg-[#30363d] rounded transition-colors pointer-events-auto disabled:opacity-50 disabled:cursor-not-allowed"
                 title={disabled ? disabledReason : t('item.settings')}
               >
-                <Settings className="h-4 w-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" />
+                <SettingsIcon className="h-4 w-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" />
               </button>
             )}
             <ChevronDown 

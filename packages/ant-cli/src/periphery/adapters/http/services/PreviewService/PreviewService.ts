@@ -965,6 +965,11 @@ export class PreviewService {
     issues?: PreviewIssue[];
     phase?: string;
     error?: string;
+    structureType?: string;
+    linkedBackend?: any;
+    setupReasoning?: string;
+    setupReason?: string;
+    suggestedFix?: string;
   }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     
@@ -988,6 +993,11 @@ export class PreviewService {
             backendPort: redisState.backendPort,
             packages: redisState.packages || [],
             issues: (redisState.issues || []) as any,
+            structureType: redisState.structureType,
+            linkedBackend: redisState.linkedBackend,
+            setupReasoning: redisState.setupReasoning,
+            setupReason: redisState.setupReason,
+            suggestedFix: redisState.suggestedFix,
           };
         }
       } catch (err: any) {
