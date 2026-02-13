@@ -10,6 +10,8 @@ export interface ProjectActions {
   setSelectedFeature: (featureName: string | undefined) => void;
   fetchFeatures: (projectId?: string) => Promise<Feature[]>;
   setFeatures: (features: Feature[]) => void;
+  // ✅ Optimistic feature addition (bypasses fetchFeatures race)
+  addFeatureOptimistic: (featureName: string) => void;
   // ✅ Session restore actions
   startSessionRestore: (expectedFeature: string | undefined) => void;
   completeSessionRestore: () => void;
@@ -62,6 +64,11 @@ export const createProjectSlice: StateCreator<
 
   setSelectedProject: (projectId) => {
     const state = get() as any;
+    
+    // ✅ Same project re-selection: skip destructive reset
+    if (projectId && projectId === state.selectedProject) {
+      return;
+    }
     
     if (!projectId) {
       set({ 
@@ -292,6 +299,15 @@ export const createProjectSlice: StateCreator<
   },
 
   setFeatures: (features) => set({ features }),
+
+  addFeatureOptimistic: (featureName) => {
+    const currentFeatures = (get() as any).features as Feature[];
+    const exists = currentFeatures.some((f) => f.name === featureName);
+    if (!exists) {
+      console.log(`[Store] ⚡ Optimistic add feature: ${featureName}`);
+      set({ features: [...currentFeatures, { name: featureName, path: `feature/${featureName}` }] });
+    }
+  },
   
   // ✅ Session restore actions
   startSessionRestore: (expectedFeature) => {

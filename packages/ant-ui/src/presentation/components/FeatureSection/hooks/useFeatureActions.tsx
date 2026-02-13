@@ -28,6 +28,7 @@ export function useFeatureActions(
   const { t } = useTranslation('explorer');
   const setSelectedFeature = useStore((state) => state.setSelectedFeature);
   const fetchFeatures = useStore((state) => state.fetchFeatures);
+  const addFeatureOptimistic = useStore((state) => state.addFeatureOptimistic);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
   const setBypassFetchTimer = useStore((state) => state.setBypassFetchTimer);
 
@@ -41,8 +42,11 @@ export function useFeatureActions(
     // ✅ Create feature
     await createFeature(selectedProject, featureName);
     
-    // ✅ Refresh features list to include new feature
-    await fetchFeatures(selectedProject);
+    // ✅ Optimistic update: immediately reflect in store (prevents race with fetchFeatures)
+    addFeatureOptimistic(featureName);
+    
+    // ✅ Background sync: reconcile with backend
+    fetchFeatures(selectedProject);
     
     // ✅ Refresh file tree
     await refreshFileTree();

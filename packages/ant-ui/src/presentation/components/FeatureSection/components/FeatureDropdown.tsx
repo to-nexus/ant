@@ -16,7 +16,7 @@ interface FeatureDropdownProps {
   onFeatureChange: (featureName: string | null) => void;
   onCreate: (featureName: string) => Promise<void>;
   onDelete: (featureName: string) => Promise<void>;
-  onItemCreated: () => void;
+  onItemCreated?: () => void;
   onPlayClick: () => void;
   onStopClick: () => void;
   onSettingsClick?: () => void;
