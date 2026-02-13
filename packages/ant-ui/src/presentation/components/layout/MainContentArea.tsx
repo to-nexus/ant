@@ -7,6 +7,7 @@ import { ConfigEditor } from '../ConfigEditor';
 import { AccountConfigEditor } from '../AccountConfigEditor';
 import { FileEditorPanel } from '../FileEditorPanel';
 import { TransferTab } from '../Transfer/TransferTab';
+import { PreviewConfigEditor } from '../PreviewConfigEditor';
 import { useStore } from '@/domain/store';
 import type { ProjectConfig } from '@/infrastructure/http/api';
 import type { KanbanData } from '@/infrastructure/http/api';
@@ -106,6 +107,10 @@ export function MainContentArea({
       ) : activeTab === 'transfer' && openTabs.transfer ? (
         <div className="flex-1 h-full overflow-hidden">
           <TransferTab />
+        </div>
+      ) : activeTab === 'previewConfig' && openTabs.previewConfig ? (
+        <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
+          <PreviewConfigEditor />
         </div>
       ) : (
         <div className="flex-1 h-full">

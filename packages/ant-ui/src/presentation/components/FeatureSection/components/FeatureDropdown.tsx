@@ -19,6 +19,7 @@ interface FeatureDropdownProps {
   onItemCreated: () => void;
   onPlayClick: () => void;
   onStopClick: () => void;
+  onSettingsClick?: () => void;
 }
 
 export function FeatureDropdown({
@@ -37,7 +38,8 @@ export function FeatureDropdown({
   onDelete,
   onItemCreated,
   onPlayClick,
-  onStopClick
+  onStopClick,
+  onSettingsClick
 }: FeatureDropdownProps) {
   const { t } = useTranslation('explorer');
   // Filter out 'main' feature (internal use only)
@@ -59,6 +61,7 @@ export function FeatureDropdown({
       inputPlaceholder={t('featureDropdown.featureNamePlaceholder')}
       onPlayClick={onPlayClick}
       onStopClick={onStopClick}
+      onSettingsClick={onSettingsClick}
       isPlaying={previewRunning}
       disabled={!canChangeFeature}
       disabledReason={disabledReason}

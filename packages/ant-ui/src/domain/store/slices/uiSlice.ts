@@ -16,9 +16,9 @@ export interface UIActions {
   setIdeConnecting: (connecting: boolean, error?: string) => void;
   setIdeFrameLoaded: (loaded: boolean) => void;
   reloadIdeFrame: () => void;
-  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => void;
-  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => void;
-  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => void;
+  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => void;
+  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => void;
+  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => void;
   clearJobTab: () => Promise<void>;
   restoreJobTab: () => void;
   // ✅ Pending clarify answers (compound ChoiceCard ↔ ChatInput shared state)
@@ -90,7 +90,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   ideConnectError: undefined,
   ideFrameLoaded: false,
   mainPanelActiveTab: 'job',
-  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false },
+  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false },
   mainPanelTabOrder: [],
   isJobTabCleared: false,
   pendingClarifyAnswers: {},

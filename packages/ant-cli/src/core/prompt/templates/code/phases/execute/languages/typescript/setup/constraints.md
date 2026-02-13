@@ -69,10 +69,15 @@ If `content` paths don't cover the directories where source files exist, zero ut
 |------------|-------------------|
 | **External services** | Does the design document specify services that require a running server process? |
 | **Scope** | Is this a root/workspace-level setup or a package-level setup? |
+| **Environment** | Is this project frontend-only (no backend in this workspace)? |
 
 **Principle**: Infrastructure provisioning belongs to the **root workspace level**, not individual packages.
 
-**Root/workspace-level setup** (when external services observed in design):
+**Environment Constraint**:
+- If this project is **frontend-only** (detected environment is `BROWSER` without a backend package in the same workspace): Do NOT create `docker-compose.yml`, `dev:infra` scripts, or `.env.example` for external services — even if the design document mentions databases, caches, or queues. Infrastructure provisioning is the responsibility of the separate backend project.
+- Only create infrastructure files when **this project itself** runs the external services.
+
+**Root/workspace-level setup** (when external services observed in design AND project runs them):
 
 | Required Output | Purpose |
 |----------------|---------|

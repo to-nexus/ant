@@ -265,6 +265,48 @@ idle → installing → starting → running
 /:urlKey/api/*      → Backend  (port 30002)
 ```
 
+### 5.4 Cross-Project Preview (프론트-백엔드 분리 프로젝트)
+
+#### 문제
+
+프론트엔드와 백엔드가 서로 다른 언어/프레임워크일 경우 모노레포 구성이 불가능합니다.
+각 프로젝트는 별도 워크스페이스로 존재하며, 각각 독립적인 Preview Server를 실행합니다.
+이 경우 프론트엔드에서 백엔드 API에 접근하기 위한 추가 설정이 필요합니다.
+
+#### 해결 구조
+
+```
+Frontend 프로젝트 (React)          Backend 프로젝트 (Go)
+├── urlKey: org--user--fe--feat    ├── urlKey: org--user--be--feat
+├── port: 30001                    ├── port: 30004
+│                                  │
+├── linkedBackend:                 └── (독립 실행)
+│   type: 'project'
+│   projectId: 'be'
+│   feature: 'feat'
+│   resolvedUrlKey: 'org--user--be--feat'
+│
+└── VITE_API_BASE_URL = /org--user--be--feat
+```
+
+**프론트엔드의 API 요청 흐름:**
+1. 프론트 코드: `fetch(VITE_API_BASE_URL + '/api/users')`
+2. 브라우저: `GET ant-preview.crosstoken.io/org--user--be--feat/api/users`
+3. 프록시: urlKey 파싱 → Redis에서 백엔드 Pod IP/포트 조회 → 프록시
+
+#### 구성 방법
+
+1. **Preview Config 탭**: FeatureDropdown의 Settings(기어) 아이콘 클릭
+2. **Backend Connection**: Direct URL 입력 또는 Ant Project 선택
+3. **저장**: `PUT /preview/projects/:id/preview-config` → Redis에 `linkedBackend` 저장
+4. **프리뷰 재시작**: 환경변수에 `VITE_API_BASE_URL`이 자동 주입됨
+
+#### 인프라 책임 분리
+
+- `frontend-only` 프로젝트: `docker-compose.yml`, 인프라 스크립트 생성 금지
+- 인프라 관련 파일(Redis, DB 등)은 백엔드 프로젝트에서만 생성
+- setup constraints.md에 Environment Constraint로 강제
+
 ---
 
 ## 6. Multi-Pod 아키텍처
@@ -285,6 +327,14 @@ interface PreviewState {
   ready: boolean;
   phase: string;
   backendPort?: number;
+  structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo';  // 자동 감지
+  linkedBackend?: {          // Cross-project 백엔드 연결 (Preview Config UI에서 설정)
+    type: 'url' | 'project';
+    url?: string;            // type='url': 직접 URL
+    projectId?: string;      // type='project': Ant 프로젝트 ID
+    feature?: string;        // type='project': Feature 이름
+    resolvedUrlKey?: string; // type='project': 자동 생성된 urlKey
+  };
   packages?: Package[];
   issues?: PreviewIssue[];
   startedAt?: number;
@@ -341,9 +391,31 @@ packages/ant-cli/src/
 │   ├── RedisStateStore.ts            # Redis 상태 관리
 │   └── redisKeyUtils.ts             # Redis 키 생성/파싱
 │
-└── core/prompt/templates/code/base/injections/
-    ├── preview-setup.md              # base path 설정 원칙 (통합)
-    └── preview-env-contract.md       # 플랫폼 런타임 계약 (통합)
+├── core/prompt/templates/code/base/injections/
+│   ├── preview-setup.md              # base path 설정 원칙 (통합)
+│   └── preview-env-contract.md       # 플랫폼 런타임 계약 (통합, 크로스 프로젝트 포함)
+│
+└── core/prompt/templates/code/phases/execute/languages/
+    ├── typescript/setup/constraints.md  # TS 셋업 제약 (인프라 가드레일 포함)
+    └── golang/setup/constraints.md      # Go 셋업 제약 (인프라 가드레일 포함)
+
+packages/ant-ui/src/
+├── presentation/components/
+│   ├── PreviewConfigEditor/         # Preview Config 탭 컴포넌트
+│   │   └── index.tsx                #   Project Info + Backend Connection + Controls + Status Console
+│   ├── FeatureSection/
+│   │   ├── index.tsx                #   Settings 버튼 → openMainPanelTab('previewConfig')
+│   │   └── components/
+│   │       ├── FeatureDropdown.tsx   #   Play + Settings(기어) 아이콘 분리
+│   │       └── PreviewStatusPanel.tsx  # Explorer 사이드바 미리보기 상태 (Preview Console)
+│   ├── MainPanelTabsBar/
+│   │   └── index.tsx                #   previewConfig 탭 렌더링 추가
+│   └── layout/
+│       └── MainContentArea.tsx      #   previewConfig 탭 라우팅 추가
+├── domain/store/
+│   ├── types.ts                     #   previewConfig 탭 타입 추가
+│   └── slices/uiSlice.ts           #   previewConfig 탭 액션 추가
+└── infrastructure/http/api.ts       #   getPreviewConfig, updatePreviewConfig API 추가
 ```
 
 ---

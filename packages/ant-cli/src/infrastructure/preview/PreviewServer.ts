@@ -343,6 +343,8 @@ export class PreviewServer {
           setupReasoning: status.setupReasoning,
           setupReason: status.setupReason,
           suggestedFix: status.suggestedFix,
+          structureType: status.structureType || null,
+          linkedBackend: status.linkedBackend || null,
           logs: logs.slice(-50)
         });
       } catch (error: any) {
@@ -370,6 +372,77 @@ export class PreviewServer {
         });
       } catch (error: any) {
         logger.error('[PreviewServer] Validate error', { component: 'PreviewServer' }, error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // ==========================================
+    // Preview Config Endpoints
+    // ==========================================
+
+    /**
+     * GET /preview/projects/:id/preview-config
+     * Get preview configuration (linkedBackend, structureType)
+     */
+    this.app.get('/projects/:id/preview-config', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const userContext = this.extractUserContext(req);
+        const feature = req.query.feature as string || 'main';
+
+        const status = await this.previewService.getPreviewStatus(
+          userContext.organizationId,
+          userContext.userId,
+          projectId,
+          feature
+        );
+
+        res.json({
+          structureType: status.structureType || null,
+          linkedBackend: status.linkedBackend || null,
+        });
+      } catch (error: any) {
+        logger.error('[PreviewServer] Preview config get error', { component: 'PreviewServer' }, error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    /**
+     * PUT /preview/projects/:id/preview-config
+     * Save preview configuration (linkedBackend)
+     */
+    this.app.put('/projects/:id/preview-config', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const userContext = this.extractUserContext(req);
+        const feature = req.body.feature || 'main';
+        const { linkedBackend } = req.body;
+
+        // If linkedBackend type is 'project', compute the resolvedUrlKey
+        let resolvedLinkedBackend = linkedBackend;
+        if (linkedBackend?.type === 'project' && linkedBackend.projectId && linkedBackend.feature) {
+          const backendServerKey = `${userContext.organizationId}:${userContext.userId}:${linkedBackend.projectId}:${linkedBackend.feature}`;
+          resolvedLinkedBackend = {
+            ...linkedBackend,
+            resolvedUrlKey: toUrlKey(backendServerKey),
+          };
+        }
+
+        // Update in Redis via portRegistry
+        if (this.stateStore) {
+          await this.stateStore.updatePreview(
+            userContext.organizationId,
+            userContext.userId,
+            projectId,
+            feature,
+            { linkedBackend: resolvedLinkedBackend }
+          );
+        }
+
+        logger.info(`[PreviewServer] Preview config updated: ${projectId}/${feature}`, { component: 'PreviewServer' });
+        res.json({ success: true, linkedBackend: resolvedLinkedBackend });
+      } catch (error: any) {
+        logger.error('[PreviewServer] Preview config save error', { component: 'PreviewServer' }, error);
         res.status(500).json({ error: error.message });
       }
     });

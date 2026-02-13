@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight } from 'lucide-react';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { TabButton } from './components/TabButton';
 import { JobControls } from './components/JobControls';
@@ -64,8 +64,8 @@ export function MainPanelTabsBar() {
     );
   };
 
-  // Render dynamic tabs (projectConfig, accountConfig, fileEdit, transfer)
-  const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer') => {
+  // Render dynamic tabs (projectConfig, accountConfig, fileEdit, transfer, previewConfig)
+  const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => {
     if (!openTabs[tabKey]) return null;
     
     const tabConfig = {
@@ -84,6 +84,10 @@ export function MainPanelTabsBar() {
       transfer: {
         icon: ArrowLeftRight,
         label: t('tabs.transfer')
+      },
+      previewConfig: {
+        icon: Monitor,
+        label: t('tabs.previewConfig', 'Preview Config')
       }
     }[tabKey];
 

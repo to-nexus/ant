@@ -57,10 +57,15 @@ Before output, check each file:
 | Checkpoint | Observation Target |
 |------------|-------------------|
 | **External services** | Does the design document specify services that require a running server process? |
+| **Environment** | Is this project frontend-only (no backend in this workspace)? |
 
 **Principle**: Infrastructure provisioning belongs to the project root level.
 
-**If external services observed** (database, Redis, message queue, etc.):
+**Environment Constraint**:
+- If this project is **frontend-only** (detected environment is `BROWSER` without a backend package in the same workspace): Do NOT create `docker-compose.yml`, `dev-infra` Makefile targets, or `.env.example` for external services — even if the design document mentions databases, caches, or queues. Infrastructure provisioning is the responsibility of the separate backend project.
+- Only create infrastructure files when **this project itself** runs the external services.
+
+**If external services observed** (database, Redis, message queue, etc.) **AND project runs them**:
 
 | Required Output | Purpose |
 |----------------|---------|

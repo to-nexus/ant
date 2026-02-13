@@ -40,6 +40,7 @@
     "accountConfig": "Account Config",
     "fileEdit": "FileEdit",
     "transfer": "Transfer",
+    "previewConfig": "Preview Config",
     "removeJob": "Remove Job?",
     "removeJobDesc": "This will remove the current job and clear all session data:",
     "removeJobItem1": "Job ID and progress will be removed",

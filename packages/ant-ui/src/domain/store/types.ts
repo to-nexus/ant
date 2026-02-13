@@ -78,14 +78,15 @@ export interface UIState {
   ideConnecting: boolean; // ✅ show skeleton while IDE container is starting
   ideConnectError: string | undefined;
   ideFrameLoaded: boolean; // ✅ iframe onLoad succeeded (prevents unnecessary auto-retries)
-  mainPanelActiveTab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer';
+  mainPanelActiveTab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig';
   mainPanelOpenTabs: {
     projectConfig: boolean;
     accountConfig: boolean;
     fileEdit: boolean;
     transfer: boolean;
+    previewConfig: boolean;
   };
-  mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer'>;
+  mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig'>;
   isJobTabCleared: boolean;
   // ✅ Pending clarify answers (shared between compound ChoiceCard and ChatInput)
   pendingClarifyAnswers: Record<number, string>;  // questionIndex → selected answer
