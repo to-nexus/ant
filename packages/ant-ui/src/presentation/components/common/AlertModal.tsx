@@ -14,9 +14,9 @@
  * - confirm-cancel: OK and Cancel buttons
  */
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Modal } from './Modal';
-import { CheckCircle, AlertCircle, XCircle, Info } from 'lucide-react';
+import { CheckCircle, AlertCircle, XCircle, Info, Loader2 } from 'lucide-react';
 
 export type AlertType = 'info' | 'success' | 'warning' | 'error';
 export type ButtonMode = 'confirm-only' | 'confirm-cancel';
@@ -78,6 +78,7 @@ export function AlertModal({
   const styles = TYPE_STYLES[type];
   const Icon = styles.icon;
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Auto-focus confirm button when modal opens
   useEffect(() => {
@@ -90,14 +91,30 @@ export function AlertModal({
     }
   }, [isOpen]);
 
+  // Reset processing state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsProcessing(false);
+    }
+  }, [isOpen]);
+
   const handleConfirm = async () => {
     if (onConfirm) {
-      await onConfirm();
+      setIsProcessing(true);
+      try {
+        await onConfirm();
+      } catch {
+        // If onConfirm throws, keep modal open so user can retry or cancel
+        setIsProcessing(false);
+        return;
+      }
+      setIsProcessing(false);
     }
     onClose();
   };
 
   const handleCancel = () => {
+    if (isProcessing) return; // Prevent cancel during processing
     if (onCancel) {
       onCancel();
     }
@@ -130,11 +147,12 @@ export function AlertModal({
           {buttonMode === 'confirm-cancel' && (
             <button
               onClick={handleCancel}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 
+              disabled={isProcessing}
+              className={`px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 
                        bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 
                        rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 
                        focus:outline-none focus:ring-2 focus:ring-gray-500 
-                       transition-colors"
+                       transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {cancelText}
             </button>
@@ -142,10 +160,13 @@ export function AlertModal({
           <button
             ref={confirmButtonRef}
             onClick={handleConfirm}
+            disabled={isProcessing}
             className={`px-4 py-2 text-sm font-medium text-white rounded-md 
                        focus:outline-none focus:ring-2 focus:ring-offset-2 
-                       transition-colors ${styles.confirmButton}`}
+                       transition-colors flex items-center gap-2
+                       ${isProcessing ? 'opacity-75 cursor-not-allowed' : ''} ${styles.confirmButton}`}
           >
+            {isProcessing && <Loader2 className="w-4 h-4 animate-spin" />}
             {confirmText}
           </button>
         </div>

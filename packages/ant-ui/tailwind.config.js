@@ -207,6 +207,16 @@ export default {
         'glow-spin': {
           '0%': { transform: 'rotate(0deg)' },
           '100%': { transform: 'rotate(360deg)' }
+        },
+        // 🍞 Toast slide in from right
+        'toast-in': {
+          '0%': { transform: 'translateX(100%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' }
+        },
+        // 🍞 Toast slide out to right
+        'toast-out': {
+          '0%': { transform: 'translateX(0)', opacity: '1' },
+          '100%': { transform: 'translateX(100%)', opacity: '0' }
         }
       },
       animation: {
@@ -217,7 +227,9 @@ export default {
         'bounce-gentle': 'bounce-gentle 2s ease-in-out infinite',
         'sparkle-float': 'sparkle-float 3s ease-in-out infinite',
         'typing-dot': 'typing-dot 1.4s ease-in-out infinite',
-        'glow-spin': 'glow-spin 3s linear infinite'
+        'glow-spin': 'glow-spin 3s linear infinite',
+        'toast-in': 'toast-in 0.3s ease-out forwards',
+        'toast-out': 'toast-out 0.25s ease-in forwards'
       }
     }
   },

@@ -6,6 +6,7 @@ import { Button } from '@/presentation/components/common/button';
 import { CreateItemForm } from './CreateItemForm';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 
 interface ItemDropdownProps {
   title: string;
@@ -69,7 +70,8 @@ export function ItemDropdown({
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { showConfirm, showError } = useAlertModalContext();
+  const { showConfirm } = useAlertModalContext();
+  const { toast } = useToastContext();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -135,9 +137,10 @@ export function ItemDropdown({
               onSelect('');
             }
             onItemCreated?.(); // Refresh list
+            toast.success(t('item.deleteSuccess', { name: itemName }));
           } catch (error) {
             console.error('Failed to delete item:', error);
-            showError(t('item.deleteFailed'), { title: t('common:error.title') });
+            toast.error(t('item.deleteFailed'));
           }
         }
       }
