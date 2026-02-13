@@ -5,12 +5,14 @@ import multer from 'multer';
 import archiver from 'archiver';
 import { ProjectService } from '../services';
 import { extractUserContext } from './helpers/userContext';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
 
 /**
  * File operations (read, write, delete, upload)
  */
 export function createFilesRoutes(deps: {
   projectService: ProjectService;
+  stateStore?: StateStorePort;
 }): Router {
   const router = Router();
 
@@ -360,6 +362,69 @@ export function createFilesRoutes(deps: {
       if (!res.headersSent) {
         res.status(500).json({ error: error.message });
       }
+    }
+  });
+
+  // ============================================
+  // Unseen Artifacts (badge notification)
+  // ============================================
+
+  /**
+   * GET /projects/:id/features/:feature/unseen-artifacts
+   * Get list of unseen artifact paths for the current user
+   */
+  router.get('/projects/:id/features/:feature/unseen-artifacts', async (req: Request, res: Response) => {
+    try {
+      if (!deps.stateStore) {
+        return res.json({ paths: [] });
+      }
+
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const userContext = extractUserContext(req);
+
+      const paths = await deps.stateStore.getUnseenArtifacts(
+        userContext.userId,
+        projectId,
+        featureName
+      );
+
+      res.json({ paths });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/mark-seen
+   * Mark artifact paths as seen (remove from unseen set)
+   * Body: { paths: string[] }
+   */
+  router.post('/projects/:id/features/:feature/mark-seen', async (req: Request, res: Response) => {
+    try {
+      if (!deps.stateStore) {
+        return res.json({ success: true });
+      }
+
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const { paths } = req.body;
+      const userContext = extractUserContext(req);
+
+      if (!Array.isArray(paths) || paths.length === 0) {
+        return res.status(400).json({ error: 'paths array is required' });
+      }
+
+      await deps.stateStore.removeUnseenArtifacts(
+        userContext.userId,
+        projectId,
+        featureName,
+        paths
+      );
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 

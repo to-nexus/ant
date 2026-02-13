@@ -64,7 +64,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   
   // File operations
   router.use(createFilesRoutes({
-    projectService: deps.projectService
+    projectService: deps.projectService,
+    stateStore: deps.stateStore
   }));
   
   // Chat operations
@@ -72,7 +73,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     chatService: deps.chatService,
     choiceService: deps.choiceService,
     workspaceResolver: deps.workspaceResolver,
-    fileTreeNotifier: deps.fileTreeNotifier
+    fileTreeNotifier: deps.fileTreeNotifier,
+    stateStore: deps.stateStore
   }));
   
   // GitHub integration

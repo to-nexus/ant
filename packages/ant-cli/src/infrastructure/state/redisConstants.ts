@@ -19,6 +19,7 @@ export const REDIS_DOMAINS = {
   INFRA: `${APP_PREFIX}:infra`,
   INDEX: `${APP_PREFIX}:index`,
   TRANSFER: `${APP_PREFIX}:transfer`,
+  ARTIFACTS: `${APP_PREFIX}:artifacts`,
 } as const;
 
 // ============================================
@@ -97,6 +98,12 @@ export const REDIS_KEYS = {
     /** SET of request IDs by sender - ant:transfer:bySender:{orgId}:{userId} */
     BY_SENDER: `${REDIS_DOMAINS.TRANSFER}:bySender:`,
   },
+  
+  /** Unseen artifacts keys (ant:artifacts:*) */
+  ARTIFACTS: {
+    /** SET of unseen file paths per user/project/feature - ant:artifacts:unseen:{userId}:{projectId}:{featureName} */
+    UNSEEN: `${REDIS_DOMAINS.ARTIFACTS}:unseen:`,
+  },
 } as const;
 
 // ============================================
@@ -134,6 +141,11 @@ export const REDIS_TTL = {
   TRANSFER: {
     REQUEST: 7 * 24 * 60 * 60,   // 7 days
     LOCK: 300,                     // 5 minutes
+  },
+  
+  /** Unseen artifacts TTLs */
+  ARTIFACTS: {
+    UNSEEN: 7 * 24 * 60 * 60,    // 7 days
   },
 } as const;
 

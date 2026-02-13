@@ -50,7 +50,7 @@ export const WORKFLOW_STATE_TTL = REDIS_TTL.JOB.WORKFLOW;
 // ============================================
 
 /** Message types routed through the unified SSE stream */
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange';
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange' | 'unseenArtifacts';
 
 /** SSE message envelope sent to frontend */
 export interface SSEMessage {

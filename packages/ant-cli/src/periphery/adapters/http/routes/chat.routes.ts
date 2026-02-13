@@ -5,6 +5,7 @@ import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { ChoiceService } from '../../../../infrastructure/choice';
 import { ChoiceAction } from '../../../../agents/common/nodes/triage/types';
+import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
 
 /**
  * Chat operations (messages, user interactions)
@@ -29,6 +30,11 @@ export function createChatRoutes(deps: {
   choiceService?: ChoiceService;
   workspaceResolver?: any;
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };
+  stateStore?: {
+    addUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void>;
+    getUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<string[]>;
+    publish(channel: string, message: any): Promise<void>;
+  };
 }): Router {
   const router = Router();
   
@@ -293,6 +299,23 @@ export function createChatRoutes(deps: {
         deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
       }
 
+      // ✅ Add unseen artifact notification for eval report
+      if (deps.stateStore) {
+        try {
+          await deps.stateStore.addUnseenArtifacts(userContext.userId, projectId, featureName, [relativePath]);
+          // Broadcast updated unseen list via Redis Pub/Sub → Realtime Server → SSE
+          const allUnseen = await deps.stateStore.getUnseenArtifacts(userContext.userId, projectId, featureName);
+          const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
+          await deps.stateStore.publish(channel, {
+            projectId, featureName, type: 'unseenArtifacts',
+            data: { type: 'update', paths: allUnseen },
+            userContext,
+          });
+        } catch (e) {
+          console.warn(`[chat.routes] Failed to add unseen artifact: ${(e as Error).message}`);
+        }
+      }
+
       // Update choice card metadata to mark as saved
       // ✅ metadataFilter ensures we update the correct choice_card (eval_save, not prd_apply)
       if (deps.chatService) {
@@ -353,6 +376,22 @@ export function createChatRoutes(deps: {
       // ✅ Notify file tree update after PRD apply write
       if (deps.fileTreeNotifier) {
         deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
+      }
+
+      // ✅ Add unseen artifact notification for applied PRD
+      if (deps.stateStore) {
+        try {
+          await deps.stateStore.addUnseenArtifacts(userContext.userId, projectId, featureName, ['inputs/sources/prd.md']);
+          const allUnseen = await deps.stateStore.getUnseenArtifacts(userContext.userId, projectId, featureName);
+          const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
+          await deps.stateStore.publish(channel, {
+            projectId, featureName, type: 'unseenArtifacts',
+            data: { type: 'update', paths: allUnseen },
+            userContext,
+          });
+        } catch (e) {
+          console.warn(`[chat.routes] Failed to add unseen artifact: ${(e as Error).message}`);
+        }
       }
 
       // Update choice card metadata

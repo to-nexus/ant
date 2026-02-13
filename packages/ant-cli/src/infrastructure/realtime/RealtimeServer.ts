@@ -62,7 +62,7 @@ export class RealtimeServer {
     logger.info('✅ Redis Pub/Sub subscriptions established', { component: 'RealtimeServer' });
     
     // 4. Setup SSE routes
-    this.setupRoutes(services);
+    this.setupRoutes(services, stateStore);
     
     // 5. Setup health check
     this.setupHealthCheck();
@@ -175,13 +175,14 @@ export class RealtimeServer {
     projectService: ProjectService;
     workflowStateService: WorkflowStateService;
     gitWatcherService: GitWatcherService;
-  }): void {
+  }, stateStore?: any): void {
     const sseRoutes = createSSERoutes({
       sseService: this.sseService,
       kanbanService: services.kanbanService,
       chatService: services.chatService,
       projectService: services.projectService,
       workflowStateService: services.workflowStateService,
+      stateStore,
       gitWatcherService: services.gitWatcherService,
       // Note: These are empty Maps - in cloud mode, job state is in Redis
       // The SSE routes will still work because initial state comes from services

@@ -9,6 +9,7 @@ import {
 import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
 import { logger } from '../../../../utils/logger';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
 
 /**
  * Unified SSE Routes
@@ -20,6 +21,7 @@ export function createSSERoutes(deps: {
   chatService: ChatService;
   projectService: ProjectService;
   workflowStateService: WorkflowStateService;
+  stateStore?: StateStorePort;
   gitWatcherService?: any;  // ✅ Git watcher service
   // workspaceRoot: string;  // ❌ 제거 - 사용하지 않음
   jobToProject?: Map<string, { projectId: string; featureName: string }>;
@@ -85,6 +87,24 @@ export function createSSERoutes(deps: {
         type: 'initial', 
         tree: fileTree 
       });
+      
+      // 4. Send initial Unseen Artifacts
+      if (deps.stateStore) {
+        try {
+          const unseenPaths = await deps.stateStore.getUnseenArtifacts(
+            userContext.userId,
+            projectId,
+            featureName
+          );
+          deps.sseService.sendInitialState(res, 'unseenArtifacts', {
+            type: 'initial',
+            paths: unseenPaths
+          });
+        } catch (err) {
+          logger.warn(`Failed to send initial unseen artifacts`, { component: 'SSE', projectId, featureName }, err);
+        }
+      }
+      
       logger.debug(`Initial states sent`, { component: 'SSE', projectId, featureName });
     } catch (error) {
       logger.warn(`Failed to send initial states`, { component: 'SSE', projectId, featureName }, error);

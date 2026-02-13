@@ -23,6 +23,7 @@ import {
   FileTreeBroadcastMessage,
   BroadcasterOptions 
 } from './types';
+import { REDIS_KEYS, REDIS_TTL } from '../../infrastructure/state/redisConstants';
 
 // File patterns to exclude from tree
 const EXCLUDE_PATTERNS = [
@@ -187,6 +188,49 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
     }
     
     return nodes;
+  }
+
+  /**
+   * Add unseen artifact paths and broadcast update via SSE.
+   * Called by job nodes after generating output files.
+   */
+  async addUnseenArtifacts(
+    projectId: string,
+    featureName: string,
+    artifactPaths: string[],
+    userContext?: UserContext
+  ): Promise<void> {
+    const ctx = userContext || this.userContext;
+    if (!ctx?.organizationId || !ctx?.userId) {
+      console.warn(`[FileTreeBroadcaster] ⚠️ Cannot add unseen artifacts without userContext`);
+      return;
+    }
+    if (artifactPaths.length === 0) return;
+
+    try {
+      // 1. Add to Redis Set
+      const key = `${REDIS_KEYS.ARTIFACTS.UNSEEN}${ctx.userId}:${projectId}:${featureName}`;
+      await this.pubRedis.sadd(key, ...artifactPaths);
+      await this.pubRedis.expire(key, REDIS_TTL.ARTIFACTS.UNSEEN);
+
+      // 2. Broadcast full unseen list via SSE
+      const allUnseen = await this.pubRedis.smembers(key);
+      const channel = getRealtimeBroadcastChannel(ctx.organizationId, ctx.userId);
+      await this.pubRedis.publish(channel, JSON.stringify({
+        projectId,
+        featureName,
+        type: 'unseenArtifacts',
+        data: {
+          type: 'update',
+          paths: allUnseen,
+        },
+        userContext: ctx,
+      }));
+
+      console.log(`[FileTreeBroadcaster] ✅ Unseen artifacts added: ${artifactPaths.length} paths → ${key}`);
+    } catch (error: any) {
+      console.warn(`[FileTreeBroadcaster] ⚠️ Failed to add unseen artifacts: ${error.message}`);
+    }
   }
 
   /**

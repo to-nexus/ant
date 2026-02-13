@@ -22,9 +22,10 @@ interface DirectoryViewProps {
   onSend?: (path: string, type: 'file' | 'directory') => void;
   onDownload?: (path: string) => void;
   isSessionSection?: boolean;
+  unseenArtifacts?: string[];
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete, onSend, onDownload, isSessionSection }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete, onSend, onDownload, isSessionSection, unseenArtifacts = [] }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
@@ -43,12 +44,19 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     setExpandedDirs(newExpanded);
   };
 
+  // Helper: count unseen files under a directory path
+  const getUnseenCount = (dirPath: string): number => {
+    return unseenArtifacts.filter(p => p.startsWith(dirPath + '/') || p === dirPath).length;
+  };
+
   const renderNode = (node: FileNode, currentLevel: number) => {
     const isExpanded = expandedDirs.has(node.path);
     const isSelected = node.type === 'file' && selectedFile === node.path;
     const isCreatingInThisDir = showCreateForm === node.path;
     const isDirectory = node.type === 'directory';
     const isMenuActive = activeMenuPath === node.path;
+    const isUnseen = node.type === 'file' && unseenArtifacts.includes(node.path);
+    const unseenCount = isDirectory ? getUnseenCount(node.path) : 0;
 
     return (
       <div key={node.path}>
@@ -69,7 +77,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
           style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
         >
           <div 
-            className="flex items-center gap-2 cursor-pointer flex-1"
+            className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
             onClick={() => {
               if (node.type === 'directory') {
                 toggleDirectory(node.path);
@@ -92,7 +100,17 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             ) : (
               <FileIcon filePath={node.name} size={16} />
             )}
-            <span className={cn('text-sm', textColors.primary)}>{node.name}</span>
+            <span className={cn('text-sm truncate', textColors.primary, isUnseen && 'font-semibold')}>{node.name}</span>
+            {/* Unseen badge for directories */}
+            {isDirectory && unseenCount > 0 && (
+              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
+                {unseenCount > 99 ? '99+' : unseenCount}
+              </span>
+            )}
+            {/* Unseen dot for files */}
+            {isUnseen && (
+              <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+            )}
           </div>
           
           {/* Hidden file input for uploads */}
@@ -273,6 +291,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const openTransferTab = useStore((state) => state.openTransferTab);
   const pendingTransferCount = useStore((state) => state.pendingTransferCount);
   const setPendingTransferCount = useStore((state) => state.setPendingTransferCount);
+  const unseenArtifacts = useStore((state) => state.unseenArtifacts) as string[];
+  const markArtifactsSeen = useStore((state) => state.markArtifactsSeen);
   
   // ✅ UI Action Policy
   const policy = useUIActionPolicy();
@@ -354,6 +374,10 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     selectFile(path);
     if (path && path.length > 0) {
       openMainPanelTab('fileEdit');
+      // Mark file as seen if it's in the unseen list
+      if (unseenArtifacts?.includes(path)) {
+        markArtifactsSeen([path]);
+      }
     }
   };
 
@@ -452,6 +476,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
+          unseenArtifacts={unseenArtifacts}
         />
         <DirectoryView
           title={t('panel.outputs')}
@@ -464,6 +489,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
+          unseenArtifacts={unseenArtifacts}
         />
         <DirectoryView
           title={t('panel.sessions')}

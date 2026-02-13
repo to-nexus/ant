@@ -1040,6 +1040,38 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
+  // Unseen Artifacts Management
+  // ============================================
+
+  async addUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const key = this.key(REDIS_KEYS.ARTIFACTS.UNSEEN, `${userId}:${projectId}:${feature}`);
+    const pipeline = this.redis.pipeline();
+    pipeline.sadd(key, ...paths);
+    pipeline.expire(key, REDIS_TTL.ARTIFACTS.UNSEEN);
+    await pipeline.exec();
+    logger.debug(`Unseen artifacts added: ${paths.length} paths for ${projectId}/${feature}`, { component: 'RedisStateStore' });
+  }
+
+  async removeUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    const key = this.key(REDIS_KEYS.ARTIFACTS.UNSEEN, `${userId}:${projectId}:${feature}`);
+    await this.redis.srem(key, ...paths);
+    logger.debug(`Unseen artifacts removed: ${paths.length} paths for ${projectId}/${feature}`, { component: 'RedisStateStore' });
+  }
+
+  async getUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<string[]> {
+    const key = this.key(REDIS_KEYS.ARTIFACTS.UNSEEN, `${userId}:${projectId}:${feature}`);
+    return this.redis.smembers(key);
+  }
+
+  async clearUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<void> {
+    const key = this.key(REDIS_KEYS.ARTIFACTS.UNSEEN, `${userId}:${projectId}:${feature}`);
+    await this.redis.del(key);
+    logger.debug(`Unseen artifacts cleared for ${projectId}/${feature}`, { component: 'RedisStateStore' });
+  }
+
+  // ============================================
   // Lifecycle
   // ============================================
 
