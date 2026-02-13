@@ -306,6 +306,13 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       setIsExiting(true);
       await delay(400);
 
+      // Ensure features are loaded in the store before transitioning.
+      // setSelectedProject() fires fetchFeatures() as fire-and-forget, so
+      // by this point it *may* have completed — but we cannot guarantee it.
+      // An explicit await here ensures the store's features array is populated
+      // before the explorer UI mounts (prevents the "no features" flash).
+      await useStore.getState().fetchFeatures(projectId);
+
       // Clear quickStartProjectId so App transitions away from QuickStart
       setQuickStartProjectId(undefined);
 
