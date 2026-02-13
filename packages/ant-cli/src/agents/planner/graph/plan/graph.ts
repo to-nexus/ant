@@ -1,13 +1,12 @@
 /**
  * Plan LangGraph
  * 
- * Fresh run:        __start__ → resolve → triage → (conditional) → generate ⟷ tool → END
- * Conversation continuation: __start__ → resolve → generate ⟷ tool → END  (triage skipped)
+ * All runs:  __start__ → resolve → triage → (conditional) → generate ⟷ tool → END
  * 
  * Triage branches:  ask → __end__, redirect → __end__, blocked → __end__, proceed → generate
  * 
- * When a conversation already exists (isConversationContinuation), resolve routes
- * directly to generate — the user already chose this agent/job via the continue endpoint.
+ * Triage always runs — even for conversation continuations — so the system can
+ * detect agent/job switches (e.g., user requests code work mid-planner session).
  * 
  * generate handles: LLM streaming → file card (via StreamOrchestrator) → disk write → choice card → session
  * No separate write node — same pattern as design job's docGen.
@@ -19,20 +18,6 @@ import { resolveNode } from './nodes/resolve';
 import { generateNode, routeAfterGenerate } from './nodes/generate';
 import { toolNode } from './nodes/tool';
 import { triage } from '../../../common/nodes/triage';
-
-/**
- * Route after resolve: skip triage for conversation continuations.
- * When the user continues an existing plan conversation (via /jobs/:id/continue),
- * triage is unnecessary — the agent/job routing is already decided.
- */
-function routeAfterResolve(state: PlanGraphState): string {
-  if (state.isConversationContinuation) {
-    console.log('[PlannerResolveRouter] Conversation continuation → generate (skip triage)');
-    return 'generate';
-  }
-  console.log('[PlannerResolveRouter] Fresh run → triage');
-  return 'triage';
-}
 
 /**
  * Route after triage for planner agent.
@@ -113,18 +98,11 @@ export function buildPlanGraph() {
   graph.addNode('generate', generateNode as any);
   graph.addNode('tool', toolNode as any);
   
-  // Edges: resolve → [conditional] → triage or generate → ... → END
+  // Edges: resolve → triage → (conditional) → generate → ... → END
   graph.addEdge('__start__' as any, 'resolve' as any);
   
-  // After resolve: skip triage if continuing an existing conversation
-  graph.addConditionalEdges(
-    'resolve' as any,
-    routeAfterResolve as any,
-    {
-      triage: 'triage',
-      generate: 'generate',
-    } as any
-  );
+  // After resolve: always run triage (detects agent/job switches even in continuations)
+  graph.addEdge('resolve' as any, 'triage' as any);
   
   graph.addConditionalEdges(
     'triage' as any,
