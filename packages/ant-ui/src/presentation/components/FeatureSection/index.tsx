@@ -105,6 +105,9 @@ export function FeatureSection() {
         onItemCreated={fetchFeatures}
         onPlayClick={startServer}
         onStopClick={stopServer}
+        onSettingsClick={() => {
+          useStore.getState().openMainPanelTab('previewConfig');
+        }}
       />
       
       {/* Status Panel - show for all non-idle states */}

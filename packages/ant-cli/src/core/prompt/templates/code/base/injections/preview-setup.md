@@ -31,6 +31,8 @@ reading from an environment variable injected at dev server startup.
 
 **Principle**: Client-side router MUST also read its base path from the framework environment.
 
+**Observation Target**: Does the project use a client-side router? If so, verify it reads the base path from the same environment variable.
+
 | Router | Setting |
 |--------|---------|
 | **React Router** | `basename={import.meta.env.VITE_BASE_PATH \|\| ''}` |
@@ -42,19 +44,17 @@ reading from an environment variable injected at dev server startup.
 ## SSR Image Optimization
 
 **Constraint**: SSR frameworks with built-in image optimization may internally fetch images
-in a way that ignores the path prefix. Disable image optimization when running in the proxy environment.
+in a way that ignores the path prefix. When path prefix env var is set, image optimization MUST be disabled. When absent (production), it works normally.
 
-**Contract**:
-- When path prefix env var is set, image optimization MUST be disabled
-- When path prefix env var is absent (production), image optimization works normally
-- This is a conditional toggle, not a permanent disable
+**Observation Target**: Does the framework perform server-side image optimization? If NOT observed, do NOT add any image optimization toggle.
 
-Example for Next.js:
-```js
-images: {
-  unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH,
-}
-```
+---
+
+## Blind Spot Reminders
+
+- **Client-side router base path is EASILY FORGOTTEN.** The framework config sets the base path for assets, but the router often needs a separate setting. Verify both.
+- **SSR fetch with path prefix**: Server-side data fetching (e.g., API routes) may construct URLs without the base path. Verify that server-side fetches also respect the prefix if they target the same proxy.
+- **Static assets in HTML**: Hardcoded paths in HTML templates (favicon, manifest, etc.) are NOT rewritten by the framework base path. Use relative paths or template the prefix.
 
 ---
 

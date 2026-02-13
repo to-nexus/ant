@@ -23,6 +23,20 @@ export interface PreviewRuntimeIssue {
 
 export type PreviewPhase = 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';
 
+export type PreviewStructureType = 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo';
+
+/**
+ * Cross-project backend connection configuration.
+ * Used when frontend and backend are in separate projects.
+ */
+export interface LinkedBackendConfig {
+  type: 'url' | 'project';           // Direct URL input vs Ant project selection
+  url?: string;                       // type='url': User-provided URL (e.g., http://localhost:8080)
+  projectId?: string;                 // type='project': Ant project ID
+  feature?: string;                   // type='project': Feature name
+  resolvedUrlKey?: string;            // type='project': Auto-computed urlKey for proxy routing
+}
+
 export interface PreviewState {
   // Identity
   tenantId: string;
@@ -41,6 +55,12 @@ export interface PreviewState {
   // Phase (single source of truth for UI state)
   phase: PreviewPhase;
   error?: string;                  // Error message when phase is 'error'
+  
+  // Project structure (auto-detected at preview start)
+  structureType?: PreviewStructureType;
+  
+  // Cross-project backend connection (user-configured via Preview Config UI)
+  linkedBackend?: LinkedBackendConfig;
   
   // nativeBasePath removed — all frameworks now use native base path via env var injection.
   // Kept as optional field for backward compat with existing Redis entries during rollout.
@@ -141,7 +161,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'linkedBackend'>>
   ): Promise<void>;
   
   /**

@@ -54,7 +54,8 @@ export type SetupFailureReasoning =
  */
 export type PreviewIssueReasoning =
   | SetupFailureReasoning
-  | 'api-base-missing';     // Fullstack: frontend API base not configurable for dynamic backend ports
+  | 'api-base-missing'          // Fullstack: frontend API base not configurable for dynamic backend ports
+  | 'cross-project-api-missing'; // Cross-project: frontend-only project without linked backend
 
 export type PreviewIssueSeverity = 'fatal' | 'warning';
 

@@ -48,9 +48,20 @@
 - Frontend MUST use it as a prefix for all API calls
 - Frontend MUST define its own API path structure (project-specific)
 
+### Scenarios
+
+| Scenario | How `VITE_API_BASE_URL` is resolved |
+|----------|--------------------------------------|
+| **Same-project** (fullstack/monorepo) | Auto-injected as `/{urlKey}` pointing to backend in same project |
+| **Cross-project** (frontend-only + separate backend) | Injected from Preview Config linkedBackend — either `/{backendUrlKey}` for Ant project, or direct URL |
+| **No backend** | Empty string (API calls go to current origin or fallback) |
+
+**Constraint**: Frontend code does NOT need to know which scenario applies. It reads `VITE_API_BASE_URL` and prepends it to API requests. The platform resolves the value.
+
 ### Why
 - Browser cannot reach server's internal network directly
 - Proxy handles routing to the correct backend port
+- Cross-project linking is transparent to frontend code
 
 ---
 
@@ -77,7 +88,7 @@
 | `VITE_BASE_PATH` | Vite frontends | Asset and route path prefix |
 | `NEXT_PUBLIC_BASE_PATH` | Next.js projects | basePath for SSR + CSR |
 | `ANT_BASE_PATH` | All frontends | Universal fallback |
-| `VITE_API_BASE_URL` | Fullstack frontends | Backend API routing path |
+| `VITE_API_BASE_URL` | Frontends with backend | Backend API routing path (same-project or cross-project) |
 | `PORT` | All packages | Dynamic port binding |
 
-See `preview-setup.md` for detailed configuration examples.
+See `preview-setup.md` for framework-specific base path configuration.

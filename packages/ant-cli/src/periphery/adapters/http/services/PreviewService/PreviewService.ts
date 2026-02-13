@@ -420,10 +420,17 @@ export class PreviewService {
       
       // 1. Detect project structure
       const structure = await this.structureDetector.detect(localPath);
-      logger.warn(`[Preview] Structure: packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
+      logger.warn(`[Preview] Structure: type=${structure.type}, packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
       
       if (structure.packages.length === 0) {
         throw new Error('No runnable packages found');
+      }
+      
+      // 1.1. Save structureType to Redis (auto-detect for Preview Config UI)
+      if (this.portRegistry) {
+        await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, {
+          structureType: structure.type as any,
+        });
       }
       
       // 2. Install dependencies for all packages
@@ -461,8 +468,24 @@ export class PreviewService {
         }
         
         const extraEnv: Record<string, string | undefined> = {};
-        if (pkg.type === 'frontend' && backendPort) {
-          extraEnv.VITE_API_BASE_URL = `/${toUrlKey(serverKey)}`;
+        if (pkg.type === 'frontend') {
+          if (backendPort) {
+            // Same-project backend (fullstack/monorepo)
+            extraEnv.VITE_API_BASE_URL = `/${toUrlKey(serverKey)}`;
+          } else {
+            // Check for cross-project linkedBackend from Preview Config
+            const existingState = this.portRegistry 
+              ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature) 
+              : null;
+            const linkedBackend = existingState?.linkedBackend;
+            if (linkedBackend?.type === 'project' && linkedBackend.resolvedUrlKey) {
+              extraEnv.VITE_API_BASE_URL = `/${linkedBackend.resolvedUrlKey}`;
+              logger.info(`[Preview] Cross-project API base: /${linkedBackend.resolvedUrlKey}`, { component: 'PreviewService' });
+            } else if (linkedBackend?.type === 'url' && linkedBackend.url) {
+              extraEnv.VITE_API_BASE_URL = linkedBackend.url;
+              logger.info(`[Preview] Direct URL API base: ${linkedBackend.url}`, { component: 'PreviewService' });
+            }
+          }
         }
         
         const childProcess = this.processSpawner.spawn(pkg, pkgPort, {
@@ -486,6 +509,11 @@ export class PreviewService {
       if (structure.entry && this.portRegistry) {
         const backendPort = packagePorts.find(p => p.type === 'backend')?.port;
         
+        // Preserve linkedBackend from existing state (user-configured via Preview Config UI)
+        const existingPreviewState = this.portRegistry 
+          ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature) 
+          : null;
+        
         const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
           tenantId,
           userId,
@@ -496,6 +524,8 @@ export class PreviewService {
           phase: 'starting',
           port: structure.entry.port!,
           backendPort,
+          structureType: structure.type as any,
+          linkedBackend: existingPreviewState?.linkedBackend,
           host,
           podId: os.hostname(),
           packages: packagePorts,

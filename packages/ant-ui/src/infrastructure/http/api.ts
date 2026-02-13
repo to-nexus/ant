@@ -320,6 +320,14 @@ export interface LogEntry {
   message: string;
 }
 
+export interface LinkedBackendConfig {
+  type: 'url' | 'project';
+  url?: string;
+  projectId?: string;
+  feature?: string;
+  resolvedUrlKey?: string;
+}
+
 export interface PreviewStatus {
   running: boolean;
   ready?: boolean;  // Health check result
@@ -334,6 +342,13 @@ export interface PreviewStatus {
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
   phase?: 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';  // Explicit phase from backend
   error?: string;  // Error message from backend (install failure, health check failure, etc.)
+  structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
+  linkedBackend?: LinkedBackendConfig | null;
+}
+
+export interface PreviewConfig {
+  structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
+  linkedBackend?: LinkedBackendConfig | null;
 }
 
 
@@ -1297,6 +1312,62 @@ export async function getPreviewStatus(projectId: string, feature?: string): Pro
     return await response.json();
   } catch (error) {
     console.error('Error getting preview status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get preview configuration (structureType, linkedBackend)
+ */
+export async function getPreviewConfig(projectId: string, feature?: string): Promise<PreviewConfig> {
+  try {
+    const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
+    const response = await authFetch(
+      `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/preview-config${featureParam}`
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get preview config: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error getting preview config:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update preview configuration (linkedBackend)
+ */
+export async function updatePreviewConfig(
+  projectId: string,
+  feature: string,
+  config: { linkedBackend?: LinkedBackendConfig | null }
+): Promise<{ success: boolean; linkedBackend?: LinkedBackendConfig }> {
+  try {
+    const response = await authFetch(
+      `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/preview-config`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          feature: feature || 'main',
+          linkedBackend: config.linkedBackend,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to update preview config: ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating preview config:', error);
     throw error;
   }
 }
