@@ -108,6 +108,10 @@ function buildRedirectChoice(parsed: any): ChoiceOptions {
       label: '전환',
       action: 'redirect'
     },
+    neutral: {
+      label: '현재 모드로 진행',
+      action: 'proceed'
+    },
     negative: {
       label: 'Dismiss',
       action: 'dismiss'

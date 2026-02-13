@@ -100,6 +100,7 @@ export interface MessageContent {
     choiceOptions?: {       // For triage_choice
       positive: { label: string; action: string };
       negative: { label: string; action: string };
+      neutral?: { label: string; action: string };
     };
     choiceSelected?: string;  // Selected action (after user choice)
     resolvedLabel?: string;   // Label to display after choice is made
