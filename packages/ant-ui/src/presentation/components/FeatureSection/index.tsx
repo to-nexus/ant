@@ -118,7 +118,6 @@ export function FeatureSection() {
         onFeatureChange={handleFeatureChange}
         onCreate={handleCreateFeature}
         onDelete={handleDeleteFeature}
-        onItemCreated={fetchFeatures}
         onPlayClick={startServer}
         onStopClick={stopServer}
         onSettingsClick={() => {

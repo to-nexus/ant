@@ -266,11 +266,17 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       console.log(`[QuickStart] Creating feature: ${featureName}`);
       await Promise.all([createFeature(projectId, featureName), delay(1000)]);
 
+      // ✅ Optimistic update: immediately add feature to store (prevents empty features on transition)
+      useStore.getState().addFeatureOptimistic(featureName);
+
       // Step: plan
       setActiveStep('plan');
       setSelectedAgent('planner');
       setSelectedJobType('plan');
-      setSelectedProject(projectId);
+      // ✅ Only call setSelectedProject if project changed (avoids destructive features reset)
+      if (useStore.getState().selectedProject !== projectId) {
+        setSelectedProject(projectId);
+      }
       await delay(150);
       setSelectedFeature(featureName);
       await delay(200);
