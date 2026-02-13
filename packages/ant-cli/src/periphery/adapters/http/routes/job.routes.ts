@@ -208,6 +208,16 @@ export function createJobRoutes(deps: {
         if (fs.existsSync(entry.path)) {
           const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
           if (data.state?.jobId && data.state?.interruption) {
+            // ✅ Guard against stale interruption: if taskQueue is empty and tasks
+            // were completed, the interruption is leftover from a recursion-limit
+            // retry that ultimately succeeded. Skip it — there's nothing to resume.
+            const taskQueueSize = data.state.taskQueue?.length || 0;
+            const completedCount = data.state.completedTasks?.length || 0;
+            if (taskQueueSize === 0 && completedCount > 0) {
+              console.log(`   ⚠️ Skipping stale interruption in ${entry.agent}/${entry.job}.json (0 tasks remaining, ${completedCount} completed)`);
+              continue;
+            }
+            
             jobType = entry.job;
             foundAgent = entry.agent;
             sessionJobId = data.state.jobId;

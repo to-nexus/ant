@@ -455,9 +455,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     console.log(`   Drain reason: ${result.drainReason}`);
   }
 
-  // ✅ If any tasks were paused due to recursion limit, save interrupted state.
-  // These tasks remain in remainingQueue (with interrupted=true) for resume.
-  if (result.hasInterruptedTasks && state.deps?.session && state.context.featureFolder) {
+  // ✅ If any tasks were paused due to recursion limit AND there are actually
+  // remaining tasks, save interrupted state for resume.
+  // IMPORTANT: If interrupted tasks were retried and completed (hasInterruptedTasks
+  // cleared by reportCompletion), this block is skipped entirely — no stale interruption.
+  // Even if hasInterruptedTasks is still true (edge case), only save if remainingQueue > 0.
+  const hasActualRemainingWork = result.remainingQueue.length > 0 || result.failedTasks.length > 0;
+  if (result.hasInterruptedTasks && hasActualRemainingWork && state.deps?.session && state.context.featureFolder) {
     try {
       const failedAsQueue = result.failedTasks.map(f => ({
         ...f.task,
@@ -497,6 +501,33 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       console.log(`💾 [ParallelOrchestrator] Saved interrupted state (recursion limit, ${result.remainingQueue.length} tasks remaining for resume)`);
     } catch (err) {
       console.warn(`⚠️ [ParallelOrchestrator] Failed to save interrupted state:`, err);
+    }
+  } else if (result.hasInterruptedTasks && !hasActualRemainingWork) {
+    // ✅ All interrupted tasks were retried and completed — clear any stale interruption
+    // from earlier checkpoints so cleanupJobState doesn't create a spurious "Task cancelled" card.
+    console.log(`💾 [ParallelOrchestrator] All interrupted tasks resolved (0 remaining) — clearing stale interruption from session`);
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'code',
+          {
+            state: {
+              completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
+              completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+              tokenUsage: result.tokenUsage,
+              estimatingTokenUsage: (state as any)._estimatingTokenUsage,
+              jobId: (state as any).jobId,
+              jobTiming: (state as any).jobTiming,
+              parallelMode: true,
+              interruption: null,  // ✅ Explicitly clear stale interruption
+            },
+          },
+        );
+      } catch (err) {
+        console.warn(`⚠️ [ParallelOrchestrator] Failed to clear stale interruption:`, err);
+      }
     }
   }
 
@@ -554,9 +585,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     tokenUsage: result.tokenUsage || (state as any).tokenUsage,
     interruption: result.hasInterruptedTasks ? {
       reason: 'recursion_limit',
-      message: `Task(s) paused: recursion limit reached during parallel execution`,
+      message: `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
       timestamp: new Date().toISOString(),
-      canResume: true,
+      canResume: result.remainingQueue.length > 0,
+      metadata: {
+        tasksRemaining: result.remainingQueue.length,
+        completedCount: result.completedTasks.length,
+      },
     } : undefined,
   } as any;
 }

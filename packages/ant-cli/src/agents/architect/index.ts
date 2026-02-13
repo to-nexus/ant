@@ -461,10 +461,16 @@ export async function architectAgent(
         const tasksRemaining = result.interruption?.metadata?.tasksRemaining || 0;
         
         let status: 'success' | 'paused' | 'partial';
+        let effectiveInterruption = result.interruption;
+        
         if (hasInterruption && tasksRemaining > 0) {
           status = 'paused';  // Interrupted with tasks remaining
         } else if (hasInterruption && tasksRemaining === 0) {
-          status = 'success';  // Interrupted but all tasks completed
+          status = 'success';  // Interrupted but all tasks completed (retried successfully)
+          // ✅ Clear interruption: all tasks completed despite earlier recursion limit.
+          // Without this, cleanupJobState finds the interruption and creates a
+          // spurious "Task cancelled" choice card even though everything succeeded.
+          effectiveInterruption = undefined;
         } else {
           status = 'success';  // Normal completion
         }
@@ -475,7 +481,7 @@ export async function architectAgent(
           job: 'code',
           reportFile: result.reportFile || '',
           filesAnalyzed: result.filesChanged || 0,
-          interruption: result.interruption,  // ✅ Return interruption details
+          interruption: effectiveInterruption,  // ✅ Only pass interruption when tasks actually remain
           message: (result.filesChanged || 0) > 0
             ? `${result.filesChanged} files changed. Review with 'git diff' and commit when ready.`
             : `No code changes generated. See report for plan and lessons.`
