@@ -56,6 +56,18 @@ export function FeatureSection() {
   // ✅ QuickStart entry for existing projects with no features
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
   
+  // ✅ Defensive: auto-refresh features when the section mounts with a project
+  // selected but an empty features list (e.g. after QuickStart transition or
+  // any other path where the fire-and-forget fetchFeatures inside
+  // setSelectedProject didn't complete in time).
+  useEffect(() => {
+    if (selectedProject && features.length === 0) {
+      fetchFeatures(selectedProject);
+    }
+  // Only run on mount and when selectedProject changes — not on every features update
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject]);
+
   // ✅ Track fix button click state
   const [fixButtonClicked, setFixButtonClicked] = useState(false);
 
