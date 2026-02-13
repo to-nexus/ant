@@ -93,13 +93,14 @@ function useChoiceCardState({ content, messageId, contentType, contentFilter, me
    * ✅ Multi-pod safe: metadataFilter ensures correct content is updated
    * when multiple contents share the same type (e.g., choice_card subtypes).
    */
-  const persistToBackend = useCallback(async (choiceAction: string, label: string) => {
+  const persistToBackend = useCallback(async (choiceAction: string, label: string, extraMetadata?: Record<string, any>) => {
     if (!selectedProject || !selectedFeature) return;
     try {
       await submitChoiceDismiss(
         selectedProject, selectedFeature,
         contentType, choiceAction, label,
-        metadataFilter
+        metadataFilter,
+        extraMetadata
       );
     } catch (error) {
       console.warn('[ChoiceCard] dismiss-choice API failed (non-blocking):', error);
@@ -1038,7 +1039,7 @@ function ClarifyingVariant({ content, messageId }: { content: MessageContent; me
         updateChatMessage(messageId, { contents: updatedContents });
       }
     }
-    await cardState.persistToBackend('submitted', label);
+    await cardState.persistToBackend('submitted', label, { resolvedAnswers });
 
     try {
       clearPendingClarify();

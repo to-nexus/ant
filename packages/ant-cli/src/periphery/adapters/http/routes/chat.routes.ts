@@ -401,7 +401,7 @@ export function createChatRoutes(deps: {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const userContext = extractUserContext(req);
-    const { contentType, choiceAction, resolvedLabel, metadataFilter } = req.body || {};
+    const { contentType, choiceAction, resolvedLabel, metadataFilter, extraMetadata } = req.body || {};
 
     if (!contentType || !choiceAction || !resolvedLabel) {
       return res.status(400).json({ error: 'contentType, choiceAction, and resolvedLabel are required' });
@@ -413,7 +413,7 @@ export function createChatRoutes(deps: {
           projectId,
           featureName,
           contentType,
-          { choiceSelected: choiceAction, resolvedLabel },
+          { choiceSelected: choiceAction, resolvedLabel, ...(extraMetadata || {}) },
           userContext,
           metadataFilter || undefined
         );
