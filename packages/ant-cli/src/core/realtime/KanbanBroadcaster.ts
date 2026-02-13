@@ -109,6 +109,32 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Clear the estimating activity label and broadcast the cleared state.
+   * Called when the graph terminates without producing tasks (e.g., triage → __end__).
+   */
+  clearEstimatingActivity(): void {
+    if (!this.estimatingLabel) return; // Already cleared, nothing to do
+    
+    this.estimatingLabel = undefined;
+    this.estimatingStartedAt = undefined;
+    this.estimatingNodeId = undefined;
+    console.log(`[KanbanBroadcaster] 🧹 Estimating activity cleared`);
+    
+    // Broadcast immediately so frontend removes the loading banner
+    this.broadcastKanbanUpdate(
+      this.jobId,
+      [],
+      [],
+      [],
+      this.cachedRecursionCount,
+      this.cachedRecursionLimit,
+      this.cachedTokenUsage,
+    ).catch(err => {
+      console.warn(`[KanbanBroadcaster] Failed to broadcast cleared activity:`, err.message);
+    });
+  }
+
+  /**
    * Update job-level token usage and re-broadcast if in estimating mode.
    * Called after accumulateTokenUsage() during estimating phase nodes
    * (triage, detectEnvironment, decompose) so the frontend badge updates in real-time.

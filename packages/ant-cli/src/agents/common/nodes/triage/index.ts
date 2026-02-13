@@ -247,6 +247,17 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     }
   }
   
+  // ✅ Clear estimating activity when triage won't proceed to generate
+  // (ask, redirect, blocked all route to __end__ — no tasks will be created)
+  const willTerminate = 
+    triageResult.intent === 'ask' ||
+    triageResult.workStatus === 'redirect' ||
+    triageResult.workStatus === 'blocked';
+  
+  if (willTerminate && (state as any).deps?.kanbanUpdate?.clearEstimatingActivity) {
+    (state as any).deps.kanbanUpdate.clearEstimatingActivity();
+  }
+  
   // ✅ Record phase timing
   const _phaseTimings = { ...((state as any)._phaseTimings || {}), triage: Date.now() - phaseStart };
   
