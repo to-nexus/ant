@@ -11,6 +11,7 @@ export interface ExecuteCodeJobOptions {
   cwd?: string;
   overrideDirective?: string;  // ✅ Chat input as directive
   chatSource?: boolean;        // ✅ Flag for Chat SSE
+  skipTriage?: boolean;        // ✅ Skip triage node (after proceed choice)
 }
 
 export interface JobExecution {
@@ -29,7 +30,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     mode = 'generate',
     language = 'en',
     overrideDirective,  // ✅ Chat input as directive
-    chatSource          // ✅ Flag for Chat SSE
+    chatSource,         // ✅ Flag for Chat SSE
+    skipTriage          // ✅ Skip triage (after proceed choice)
   } = options;
   
   // ✅ Feature name is required
@@ -93,7 +95,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     mode,
     language,
     overrideDirective,  // ✅ Pass to API
-    chatSource           // ✅ Pass to API
+    chatSource,          // ✅ Pass to API
+    skipTriage           // ✅ Pass to API
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);

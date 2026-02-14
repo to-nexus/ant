@@ -85,6 +85,7 @@ export function createInitialPlanState(params: {
   deps?: PlanGraphState['deps'];
   _httpJobId?: string;
   chatSource?: boolean;
+  skipTriage?: boolean;
 }): PlanGraphState {
   return {
     directive: params.directive,
@@ -102,6 +103,7 @@ export function createInitialPlanState(params: {
     currentJob: 'plan',
     overrideDirective: params.directive,
     chatSource: params.chatSource,
+    skipTriage: params.skipTriage,
     // Dependencies
     deps: params.deps,
     _httpJobId: params._httpJobId,

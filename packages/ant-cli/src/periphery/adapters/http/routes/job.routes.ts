@@ -54,7 +54,7 @@ export function createJobRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource } = req.body;
+      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage } = req.body;
       
       // Check if this feature already has a running job
       const existingJobId = await checkDuplicateJob(projectId, featureName);
@@ -81,6 +81,7 @@ export function createJobRoutes(deps: {
         enableEvaluation,
         overrideDirective,
         chatSource,
+        skipTriage,
         userContext
       };
       

@@ -414,6 +414,7 @@ export class RouteConfigurator {
         workspacePath: workspaceBasePath,  // Base path, not full project path
         overrideDirective: params.overrideDirective,
         chatSource: params.chatSource,
+        skipTriage: params.skipTriage,
         inputFile: params.inputFile,
         isResume: params.isResume ?? !!params.jobId,
         originalJobId: params.jobId

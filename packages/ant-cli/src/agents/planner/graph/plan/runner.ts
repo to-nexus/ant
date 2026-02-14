@@ -20,6 +20,7 @@ export interface PlanRunnerParams {
   mode?: 'generate' | 'refine';
   isResume?: boolean;
   chatSource?: boolean;
+  skipTriage?: boolean;
   deps?: PlanGraphState['deps'];
   _httpJobId?: string;
 }
@@ -64,6 +65,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     mode: params.mode,
     isResume: params.isResume,
     chatSource: params.chatSource,
+    skipTriage: params.skipTriage,
     deps: params.deps,
     _httpJobId: params._httpJobId,
   });
@@ -72,10 +74,17 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   
   // ✅ Initialize JobTiming on KanbanBroadcaster (same as architect)
   // This enables the elapsed time badge on the task board header
-  if (params._httpJobId && params.deps?.kanbanUpdate?.setJobTiming) {
+  // Hoisted to outer scope so timing can be finalized on all exit paths (completion, interruption, error)
+  let jobTimingRef: import('../../../common/graph/timing/JobTimingManager').JobTiming | undefined;
+  let JobTimingManagerRef: typeof import('../../../common/graph/timing/JobTimingManager').JobTimingManager | undefined;
+  const setJobTiming = params.deps?.kanbanUpdate?.setJobTiming;
+  
+  if (params._httpJobId && setJobTiming) {
     const { JobTimingManager } = await import('../../../common/graph/timing/JobTimingManager');
+    JobTimingManagerRef = JobTimingManager;
     const { jobTiming } = JobTimingManager.initializeNewJob(params._httpJobId);
-    params.deps.kanbanUpdate.setJobTiming(jobTiming);
+    jobTimingRef = jobTiming;
+    setJobTiming(jobTiming);
     
     // Send initial kanban update with recursion info (triggers badge display)
     if (params.deps.kanbanUpdate.updateTaskQueue) {
@@ -126,6 +135,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         }
       }
       
+      // ✅ FIX: Mark jobTiming as paused so ElapsedTimeBadge stops ticking
+      if (JobTimingManagerRef && jobTimingRef && setJobTiming) {
+        jobTimingRef = JobTimingManagerRef.pauseJob(jobTimingRef)!;
+        setJobTiming(jobTimingRef);
+      }
+      
       console.log('\n⏸️ Planner Agent paused (recursion limit)');
       console.log(`   Document length: ${generatedDocument?.length || 0} chars`);
       
@@ -151,6 +166,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     // Non-recursion-limit errors: cleanup and re-throw
     console.error(`❌ [Planner] Graph execution failed: ${error.message}`);
     
+    // ✅ FIX: Mark jobTiming as completed on error so ElapsedTimeBadge stops ticking
+    if (JobTimingManagerRef && jobTimingRef && setJobTiming) {
+      jobTimingRef = JobTimingManagerRef.completeJob(jobTimingRef)!;
+      setJobTiming(jobTimingRef);
+    }
+    
     if (chatAPI.hasActiveMessage()) {
       try {
         await chatAPI.finalizeMessage(true);
@@ -160,6 +181,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     }
     
     throw error;
+  }
+  
+  // ✅ FIX: Mark jobTiming as completed so ElapsedTimeBadge stops ticking
+  if (JobTimingManagerRef && jobTimingRef && setJobTiming) {
+    jobTimingRef = JobTimingManagerRef.completeJob(jobTimingRef)!;
+    setJobTiming(jobTimingRef);
   }
   
   console.log('\n✅ Planner Agent completed');

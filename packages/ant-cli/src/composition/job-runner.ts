@@ -54,6 +54,7 @@ interface JobParams {
   inputFile?: string;
   isResume?: boolean;
   originalJobId?: string;
+  skipTriage?: boolean;
   chatSource?: boolean;
 }
 
@@ -82,7 +83,8 @@ function getJobParams(): JobParams {
     inputFile: process.env.ANT_INPUT_FILE,
     isResume: process.env.ANT_IS_RESUME === 'true',
     originalJobId: process.env.ANT_ORIGINAL_JOB_ID,
-    chatSource: process.env.ANT_CHAT_SOURCE === 'true'
+    chatSource: process.env.ANT_CHAT_SOURCE === 'true',
+    skipTriage: process.env.ANT_SKIP_TRIAGE === 'true'
   };
 }
 
@@ -145,7 +147,8 @@ async function runJob(params: JobParams): Promise<void> {
       workspaceResolver,
       userContext,
       overrideDirective: params.overrideDirective,
-      chatSource: params.chatSource
+      chatSource: params.chatSource,
+      skipTriage: params.skipTriage
     });
     
     reportProgress('completed', 'Job completed successfully', 100);

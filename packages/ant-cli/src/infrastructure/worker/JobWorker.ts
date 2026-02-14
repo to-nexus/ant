@@ -338,6 +338,9 @@ export class JobWorker {
       if (payload.chatSource) {
         env.ANT_CHAT_SOURCE = 'true';
       }
+      if (payload.skipTriage) {
+        env.ANT_SKIP_TRIAGE = 'true';
+      }
       if (payload.inputFile) {
         env.ANT_INPUT_FILE = payload.inputFile;
       }

@@ -465,14 +465,14 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
         options.neutral.action as TriageChoiceAction
       );
 
-      // Handle proceed: continue with current agent/job
+      // Handle proceed: continue with current agent/job (skip triage to avoid loop)
       if (response.type === 'continue' && response.action === 'proceed') {
         const currentAgent = useStore.getState().selectedAgent;
         const currentJob = useStore.getState().selectedJobType;
         const label = '현재 모드로 진행';
         state.setLocalResolvedLabel(label);
         state.persistChoice(options.neutral.action, label);
-        await runJob(currentAgent, currentJob, response.directive);
+        await runJob(currentAgent, currentJob, response.directive, { skipTriage: true });
       }
     } catch (error) {
       console.error('[ChoiceCard:Triage] Neutral failed:', error);

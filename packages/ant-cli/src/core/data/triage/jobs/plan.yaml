@@ -50,6 +50,6 @@ modes:
       - Section expansion and detail addition
 
 redirect_signals:
-  to_design: User mentions UI design, system architecture, visual specification, or component design
-  to_code: User mentions code implementation, bug fixes, programming, or building features
+  to_design: User EXPLICITLY requests to create or generate design specification documents (UI spec, system design doc). Mentioning technology, backend, API, or architecture as part of PRD requirements is NOT a redirect signal.
+  to_code: User EXPLICITLY requests to write, implement, or fix source code files. Describing implementation requirements in a PRD context is NOT a redirect signal.
   to_learn: User mentions codebase analysis, indexing, or understanding existing code

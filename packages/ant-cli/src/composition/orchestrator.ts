@@ -43,8 +43,9 @@ export async function orchestrator(params: {
   userContext?: any;  // ✅ User context
   overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
   chatSource?: boolean;  // ✅ Flag for Chat SSE
+  skipTriage?: boolean;  // ✅ Skip triage node (after user selects "proceed" on redirect)
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage } = params;
 
   switch (agent) {
     case "architect": {
@@ -187,7 +188,7 @@ export async function orchestrator(params: {
           project || "default", 
           'design', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature, featurePath },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           jobId       // ✅ Pass jobId for real-time Kanban and resume
@@ -236,7 +237,7 @@ export async function orchestrator(params: {
           project || "default", 
           'code', 
           inputFile, 
-          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, feature, featurePath },
+          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           jobId              // ✅ Pass jobId for real-time updates and resume
@@ -297,6 +298,7 @@ export async function orchestrator(params: {
         featurePath: featurePath || '',
         isResume: !!(overrideDirective && jobId),  // continue endpoint sets both
         chatSource: chatSource,
+        skipTriage: skipTriage,
         deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate },
         _httpJobId: jobId,
       });
