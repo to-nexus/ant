@@ -39,8 +39,9 @@ export function useFeatureActions(
     
     console.log(`[useFeatureActions] 🆕 Creating feature: ${featureName}`);
     
-    // ✅ Create feature
-    await createFeature(selectedProject, featureName);
+    // ✅ Create feature (pass UI language for localized templates)
+    const language = useStore.getState().language;
+    await createFeature(selectedProject, featureName, language);
     
     // ✅ Optimistic update: immediately reflect in store (prevents race with fetchFeatures)
     addFeatureOptimistic(featureName);

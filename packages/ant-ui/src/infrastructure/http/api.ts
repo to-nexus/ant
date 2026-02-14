@@ -822,14 +822,14 @@ export async function fetchFeatures(projectId: string): Promise<Feature[]> {
   }
 }
 
-export async function createFeature(projectId: string, featureName: string): Promise<void> {
+export async function createFeature(projectId: string, featureName: string, language?: string): Promise<void> {
   try {
     const response = await authFetch(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/features`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ featureName }),
+      body: JSON.stringify({ featureName, language }),
     });
     
     if (!response.ok) {

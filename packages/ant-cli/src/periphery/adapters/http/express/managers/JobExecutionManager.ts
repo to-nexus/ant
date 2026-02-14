@@ -199,7 +199,7 @@ export class JobExecutionManager {
       PATH: ensuredPath,
       HOME: process.env.HOME || '/tmp',
       USER: process.env.USER || 'ant',
-      LANG: process.env.LANG || 'en_US.UTF-8',
+      LANG: 'en_US.UTF-8',
       NODE_ENV: process.env.NODE_ENV || 'production',
       ANT_JOB_ID: jobId,
       ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.PORT || '4100'}`,

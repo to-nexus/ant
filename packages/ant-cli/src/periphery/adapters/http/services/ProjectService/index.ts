@@ -93,8 +93,8 @@ export class ProjectService {
     return this.featureCrud.listFeatures(projectId, userContext);
   }
   
-  async createFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
-    return this.featureCrud.createFeature(projectId, featureName, userContext);
+  async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string): Promise<void> {
+    return this.featureCrud.createFeature(projectId, featureName, userContext, language);
   }
   
   async deleteFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
