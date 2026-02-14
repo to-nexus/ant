@@ -25,10 +25,18 @@ Determine the **intent** of the directive by analyzing the **action verbs**:
 
 ### 2. Environment Detection
 
-- **frontend**: UI, components, pages, styling, client-side, React, Vue, etc.
-- **backend**: API, database, server, business logic, Node.js, Express, etc.
+- **frontend**: UI, components, pages, styling, client-side
+- **backend**: API, database, server, business logic
 - **fullstack**: Both frontend and backend components
 - **unknown**: Unclear or non-code tasks
+
+**Observation Priority:**
+
+1. If the directive explicitly specifies the environment scope, that is the final answer.
+2. If design documents exist, observe the **Design Document Availability** section. The categories of documents that are present define the current work scope. Do NOT assume a missing category means "not yet created" — absence itself signals that tier is outside the current scope.
+3. PRD describes the overall project and may cover a broader scope than the current workspace. Do NOT infer environment from PRD alone when design documents are present.
+
+⚠️ **Blind Spot**: A PRD may describe multiple tiers, but if the corresponding design document for a tier is absent in this workspace, that tier is out of scope for this job.
 
 ---
 

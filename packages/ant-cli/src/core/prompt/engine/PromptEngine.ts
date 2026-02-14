@@ -332,10 +332,22 @@ export class PromptEngine {
       ? parts.join('\n\n────────────────────────────────────────\n\n')
       : '';
     
+    // ✅ Build design document availability metadata for environment detection
+    let designDocsMeta = '';
+    if (designDocs) {
+      const lines: string[] = [];
+      lines.push(`- fe-system-design: ${designDocs.feDesign ? 'present' : 'absent'}`);
+      lines.push(`- be-system-design: ${designDocs.beDesign ? 'present' : 'absent'}`);
+      lines.push(`- api-contract: ${designDocs.apiContract ? 'present' : 'absent'}`);
+      lines.push(`- system-design (unified): ${designDocs.unifiedDesign ? 'present' : 'absent'}`);
+      designDocsMeta = lines.join('\n');
+    }
+    
     // ✅ Uses phases/detect/base.md which includes {{> code/phases/detect/rules}}
     return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
       designDocs: designDocsContent,
+      designDocsMeta,
       profile,
       prdSpec: prdSpec || ''
     });

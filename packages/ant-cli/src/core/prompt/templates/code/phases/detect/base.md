@@ -19,6 +19,12 @@ Your analysis will determine the entire workflow strategy.
 {{prdSpec}}
 {{/if}}
 
+{{#if designDocsMeta}}
+## Design Document Availability
+
+{{designDocsMeta}}
+{{/if}}
+
 {{#if designDocs}}
 ## Design Documents
 
