@@ -41,6 +41,11 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
   // Use a ref to track the last pinned value to avoid unnecessary updates
   const lastPinnedRef = useRef<string | null>(null);
   const initialScrollDone = useRef(false);
+  
+  // ✅ Auto-scroll: track whether user is at bottom for content-resize scrolling
+  const isAtBottomRef = useRef(true);
+  // Track previous state to detect content changes within existing messages
+  const prevScrollStateRef = useRef({ msgLen: 0, contentsLen: 0 });
 
   // ✅ Calculate pinned message (stable function, no dependencies)
   const calculatePinnedMessage = useCallback(() => {
@@ -222,6 +227,55 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     }
   }, [messages.length]);
 
+  // ✅ followOutput callback: use 'auto' (instant) for reliable bottom-pinning.
+  // 'smooth' can overshoot/undershoot when items resize during the animation.
+  const handleFollowOutput = useCallback((isAtBottom: boolean) => {
+    return isAtBottom ? 'auto' : false;
+  }, []);
+
+  // ✅ Track at-bottom state for content-resize scrolling
+  const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+    isAtBottomRef.current = atBottom;
+  }, []);
+
+  // ✅ Detect new content blocks within the last message (e.g., choice cards appearing
+  // during streaming). followOutput only triggers on data-length changes (new messages),
+  // not on item-height changes within existing messages.
+  const lastMsg = messages[messages.length - 1];
+  const lastMsgContentsLen = lastMsg?.contents?.length ?? 0;
+
+  useEffect(() => {
+    const prev = prevScrollStateRef.current;
+    const isNewMessage = messages.length !== prev.msgLen;
+    // Content grew within the same last message (not a new message)
+    const isNewContentInLastMsg = !isNewMessage && lastMsgContentsLen > prev.contentsLen;
+
+    // Always update tracking state
+    prevScrollStateRef.current = { msgLen: messages.length, contentsLen: lastMsgContentsLen };
+
+    if (isNewContentInLastMsg && initialScrollDone.current && isAtBottomRef.current) {
+      const scrollToEnd = () => {
+        virtuosoRef.current?.scrollToIndex({
+          index: messages.length - 1,
+          align: 'end',
+          behavior: 'auto',
+        });
+      };
+
+      // Multiple attempts: RAF for immediate layout, then retries for async rendering
+      // (e.g., choice cards, images, or complex components that render in stages)
+      const rafId = requestAnimationFrame(scrollToEnd);
+      const t1 = setTimeout(scrollToEnd, 50);
+      const t2 = setTimeout(scrollToEnd, 200);
+
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+  }, [lastMsgContentsLen, messages.length]);
+
   // ✅ Item content with ref registration
   const itemContent = useCallback((index: number, message: ChatMessage) => {
     return (
@@ -271,8 +325,11 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       data={messages}
       style={{ height: '100%' }}
       initialTopMostItemIndex={messages.length - 1}
-      followOutput="smooth"
+      followOutput={handleFollowOutput}
       alignToBottom={true}
+      atBottomThreshold={100}
+      atBottomStateChange={handleAtBottomStateChange}
+      increaseViewportBy={{ top: 0, bottom: 200 }}
       itemContent={itemContent}
       components={{ Footer }}
     />

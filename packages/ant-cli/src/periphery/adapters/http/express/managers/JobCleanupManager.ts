@@ -233,12 +233,28 @@ export class JobCleanupManager {
             });
           } else if (sessionData.state.interruption) {
             // ✅ Fallback: Session already has interruption (saved by saveCheckpoint in runner.ts)
-            // Use it as the effective interruption for downstream processing (chat message, etc.)
-            interruptionReason = sessionData.state.interruption;
-            logger.info(`Using existing session interruption: ${interruptionReason?.reason}`, { 
-              component: 'JobCleanupManager', 
-              jobId 
-            });
+            // Use it ONLY if it belongs to the current job (has matching jobId or was saved
+            // very recently). Without this guard, a stale interruption from a PREVIOUS job
+            // (e.g., user_stopped) gets reused when the new job completes successfully,
+            // causing a spurious "cancelled" chat message.
+            const sessionInterruption = sessionData.state.interruption;
+            const sessionJobId = sessionData.state.jobId;
+            const isCurrentJobInterruption = sessionJobId === jobId;
+            
+            if (isCurrentJobInterruption) {
+              interruptionReason = sessionInterruption;
+              logger.info(`Using existing session interruption: ${interruptionReason?.reason}`, { 
+                component: 'JobCleanupManager', 
+                jobId 
+              });
+            } else {
+              // Stale interruption from a previous job — clear it
+              logger.info(`Clearing stale session interruption: ${sessionInterruption?.reason} (session jobId=${sessionJobId}, current jobId=${jobId})`, { 
+                component: 'JobCleanupManager', 
+                jobId 
+              });
+              sessionData.state.interruption = undefined;
+            }
           }
           
           // Write updated session (atomic: temp file + rename to prevent corruption)

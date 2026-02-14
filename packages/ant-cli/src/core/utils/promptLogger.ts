@@ -38,7 +38,7 @@ export interface PromptLogEntry {
 export interface PromptLoggerOptions {
   featurePath: string;
   jobId: string;
-  jobType: 'design' | 'code';
+  jobType: 'design' | 'code' | 'plan';
 }
 
 /**
@@ -52,7 +52,8 @@ export class PromptLogger {
 
   constructor(options: PromptLoggerOptions) {
     this.options = options;
-    this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'prompts');
+    const agent = options.jobType === 'plan' ? 'planner' : 'architect';
+    this.logDirPath = getSessionDebugDir(options.featurePath, agent, 'prompts');
     this.logFilePath = path.join(
       this.logDirPath,
       `prompt-${options.jobType}-${options.jobId}.md`
@@ -262,7 +263,7 @@ export function getPromptLogger(options: PromptLoggerOptions): PromptLogger {
 /**
  * Clear logger instance (call when job completes)
  */
-export function clearPromptLogger(jobType: 'design' | 'code', jobId: string): void {
+export function clearPromptLogger(jobType: 'design' | 'code' | 'plan', jobId: string): void {
   const key = `${jobType}-${jobId}`;
   loggerInstances.delete(key);
 }
@@ -284,7 +285,7 @@ export function clearPromptLogger(jobType: 'design' | 'code', jobId: string): vo
 export async function logPrompt(
   featurePath: string,
   jobId: string,
-  jobType: 'design' | 'code',
+  jobType: 'design' | 'code' | 'plan',
   nodeId: string,
   promptLength: number,
   options?: {

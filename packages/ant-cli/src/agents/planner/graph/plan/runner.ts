@@ -2,6 +2,12 @@
  * Plan Graph Runner
  * 
  * Entry point for running Plan LangGraph.
+ * 
+ * ✅ Resume Architecture (aligned with Design/Code Runner):
+ * - Loads session state BEFORE graph invoke
+ * - Sets isResume flag if interruption found in session
+ * - Restores: directive, overrideDirective, tokenUsage
+ * - Saves directive EARLY (before graph invoke) for crash safety
  */
 
 import * as path from 'path';
@@ -11,6 +17,7 @@ import { PlanGraphState, createInitialPlanState } from './state';
 import { WorkspaceState } from '../../../common/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { setPlannerWorkspaceFeaturePath, setPlannerFileTreeUpdate } from '../tools';
+import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../../composition/gracefulShutdown';
 
 export interface PlanRunnerParams {
   directive: string;
@@ -72,6 +79,120 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   
   const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '200', 10);
   
+  // ✅ Resolve project/feature identifiers for session operations
+  const projectId = params.deps?.session?.projectId || process.env.ANT_PROJECT_ID || 'default';
+  const featureName = params.deps?.session?.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
+  
+  // ✅ CRITICAL: Check for resumable session BEFORE invoke
+  // If session has interruption, restore directive and state (aligned with Design/Code runner pattern)
+  if (params.deps?.session) {
+    try {
+      const session = await params.deps.session.load(projectId, featureName, 'plan');
+      const hasInterruption = Boolean(session?.state?.interruption);
+      
+      if (hasInterruption && session.state) {
+        console.log(`🔄 [PlanRunner] Resuming from interrupted session`);
+        
+        // ✅ Set isResume flag
+        initialState.isResume = true;
+        
+        // ✅ Restore directive from session
+        // IMPORTANT: Only set `directive`, NOT `overrideDirective`.
+        // If we set overrideDirective, the resolve node interprets it as a NEW user message
+        // and appends it to conversation — duplicating the original directive.
+        // overrideDirective should only come from /continue endpoint (genuinely new input).
+        const savedDirective = session.state.overrideDirective || session.state.directive;
+        if (savedDirective && !initialState.directive) {
+          console.log(`🔄 [PlanRunner] Restoring directive from session (${savedDirective.substring(0, 60)}...)`);
+          initialState.directive = savedDirective;
+          // ✅ Leave initialState.overrideDirective as-is (empty from params)
+          // This prevents resolve from re-appending the directive to conversation
+        }
+        
+        // ✅ Restore chatSource from session
+        if (session.state.chatSource !== undefined) {
+          initialState.chatSource = session.state.chatSource;
+        }
+        
+        // ✅ Restore tokenUsage from session
+        if (session.state.tokenUsage) {
+          initialState.tokenUsage = session.state.tokenUsage;
+        }
+        
+        // ✅ Restore conversationHistory from session (enables LLM to continue from exact interruption point)
+        if (session.state.conversationHistory?.length) {
+          console.log(`🔄 [PlanRunner] Restoring conversationHistory (${session.state.conversationHistory.length} entries)`);
+          initialState.conversationHistory = session.state.conversationHistory;
+        }
+        
+        // ✅ Clear stale interruption now that we've consumed it.
+        // Without this, JobCleanupManager's fallback logic finds the old interruption
+        // after the new job completes successfully and treats it as interrupted.
+        try {
+          await params.deps.session.updateArtifacts(projectId, featureName, 'plan', {
+            state: { ...session.state, interruption: undefined }
+          });
+          console.log(`🔄 [PlanRunner] Cleared stale interruption from session`);
+        } catch (clearErr) {
+          console.warn('⚠️ [PlanRunner] Failed to clear stale interruption:', clearErr);
+        }
+        
+      } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
+        // ✅ Early-interrupted session fallback (cancelled before generate completed)
+        // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
+        const savedDirective = session.state.directive || session.state.overrideDirective;
+        if (savedDirective && !initialState.directive) {
+          console.log(`🔄 [PlanRunner] Restoring directive from early-interrupted session`);
+          initialState.directive = savedDirective;
+          // ✅ Don't set overrideDirective (same reason as above)
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [PlanRunner] Failed to check for resumable session:', err);
+    }
+  }
+  
+  // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
+  if (!initialState.isResume && process.env.ANT_IS_RESUME === 'true') {
+    initialState.isResume = true;
+  }
+  
+  // ✅ Save directive to session EARLY (before graph invoke)
+  // Ensures directive survives early interruptions (triage stage, process kill).
+  // Also saves when overrideDirective is new (e.g., clarify answer submission),
+  // even if a directive already exists from a prior run.
+  if (params.deps?.session && params.featurePath && initialState.directive) {
+    try {
+      const session = await params.deps.session.load(projectId, featureName, 'plan');
+      const existingDirective = (session.state as any)?.directive;
+      const existingOverride = (session.state as any)?.overrideDirective;
+      const hasNewOverride = initialState.overrideDirective &&
+        initialState.overrideDirective !== existingOverride &&
+        initialState.overrideDirective !== existingDirective;
+
+      if (!existingDirective || hasNewOverride) {
+        await params.deps.session.updateArtifacts(projectId, featureName, 'plan', {
+          state: {
+            ...session.state,
+            directive: initialState.directive || existingDirective,
+            overrideDirective: initialState.overrideDirective || initialState.directive,
+            chatSource: params.chatSource,
+            mode: initialState.mode,
+            jobId: params._httpJobId || session.state?.jobId,
+            // ✅ Clear stale interruption from previous job.
+            // Without this, JobCleanupManager's fallback logic reuses the old
+            // interruption (e.g., user_stopped) even when the new job completes
+            // successfully, causing a spurious "cancelled" chat message.
+            interruption: undefined,
+          }
+        });
+        console.log(`💾 [PlanRunner] Saved directive to session (early checkpoint${hasNewOverride ? ', new override' : ''})`);
+      }
+    } catch (err) {
+      // Non-critical — graph will save again in generate node
+    }
+  }
+  
   // ✅ Initialize JobTiming on KanbanBroadcaster (same as architect)
   // This enables the elapsed time badge on the task board header
   // Hoisted to outer scope so timing can be finalized on all exit paths (completion, interruption, error)
@@ -98,6 +219,58 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       );
     }
   }
+  
+  // ✅ Create stateSnapshot: mutable shared reference for SIGTERM handler
+  // Graph nodes update this during execution so the SIGTERM handler can access latest state.
+  const stateSnapshot: NonNullable<PlanGraphState['deps']>['stateSnapshot'] = {
+    conversationHistory: [...initialState.conversationHistory],
+    directive: initialState.directive,
+    overrideDirective: initialState.overrideDirective,
+    tokenUsage: initialState.tokenUsage,
+  };
+  
+  // Inject stateSnapshot into deps for node access
+  if (initialState.deps) {
+    initialState.deps.stateSnapshot = stateSnapshot;
+  }
+  
+  // ✅ Register SIGTERM handler (aligned with code job's registerActiveOrchestrator pattern)
+  // On SIGTERM, saves directive/overrideDirective/conversationHistory from stateSnapshot to session.
+  // NOTE: Always saves state (not gated on conversationHistory.length) because directive and
+  // overrideDirective must be persisted even when the job is killed before generate runs
+  // (e.g., during triage after a clarify-answer submission).
+  registerActiveOrchestrator({
+    handleInterruption: async (reason) => {
+      console.log(`🛑 [PlanRunner] Handling interruption: ${reason}`);
+      if (params.deps?.session) {
+        try {
+          const session = await params.deps.session.load(projectId, featureName, 'plan');
+          const updates: any = {
+            ...session.state,
+            directive: stateSnapshot.directive || session.state?.directive,
+            overrideDirective: stateSnapshot.overrideDirective || stateSnapshot.directive || session.state?.overrideDirective,
+            tokenUsage: stateSnapshot.tokenUsage || session.state?.tokenUsage,
+            interruption: {
+              reason,
+              message: `Plan interrupted: ${reason}`,
+              timestamp: new Date().toISOString(),
+              canResume: true,
+            },
+          };
+          // Only override conversationHistory when non-empty (preserve existing from prior run)
+          if (stateSnapshot.conversationHistory?.length) {
+            updates.conversationHistory = stateSnapshot.conversationHistory;
+          }
+          await params.deps.session.updateArtifacts(projectId, featureName, 'plan', {
+            state: updates
+          });
+          console.log(`💾 [PlanRunner] Saved state on interruption (${stateSnapshot.conversationHistory?.length || 0} history entries)`);
+        } catch (err) {
+          console.warn('⚠️ [PlanRunner] Failed to save interruption state:', err);
+        }
+      }
+    }
+  });
   
   const chatAPI = getChatAPIClient();
   let finalState: PlanGraphState;
@@ -144,9 +317,46 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       console.log('\n⏸️ Planner Agent paused (recursion limit)');
       console.log(`   Document length: ${generatedDocument?.length || 0} chars`);
       
+      // ✅ Save session state on recursion limit (enables resume)
+      // Without this, the session only has what saveConversationToSession saved during
+      // the last completed generate cycle. The interruption must be persisted.
+      if (params.deps?.session) {
+        try {
+          const session = await params.deps.session.load(projectId, featureName, 'plan');
+          await params.deps.session.updateArtifacts(projectId, featureName, 'plan', {
+            state: {
+              ...session.state,
+              directive: initialState.directive,
+              overrideDirective: initialState.overrideDirective || initialState.directive,
+              chatSource: initialState.chatSource,
+              mode: initialState.mode,
+              tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
+              // ✅ Save latest conversationHistory from stateSnapshot for resume
+              conversationHistory: stateSnapshot?.conversationHistory?.length
+                ? stateSnapshot.conversationHistory
+                : session.state?.conversationHistory,
+              recursionCount: recursionLimit,  // Hit the limit
+              recursionLimit,
+              jobId: params._httpJobId || session.state?.jobId,
+              interruption: {
+                reason: 'recursion_limit',
+                message: `PRD editing paused: recursion limit reached (${recursionLimit} node executions)`,
+                timestamp: new Date().toISOString(),
+                canResume: true,
+                metadata: { recursionLimit },
+              },
+            }
+          });
+          console.log(`💾 [PlanRunner] Saved interruption state to session (recursion limit)`);
+        } catch (err) {
+          console.warn('⚠️ [PlanRunner] Failed to save interruption state:', err);
+        }
+      }
+      
       // Return with interruption — JobWorker sets status='paused',
       // then JobCleanupManager creates the Resume/Dismiss choice card automatically.
       // This matches the code job pattern (architectAgent → interruption → paused).
+      unregisterActiveOrchestrator();
       return {
         generatedDocument,
         mode: initialState.mode,
@@ -180,8 +390,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       }
     }
     
+    unregisterActiveOrchestrator();
     throw error;
   }
+  
+  // ✅ Unregister SIGTERM handler after successful completion
+  unregisterActiveOrchestrator();
   
   // ✅ FIX: Mark jobTiming as completed so ElapsedTimeBadge stops ticking
   if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {

@@ -17,7 +17,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
-import { MoreHorizontal, ArrowUpRight, Download, FileText, FolderPlus, Upload, Trash2 } from 'lucide-react';
+import { MoreHorizontal, ArrowUpRight, Download, FileText, FolderPlus, Upload, Trash2, CheckCircle } from 'lucide-react';
 import { Button } from '../../common/button';
 import { cn } from '@/shared/utils/design-system';
 
@@ -35,6 +35,7 @@ interface FileActionMenuProps {
   onUpload?: () => void;
   onDelete?: () => void;
   onClearContents?: () => void;
+  onMarkAllSeen?: () => void;
   /** Called when the dropdown opens or closes, so parent can highlight the active row */
   onOpenChange?: (isOpen: boolean) => void;
 }
@@ -53,6 +54,7 @@ export function FileActionMenu({
   onUpload,
   onDelete,
   onClearContents,
+  onMarkAllSeen,
   onOpenChange,
 }: FileActionMenuProps) {
   const { t } = useTranslation('artifacts');
@@ -91,6 +93,12 @@ export function FileActionMenu({
       if (items.length > 0) {
         items.push('separator');
       }
+    }
+
+    // Mark all as seen (directories with unseen files)
+    if (onMarkAllSeen) {
+      items.push({ icon: CheckCircle, label: t('actions.markAllSeen'), onClick: onMarkAllSeen });
+      items.push('separator');
     }
 
     // Send (not for sessions)
@@ -137,7 +145,7 @@ export function FileActionMenu({
     }
 
     return items;
-  }, [t, nodeType, nodePath, isSessionPath, isProtectedDir, isClearableDir, onCreateFile, onCreateDirectory, onUpload, onSend, onDownload, onDelete, onClearContents]);
+  }, [t, nodeType, nodePath, isSessionPath, isProtectedDir, isClearableDir, onCreateFile, onCreateDirectory, onUpload, onSend, onDownload, onDelete, onClearContents, onMarkAllSeen]);
 
   // Compute position: menu opens to the RIGHT of the trigger button, top-aligned.
   // If menu would overflow viewport bottom, flip vertically (bottom-align to button).

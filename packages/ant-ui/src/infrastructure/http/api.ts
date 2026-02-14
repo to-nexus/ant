@@ -212,6 +212,30 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
   });
 }
 
+/**
+ * Add a user message to the chat history.
+ * This persists the message to chat.json and broadcasts it via SSE
+ * so it appears in the chat UI immediately.
+ * 
+ * Must be called BEFORE executeCodeJob() to ensure the user message
+ * is visible in the chat before the LLM response starts streaming.
+ */
+export async function addChatUserMessage(
+  projectId: string,
+  featureName: string,
+  content: string,
+): Promise<string> {
+  const response = await authFetch(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/user-message`,
+    { method: 'POST', body: JSON.stringify({ content }) }
+  );
+  if (!response.ok) {
+    throw new Error('Failed to add user message to chat');
+  }
+  const data = await response.json();
+  return data.messageId;
+}
+
 // ========================================
 // Server Configuration (read from environment)
 // ========================================

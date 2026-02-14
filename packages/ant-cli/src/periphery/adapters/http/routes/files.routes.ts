@@ -6,6 +6,7 @@ import archiver from 'archiver';
 import { ProjectService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 
 /**
  * File operations (read, write, delete, upload)
@@ -218,6 +219,30 @@ export function createFilesRoutes(deps: {
         const filePath = path.join(baseDir, file.originalname);
         await fs.promises.writeFile(filePath, file.buffer);
         uploadedFiles.push(file.originalname);
+      }
+      
+      // Add unseen artifact notifications for uploaded files
+      if (deps.stateStore) {
+        try {
+          const featureRelPaths = uploadedFiles.map(f =>
+            path.join(dirPath, f).replace(/\\/g, '/')
+          );
+          await deps.stateStore.addUnseenArtifacts(
+            userContext.userId, projectId, featureName, featureRelPaths
+          );
+          const allUnseen = await deps.stateStore.getUnseenArtifacts(
+            userContext.userId, projectId, featureName
+          );
+          const channel = getRealtimeBroadcastChannel(
+            userContext.organizationId, userContext.userId
+          );
+          await deps.stateStore.publish(channel, {
+            projectId, featureName, type: 'unseenArtifacts',
+            data: { type: 'update', paths: allUnseen }, userContext,
+          });
+        } catch (e) {
+          console.warn(`[Upload] Failed to add unseen artifacts: ${(e as Error).message}`);
+        }
       }
       
       res.json({ 

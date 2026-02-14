@@ -53,7 +53,6 @@ export function SendSubTab() {
     preselected ? [{ path: preselected.path, type: preselected.type }] : []
   );
   const [srcFileTree, setSrcFileTree] = useState<FileNode[]>([]);
-  const [srcFeatures, setSrcFeatures] = useState<Array<{ featureId: string }>>([]);
   const [isAddingPath, setIsAddingPath] = useState(false);
 
   // Destination state (self)
@@ -109,14 +108,6 @@ export function SendSubTab() {
       }
     }).catch(() => {});
   }, []);
-
-  // Load source features
-  useEffect(() => {
-    if (!srcProjectId || !selfUserId) { setSrcFeatures([]); return; }
-    fetchMemberFeatures(selfUserId, srcProjectId).then(({ features }) => {
-      setSrcFeatures(features);
-    }).catch(() => setSrcFeatures([]));
-  }, [srcProjectId, selfUserId]);
 
   // Load source file tree (only show artifact dirs: inputs, outputs)
   useEffect(() => {
@@ -177,14 +168,6 @@ export function SendSubTab() {
       setSentRequests(requests);
     }).catch(() => {});
   }, [setSentRequests]);
-
-  // Handlers
-  const handleSrcProjectChange = (v: string) => {
-    setSrcProjectId(v); setSrcFeatureId(''); setSrcPaths([]); setIsAddingPath(false);
-  };
-  const handleSrcFeatureChange = (v: string) => {
-    setSrcFeatureId(v); setSrcPaths([]); setIsAddingPath(false);
-  };
 
   const handleAddPath = (path: string) => {
     const findType = (nodes: FileNode[], target: string): 'file' | 'directory' => {
@@ -314,15 +297,16 @@ export function SendSubTab() {
       {/* ── 1. Source ── */}
       <section>
         <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.title')}</h4>
-        {/* Project / Feature — one line */}
-        <InlineProjectFeature
-          projectValue={srcProjectId}
-          featureValue={srcFeatureId}
-          projectOptions={selfProjects.map(p => p.projectId)}
-          featureOptions={srcFeatures.map(f => f.featureId)}
-          onProjectChange={handleSrcProjectChange}
-          onFeatureChange={handleSrcFeatureChange}
-        />
+        {/* Project / Feature — fixed (determined by current selection) */}
+        <div className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+          <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 font-medium truncate max-w-[200px]" title={srcProjectId}>
+            {srcProjectId || '—'}
+          </span>
+          <span className="text-gray-400 dark:text-gray-500">/</span>
+          <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 font-medium truncate max-w-[200px]" title={srcFeatureId}>
+            {srcFeatureId || '—'}
+          </span>
+        </div>
 
         {/* Selected items + add button */}
         {srcProjectId && srcFeatureId && (

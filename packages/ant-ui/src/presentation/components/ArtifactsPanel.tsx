@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { useStore } from '@/domain/store';
@@ -23,9 +23,10 @@ interface DirectoryViewProps {
   onDownload?: (path: string) => void;
   isSessionSection?: boolean;
   unseenArtifacts?: string[];
+  onMarkSeen?: (paths: string[]) => void;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete, onSend, onDownload, isSessionSection, unseenArtifacts = [] }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete, onSend, onDownload, isSessionSection, unseenArtifacts = [], onMarkSeen }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
@@ -34,15 +35,56 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   const [activeMenuPath, setActiveMenuPath] = useState<string | null>(null);
   const { showConfirm } = useAlertModalContext();
 
-  const toggleDirectory = (path: string) => {
+  // Keep a ref to unseenArtifacts so cleanup can read the latest value
+  const unseenRef = useRef(unseenArtifacts);
+  unseenRef.current = unseenArtifacts;
+
+  // Helper: get direct-child unseen file paths under a directory
+  const getDirectChildUnseen = useCallback((dirPath: string): string[] => {
+    return unseenRef.current.filter(p => {
+      if (!p.startsWith(dirPath + '/')) return false;
+      const remainder = p.slice(dirPath.length + 1);
+      return !remainder.includes('/'); // direct children only
+    });
+  }, []);
+
+  const toggleDirectory = (dirPath: string) => {
     const newExpanded = new Set(expandedDirs);
-    if (newExpanded.has(path)) {
-      newExpanded.delete(path);
+    if (newExpanded.has(dirPath)) {
+      // COLLAPSING: mark direct child files as seen (user already saw them)
+      if (onMarkSeen) {
+        const childUnseen = getDirectChildUnseen(dirPath);
+        if (childUnseen.length > 0) {
+          onMarkSeen(childUnseen);
+        }
+      }
+      newExpanded.delete(dirPath);
     } else {
-      newExpanded.add(path);
+      // EXPANDING: red dots remain visible — user sees them first
+      newExpanded.add(dirPath);
     }
     setExpandedDirs(newExpanded);
   };
+
+  // Cleanup on unmount: mark expanded directories' direct children as seen
+  useEffect(() => {
+    return () => {
+      if (!onMarkSeen) return;
+      const allChildUnseen: string[] = [];
+      expandedDirs.forEach(dirPath => {
+        const children = unseenRef.current.filter(p => {
+          if (!p.startsWith(dirPath + '/')) return false;
+          const remainder = p.slice(dirPath.length + 1);
+          return !remainder.includes('/');
+        });
+        allChildUnseen.push(...children);
+      });
+      if (allChildUnseen.length > 0) {
+        onMarkSeen(allChildUnseen);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Helper: count unseen files under a directory path
   const getUnseenCount = (dirPath: string): number => {
@@ -153,6 +195,13 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                   isClearableDir={isClearable}
                   onSend={onSend}
                   onDownload={onDownload}
+                  onMarkAllSeen={isDirectory && unseenCount > 0 && onMarkSeen ? () => {
+                    // Mark ALL (recursive) unseen files under this directory as seen
+                    const allUnseen = unseenArtifacts.filter(p => p.startsWith(node.path + '/') || p === node.path);
+                    if (allUnseen.length > 0) {
+                      onMarkSeen(allUnseen);
+                    }
+                  } : undefined}
                   onCreateFile={node.type === 'directory' && onCreateFile ? () => {
                     setCreateType('file');
                     setShowCreateForm(isCreatingInThisDir ? null : node.path);
@@ -477,6 +526,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onSend={handleSend}
           onDownload={handleDownload}
           unseenArtifacts={unseenArtifacts}
+          onMarkSeen={markArtifactsSeen}
         />
         <DirectoryView
           title={t('panel.outputs')}
@@ -490,6 +540,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onSend={handleSend}
           onDownload={handleDownload}
           unseenArtifacts={unseenArtifacts}
+          onMarkSeen={markArtifactsSeen}
         />
         <DirectoryView
           title={t('panel.sessions')}

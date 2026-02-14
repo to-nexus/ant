@@ -40,25 +40,25 @@ A previous evaluation of this PRD exists. This is provided as **reference only**
 ```
 {{/if}}
 
-{{#if hasConversation}}
-## 5. Previous Conversation
+{{#if hasConversationSummary}}
+## 5. Prior Conversation Context
 
-The following is your conversation history with this user about this PRD.
-Use this context to understand the user's evolving intent and maintain consistency.
-The user's latest message is provided separately as the current input.
+{{{conversationSummary}}}
+
+{{/if}}
+{{#if hasConversation}}
+## {{#if hasConversationSummary}}6{{else}}5{{/if}}. Recent Conversation
 
 {{{conversationContext}}}
 {{else}}
 {{#if hasRecentTurns}}
 ## 5. Recent Session History
 
-Recent interactions for context (resolve ambiguous references):
-
 {{{recentTurnSummaries}}}
 {{/if}}
 {{/if}}
 
-## 6. Language
+## Language
 
 {{#if isKorean}}
 Respond and write the document in Korean (한국어).

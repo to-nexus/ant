@@ -17,6 +17,8 @@ interface ItemDropdownProps {
   onSelect: (itemName: string) => void;
   onCreate: (itemName: string) => Promise<void>;
   onDelete?: (itemName: string) => Promise<void>;
+  /** Pre-check before showing delete confirmation. Return a string (reason) to block deletion, or null to allow. */
+  canDelete?: (itemName: string) => string | null;
   onItemCreated?: () => void;
   placeholder?: string;
   inputPlaceholder?: string;
@@ -48,6 +50,7 @@ export function ItemDropdown({
   onSelect,
   onCreate,
   onDelete,
+  canDelete,
   onItemCreated,
   placeholder,
   inputPlaceholder,
@@ -70,7 +73,7 @@ export function ItemDropdown({
   const [isOpen, setIsOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { showConfirm } = useAlertModalContext();
+  const { showConfirm, showInfo } = useAlertModalContext();
   const { toast } = useToastContext();
 
   // Close dropdown when clicking outside
@@ -115,6 +118,15 @@ export function ItemDropdown({
 
   const handleDelete = async (itemName: string) => {
     if (!onDelete) return;
+
+    // Pre-check: block deletion if canDelete returns a reason (e.g. running job)
+    if (canDelete) {
+      const blockReason = canDelete(itemName);
+      if (blockReason) {
+        showInfo(blockReason, { type: 'warning', title: t('item.deleteTitle') });
+        return;
+      }
+    }
 
     showConfirm(
       <>

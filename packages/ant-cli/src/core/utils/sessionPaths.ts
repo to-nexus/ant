@@ -208,6 +208,7 @@ export const CANONICAL_FEATURE_DIRS: ReadonlyArray<string> = [
   'sessions/architect/debug/asks',
   'sessions/planner',
   'sessions/planner/debug',
+  'sessions/planner/debug/prompts',
 ];
 
 /** Set for O(1) lookup of canonical directories */

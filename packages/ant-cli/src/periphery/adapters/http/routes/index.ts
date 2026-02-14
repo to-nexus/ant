@@ -104,6 +104,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     router.use(createTransferRoutes({
       transferService: deps.transferService,
       stateStore: deps.stateStore,
+      workspaceResolver: deps.workspaceResolver,
     }));
   }
   
