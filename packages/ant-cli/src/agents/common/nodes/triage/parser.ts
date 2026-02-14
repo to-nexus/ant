@@ -46,19 +46,18 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
     if (result.intent === 'work') {
       result.workStatus = parsed.workStatus;
       
-      // Force redirect when LLM signals a different job/agent than current,
-      // BUT only when LLM did NOT explicitly say "proceed".
-      // When workStatus is "proceed", trust the LLM's decision — suggestedJob/redirectReason
-      // may be filled in as template artifacts without indicating an actual redirect.
+      // Force redirect when LLM signals a different job/agent than current.
+      // Safety net: even if LLM said "proceed", if suggestedJob differs from
+      // currentJob AND a redirectReason is provided, treat as redirect.
+      // This is safe because base.md template uses correct job IDs ("plan" not "planning"),
+      // so template artifacts will match currentJob (e.g., "code" === "code") and NOT trigger.
       const effectiveCurrentJob = currentJob || 'unknown';
       const shouldRedirect = 
         parsed.workStatus === 'redirect' ||
-        (parsed.workStatus !== 'proceed' &&
-         parsed.suggestedJob && 
+        (parsed.suggestedJob && 
          parsed.suggestedJob !== effectiveCurrentJob && 
          parsed.redirectReason) ||
-        (parsed.workStatus !== 'proceed' &&
-         parsed.suggestedAgent && parsed.suggestedAgent !== (currentAgent || 'architect'));
+        (parsed.suggestedAgent && parsed.suggestedAgent !== (currentAgent || 'architect'));
       
       // redirect
       if (shouldRedirect) {
