@@ -26,6 +26,7 @@ export interface StreamOrchestratorConfig {
   renderStrategy: IRenderStrategy;
   existingFiles: Set<string>;
   fileSystem?: any;  // ✅ FileSystemPort for disk checks (optional)
+  codebaseRel?: string;  // ✅ Codebase directory relative to workspace (for path normalization)
 }
 
 export class StreamOrchestrator {
@@ -38,7 +39,7 @@ export class StreamOrchestrator {
   constructor(config: StreamOrchestratorConfig) {
     this.parser = config.parser;
     this.renderStrategy = config.renderStrategy;
-    this.registry = new FileRegistry(config.existingFiles, config.fileSystem);
+    this.registry = new FileRegistry(config.existingFiles, config.fileSystem, config.codebaseRel);
     this.state = new StreamState();
   }
   
