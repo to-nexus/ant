@@ -19,7 +19,7 @@ import { Request, Response as ExpressResponse, NextFunction } from 'express';
 import { Readable } from 'stream';
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
-import { fromUrlKey, isUrlKey, parseUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
+import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 
 function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -131,7 +131,6 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               urlKey = cookieValue;
             } else {
               // Internal key (colon-separated) — convert to urlKey
-              const { toUrlKey } = require('../services/PreviewService/utils/serverKeyUtils');
               urlKey = toUrlKey(cookieValue);
             }
           } catch { /* invalid cookie value */ }

@@ -235,10 +235,17 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const _workerId = (state as any).workerId;
   const isWorkerContext = _workerId !== undefined && _workerId !== null;
   
+  // ✅ FIX: Skip session write when parallelOrchestrator already saved
+  // failure/interruption state. The orchestrator's updateArtifacts includes
+  // failed tasks, interruption details, and correct taskQueue. If the learn
+  // node overwrites it, all that data is lost (session.state = full replace).
+  const hasOrchestratorFailure = (state as any).interruption?.reason === 'tasks_failed'
+    || (state as any).interruption?.reason === 'recursion_limit';
+  
   let sessionId: string | undefined;
   let turnId: number | undefined;
   
-  if (state.deps?.session && !isWorkerContext) {
+  if (state.deps?.session && !isWorkerContext && !hasOrchestratorFailure) {
     // Load session to get sessionId
     const session = await state.deps.session.load(
       state.context.project,
@@ -479,9 +486,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // ✅ CRITICAL: Update Kanban when transitioning to learn (all tasks completed)
   // This clears the live snapshot and ensures UI shows completed state
   // Skip in worker context — orchestrator handles kanban for parallel mode
+  // ✅ FIX: Also skip when orchestrator already saved failure state — broadcasting
+  // empty kanban here would erase the failed tasks from the UI.
   const _learnWorkerId = (state as any).workerId;
   const _isLearnWorkerContext = _learnWorkerId !== undefined && _learnWorkerId !== null;
-  if (!_isLearnWorkerContext && state.deps?.kanbanUpdate && state._httpJobId) {
+  if (!_isLearnWorkerContext && !hasOrchestratorFailure && state.deps?.kanbanUpdate && state._httpJobId) {
     console.log(`\n📋 [Learn] Updating Kanban → All tasks completed`);
     console.log(`   Completed: ${state.completedTasksDetails?.length || 0} tasks`);
     console.log(`   Queue: 0 (all done)\n`);

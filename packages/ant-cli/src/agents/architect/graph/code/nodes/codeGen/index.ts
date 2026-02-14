@@ -17,6 +17,7 @@
  * - referenceFilter.ts: Reference context filtering
  */
 
+import path from 'node:path';
 import { ArchitectGraphState } from '../../state';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
@@ -211,8 +212,7 @@ export async function codeGen(
     if (!repoRootForWrites || !state.deps?.fileSystem) return 'codebase';
     const wsRoot = (state.deps.fileSystem as any).getWorkspaceRoot?.();
     if (!wsRoot) return 'codebase';
-    const p = require('path');
-    return p.relative(wsRoot, repoRootForWrites).replace(/\\/g, '/') || 'codebase';
+    return path.relative(wsRoot, repoRootForWrites).replace(/\\/g, '/') || 'codebase';
   })();
   
   // ✅ CRITICAL: Use filePaths instead of files array

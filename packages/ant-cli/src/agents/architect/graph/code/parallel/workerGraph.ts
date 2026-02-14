@@ -275,10 +275,8 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
   graph.addNode('learn', workerLearn as any);
 
   if (includeInstallValidate) {
-    const { installDeps: installDepsNode } = require('../nodes/installDeps');
-    const { runtimeValidate: runtimeValidateNode } = require('../nodes/runtimeValidate');
-    graph.addNode('installDeps', installDepsNode as any);
-    graph.addNode('runtimeValidate', runtimeValidateNode as any);
+    graph.addNode('installDeps', installDeps as any);
+    graph.addNode('runtimeValidate', runtimeValidate as any);
   }
 
   // Edges
