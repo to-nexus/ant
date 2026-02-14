@@ -486,7 +486,12 @@ export class JobWorker {
         if (isStopped && child.pid) {
           clearInterval(checkCancellation);
           child.kill('SIGTERM');
-          await this.stateStore.clearUserStopped(jobId);
+          // ✅ FIX: Do NOT clear the isUserStopped flag here.
+          // The RouteConfigurator's JOB_STATUS_UPDATES handler checks this flag
+          // to skip duplicate cleanupJobState calls. If we clear it here, the handler
+          // can't tell the job was user-stopped → calls cleanupJobState again →
+          // cross-process race condition → completed tasks may be lost.
+          // The flag is cleared by the RouteConfigurator after it checks it.
         }
       }, 1000);
 
