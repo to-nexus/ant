@@ -22,20 +22,23 @@
 
 ### Step 2: Determine Job Match (for work intent)
 
-**Principle**: Observe the **artifact the user requests to produce**, not keywords or topics mentioned.
+**CRITICAL**: Identify the TARGET of user's request, not just the action verb.
 
-| Requested Output Artifact | Belongs To |
-|---------------------------|------------|
+| Target of Request | Belongs To |
+|-------------------|------------|
 | UI specification documents (ui-spec, ui-tokens, ui-assets) | `design` |
-| System design documents (architecture spec, API spec) | `design` |
-| Source code files | `code` |
-| Codebase analysis reports | `learn` |
+| UI planning, design, visual specification | `design` |
+| System architecture, API design | `design` |
+| Source code files (.ts, .tsx, .js, .py, etc.) | `code` |
+| Code implementation, bug fixes | `code` |
+| Codebase analysis, indexing | `learn` |
 
-**Constraint**: Do NOT redirect based on **topic mentions alone**. A request that mentions technology, backend, APIs, or architecture is NOT automatically a `design` job. Observe what artifact the user wants produced:
-- If the output is a **PRD or product requirements document** that happens to describe technical aspects → current `plan` job handles it
-- If the output is a **design specification document** (the user explicitly asks to create/generate a design doc) → `design` job
+**Principle**: 
+- "Update UI spec" → `design` (target is design document)
+- "Update component code" → `code` (target is source code)
+- If user explicitly mentions "design" or "planning" → `design`
 
-⚠️ **Blind Spot — Plan vs Design boundary**: PRDs legitimately contain technology stack decisions, backend requirements, API overviews, and architecture context. Mentioning these topics inside a PRD request does NOT mean the user wants a system design document. Only redirect to `design` when the user **explicitly requests creating a design specification artifact**.
+⚠️ **Blind Spot — Plan vs Design boundary (plan job only)**: When the current job is `plan`, PRDs legitimately contain technology stack decisions, backend requirements, API overviews, and architecture context. Mentioning these topics inside a PRD request does NOT mean the user wants a system design document. Only redirect from `plan` to `design` when the user **explicitly requests creating a design specification artifact**. This constraint does NOT apply to other jobs (code, learn) — those should redirect to `design` normally when design/planning work is requested.
 
 ### Step 2.5: Determine Agent Match (for work intent)
 
@@ -97,10 +100,10 @@ When user input appears to be:
 ⚠️ **Artifact output = WORK**: Producing or modifying artifacts → `work`
 ⚠️ **Artifact explanation = WORK**: Explaining generated artifacts → `work` (job's explain mode)
 ⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → `ask`
-⚠️ **Observe the requested artifact, not topic keywords**: Redirect ONLY when the user explicitly requests producing a DIFFERENT type of artifact than the current job handles. Topic mentions alone (technology, backend, API, architecture) are NOT redirect signals.
-⚠️ **Plan job scope is broad**: PRDs may include technology decisions, backend requirements, API overviews. These are normal PRD content, NOT design job territory. Do NOT redirect from plan to design unless the user explicitly asks to create a design specification document.
-⚠️ **Target determines job**: Producing UI SPEC document = design, Producing SOURCE CODE = code, Producing PRD = plan
-⚠️ **Job mismatch = REDIRECT**: If the requested output artifact belongs to a different job → MUST `redirect`
+⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → `design` job. But if the output is a quality score → still `ask`
+⚠️ **Plan job exception**: When current job is `plan`, PRDs may include technology decisions, backend requirements, API overviews. These are normal PRD content, NOT design job territory. Do NOT redirect from plan to design unless the user explicitly asks to create a design specification document.
+⚠️ **Target determines job**: Modifying UI SPEC = design, Modifying SOURCE CODE = code, Producing PRD = plan
+⚠️ **Job mismatch = REDIRECT**: If request belongs to different job than current → MUST `redirect`
 ⚠️ **Agent mismatch = REDIRECT**: If request belongs to different agent (e.g., PRD writing to architect) → MUST `redirect` with `suggestedAgent`
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags
