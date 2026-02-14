@@ -128,7 +128,10 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         state._httpJobId,
         nextTask || null,
         remainingQueue,  // ✅ Exclude nextTask from queue
-        completedTasksDetails
+        completedTasksDetails,
+        state.recursionCount,   // ✅ FIX: Pass recursion tracking
+        state.recursionLimit,   // ✅ FIX: Pass recursion limit
+        (state as any).tokenUsage  // ✅ FIX: Pass job-level token usage to prevent badge reset
       );
     }
     
