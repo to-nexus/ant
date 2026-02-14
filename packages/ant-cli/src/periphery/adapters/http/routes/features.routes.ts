@@ -4,6 +4,7 @@ import * as path from 'path';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
 
 /**
  * Feature CRUD operations
@@ -12,6 +13,7 @@ export function createFeaturesRoutes(deps: {
   projectService: ProjectService;
   chatService?: ChatService;
   kanbanService?: KanbanService;
+  stateStore?: StateStorePort;
 }): Router {
   const router = Router();
   
@@ -71,6 +73,21 @@ export function createFeaturesRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
+      
+      // Block deletion if a job is actively running on this feature
+      if (deps.stateStore) {
+        const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+        const activeJob = jobs.find(j => ['running', 'queued', 'pending'].includes(j.status));
+        if (activeJob) {
+          res.status(409).json({
+            error: 'Feature has active job',
+            message: `Cannot delete feature while job is running (jobId: ${activeJob.jobId})`,
+            jobId: activeJob.jobId,
+            jobStatus: activeJob.status,
+          });
+          return;
+        }
+      }
       
       await deps.projectService.deleteFeature(projectId, featureName, userContext);
       
