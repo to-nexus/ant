@@ -120,6 +120,7 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   // 5. Load multi-turn conversation + recent session turns
   let conversation: ConversationEntry[] = [];
   let isConversationContinuation = false;
+  let conversationHistoryReset = false;
   let recentTurnSummaries: string[] | undefined;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
   try {
@@ -131,9 +132,15 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
       console.log(`   Conversation: ${conversation.length} entries loaded from session`);
     }
     
-    // 5b. If this is a continue (isResume + overrideDirective + existing conversation),
-    //     append the new user message to conversation
-    if (state.isResume && state.overrideDirective && conversation.length > 0) {
+    // 5b. If this is a conversation continuation, append the new user message.
+    //     Two triggers:
+    //       - Resume/Continue: isResume + overrideDirective  (from /continue endpoint)
+    //       - Chat follow-up:  chatSource + overrideDirective (from clarify answer submit or ChatInput)
+    //     Both require an existing conversation to append to.
+    const shouldContinueConversation = conversation.length > 0 && state.overrideDirective && (
+      state.isResume || state.chatSource
+    );
+    if (shouldContinueConversation) {
       conversation.push({
         role: 'user',
         content: state.overrideDirective,
@@ -141,6 +148,34 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
       });
       isConversationContinuation = true;
       console.log(`   Conversation: Appended new user message (now ${conversation.length} entries)`);
+      
+      // ✅ Save updated conversation to session immediately (crash safety).
+      // Without this, if the job is stopped before generate.ts saves, the appended
+      // user message is lost — causing the LLM to repeat clarifying questions on resume.
+      try {
+        const sessionWriteData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+        sessionWriteData.state = sessionWriteData.state || {};
+        sessionWriteData.state.conversation = conversation;
+        sessionWriteData.updatedAt = new Date().toISOString();
+        fs.writeFileSync(sessionPath, JSON.stringify(sessionWriteData, null, 2), 'utf-8');
+        console.log(`   Conversation: Persisted to session (crash-safe)`);
+      } catch (err: any) {
+        console.warn(`   ⚠️ Conversation: Failed to persist: ${err.message}`);
+      }
+    }
+    
+    // 5b-2. Resume without new directive: check if conversation has a pending user turn.
+    // This happens when the previous job was stopped after resolve appended the user's
+    // clarify answers but before generate could process them.
+    // conversationHistory from the prior run is stale (doesn't include answers),
+    // so we reset it to force generate.ts to use conversation's last user message.
+    if (!isConversationContinuation && state.isResume && conversation.length > 0) {
+      const lastEntry = conversation[conversation.length - 1];
+      if (lastEntry.role === 'user' && lastEntry.content) {
+        isConversationContinuation = true;
+        conversationHistoryReset = true;
+        console.log(`   Conversation: Resuming pending user turn (${conversation.length} entries)`);
+      }
     }
     
     // 5c. Load recent turn summaries (fallback context for non-conversation runs)
@@ -187,6 +222,10 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     recentTurnSummaries,
     conversation,
     isConversationContinuation,
+    // Reset stale conversationHistory when resuming a pending user turn.
+    // Without this, generate.ts uses the old [user, assistant] history instead of
+    // the conversation's last user message (clarify answers).
+    ...(conversationHistoryReset ? { conversationHistory: [] } : {}),
     mode,
     _uiLocale: uiLocale,
   };

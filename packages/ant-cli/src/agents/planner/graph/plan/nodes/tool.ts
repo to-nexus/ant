@@ -76,6 +76,34 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
     content: [{ type: 'tool_result', tool_use_id: pending.id, content: result }],
   });
   
+  // ✅ Checkpoint: save conversationHistory to session after tool execution.
+  // This is the most complete state point in the ReAct loop (tool_result included).
+  // Enables resume from exact point of interruption.
+  const session = state.deps?.session;
+  if (session) {
+    const pid = session.projectId || process.env.ANT_PROJECT_ID || 'default';
+    const fname = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
+    try {
+      const sessionData = await session.load(pid, fname, 'plan');
+      await session.updateArtifacts(pid, fname, 'plan', {
+        state: {
+          ...sessionData.state,
+          conversationHistory: updatedHistory,
+          tokenUsage: state.tokenUsage,
+        }
+      });
+      console.log(`💾 [Planner:Tool] Checkpoint saved (${updatedHistory.length} history entries)`);
+    } catch (err: any) {
+      console.warn(`⚠️ [Planner:Tool] Failed to save checkpoint: ${err.message}`);
+    }
+  }
+  
+  // ✅ Update stateSnapshot for SIGTERM handler access
+  if (state.deps?.stateSnapshot) {
+    state.deps.stateSnapshot.conversationHistory = updatedHistory;
+    state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
+  }
+  
   return {
     conversationHistory: updatedHistory,
     pendingToolCall: undefined,

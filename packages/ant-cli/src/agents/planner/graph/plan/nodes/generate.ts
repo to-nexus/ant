@@ -29,6 +29,8 @@ import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLa
 import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
+import { logPrompt } from '../../../../../core/utils/promptLogger';
+import { buildPlanContext } from '../utils/PlanContextBuilder';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Clarify Tag Parser
@@ -127,9 +129,12 @@ function buildSystemPrompt(state: PlanGraphState): string {
   const { base, rules } = loadPlanTemplates();
   
   // For conversation continuation: include prior turns as context (exclude last user msg)
-  const conversationForPrompt = state.isConversationContinuation && state.conversation?.length
+  // Uses PlanContextBuilder to apply sliding window — recent entries kept in detail,
+  // older entries compressed into a summary to prevent unbounded prompt growth.
+  const allButLast = state.isConversationContinuation && state.conversation?.length
     ? state.conversation.slice(0, -1)  // Last user message goes into messages array
     : [];
+  const { recentEntries, summary: conversationSummary } = buildPlanContext(allButLast);
   
   const basePrompt = base({
     isKorean: state.language === 'ko',
@@ -143,8 +148,10 @@ function buildSystemPrompt(state: PlanGraphState): string {
     hasRubric: !!state.rubricContent && !state.evalReport,
     recentTurnSummaries: state.recentTurnSummaries?.join('\n') || '',
     hasRecentTurns: (state.recentTurnSummaries?.length || 0) > 0,
-    conversationContext: formatConversationForPrompt(conversationForPrompt),
-    hasConversation: conversationForPrompt.length > 0,
+    conversationContext: formatConversationForPrompt(recentEntries),
+    hasConversation: recentEntries.length > 0,
+    conversationSummary: conversationSummary || '',
+    hasConversationSummary: !!conversationSummary,
   });
   
   return `${basePrompt}\n\n---\n\n${rules}`;
@@ -179,6 +186,37 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
   
   const systemPrompt = buildSystemPrompt(state);
+  
+  // ✅ Log prompt structure to debug directory (aligned with code/design agents)
+  if (state._httpJobId) {
+    try {
+      await logPrompt(
+        state.featurePath,
+        state._httpJobId,
+        'plan',
+        'generate',
+        systemPrompt.length,
+        {
+          templatePath: 'planner/plan/base',
+          usedTemplates: ['planner/plan/base', 'planner/plan/rules'],
+          injectedVariables: {
+            directive: state.directive || '',
+            mode: state.mode,
+            hasExistingDocument: !!state.existingDocument,
+            hasEvalReport: !!state.evalReport,
+            hasConversation: (state.conversation?.length || 0) > 0,
+            conversationEntries: state.conversation?.length || 0,
+            isConversationContinuation: !!state.isConversationContinuation,
+            isResume: !!state.isResume,
+            recursionCount,
+          },
+        }
+      );
+    } catch (err) {
+      // Non-critical — don't fail the graph
+      console.warn(`⚠️ [Planner:Generate] Failed to log prompt:`, err);
+    }
+  }
   
   // Build messages
   const messages: Array<{ role: string; content: any }> = [];
@@ -281,7 +319,15 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   const updatedHistory = [...state.conversationHistory];
   
   if (state.conversationHistory.length === 0) {
-    updatedHistory.push({ role: 'user', content: state.directive });
+    // Record the SAME message that was actually sent to the LLM (line 222-224).
+    // In continuation mode this is conversation's last user entry (e.g. clarify answers),
+    // not state.directive (which may be the original instruction).
+    // Without this, conversationHistory becomes inconsistent with what the LLM saw,
+    // causing wrong context on subsequent resume.
+    const recordedMessage = state.isConversationContinuation && state.conversation?.length
+      ? state.conversation[state.conversation.length - 1].content
+      : state.directive;
+    updatedHistory.push({ role: 'user', content: recordedMessage });
   }
   
   // Only process first tool call (standard pattern: Code/Design jobs do the same)
@@ -303,6 +349,13 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         { type: 'tool_use', id: toolCall.id, name: toolCall.name, input: toolCall.args },
       ],
     });
+    
+    // ✅ Update stateSnapshot for SIGTERM handler access (tool node will save full checkpoint)
+    if (state.deps?.stateSnapshot) {
+      state.deps.stateSnapshot.conversationHistory = updatedHistory;
+      state.deps.stateSnapshot.directive = state.directive;
+      state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
+    }
     
     return {
       conversationHistory: updatedHistory,
@@ -331,7 +384,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }
     
     // Save conversation with clarifying response (no PRD yet)
-    await saveConversationToSession(state, cleanedResponseText, undefined);
+    // Pass updatedHistory for conversationHistory persistence
+    const clarifyHistory = [...updatedHistory, { role: 'assistant', content: cleanedResponseText }];
+    await saveConversationToSession(state, cleanedResponseText, undefined, clarifyHistory);
     
     // Finalize message
     await chatAPI.finalizeMessage();
@@ -464,7 +519,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }
     
     // Save conversation to session (multi-turn persistence)
-    await saveConversationToSession(state, responseText, generatedDocument);
+    // Pass updatedHistory for conversationHistory persistence
+    const prdHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
+    await saveConversationToSession(state, responseText, generatedDocument, prdHistory);
     
     // Send PRD apply choice card
     try {
@@ -493,7 +550,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   // Save conversation even when no PRD was generated (e.g. clarifying response)
   if (!generatedDocument) {
-    await saveConversationToSession(state, responseText, undefined);
+    const textOnlyHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
+    await saveConversationToSession(state, responseText, undefined, textOnlyHistory);
   }
   
   // Finalize message (after choice card)
@@ -541,11 +599,16 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
  * 
  * On first run: adds user directive + assistant response.
  * On continuation: adds assistant response (user message was already appended by resolve).
+ * 
+ * Also saves conversationHistory (full LLM messages) for resume support.
+ * On resume, conversationHistory lets the LLM continue the ReAct loop from the exact point.
  */
 async function saveConversationToSession(
   state: PlanGraphState,
   responseText: string,
   generatedDocument: string | undefined,
+  /** Current conversationHistory including the latest assistant response */
+  currentConversationHistory?: Array<{ role: string; content: any }>,
 ): Promise<void> {
   const featurePath = state.featurePath;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
@@ -598,7 +661,26 @@ async function saveConversationToSession(
     }
     sessionData.state.conversation = updatedConversation;
     sessionData.state.jobId = state._httpJobId || sessionData.state.jobId;
+    // ✅ Save additional state for resume support (aligned with design/code learn node pattern)
+    sessionData.state.directive = state.directive;
+    sessionData.state.overrideDirective = state.overrideDirective;
+    sessionData.state.chatSource = state.chatSource;
+    sessionData.state.mode = state.mode;
+    sessionData.state.tokenUsage = state.tokenUsage;
+    sessionData.state.recursionCount = state.recursionCount;
+    sessionData.state.recursionLimit = state.recursionLimit;
+    // ✅ Save conversationHistory (full LLM ReAct messages) for resume
+    if (currentConversationHistory?.length) {
+      sessionData.state.conversationHistory = currentConversationHistory;
+    }
     sessionData.updatedAt = new Date().toISOString();
+    
+    // ✅ Update stateSnapshot for SIGTERM handler access
+    if (state.deps?.stateSnapshot) {
+      state.deps.stateSnapshot.conversationHistory = currentConversationHistory || state.conversationHistory;
+      state.deps.stateSnapshot.directive = state.directive;
+      state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
+    }
     
     // Write atomically (temp file + rename)
     const sessionDir = path.dirname(sessionPath);
@@ -607,7 +689,7 @@ async function saveConversationToSession(
     await fsPromises.writeFile(tmpPath, JSON.stringify(sessionData, null, 2), 'utf-8');
     await fsPromises.rename(tmpPath, sessionPath);
     
-    console.log(`💬 [Planner:Generate] Conversation saved (${updatedConversation.length} entries)`);
+    console.log(`💬 [Planner:Generate] Conversation saved (${updatedConversation.length} entries, ${currentConversationHistory?.length || 0} history)`);
   } catch (error: any) {
     console.warn(`⚠️ [Planner:Generate] Failed to save conversation: ${error.message}`);
   }

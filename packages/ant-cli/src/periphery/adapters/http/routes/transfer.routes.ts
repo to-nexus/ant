@@ -10,6 +10,8 @@
  */
 
 import { Router, Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ArtifactTransferService } from '../../../../infrastructure/workspace/ArtifactTransferService';
 import { extractUserContext } from './helpers/userContext';
 import { TRANSFER_ERROR_MESSAGES } from '../../../../core/types/transfer';
@@ -19,6 +21,34 @@ import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/re
 export interface TransferRoutesDeps {
   transferService: ArtifactTransferService;
   stateStore: RedisStateStore;
+  workspaceResolver?: any;  // For resolving feature paths (unseen artifact tracking)
+}
+
+/**
+ * Recursively collect all file paths under a directory (feature-relative).
+ */
+async function collectFilePaths(fullPath: string, featurePath: string): Promise<string[]> {
+  const results: string[] = [];
+  try {
+    const stat = await fs.promises.stat(fullPath);
+    if (stat.isFile()) {
+      results.push(path.relative(featurePath, fullPath).replace(/\\/g, '/'));
+    } else if (stat.isDirectory()) {
+      const entries = await fs.promises.readdir(fullPath, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(fullPath, entry.name);
+        if (entry.isFile()) {
+          results.push(path.relative(featurePath, entryPath).replace(/\\/g, '/'));
+        } else if (entry.isDirectory()) {
+          const sub = await collectFilePaths(entryPath, featurePath);
+          results.push(...sub);
+        }
+      }
+    }
+  } catch {
+    // Ignore errors (destination may not exist yet)
+  }
+  return results;
 }
 
 /**
@@ -38,7 +68,7 @@ function sendTransferError(res: Response, error: any): void {
 
 export function createTransferRoutes(deps: TransferRoutesDeps): Router {
   const router = Router();
-  const { transferService, stateStore } = deps;
+  const { transferService, stateStore, workspaceResolver } = deps;
 
   // ============================================
   // Self-Transfer (Immediate)
@@ -72,6 +102,35 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
         destination,
         mode,
       });
+
+      // Add unseen artifact notifications for transferred files
+      if (workspaceResolver && result.success) {
+        try {
+          const destFeaturePath = workspaceResolver.getFeaturePath(
+            userContext, destination.projectId, destination.featureId
+          );
+          const destFullPath = path.join(destFeaturePath, destination.path);
+          const transferredPaths = await collectFilePaths(destFullPath, destFeaturePath);
+          if (transferredPaths.length > 0) {
+            await stateStore.addUnseenArtifacts(
+              userContext.userId, destination.projectId, destination.featureId, transferredPaths
+            );
+            const allUnseen = await stateStore.getUnseenArtifacts(
+              userContext.userId, destination.projectId, destination.featureId
+            );
+            const channel = getRealtimeBroadcastChannel(
+              userContext.organizationId, userContext.userId
+            );
+            await stateStore.publish(channel, {
+              projectId: destination.projectId, featureName: destination.featureId,
+              type: 'unseenArtifacts',
+              data: { type: 'update', paths: allUnseen }, userContext,
+            });
+          }
+        } catch (e) {
+          console.warn(`📦 [Transfer] Failed to add unseen artifacts: ${(e as Error).message}`);
+        }
+      }
 
       res.json(result);
     } catch (error: any) {
@@ -216,6 +275,44 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
         });
       } catch {
         // Non-critical
+      }
+
+      // Add unseen artifact notifications for approved transfers
+      if (action === 'approve' && workspaceResolver) {
+        try {
+          const recipientUserContext = {
+            userId: result.recipient.userId,
+            organizationId: result.recipient.orgId,
+            workspacePath: '',
+          };
+          const destFeaturePath = workspaceResolver.getFeaturePath(
+            recipientUserContext, result.destination.projectId, result.destination.featureId
+          );
+          const destFullPath = path.join(destFeaturePath, result.destination.path);
+          const transferredPaths = await collectFilePaths(destFullPath, destFeaturePath);
+          if (transferredPaths.length > 0) {
+            await stateStore.addUnseenArtifacts(
+              result.recipient.userId, result.destination.projectId,
+              result.destination.featureId, transferredPaths
+            );
+            const allUnseen = await stateStore.getUnseenArtifacts(
+              result.recipient.userId, result.destination.projectId,
+              result.destination.featureId
+            );
+            const recipientChannel = getRealtimeBroadcastChannel(
+              result.recipient.orgId, result.recipient.userId
+            );
+            await stateStore.publish(recipientChannel, {
+              projectId: result.destination.projectId,
+              featureName: result.destination.featureId,
+              type: 'unseenArtifacts',
+              data: { type: 'update', paths: allUnseen },
+              userContext: recipientUserContext,
+            });
+          }
+        } catch (e) {
+          console.warn(`📦 [Transfer] Failed to add unseen artifacts for approved transfer: ${(e as Error).message}`);
+        }
       }
 
       res.json(result);

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Loader2, AlertCircle, Check, ArrowRight } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { createProject, createFeature } from '@/infrastructure/http/api';
+import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 
 function delay(ms: number) {
@@ -284,6 +284,11 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
 
       console.log(`[QuickStart] Starting plan job with directive: ${trimmed.substring(0, 50)}...`);
       setRunning(true, undefined, 'generate');
+      
+      // ✅ Add user message to chat history BEFORE starting job
+      // Without this, only the LLM response appears when transitioning to the main UI
+      await addChatUserMessage(projectId, featureName, trimmed);
+      
       const jobExecution = executeCodeJob({
         projectId,
         featureName,

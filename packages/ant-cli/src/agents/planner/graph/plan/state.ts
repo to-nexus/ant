@@ -59,6 +59,13 @@ export interface PlanGraphState {
     kanbanUpdate?: any;
     fileTreeUpdate?: any;
     workflowUpdate?: any;
+    /** Mutable shared reference for SIGTERM handler access to latest graph state */
+    stateSnapshot?: {
+      conversationHistory: Array<{ role: string; content: any }>;
+      directive?: string;
+      overrideDirective?: string;
+      tokenUsage?: TokenUsage;
+    };
   };
   
   // UI locale (auto-detected from directive)

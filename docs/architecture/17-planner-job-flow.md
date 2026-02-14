@@ -373,7 +373,122 @@ generate.ts post-stream:
 
 ---
 
-## 9. 평가와의 관계
+## 9. State Persistence & Resume
+
+### 9.1 개요
+
+Plan job은 Code/Design job과 달리 task 단위의 checkpoint 노드가 없다.
+대신 ReAct 루프(generate ⟷ tool)의 각 단계에서 `conversationHistory`를 세션에 저장하여,
+중단(SIGTERM, recursion limit) 후 정확한 지점에서 재개할 수 있다.
+
+| 관점 | Code Job | Plan Job |
+|------|----------|----------|
+| Checkpoint 노드 | `checkpoint.ts` (전용 노드) | 없음 (generate/tool 노드에서 직접) |
+| 저장 단위 | task-level (task 완료마다) | ReAct-loop-level (generate/tool 매 호출마다) |
+| 핵심 복원 필드 | taskQueue + conversationHistory | conversationHistory (full LLM messages) |
+| SIGTERM 핸들러 | TaskOrchestrator.handleInterruption() | stateSnapshot 기반 lightweight handler |
+
+### 9.2 저장 시점과 필드
+
+| 시점 | 저장 주체 | 저장 내용 | 역할 |
+|------|-----------|-----------|------|
+| generate 완료 | `saveConversationToSession()` | conversation + conversationHistory + directive + mode + tokenUsage | LLM 응답 후 최신 대화 저장 |
+| tool 완료 | tool 노드 checkpoint | conversationHistory + tokenUsage | tool_result 포함한 가장 완전한 상태 |
+| SIGTERM 수신 | `handleInterruption()` | stateSnapshot의 최신 conversationHistory + interruption | 안전망 (마지막 checkpoint 이후 상태) |
+| recursion limit | runner catch 블록 | conversationHistory + interruption + tokenUsage | 한도 초과 시 복원 가능 |
+
+### 9.3 SIGTERM Graceful Shutdown
+
+Plan job은 `stateSnapshot` 패턴을 사용하여 SIGTERM을 처리한다:
+
+1. **runner.ts**: `graph.invoke()` 전에 mutable 공유 참조 객체(`stateSnapshot`) 생성
+2. **deps 주입**: `initialState.deps.stateSnapshot`으로 모든 노드에 전달
+3. **노드 업데이트**: generate/tool 노드가 상태 변경 시 `stateSnapshot` 속성을 직접 업데이트
+4. **SIGTERM 핸들러**: `registerActiveOrchestrator`로 등록, `handleInterruption`에서 `stateSnapshot` 읽어 세션에 저장
+5. **정리**: 모든 exit path(정상 완료, recursion limit, 에러)에서 `unregisterActiveOrchestrator` 호출
+
+```
+graph.invoke() 내부 (외부 접근 불가)
+  ┌──────────────────────────────────┐
+  │  generate: stateSnapshot 업데이트  │
+  │  tool:     stateSnapshot 업데이트  │
+  └──────────┬───────────────────────┘
+             │ (mutable 참조)
+  ┌──────────▼───────────────────────┐
+  │  stateSnapshot (runner scope)     │
+  │  { conversationHistory, ...}      │
+  └──────────┬───────────────────────┘
+             │ (closure)
+  ┌──────────▼───────────────────────┐
+  │  handleInterruption(reason)       │
+  │  → session.updateArtifacts()      │
+  └──────────────────────────────────┘
+```
+
+### 9.4 SIGTERM 시나리오별 유실 범위
+
+| SIGTERM 시점 | 유실 | 영향도 |
+|-------------|------|--------|
+| generate 스트리밍 중 | 현재 LLM 응답 (아직 미완료) | 최소 — 재개 시 LLM이 다시 생성 |
+| generate 완료 ~ tool 시작 사이 | 없음 (generate에서 이미 저장) | 없음 |
+| tool 실행 중 | tool의 부분 결과 | 최소 — conversationHistory는 마지막 generate에서 저장됨 |
+| tool 완료 ~ generate 시작 사이 | 없음 (tool에서 이미 저장) | 없음 |
+
+### 9.5 Resume 복원 흐름
+
+```
+1. 동일 feature에 plan job 재실행
+2. runner.ts: session.load() → state.interruption 확인 → isResume = true
+3. session.state.conversationHistory 복원 → initialState.conversationHistory에 설정
+4. session.state.directive, tokenUsage 복원
+5. graph.invoke() 시작
+6. resolve → triage → generate 진입
+7. generate: conversationHistory.length > 0
+   → 기존 대화 위에 LLM 호출 (이전 컨텍스트 유지)
+8. LLM이 이전 assistant + tool_result 메시지를 보고 자연스럽게 이어서 작업
+```
+
+### 9.6 session.state 스키마 (plan.json)
+
+```json
+{
+  "state": {
+    "conversation": [...],
+    "conversationHistory": [
+      { "role": "user", "content": "directive text" },
+      { "role": "assistant", "content": [{"type": "text", "text": "..."}, {"type": "tool_use", ...}] },
+      { "role": "user", "content": [{"type": "tool_result", "tool_use_id": "...", "content": "..."}] },
+      ...
+    ],
+    "directive": "...",
+    "overrideDirective": "...",
+    "chatSource": true,
+    "mode": "refine",
+    "tokenUsage": { "inputTokens": 0, "outputTokens": 0 },
+    "recursionCount": 42,
+    "recursionLimit": 200,
+    "jobId": "job-xxx",
+    "interruption": {
+      "reason": "user_stopped",
+      "message": "Plan interrupted: user_stopped",
+      "timestamp": "2026-02-14T...",
+      "canResume": true
+    }
+  }
+}
+```
+
+| 필드 | 용도 | 저장 시점 |
+|------|------|-----------|
+| `conversation` | 채팅 UI용 멀티턴 대화 (semantic history) | generate 완료 시 |
+| `conversationHistory` | LLM ReAct 루프 메시지 (full messages) | generate/tool 완료 시 |
+| `directive` | 현재 유효 지시사항 | runner early save + generate |
+| `interruption` | 중단 정보 (reason, canResume) | SIGTERM/recursion limit 시 |
+| `tokenUsage` | 누적 토큰 사용량 | generate/tool 완료 시 |
+
+---
+
+## 10. 평가와의 관계
 
 PRD 생성과 평가는 **별도 시스템**이다:
 

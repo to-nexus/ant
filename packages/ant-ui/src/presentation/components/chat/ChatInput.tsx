@@ -7,7 +7,7 @@ import { Send, ChevronDown, ChevronRight, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
-import { fetchAgents, type Agent, API_BASE, authFetch } from '@/infrastructure/http/api';
+import { fetchAgents, type Agent, API_BASE, addChatUserMessage } from '@/infrastructure/http/api';
 import type { FileStats } from '@/domain/models/chat';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useTranslation } from 'react-i18next';
@@ -314,13 +314,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     if (currentJobId && hasInterruption) {
       try {
         // ✅ 1. Add user message to chat history
-        await authFetch(
-          `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
-          {
-            method: 'POST',
-            body: JSON.stringify({ content: userMessage })
-          }
-        );
+        await addChatUserMessage(selectedProject, selectedFeature, userMessage);
         
         // ✅ 2. Set running state immediately (blocks further input)
         useStore.getState().setRunning(true, currentJobId);
@@ -359,17 +353,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     
     try {
       // ✅ 1. Add user message to chat history first
-      const userMessageResponse = await authFetch(
-        `${API_BASE()}/projects/${selectedProject}/features/${selectedFeature}/chat/user-message`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ content: userMessage })
-        }
-      );
-      
-      if (!userMessageResponse.ok) {
-        throw new Error('Failed to add user message to chat');
-      }
+      await addChatUserMessage(selectedProject, selectedFeature, userMessage);
       
       // NOTE: start-message is now handled by job worker via ChatAPIClient.startMessage()
       // No need for UI to call it separately

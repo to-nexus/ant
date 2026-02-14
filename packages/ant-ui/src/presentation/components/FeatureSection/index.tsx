@@ -22,8 +22,8 @@ export function FeatureSection() {
   
   const { t } = useTranslation(['artifacts', 'nav']);
   const policy = useUIActionPolicy();
-  const isRunning = useStore((state) => state.isRunning);
-  const { showConfirm, showError, showInfo } = useAlertModalContext();
+  const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
+  const { showConfirm, showError } = useAlertModalContext();
   
   // Custom hooks
   const baseBranch = useBaseBranch(selectedProject);
@@ -118,16 +118,14 @@ export function FeatureSection() {
         createDisabledReason={policy.createFeatureDisabledReason || undefined}
         onFeatureChange={handleFeatureChange}
         onCreate={handleCreateFeature}
-        onDelete={async (name) => {
-          if (isRunning && name === selectedFeature) {
-            showInfo(t('nav:tabs.removeJobBlocked'), {
-              type: 'warning',
-              title: t('nav:tabs.removeJob'),
-            });
-            return;
+        canDelete={(name) => {
+          const featureKey = `${selectedProject}/${name}`;
+          if (runningJobsByFeature[featureKey]) {
+            return t('nav:tabs.removeJobBlocked');
           }
-          await handleDeleteFeature(name);
+          return null;
         }}
+        onDelete={handleDeleteFeature}
         onPlayClick={startServer}
         onStopClick={stopServer}
         onSettingsClick={() => {

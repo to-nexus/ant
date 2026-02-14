@@ -16,6 +16,7 @@ interface FeatureDropdownProps {
   onFeatureChange: (featureName: string | null) => void;
   onCreate: (featureName: string) => Promise<void>;
   onDelete: (featureName: string) => Promise<void>;
+  canDelete?: (featureName: string) => string | null;
   onItemCreated?: () => void;
   onPlayClick: () => void;
   onStopClick: () => void;
@@ -36,6 +37,7 @@ export function FeatureDropdown({
   onFeatureChange,
   onCreate,
   onDelete,
+  canDelete,
   onItemCreated,
   onPlayClick,
   onStopClick,
@@ -56,6 +58,7 @@ export function FeatureDropdown({
       onSelect={onFeatureChange}
       onCreate={onCreate}
       onDelete={onDelete}
+      canDelete={canDelete}
       onItemCreated={onItemCreated}
       placeholder={t('feature.placeholder')}
       inputPlaceholder={t('featureDropdown.featureNamePlaceholder')}
