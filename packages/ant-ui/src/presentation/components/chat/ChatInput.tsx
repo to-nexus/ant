@@ -229,20 +229,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const selectedFeature = useStore.getState().selectedFeature;
     const selectedAgent = useStore.getState().selectedAgent;
     const kanbanData = useStore.getState().kanban;
-    const chatMessages = useStore.getState().chatMessages;
-    
-    // ✅ DEFENSE: Prevent duplicate message submission (regression fix)
-    // This guards against accidental re-submission when returning from IDE tab
-    const lastUserMessage = chatMessages.filter((m: { role: string }) => m.role === 'user').pop();
-    const lastUserContent = lastUserMessage?.contents?.[0]?.content;
-    if (lastUserContent && lastUserContent.trim() === message.trim()) {
-      console.warn('[ChatInput] ⚠️ DUPLICATE MESSAGE BLOCKED: Same message as last user message', {
-        message: message.substring(0, 50),
-        timestamp: new Date().toISOString()
-      });
-      setMessage(''); // Clear the duplicate
-      return;
-    }
     
     if (!selectedProject || !selectedFeature || !selectedAgent || !selectedJobType) {
       console.error('[ChatInput] Missing required selection for job execution');
