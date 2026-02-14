@@ -121,12 +121,17 @@ export class StreamOrchestrator {
       const fileRenderer = (this.renderStrategy as any).getFileRenderer?.();
       const fileErrors = fileRenderer?.getFileErrors?.() || [];
       
+      // ✅ Detect silent failure: file JSON pattern in text that wasn't processed as <file> XML
+      const raw = this.state.getRaw();
+      const streamedFiles = this.registry.getStreamedFiles();
+      this.detectFileJsonInText(raw, streamedFiles, fileErrors);
+      
       // ✅ Get explicit done status from render strategy
       const explicitDone = (this.renderStrategy as any).getExplicitDone?.() || false;
       
       return {
         raw: this.state.getRaw(),
-        streamedFiles: this.registry.getStreamedFiles(),
+        streamedFiles,
         completedActions: [],  // TODO: track if needed
         fileErrors,  // ✅ Include file errors for self-healing
         explicitDone  // ✅ Include explicit done status
@@ -166,6 +171,30 @@ export class StreamOrchestrator {
    */
   getRaw(): string {
     return this.state.getRaw();
+  }
+
+  /**
+   * Detect file JSON patterns in raw text that weren't processed as <file> XML tags.
+   * This catches silent failures where LLM outputs file content as text instead of XML.
+   * Detected errors are added to fileErrors for self-healing retry.
+   */
+  private detectFileJsonInText(raw: string, streamedFiles: string[], fileErrors: string[]): void {
+    // Match patterns like: file: {"path":"some/file.ts","content":"..."}
+    // Also match: write_file({"path":"...","content":"..."}) and similar variants
+    const fileJsonPattern = /(?:file|write_file|create_file)\s*[:(\s]\s*\{\s*"path"\s*:\s*"([^"]+)"[^}]*"content"/g;
+    let match;
+    while ((match = fileJsonPattern.exec(raw)) !== null) {
+      const detectedPath = match[1];
+      // Only flag if the file wasn't already created via proper <file> XML tag
+      if (!streamedFiles.includes(detectedPath)) {
+        console.error(`🚨 [StreamOrchestrator] SILENT FAILURE: file JSON in text but not created: ${detectedPath}`);
+        fileErrors.push(
+          `File not created (wrong format): ${detectedPath} - ` +
+          `LLM output file content as text instead of <file> XML tag. ` +
+          `Use: <file path="${detectedPath}">content</file>`
+        );
+      }
+    }
   }
   
   /**

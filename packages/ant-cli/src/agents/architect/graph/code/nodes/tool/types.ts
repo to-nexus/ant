@@ -62,3 +62,8 @@ export interface SearchReferenceCodeArgs {
   maxFiles?: number;
 }
 
+export interface CreateFileArgs {
+  path: string;
+  content: string;
+}
+

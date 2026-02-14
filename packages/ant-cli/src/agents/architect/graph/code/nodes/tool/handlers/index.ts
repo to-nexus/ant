@@ -11,4 +11,5 @@ export { handleEditFile } from './editFile';
 export { handleMkdir } from './mkdir';
 export { handleRunCommand } from './runCommand';
 export { handleSearchReferenceCode } from './searchReferenceCode';
+export { handleCreateFile } from './createFile';
 
