@@ -25,6 +25,7 @@ interface ParserContext {
   insideClarify: boolean;  // ✅ NEW: <clarify> tag (planner mode — suppress from chat)
   clarifyContent: string;  // ✅ NEW: Accumulate clarify content (discarded)
   clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
+  insideFunctionCalls: boolean;  // ✅ SAFETY: <function_calls> tag (suppress hallucinated XML tool calls)
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
 }
@@ -43,6 +44,7 @@ export class XMLStreamParser implements IStreamParser {
     insideClarify: false,  // ✅ NEW
     clarifyContent: '',  // ✅ NEW
     clarifyStartEmitted: false,  // ✅ NEW
+    insideFunctionCalls: false,  // ✅ SAFETY
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
   };
@@ -377,6 +379,52 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
+      // 16e. Check for <function_calls> opening (SAFETY NET)
+      // ⚠️ LLM outputs <function_calls><invoke name="..."> XML when structured tool_use is unavailable.
+      // This happens when detectionReport.jobMode is missing (tools not passed to LLM API).
+      // Suppress entirely: these are hallucinated tool calls that won't execute.
+      if (!this.context.insideFunctionCalls && this.buffer.includes('<function_calls>')) {
+        const startIdx = this.buffer.indexOf('<function_calls>');
+        
+        // Emit any text before <function_calls> as response
+        const beforeTag = this.buffer.substring(0, startIdx);
+        if (beforeTag.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: beforeTag }
+          });
+        }
+        
+        console.error(`🚨 [XMLParser] CRITICAL: LLM outputting <function_calls> XML as text!`);
+        console.error(`   This means structured tool_use was not enabled for this LLM call.`);
+        console.error(`   Check detectionReport.jobMode and tool activation in codeGen.`);
+        
+        this.buffer = this.buffer.substring(startIdx + '<function_calls>'.length);
+        this.context.insideFunctionCalls = true;
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 16f. Check for </function_calls> closing (suppress)
+      if (this.context.insideFunctionCalls && this.buffer.includes('</function_calls>')) {
+        const endIdx = this.buffer.indexOf('</function_calls>');
+        
+        this.buffer = this.buffer.substring(endIdx + '</function_calls>'.length);
+        this.context.insideFunctionCalls = false;
+        
+        // ✅ DISCARD: hallucinated function calls are not executed
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 16g. Accumulate content inside <function_calls> (suppress)
+      if (this.context.insideFunctionCalls && this.buffer.length > 0) {
+        this.buffer = '';  // Suppress
+        continue;
+      }
+      
       // 17. Check for <file path="..."> opening
       if (!this.context.insideFile) {
         const fileMatch = this.buffer.match(/<file\s+path="([^"]+)">/);
@@ -654,6 +702,7 @@ export class XMLStreamParser implements IStreamParser {
           !this.context.insideTasks &&
           !this.context.insideLearnCommand &&  // ✅ NEW
           !this.context.insideClarify &&  // ✅ NEW: suppress <clarify> from chat
+          !this.context.insideFunctionCalls &&  // ✅ SAFETY: suppress <function_calls> from chat
           !this.context.insideFile) {
         
         if (this.buffer.length > 0) {
@@ -662,7 +711,7 @@ export class XMLStreamParser implements IStreamParser {
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
           // Note: detect/references tags are NOT parsed - they flow through as normal response for SpecialTagTransformer
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|delete|append|learn_command|clarify|done)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|delete|append|learn_command|clarify|function_calls|done)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
@@ -775,6 +824,11 @@ export class XMLStreamParser implements IStreamParser {
       else if (this.context.insideClarify) {
         // ✅ DISCARD: clarify content suppressed from UI
       }
+      // If inside function_calls, discard (hallucinated XML tool calls)
+      else if (this.context.insideFunctionCalls) {
+        // ✅ DISCARD: hallucinated function calls suppressed from UI
+        console.warn(`⚠️ [XMLParser] Discarding unterminated <function_calls> block on finalize`);
+      }
       // Otherwise, emit as response (ONLY if has actual content)
       else if (!this.context.insideTasks && hasActualContent) {
         // Don't emit if inside <tasks> (should be hidden)
@@ -805,6 +859,7 @@ export class XMLStreamParser implements IStreamParser {
       insideClarify: false,  // ✅ NEW
       clarifyContent: '',  // ✅ NEW
       clarifyStartEmitted: false,  // ✅ NEW
+      insideFunctionCalls: false,  // ✅ SAFETY
       currentFilePath: null,
       currentAppendPath: null,
     };
