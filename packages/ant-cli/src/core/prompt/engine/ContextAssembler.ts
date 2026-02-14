@@ -13,13 +13,9 @@ export interface AssembledContext {
   designDocPath?: string;
   prdSpec?: string;          // ✅ Added for design graph
   currentCode?: string;      // ✅ Added for design graph
-  // ✅ Optional UI context (Figma-derived) - injected only for UI-related tasks
+  // ✅ Optional UI context - injected only for UI-related tasks
   uiDoc?: string;
-  uiAssets?: {
-    screens?: string[];
-    components?: string[];
-    icons?: string[];
-  };
+  uiAssets?: Record<string, string[]>;  // Dynamic keys by asset subdirectory
   // ✅ Feature path for runtime asset resolution (e.g., features/skeleton)
   featurePath?: string;
   lastSectionNumber?: number;

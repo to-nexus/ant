@@ -47,9 +47,9 @@ export async function decomposeUiDesign(
   const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/base-ui-design', {
     uiContext,
     referenceCount: state.uiReferences?.length || 0,
-    assetCount: (state.uiAssetsList?.logos?.length || 0) + 
-                (state.uiAssetsList?.icons?.length || 0) + 
-                (state.uiAssetsList?.backgrounds?.length || 0),
+    assetCount: state.uiAssetsList
+      ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
+      : 0,
     jobMode: state.detectionReport?.jobMode || 'generate',
   });
 

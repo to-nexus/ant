@@ -64,7 +64,7 @@ export interface ParsedUiDocs {
   
   /**
    * Full content of ui-assets.json (usually small, ~10K tokens)
-   * Contains asset mappings: logos, icons, backgrounds, etc.
+   * Contains asset mappings grouped by user-defined categories
    */
   assets?: string;
   

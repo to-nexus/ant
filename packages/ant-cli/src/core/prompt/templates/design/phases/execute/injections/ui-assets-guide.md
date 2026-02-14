@@ -19,16 +19,15 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 **❌ WRONG (Path Inconsistency):**
 ```json
-// ch1: 
-"icon-telegram": { "dest": "public/icons/telegram.svg" }
-// ch2: 
-"icon-telegram": { "dest": "public/icons/social/telegram.svg" }  // DIFFERENT PATH!
+// ch1 established: <category> → public/<category>/
+// ch2 uses different path structure — INCONSISTENT!
+"asset-new": { "dest": "public/<category>/subdir/new.svg" }
 ```
 
 **✅ CORRECT:**
 ```json
-// ch1 established pattern, ch2 follows:
-"icon-newasset": { "dest": "public/icons/newasset.svg" }
+// ch1 established pattern, ch2 follows exactly:
+"asset-new": { "dest": "public/<category>/new.svg" }
 ```
 
 ### PRD Integration
@@ -56,53 +55,26 @@ Create a JSON mapping document that connects source assets to their runtime dest
     "lastSection": 3,
     "sectionPattern": "top-level",
     "pathPattern": {
-      "logos": "public/logos/",
-      "icons": "public/icons/",
-      "backgrounds": "public/backgrounds/"
+      "<category>": "public/<category>/"
     }
   },
-  "logos": {
-    "<logo-id>": {
-      "src": "inputs/assets/logos/<source-filename>",
-      "dest": "public/logos/<dest-filename>",
-      "format": "svg | png",
-      "usage": "<where this logo appears in the UI>",
+  "<category>": {
+    "<asset-id>": {
+      "src": "inputs/assets/<source-path>",
+      "dest": "public/<category>/<dest-filename>",
+      "format": "svg | png | jpg | webp",
+      "usage": "<where this asset appears in the UI>",
       "rendering": {
-        "method": "explicit",
+        "method": "explicit | fill | css-background",
         "width": 120,
         "height": 32
-      }
-    }
-  },
-  "icons": {
-    "<icon-id>": {
-      "src": "inputs/assets/icons/<source-filename>",
-      "dest": "public/icons/<dest-filename>",
-      "format": "svg",
-      "usage": "<where this icon appears in the UI>",
-      "rendering": {
-        "method": "explicit",
-        "width": 24,
-        "height": 24
-      }
-    }
-  },
-  "backgrounds": {
-    "<bg-id>": {
-      "src": "inputs/assets/bg/<source-filename>",
-      "dest": "public/backgrounds/<dest-filename>",
-      "format": "png | jpg",
-      "usage": "<where this background appears>",
-      "overlay": "colors.<token-reference> (if applicable)",
-      "rendering": {
-        "method": "fill | css-background",
-        "containerSize": "300x200 | full-width",
-        "objectFit": "cover | contain"
       }
     }
   }
 }
 ```
+
+> **Constraint**: Categories are determined by observing asset purpose from filenames and directory structure returned by `list_assets`. Do NOT assume fixed category names — use what the user organized or infer from file content.
 
 ### 🎯 Rendering Field (CRITICAL for Code Implementation)
 
@@ -176,7 +148,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ```
 {{/if}}
 
-**Note**: Replace `YOUR_CATEGORY` with the actual category from your task description (e.g., `logos`, `icons`, `backgrounds`). The system automatically merges new categories.
+**Note**: Replace `YOUR_CATEGORY` with the actual category determined from the asset directory structure and filenames. The system automatically merges new categories.
 
 ### Quality Criteria
 
@@ -203,9 +175,9 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 **⚠️ CRITICAL: You MUST use these EXACT paths for new assets!**
 
-Example - if ch1 used `icons → public/icons/`:
-- ✅ CORRECT: `"icon-new": { "dest": "public/icons/new.svg" }`
-- ❌ WRONG: `"icon-new": { "dest": "public/icons/social/new.svg" }` (new subdirectory!)
+Example - if ch1 used `<category> → public/<category>/`:
+- ✅ CORRECT: Follow the same path pattern exactly
+- ❌ WRONG: Create new subdirectories not established in ch1
 
 **DO NOT create new subdirectories or change the path structure!**
 ════════════════════════════════════════════════════════════════════════════════

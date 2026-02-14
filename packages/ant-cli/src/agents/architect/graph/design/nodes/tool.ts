@@ -826,7 +826,7 @@ async function handleListAssets(
       category: category || 'all',
       assets: [],
       count: 0,
-      message: `No assets found. Please add assets to inputs/assets/ with subdirectories like logos/, icons/, backgrounds/`,
+      message: 'No assets found. Add asset files to inputs/assets/',
     }, null, 2);
   }
   
@@ -835,14 +835,12 @@ async function handleListAssets(
     ? path.relative(workspaceRoot, featurePath)
     : featurePath.replace(/^\//, '');
   
-  // ✅ Group by category
-  const grouped: Record<string, { path: string; filename: string; extension: string }[]> = {
-    logos: [],
-    icons: [],
-    backgrounds: [],
-    fonts: [],
-    other: [],
-  };
+  const assetsRelPath = workspaceRoot
+    ? path.relative(workspaceRoot, assetsDir)
+    : assetsDir.replace(/^\//, '');
+  
+  // ✅ Dynamic grouping by actual subdirectory names
+  const grouped: Record<string, { path: string; filename: string; extension: string }[]> = {};
   
   for (const file of allFiles) {
     // Convert workspace-relative to feature-relative path
@@ -854,21 +852,18 @@ async function handleListAssets(
     
     const assetInfo = { path: featureRelativePath, filename, extension };
     
-    if (file.includes('/logos/') || file.includes('\\logos\\')) {
-      grouped.logos.push(assetInfo);
-    } else if (file.includes('/icons/') || file.includes('\\icons\\')) {
-      grouped.icons.push(assetInfo);
-    } else if (file.includes('/backgrounds/') || file.includes('\\backgrounds\\')) {
-      grouped.backgrounds.push(assetInfo);
-    } else if (file.includes('/fonts/') || file.includes('\\fonts\\')) {
-      grouped.fonts.push(assetInfo);
-    } else {
-      grouped.other.push(assetInfo);
-    }
+    // Determine group from path relative to assets/
+    const assetRelative = file.startsWith(assetsRelPath)
+      ? file.slice(assetsRelPath.length).replace(/^[\/\\]/, '')
+      : featureRelativePath;
+    const parts = assetRelative.split(/[\/\\]/);
+    const group = parts.length > 1 ? parts[0] : '(root)';
+    (grouped[group] ||= []).push(assetInfo);
   }
   
   const totalCount = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
-  console.log(`   📦 Found ${totalCount} assets (logos: ${grouped.logos.length}, icons: ${grouped.icons.length}, backgrounds: ${grouped.backgrounds.length})`);
+  const groupSummary = Object.entries(grouped).map(([k, v]) => `${k}: ${v.length}`).join(', ');
+  console.log(`   📦 Found ${totalCount} assets (${groupSummary})`);
   
   // ✅ UI notification
   const chatAPI = getChatAPIClient();
@@ -881,11 +876,7 @@ async function handleListAssets(
   
   return JSON.stringify({
     category: category || 'all',
-    logos: grouped.logos,
-    icons: grouped.icons,
-    backgrounds: grouped.backgrounds,
-    fonts: grouped.fonts,
-    other: grouped.other,
+    groups: grouped,
     total: totalCount,
   }, null, 2);
 }

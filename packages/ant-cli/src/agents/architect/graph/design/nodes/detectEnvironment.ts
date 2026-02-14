@@ -264,29 +264,26 @@ export async function detectEnvironment(
       console.log(`📸 Found reference images: ${allRefFiles.length} files`);
     }
     
-    // Build assets list
+    // Build assets list (dynamic grouping by subdirectory)
     let assetsList = '';
     let uiAssetsList: DesignGraphState['uiAssetsList'] = undefined;
     if (hasAssets) {
       const allAssets = await listFilesRecursive(assetsDir);
       
-      const logos = allAssets.filter(f => f.includes('logo') || f.startsWith('logos/'));
-      const backgrounds = allAssets.filter(f => f.includes('bg') || f.startsWith('bg/') || f.includes('background'));
-      const icons = allAssets.filter(f => f.includes('icon') || f.startsWith('icons/'));
-      const other = allAssets.filter(f => !logos.includes(f) && !backgrounds.includes(f) && !icons.includes(f));
+      // Group by first-level subdirectory dynamically
+      const grouped: Record<string, string[]> = {};
+      for (const f of allAssets) {
+        const sep = f.indexOf('/');
+        const group = sep > 0 ? f.substring(0, sep) : '(root)';
+        (grouped[group] ||= []).push(f);
+      }
       
-      uiAssetsList = {
-        logos: logos.length > 0 ? logos : undefined,
-        backgrounds: backgrounds.length > 0 ? backgrounds : undefined,
-        icons: icons.length > 0 ? icons : undefined,
-        other: other.length > 0 ? other : undefined,
-      };
+      uiAssetsList = grouped;
       
       const parts: string[] = [];
-      if (logos.length > 0) parts.push(`**logos/** (${logos.length} files)`);
-      if (backgrounds.length > 0) parts.push(`**backgrounds/** (${backgrounds.length} files)`);
-      if (icons.length > 0) parts.push(`**icons/** (${icons.length} files)`);
-      if (other.length > 0) parts.push(`**other/** (${other.length} files)`);
+      for (const [group, files] of Object.entries(grouped)) {
+        parts.push(`**${group}/** (${files.length} files)`);
+      }
       assetsList = parts.join('\n');
       
       console.log(`📦 Found assets: ${allAssets.length} files`);
