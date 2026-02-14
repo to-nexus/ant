@@ -264,7 +264,8 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       // Step: feature
       setActiveStep('feature');
       console.log(`[QuickStart] Creating feature: ${featureName}`);
-      await Promise.all([createFeature(projectId, featureName), delay(1000)]);
+      const language = useStore.getState().language;
+      await Promise.all([createFeature(projectId, featureName, language), delay(1000)]);
 
       // ✅ Optimistic update: immediately add feature to store (prevents empty features on transition)
       useStore.getState().addFeatureOptimistic(featureName);

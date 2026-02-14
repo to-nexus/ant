@@ -122,7 +122,7 @@ export class FeatureCrudService {
   /**
    * Create a new feature
    */
-  async createFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
+  async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string): Promise<void> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     
     // Create feature directory structure
@@ -147,10 +147,21 @@ export class FeatureCrudService {
     // Create inputs/sources templates (so users know what to fill)
     const sourcesDir = path.join(featurePath, 'inputs/sources');
 
+    const locale = (language === 'ko' || language === 'en') ? language : 'en';
+    const msg = locale === 'ko'
+      ? {
+          markerGuide: '작성 후 위의 ant:template 줄을 삭제하세요. 이 마커가 남아있으면 시스템은 비어있는 입력으로 취급합니다.',
+          prdGuide: '여기에 PRD를 작성하거나, 플래너 모드로 대화형 생성을 이용하세요.',
+        }
+      : {
+          markerGuide: 'Remove the ant:template line above after writing. The system treats this file as empty while the marker remains.',
+          prdGuide: 'Write your PRD here, or use Planner mode for interactive generation.',
+        };
     const prdTemplate = `<!-- ant:template -->
+<!-- ${msg.markerGuide} -->
 # ${featureName} - PRD
 
-여기에 PRD를 작성하거나, 플래너 모드로 대화형 생성을 이용하세요.
+<!-- ${msg.prdGuide} -->
 `;
     await fs.promises.writeFile(path.join(sourcesDir, 'prd.md'), prdTemplate, 'utf-8');
 

@@ -90,6 +90,13 @@ npm run dev architect code workspace/${workspaceName}/ui-1.0.0
   console.log(`  2. Edit config.json if needed`);
 }
 
+/** Template guide messages (CLI always uses English) */
+const TEMPLATE_GUIDE = {
+  markerGuide: 'Remove the ant:template line above after writing. The system treats this file as empty while the marker remains.',
+  prdGuide: 'Write your PRD here, or use Planner mode for interactive generation.',
+  directiveGuide: 'Add your directive here.',
+} as const;
+
 /**
  * Initialize a new feature in an existing workspace
  */
@@ -140,9 +147,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
 
   // ✅ PRD is canonical single file: prd.md
   const prdTemplate = `<!-- ant:template -->
+<!-- ${TEMPLATE_GUIDE.markerGuide} -->
 # ${featureName} - PRD
 
-여기에 PRD를 작성하거나, 플래너 모드로 대화형 생성을 이용하세요.
+<!-- ${TEMPLATE_GUIDE.prdGuide} -->
 `;
   fs.writeFileSync(
     path.join(featureDir, "inputs/sources/prd.md"),
@@ -163,7 +171,8 @@ export function initFeature(workspaceName: string, featureName: string): void {
 
   // Create placeholder directive.md files
   const directiveTemplate = `<!-- ant:template -->
-<!-- Add your directive here -->
+<!-- ${TEMPLATE_GUIDE.markerGuide} -->
+<!-- ${TEMPLATE_GUIDE.directiveGuide} -->
 `;
   
   const directiveDirs = [

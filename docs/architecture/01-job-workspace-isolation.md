@@ -37,7 +37,7 @@ const childEnv: Record<string, string> = {
   PATH: ensuredPath,
   HOME: process.env.HOME || '/tmp',
   USER: process.env.USER || 'ant',
-  LANG: process.env.LANG || 'en_US.UTF-8',
+  LANG: 'en_US.UTF-8',
   
   // ✅ Node.js 설정
   NODE_ENV: process.env.NODE_ENV || 'production',
