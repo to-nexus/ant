@@ -414,31 +414,9 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           from { opacity: 0; transform: translateY(16px) scale(0.98); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        @keyframes glowSweepCW {
-          0% { transform: rotate(0deg); opacity: 0; }
-          8% { opacity: 1; }
-          45% { transform: rotate(90deg); opacity: 1; }
-          58% { transform: rotate(90deg); opacity: 0; }
-          100% { transform: rotate(0deg); opacity: 0; }
-        }
-        @keyframes glowSweepCCW {
-          0% { transform: rotate(0deg); opacity: 0; }
-          8% { opacity: 1; }
-          45% { transform: rotate(-90deg); opacity: 1; }
-          58% { transform: rotate(-90deg); opacity: 0; }
-          100% { transform: rotate(0deg); opacity: 0; }
-        }
-        @keyframes glowMergePulse {
-          0%, 38% { opacity: 0; }
-          50% { opacity: 1; }
-          65% { opacity: 0.7; }
-          80%, 100% { opacity: 0; }
-        }
-        @keyframes glowHaloPulse {
-          0%, 38% { opacity: 0.12; }
-          50% { opacity: 0.5; }
-          65% { opacity: 0.35; }
-          80%, 100% { opacity: 0.12; }
+        @keyframes glowSpin {
+          from { transform: translate(-50%, -50%) rotate(0deg); }
+          to { transform: translate(-50%, -50%) rotate(360deg); }
         }
       `}</style>
 
@@ -463,59 +441,35 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           style={{ animation: 'qsInputReveal 0.6s ease-out 0.15s both' }}
         >
           <div className="relative rounded-2xl p-[2px] overflow-hidden">
-            {/* Animated glow border — converges from sides when empty, full glow when typing */}
-            {/* Empty state: conic gradient revealed from both sides toward center */}
+            {/* Animated glow border — spinning beam when empty, full glow when typing */}
             <div
               className={`absolute inset-0 transition-opacity duration-700 ${
                 input.trim() ? 'opacity-0' : isSubmitting ? 'opacity-50' : 'opacity-100'
               }`}
             >
-              {/* Subtle base border — keeps border faintly visible between cycles */}
+              {/* Spinning gradient beam — forced square to prevent distortion on wide rectangles */}
               <div
-                className="absolute inset-[-50%]"
                 style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: '200%',
+                  aspectRatio: '1',
+                  background: 'conic-gradient(from 0deg, #6366f1, #8b5cf6, #a855f7, #10b981, #14b8a6, transparent 50%, transparent)',
+                  animation: 'glowSpin 4s linear infinite',
+                }}
+              />
+              {/* Subtle constant base glow — also forced square */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: '200%',
+                  aspectRatio: '1',
+                  transform: 'translate(-50%, -50%)',
                   background: 'conic-gradient(from 0deg, #6366f1, #8b5cf6, #a855f7, #10b981, #14b8a6, #6366f1)',
-                  opacity: 0.15,
-                }}
-              />
-              {/* BL-CW: from BL(225deg), sweeps CW along left edge → TL(315deg) */}
-              <div
-                className="absolute inset-[-50%]"
-                style={{
-                  background: 'conic-gradient(from 190deg, transparent 0deg, #6366f1 8deg, #8b5cf6 22deg, #a855f7 35deg, #10b981 48deg, #14b8a6 62deg, transparent 70deg, transparent 360deg)',
-                  animation: 'glowSweepCW 3.5s ease-in-out infinite',
-                }}
-              />
-              {/* BL-CCW: from BL(225deg), sweeps CCW along bottom edge → BR(135deg) */}
-              <div
-                className="absolute inset-[-50%]"
-                style={{
-                  background: 'conic-gradient(from 190deg, transparent 0deg, #6366f1 8deg, #8b5cf6 22deg, #a855f7 35deg, #10b981 48deg, #14b8a6 62deg, transparent 70deg, transparent 360deg)',
-                  animation: 'glowSweepCCW 3.5s ease-in-out infinite',
-                }}
-              />
-              {/* TR-CW: from TR(45deg), sweeps CW along right edge → BR(135deg) */}
-              <div
-                className="absolute inset-[-50%]"
-                style={{
-                  background: 'conic-gradient(from 10deg, transparent 0deg, #14b8a6 8deg, #10b981 22deg, #a855f7 35deg, #8b5cf6 48deg, #6366f1 62deg, transparent 70deg, transparent 360deg)',
-                  animation: 'glowSweepCW 3.5s ease-in-out infinite',
-                }}
-              />
-              {/* TR-CCW: from TR(45deg), sweeps CCW along top edge → TL(315deg) */}
-              <div
-                className="absolute inset-[-50%]"
-                style={{
-                  background: 'conic-gradient(from 10deg, transparent 0deg, #14b8a6 8deg, #10b981 22deg, #a855f7 35deg, #8b5cf6 48deg, #6366f1 62deg, transparent 70deg, transparent 360deg)',
-                  animation: 'glowSweepCCW 3.5s ease-in-out infinite',
-                }}
-              />
-              {/* Merge flash — full border lights up when arcs converge */}
-              <div
-                className="absolute inset-[-50%]"
-                style={{
-                  background: 'conic-gradient(from 0deg, #6366f1, #8b5cf6, #a855f7, #10b981, #14b8a6, #6366f1)',
-                  animation: 'glowMergePulse 3.5s ease-in-out infinite',
+                  opacity: 0.12,
                 }}
               />
             </div>
@@ -530,14 +484,13 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
               }}
             />
 
-            {/* Outer glow halo — pulses on merge when empty, intensifies when typing */}
+            {/* Outer glow halo */}
             <div
               className={`absolute inset-0 rounded-2xl blur-xl pointer-events-none transition-opacity duration-700 ${
-                input.trim() ? 'opacity-50 dark:opacity-40' : ''
+                input.trim() ? 'opacity-50 dark:opacity-40' : 'opacity-30'
               }`}
               style={{
                 background: 'linear-gradient(135deg, rgba(99,102,241,0.4), rgba(139,92,246,0.4), rgba(16,185,129,0.4))',
-                animation: input.trim() ? 'none' : 'glowHaloPulse 3.5s ease-in-out infinite',
               }}
             />
 
