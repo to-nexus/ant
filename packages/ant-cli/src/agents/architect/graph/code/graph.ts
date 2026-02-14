@@ -437,6 +437,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       maxWorkers,
       checkpointInterval: 60000,
     },
+    state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );
 
   // Register orchestrator for graceful shutdown (SIGTERM handler)
@@ -591,8 +592,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   }
 
   return {
-    completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
-    completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+    completedTasks: result.completedTasks.map(t => t.id),
+    completedTasksDetails: result.completedTasks,
     failedTasks: result.failedTasks.map(f => f.task) as any,
     currentTask: undefined,
     tokenUsage: result.tokenUsage || (state as any).tokenUsage,
