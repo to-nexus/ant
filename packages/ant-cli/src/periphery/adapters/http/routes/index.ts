@@ -59,7 +59,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   router.use(createFeaturesRoutes({
     projectService: deps.projectService,
     chatService: deps.chatService,
-    kanbanService: deps.kanbanService
+    kanbanService: deps.kanbanService,
+    stateStore: deps.stateStore,
   }));
   
   // File operations

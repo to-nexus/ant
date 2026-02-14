@@ -856,7 +856,8 @@ export async function deleteFeature(projectId: string, featureName: string): Pro
     );
     
     if (!response.ok) {
-      throw new Error(`Failed to delete feature: ${response.statusText}`);
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.message || `Failed to delete feature: ${response.statusText}`);
     }
   } catch (error) {
     console.error('Error deleting feature:', error);
