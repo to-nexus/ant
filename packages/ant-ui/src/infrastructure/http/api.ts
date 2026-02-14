@@ -227,6 +227,7 @@ export interface ExecuteJobParams {
   language?: string;
   overrideDirective?: string;  // ✅ Chat input becomes directive (highest priority)
   chatSource?: boolean;        // ✅ True if job started from chat (enables Chat SSE)
+  skipTriage?: boolean;        // ✅ Skip triage node (after user selects "proceed" on redirect)
 }
 
 export interface JobStatus {
@@ -512,7 +513,8 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
       mode = 'generate', 
       language = 'en',
       overrideDirective,  // ✅ Chat input as directive
-      chatSource           // ✅ Flag for Chat SSE
+      chatSource,          // ✅ Flag for Chat SSE
+      skipTriage           // ✅ Skip triage (after proceed choice)
     } = params;
     
     // ✅ Feature name is required
@@ -526,7 +528,8 @@ export async function executeJob(params: ExecuteJobParams): Promise<{ jobId: str
       mode,
       language,
       overrideDirective,  // ✅ Include in request
-      chatSource           // ✅ Include in request
+      chatSource,          // ✅ Include in request
+      skipTriage           // ✅ Include in request
     };
     
     // ✅ Always use feature-specific endpoint (featureName defaults to 'skeleton')

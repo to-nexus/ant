@@ -31,8 +31,9 @@ export function useJobExecution() {
    * @param agent - Agent type (e.g., 'architect')
    * @param jobType - Job type: 'design' | 'code' | 'learn' | 'plan'
    * @param directive - Optional override directive (for redirect from triage)
+   * @param options - Optional job options (e.g., skipTriage after proceed choice)
    */
-  const runJob = useCallback(async (agent: string, jobType: string, directive?: string) => {
+  const runJob = useCallback(async (agent: string, jobType: string, directive?: string, options?: { skipTriage?: boolean }) => {
     const state = useStore.getState();
     const { 
       isRunning, 
@@ -126,7 +127,8 @@ export function useJobExecution() {
         jobType: jobType,
         agent: agent,
         chatSource: true,  // ✅ Enable Chat SSE for all jobs
-        overrideDirective: directive  // ✅ Pass directive for redirect
+        overrideDirective: directive,  // ✅ Pass directive for redirect
+        skipTriage: options?.skipTriage  // ✅ Skip triage after proceed choice
       });
       
       // Store job execution object for stop functionality

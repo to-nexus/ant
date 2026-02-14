@@ -262,6 +262,7 @@ export async function architectAgent(
         _httpJobId: jobId || process.env.ANT_JOB_ID,  // ✅ For tracking and resume
         overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
         chatSource: deps?.chatSource,  // ✅ Chat SSE flag
+        skipTriage: deps?.skipTriage,  // ✅ Skip triage (after proceed choice)
         currentJob: 'design',  // ✅ For triage system
         currentAgent: 'architect'  // ✅ For triage system
       };
@@ -419,6 +420,7 @@ export async function architectAgent(
           _httpJobId: resolvedJobId,  // ✅ For real-time tracking and resume
           overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
           chatSource: deps?.chatSource,  // ✅ Chat SSE flag
+          skipTriage: deps?.skipTriage,  // ✅ Skip triage (after proceed choice)
           currentJob: 'code',  // ✅ For triage system
           currentAgent: 'architect'  // ✅ For triage system
         };

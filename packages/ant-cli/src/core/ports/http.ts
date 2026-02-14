@@ -32,6 +32,7 @@ export interface ExecuteJobParams {
   enableEvaluation?: boolean;
   overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
   chatSource?: boolean;        // ✅ True if job started from chat (enables Chat SSE)
+  skipTriage?: boolean;        // ✅ Skip triage node (e.g., after user selects "proceed" on redirect)
   userContext?: UserContext;   // ✅ User context for Cloud mode (includes workspacePath)
   jobId?: string;              // ✅ Existing jobId for resume (don't generate new one)
   isResume?: boolean;          // ✅ True if this is a resume/continue of a previous job

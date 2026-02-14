@@ -32,6 +32,7 @@ export interface JobPayload {
   mode?: 'generate' | 'refactor' | 'explain';
   overrideDirective?: string;
   chatSource?: boolean;
+  skipTriage?: boolean;
   enableEvaluation?: boolean;
   inputFile?: string;
   
