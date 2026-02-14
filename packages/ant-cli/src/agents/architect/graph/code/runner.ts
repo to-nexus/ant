@@ -21,7 +21,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   const MIN_RECURSION_LIMIT = 5;
   const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
   const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
-    ? MIN_RECURSION_LIMIT 
+    ? 200 
     : recursionLimit;
   
   // Recursion limit configured

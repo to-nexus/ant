@@ -175,7 +175,7 @@ export function createFeaturesRoutes(deps: {
       const MIN_RECURSION_LIMIT = 5;
       const envRecursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
       const defaultRecursionLimit = (isNaN(envRecursionLimit) || envRecursionLimit < MIN_RECURSION_LIMIT) 
-        ? 50 
+        ? 200 
         : envRecursionLimit;
       
       // ✅ Use null instead of undefined - JSON.stringify omits undefined values!
