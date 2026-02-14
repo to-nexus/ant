@@ -37,7 +37,7 @@ Ant is an AI-powered development assistant that defines product requirements, ge
 | Job | Purpose | Input | Output |
 |-----|---------|-------|--------|
 | **Plan Job** | Define product requirements | Product description via chat | PRD (prd.md) |
-| **Design Job** | Create specifications | PRD or screen captures | Design documents |
+| **Design Job** | Create specifications | PRD or reference images | Design documents |
 | **Code Job** | Generate implementation | Design documents or chat directive | Source code |
 | **Learn Job** | Index existing codebase | Your codebase | Vector embeddings for context |
 
@@ -79,7 +79,7 @@ The PRD file (`inputs/sources/prd.md`) serves as **persistent state** across job
 | Aspect | Description |
 |--------|-------------|
 | **Trigger** | Visual inputs exist (screenshots, mockups, assets) |
-| **Input** | Screen captures, UI references |
+| **Input** | Design reference images |
 | **Output** | ui-tokens.md, ui-assets.md, ui-spec.md |
 | **Focus** | How it looks - component structure, design system |
 

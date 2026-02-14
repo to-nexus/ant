@@ -46,8 +46,7 @@ export async function decomposeUiDesign(
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/base-ui-design', {
     uiContext,
-    screenCount: state.uiReferences?.screens?.length || 0,
-    componentCount: state.uiReferences?.components?.length || 0,
+    referenceCount: state.uiReferences?.length || 0,
     assetCount: (state.uiAssetsList?.logos?.length || 0) + 
                 (state.uiAssetsList?.icons?.length || 0) + 
                 (state.uiAssetsList?.backgrounds?.length || 0),

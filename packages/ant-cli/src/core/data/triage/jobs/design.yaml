@@ -3,34 +3,28 @@ id: design
 agent: architect
 description: |
   Creates UI specifications and system architecture documents.
-  Two modes: UI Design (from screen captures) and System Design (from PRD).
+  Two modes: UI Design (from reference images) and System Design (from PRD).
   Output documents guide Code Job for accurate implementation.
 
 modes:
   - id: ui-design
     description: |
-      Generates UI specification documents from screen captures.
+      Generates UI specification documents from reference images.
       Analyzes visual design to extract tokens, components, and layouts.
       Works with any design tool output (Figma, Sketch, screenshots, etc.)
     detection:
       any_of:
-        - path: inputs/references/screens
-          type: directory_with_files
         - path: inputs/references
           type: directory_with_files
         - path: inputs/assets
           type: directory_with_files
     prerequisites:
       required:
-        - id: screens
+        - id: references
           type: directory_with_files
-          path: inputs/references/screens
-          description: Screen capture images (inputs/references/screens/)
+          path: inputs/references
+          description: Reference images (inputs/references/)
       recommended:
-        - id: components
-          type: directory_with_files
-          path: inputs/references/components
-          description: Component snapshots (inputs/references/components/)
         - id: assets
           type: directory_with_files
           path: inputs/assets
@@ -53,7 +47,7 @@ modes:
               type: file_with_content
             - type: has_directive
         - none_of:
-            - path: inputs/references/screens
+            - path: inputs/references
               type: directory_with_files
             - path: inputs/assets
               type: directory_with_files

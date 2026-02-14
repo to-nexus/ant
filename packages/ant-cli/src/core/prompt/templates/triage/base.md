@@ -18,8 +18,7 @@ You analyze user input to determine intent and execution readiness.
 {{#if hasDirective}}✅ Directive{{else}}ℹ️ No directive{{/if}}
 
 ### References
-{{#if hasScreens}}✅ Screens: {{screenCount}} files{{else}}❌ No screens{{/if}}
-{{#if hasComponents}}✅ Components: {{componentCount}} files{{else}}ℹ️ No components{{/if}}
+{{#if hasReferences}}✅ References: {{referenceCount}} files{{else}}❌ No reference images{{/if}}
 {{#if hasAssets}}✅ Assets: {{assetCount}} files{{else}}ℹ️ No assets{{/if}}
 
 ### Design Documents

@@ -304,50 +304,42 @@ export class ArtifactService {
   }
 
   /**
-   * Reference images for UI (legacy support).
-   * Returns file paths under inputs/references/ if they exist.
+   * Reference images for UI.
+   * Returns file paths under inputs/references/ (recursive) if they exist.
    */
   static async loadUiReferenceImages(
     context: ArtifactProjectContext,
     fileSystem: FileSystemPort
-  ): Promise<{
-    screens?: string[];
-    components?: string[];
-  } | undefined> {
+  ): Promise<string[] | undefined> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
     const inputsDirAbs = path.join(featurePathAbs, "inputs");
     const inputsDir = ArtifactService.toWorkspaceRelative(fileSystem, inputsDirAbs);
 
     const referencesDir = path.join(inputsDir, 'references');
-    const screensDir = path.join(referencesDir, 'screens');
-    const componentsDir = path.join(referencesDir, 'components');
+    const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
 
-    const listFiles = async (dir: string, allowExts?: string[]): Promise<string[] | undefined> => {
-      if (!(await fileSystem.fileExists(dir))) return undefined;
+    const collectImages = async (dir: string): Promise<string[]> => {
+      if (!(await fileSystem.fileExists(dir))) return [];
       const entries = await fileSystem.readDirectory(dir);
-      const files = entries
-        .filter(e => !e.isDirectory)
-        .map(e => e.name)
-        .filter(name => !name.startsWith('.'))
-        .filter(name => name.toLowerCase() !== 'readme.md')
-        .filter(name => {
-          if (!allowExts || allowExts.length === 0) return true;
-          const ext = path.extname(name).toLowerCase();
-          return allowExts.includes(ext);
-        })
-        .map(name => path.join(dir, name))
-        .sort();
-      return files.length > 0 ? files : undefined;
+      const results: string[] = [];
+
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory) {
+          results.push(...(await collectImages(fullPath)));
+        } else {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (IMAGE_EXTS.includes(ext) && entry.name.toLowerCase() !== 'readme.md') {
+            results.push(fullPath);
+          }
+        }
+      }
+      return results;
     };
 
-    const screens = await listFiles(screensDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
-    const components = await listFiles(componentsDir, ['.png', '.jpg', '.jpeg', '.webp', '.gif']);
-
-    if (!screens && !components) {
-      return undefined;
-    }
-
-    return { screens, components };
+    const files = (await collectImages(referencesDir)).sort();
+    return files.length > 0 ? files : undefined;
   }
 
   /**

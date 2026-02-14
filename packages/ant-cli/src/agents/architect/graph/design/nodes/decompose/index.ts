@@ -26,7 +26,7 @@ import { decomposeSystemDesign } from "./systemDesignDecompose";
 // ============================================
 
 function validateUiDesignPrerequisites(state: DesignGraphState): void {
-  const hasReferences = state.uiReferences?.screens?.length || state.uiReferences?.components?.length;
+  const hasReferences = state.uiReferences?.length;
   const hasAssets = state.uiAssetsList?.logos?.length || 
                     state.uiAssetsList?.backgrounds?.length || 
                     state.uiAssetsList?.icons?.length || 
@@ -34,21 +34,20 @@ function validateUiDesignPrerequisites(state: DesignGraphState): void {
 
   if (!hasReferences && !hasAssets) {
     throw new Error(
-      "UI 문서 생성에 필요한 입력 파일이 없습니다.\n\n" +
-      "필수 입력:\n" +
-      "- inputs/references/screens/ - 피그마 화면 캡처 이미지\n" +
-      "- inputs/references/components/ - 컴포넌트 상태 스냅샷 (선택)\n" +
-      "- inputs/assets/ - 런타임 에셋 파일들 (선택)\n\n" +
-      "위 폴더에 최소 하나 이상의 이미지/에셋 파일을 추가해주세요."
+      "No input files found for UI document generation.\n\n" +
+      "Required:\n" +
+      "- inputs/references/ - Design reference images (screenshots, component snapshots, etc.)\n" +
+      "- inputs/assets/ - Runtime asset files (optional)\n\n" +
+      "Please add at least one image or asset file."
     );
   }
 
   if (!hasReferences) {
     throw new Error(
-      "UI 문서 생성을 위한 레퍼런스 이미지가 없습니다.\n\n" +
-      "inputs/references/screens/ 폴더에 피그마 화면 캡처 이미지를 추가해주세요.\n" +
-      "- 스크린샷은 화면 레이아웃, 색상, 타이포그래피 분석에 사용됩니다.\n" +
-      "- 가능하면 다양한 해상도/상태의 스크린샷을 포함해주세요."
+      "No reference images found for UI document generation.\n\n" +
+      "Please add design reference images to inputs/references/.\n" +
+      "- Screenshots are used for layout, color, and typography analysis.\n" +
+      "- Include diverse viewports and states when possible."
     );
   }
 }

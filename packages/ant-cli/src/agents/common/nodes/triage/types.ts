@@ -117,11 +117,9 @@ export interface WorkspaceState {
   featurePath?: string;          // Feature directory path (for debug logging)
   
   // Design job - ui-design mode
-  hasScreens: boolean;           // inputs/references/screens/
-  hasComponents: boolean;        // inputs/references/components/
+  hasReferences: boolean;        // inputs/references/ (recursive)
   hasAssets: boolean;            // inputs/assets/
-  screenCount?: number;
-  componentCount?: number;
+  referenceCount?: number;
   assetCount?: number;
   
   // Design job - system-design mode

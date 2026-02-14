@@ -144,8 +144,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
             prd: state.prd ? `[${state.prd.length} chars]` : undefined,
             previousDocs: previousDocs ? `[${previousDocs.length} chars]` : undefined,
             uiReferences: state.uiReferences ? {
-              screens: state.uiReferences.screens?.length || 0,
-              components: state.uiReferences.components?.length || 0,
+              count: state.uiReferences.length,
             } : undefined,
             uiAssetsList: state.uiAssetsList ? 'SET' : undefined,
           },
@@ -232,7 +231,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
 ### Option A: If you haven't loaded the screenshot yet
 Call \`read_reference_image\` tool:
 \`\`\`
-read_reference_image("inputs/references/screens/Desktop 2560 +.png")
+read_reference_image("inputs/references/homepage-desktop.png")
 \`\`\`
 
 ### Option B: If you already have the screenshot loaded
@@ -307,16 +306,12 @@ Generate the document using \`<file>\` XML tag:
  */
 function buildResourcesSummary(state: DesignGraphState): string {
   let resourcesSummary = '\n\n# Available Resources\n\n';
-  resourcesSummary += '## Reference Screenshots\n';
-  resourcesSummary += 'Use `list_reference_images` tool to discover available screenshots, then use `read_reference_image` to load and analyze specific images.\n\n';
+  resourcesSummary += '## Reference Images\n';
+  resourcesSummary += 'Use `list_reference_images` tool to discover available images, then use `read_reference_image` to load and analyze specific images.\n\n';
   
-  if (state.uiReferences?.screens?.length) {
-    resourcesSummary += `- **Screens**: ${state.uiReferences.screens.length} screenshots available\n`;
-    resourcesSummary += `  (Examples: ${state.uiReferences.screens.slice(0, 3).join(', ')}${state.uiReferences.screens.length > 3 ? '...' : ''})\n`;
-  }
-  if (state.uiReferences?.components?.length) {
-    resourcesSummary += `- **Components**: ${state.uiReferences.components.length} component snapshots available\n`;
-    resourcesSummary += `  (Examples: ${state.uiReferences.components.slice(0, 3).join(', ')}${state.uiReferences.components.length > 3 ? '...' : ''})\n`;
+  if (state.uiReferences?.length) {
+    resourcesSummary += `- **References**: ${state.uiReferences.length} images available\n`;
+    resourcesSummary += `  (Examples: ${state.uiReferences.slice(0, 5).join(', ')}${state.uiReferences.length > 5 ? '...' : ''})\n`;
   }
   
   resourcesSummary += '\n## Asset Files\n';

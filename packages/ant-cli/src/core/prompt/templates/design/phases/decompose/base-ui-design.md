@@ -80,8 +80,7 @@ You are analyzing UI complexity to break it into tasks.
 
 | Resource | Count |
 |----------|-------|
-| Reference screens | {{screenCount}} |
-| Component snapshots | {{componentCount}} |
+| Reference images | {{referenceCount}} |
 | Asset files | {{assetCount}} |
 
 ---
@@ -144,7 +143,7 @@ You are analyzing UI complexity to break it into tasks.
 | Medium (landing page) | 2-3 chapters | 1-2 chapters | 3-4 chapters |
 | Large (multi-page) | 3+ chapters | 2+ chapters | 5+ chapters |
 
-**Your resources**: screens={{screenCount}}, components={{componentCount}}, assets={{assetCount}}
+**Your resources**: references={{referenceCount}}, assets={{assetCount}}
 
 **Principle**: When unsure, create more chapters. Better to have small focused tasks than hit token limits.
 

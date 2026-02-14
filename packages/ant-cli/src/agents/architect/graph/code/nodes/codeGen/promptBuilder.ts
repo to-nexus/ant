@@ -187,10 +187,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10); // 2MB
         const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10); // 8MB
 
-        const candidates: string[] = [
-          ...(uiReferenceImages.screens || []),
-          ...(uiReferenceImages.components || []),
-        ]
+        const candidates: string[] = uiReferenceImages
           .filter(Boolean)
           .map(p => (typeof p === 'string' ? p.replace(/\\/g, '/') : p))
           .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep'));
