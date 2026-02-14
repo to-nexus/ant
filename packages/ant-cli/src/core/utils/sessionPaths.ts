@@ -190,8 +190,6 @@ export const CANONICAL_FEATURE_DIRS: ReadonlyArray<string> = [
   'inputs/directives/learn',
   'inputs/assets',
   'inputs/references',
-  'inputs/references/screens',
-  'inputs/references/components',
   // outputs
   'outputs',
   'outputs/design',

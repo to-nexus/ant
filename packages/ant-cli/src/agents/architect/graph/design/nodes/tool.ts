@@ -720,7 +720,7 @@ async function handleListReferenceImages(
       category: category || 'all',
       images: [],
       count: 0,
-      message: `No reference images found. Please add screenshots to inputs/references/screens/ or inputs/references/components/`,
+      message: 'No reference images found. Add images to inputs/references/',
     }, null, 2);
   }
   
@@ -735,12 +735,12 @@ async function handleListReferenceImages(
     ? path.relative(workspaceRoot, featurePath)
     : featurePath.replace(/^\//, '');
   
-  // ✅ Group by category
-  const grouped: Record<string, string[]> = {
-    screens: [],
-    components: [],
-    other: [],
-  };
+  const referencesRelPath = workspaceRoot
+    ? path.relative(workspaceRoot, referencesDir)
+    : referencesDir.replace(/^\//, '');
+  
+  // ✅ Dynamic grouping by actual subdirectory names
+  const grouped: Record<string, string[]> = {};
   
   for (const file of imageFiles) {
     // Convert workspace-relative to feature-relative path
@@ -748,16 +748,17 @@ async function handleListReferenceImages(
       ? file.slice(featureRelPath.length).replace(/^[\/\\]/, '')
       : file;
     
-    if (file.includes('/screens/') || file.includes('\\screens\\')) {
-      grouped.screens.push(featureRelativePath);
-    } else if (file.includes('/components/') || file.includes('\\components\\')) {
-      grouped.components.push(featureRelativePath);
-    } else {
-      grouped.other.push(featureRelativePath);
-    }
+    // Determine group from path relative to references/
+    const refRelative = file.startsWith(referencesRelPath)
+      ? file.slice(referencesRelPath.length).replace(/^[\/\\]/, '')
+      : featureRelativePath;
+    const parts = refRelative.split(/[\/\\]/);
+    const group = parts.length > 1 ? parts[0] : '(root)';
+    (grouped[group] ||= []).push(featureRelativePath);
   }
   
-  console.log(`   🖼️  Found ${imageFiles.length} reference images (screens: ${grouped.screens.length}, components: ${grouped.components.length})`);
+  const groupSummary = Object.entries(grouped).map(([k, v]) => `${k}: ${v.length}`).join(', ');
+  console.log(`   🖼️  Found ${imageFiles.length} reference images (${groupSummary})`);
   if (imageFiles.length > 0) {
     console.log(`   📂 First few: ${imageFiles.slice(0, 3).map(f => path.basename(f)).join(', ')}`);
   }
@@ -773,9 +774,7 @@ async function handleListReferenceImages(
   
   return JSON.stringify({
     category: category || 'all',
-    screens: grouped.screens,
-    components: grouped.components,
-    other: grouped.other,
+    groups: grouped,
     total: imageFiles.length,
   }, null, 2);
 }

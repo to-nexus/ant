@@ -111,6 +111,6 @@ Use `<file>` tag to create the initial JSON file.
 ### Workflow
 
 1. `list_reference_images` → Discover all available screenshots
-2. `read_reference_image` → Load key screens with diverse UI elements
+2. `read_reference_image` → Load key images with diverse UI elements
 3. Extract tokens systematically by category
 4. Generate `ui-tokens.json` with comprehensive token structure

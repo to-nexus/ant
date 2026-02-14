@@ -165,8 +165,7 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.mkdirSync(path.join(featureDir, "inputs/assets"), { recursive: true });
 
   // ✅ Reference images folder (may be sent to LLM as multimodal blocks)
-  fs.mkdirSync(path.join(featureDir, "inputs/references/screens"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "inputs/references/components"), { recursive: true });
+  fs.mkdirSync(path.join(featureDir, "inputs/references"), { recursive: true });
   // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/icons/*)
 
   // Create placeholder directive.md files

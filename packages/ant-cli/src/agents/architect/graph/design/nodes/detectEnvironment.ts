@@ -237,36 +237,31 @@ export async function detectEnvironment(
     const referencesDir = path.join(featurePath, 'inputs/references');
     const assetsDir = path.join(featurePath, 'inputs/assets');
     
-    const screensDir = path.join(referencesDir, 'screens');
-    const componentsDir = path.join(referencesDir, 'components');
-    
-    const hasScreens = await dirHasFiles(screensDir);
-    const hasComponents = await dirHasFiles(componentsDir);
-    const hasReferences = hasScreens || hasComponents;
+    const hasReferences = await dirHasFiles(referencesDir);
     const hasAssets = await dirHasFiles(assetsDir);
     
-    // Build references list
+    // Build references list (dynamic grouping by subdirectory)
     let referencesList = '';
     if (hasReferences) {
-      const screenFiles = hasScreens ? await listFilesRecursive(screensDir) : [];
-      const componentFiles = hasComponents ? await listFilesRecursive(componentsDir) : [];
+      const allRefFiles = await listFilesRecursive(referencesDir);
+      
+      // Group by first-level subdirectory dynamically
+      const grouped: Record<string, string[]> = {};
+      for (const f of allRefFiles) {
+        const sep = f.indexOf('/');
+        const group = sep > 0 ? f.substring(0, sep) : '(root)';
+        (grouped[group] ||= []).push(f);
+      }
       
       const parts: string[] = [];
-      if (screenFiles.length > 0) {
-        parts.push(`**screens/** (${screenFiles.length} files):`);
-        screenFiles.slice(0, 10).forEach(f => parts.push(`  - ${f}`));
-        if (screenFiles.length > 10) parts.push(`  ... and ${screenFiles.length - 10} more`);
-      }
-      if (componentFiles.length > 0) {
-        parts.push(`**components/** (${componentFiles.length} files):`);
-        componentFiles.slice(0, 10).forEach(f => parts.push(`  - ${f}`));
-        if (componentFiles.length > 10) parts.push(`  ... and ${componentFiles.length - 10} more`);
+      for (const [group, files] of Object.entries(grouped)) {
+        parts.push(`**${group}/** (${files.length} files):`);
+        files.slice(0, 10).forEach(f => parts.push(`  - ${f}`));
+        if (files.length > 10) parts.push(`  ... and ${files.length - 10} more`);
       }
       referencesList = parts.join('\n');
       
-      console.log(`📸 Found reference images:`);
-      console.log(`   - screens: ${screenFiles.length} files`);
-      console.log(`   - components: ${componentFiles.length} files`);
+      console.log(`📸 Found reference images: ${allRefFiles.length} files`);
     }
     
     // Build assets list
@@ -321,9 +316,8 @@ export async function detectEnvironment(
     // Build UI references for state
     let uiReferences: DesignGraphState['uiReferences'] = undefined;
     if (hasReferences) {
-      const screenFiles = hasScreens ? (await listFilesRecursive(screensDir)).map(f => `inputs/references/screens/${f}`) : undefined;
-      const componentFiles = hasComponents ? (await listFilesRecursive(componentsDir)).map(f => `inputs/references/components/${f}`) : undefined;
-      uiReferences = { screens: screenFiles, components: componentFiles };
+      const allRefFiles = await listFilesRecursive(referencesDir);
+      uiReferences = allRefFiles.map(f => `inputs/references/${f}`);
     }
 
     // Build prompt

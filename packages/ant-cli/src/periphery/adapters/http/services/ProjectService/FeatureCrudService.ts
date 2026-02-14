@@ -169,8 +169,7 @@ export class FeatureCrudService {
     // by Design Job into outputs/design/. No placeholders needed.
 
     await fs.promises.mkdir(path.join(featurePath, 'inputs/assets'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/references/screens'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/references/components'), { recursive: true });
+    await fs.promises.mkdir(path.join(featurePath, 'inputs/references'), { recursive: true });
     // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/icons/*)
 
     // ✅ Create Git branch for feature (if Git is initialized and function is injected)

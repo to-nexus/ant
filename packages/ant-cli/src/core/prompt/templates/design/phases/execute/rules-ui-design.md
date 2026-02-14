@@ -33,7 +33,7 @@ You have access to tools for exploring reference images and assets:
 
 | Tool | Purpose |
 |------|---------|
-| `list_reference_images` | Discover available screenshots (screens/, components/) |
+| `list_reference_images` | Discover available reference images |
 | `read_reference_image` | Load specific image for visual analysis |
 | `list_assets` | List asset files (logos, icons, backgrounds, fonts) |
 | `read_file` | Read existing documents or PRD |
@@ -48,7 +48,7 @@ You have access to tools for exploring reference images and assets:
 
 - **ui-tokens.json**: Load 2-3 key screenshots with diverse UI elements
 - **ui-assets.json**: Use `list_assets` primarily, images optional for context
-- **ui-spec.json**: Load screens systematically (desktop → tablet → mobile)
+- **ui-spec.json**: Prioritize full-page screenshots, then observe component details
 
 > ⚠️ **IMPORTANT**: Images are NOT preloaded. You MUST use `read_reference_image` tool to see screenshot content.
 
