@@ -105,18 +105,20 @@ export class TaskOrchestrator<T extends BaseTask> {
     sharedContext: any,
     callbacks: OrchestratorCallbacks<T> = {},
     config?: Partial<OrchestratorConfig>,
+    initialCompletedTasks?: T[],
   ) {
     this.taskQueue = taskQueue;
     this.graphBuilder = graphBuilder;
     this.sharedContext = sharedContext;
     this.callbacks = callbacks;
+    this.completedTasks = initialCompletedTasks ?? [];
     this.maxWorkers = config?.maxWorkers ?? getTaskConcurrency();
     this.config = {
       maxWorkers: this.maxWorkers,
       checkpointInterval: config?.checkpointInterval ?? 60_000,
     };
 
-    console.log(`[Orchestrator] Initialized with maxWorkers=${this.maxWorkers}, queueSize=${taskQueue.size()}`);
+    console.log(`[Orchestrator] Initialized with maxWorkers=${this.maxWorkers}, queueSize=${taskQueue.size()}, previouslyCompleted=${this.completedTasks.length}`);
   }
 
   // ============================================
