@@ -78,8 +78,8 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   }
   
   // 3. Load eval reports (if any) — skip stale evals (PRD modified after eval)
-  //    NOTE: Whether to apply eval findings is decided by the LLM based on the user's directive.
-  //    The system always loads available context; the prompt constrains when to use it.
+  //    Uses file mtime for comparison (not filename timestamp) to avoid timezone bugs.
+  //    Whether to apply eval findings is decided by the LLM based on the user's directive.
   let evalReport: string | undefined;
   const evalDir = path.join(featurePath, 'outputs/evals/prd');
   try {
@@ -88,24 +88,25 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
       .sort()
       .reverse();
     
-    if (evalFiles.length > 0 && existingDocument) {
+    if (evalFiles.length > 0) {
       const evalFileName = evalFiles[0];
-      const timestampMatch = evalFileName.match(/eval-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/);
-      const evalTime = timestampMatch 
-        ? new Date(timestampMatch[1].replace(/-/g, (m, offset) => offset > 9 ? ':' : m)).getTime()
-        : 0;
+      const evalFilePath = path.join(evalDir, evalFileName);
       
-      const prdMtime = fs.statSync(prdPath).mtimeMs;
-      
-      if (evalTime > 0 && prdMtime > evalTime) {
-        console.log(`   Eval: Skipped stale (${evalFileName}) — PRD modified after eval`);
+      if (existingDocument) {
+        // Compare file mtimes directly (avoids UTC/local timezone mismatch from filename parsing)
+        const evalMtime = fs.statSync(evalFilePath).mtimeMs;
+        const prdMtime = fs.statSync(prdPath).mtimeMs;
+        
+        if (prdMtime > evalMtime) {
+          console.log(`   Eval: Skipped stale (${evalFileName}) — PRD modified after eval`);
+        } else {
+          evalReport = fs.readFileSync(evalFilePath, 'utf-8');
+          console.log(`   Eval: Loaded latest (${evalFileName})`);
+        }
       } else {
-        evalReport = fs.readFileSync(path.join(evalDir, evalFileName), 'utf-8');
+        evalReport = fs.readFileSync(evalFilePath, 'utf-8');
         console.log(`   Eval: Loaded latest (${evalFileName})`);
       }
-    } else if (evalFiles.length > 0) {
-      evalReport = fs.readFileSync(path.join(evalDir, evalFiles[0]), 'utf-8');
-      console.log(`   Eval: Loaded latest (${evalFiles[0]})`);
     }
   } catch {
     // No eval reports
