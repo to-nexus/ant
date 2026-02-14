@@ -288,6 +288,8 @@ export class RouteConfigurator {
                     type: 'chat',
                     data: {
                       type: 'inline_ask_complete',
+                      projectId,
+                      featureName,
                       jobId,
                       intent,
                       timestamp: new Date().toISOString(),
