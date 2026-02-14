@@ -134,10 +134,5 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ UI document generation context
   // Populated when detectionReport.workType === 'ui-design'
   uiReferences?: string[];  // All image paths under inputs/references/ (recursive)
-  uiAssetsList?: {
-    logos?: string[];
-    backgrounds?: string[];
-    icons?: string[];
-    other?: string[];
-  };
+  uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under inputs/assets/
 }

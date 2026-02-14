@@ -318,12 +318,9 @@ function buildResourcesSummary(state: DesignGraphState): string {
   resourcesSummary += 'Use `list_assets` tool to discover available asset files for mapping.\n\n';
   
   if (state.uiAssetsList) {
-    const assetCounts = [
-      state.uiAssetsList.logos?.length ? `logos: ${state.uiAssetsList.logos.length}` : null,
-      state.uiAssetsList.icons?.length ? `icons: ${state.uiAssetsList.icons.length}` : null,
-      state.uiAssetsList.backgrounds?.length ? `backgrounds: ${state.uiAssetsList.backgrounds.length}` : null,
-      state.uiAssetsList.other?.length ? `other: ${state.uiAssetsList.other.length}` : null,
-    ].filter(Boolean);
+    const assetCounts = Object.entries(state.uiAssetsList)
+      .filter(([, files]) => files.length > 0)
+      .map(([group, files]) => `${group}: ${files.length}`);
     
     if (assetCounts.length > 0) {
       resourcesSummary += `Available: ${assetCounts.join(', ')}\n`;
@@ -702,11 +699,9 @@ function extractPathPattern(content: string): string {
     
     if (destinationPaths.size > 0) {
       const patterns: string[] = [];
-      for (const path of destinationPaths) {
-        if (path.includes('logo')) patterns.push(`logos=${path}`);
-        else if (path.includes('icon')) patterns.push(`icons=${path}`);
-        else if (path.includes('bg') || path.includes('background')) patterns.push(`backgrounds=${path}`);
-        else patterns.push(`other=${path}`);
+      for (const p of destinationPaths) {
+        const dirName = p.replace(/^public\//, '').replace(/\/$/, '');
+        patterns.push(`${dirName}=${p}`);
       }
       return patterns.join(', ');
     }
@@ -734,11 +729,9 @@ function extractPathPattern(content: string): string {
   
   if (destinationPaths.size > 0) {
     const patterns: string[] = [];
-    for (const path of destinationPaths) {
-      if (path.includes('logo')) patterns.push(`logos=${path}`);
-      else if (path.includes('icon')) patterns.push(`icons=${path}`);
-      else if (path.includes('bg') || path.includes('background')) patterns.push(`backgrounds=${path}`);
-      else patterns.push(`other=${path}`);
+    for (const p of destinationPaths) {
+      const dirName = p.replace(/^public\//, '').replace(/\/$/, '');
+      patterns.push(`${dirName}=${p}`);
     }
     return patterns.join(', ');
   }

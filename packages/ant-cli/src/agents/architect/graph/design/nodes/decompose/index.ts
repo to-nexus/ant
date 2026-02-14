@@ -27,10 +27,7 @@ import { decomposeSystemDesign } from "./systemDesignDecompose";
 
 function validateUiDesignPrerequisites(state: DesignGraphState): void {
   const hasReferences = state.uiReferences?.length;
-  const hasAssets = state.uiAssetsList?.logos?.length || 
-                    state.uiAssetsList?.backgrounds?.length || 
-                    state.uiAssetsList?.icons?.length || 
-                    state.uiAssetsList?.other?.length;
+  const hasAssets = state.uiAssetsList && Object.values(state.uiAssetsList).some(arr => arr.length > 0);
 
   if (!hasReferences && !hasAssets) {
     throw new Error(

@@ -35,7 +35,7 @@ You have access to tools for exploring reference images and assets:
 |------|---------|
 | `list_reference_images` | Discover available reference images |
 | `read_reference_image` | Load specific image for visual analysis |
-| `list_assets` | List asset files (logos, icons, backgrounds, fonts) |
+| `list_assets` | List asset files grouped by subdirectory |
 | `read_file` | Read existing documents or PRD |
 
 ### Workflow
@@ -449,17 +449,13 @@ For dependent tasks, you will find REFERENCE sections in this prompt containing 
 
 ```json
 {
-  "logos": {
-    "logo-header": { "src": "logos/header-logo.svg", "dest": "public/logos/header.svg" }
-  },
-  "icons": {
-    "icon-telegram": { "src": "icons/telegram.svg", "dest": "public/icons/telegram.svg" }
-  },
-  "backgrounds": {
-    "bg-hero": { "src": "bg/hero-main.png", "dest": "public/backgrounds/hero.png" }
+  "<category>": {
+    "<asset-id>": { "src": "<source-path>", "dest": "<destination-path>" }
   }
 }
 ```
+
+> Categories are determined by observing asset purpose from filenames and directory structure. Do NOT assume fixed categories.
 
 **Content Requirements**:
 - Reference **token names** from ui-tokens.json (e.g., `"overlay": "colors.overlay.dark"`)

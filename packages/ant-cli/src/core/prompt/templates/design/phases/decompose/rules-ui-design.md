@@ -45,16 +45,14 @@ Adjust chapter count based on expected content:
 **When creating ui-assets tasks:**
 
 **ui-assets-ch1 description MUST include:**
-- "Define canonical destination path patterns (public/logos/, public/icons/, public/backgrounds/)"
-- "Output `<!-- PATH_PATTERN: logos=..., icons=..., backgrounds=... -->` metadata"
+- "Define canonical destination path patterns based on observed asset categories"
+- "Output `<!-- PATH_PATTERN: <category>=<dest-path>, ... -->` metadata"
 
 **ui-assets-ch2+ descriptions MUST include:**
 - "Follow ch1's path patterns exactly - do NOT create new subdirectories"
 - "Skip any assets already documented in ch1"
 
-**Why?** Without explicit path patterns, ch2 may create inconsistent paths like:
-- ch1: `icon-telegram → public/icons/telegram.svg`
-- ch2: `icon-medium → public/icons/social/medium.svg` ← WRONG! Different pattern!
+**Why?** Without explicit path patterns, ch2 may create inconsistent destination paths.
 
 ---
 

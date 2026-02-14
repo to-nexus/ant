@@ -186,10 +186,10 @@ import { X } from '@/components/X';
 When using `ui-assets.json`:
 
 ```tsx
-// After copying: inputs/assets/logo.svg → public/logos/logo.svg
+// After copying: inputs/assets/<category>/logo.svg → public/<category>/logo.svg
 import Image from 'next/image';
 
-<Image src="/logos/logo.svg" alt="Logo" width={100} height={40} />
+<Image src="/<category>/logo.svg" alt="Logo" width={100} height={40} />
 ```
 
 **For other frameworks:** Use standard `<img>` tag or framework's image component.

@@ -109,7 +109,7 @@ You are analyzing UI complexity to break it into tasks.
 
 | Task ID | Priority | Topic |
 |---------|----------|-------|
-| ui-assets-ch1 | 200 | Images & Backgrounds. Define canonical destination paths (logos/, icons/, backgrounds/). Output PATH_PATTERN metadata. |
+| ui-assets-ch1 | 200 | First batch of assets. Define canonical destination path patterns based on observed asset categories. Output PATH_PATTERN metadata. |
 | ui-assets-ch2 | 210 | Icons & Graphics. MUST follow ch1's path patterns exactly. Skip assets already documented. |
 
 **Task Description Requirements:**
