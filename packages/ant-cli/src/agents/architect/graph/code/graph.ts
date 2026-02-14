@@ -399,6 +399,18 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   jobId: (state as any).jobId,
                   jobTiming: (state as any).jobTiming,
                   parallelMode: true,
+                  // ✅ FIX: Preserve interruption details in checkpoint.
+                  // onCheckpoint does a full replace of session.state. Without this,
+                  // interruption info set by cleanupJobState would be lost when the
+                  // child process writes its checkpoint after the API server.
+                  ...(checkpoint.interruption ? {
+                    interruption: {
+                      reason: checkpoint.interruption.reason,
+                      message: `Job interrupted: ${checkpoint.interruption.reason}`,
+                      timestamp: new Date().toISOString(),
+                      canResume: checkpoint.interruption.canResume,
+                    }
+                  } : {}),
                 },
               },
             );

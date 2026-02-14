@@ -313,6 +313,10 @@ export class RouteConfigurator {
           // Without this guard, cleanupJobState runs twice → duplicate choice cards
           const wasUserStopped = await stateStore.isUserStopped(jobId);
           if (wasUserStopped) {
+            // ✅ FIX: Clear the flag here (after checking) to prevent stale flag on resume.
+            // Previously cleared in JobWorker.checkCancellation BEFORE this check,
+            // causing this guard to fail → duplicate cleanupJobState → race condition.
+            await stateStore.clearUserStopped(jobId);
             logger.info(`Skipping cleanupJobState for user-stopped job: ${jobId} (already handled by stop route)`, {
               component: 'RouteConfigurator'
             });

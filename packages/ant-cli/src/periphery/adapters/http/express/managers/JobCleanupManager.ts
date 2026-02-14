@@ -136,20 +136,83 @@ export class JobCleanupManager {
           const isParallelMode = sessionData.state.parallelMode === true;
           
           if (isParallelMode) {
-            logger.info(`Parallel mode detected — using orchestrator checkpoint data as-is`, {
-              component: 'JobCleanupManager',
-              jobId
-            }, {
-              queueSize: (sessionData.state.taskQueue || []).length,
-              completedCount: (sessionData.state.completedTasks || []).length,
-            });
+            // ✅ FIX: Cross-process race condition prevention.
+            // cleanupJobState (API server) and child process checkpoint writes target
+            // the same session file without cross-process coordination. The session file
+            // may be stale (read before child's latest checkpoint). Use Redis checkpoint
+            // as the primary source of truth for completedTasks — it's updated atomically
+            // after every task completion and is always consistent.
+            let redisCompletedTasks: any[] | null = null;
+            let redisTaskQueue: any[] | null = null;
+            try {
+              const redisCheckpoint = await stateStore.getTaskQueueCheckpoint(jobId);
+              if (redisCheckpoint) {
+                redisCompletedTasks = redisCheckpoint.completedTasks || [];
+                redisTaskQueue = redisCheckpoint.queue || [];
+                logger.info(`Redis checkpoint found for parallel mode`, {
+                  component: 'JobCleanupManager',
+                  jobId
+                }, {
+                  redisCompleted: redisCompletedTasks!.length,
+                  redisQueue: redisTaskQueue!.length,
+                  sessionCompleted: (sessionData.state.completedTasksDetails || []).length,
+                  sessionQueue: (sessionData.state.taskQueue || []).length,
+                });
+              }
+              
+              // Also check live snapshot (more recent than checkpoint for running tasks)
+              if (!redisCheckpoint) {
+                const liveSnapshot = await stateStore.getTaskQueue(jobId);
+                if (liveSnapshot) {
+                  redisCompletedTasks = liveSnapshot.completedTasks || [];
+                  // Reconstruct queue: running tasks (as interrupted) + remaining queue
+                  const runningTasks = (liveSnapshot.currentTasks || (liveSnapshot.currentTask ? [liveSnapshot.currentTask] : []))
+                    .filter(Boolean)
+                    .map((t: any) => ({ ...t, interrupted: true }));
+                  redisTaskQueue = [...runningTasks, ...(liveSnapshot.queue || [])];
+                  logger.info(`Using live Redis snapshot for parallel mode`, {
+                    component: 'JobCleanupManager',
+                    jobId
+                  }, {
+                    redisCompleted: redisCompletedTasks!.length,
+                    redisQueue: redisTaskQueue!.length,
+                  });
+                }
+              }
+            } catch (err) {
+              logger.warn(`Failed to read Redis checkpoint/snapshot`, {
+                component: 'JobCleanupManager',
+                jobId
+              }, err);
+            }
             
-            // In parallel mode, the checkpoint already includes running tasks
-            // (marked interrupted) at the front of taskQueue. Just clear currentTask.
-            sessionData.state = {
-              ...sessionData.state,
-              currentTask: undefined
-            };
+            // Use whichever source has MORE completed tasks (Redis or session file).
+            // This ensures we never lose completed tasks due to cross-process race.
+            const sessionCompleted = sessionData.state.completedTasksDetails || [];
+            const useRedis = redisCompletedTasks && redisCompletedTasks.length > sessionCompleted.length;
+            
+            if (useRedis) {
+              logger.info(`Using Redis data (more complete): ${redisCompletedTasks!.length} completed vs session ${sessionCompleted.length}`, {
+                component: 'JobCleanupManager',
+                jobId
+              });
+              sessionData.state = {
+                ...sessionData.state,
+                taskQueue: redisTaskQueue!,
+                completedTasks: redisCompletedTasks!.map((t: any) => t.id || t),
+                completedTasksDetails: redisCompletedTasks!,
+                currentTask: undefined
+              };
+            } else {
+              logger.info(`Using session file data: ${sessionCompleted.length} completed`, {
+                component: 'JobCleanupManager',
+                jobId
+              });
+              sessionData.state = {
+                ...sessionData.state,
+                currentTask: undefined
+              };
+            }
           } else {
             // ✅ Sequential mode: original single-currentTask logic
             // Try multiple sources for current in-progress task (cloud-safe)
