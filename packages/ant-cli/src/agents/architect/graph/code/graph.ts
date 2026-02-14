@@ -605,6 +605,15 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         tasksRemaining: result.remainingQueue.length,
         completedCount: result.completedTasks.length,
       },
+    } : result.hasFailures ? {
+      reason: 'tasks_failed',
+      message: `${result.failedTasks.length} task(s) failed during parallel execution`,
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: {
+        failedCount: result.failedTasks.length,
+        completedCount: result.completedTasks.length,
+      },
     } : undefined,
   } as any;
 }
