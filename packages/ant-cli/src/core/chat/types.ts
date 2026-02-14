@@ -192,6 +192,20 @@ export const COMPLETED_CHAT_STATUS_TYPES = new Set([
 ]);
 
 /**
+ * Informational content types that coexist with placeholder (Universal Placeholder System)
+ * 
+ * These types do NOT replace an active placeholder when they arrive.
+ * Instead, they are added alongside the placeholder so the shimmer animation
+ * continues while informational context is displayed.
+ * 
+ * Example: [placeholder, context_loaded] — shimmer keeps animating while
+ * showing "PRD (5,234 chars), Conversation (3 messages)" below it.
+ */
+export const INFORMATIONAL_TYPES = new Set([
+  'context_loaded',
+]);
+
+/**
  * Base branch names (skip chat persistence)
  */
 export const BASE_BRANCH_NAMES = ['main', 'master', 'develop'];

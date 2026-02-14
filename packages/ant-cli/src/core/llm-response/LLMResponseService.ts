@@ -120,6 +120,16 @@ export class LLMResponseService {
         }, ctx.userContext);
       }
       
+      // ✅ Auto-inject placeholder on message creation (Universal Placeholder System)
+      // Every new message automatically starts with a placeholder shimmer animation.
+      // ContentMerger handles placeholder → any content transition automatically:
+      //   - placeholder → placeholder: in-place replacement (node transitions)
+      //   - placeholder → thinking/text/file: merge (placeholder disappears)
+      //   - placeholder → informational (context_loaded): add alongside (placeholder stays)
+      // Individual nodes no longer need to manually call showChatStatus('placeholder')
+      // as the first action — it's guaranteed from message creation.
+      this.chatStatusHandler.showChatStatus('placeholder');
+      
       logger.debug(`Started message: ${messageId}`, { component: 'LLMResponseService' });
       return messageId;
     } catch (error) {

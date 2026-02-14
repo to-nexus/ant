@@ -6,7 +6,7 @@
  */
 
 import type { MessageContent, ChatSession } from './types';
-import { CHAT_STATUS_TYPES, COMPLETED_CHAT_STATUS_TYPES } from './types';
+import { CHAT_STATUS_TYPES, COMPLETED_CHAT_STATUS_TYPES, INFORMATIONAL_TYPES } from './types';
 import type { MessageBroadcaster } from './MessageBroadcaster';
 import { logger } from '../../utils/logger';
 
@@ -48,18 +48,40 @@ export class ContentMerger {
     const lastContentIndex = existingContents.length - 1;
 
     // Check content types
-    const isLastPlaceholder = lastContent?.type === 'placeholder';
     const isNewPlaceholder = content.type === 'placeholder';
     const isNewThinkingBlock = content.type === 'thinking' && content.metadata?.blockStart === true;
 
-    // Case 1: Placeholder → Placeholder (node transition)
-    if (isLastPlaceholder && isNewPlaceholder && lastContent) {
-      return this.replaceContent(projectId, featureName, session, lastContentIndex, content);
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Universal Placeholder System
+    //
+    // Placeholder is auto-injected by LLMResponseService.startMessage() and managed
+    // centrally here. The placeholder can exist at ANY position in contents[] (not
+    // just last) because informational types (context_loaded) are added alongside it.
+    //
+    // Rules:
+    //   1. New placeholder → find existing placeholder anywhere, replace in-place
+    //   2. Informational content → add alongside placeholder (placeholder stays)
+    //   3. Real content (thinking/text/file) → find placeholder anywhere, merge with it
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    // Case 1 (Universal): New placeholder → find and replace existing anywhere
+    if (isNewPlaceholder) {
+      const existingPlaceholderIdx = existingContents.findIndex(c => c.type === 'placeholder');
+      if (existingPlaceholderIdx !== -1) {
+        return this.replaceContent(projectId, featureName, session, existingPlaceholderIdx, content);
+      }
+      // No existing placeholder → add as new content block
+      return this.addNewContent(projectId, featureName, session, content, false);
     }
 
-    // Case 2: Placeholder → anything (merge with placeholder)
-    if (isLastPlaceholder && lastContent) {
-      return this.mergeWithPlaceholder(projectId, featureName, session, lastContentIndex, content);
+    // Case 2 (Universal): Non-placeholder content arriving — handle placeholder interaction
+    // Informational types coexist with placeholder (add alongside, placeholder stays visible)
+    // All other types merge with/replace the placeholder (placeholder disappears)
+    if (!INFORMATIONAL_TYPES.has(content.type)) {
+      const placeholderIdx = existingContents.findIndex(c => c.type === 'placeholder');
+      if (placeholderIdx !== -1) {
+        return this.mergeWithPlaceholder(projectId, featureName, session, placeholderIdx, content);
+      }
     }
 
     // Case 3: Explicit _mergeIndex (direct merge)
