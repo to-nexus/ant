@@ -258,7 +258,8 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         remainingQueue,    // ✅ Exclude nextTask from queue
         completedTasksDetails,
         state.recursionCount,
-        state.recursionLimit
+        state.recursionLimit,
+        (state as any).tokenUsage  // ✅ FIX: Pass job-level token usage to prevent badge reset
       );
     }
     

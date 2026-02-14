@@ -216,6 +216,11 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       this.estimatingNodeId = undefined;
     }
 
+    // ✅ FIX: Use cached token usage as fallback when not explicitly provided.
+    // checkTaskStatus calls updateTaskQueue without tokenUsage; without this fallback,
+    // broadcasts would send tokenUsage: undefined, causing frontend badge to reset to 0.
+    const effectiveTokenUsage = tokenUsage ?? this.cachedTokenUsage;
+
     // 1. Build snapshot for Redis state storage
     const snapshot: TaskQueueSnapshot = {
       currentTask: currentTasks[0] || null,
@@ -224,7 +229,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       completedTasks,
       recursionCount: recursionCount ?? 0,
       recursionLimit: recursionLimit ?? 50,
-      tokenUsage,
+      tokenUsage: effectiveTokenUsage,
       // Include estimating activity for reconnect/recovery
       ...(this.estimatingLabel && {
         estimatingLabel: this.estimatingLabel,
@@ -252,7 +257,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       dataSource: 'live',
       recursionCount,
       recursionLimit,
-      tokenUsage,
+      tokenUsage: effectiveTokenUsage,
       jobType: this.jobType,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)
       ...(this.jobTiming && { jobTiming: this.jobTiming }),

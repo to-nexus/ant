@@ -71,6 +71,16 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       data = { ...data, recursionTaskName: existingKanban.recursionTaskName };
     }
     
+    // ✅ Preserve tokenUsage from existing state if not in incoming data.
+    // KanbanBroadcaster may omit tokenUsage in task queue updates (e.g., checkTaskStatus);
+    // preserve to prevent TokenUsageBadge from resetting to 0.
+    if (data.tokenUsage === undefined && existingKanban?.tokenUsage !== undefined) {
+      data = { ...data, tokenUsage: existingKanban.tokenUsage };
+    }
+    if (data.estimatingTokenUsage === undefined && existingKanban?.estimatingTokenUsage !== undefined) {
+      data = { ...data, estimatingTokenUsage: existingKanban.estimatingTokenUsage };
+    }
+    
     const kanbanJobId = data.jobId;
     const { selectedProject, selectedFeature } = state;
     const currentFeatureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
