@@ -225,6 +225,23 @@ import Image from 'next/image';
 images: { domains: ['example.com'] }
 ```
 
+## Platform Configuration (next.config)
+
+**Principle**: All generated URLs (routes, assets, SSR output) MUST include the correct path prefix for proxy-based deployment.
+
+**Constraint**: `next.config` MUST read base path from `NEXT_PUBLIC_BASE_PATH` environment variable. Default to empty string when absent.
+
+**Constraint**: Image optimization MUST be disabled when base path is set (proxy path breaks internal image fetch).
+
+```typescript
+const nextConfig = {
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
+  images: {
+    unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH,
+  },
+};
+```
+
 ## Environment Variables
 ```typescript
 // ✅ Server-side only

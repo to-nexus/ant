@@ -111,7 +111,9 @@ packages:
 
 ## 3. Build Tool Configuration
 
-Set up according to chosen framework (Vite/Next.js/etc). Match your project's needs.
+**Constraint**: Every build framework has a native config file. This config file MUST be created during setup -- it is not optional.
+
+**Observation Target**: Check if `preview-setup` injection is present in the prompt. If so, its environment variable bindings (base path, API base URL) MUST be wired into the framework config file during setup.
 
 ## 4. Style/Linting Configuration
 

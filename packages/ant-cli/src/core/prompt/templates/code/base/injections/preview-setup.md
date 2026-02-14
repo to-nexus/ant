@@ -20,6 +20,8 @@ reading from an environment variable injected at dev server startup.
 - Default MUST be empty string or `'/'` when env var is absent (non-Ant execution)
 - This ensures ALL generated URLs (routes, assets, images) include the correct prefix
 
+**Constraint**: Framework config file MUST exist before any application code is written. If it does not exist, create it first. Without this config, the dev server proxy cannot route requests correctly.
+
 | Framework | Config File | Setting | Environment Variable |
 |-----------|------------|---------|---------------------|
 | **Vite** (React/Vue) | `vite.config.ts` | `base: process.env.VITE_BASE_PATH \|\| '/'` | `VITE_BASE_PATH` |

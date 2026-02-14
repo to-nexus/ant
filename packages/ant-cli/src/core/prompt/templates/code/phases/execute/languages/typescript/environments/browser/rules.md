@@ -70,6 +70,16 @@ SSR frameworks run code in TWO contexts:
 
 ---
 
+### ⚠️ Blind Spot: SSR Base Path
+
+**Principle**: SSR frameworks generate URLs on BOTH server and client. Both MUST produce identical paths.
+
+**Constraint**: If the framework config does not include a dynamic base path from an environment variable, server-rendered HTML produces asset URLs that do not match the proxy path -- causing hydration mismatch and broken assets.
+
+**Observation Target**: Does the framework config file read base path from an environment variable? If not, this MUST be fixed before proceeding with feature code.
+
+---
+
 ### When Solving Problems
 
 **Analyze first:**
