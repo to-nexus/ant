@@ -328,6 +328,12 @@ export class ChatAPIClient {
     await service?.failFileEdit(filePath, errorMessage);
   }
 
+  async failFileCreation(filePath: string, errorMessage: string): Promise<void> {
+    if (!this.enabled) return;
+    const service = await getLLMResponseService();
+    await service?.failFileCreation(filePath, errorMessage);
+  }
+
   async completeFileDeletion(filePath: string, content?: string): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();

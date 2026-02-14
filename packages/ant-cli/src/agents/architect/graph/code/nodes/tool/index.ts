@@ -57,7 +57,8 @@ import {
   handleEditFile,
   handleMkdir,
   handleRunCommand,
-  handleSearchReferenceCode
+  handleSearchReferenceCode,
+  handleCreateFile
 } from './handlers';
 
 export async function tool(
@@ -161,6 +162,12 @@ export async function tool(
         break;
       case 'search_reference_code':
         result = await handleSearchReferenceCode(state, args as any);
+        break;
+      // Shadow tools: file creation (not exposed to LLM, but handled gracefully)
+      case 'file':
+      case 'write_file':
+      case 'create_file':
+        result = await handleCreateFile(state, args as any);
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);

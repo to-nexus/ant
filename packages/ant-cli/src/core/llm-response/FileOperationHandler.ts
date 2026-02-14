@@ -83,6 +83,13 @@ export class FileOperationHandler {
   }
 
   /**
+   * Fail file creation (error occurred)
+   */
+  async failFileCreation(filePath: string, errorMessage: string): Promise<void> {
+    await this.addFileOperation('create', filePath, 'failed', { error: errorMessage });
+  }
+
+  /**
    * Core method: Add file operation notification
    */
   private async addFileOperation(

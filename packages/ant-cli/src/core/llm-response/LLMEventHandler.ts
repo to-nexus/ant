@@ -183,6 +183,10 @@ export class LLMEventHandler {
     if (name === 'edit_file' || name === 'delete_file') {
       this.handleFileToolUse(name, input);
     }
+    // SHADOW TOOLS: file/write_file/create_file (LLM incorrectly uses tool instead of <file> XML)
+    else if (name === 'file' || name === 'write_file' || name === 'create_file') {
+      this.handleFileToolUse(name, input);  // → file_creating (FileCard loading)
+    }
     // SIMPLE TOOLS: mkdir
     else if (name === 'mkdir') {
       this.handleMkdirToolUse(input);
@@ -250,11 +254,24 @@ export class LLMEventHandler {
 
   /**
    * Handle generic tool use (fallback)
+   * Truncates long string values in input to prevent UI overflow.
    */
   private handleGenericToolUse(toolName: string, input: any): void {
+    // Truncate long string values (e.g. content, new_str, old_str)
+    const summary: Record<string, any> = { ...input };
+    for (const key of Object.keys(summary)) {
+      if (typeof summary[key] === 'string' && summary[key].length > 100) {
+        summary[key] = `(${summary[key].length} chars)`;
+      }
+    }
+    const json = JSON.stringify(summary);
+    const displayContent = json.length > 200
+      ? `${toolName}: ${json.substring(0, 200)}...`
+      : `${toolName}: ${json}`;
+
     this.addContent({
       type: 'tool_action',
-      content: `${toolName}: ${JSON.stringify(input)}`,
+      content: displayContent,
       metadata: {
         toolName,
         actionIcon: '🔧',

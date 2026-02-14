@@ -331,6 +331,12 @@ export class LLMResponseService {
     await this.fileOperationHandler.failFileEdit(filePath, errorMessage);
   }
 
+  async failFileCreation(filePath: string, errorMessage: string): Promise<void> {
+    if (!this.enabled) return;
+    if (!await this.ensureActiveMessage()) return;
+    await this.fileOperationHandler.failFileCreation(filePath, errorMessage);
+  }
+
   // ============================================================================
   // Command Execution
   // ============================================================================

@@ -1,0 +1,84 @@
+/**
+ * Handle file creation via shadow tool
+ * 
+ * This is a SHADOW TOOL - not exposed in available tools list.
+ * When LLM incorrectly calls 'file', 'write_file', or 'create_file' tool
+ * instead of using <file> XML tag, this handler gracefully creates the file
+ * instead of returning "Unknown tool" error.
+ * 
+ * The tool result includes a correction note to guide LLM toward using
+ * the proper <file> XML tag format for future file creation.
+ */
+
+import { ArchitectGraphState } from '../../../state';
+import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
+import { CreateFileArgs } from '../types';
+import { resolveToolPath } from './utils';
+
+export async function handleCreateFile(
+  state: ArchitectGraphState,
+  args: CreateFileArgs
+): Promise<string> {
+  const { path: filePath, content } = args;
+  const fileSystem = state.deps?.fileSystem;
+  
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
+  }
+  
+  if (!filePath) {
+    throw new Error('create_file requires path');
+  }
+  
+  if (content === undefined || content === null) {
+    throw new Error('create_file requires content');
+  }
+  
+  const chatAPI = getChatAPIClient();
+  
+  try {
+    const resolved = await resolveToolPath(state, filePath);
+    
+    // Write file to disk (writeFile auto-creates parent directories)
+    await fileSystem.writeFile(resolved.fsPath, content);
+    
+    console.log(`✅ [CreateFile] Created ${resolved.displayPath} (${content.length} chars)`);
+    console.log(`   ⚠️  Shadow tool used - LLM should use <file> XML tag instead`);
+    
+    // UI notification: complete file creation (FileCard transition: file_creating → file_create)
+    await chatAPI.completeFileCreation(resolved.displayPath, content);
+    
+    // Update file buffer (for subsequent read_file calls)
+    const fileBuffers = state.fileBuffers || new Map();
+    fileBuffers.set(resolved.displayPath, {
+      filePath: resolved.displayPath,
+      content,
+      committed: false,
+      lastModified: Date.now()
+    });
+    
+    // Broadcast file tree update
+    if (state.deps?.fileTreeUpdate) {
+      const featureName = state.context.featureFolder || 'default';
+      await state.deps.fileTreeUpdate.notifyFileTreeUpdate(
+        state.context.project,
+        featureName
+      );
+    }
+    
+    // Return result with correction guidance for LLM
+    return [
+      `File created successfully: ${resolved.displayPath} (${content.length} chars)`,
+      ``,
+      `⚠️ IMPORTANT: Do NOT use tool calls for file creation.`,
+      `Use the <file> XML tag instead, which enables real-time streaming:`,
+      `<file path="${resolved.displayPath}">`,
+      `...content...`,
+      `</file>`,
+    ].join('\n');
+  } catch (error) {
+    // UI notification: file creation failed
+    await chatAPI.failFileCreation(filePath, (error as Error).message);
+    throw error;
+  }
+}

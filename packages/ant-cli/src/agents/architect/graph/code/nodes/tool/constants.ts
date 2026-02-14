@@ -10,7 +10,10 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'delete_file': '🗑️ Deleting file',
   'mkdir': '📁 Creating directory',
   'run_command': '⚙️ Running command',
-  'search_reference_code': '🔎 Searching reference'
+  'search_reference_code': '🔎 Searching reference',
+  'file': '📄 Creating file',
+  'write_file': '📄 Creating file',
+  'create_file': '📄 Creating file'
 };
 
 export const LONG_RUNNING_PATTERNS = [
