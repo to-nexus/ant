@@ -55,11 +55,13 @@ export class LLMResponseService {
     );
     this.fileOperationHandler = new FileOperationHandler(
       this.sessionStore,
-      this.broadcaster
+      this.broadcaster,
+      this.contentMerger
     );
     this.commandExecutionHandler = new CommandExecutionHandler(
       this.sessionStore,
-      this.broadcaster
+      this.broadcaster,
+      this.contentMerger
     );
     this.chatStatusHandler = new ChatStatusHandler(
       this.sessionStore,

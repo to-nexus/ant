@@ -24,6 +24,7 @@ interface ParserContext {
   referencesContent: string;  // ✅ NEW: Accumulate references content
   insideClarify: boolean;  // ✅ NEW: <clarify> tag (planner mode — suppress from chat)
   clarifyContent: string;  // ✅ NEW: Accumulate clarify content (discarded)
+  clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
 }
@@ -41,6 +42,7 @@ export class XMLStreamParser implements IStreamParser {
     referencesContent: '',  // ✅ NEW
     insideClarify: false,  // ✅ NEW
     clarifyContent: '',  // ✅ NEW
+    clarifyStartEmitted: false,  // ✅ NEW
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
   };
@@ -337,6 +339,12 @@ export class XMLStreamParser implements IStreamParser {
             type: 'response',
             data: { content: beforeTag }
           });
+        }
+        
+        // Emit clarify_start once to show typing indicator during clarify generation
+        if (!this.context.clarifyStartEmitted) {
+          this.context.clarifyStartEmitted = true;
+          actions.push({ type: 'clarify_start', data: {} });
         }
         
         this.buffer = this.buffer.substring(startIdx);
@@ -796,6 +804,7 @@ export class XMLStreamParser implements IStreamParser {
       referencesContent: '',  // ✅ NEW
       insideClarify: false,  // ✅ NEW
       clarifyContent: '',  // ✅ NEW
+      clarifyStartEmitted: false,  // ✅ NEW
       currentFilePath: null,
       currentAppendPath: null,
     };

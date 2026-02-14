@@ -1,10 +1,11 @@
 /**
- * ShimmerCard - Shimmer/status card for placeholder and thinking states
+ * ShimmerCard - Status card for placeholder and thinking states
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { Brain, ChevronRight } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
+import { TypingIndicator } from './TypingIndicator';
 
 interface ShimmerCardProps {
   content: MessageContent;
@@ -13,7 +14,7 @@ interface ShimmerCardProps {
 
 export function ShimmerCard({ content, variant }: ShimmerCardProps) {
   if (variant === 'placeholder') {
-    return <PlaceholderVariant content={content} />;
+    return <TypingIndicator />;
   }
   
   if (variant === 'thinking') {
@@ -21,19 +22,6 @@ export function ShimmerCard({ content, variant }: ShimmerCardProps) {
   }
   
   return null;
-}
-
-/**
- * Placeholder variant - Simple shimmer text
- */
-function PlaceholderVariant({ content }: { content: MessageContent }) {
-  return (
-    <div className="w-full flex items-center gap-2 px-3 py-2">
-      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium shimmer-text">
-        {content.content}
-      </span>
-    </div>
-  );
 }
 
 /**

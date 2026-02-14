@@ -6,6 +6,7 @@
 
 import type { SessionStore } from './SessionStore';
 import type { MessageBroadcaster } from '../chat/MessageBroadcaster';
+import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent, ChatSession } from '../chat/types';
 import type { CommandExecutionPhase } from './types';
 import { logger } from '../../utils/logger';
@@ -15,7 +16,8 @@ export class CommandExecutionHandler {
 
   constructor(
     private sessionStore: SessionStore,
-    private broadcaster: MessageBroadcaster
+    private broadcaster: MessageBroadcaster,
+    private contentMerger?: ContentMerger
   ) {}
 
   /**
@@ -152,17 +154,25 @@ export class CommandExecutionHandler {
       }
     };
 
-    const contentIndex = session.currentMessage!.contents.length;
-    session.currentMessage!.contents.push(messageContent);
-
-    // Broadcast new content
-    this.broadcaster.broadcastContentAdd(
-      ctx.projectId,
-      ctx.featureName,
-      session.currentMessage!.id,
-      messageContent,
-      ctx.userContext
-    );
+    // Use ContentMerger to properly handle placeholder removal.
+    // Without this, placeholders injected by startMessage() persist alongside command cards.
+    let contentIndex: number;
+    if (this.contentMerger) {
+      contentIndex = this.contentMerger.addContent(
+        ctx.projectId, ctx.featureName, session, messageContent
+      );
+    } else {
+      // Fallback: direct push (should not happen in normal flow)
+      contentIndex = session.currentMessage!.contents.length;
+      session.currentMessage!.contents.push(messageContent);
+      this.broadcaster.broadcastContentAdd(
+        ctx.projectId,
+        ctx.featureName,
+        session.currentMessage!.id,
+        messageContent,
+        ctx.userContext
+      );
+    }
 
     // Track for streaming updates
     if (phase !== 'complete') {

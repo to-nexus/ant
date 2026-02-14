@@ -14,6 +14,7 @@ export type ParsedActionType =
   | 'file_start'
   | 'file_content'
   | 'file_end'
+  | 'clarify_start'
   | 'exploration_start'
   | 'exploration_progress'
   | 'exploration_complete';

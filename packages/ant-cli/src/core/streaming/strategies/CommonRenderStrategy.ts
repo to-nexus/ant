@@ -72,6 +72,11 @@ export class CommonRenderStrategy implements IRenderStrategy {
       case 'file_end':
         await this.fileRenderer.renderFileEnd(action, registry);
         break;
+      
+      case 'clarify_start':
+        // Re-inject placeholder (typing indicator) while clarify content is being generated
+        await this.chatAPI.showChatStatus('placeholder');
+        break;
         
       default:
         console.warn(`[CommonRenderStrategy] Unknown action type: ${action.type}`);

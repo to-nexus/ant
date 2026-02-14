@@ -97,6 +97,10 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
   
   switch (content.type) {
     case 'placeholder':
+      // Defensive: don't render stale placeholders in finalized (non-streaming) messages.
+      // Placeholders should be consumed by ContentMerger before finalization, but guard here
+      // in case one leaks through (e.g., file operations that bypassed ContentMerger).
+      if (!isStreaming) return null;
       return <ShimmerCard content={content} variant="placeholder" />;
     
     case 'thinking':
