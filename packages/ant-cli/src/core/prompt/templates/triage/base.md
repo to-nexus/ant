@@ -47,7 +47,7 @@ You analyze user input to determine intent and execution readiness.
   
   "workStatus": "proceed" | "redirect" | "blocked",
   "suggestedAgent": "architect | planner",
-  "suggestedJob": "design | code | learn | planning",
+  "suggestedJob": "design | code | learn | plan",
   "redirectReason": "Why redirect is needed",
   "missingPrerequisites": { "required": [], "recommended": [] },
   "canProceed": true | false,

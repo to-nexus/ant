@@ -109,13 +109,6 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // Step 2: Build Prompt with Job Capabilities
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   
-  // DEBUG: Check what values we have
-  console.log('🔍 [DEBUG] State values for triage:');
-  console.log(`   state.overrideDirective: "${state.overrideDirective?.substring(0, 50) || '(empty)'}..."`);
-  console.log(`   state.directive: "${state.directive?.substring(0, 50) || '(empty)'}..."`);
-  console.log(`   state.currentJob: "${state.currentJob || '(not set)'}"`);
-  console.log(`   state.jobType: "${(state as any).jobType || '(not set)'}"`);
-  
   const userInput = state.overrideDirective || state.directive || '';
   const currentJob = state.currentJob || (state as any).jobType || 'unknown';
   const currentAgent = state.currentAgent || 'architect';
@@ -139,9 +132,6 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // Step 3: Call LLM
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   console.log('🤖 Calling LLM for triage...');
-  console.log('📝 [DEBUG] Triage prompt (first 2000 chars):');
-  console.log(prompt.substring(0, 2000));
-  console.log('...\n');
   
   let responseText: string;
   
@@ -167,10 +157,6 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Step 4: Parse Response
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  console.log('📝 [DEBUG] LLM response:');
-  console.log(responseText);
-  console.log('');
-  
   let triageResult = parseTriageResponse(responseText, currentJob, currentAgent);
   
   if (!triageResult) {

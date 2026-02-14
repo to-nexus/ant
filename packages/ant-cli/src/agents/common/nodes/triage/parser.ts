@@ -46,15 +46,19 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
     if (result.intent === 'work') {
       result.workStatus = parsed.workStatus;
       
-      // CRITICAL FIX: If suggestedJob is set and different from currentJob,
-      // treat as redirect even if LLM said "proceed"
+      // Force redirect when LLM signals a different job/agent than current,
+      // BUT only when LLM did NOT explicitly say "proceed".
+      // When workStatus is "proceed", trust the LLM's decision — suggestedJob/redirectReason
+      // may be filled in as template artifacts without indicating an actual redirect.
       const effectiveCurrentJob = currentJob || 'unknown';
       const shouldRedirect = 
         parsed.workStatus === 'redirect' ||
-        (parsed.suggestedJob && 
+        (parsed.workStatus !== 'proceed' &&
+         parsed.suggestedJob && 
          parsed.suggestedJob !== effectiveCurrentJob && 
          parsed.redirectReason) ||
-        (parsed.suggestedAgent && parsed.suggestedAgent !== (currentAgent || 'architect'));
+        (parsed.workStatus !== 'proceed' &&
+         parsed.suggestedAgent && parsed.suggestedAgent !== (currentAgent || 'architect'));
       
       // redirect
       if (shouldRedirect) {
