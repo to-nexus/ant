@@ -27,7 +27,8 @@ export function MainPanelTabsBar() {
   const selectMainPanelTab = useStore((state) => state.selectMainPanelTab);
   const closeMainPanelTab = useStore((state) => state.closeMainPanelTab);
   const clearJobTab = useStore((state) => state.clearJobTab);
-  const { showConfirm } = useAlertModalContext();
+  const isRunning = useStore((state) => state.isRunning);
+  const { showConfirm, showInfo } = useAlertModalContext();
 
   // Job tab label: show full ID when active, abbreviated when inactive
   const getJobTabLabel = () => {
@@ -41,6 +42,14 @@ export function MainPanelTabsBar() {
   };
 
   const handleJobTabClose = () => {
+    if (isRunning) {
+      showInfo(t('tabs.removeJobBlocked'), {
+        type: 'warning',
+        title: t('tabs.removeJob'),
+      });
+      return;
+    }
+
     showConfirm(
       <>
         <p>{t('tabs.removeJobDesc')}</p>
