@@ -63,7 +63,14 @@ Redis (읽기 위주)
 | **WorkflowBroadcaster** | core/realtime | 워크플로우 UI 실시간 업데이트 |
 | **FileTreeBroadcaster** | core/realtime | 파일트리 실시간 업데이트 |
 
-### 2.1 데이터 흐름
+### 2.1 Chat Activity Indicator (CAI)
+
+LLM 스트리밍 중 사용자에게 "작업 중" 시각적 피드백을 제공하는 시스템.
+`LLMResponseService.startMessage()` → `ContentMerger` → `TypingIndicator` 렌더링 파이프라인으로 구성된다.
+
+> 상세 설계: [19-chat-activity-indicator.md](./19-chat-activity-indicator.md)
+
+### 2.2 데이터 흐름
 
 ```
 [Job Worker → child process (job-runner)]
@@ -164,7 +171,7 @@ packages/ant-cli/src/
 │   ├── chat/
 │   │   ├── index.ts              # 배럴 파일
 │   │   ├── types.ts              # 타입 정의
-│   │   ├── ContentMerger.ts      # 콘텐츠 병합 로직
+│   │   ├── ContentMerger.ts      # 콘텐츠 병합 + Universal Placeholder System (→ CAI)
 │   │   ├── MessageBroadcaster.ts # Redis Pub/Sub 래퍼 (user-scoped)
 │   │   └── schema.ts             # 세션 키 생성, 변환 함수
 │   │
@@ -176,7 +183,7 @@ packages/ant-cli/src/
 │   │   ├── LLMEventHandler.ts    # LLM 스트림 이벤트 처리
 │   │   ├── FileOperationHandler.ts
 │   │   ├── CommandExecutionHandler.ts
-│   │   └── ChatStatusHandler.ts
+│   │   └── ChatStatusHandler.ts  # placeholder 생성 (→ CAI)
 │   │
 │   ├── realtime/                 # Broadcaster (직접 Redis Pub/Sub)
 │   │   ├── KanbanBroadcaster.ts
