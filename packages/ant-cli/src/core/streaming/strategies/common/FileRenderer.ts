@@ -10,6 +10,7 @@ import { FileTreeUpdatePort } from '../../../ports/fileTree';
 import { ParsedAction, FileStreamInfo } from '../../types';
 import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
+import { normalizeToCodebasePath } from '../../../utils/pathNormalizer';
 
 export interface FileRendererConfig {
   chatAPI: ChatAPIClient;
@@ -90,18 +91,29 @@ export class FileRenderer {
     }
 
     // Code jobs: ensure path resolves under the codebase directory.
-    // LLM SHOULD provide "codebase/..." paths, but some tasks omit the prefix
-    // (e.g., output "packages/backend/src/main.ts" instead of "codebase/packages/backend/src/main.ts").
-    // When codebasePath is known, auto-prepend the prefix so files are never written
-    // to the wrong location (feature root instead of codebase).
+    // Uses the shared normalizeToCodebasePath() to ensure consistency with
+    // tool handlers (resolveToolPath). Both read and write paths must agree.
+    //
+    // CRITICAL: normalizeToCodebasePath NEVER strips src/ or other intermediate dirs.
+    // This prevents the read/write path mismatch that caused duplicate directories.
     if (this.jobType === 'code' && this.codebasePath) {
       const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
       if (workspaceRoot) {
         const codebaseRel = path.relative(workspaceRoot, this.codebasePath).replace(/\\/g, '/');
-        if (codebaseRel && !originalPath.startsWith(codebaseRel + '/') && !originalPath.startsWith(codebaseRel + '\\')) {
-          const corrected = path.join(codebaseRel, originalPath);
-          console.warn(`⚠️ [FileRenderer] Auto-prepending codebase prefix: "${originalPath}" → "${corrected}"`);
-          return corrected;
+        if (codebaseRel) {
+          // Use shared normalizer for known patterns (src/, app/, lib/, etc.)
+          const { normalized, wasFixed, reason } = normalizeToCodebasePath(originalPath, codebaseRel);
+          if (wasFixed) {
+            console.warn(`⚠️ [FileRenderer] Path auto-corrected: "${originalPath}" → "${normalized}" (${reason})`);
+            return normalized;
+          }
+          // Fallback: if normalizer didn't match (unknown directory), still prepend codebase/
+          // to prevent files being written outside the codebase directory
+          if (!originalPath.startsWith(codebaseRel + '/') && !originalPath.startsWith(codebaseRel + '\\')) {
+            const corrected = path.join(codebaseRel, originalPath);
+            console.warn(`⚠️ [FileRenderer] Auto-prepending codebase prefix: "${originalPath}" → "${corrected}"`);
+            return corrected;
+          }
         }
       }
     }

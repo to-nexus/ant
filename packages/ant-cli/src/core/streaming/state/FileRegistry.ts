@@ -4,43 +4,52 @@
 
 import { FileStreamInfo } from '../types';
 import type { FileSystemPort } from '../../ports/filesystem';
+import { normalizeToCodebasePath } from '../../utils/pathNormalizer';
 
 export class FileRegistry {
   private existingFiles: Set<string>;
   private streamedFiles: Map<string, FileStreamInfo> = new Map();
   private fileSystem?: FileSystemPort;  // ✅ For real-time disk checks
+  private codebaseRel: string;  // ✅ For path normalization consistency
   
-  constructor(existingFiles: Set<string>, fileSystem?: FileSystemPort) {
+  constructor(existingFiles: Set<string>, fileSystem?: FileSystemPort, codebaseRel: string = 'codebase') {
     this.existingFiles = existingFiles;
     this.fileSystem = fileSystem;
+    this.codebaseRel = codebaseRel;
   }
   
   /**
    * Check if file exists in codebase
-   * ✅ ENHANCED: Falls back to disk check if not in existingFiles Set
+   * ✅ ENHANCED: Normalizes paths before checking to prevent mismatches
+   * between different path formats (e.g., "src/app/x" vs "codebase/src/app/x")
    */
   async isExisting(filePath: string): Promise<boolean> {
+    // ✅ Normalize the input path to match the format used in existingFiles Set
+    const { normalized } = normalizeToCodebasePath(filePath, this.codebaseRel);
+    
     // 1. Fast path: Check in-memory Set (from plan + session)
-    if (this.existingFiles.has(filePath)) {
+    // Check both normalized and original to handle edge cases
+    if (this.existingFiles.has(normalized) || this.existingFiles.has(filePath)) {
       return true;
     }
     
     // 2. Slow path: Check disk for files not loaded by plan
+    // Use normalized path for disk check (ensures correct filesystem location)
     if (this.fileSystem) {
       try {
-        const exists = await this.fileSystem.fileExists(filePath);
+        const exists = await this.fileSystem.fileExists(normalized);
         if (exists) {
-          console.warn(`⚠️  [FileRegistry] File ${filePath} exists on disk but not in plan context`);
+          console.warn(`⚠️  [FileRegistry] File ${normalized} exists on disk but not in plan context`);
           console.warn(`   This will trigger self-healing: LLM must read_file first, then use <edit>.`);
           
-          // ✅ Add to Set for future checks
-          this.existingFiles.add(filePath);
+          // ✅ Add normalized path to Set for future checks
+          this.existingFiles.add(normalized);
           
           // ✅ Return true to trigger error handling
           return true;
         }
       } catch (error) {
-        console.warn(`⚠️  [FileRegistry] Disk check failed for ${filePath}:`, error);
+        console.warn(`⚠️  [FileRegistry] Disk check failed for ${normalized}:`, error);
       }
     }
     

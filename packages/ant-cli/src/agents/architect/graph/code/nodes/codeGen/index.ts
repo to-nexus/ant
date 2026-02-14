@@ -27,6 +27,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 import { buildMessages } from './promptBuilder';
 import { getAvailableTools } from './toolDefinitions';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
+import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -198,7 +199,21 @@ export async function codeGen(
   // ✅ Code job: Build existingFiles from projectCodeContext + referenceCodeContexts
   // These contain the actual codebase files loaded by the plan node
   // This prevents LLM from accidentally using <file> on existing files
+  //
+  // CRITICAL: All paths are normalized via normalizeToCodebasePath to ensure
+  // consistent path format between what was written (FileRenderer) and what
+  // is looked up (FileRegistry.isExisting). Without normalization, paths like
+  // "src/application/x" and "codebase/src/application/x" would be treated as different.
   const existingFiles = new Set<string>();
+  
+  // ✅ Compute codebaseRel for consistent normalization
+  const codebaseRel = (() => {
+    if (!repoRootForWrites || !state.deps?.fileSystem) return 'codebase';
+    const wsRoot = (state.deps.fileSystem as any).getWorkspaceRoot?.();
+    if (!wsRoot) return 'codebase';
+    const p = require('path');
+    return p.relative(wsRoot, repoRootForWrites).replace(/\\/g, '/') || 'codebase';
+  })();
   
   // ✅ CRITICAL: Use filePaths instead of files array
   // - files array may be empty (content not saved to session for memory optimization)
@@ -206,7 +221,9 @@ export async function codeGen(
   if (state.projectCodeContext?.filePaths) {
     for (const filePath of state.projectCodeContext.filePaths) {
       if (filePath) {
-        existingFiles.add(filePath);
+        // Normalize to ensure consistent format in the Set
+        const { normalized } = normalizeToCodebasePath(filePath, codebaseRel);
+        existingFiles.add(normalized);
       }
     }
   }
@@ -215,7 +232,8 @@ export async function codeGen(
   if (state.projectCodeContext?.files) {
     for (const file of state.projectCodeContext.files) {
       if (file.path) {
-        existingFiles.add(file.path);
+        const { normalized } = normalizeToCodebasePath(file.path, codebaseRel);
+        existingFiles.add(normalized);
       }
     }
   }
@@ -226,7 +244,8 @@ export async function codeGen(
       if (refContext?.files) {
         for (const file of refContext.files) {
           if (file.path) {
-            existingFiles.add(file.path);
+            const { normalized } = normalizeToCodebasePath(file.path, codebaseRel);
+            existingFiles.add(normalized);
           }
         }
       }
@@ -238,7 +257,8 @@ export async function codeGen(
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
-    existingFiles
+    existingFiles,
+    codebaseRel,  // ✅ Pass to FileRegistry for consistent path normalization
   });
   
   // Collect LLM output
@@ -367,9 +387,11 @@ export async function codeGen(
     // Without this, existingFiles Set is empty on each turn, causing:
     // - Duplicate file creation (Hero.tsx AND HeroSection.tsx for same component)
     // - LLM not recognizing files it created in previous turns
+    //
+    // Paths are normalized to ensure consistency with existingFiles Set format.
     const newFilePaths = files
       .filter(f => f.actionType === 'create' || f.actionType === 'edit')
-      .map(f => f.path);
+      .map(f => normalizeToCodebasePath(f.path, codebaseRel).normalized);
     
     let updatedProjectCodeContext = state.projectCodeContext;
     
