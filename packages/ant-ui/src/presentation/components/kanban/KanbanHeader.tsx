@@ -5,6 +5,7 @@ import { formatElapsedTime } from '@/shared/utils/timeUtils';
 import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
 import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
+import { useStore } from '@/domain/store';
 
 /**
  * useRealtimeTick - Forces a re-render every second while `enabled` is true.
@@ -99,8 +100,12 @@ export function ElapsedTimeBadge({
   estimatingActivity,
 }: ElapsedTimeBadgeProps) {
   const { t } = useTranslation('kanban');
-  // ✅ Tick every second while running (forces re-render → recalc from Date.now())
-  const isRunning = !!jobTiming?.startedAt && !jobTiming?.completedAt && !jobTiming?.pausedAt;
+  // ✅ FIX: Also check store.isRunning as a safety net.
+  // If the backend fails to set completedAt/pausedAt on jobTiming (e.g., plan jobs before this fix),
+  // the workflow end event still sets store.isRunning=false, which stops the timer.
+  const storeIsRunning = useStore((s) => s.isRunning);
+  const timingIsRunning = !!jobTiming?.startedAt && !jobTiming?.completedAt && !jobTiming?.pausedAt;
+  const isRunning = storeIsRunning && timingIsRunning;
   useRealtimeTick(isRunning);
   
   // ✅ Show badge if job has timing data
