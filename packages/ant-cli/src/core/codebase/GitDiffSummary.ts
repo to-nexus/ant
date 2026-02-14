@@ -134,7 +134,11 @@ export async function generateGitDiffSummary(
     };
     
   } catch (error) {
-    console.warn('⚠️  Failed to generate git diff summary:', error);
+    // "Not a git repository" is expected when workingDir is outside a repo — silently skip
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('Not a git repository')) {
+      console.warn('⚠️  Failed to generate git diff summary:', message);
+    }
     return null;
   }
 }
