@@ -77,18 +77,18 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   // Hoisted to outer scope so timing can be finalized on all exit paths (completion, interruption, error)
   let jobTimingRef: import('../../../common/graph/timing/JobTimingManager').JobTiming | undefined;
   let JobTimingManagerRef: typeof import('../../../common/graph/timing/JobTimingManager').JobTimingManager | undefined;
-  const setJobTiming = params.deps?.kanbanUpdate?.setJobTiming;
+  const kanbanUpdate = params.deps?.kanbanUpdate;
   
-  if (params._httpJobId && setJobTiming) {
+  if (params._httpJobId && kanbanUpdate?.setJobTiming) {
     const { JobTimingManager } = await import('../../../common/graph/timing/JobTimingManager');
     JobTimingManagerRef = JobTimingManager;
     const { jobTiming } = JobTimingManager.initializeNewJob(params._httpJobId);
     jobTimingRef = jobTiming;
-    setJobTiming(jobTiming);
+    kanbanUpdate.setJobTiming(jobTiming);
     
     // Send initial kanban update with recursion info (triggers badge display)
-    if (params.deps.kanbanUpdate.updateTaskQueue) {
-      params.deps.kanbanUpdate.updateTaskQueue(
+    if (kanbanUpdate.updateTaskQueue) {
+      kanbanUpdate.updateTaskQueue(
         params._httpJobId,
         null,           // no currentTask (planner has no task queue)
         [],             // empty queue
@@ -136,9 +136,9 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       }
       
       // ✅ FIX: Mark jobTiming as paused so ElapsedTimeBadge stops ticking
-      if (JobTimingManagerRef && jobTimingRef && setJobTiming) {
+      if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {
         jobTimingRef = JobTimingManagerRef.pauseJob(jobTimingRef)!;
-        setJobTiming(jobTimingRef);
+        kanbanUpdate.setJobTiming(jobTimingRef);
       }
       
       console.log('\n⏸️ Planner Agent paused (recursion limit)');
@@ -167,9 +167,9 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     console.error(`❌ [Planner] Graph execution failed: ${error.message}`);
     
     // ✅ FIX: Mark jobTiming as completed on error so ElapsedTimeBadge stops ticking
-    if (JobTimingManagerRef && jobTimingRef && setJobTiming) {
+    if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {
       jobTimingRef = JobTimingManagerRef.completeJob(jobTimingRef)!;
-      setJobTiming(jobTimingRef);
+      kanbanUpdate.setJobTiming(jobTimingRef);
     }
     
     if (chatAPI.hasActiveMessage()) {
@@ -184,9 +184,9 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   }
   
   // ✅ FIX: Mark jobTiming as completed so ElapsedTimeBadge stops ticking
-  if (JobTimingManagerRef && jobTimingRef && setJobTiming) {
+  if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {
     jobTimingRef = JobTimingManagerRef.completeJob(jobTimingRef)!;
-    setJobTiming(jobTimingRef);
+    kanbanUpdate.setJobTiming(jobTimingRef);
   }
   
   console.log('\n✅ Planner Agent completed');
