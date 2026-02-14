@@ -133,18 +133,25 @@ export async function codeGen(
   
   // ✅ Tool activation control
   // - Explain mode: NO tools (just explanation)
-  // - Design job: NO tools (XML streaming)
-  // - Code job (generate/refactor): YES tools
+  // - All other modes in code graph: YES tools (generate/refactor/unknown)
+  // 
+  // ⚠️ DEFENSIVE: Default to tools ENABLED in code graph.
+  // Previously, tools were disabled when detectionReport.jobMode was undefined,
+  // causing LLM to output <function_calls><invoke> XML as text instead of
+  // using structured tool_use blocks. This happened when detectionReport was
+  // not properly restored on resume.
   const isExplainMode = state.detectionReport?.jobMode === 'explain';
-  const enableTools = state.detectionReport?.jobMode !== undefined && !isExplainMode;
+  const enableTools = !isExplainMode;
   const tools = enableTools ? await getAvailableTools(state) : undefined;
+  
+  if (!state.detectionReport?.jobMode) {
+    console.warn(`⚠️ [CodeGen] detectionReport.jobMode is missing — defaulting to tools enabled`);
+  }
   
   if (isExplainMode) {
     console.log(`💡 [CodeGen] Explain mode - tools disabled (explanation only)`);
-  } else if (enableTools) {
-    console.log(`🔧 [CodeGen] Tool calling enabled (code job)`);
   } else {
-    console.log(`📝 [CodeGen] Tool calling disabled (design job or other)`);
+    console.log(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.detectionReport?.jobMode || 'unknown'})`);
   }
   
   // ✅ Workflow update
