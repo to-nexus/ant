@@ -15,7 +15,7 @@ export async function runLearnGraph(initial: LearnGraphState): Promise<LearnGrap
   const MIN_RECURSION_LIMIT = 5;
   const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
   const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
-    ? MIN_RECURSION_LIMIT 
+    ? 200 
     : recursionLimit;
   
   console.log(`🔍 [LearnRunner] Recursion limit: ${finalLimit}`);

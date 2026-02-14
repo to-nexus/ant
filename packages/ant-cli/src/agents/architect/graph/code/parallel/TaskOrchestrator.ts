@@ -260,26 +260,31 @@ export class TaskOrchestrator<T extends BaseTask> {
 
       this.callbacks.onTaskFailure?.(task, error, workerId);
 
-      // ✅ Recursion limit: special handling — pause (not fail), no retry.
-      // The task is placed back at the front of the queue as interrupted.
-      // Other workers continue their current tasks; the job will be marked
-      // as interrupted after all workers finish (via hasInterruptedTasks).
+      // ✅ Recursion limit: immediate interrupt — do NOT re-queue.
+      // Re-queuing the same task with the same recursion budget causes an
+      // infinite loop (task runs → hits limit → re-queued → runs again → …).
+      // Instead, treat as a permanent failure and let the orchestrator finish.
+      // The task is added to failedTasks so it is tracked in the result and
+      // the upstream parallelOrchestrator can save it for resume.
       if (isRecursionLimitError(error)) {
         task.interrupted = true;
-        this.taskQueue.unshift(task);
         this.hasInterruptedTasks = true;
-        console.warn(
-          `[Orchestrator] Task "${task.name}" PAUSED (recursion limit reached, worker ${workerId}) — queued for resume`,
+        this.failedTasks.push({
+          task,
+          error,
+          timestamp: new Date().toISOString(),
+        });
+        console.error(
+          `[Orchestrator] Task "${task.name}" INTERRUPTED — recursion limit reached (worker ${workerId})`,
         );
 
         try {
           await this.saveCheckpoint({ reason: 'recursion_limit', canResume: true });
         } catch (err) {
-          console.warn(`[Orchestrator] Post-pause checkpoint failed:`, err);
+          console.warn(`[Orchestrator] Post-interrupt checkpoint failed:`, err);
         }
 
         this.broadcastKanban();
-        this.spawnAvailableWorkers();
         this.checkAllDone();
         return;
       }

@@ -123,7 +123,7 @@ export class JobStateTracker {
     const MIN_RECURSION_LIMIT = 5;
     const envRecursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
     const defaultRecursionLimit = (isNaN(envRecursionLimit) || envRecursionLimit < MIN_RECURSION_LIMIT) 
-      ? 50
+      ? 200
       : envRecursionLimit;
     
     // Update snapshot

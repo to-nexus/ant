@@ -65,7 +65,9 @@ async function main() {
   } else {
     console.warn('  ⚠️  ANT_ENCRYPTION_KEY not found in environment!');
   }
-  console.log(`  RECURSION_LIMIT: ${process.env.RECURSION_LIMIT || 'NOT SET'}`);
+  // TEMP: hardcoded override — remove when devops sets env var
+  process.env.RECURSION_LIMIT = '100';
+  console.log(`  RECURSION_LIMIT: ${process.env.RECURSION_LIMIT} (⚠️ hardcoded override)`);
   
   // Environment configuration
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
