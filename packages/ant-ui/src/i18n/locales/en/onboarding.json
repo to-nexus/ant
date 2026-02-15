@@ -17,16 +17,16 @@
     "promptSub": "Describe your idea — we'll draft a PRD and kick off a plan job.",
     "placeholder": "e.g. A task management app with kanban boards and team collaboration...",
     "submit": "Start Building",
-    "creating": "Setting up your workspace...",
+    "creating": "Setting up your project...",
     "steps": {
-      "workspace": "Creating workspace",
+      "workspace": "Creating project",
       "feature": "Creating feature",
       "plan": "Starting plan job",
-      "switching": "Preparing workspace UI"
+      "switching": "Preparing project UI"
     },
     "error": "Something went wrong. Please try again.",
     "errorRetry": "Retry",
-    "skipToWorkspace": "Go to workspace",
+    "skipToWorkspace": "Go to project",
     "goToOnboarding": "Start a project",
     "goToOnboardingHint": "Create a new project with AI"
   }

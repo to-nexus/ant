@@ -41,7 +41,7 @@
   },
   "featureDetails": {
     "title": "피처 상세",
-    "selectPrompt": "워크스페이스와 피처를 선택하여 상세 정보를 확인하세요",
+    "selectPrompt": "프로젝트와 피처를 선택하여 상세 정보를 확인하세요",
     "inputs": "📝 입력",
     "outputs": "📄 출력",
     "artifacts": "아티팩트",

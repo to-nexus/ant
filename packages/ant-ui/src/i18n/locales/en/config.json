@@ -1,11 +1,11 @@
 {
   "projectConfig": {
-    "title": "Workspace Config",
+    "title": "Project Config",
     "saved": "Configuration saved successfully!",
     "saveFailed": "Failed to save configuration. Please try again.",
     "revertConfirm": "Revert all changes?",
-    "loading": "Loading workspace configuration...",
-    "noConfig": "No workspace configuration loaded."
+    "loading": "Loading project configuration...",
+    "noConfig": "No project configuration loaded."
   },
   "accountConfig": {
     "title": "Account Configuration"
@@ -28,7 +28,7 @@
     "saving": "Saving...",
     "saveFailed": "Failed to save GitHub PAT. Please try again.",
     "deleteConfirm": "Delete GitHub PAT?",
-    "deleteConfirmMsg": "Are you sure you want to delete the GitHub PAT? This will affect all workspaces.",
+    "deleteConfirmMsg": "Are you sure you want to delete the GitHub PAT? This will affect all projects.",
     "deleteSuccess": "GitHub PAT deleted successfully",
     "deleteFailed": "Failed to delete GitHub PAT. Please try again.",
     "autoDetected": "Auto-detected from PAT",
@@ -42,7 +42,7 @@
     "title": "Figma Integration",
     "description": "Connect your Figma account to import designs",
     "oauthFailed": "Failed to start Figma OAuth. Please try again.",
-    "disconnectConfirm": "Disconnect Figma? This will affect all workspaces using Figma integration.",
+    "disconnectConfirm": "Disconnect Figma? This will affect all projects using Figma integration.",
     "disconnected": "Figma disconnected successfully",
     "disconnectFailed": "Failed to disconnect Figma. Please try again.",
     "connected": "Figma account connected. MCP client registration and design import features are coming soon.",
@@ -52,7 +52,7 @@
     "optional": "Optional"
   },
   "projectEditor": {
-    "header": "Workspace Configuration",
+    "header": "Project Configuration",
     "noChangesToDiscard": "No changes to discard",
     "discardChanges": "Discard Changes",
     "saving": "Saving...",
@@ -115,7 +115,7 @@
     "notConfigured": "Not configured",
     "patSavedWithUser": "GitHub PAT saved! Connected as @{{username}}",
     "patSaved": "GitHub PAT saved successfully!",
-    "ownerOverrideSet": "GitHub owner override set to \"{{owner}}\". New workspaces will use github.com/{{owner}}/{project}",
+    "ownerOverrideSet": "GitHub owner override set to \"{{owner}}\". New projects will use github.com/{{owner}}/{project}",
     "ownerOverrideCleared": "Owner override cleared. Falling back to organization default{{suffix}}.",
     "revertedToOrgDefault": "Reverted to org default{{suffix}}.",
     "figmaConnected": "✓ Connected",
@@ -129,13 +129,13 @@
     "connectFigma": "Connect Figma Account",
     "figmaConnectedAs": "Figma connected as {{email}}!",
     "resetAccount": "Reset Account",
-    "resetAccountDesc": "Delete all workspaces, sessions, and settings. Git repositories will be preserved.",
+    "resetAccountDesc": "Delete all projects, sessions, and settings. Git repositories will be preserved.",
     "resetAccountConfirm": "Are you sure you want to reset your account?",
-    "resetAccountConfirmMsg": "This will delete:\n• All workspaces and features\n• All session files and chat history\n• User configuration\n\nGit repositories will be preserved.\n\nThis action cannot be undone.",
+    "resetAccountConfirmMsg": "This will delete:\n• All projects and features\n• All session files and chat history\n• User configuration\n\nGit repositories will be preserved.\n\nThis action cannot be undone.",
     "resetAccountSuccess": "Account reset successfully. The page will reload.",
     "resetAccountFailed": "Failed to reset account. Please try again.",
     "resetting": "Resetting...",
-    "resetStepDeleting": "Deleting workspaces and sessions",
+    "resetStepDeleting": "Deleting projects and sessions",
     "resetStepClearing": "Clearing local cache",
     "resetStepDone": "Done, reloading..."
   },
@@ -144,7 +144,7 @@
     "setupStep1": "Set GitHub PAT:",
     "setupStep1Desc": "Profile menu (top-right) → Account Configuration → GitHub Integration",
     "setupStep2": "Set Repository URL:",
-    "setupStep2Desc": "Click ⚙️ icon next to workspace name → GitHub Repository field",
+    "setupStep2Desc": "Click ⚙️ icon next to project name → GitHub Repository field",
     "setupComplete": "Once both are configured, Clone/Initialize will be enabled.",
     "management": "Git management",
     "notInitialized": "Git not initialized",

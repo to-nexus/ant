@@ -4,12 +4,12 @@
     "collapse": "탐색기 접기",
     "expand": "탐색기 펼치기",
     "signInRequired": "로그인 필요",
-    "signInHint": "워크스페이스에 접근하려면 로그인하세요"
+    "signInHint": "프로젝트에 접근하려면 로그인하세요"
   },
   "workspace": {
-    "title": "워크스페이스",
-    "placeholder": "워크스페이스 선택...",
-    "inputPlaceholder": "워크스페이스 이름...",
+    "title": "프로젝트",
+    "placeholder": "프로젝트 선택...",
+    "inputPlaceholder": "프로젝트 이름...",
     "createFailed": "설정 생성에 실패했습니다. 다시 시도해주세요."
   },
   "feature": {
@@ -47,7 +47,7 @@
     "error": "연결 오류",
     "disconnected": "연결 끊김",
     "selectFile": "탐색기에서 파일을 선택하여 편집하세요.",
-    "noConfig": "워크스페이스 설정이 로드되지 않았습니다."
+    "noConfig": "프로젝트 설정이 로드되지 않았습니다."
   },
   "featureDropdown": {
     "featureNamePlaceholder": "피처 이름..."
@@ -76,7 +76,7 @@
     "commits": "커밋",
     "pullingFromRemote": "원격에서 Pull 중",
     "noChanges": "변경사항 없음",
-    "gitRepoRequired": "클라우드 모드에서는 Git 저장소가 init/clone 된 뒤에만 피처를 생성할 수 있습니다. 먼저 워크스페이스의 Git 메뉴에서 Clone 또는 Initialize를 진행해주세요.",
+    "gitRepoRequired": "클라우드 모드에서는 Git 저장소가 init/clone 된 뒤에만 피처를 생성할 수 있습니다. 먼저 프로젝트의 Git 메뉴에서 Clone 또는 Initialize를 진행해주세요.",
     "gitRepoRequiredTitle": "Git 저장소가 필요합니다",
     "uncommittedTitle": "커밋되지 않은 변경사항 감지",
     "uncommittedDesc": "커밋되지 않은 변경사항이 {{count}}개 있습니다.",
@@ -146,7 +146,7 @@
     "running": "프리뷰 실행 중",
     "notRunning": "프리뷰 실행되지 않음",
     "open": "열기",
-    "noProjectFeature": "워크스페이스와 피처를 먼저 선택해주세요",
+    "noProjectFeature": "프로젝트와 피처를 먼저 선택해주세요",
     "startFailed": "프리뷰 시작에 실패했습니다",
     "stopFailed": "프리뷰 중지에 실패했습니다: {{message}}",
     "unknownError": "알 수 없는 오류가 발생했습니다",
@@ -169,7 +169,7 @@
     "controls": "프리뷰 컨트롤",
     "statusConsole": "상태 콘솔",
     "noIssues": "문제 없음. 상태를 확인하려면 프리뷰 서버를 시작하세요.",
-    "selectWorkspace": "프리뷰를 설정할 워크스페이스를 선택하세요.",
+    "selectWorkspace": "프리뷰를 설정할 프로젝트를 선택하세요.",
     "structureType": "구조 유형:",
     "directUrl": "직접 URL",
     "antProject": "Ant 프로젝트",
@@ -185,6 +185,7 @@
     "saved": "저장 완료",
     "saveError": "오류: {{message}}",
     "unsavedChanges": "저장하지 않은 변경사항",
+    "cancel": "취소",
     "activeConnection": "활성: {{connection}}",
     "statusRunning": "실행 중",
     "statusError": "오류",

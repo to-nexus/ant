@@ -43,11 +43,11 @@
   },
   "workflow": {
     "title": "🔄 Agent Workflow",
-    "noSelection": "No Workspace or Feature Selected",
+    "noSelection": "No Project or Feature Selected",
     "loading": "Loading workflow graph...",
     "trackNode": "Track current node",
     "linkedActors": "Linked Actors:",
-    "selectWorkspaceFeature": "Select a workspace and feature to view the agent workflow graph.",
+    "selectWorkspaceFeature": "Select a project and feature to view the agent workflow graph.",
     "failedToLoad": "Failed to Load Workflow",
     "noWorkflowAvailable": "No Workflow Available",
     "selectAgentJob": "Select an agent and job to view the workflow graph.",

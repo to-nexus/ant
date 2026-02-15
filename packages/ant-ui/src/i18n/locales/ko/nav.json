@@ -14,7 +14,7 @@
     "agents": "에이전트",
     "code": "코드",
     "openEditor": "에디터에서 코드베이스 열기",
-    "selectProjectFirst": "워크스페이스를 먼저 선택하세요",
+    "selectProjectFirst": "프로젝트를 먼저 선택하세요",
     "failedToOpenIde": "IDE 열기 실패"
   },
   "theme": {
@@ -36,7 +36,7 @@
     "removeJobId": "작업 ID 제거",
     "closeTab": "{{label}} 탭 닫기",
     "job": "작업",
-    "projectConfig": "워크스페이스 설정",
+    "projectConfig": "프로젝트 설정",
     "accountConfig": "계정 설정",
     "fileEdit": "파일 편집",
     "transfer": "전송",

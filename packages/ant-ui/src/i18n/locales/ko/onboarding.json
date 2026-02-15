@@ -17,16 +17,16 @@
     "promptSub": "아이디어를 설명해주세요 — 먼저 PRD/계획을 만들고 바로 시작합니다.",
     "placeholder": "예: 칸반보드와 팀 협업 기능이 있는 태스크 관리 앱...",
     "submit": "시작하기",
-    "creating": "워크스페이스를 준비하고 있습니다...",
+    "creating": "프로젝트를 준비하고 있습니다...",
     "steps": {
-      "workspace": "워크스페이스 생성 중",
+      "workspace": "프로젝트 생성 중",
       "feature": "피처 생성 중",
       "plan": "플랜 작업 시작 중",
       "switching": "화면 준비 중"
     },
     "error": "문제가 발생했습니다. 다시 시도해주세요.",
     "errorRetry": "다시 시도",
-    "skipToWorkspace": "워크스페이스로 이동",
+    "skipToWorkspace": "프로젝트로 이동",
     "goToOnboarding": "프로젝트 시작하기",
     "goToOnboardingHint": "AI와 함께 새 프로젝트를 만들어보세요"
   }
