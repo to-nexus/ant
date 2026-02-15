@@ -351,6 +351,12 @@ Summarize all analysis:
 - [ ] **No type errors?**
 - [ ] **No lint errors?**
 - [ ] **No runtime errors?**
+- [ ] **Infrastructure started if needed?**
+  - docker-compose.yml exists → LLM ran `docker compose up` before runtime verification?
+  - Environment variables derived from compose service definitions and mapped to the application?
+- [ ] **LLM performed Infrastructure step?**
+  - chat.json contains `run_command` call for `docker compose up` (or equivalent)?
+  - chat.json contains environment variable setup commands?
 
 ---
 
@@ -555,6 +561,7 @@ features/{feature}/sessions/debug/plans/plan-{jobId}.md
 1. **Wrong tool usage**: Executing project scaffolding instead of verification
 2. **State propagation failure**: planText not passed in LangGraph state
 3. **Long-running process**: Dev server doesn't terminate, LLM waits indefinitely
+4. **Infrastructure not started**: docker-compose.yml exists but services not running. LLM skips the Infrastructure step or fails to map environment variables from compose service definitions to the application. Server startup fails repeatedly due to missing connections (DB, cache, etc.)
 
 **Detection (in logs)**:
 ```
@@ -563,10 +570,15 @@ features/{feature}/sessions/debug/plans/plan-{jobId}.md
 ```
 Tool: run_command - executing project scaffolding command
 ```
+```
+connection refused / Failed to connect to database / ECONNREFUSED
+environment variable not set / DATABASE_URL / REDIS_URL
+```
 
 **Solution Principle**:
 - Verification should only READ and RUN existing scripts
 - Dev servers are long-running - verify startup, don't wait for exit
+- If docker-compose.yml exists, LLM must start infrastructure and derive environment variables before runtime verification (see 05-code-job.md "인프라 기동" section)
 - Build success is primary indicator; dev server issues are secondary
 
 ### 9.2 Component Created But Not Integrated
