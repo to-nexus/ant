@@ -59,7 +59,7 @@ Each task object MUST follow this schema:
 | `type` | Yes | `"setup"` (new project config), `"feature"` (new capability), or `"error"` (broken behavior fix) |
 | `priority` | Yes | 100: setup, 200-219: critical, 220-249: important, 250-899: nice-to-have, 1000: final verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
-| `exclusive` | Conditional | `true` if task must run alone. Use for setup, error, and final verification tasks |
+| `exclusive` | Conditional | `true` if task must run alone. Determined ONLY by the task's `type` field and `priority` value — never by task name |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `ui` | Yes | `true` if task involves the visual presentation layer |
 | `uiSections` | When ui=true | Array of UI doc section IDs to inject (see specification for available sections) |
@@ -205,11 +205,13 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-id>"`.
 
-**`exclusive: true`** -- Task MUST run alone:
+**`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` field and `priority` value:
 - `type: "setup"` -> always exclusive (installs dependencies, modifies lock files)
 - `type: "error"` -> always exclusive (may modify shared configs)
 - `priority: 1000` (final verification) -> always exclusive
 - Any task that installs packages or modifies shared build configs
+
+⚠️ **CONSTRAINT**: `exclusive` is determined ONLY by the `type` field value and `priority` value. Do NOT infer `exclusive` from task name or description content.
 
 **`parallelGroup: "<group-id>"`** -- Tasks with the SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
 
