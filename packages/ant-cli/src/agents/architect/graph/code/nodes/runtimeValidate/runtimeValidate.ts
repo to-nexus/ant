@@ -394,9 +394,12 @@ async function runTypeCheck(
   }
 
   // Check if any indicator file exists
+  // ✅ Use fileSystem.getRootPath() (feature path) as base, not repoRoot (codebase path)
+  // repoRoot === resolvedPath, so p.relative(repoRoot, ...) would just give bare filename
+  const fsRoot = fileSystem.getRootPath();
   let hasIndicator = false;
   for (const indicator of typeCheckConfig.indicators) {
-    if (await fileSystem.fileExists(p.relative(repoRoot, p.join(resolvedPath, indicator)))) {
+    if (await fileSystem.fileExists(p.relative(fsRoot, p.join(resolvedPath, indicator)))) {
       hasIndicator = true;
       break;
     }
@@ -492,9 +495,11 @@ async function runLint(
   }
 
   // Check if any indicator file exists
+  // ✅ Use fileSystem.getRootPath() (feature path) as base, not repoRoot (codebase path)
+  const fsRootLint = fileSystem.getRootPath();
   let hasIndicator = false;
   for (const indicator of lintConfig.indicators) {
-    if (await fileSystem.fileExists(p.relative(repoRoot, p.join(resolvedPath, indicator)))) {
+    if (await fileSystem.fileExists(p.relative(fsRootLint, p.join(resolvedPath, indicator)))) {
       hasIndicator = true;
       break;
     }
@@ -612,9 +617,11 @@ async function runBuild(
   }
 
   // Check if any indicator file exists
+  // ✅ Use fileSystem.getRootPath() (feature path) as base, not repoRoot (codebase path)
+  const fsRootBuild = fileSystem.getRootPath();
   let hasIndicator = false;
   for (const indicator of buildConfig.indicators) {
-    if (await fileSystem.fileExists(p.relative(repoRoot, p.join(resolvedPath, indicator)))) {
+    if (await fileSystem.fileExists(p.relative(fsRootBuild, p.join(resolvedPath, indicator)))) {
       hasIndicator = true;
       break;
     }
@@ -632,7 +639,7 @@ async function runBuild(
 
   if (isNodeProject) {
     const pkgJsonPath = p.join(resolvedPath, 'package.json');
-    const pkgContent = await fileSystem.readFile(p.relative(repoRoot, pkgJsonPath));
+    const pkgContent = await fileSystem.readFile(p.relative(fsRootBuild, pkgJsonPath));
     if (!pkgContent) return;
 
     try {
@@ -770,7 +777,7 @@ async function runCompatibilityCheck(
     case Framework.NEXTJS:
       // Check next.config.js, next.config.mjs, next.config.ts
       for (const configName of ['next.config.js', 'next.config.mjs', 'next.config.ts']) {
-        const configPath = p.relative(repoRoot, p.join(resolvedPath, configName));
+        const configPath = p.relative(fileSystem.getRootPath(), p.join(resolvedPath, configName));
         if (await fileSystem.fileExists(configPath)) {
           configFiles.push({
             path: configPath,
