@@ -71,9 +71,54 @@ codeGen의 도구 호출을 실행하고 결과를 반환한다.
 
 runtimeValidate에서 검증 실패 시 violation 정보와 함께 plan으로 재진입한다.
 
+### installDeps
+
+의존성 설치를 수행한다. final-verification 태스크(priority 1000)인 경우 인프라 기동 safety net을 포함한다 (후술).
+
+### runtimeValidate
+
+빌드, 린트, 타입체크를 프로그래밍 방식으로 검증한다. 실패 시 enforce 노드를 통해 plan으로 재진입한다.
+
+### learn
+
+태스크 완료 후 교훈을 추출하고 cleanup을 수행한다. 서버 프로세스 종료, 인프라 정리(stopInfrastructure) 등을 담당한다.
+
 ### revise
 
 resume 시 새 directive(overrideDirective)가 있으면 기존 태스크 큐를 조정할지 LLM이 판단한다. `continue` 또는 `modify`(tasksToRemove + tasksToAdd) 결정.
+
+## 인프라 기동 (Final Verification)
+
+프로젝트가 외부 서비스(DB, Redis, MQ 등)에 의존하는 경우, final-verification 시 해당 인프라를 기동해야 빌드 및 런타임 검증이 가능하다. 이 시나리오는 언어/프레임워크에 무관하게 동일한 원칙으로 동작한다.
+
+### Primary: LLM 자율 기동 (codeGen)
+
+LLM이 태스크 실행 중 `run_command` 도구를 사용하여 직접 인프라를 기동하는 것이 메인 흐름이다. LLM이 `<done>true</done>`을 출력하기 **전에** 인프라 기동, 빌드, 런타임 검증을 모두 완료하는 것이 정상 경로이다.
+
+프롬프트 가이드(`base.md` Step 2: Infrastructure)에 따라 LLM은 다음을 수행한다:
+
+1. **Discover**: 프로젝트 설정 파일을 읽어 빌드/실행 커맨드와 인프라 정의를 파악
+2. **Infrastructure**: `docker compose up -d --wait` 실행. compose 파일의 서비스 정의(포트, 자격 증명, DB명)를 읽어 앱이 필요로 하는 환경변수에 매핑
+3. **Build**: 빌드/컴파일 커맨드 실행 (PRIMARY 검증 기준)
+4. **Runtime**: 빌드 성공 시 dev/start 서버를 1회 실행하여 전체 스택 검증
+
+핵심: compose 파일에서 서비스 연결 정보를 읽어 앱 환경변수를 도출하는 것까지 LLM의 책임이다.
+
+### Safety Net: installDeps 프로그래밍 기동
+
+LLM이 인프라 기동을 놓쳤을 경우의 보험이다. `installDeps` 노드가 `isFinalTask` 가드에 의해 final-verification 태스크(priority 1000)에서만 작동한다.
+
+- `InfrastructureManager`를 사용하여 `docker-compose.yml`(또는 `compose.yml`) 감지
+- `startInfrastructure()` 호출
+- best-effort: 실패해도 워크플로우를 차단하지 않음
+
+### Cleanup
+
+`learn` 노드에서 태스크 완료 후 `stopInfrastructure()`를 호출하여 기동된 Docker 서비스를 정리한다. 서버 프로세스 cleanup과 동일 위치에서 수행된다.
+
+### error task와의 관계
+
+error task도 `installDeps -> runtimeValidate` 경로를 타지만, 프로그래밍 인프라 기동은 `isFinalTask` 가드에 의해 **스킵**된다. error task에서 인프라가 필요한 behavioral bug 검증이 발생하면, LLM이 codeGen에서 직접 `run_command`로 기동한다.
 
 ## State 복원
 

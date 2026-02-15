@@ -155,6 +155,31 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`   ✅ Server cleanup complete\n`);
   }
   
+  // ✅ CRITICAL: Clean up Docker infrastructure started by installDeps
+  if ((state as any)._infraManager && (state as any)._infraProjectPath) {
+    try {
+      const infraManager = (state as any)._infraManager as import('../../../../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager').InfrastructureManager;
+      const infraPath = (state as any)._infraProjectPath as string;
+      
+      console.log(`\n🐳 [Learn] Cleaning up Docker infrastructure...`);
+      
+      const onLog = (type: 'stdout' | 'stderr', msg: string) => {
+        const trimmed = msg.trim();
+        if (trimmed) console.log(`   [docker] ${trimmed}`);
+      };
+      
+      await infraManager.stopInfrastructure(infraPath, onLog);
+      
+      // Clear references
+      delete (state as any)._infraManager;
+      delete (state as any)._infraProjectPath;
+      
+      console.log(`   ✅ Infrastructure cleanup complete\n`);
+    } catch (infraError: any) {
+      console.warn(`   ⚠️  Infrastructure cleanup failed (best-effort): ${infraError.message}`);
+    }
+  }
+  
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {

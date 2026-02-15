@@ -259,55 +259,70 @@ MODIFY: app/page.tsx - Add import and render new component
 
 **🎯 Purpose:** Verify the application builds and starts successfully.
 
-**🔍 Step 1: Discover build/dev commands from project config**
+────────────────────────────────────────────────────────────────────────────────
 
-Do NOT assume commands. Read the project's configuration:
-- `package.json` → Look for `scripts.build`, `scripts.dev`, `scripts.start`
-- `Makefile` → Look for `build`, `dev`, `run` targets
-- `Cargo.toml` → `cargo build`, `cargo run`
-- `go.mod` → `go build`, `go run`
+### Verification Protocol
 
-**The project defines how to build itself. Read it, don't guess.**
+**Step 1: Discover**
 
-**📋 Step 2: Execute verification**
+Observe the project's configuration files to determine build, dev, and infrastructure commands.
 
-| Phase | Action | Success Criteria |
-|-------|--------|------------------|
-| **Build** | Run project's build script | Must pass - PRIMARY verification |
-| **Infrastructure** | If `docker-compose.yml` exists, run `docker compose up -d --wait` | Services healthy (best-effort) |
-| **Dev Server** | Run project's dev/start script | Server outputs ready message |
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Build/dev commands** | Read project config files to find build and start commands. Do NOT assume. |
+| **Infrastructure definition** | Does `docker-compose.yml` (or `compose.yml`) exist? If yes, infrastructure is required. |
+| **Environment requirements** | Read `.env.example`, config files, or entry point to identify required environment variables. |
 
-**Constraint**: Infrastructure startup failure does NOT block task completion.
-Build success = task complete, regardless of infrastructure status.
+**Step 2: Infrastructure** (if infrastructure definition exists)
 
-**⚠️ CRITICAL: Dev Server is a Long-Running Process**
+**Principle**: An application that depends on external services cannot start without them. Start infrastructure BEFORE attempting to run the application.
 
-Dev servers do NOT terminate naturally. This is expected.
-- Success = Server outputs startup/ready message
-- Do NOT wait for process to exit
-- Do NOT retry indefinitely
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Start services** | Run `docker compose up -d --wait` in the directory containing the compose file. |
+| **⚠️ Environment variable mapping** | Read the compose file's service definitions (ports, credentials, database names). Map these to the environment variables the application requires. |
+| **Verify readiness** | Services must be healthy before proceeding to runtime verification. |
 
-**🚨 EARLY-EXIT RULE: Build Success = Task Complete (MANDATORY)**
+**⚠️ BLIND SPOT: Environment variables are EASILY MISSED.**
 
-```
-✅ Build → SUCCESS (e.g., "Compiled successfully", "Build complete")
-❌ Dev Server → Has issues (any error message)
-```
+After starting infrastructure, verify the application has connection configuration:
+1. Read the compose file — it contains service credentials and ports
+2. Read the application's environment requirements (`.env.example`, config loader, entry point)
+3. Ensure the application can reach the infrastructure (construct connection strings, set env vars)
 
-**🚨 CRITICAL: When build succeeds but dev server fails:**
+**Constraint**: If the compose file defines a service, assume the application NEEDS it at runtime. Do NOT skip environment variable setup.
 
-1. **IGNORE** any message saying "Fix the runtime error" or "SERVER STARTED BUT PAGE RENDER FAILED"
-2. **DO NOT** attempt to fix the dev server error
-3. **DO NOT** retry dev server more than ONCE
-4. **IMMEDIATELY** output `<done>true</done>`
+**Step 3: Build** (PRIMARY verification)
 
-**Why?** Build is the deployment artifact. Dev server issues are often environment-specific (NODE_ENV, port conflicts, hot-reload bugs) and don't affect production builds.
+Run the project's build/compile command. This is the primary success criterion.
 
-**Completion Criteria:**
-- ✅ Build succeeds → **TASK IS COMPLETE** (REQUIRED)
-- ⚠️ Dev server status is IRRELEVANT once build passes
+**Principle**: Build (static compilation/bundling) typically succeeds without external services. Build success is the REQUIRED verification.
 
-**Actions:** Run build → If build succeeds → Run dev once → Output `<done>true</done>` (regardless of dev result)
+**Step 4: Runtime** (if build succeeds)
+
+Run the project's dev/start command to verify the application starts.
+
+**Principle**: Runtime requires both build artifacts AND running infrastructure. This step validates the full stack.
+
+────────────────────────────────────────────────────────────────────────────────
+
+### Constraints
+
+| Constraint | Rule |
+|-----------|------|
+| **Build = PRIMARY** | Build success is REQUIRED. If build fails, fix the error. |
+| **Runtime = 1 attempt** | Run dev/start server ONCE. Do NOT retry, do NOT attempt to fix runtime errors. |
+| **Infrastructure failure** | If `docker compose up` fails, still attempt build. Skip runtime. |
+| **No infinite loops** | Do NOT repeatedly try to fix environment, config, or connection errors during runtime. |
+| **Build success = done** | When build passes, run dev/start ONCE, then output `<done>true</done>` regardless of dev result. |
+| **Dev server is long-running** | Dev servers do NOT terminate. Success = outputs a startup/ready message. Do NOT wait for exit. |
+
+**🚨 EARLY-EXIT RULE (MANDATORY):**
+
+When build succeeds but dev server or runtime has issues:
+1. Do NOT attempt to fix the runtime error
+2. Do NOT retry dev server
+3. Output `<done>true</done>` IMMEDIATELY
 
 ────────────────────────────────────────────────────────────────────────────────
 
