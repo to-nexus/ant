@@ -147,7 +147,7 @@ export interface PendingChoiceData {
 
 // Re-export from portRegistry
 export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, LinkedBackendConfig } from './portRegistry';
-import { PreviewState, IDEState, PortMapping, LinkedBackendConfig } from './portRegistry';
+import { PreviewState, IDEState, PortMapping, LinkedBackendConfig, PreviewStructureType } from './portRegistry';
 
 // ============================================
 // StateStorePort Interface
@@ -333,7 +333,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    config: { linkedBackend?: LinkedBackendConfig | null }
+    config: { linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null }
   ): Promise<void>;
   
   /**
@@ -345,7 +345,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<{ linkedBackend?: LinkedBackendConfig | null } | null>;
+  ): Promise<{ linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null } | null>;
   
   /**
    * Unregister preview
