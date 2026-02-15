@@ -475,6 +475,16 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         return;
       }
       
+      // ✅ Cancel any pending cleanup timer from previous empty-activeNodes snapshot.
+      // Without this, the sequence exitNode(A) → enterNode(B) causes:
+      //   1. Empty snapshot → cleanup timer schedules setDisplayedState(null)
+      //   2. B snapshot → setDisplayedState(B)
+      //   3. Cleanup timer fires → setDisplayedState(null) → B disappears!
+      if (globalCleanupTimer) {
+        clearTimeout(globalCleanupTimer);
+        globalCleanupTimer = null;
+      }
+      
       // Display the snapshot (non-empty activeNodes)
       globalDisplayStartTime = Date.now();
       globalDisplayedNodeId = trackingNode?.nodeId || null;
