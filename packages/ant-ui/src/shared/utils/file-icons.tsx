@@ -33,7 +33,9 @@ import {
   SiGit,
   SiNpm,
   SiYarn,
-  SiYaml
+  SiYaml,
+  SiGnubash,
+  SiMake
 } from 'react-icons/si';
 
 export interface FileIconConfig {
@@ -98,7 +100,15 @@ const FILE_ICON_MAP: Record<string, FileIconConfig> = {
   // Other Languages
   'py': { icon: SiPython, color: 'text-[#3776AB]' },          // Python blue
   'go': { icon: SiGo, color: 'text-[#00ADD8]' },              // Go cyan
+  'mod': { icon: SiGo, color: 'text-[#00ADD8]' },             // Go module (go.mod)
+  'sum': { icon: SiGo, color: 'text-[#00ADD8]' },             // Go checksum (go.sum)
   'rs': { icon: SiRust, color: 'text-[#000000] dark:text-[#CE422B]' }, // Rust orange
+  
+  // Shell Scripts
+  'sh': { icon: SiGnubash, color: 'text-[#4EAA25]' },        // Bash green
+  'bash': { icon: SiGnubash, color: 'text-[#4EAA25]' },
+  'zsh': { icon: SiGnubash, color: 'text-[#4EAA25]' },
+  'fish': { icon: SiGnubash, color: 'text-[#4EAA25]' },
   
   // Images
   'png': { icon: FileImage, color: 'text-purple-500' },
@@ -134,18 +144,31 @@ const FILE_ICON_MAP: Record<string, FileIconConfig> = {
 const SPECIAL_FILENAME_MAP: Record<string, FileIconConfig> = {
   'dockerfile': { icon: SiDocker, color: 'text-[#2496ED]' },
   '.dockerignore': { icon: SiDocker, color: 'text-[#2496ED]' },
+  'docker-compose.yml': { icon: SiDocker, color: 'text-[#2496ED]' },
+  'docker-compose.yaml': { icon: SiDocker, color: 'text-[#2496ED]' },
   '.gitignore': { icon: SiGit, color: 'text-[#F05032]' },
   '.gitattributes': { icon: SiGit, color: 'text-[#F05032]' },
   '.env': { icon: Settings, color: 'text-gray-500 dark:text-gray-400' },
   '.env.local': { icon: Settings, color: 'text-gray-500 dark:text-gray-400' },
   '.env.development': { icon: Settings, color: 'text-gray-500 dark:text-gray-400' },
   '.env.production': { icon: Settings, color: 'text-gray-500 dark:text-gray-400' },
+  '.env.test': { icon: Settings, color: 'text-gray-500 dark:text-gray-400' },
   'package.json': { icon: SiNpm, color: 'text-[#CB3837]' },
   'package-lock.json': { icon: SiNpm, color: 'text-[#CB3837]' },
   'yarn.lock': { icon: SiYarn, color: 'text-[#2C8EBB]' },
   'pnpm-lock.yaml': { icon: FileJson, color: 'text-[#F69220]' },
   'tsconfig.json': { icon: SiTypescript, color: 'text-[#3178C6]' },
   'jsconfig.json': { icon: SiJavascript, color: 'text-[#F7DF1E]' },
+  
+  // Go project files
+  'go.mod': { icon: SiGo, color: 'text-[#00ADD8]' },
+  'go.sum': { icon: SiGo, color: 'text-[#00ADD8]' },
+  'go.work': { icon: SiGo, color: 'text-[#00ADD8]' },
+  'go.work.sum': { icon: SiGo, color: 'text-[#00ADD8]' },
+  
+  // Build tools
+  'makefile': { icon: SiMake, color: 'text-[#6D00CC]' },
+  'gnumakefile': { icon: SiMake, color: 'text-[#6D00CC]' },
 };
 
 /**
