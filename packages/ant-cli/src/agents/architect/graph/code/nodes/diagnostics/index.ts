@@ -147,22 +147,36 @@ export async function detectProject(
   gitPort: GitPort,
   fileSystem: FileSystemPort  // ✅ Use proper import
 ): Promise<ProjectDetection> {
+  // ✅ Compute relative prefix from fileSystem root to actual project directory
+  // fileSystem root = feature path (e.g., .../skeleton)
+  // projectPath = codebase path (e.g., .../skeleton/codebase)
+  // prefix = 'codebase' → fileSystem.fileExists('codebase/go.mod')
+  const p = await import("path");
+  const fsRoot = fileSystem.getRootPath();
+  const prefix = p.relative(fsRoot, projectPath);
+  
+  // Helpers: resolve file paths relative to projectPath within fileSystem scope
+  const exists = (filePath: string) => 
+    fileSystem.fileExists(prefix ? p.join(prefix, filePath) : filePath);
+  const read = (filePath: string) => 
+    fileSystem.readFile(prefix ? p.join(prefix, filePath) : filePath);
+
   let packageManager = PackageManager.UNKNOWN;
 
   // Check Node.js/TypeScript
-  const hasPackageJson = await fileSystem.fileExists('package.json');
+  const hasPackageJson = await exists('package.json');
   if (hasPackageJson) {
-    const content = await fileSystem.readFile('package.json');
+    const content = await read('package.json');
     if (content) {
       try {
         const pkg = JSON.parse(content);
 
         // Detect package manager
-        if (await fileSystem.fileExists('pnpm-lock.yaml')) {
+        if (await exists('pnpm-lock.yaml')) {
           packageManager = PackageManager.PNPM;
-        } else if (await fileSystem.fileExists('yarn.lock')) {
+        } else if (await exists('yarn.lock')) {
           packageManager = PackageManager.YARN;
-        } else if (await fileSystem.fileExists('package-lock.json')) {
+        } else if (await exists('package-lock.json')) {
           packageManager = PackageManager.NPM;
         } else {
           packageManager = PackageManager.NPM; // Default for Node projects
@@ -181,7 +195,7 @@ export async function detectProject(
         // Detect TypeScript
         const hasTypeScript = !!(
           pkg.devDependencies?.typescript ||
-          (await fileSystem.fileExists('tsconfig.json'))
+          (await exists('tsconfig.json'))
         );
 
         // Detect React
@@ -219,14 +233,14 @@ export async function detectProject(
 
   // Check Python
   if (
-    (await fileSystem.fileExists('requirements.txt')) ||
-    (await fileSystem.fileExists('pyproject.toml')) ||
-    (await fileSystem.fileExists('setup.py'))
+    (await exists('requirements.txt')) ||
+    (await exists('pyproject.toml')) ||
+    (await exists('setup.py'))
   ) {
     // Detect Python frameworks
     let framework = Framework.NONE;
     try {
-      const requirements = await fileSystem.readFile('requirements.txt');
+      const requirements = await read('requirements.txt');
       if (requirements) {
         if (requirements.includes('django')) framework = Framework.DJANGO;
         else if (requirements.includes('flask')) framework = Framework.FLASK;
@@ -245,7 +259,7 @@ export async function detectProject(
   }
 
   // Check Java
-  if (await fileSystem.fileExists('pom.xml')) {
+  if (await exists('pom.xml')) {
     // Could detect Spring here by parsing pom.xml
     return {
       language: Language.JAVA,
@@ -258,8 +272,8 @@ export async function detectProject(
   }
 
   if (
-    (await fileSystem.fileExists('build.gradle')) ||
-    (await fileSystem.fileExists('build.gradle.kts'))
+    (await exists('build.gradle')) ||
+    (await exists('build.gradle.kts'))
   ) {
     return {
       language: Language.JAVA,
@@ -272,7 +286,7 @@ export async function detectProject(
   }
 
   // Check Go
-  if (await fileSystem.fileExists('go.mod')) {
+  if (await exists('go.mod')) {
     return {
       language: Language.GO,
       buildTool: BuildTool.NONE,
@@ -284,7 +298,7 @@ export async function detectProject(
   }
 
   // Check Rust
-  if (await fileSystem.fileExists('Cargo.toml')) {
+  if (await exists('Cargo.toml')) {
     return {
       language: Language.RUST,
       buildTool: BuildTool.CARGO,
