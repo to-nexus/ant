@@ -242,6 +242,7 @@ export class ContentMerger {
       read: 'reading',
       indexed: 'indexing',
       analyzed: 'analyzing',
+      loaded: 'loading',
       stored: 'storing',
       learned: 'learning',
       searched_code: 'searching_code',
@@ -527,6 +528,33 @@ export class ContentMerger {
   }
 
   /**
+   * Remove content at index (splice from array, broadcast removal)
+   */
+  removeContent(
+    projectId: string,
+    featureName: string,
+    session: ChatSession,
+    contentIndex: number
+  ): void {
+    if (!session.currentMessage) return;
+    
+    const existingContents = session.currentMessage.contents;
+    if (contentIndex < 0 || contentIndex >= existingContents.length) return;
+    
+    logger.debug(`REMOVED content @${contentIndex} (type: ${existingContents[contentIndex]?.type})`, { component: 'ContentMerger', projectId, featureName });
+    
+    existingContents.splice(contentIndex, 1);
+    
+    this.broadcaster?.broadcastContentRemove(
+      projectId,
+      featureName,
+      session.currentMessage.id,
+      contentIndex,
+      session.userContext
+    );
+  }
+
+  /**
    * Finalize thinking blocks and in-progress work (called on message finalize)
    */
   finalizeContent(projectId: string, featureName: string, session: ChatSession, cancelled: boolean): void {
@@ -581,7 +609,7 @@ export class ContentMerger {
   private finalizeInProgressWork(projectId: string, featureName: string, session: ChatSession): void {
     const inProgressWorkTypes = new Set([
       'placeholder',  // Placeholder should be removed on cancel
-      'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 
+      'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 'loading',
       'indexing', 'storing', 'learning', 'searching_code', 'listing_files',
       'searching_reference'
     ]);

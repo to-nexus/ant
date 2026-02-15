@@ -10,7 +10,7 @@ import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient"
 
 export async function loadReferenceContexts(
   state: ArchitectGraphState,
-  taskKeywords: { errorFiles: string[]; keywords: string[]; references: Map<string, string[]> },
+  taskKeywords: { errorFiles: string[]; keywords: string[]; references?: Map<string, string[]> },
   retriever: any,
   vectorDB: any,
   git: any,

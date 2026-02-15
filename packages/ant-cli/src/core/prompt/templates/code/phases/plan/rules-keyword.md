@@ -8,20 +8,28 @@ Generate high-quality search keywords to retrieve relevant code files from Vecto
 
 ---
 
-## Output Format
+## Required Files Selection
 
-```json
-{
-  "stackTrace": ["file1.ts", "file2.ts"],
-  "keywords": ["keyword1", "keyword2", ...]
-}
-```
+**Purpose**: Directly specify files from the codebase structure that this task needs.
+
+**When to use** (codebase structure is visible):
+- Entry point files that the task must MODIFY (e.g., main.go, index.ts, app.py)
+- Configuration files the task reads (e.g., go.mod, package.json)
+- Existing files that will be modified as part of this task
+
+**When NOT to use**:
+- Files that will be CREATED (they don't exist yet)
+- Files loosely related but not directly needed
+- When no codebase structure is provided (return empty array `[]`)
+
+**Limit**: Maximum 10 files. Select only directly relevant ones.
+**Format**: Exact relative paths from the codebase structure tree.
 
 ---
 
-## Stack Trace Extraction
+## Error Files Extraction
 
-**⚠️ CRITICAL: Only use when directive contains ACTUAL ERROR STACK TRACE**
+**CRITICAL: Only use when directive contains ACTUAL ERROR STACK TRACE**
 
 **When to use** (ALL conditions must be met):
 1. Directive contains ERROR or EXCEPTION
@@ -29,11 +37,11 @@ Generate high-quality search keywords to retrieve relevant code files from Vecto
 3. Files are explicitly mentioned as part of error stack
 
 **When NOT to use** (return empty array `[]`):
-- ❌ Feature requests ("add room list", "implement chat")
-- ❌ Performance requests ("make it faster", "optimize queries")
-- ❌ Bug fixes WITHOUT stack trace ("button doesn't work", "page is blank")
-- ❌ Refactoring tasks ("clean up code", "improve structure")
-- ❌ You're just guessing which files might be relevant
+- Feature requests ("add room list", "implement chat")
+- Performance requests ("make it faster", "optimize queries")
+- Bug fixes WITHOUT stack trace ("button doesn't work", "page is blank")
+- Refactoring tasks ("clean up code", "improve structure")
+- You're just guessing which files might be relevant
 
 **How to extract**:
 1. Look for file paths in ACTUAL stack trace
@@ -43,20 +51,20 @@ Generate high-quality search keywords to retrieve relevant code files from Vecto
 **Examples**:
 
 ```
-Directive: "Error at UserService.ts:85 → AuthHandler.ts:144"
+Directive: "Error at UserService.ts:85 -> AuthHandler.ts:144"
 
 Extract:
-✅ "UserService.ts"
-✅ "AuthHandler.ts"
+"UserService.ts"
+"AuthHandler.ts"
 
 or better (if path visible):
-✅ "src/services/UserService.ts"
-✅ "src/handlers/AuthHandler.ts"
+"src/services/UserService.ts"
+"src/handlers/AuthHandler.ts"
 ```
 
 **Limit**: Maximum 5 files (most relevant ones from stack trace)
 
-**Default**: If no EXPLICIT stack trace with line numbers → Return empty array `[]`
+**Default**: If no EXPLICIT stack trace with line numbers -> Return empty array `[]`
 
 ---
 
@@ -89,13 +97,13 @@ or better (if path visible):
    - Async patterns if network/IO operations exist
 
 **What NOT to include**:
-- ❌ Generic terms: `"function"`, `"variable"`, `"framework"`
-- ❌ Language keywords: `"const"`, `"async"`, `"class"`
-- ❌ Non-existent files (don't guess file names)
-- ❌ Multi-word phrases with spaces: `"create user"` (use `"createUser"` instead)
-- ❌ Redundant variations: If you have `"createUser"`, don't add `"creatingUser"`, `"userCreate"`
+- Generic terms: `"function"`, `"variable"`, `"framework"`
+- Language keywords: `"const"`, `"async"`, `"class"`
+- Non-existent files (don't guess file names)
+- Multi-word phrases with spaces: `"create user"` (use `"createUser"` instead)
+- Redundant variations: If you have `"createUser"`, don't add `"creatingUser"`, `"userCreate"`
 
-**Limit**: 8-12 keywords maximum
+**Limit**: 0-12 keywords. If `requiredFiles` and/or `errorFiles` already cover all files this task needs, keywords can be empty `[]`. Only generate keywords when additional file discovery through semantic search is needed.
 
 ---
 
@@ -108,13 +116,19 @@ Identify:
 - **Context**: What user was doing, what failed
 - **Technical details**: Framework, patterns mentioned
 
-### Step 2: Extract Stack Trace
+### Step 2: Select Required Files
+
+If codebase structure is visible:
+- Identify files this task needs to read or modify
+- Use exact paths from the tree
+
+### Step 3: Extract Error Files
 
 If error stack trace exists:
-- Extract file paths → `stackTrace` array
+- Extract file paths -> `errorFiles` array
 - Don't repeat in keywords
 
-### Step 3: Generate Keywords
+### Step 4: Generate Keywords
 
 **Priority order**:
 1. Error codes/constants (highest relevance)
@@ -123,15 +137,15 @@ If error stack trace exists:
 4. Framework patterns relevant to the issue
 
 **Semantic expansion**:
-- If error mentions "create user" → include related: `"userValidation"`, `"userRepository"`
-- If stack shows service layer → include: `"serviceError"`, `"businessLogic"`
-- If mentions state → include: `"stateManagement"`, `"dataFlow"`
+- If error mentions "create user" -> include related: `"userValidation"`, `"userRepository"`
+- If stack shows service layer -> include: `"serviceError"`, `"businessLogic"`
+- If mentions state -> include: `"stateManagement"`, `"dataFlow"`
 
-### Step 4: Quality Check
+### Step 5: Quality Check
 
 - Remove duplicates
 - Remove generic terms
-- Keep 8-12 most relevant
+- Keep 0-12 most relevant keywords (empty if requiredFiles/errorFiles are sufficient)
 - Ensure diverse coverage (not all about one narrow topic)
 
 ---
@@ -143,7 +157,7 @@ If error stack trace exists:
 **Directive**:
 ```
 Error: RESOURCE_NOT_FOUND at UserService.ts:85
-Stack: UserService.ts:85 → DataRepository.ts:144
+Stack: UserService.ts:85 -> DataRepository.ts:144
 Message: "User not found in database"
 Warning: Cannot update UserProvider while processing request
 ```
@@ -151,10 +165,7 @@ Warning: Cannot update UserProvider while processing request
 **Output**:
 ```json
 {
-  "stackTrace": [
-    "UserService.ts",
-    "DataRepository.ts"
-  ],
+  "requiredFiles": [],
   "keywords": [
     "RESOURCE_NOT_FOUND",
     "UserService",
@@ -165,72 +176,104 @@ Warning: Cannot update UserProvider while processing request
     "errorHandler",
     "dataAccess",
     "notFoundError"
-  ]
+  ],
+  "errorFiles": [
+    "UserService.ts",
+    "DataRepository.ts"
+  ],
+  "references": {}
 }
 ```
 
-**Why good**:
-- ✅ Exact file names from stack
-- ✅ Error code included
-- ✅ Related components (UserService, DataRepository)
-- ✅ Domain concepts (userLookup, findUser)
-- ✅ Technical patterns (errorHandler, dataAccess)
-- ✅ 9 keywords (within limit)
-
----
-
-### Example 2: Feature Request (No Stack Trace)
+### Example 2: Error with Stack Trace (files sufficient)
 
 **Directive**:
 ```
-Add user list display with pagination.
-Show user name, email, and status.
-Update automatically when filters change.
+TypeError: Cannot read property 'id' of undefined
+  at OrderController.ts:42
+  at OrderService.ts:118
 ```
+
+**Output** (errorFiles are sufficient, no additional semantic search needed):
+```json
+{
+  "requiredFiles": [],
+  "keywords": [],
+  "errorFiles": [
+    "OrderController.ts",
+    "OrderService.ts"
+  ],
+  "references": {}
+}
+```
+
+### Example 3: Feature Request with Codebase Structure
+
+**Directive**:
+```
+Add profile management endpoints
+```
+
+**Codebase structure visible** with `main.go`, `handlers/`, `services/` directories.
 
 **Output**:
 ```json
 {
-  "stackTrace": [],
+  "requiredFiles": ["main.go"],
+  "keywords": [
+    "profileHandler",
+    "profileService",
+    "profileRepository",
+    "userProfile",
+    "updateProfile",
+    "getProfile",
+    "routerGroup",
+    "middleware"
+  ],
+  "errorFiles": [],
+  "references": {}
+}
+```
+
+### Example 4: Simple Modification with Codebase Structure (requiredFiles sufficient)
+
+**Directive**:
+```
+Add a health check endpoint to the server
+```
+
+**Codebase structure visible** with `main.go`, `go.mod`, `handlers/` directory.
+
+**Output** (requiredFiles cover all needed files, no semantic search needed):
+```json
+{
+  "requiredFiles": ["main.go", "go.mod"],
+  "keywords": [],
+  "errorFiles": [],
+  "references": {}
+}
+```
+
+### Example 5: Feature Request without Codebase Structure
+
+**Output** (no requiredFiles or errorFiles available, keywords are essential):
+```json
+{
+  "requiredFiles": [],
   "keywords": [
     "userList",
     "userDisplay",
     "pagination",
     "userStatus",
-    "emailField",
     "dataTable",
     "userManagement",
     "listComponent",
     "filterHandler"
-  ]
+  ],
+  "errorFiles": [],
+  "references": {}
 }
 ```
-
-**Why good**:
-- ✅ Empty stack trace (no error)
-- ✅ Feature keywords (userList, display)
-- ✅ Technical requirements (pagination, dataTable)
-- ✅ Domain concepts (userStatus, emailField)
-- ✅ Single-token format (camelCase for compound concepts)
-- ✅ 9 keywords (within limit)
-
----
-
-### Example 3: Common Mistakes
-
-**❌ Don't**:
-- Add file extensions incorrectly: `"UserList"` instead of `"UserList.ts"`
-- Guess files that might not exist
-- Use generic terms: `"map"`, `"undefined"`, `"error"`
-- Use language keywords: `"property"`, `"const"`, `"async"`
-- Add too many keywords (40+)
-- Use multi-word phrases with spaces: `"user data"`, `"array null check"`
-
-**✅ Do**:
-- Use exact file names from error messages
-- Use specific component/function names: `"UserList"`, `"validateInput"`
-- Keep 8-12 keywords maximum
-- Use single-token format (camelCase): `"userData"`, `"arrayNullCheck"`
 
 ---
 
@@ -238,11 +281,14 @@ Update automatically when filters change.
 
 Before outputting:
 
-- [ ] Stack trace: **ONLY if directive contains ACTUAL error with file:line format**
-- [ ] Stack trace: If no explicit error trace → **MUST be empty array []**
-- [ ] Stack trace: Exact file names with extensions
-- [ ] Stack trace: Maximum 5 files
-- [ ] Keywords: 8-12 keywords
+- [ ] Required files: Only from codebase structure (if visible), exact paths
+- [ ] Required files: Only files to READ or MODIFY, not files to CREATE
+- [ ] Required files: Maximum 10 files
+- [ ] Error files: **ONLY if directive contains ACTUAL error with file:line format**
+- [ ] Error files: If no explicit error trace -> **MUST be empty array []**
+- [ ] Error files: Exact file names with extensions
+- [ ] Error files: Maximum 5 files
+- [ ] Keywords: 0-12 keywords (empty `[]` allowed if requiredFiles/errorFiles already cover all needed files)
 - [ ] Keywords: No generic terms
 - [ ] Keywords: No duplicates/redundancy
 - [ ] Keywords: Diverse coverage (error + domain + technical)

@@ -73,6 +73,30 @@ export class ChatStatusHandler {
   }
 
   /**
+   * Remove a chat status UI element by its content index
+   * Used when a progress indicator (e.g. retrieving) finishes with 0 results
+   */
+  removeChatStatus(contentIndex: number): void {
+    const session = this.sessionStore.getSession();
+    const ctx = this.sessionStore.getContext();
+
+    if (!session || !session.currentMessage) return;
+
+    this.contentMerger.removeContent(
+      ctx.projectId,
+      ctx.featureName,
+      session,
+      contentIndex
+    );
+
+    this.sessionStore.updateCurrentMessage().catch(err => {
+      logger.warn(`Failed to update current message in Redis after remove`, {
+        component: 'ChatStatusHandler'
+      }, err);
+    });
+  }
+
+  /**
    * Helper: Add exploring status
    */
   addExploringStatus(current: number, total: number): number {
@@ -303,6 +327,19 @@ export class ChatStatusHandler {
       case 'choice_card':
         // ✅ choice_card uses title from metadata (generic choice cards: eval_save, prd_apply)
         return metadata?.title || 'Choice required';
+      
+      case 'loading': {
+        return 'Loading required files...';
+      }
+      
+      case 'loaded': {
+        const filesCount = metadata?.filesCount ?? 0;
+        const content = metadata?.content;
+        const error = metadata?.error;
+        if (error) return `❌ Loading Failed: ${error}`;
+        if (content) return content;
+        return `Loaded: ${filesCount} required files`;
+      }
       
       case 'file_create_failed':
       case 'file_edit_failed':

@@ -7,18 +7,18 @@
  * - Reference project keywords
  */
 
+import * as path from "path";
+import * as fs from "fs/promises";
 import { LLMClient } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { getSessionDebugDir } from "../../../../../../core/utils/sessionPaths";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
+import { TaskKeywords } from "./combineCodeContext";
 
-export interface TaskKeywords {
-  errorFiles: string[];  // Files that caused errors (build errors, file operation errors)
-  keywords: string[];    // Semantic keywords for search
-  references: Map<string, string[]>;
-}
+export type { TaskKeywords };
 
 /**
  * Generate task-specific keywords using LLM
@@ -26,7 +26,8 @@ export interface TaskKeywords {
 export async function generateTaskKeywords(
   llm: LLMClient,
   task: CodeTask,
-  state: ArchitectGraphState
+  state: ArchitectGraphState,
+  directoryTree?: string
 ): Promise<TaskKeywords> {
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
@@ -34,6 +35,7 @@ export async function generateTaskKeywords(
     return {
       errorFiles: [],
       keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
+      requiredFiles: [],
       references: new Map()
     };
   }
@@ -43,7 +45,8 @@ export async function generateTaskKeywords(
     state.directive || '',
     state.profile,
     state.detectionReport?.jobMode || 'unknown',
-    state.referenceRequests
+    state.referenceRequests,
+    directoryTree
   );
 
   // ✅ Log prompt structure (not content)
@@ -67,6 +70,7 @@ export async function generateTaskKeywords(
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             jobMode: state.detectionReport?.jobMode,
             hasReferences: !!(state.referenceRequests?.length),
+            hasDirectoryTree: !!directoryTree,
           },
         }
       );
@@ -100,11 +104,23 @@ export async function generateTaskKeywords(
         }
       }
 
-      return {
-        errorFiles: Array.isArray(parsed.errorFiles) ? parsed.errorFiles : [],
-        keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
+      const result: TaskKeywords = {
+        // ✅ Backward-compatible: accept errorFiles OR legacy stackTrace
+        errorFiles: Array.isArray(parsed.errorFiles) ? parsed.errorFiles
+                  : Array.isArray(parsed.stackTrace) ? parsed.stackTrace
+                  : [],
+        // ✅ Backward-compatible: accept keywords OR legacy codebase
+        keywords: Array.isArray(parsed.keywords) ? parsed.keywords
+                : Array.isArray(parsed.codebase) ? parsed.codebase
+                : [],
+        requiredFiles: Array.isArray(parsed.requiredFiles) ? parsed.requiredFiles : [],
         references
       };
+
+      // ✅ Save keywords to debug file (non-blocking)
+      saveKeywordsForDebug(state, task, result, !!directoryTree).catch(() => {});
+
+      return result;
     }
   } catch (error) {
     console.warn(`⚠️  Keyword generation failed:`, error);
@@ -113,6 +129,7 @@ export async function generateTaskKeywords(
   return {
     errorFiles: [],
     keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
+    requiredFiles: [],
     references: new Map()
   };
 }
@@ -123,23 +140,28 @@ export async function generateTaskKeywords(
 export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void> {
   console.log(`\n🔍 [displayKeywords] Starting Chat UI update...`);
   console.log(`   Error files: ${taskKeywords.errorFiles.length}`);
+  console.log(`   Required files: ${taskKeywords.requiredFiles.length}`);
   console.log(`   Semantic keywords: ${taskKeywords.keywords.length}`);
   
   const chatAPI = getChatAPIClient();
   
-  if (taskKeywords.errorFiles.length === 0 && taskKeywords.keywords.length === 0) {
+  if (taskKeywords.errorFiles.length === 0 && taskKeywords.keywords.length === 0 && taskKeywords.requiredFiles.length === 0) {
     console.log(`   ⊖ No keywords to display, skipping Chat UI update`);
     return;
   }
   
   const errorFilesCount = taskKeywords.errorFiles.length;
+  const requiredFilesCount = taskKeywords.requiredFiles.length;
   const semanticCount = taskKeywords.keywords.length;
-  const totalCount = errorFilesCount + semanticCount;
+  const totalCount = errorFilesCount + requiredFilesCount + semanticCount;
   
   // Build summary for main display
   const parts: string[] = [];
   if (errorFilesCount > 0) {
     parts.push(`${errorFilesCount} error files`);
+  }
+  if (requiredFilesCount > 0) {
+    parts.push(`${requiredFilesCount} required files`);
   }
   if (semanticCount > 0) {
     parts.push(`${semanticCount} semantic keywords`);
@@ -152,6 +174,11 @@ export async function displayKeywords(taskKeywords: TaskKeywords): Promise<void>
   // Add error files with [error] tag
   taskKeywords.errorFiles.forEach(file => {
     filesList.push(`[error] ${file}`);
+  });
+  
+  // Add required files with [required] tag
+  taskKeywords.requiredFiles.forEach(file => {
+    filesList.push(`[required] ${file}`);
   });
   
   // Add semantic keywords with [semantic] tag
@@ -193,13 +220,121 @@ export function logKeywords(taskKeywords: TaskKeywords): void {
   if (taskKeywords.errorFiles.length > 0) {
     console.log(`   📍 Error files: ${taskKeywords.errorFiles.join(', ')}`);
   }
+  if (taskKeywords.requiredFiles.length > 0) {
+    console.log(`   📄 Required files: ${taskKeywords.requiredFiles.join(', ')}`);
+  }
   if (taskKeywords.keywords.length > 0) {
     console.log(`   🔍 Keywords: ${taskKeywords.keywords.join(', ')}`);
   }
-  if (taskKeywords.references.size > 0) {
+  if (taskKeywords.references && taskKeywords.references.size > 0) {
     taskKeywords.references.forEach((kws, proj) => {
       console.log(`   ✅ Reference [${proj}]: ${kws.join(', ')}`);
     });
+  }
+}
+
+/**
+ * Save keyword generation results to debug file
+ * 
+ * Saves to: {featurePath}/sessions/architect/debug/keywords/{jobId}.json
+ * All task keywords for a job are stored in a single JSON file (array of entries).
+ * 
+ * Follows the same pattern as savePlanTextForDebug in planGeneration.ts.
+ */
+async function saveKeywordsForDebug(
+  state: ArchitectGraphState,
+  task: CodeTask,
+  keywords: TaskKeywords,
+  hasDirectoryTree: boolean
+): Promise<void> {
+  try {
+    const featurePath = state.context.featurePath;
+    const jobId = state._httpJobId;
+
+    if (!featurePath || !jobId) {
+      return;
+    }
+
+    const keywordsDir = getSessionDebugDir(featurePath, 'architect', 'keywords');
+    await fs.mkdir(keywordsDir, { recursive: true });
+
+    const filepath = path.join(keywordsDir, `${jobId}.json`);
+
+    // Load existing entries or start fresh
+    let entries: any[] = [];
+    try {
+      const existing = await fs.readFile(filepath, 'utf-8');
+      entries = JSON.parse(existing);
+    } catch {
+      // File doesn't exist yet
+    }
+
+    // Convert references Map to plain object for JSON serialization
+    const referencesObj: Record<string, string[]> = {};
+    if (keywords.references) {
+      keywords.references.forEach((kws, proj) => {
+        referencesObj[proj] = kws;
+      });
+    }
+
+    entries.push({
+      taskId: task.id,
+      taskName: task.name,
+      generated: new Date().toISOString(),
+      hasDirectoryTree,
+      requiredFiles: keywords.requiredFiles,
+      keywords: keywords.keywords,
+      errorFiles: keywords.errorFiles,
+      references: referencesObj,
+    });
+
+    await fs.writeFile(filepath, JSON.stringify(entries, null, 2), 'utf-8');
+  } catch {
+    // Non-blocking - keyword debug save failed
+  }
+}
+
+/**
+ * Update the last keyword entry with actual retrieval results
+ * 
+ * Called after combineCodeContext completes to record what files were actually loaded.
+ * Merges a `retrieval` field into the last entry of the keywords debug JSON.
+ */
+export async function updateKeywordsWithRetrieval(
+  state: ArchitectGraphState,
+  taskId: string,
+  retrieval: {
+    requiredFilesLoaded: string[];
+    errorFilesLoaded: string[];
+    semanticFilesLoaded: string[];
+    totalFilesLoaded: number;
+  }
+): Promise<void> {
+  try {
+    const featurePath = state.context.featurePath;
+    const jobId = state._httpJobId;
+
+    if (!featurePath || !jobId) return;
+
+    const keywordsDir = getSessionDebugDir(featurePath, 'architect', 'keywords');
+    const filepath = path.join(keywordsDir, `${jobId}.json`);
+
+    let entries: any[] = [];
+    try {
+      const existing = await fs.readFile(filepath, 'utf-8');
+      entries = JSON.parse(existing);
+    } catch {
+      return; // No keyword file to update
+    }
+
+    // Find the entry for this task and add retrieval data
+    const entry = entries.find((e: any) => e.taskId === taskId);
+    if (entry) {
+      entry.retrieval = retrieval;
+      await fs.writeFile(filepath, JSON.stringify(entries, null, 2), 'utf-8');
+    }
+  } catch {
+    // Non-blocking
   }
 }
 

@@ -37,7 +37,7 @@ export async function loadSemanticFiles(
   vectorDB: any,
   git: GitPort,
   extractFilesFromCode: (code: string) => Array<{path: string; content: string}>,
-  excludePaths: string[] = []  // Exclude already loaded (from stacktrace)
+  excludePaths: string[] = []  // Exclude already loaded (from requiredFiles + errorFiles)
 ): Promise<SemanticSearchResult> {
   const chatAPI = getChatAPIClient();
   
@@ -46,16 +46,16 @@ export async function loadSemanticFiles(
   const semanticQuota = RETRIEVAL_CONFIG.getSemanticQuota(excludePaths.length);
   
   if (semanticQuota === 0) {
-    console.log(`   ⚠️  Semantic search skipped: quota exhausted (${excludePaths.length}/${RETRIEVAL_CONFIG.TOTAL_MAX} files already loaded from stack trace)`);
+    console.log(`   ⚠️  Semantic search skipped: quota exhausted (${excludePaths.length}/${RETRIEVAL_CONFIG.TOTAL_MAX} files already loaded)`);
     return { files: [], lessons: [] };
   }
   
-  console.log(`   🔍 Semantic search: ${keywords.length} keywords → quota ${semanticQuota} NEW files (${excludePaths.length} stack trace will be excluded)...`);
-  console.log(`   📊 Target: ${excludePaths.length} stack + ${semanticQuota} semantic = ${excludePaths.length + semanticQuota} total files`);
+  console.log(`   🔍 Semantic search: ${keywords.length} keywords → quota ${semanticQuota} NEW files (${excludePaths.length} already loaded will be excluded)...`);
+  console.log(`   📊 Target: ${excludePaths.length} pre-loaded + ${semanticQuota} semantic = ${excludePaths.length + semanticQuota} total files`);
   
   const searchQuery = keywords.join(' ');
   
-  const mergeIndex = await chatAPI.showChatStatus('retrieving', {
+  const retrievingIndex = await chatAPI.showChatStatus('retrieving', {
     query: searchQuery
   });
   
@@ -95,13 +95,13 @@ export async function loadSemanticFiles(
     const internalDuplicates = allVectorFiles.length - uniqueVectorFiles.length;
     const duplicatesCount = uniqueVectorFiles.filter(p => excludePaths.includes(p)).length;
     
-    // ✅ Filter out stack trace files and apply quota
+    // ✅ Filter out already loaded files and apply quota
     vectorDbPaths = uniqueVectorFiles.filter(p => !excludePaths.includes(p)).slice(0, semanticQuota);
     
     if (internalDuplicates > 0) {
-      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} files (${internalDuplicates} internal duplicates + ${duplicatesCount} stack trace duplicates removed, requested ${requestCount} files)`);
+      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} files (${internalDuplicates} internal duplicates + ${duplicatesCount} already loaded duplicates removed, requested ${requestCount} files)`);
     } else {
-      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} files (${duplicatesCount} duplicates from stack trace excluded, requested ${requestCount} files)`);
+      console.log(`   ✅ Vector DB: ${vectorDbPaths.length} files (${duplicatesCount} already loaded duplicates excluded, requested ${requestCount} files)`);
     }
   } catch (e: any) {
     console.warn(`   ⚠️  Vector DB failed: ${e.message}`);
@@ -253,81 +253,73 @@ export async function loadSemanticFiles(
     exploredFiles = vectorDbFiles.filter(f => localSet.has(f.path)).map(f => f.path);
   }
   
-  // Display: 1. Retrieved (Vector DB ONLY - EXCLUDING duplicates from stack trace) - 항상 표시
-  const duplicatesFromStack = allVectorFiles.length - vectorDbPaths.length;
-  console.log(`\n📤 [semanticSearch] Sending 'retrieved' status (${vectorDbFiles.length} NEW files, ${duplicatesFromStack} duplicates excluded)...`);
-  try {
-    let retrievedMessage: string;
-    if (vectorDbFiles.length > 0) {
-      retrievedMessage = `Retrieved: ${vectorDbFiles.length} files from semantic search (${duplicatesFromStack} duplicates from stack trace excluded)`;
-    } else if (excludePaths.length > 0) {
-      retrievedMessage = `Retrieved: All matching files already in stack trace results`;
-    } else {
-      retrievedMessage = `Retrieved: 0 files (Vector DB empty or no matches)`;
+  // Display: 1. Retrieved (Vector DB results ONLY) - resolve the 'retrieving' spinner
+  if (vectorDbFiles.length > 0) {
+    console.log(`\n📤 [semanticSearch] Sending 'retrieved' status (${vectorDbFiles.length} files from Vector DB)...`);
+    try {
+      await chatAPI.showChatStatus('retrieved', {
+        filesCount: vectorDbFiles.length,
+        filesList: vectorDbFiles.map(f => f.path),
+        content: `Retrieved: ${vectorDbFiles.length} files from Vector DB`,
+        _mergeIndex: retrievingIndex
+      });
+      console.log(`   ✅ 'retrieved' status sent successfully\n`);
+    } catch (error: any) {
+      console.error(`   ❌ 'retrieved' status FAILED:`, error.message);
     }
-    
-    await chatAPI.showChatStatus('retrieved', {
-      filesCount: vectorDbFiles.length,
-      filesList: vectorDbFiles.map(f => f.path),
-      content: retrievedMessage,
-      _mergeIndex: mergeIndex
-    });
-    console.log(`   ✅ 'retrieved' status sent successfully\n`);
-  } catch (error: any) {
-    console.error(`   ❌ 'retrieved' status FAILED:`, error.message);
+  } else {
+    // 0 Vector DB files: remove the 'retrieving' UI element entirely
+    console.log(`   ℹ️  Retrieved: 0 files from Vector DB — removing retrieving UI`);
+    if (retrievingIndex !== undefined) {
+      await chatAPI.removeChatStatus(retrievingIndex);
+    }
   }
   
-  // Display: 2. Explored (Git changes in retrieved files) - 항상 표시
-  // ✅ CRITICAL: Must send 'exploring' first for proper merge!
-  console.log(`\n📤 [semanticSearch] Sending 'exploring' → 'explored' status (${exploredFiles.length} files)...`);
-  try {
-    const mergeIndex = await chatAPI.showChatStatus('exploring', {
-      filesCount: 0,
-      totalFiles: 0
-    });
-    
-    await chatAPI.showChatStatus('explored', {
-      filesCount: exploredFiles.length,
-      filesList: exploredFiles,
-      content: exploredFiles.length > 0 
-        ? `Explored: ${exploredFiles.length} files with uncommitted changes related to semantic`
-        : `Explored: No uncommitted changes related to semantic`,
-      _mergeIndex: mergeIndex
-    });
-    console.log(`   'exploring' → 'explored' status sent successfully\n`);
-  } catch (error: any) {
-    console.error(`   ❌ 'exploring/explored' status FAILED:`, error.message);
+  // Display: 2. Explored (Git changes in retrieved files) - only if > 0 files
+  if (exploredFiles.length > 0) {
+    console.log(`\n📤 [semanticSearch] Sending 'exploring' → 'explored' status (${exploredFiles.length} files)...`);
+    try {
+      const mergeIndex = await chatAPI.showChatStatus('exploring', {
+        filesCount: 0,
+        totalFiles: 0
+      });
+      
+      await chatAPI.showChatStatus('explored', {
+        filesCount: exploredFiles.length,
+        filesList: exploredFiles,
+        content: `Explored: ${exploredFiles.length} files with uncommitted changes`,
+        _mergeIndex: mergeIndex
+      });
+      console.log(`   'exploring' → 'explored' status sent successfully\n`);
+    } catch (error: any) {
+      console.error(`   ❌ 'exploring/explored' status FAILED:`, error.message);
+    }
+  } else {
+    console.log(`   ℹ️  Explored: 0 files with uncommitted changes (skipping UI)`);
   }
   
-  // Display: 3. Grepped (Local files - NOT in Vector DB) - 항상 표시
-  console.log(`\n📤 [semanticSearch] Sending 'grepping' → 'grepped' status (${localFiles.length} files)...`);
-  try {
-    // ✅ Send grepping first and get index
-    const mergeIndex = await chatAPI.showChatStatus('grepping', {
-      filesCount: 0,
-      totalFiles: 0
-    });
-    
-    let greppedMessage: string;
-    
-    if (localFiles.length > 0) {
-      greppedMessage = `Grepped: ${localFiles.length} local files`;
-    } else {
-      greppedMessage = vectorDbFiles.length > 0 
-        ? `Grepped: All files found in Vector DB (no local search needed)`
-        : `Grepped: 0 files (no matches)`;
+  // Display: 3. Grepped (Local files - NOT in Vector DB) - only if > 0 files
+  if (localFiles.length > 0) {
+    console.log(`\n📤 [semanticSearch] Sending 'grepping' → 'grepped' status (${localFiles.length} files)...`);
+    try {
+      const mergeIndex = await chatAPI.showChatStatus('grepping', {
+        filesCount: 0,
+        totalFiles: 0
+      });
+      
+      await chatAPI.showChatStatus('grepped', {
+        filesCount: localFiles.length,
+        keywords: keywords,
+        filesList: localFiles.map(f => f.path),
+        content: `Grepped: ${localFiles.length} local files`,
+        _mergeIndex: mergeIndex
+      });
+      console.log(`   'grepping' → 'grepped' status sent successfully\n`);
+    } catch (error: any) {
+      console.error(`   ❌ 'grepping/grepped' status FAILED:`, error.message);
     }
-    
-    await chatAPI.showChatStatus('grepped', {
-      filesCount: localFiles.length,
-      keywords: keywords,
-      filesList: localFiles.map(f => f.path),
-      content: greppedMessage,
-      _mergeIndex: mergeIndex
-    });
-    console.log(`   'grepping' → 'grepped' status sent successfully\n`);
-  } catch (error: any) {
-    console.error(`   ❌ 'grepping/grepped' status FAILED:`, error.message);
+  } else {
+    console.log(`   ℹ️  Grepped: 0 local files (skipping UI)`);
   }
   
   console.log(`   Semantic loader: ${semanticFiles.length} files loaded (quota was ${semanticQuota})\n`);

@@ -25,8 +25,8 @@ import { extractErrorDetails, createErrorViolation } from "../shared/errorHandle
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 
 // Import submodules
-import { generateTaskKeywords, displayKeywords, logKeywords } from "./keywordGeneration";
-import { combineCodeContext } from "./combineCodeContext";
+import { generateTaskKeywords, displayKeywords, logKeywords, updateKeywordsWithRetrieval } from "./keywordGeneration";
+import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
 import { generatePlanText } from "./planGeneration";
 import { extractFilesFromViolations } from "../shared/violationFormatter";
@@ -182,13 +182,30 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 0.8: Generate directory tree early (for keyword LLM)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let directoryTree: string | undefined;
+  const planFileSystem = state.deps?.fileSystem;
+  if (planFileSystem) {
+    try {
+      const { generateDirectoryTree } = await import('./combineCodeContext');
+      directoryTree = await generateDirectoryTree(planFileSystem, 4);
+      if (directoryTree) {
+        console.log(`📂 [Plan] Directory tree generated early for keyword LLM`);
+      }
+    } catch {
+      // Non-critical: keyword LLM works without directory tree
+    }
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 1: Generate task-specific keywords (LLM 1st request)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  let taskKeywords;
+  let taskKeywords: TaskKeywords;
   
   if (llm) {
     console.log(`🔑 [Plan] Generating search keywords...`);
-    const generatedKeywords = await generateTaskKeywords(llm, nextTask, state);
+    const generatedKeywords = await generateTaskKeywords(llm, nextTask, state, directoryTree);
     
     // ✅ STEP 1.5: Merge with violation files (after LLM response)
     const errorFilesFromViolations = extractFilesFromViolations(state.violations);
@@ -201,6 +218,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     taskKeywords = {
       errorFiles: [...errorFilesFromViolations, ...generatedKeywords.errorFiles],
       keywords: generatedKeywords.keywords,
+      requiredFiles: generatedKeywords.requiredFiles,
       references: generatedKeywords.references
     };
     
@@ -212,6 +230,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     taskKeywords = {
       errorFiles: extractFilesFromViolations(state.violations),
       keywords: [],
+      requiredFiles: [],
       references: new Map<string, string[]>()
     };
   }
@@ -237,13 +256,25 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       state,
       retriever,
       vectorDB,
-      git
+      git,
+      directoryTree
     );
     
     // ✅ Extract context and lessons from result
     if (combinedResult) {
       projectCodeContext = combinedResult.context;
       lessons = combinedResult.lessons || [];
+      
+      // ✅ Save retrieval results to keyword debug log (non-blocking)
+      const ctx = combinedResult.context;
+      updateKeywordsWithRetrieval(state, nextTask.id, {
+        requiredFilesLoaded: ctx.files.filter(f => taskKeywords.requiredFiles.includes(f.path)).map(f => f.path),
+        errorFilesLoaded: ctx.files.filter(f => taskKeywords.errorFiles.includes(f.path)).map(f => f.path),
+        semanticFilesLoaded: ctx.files.filter(f => 
+          !taskKeywords.requiredFiles.includes(f.path) && !taskKeywords.errorFiles.includes(f.path)
+        ).map(f => f.path),
+        totalFilesLoaded: ctx.stats.filesLoaded,
+      }).catch(() => {});
     }
     
     // Load reference projects if needed
