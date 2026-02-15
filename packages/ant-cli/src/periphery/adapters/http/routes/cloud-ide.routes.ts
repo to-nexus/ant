@@ -45,9 +45,8 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
         return res.status(400).json({ error: 'projectId is required' });
       }
       
-      // Get workspace path
-      const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
-      const workspacePath = path.join(projectPath, 'codebase');
+      // Get workspace path (feature-aware: worktree for features)
+      const workspacePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName || 'main');
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
       
@@ -105,8 +104,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       const featureName = (req.query.feature as string) || 'main';
       const userContext: UserContext = extractUserContext(req);
 
-      const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
-      const workspacePath = path.join(projectPath, 'codebase');
+      const workspacePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
       

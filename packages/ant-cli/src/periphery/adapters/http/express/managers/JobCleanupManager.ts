@@ -97,7 +97,6 @@ export class JobCleanupManager {
         const effectiveUserContext = userContext || mapping.userContext || {
           userId: 'local',
           organizationId: 'local',
-          workspacePath: ''
         };
         
         // Finalize any active chat message (gracefully close streaming, don't convert to cancelled)

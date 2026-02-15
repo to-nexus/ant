@@ -57,7 +57,7 @@ export class ArtifactService {
     if (!p) return p;
     if (!path.isAbsolute(p)) return p;
 
-    const root = (fileSystem as any).getWorkspaceRoot?.();
+    const root = fileSystem.getRootPath?.();
     if (root && typeof root === 'string') {
       return path.relative(root, p);
     }
@@ -369,8 +369,8 @@ export class ArtifactService {
     console.log(`   featurePathAbs (resolved): ${featurePathAbs}`);
     console.log(`   designPathAbs: ${designPathAbs}`);
     console.log(`   designPath (workspace-relative): ${designPath}`);
-    const fsRoot = (fileSystem as any).getWorkspaceRoot?.() || 'unknown';
-    console.log(`   fileSystem.workspaceRoot: ${fsRoot}`);
+    const fsRoot = fileSystem.getRootPath?.() || 'unknown';
+    console.log(`   fileSystem.rootPath: ${fsRoot}`);
 
     // ✅ Try design documents in priority order
     const candidateFiles: string[] = [];

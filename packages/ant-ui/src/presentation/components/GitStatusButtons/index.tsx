@@ -37,12 +37,20 @@ export function GitStatusButtons() {
     return null;
   }
 
-  // ✅ STEP 1: If GitHub repo is not configured
+  // ✅ STEP 1 (HIGHEST PRIORITY): If a Git operation is in progress, ALWAYS show loading.
+  // This must come before hasGitHubRepo/isGitInitialized checks because
+  // Clone/Init/Publish set gitStatusPhase while isGitInitialized is still false,
+  // and the placeholder checks below would otherwise swallow the loading indicator.
+  if (gitStatusPhase !== null) {
+    return <LoadingButton isFetchingChanges={isFetchingChanges} />;
+  }
+
+  // ✅ STEP 2: If GitHub repo is not configured
   if (hasGitHubRepo === false) {
     return <PlaceholderButton message={t('config:git.configureFirst')} />;
   }
 
-  // ✅ STEP 2: If Git is not initialized (repo configured, but not cloned/initialized)
+  // ✅ STEP 3: If Git is not initialized (repo configured, but not cloned/initialized)
   if (isGitInitialized === false) {
     return <PlaceholderButton message={t('config:git.notInitialized')} />;
   }
@@ -52,8 +60,8 @@ export function GitStatusButtons() {
     // Git is initialized - treat as base branch and show status below
   }
 
-  // If Git status is loading OR actively fetching changes OR any Git operation in progress
-  if (isGitStatusLoading || (isFetchingChanges && !gitChanges) || gitStatusPhase !== null) {
+  // If Git status is loading OR actively fetching changes
+  if (isGitStatusLoading || (isFetchingChanges && !gitChanges)) {
     return <LoadingButton isFetchingChanges={isFetchingChanges} />;
   }
 

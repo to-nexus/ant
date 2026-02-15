@@ -27,8 +27,8 @@ import type { JobMode, JobEnvironment, DesignDomain, JobSource, DetectionReport,
 export function createCodeDetectionReport(params: {
   jobMode: JobMode;
   jobModeReasoning: string;
-  environment: JobEnvironment;
-  environmentReasoning: string;
+  environment?: JobEnvironment;
+  environmentReasoning?: string;
   profile?: ProjectProfile;
   requireRag?: boolean;
 }): DetectionReport {
@@ -196,6 +196,48 @@ export function formatDetectionReportForChat(
   }
   
   return formatted;
+}
+
+/**
+ * Profile-only display for decompose node (environment + language + framework).
+ * Avoids re-displaying jobMode already shown by detectEnvironment.
+ */
+export function formatProfileForChat(
+  report: DetectionReport,
+  language: UserLanguage = 'ko'
+): string {
+  const isKorean = language === 'ko';
+  const parts: string[] = [];
+
+  // Environment
+  if (report.environment) {
+    const envEmoji = report.environment === 'frontend' ? '🎨' 
+      : report.environment === 'backend' ? '⚙️' 
+      : report.environment === 'fullstack' ? '🌐' 
+      : '❓';
+    
+    parts.push(isKorean
+      ? `${envEmoji} **환경**: ${report.environment}`
+      : `${envEmoji} **Environment**: ${report.environment}`);
+    
+    if (report.environmentReasoning) {
+      parts.push(`   └ ${report.environmentReasoning}`);
+    }
+  }
+
+  // Profile (language + framework)
+  if (report.profile?.language) {
+    let profileLine = isKorean
+      ? `📊 **프로파일**: ${report.profile.language}`
+      : `📊 **Profile**: ${report.profile.language}`;
+    
+    if (report.profile.framework) {
+      profileLine += ` + ${report.profile.framework}`;
+    }
+    parts.push(profileLine);
+  }
+
+  return parts.length > 0 ? '\n' + parts.join('\n') + '\n' : '';
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -9,6 +9,7 @@ import { FetchOperation } from './operations/FetchOperation';
 import { SyncOperation } from './operations/SyncOperation';
 import { CommitOperation } from './operations/CommitOperation';
 import { PublishOperation } from './operations/PublishOperation';
+import { WorktreeService } from '../worktree';
 
 /**
  * RemoteService (Facade)
@@ -34,6 +35,8 @@ export class RemoteService {
     githubAuthService?: GitHubAuthService,
     onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
   ) {
+    const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
+
     this.cloneOp = new CloneOperation(workspaceResolver, githubAuthService);
     this.initOp = new InitOperation(workspaceResolver, githubAuthService, onIndexingTrigger);
     this.pushOp = new PushOperation(workspaceResolver, githubAuthService);
@@ -41,7 +44,7 @@ export class RemoteService {
     this.fetchOp = new FetchOperation(workspaceResolver, githubAuthService);
     this.syncOp = new SyncOperation(workspaceResolver, githubAuthService);
     this.commitOp = new CommitOperation(workspaceResolver);
-    this.publishOp = new PublishOperation(workspaceResolver, githubAuthService, onIndexingTrigger);
+    this.publishOp = new PublishOperation(workspaceResolver, worktreeService, githubAuthService, onIndexingTrigger);
   }
 
   /**
@@ -61,22 +64,22 @@ export class RemoteService {
   /**
    * Push to GitHub
    */
-  async pushToGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.pushOp.execute(projectId, userContext);
+  async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    return this.pushOp.execute(projectId, userContext, featureName);
   }
 
   /**
    * Pull from GitHub
    */
-  async pullFromGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.pullOp.execute(projectId, userContext);
+  async pullFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    return this.pullOp.execute(projectId, userContext, featureName);
   }
 
   /**
    * Fetch from GitHub
    */
   async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
-    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
+    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName || 'main'}`;
     const existing = this.inFlightFetch.get(key);
     if (existing) {
       return existing;
@@ -94,12 +97,12 @@ export class RemoteService {
   /**
    * Sync with GitHub (fetch + pull + push)
    */
-  async syncWithRemote(projectId: string, userContext: UserContext): Promise<{
+  async syncWithRemote(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     success: boolean;
     pulledChanges?: boolean;
     pushedChanges?: boolean;
   }> {
-    return this.syncOp.execute(projectId, userContext);
+    return this.syncOp.execute(projectId, userContext, featureName);
   }
 
   /**
@@ -108,9 +111,10 @@ export class RemoteService {
   async commitChanges(
     projectId: string,
     userContext: UserContext,
-    message?: string
+    message?: string,
+    featureName?: string
   ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.commitOp.execute(projectId, userContext, message);
+    return this.commitOp.execute(projectId, userContext, message, featureName);
   }
 
   /**

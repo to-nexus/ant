@@ -3,7 +3,7 @@ id: plan
 agent: planner
 description: |
   Creates and refines PRD (Product Requirements Document).
-  Works with non-developers (PMs, business teams) to define product requirements.
+  Works with non-developers (PMs, business teams) to produce PRD artifacts.
   Uses PRD-as-State pattern: the PRD file is the persistent state across jobs.
 
 modes:
@@ -23,8 +23,8 @@ modes:
       recommended: []
     scope:
       - PRD creation from product description
-      - Requirement definition and scoping
-      - Feature specification
+      - PRD requirement structuring and scoping
+      - PRD feature specification
 
   - id: refine
     description: |
@@ -50,6 +50,6 @@ modes:
       - Section expansion and detail addition
 
 redirect_signals:
-  to_design: User EXPLICITLY requests to create or generate design specification documents (UI spec, system design doc). Mentioning technology, backend, API, or architecture as part of PRD requirements is NOT a redirect signal.
+  to_design: User EXPLICITLY names a design artifact (UI spec, system design doc) as the artifact to create. General commands (e.g. "start design", "begin") or mentioning technology/architecture as part of PRD work are NOT redirect signals.
   to_code: User EXPLICITLY requests to write, implement, or fix source code files. Describing implementation requirements in a PRD context is NOT a redirect signal.
   to_learn: User mentions codebase analysis, indexing, or understanding existing code

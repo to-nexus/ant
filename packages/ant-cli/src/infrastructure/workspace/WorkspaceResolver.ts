@@ -34,6 +34,20 @@ export interface WorkspaceResolver {
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string;
   
   /**
+   * Get codebase path for a project or feature.
+   * 
+   * Centralized resolution of the codebase directory path.
+   * - For main/base branch: returns projectPath/codebase (the main git worktree)
+   * - For features: returns featurePath/codebase (a git worktree for that feature's branch)
+   * - For local repoType: returns the configured localPath regardless of feature
+   * 
+   * @param userContext Contains organizationId and userId
+   * @param projectId Project identifier
+   * @param featureId Optional feature identifier. If omitted or 'main', returns the main codebase.
+   */
+  getCodebasePath(userContext: UserContext, projectId: string, featureId?: string): string;
+  
+  /**
    * Get physical workspaces directory path
    */
   getPhysicalWorkspacesPath(): string;
@@ -134,7 +148,6 @@ export class WorkspacePathResolver {
     const userContext: UserContext = {
       userId: context.userId || 'local',
       organizationId: context.organizationId || 'local',
-      workspacePath: ''
     };
     
     return workspaceResolver.getFeaturePath(userContext, context.project, context.featureFolder);
@@ -254,9 +267,48 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
     return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId, 'features', featureId);
   }
   
+  getCodebasePath(userContext: UserContext, projectId: string, featureId?: string): string {
+    const projectPath = this.getProjectPath(userContext, projectId);
+    
+    // Check if project uses a local repo path (repoType === 'local')
+    const configPath = path.join(projectPath, 'config.json');
+    try {
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.repoType === 'local' && config.localPath) {
+          return resolveLocalPath(config.localPath);
+        }
+      }
+    } catch {
+      // config not found or invalid - fall through to default cloud path
+    }
+    
+    // Cloud mode: main → projectPath/codebase, feature → featurePath/codebase
+    if (!featureId || featureId === 'main') {
+      return path.join(projectPath, 'codebase');
+    }
+    return path.join(this.getFeaturePath(userContext, projectId, featureId), 'codebase');
+  }
+  
   getPhysicalWorkspacesPath(): string {
     return this.workspacesPath;
   }
+}
+
+/**
+ * Resolve a local path from config (supports ~, absolute, and relative paths)
+ */
+export function resolveLocalPath(localPath: string): string {
+  if (!localPath) {
+    throw new Error('Local path not configured');
+  }
+  if (localPath.startsWith('~')) {
+    return localPath.replace('~', process.env.HOME || '');
+  }
+  if (path.isAbsolute(localPath)) {
+    return localPath;
+  }
+  return path.resolve(process.cwd(), localPath);
 }
 
 

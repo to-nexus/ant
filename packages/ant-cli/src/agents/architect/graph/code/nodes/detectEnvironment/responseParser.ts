@@ -1,16 +1,13 @@
 /**
  * Response Parsing for DetectEnvironment Node
  * 
- * ✅ Supports both old and new field names:
- * - Old: mode, modeReasoning, requireRagForDecompose
- * - New: jobMode, jobModeReasoning, requireRag
+ * Parses: jobMode + requireRag + keywords
+ * (environment and profile are now determined by decompose node)
  */
 
 export interface DetectEnvironmentResponse {
   mode: string;
   modeReasoning: string;
-  environment: string;
-  environmentReasoning: string;
   requireRagForDecompose: boolean;
   decomposeKeywords: {
     errorFiles: string[];
@@ -19,10 +16,6 @@ export interface DetectEnvironmentResponse {
       project: string;
       keywords: string[];
     }>;
-  };
-  profile?: {
-    language: string;
-    framework?: string;
   };
 }
 
@@ -54,30 +47,19 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
     const requireRag = parsed.requireRag ?? parsed.requireRagForDecompose;
     
     // Validate required fields
-    if (!mode || !modeReasoning || 
-        !parsed.environment || !parsed.environmentReasoning || 
-        requireRag === undefined) {
+    if (!mode || !modeReasoning || requireRag === undefined) {
       throw new Error('Missing required fields in response');
     }
     
     return {
       mode,
       modeReasoning,
-      environment: parsed.environment,
-      environmentReasoning: parsed.environmentReasoning,
       requireRagForDecompose: requireRag,
       decomposeKeywords: {
         errorFiles: parsed.decomposeKeywords?.errorFiles || parsed.decomposeKeywords?.stackTrace || [],
         keywords: parsed.decomposeKeywords?.keywords || [],
         references: parsed.decomposeKeywords?.references || []
       },
-      profile: parsed.profile ? {
-        language: parsed.profile.language || 'typescript',
-        framework: parsed.profile.framework
-      } : {
-        language: 'typescript',  // Default to TypeScript if not specified
-        framework: undefined
-      }
     };
     
   } catch (error) {
@@ -88,18 +70,12 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
     return {
       mode: 'generate',
       modeReasoning: 'Failed to parse LLM response',
-      environment: 'unknown',
-      environmentReasoning: 'Failed to parse LLM response',
       requireRagForDecompose: false,
       decomposeKeywords: {
         errorFiles: [],
         keywords: [],
         references: []
       },
-      profile: {
-        language: 'typescript',  // Safe default
-        framework: undefined
-      }
     };
   }
 }

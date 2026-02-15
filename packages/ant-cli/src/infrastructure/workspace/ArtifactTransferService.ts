@@ -67,7 +67,6 @@ export class ArtifactTransferService {
     const srcUserContext: UserContext = {
       userId: userContext.userId,
       organizationId: userContext.organizationId,
-      workspacePath: '',
     };
 
     // Resolve full paths
@@ -175,7 +174,6 @@ export class ArtifactTransferService {
     const recipientUserContext: UserContext = {
       userId: recipient.userId,
       organizationId: recipient.orgId,
-      workspacePath: '',
     };
     const recipientWorkspace = path.join(
       this.workspaceResolver.getPhysicalWorkspacesPath(),
@@ -198,7 +196,6 @@ export class ArtifactTransferService {
     const senderUserContext: UserContext = {
       userId: sender.userId,
       organizationId: sender.orgId,
-      workspacePath: '',
     };
     const srcFeaturePath = this.workspaceResolver.getFeaturePath(
       senderUserContext, source.projectId, source.featureId
@@ -316,7 +313,6 @@ export class ArtifactTransferService {
       const recipientUserContext: UserContext = {
         userId: request.recipient.userId,
         organizationId: request.recipient.orgId,
-        workspacePath: '',
       };
       const destFeaturePath = this.workspaceResolver.getFeaturePath(
         recipientUserContext, request.destination.projectId, request.destination.featureId
@@ -363,7 +359,6 @@ export class ArtifactTransferService {
           const senderUserContext: UserContext = {
             userId: request.sender.userId,
             organizationId: request.sender.orgId,
-            workspacePath: '',
           };
           const srcFeaturePath = this.workspaceResolver.getFeaturePath(
             senderUserContext, request.source.projectId, request.source.featureId

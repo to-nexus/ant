@@ -9,6 +9,7 @@ import { ProjectCrudService } from './ProjectCrudService';
 import { FeatureCrudService } from './FeatureCrudService';
 import { FileOperationService } from './FileOperationService';
 import { GitService } from '../GitService';
+import { WorktreeService } from '../GitService/worktree';
 
 /**
  * ProjectService (Facade)
@@ -51,10 +52,9 @@ export class ProjectService {
     this.fileOps = new FileOperationService(workspaceResolver);
     this.git = new GitService(workspaceResolver, githubAuthService, chatService);
     
-    // ✅ Inject GitService.switchToFeatureBranch into FeatureCrudService
-    this.featureCrud.setSwitchToFeatureBranchFn(
-      this.git.switchToFeatureBranch.bind(this.git)
-    );
+    // ✅ Inject WorktreeService into FeatureCrudService for worktree-based feature isolation
+    const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
+    this.featureCrud.setWorktreeService(worktreeService);
   }
   
   // =====================================
@@ -149,31 +149,19 @@ export class ProjectService {
   }
   
   // =====================================
-  // Git Branch Operations (delegated to GitService)
-  // =====================================
-  
-  async switchToFeatureBranch(
-    projectId: string,
-    featureName: string,
-    userContext: UserContext
-  ): Promise<{ branchName: string; currentBranch: string }> {
-    return this.git.switchToFeatureBranch(projectId, featureName, userContext);
-  }
-  
-  // =====================================
   // Git Status Operations (delegated to GitService)
   // =====================================
   
-  async getGitStatus(projectId: string, userContext: UserContext): Promise<{
+  async getGitStatus(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasGit: boolean;
     hasCodebase: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
   }> {
-    return this.git.getGitStatus(projectId, userContext);
+    return this.git.getGitStatus(projectId, userContext, featureName);
   }
   
-  async getGitChanges(projectId: string, userContext: UserContext): Promise<{
+  async getGitChanges(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasChanges: boolean;
     staged: string[];
     unstaged: string[];
@@ -183,7 +171,7 @@ export class ProjectService {
     currentBranch?: string;
     isGitInitialized?: boolean;
   }> {
-    return this.git.getGitChanges(projectId, userContext);
+    return this.git.getGitChanges(projectId, userContext, featureName);
   }
   
   async checkCloneStatus(projectId: string, userContext: UserContext): Promise<boolean> {
@@ -202,32 +190,33 @@ export class ProjectService {
     return this.git.initializeGitHubRepo(projectId, userContext);
   }
   
-  async pushToGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.git.pushToGitHub(projectId, userContext);
+  async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    return this.git.pushToGitHub(projectId, userContext, featureName);
   }
   
-  async pullFromGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.git.pullFromGitHub(projectId, userContext);
+  async pullFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    return this.git.pullFromGitHub(projectId, userContext, featureName);
   }
   
   async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     return this.git.fetchFromGitHub(projectId, userContext, featureName);
   }
   
-  async syncWithRemote(projectId: string, userContext: UserContext): Promise<{
+  async syncWithRemote(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     success: boolean;
     pulledChanges?: boolean;
     pushedChanges?: boolean;
   }> {
-    return this.git.syncWithRemote(projectId, userContext);
+    return this.git.syncWithRemote(projectId, userContext, featureName);
   }
   
   async commitChanges(
     projectId: string,
     userContext: UserContext,
-    message?: string
+    message?: string,
+    featureName?: string
   ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.git.commitChanges(projectId, userContext, message);
+    return this.git.commitChanges(projectId, userContext, message, featureName);
   }
   
   async publishToGitHub(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {

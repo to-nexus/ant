@@ -14,7 +14,7 @@
  *   featureName: process.env.ANT_FEATURE_NAME!,
  *   jobType: process.env.ANT_JOB_TYPE as 'design' | 'code' | 'learn',
  *   projectPath: process.env.ANT_PROJECT_PATH!,
- *   userContext: { userId, organizationId, workspacePath },
+ *   userContext: { userId, organizationId },
  * });
  * ```
  * 
@@ -116,8 +116,6 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
   const jobType = process.env.ANT_JOB_TYPE;
   const userId = process.env.ANT_USER_ID;
   const orgId = process.env.ANT_ORG_ID;
-  const workspacePath = process.env.ANT_WORKSPACE_PATH;
-
   // Check required environment variables (including userContext for user-scoped channels)
   if (!redisUrl || !jobId || !projectId || !featureName || !projectPath || !userId || !orgId) {
     console.log(`[Realtime] Missing required env vars for broadcasting:`, {
@@ -142,7 +140,6 @@ export function getBroadcasterOptionsFromEnv(): CreateBroadcastersOptions | null
     userContext: {
       userId,
       organizationId: orgId,
-      workspacePath: workspacePath || '',
     },
   };
 }

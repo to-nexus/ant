@@ -85,7 +85,7 @@ export function normalizeToCodebasePath(
     return {
       normalized: `${prefix}${featureMatch[1]}`,
       wasFixed: true,
-      reason: `${codebaseRel}/ is at project root, not inside features/`,
+      reason: `Stripped redundant features/ prefix from codebase path`,
     };
   }
 

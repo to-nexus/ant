@@ -13,6 +13,10 @@ import { GitignoreGenerator } from '../helpers/GitignoreGenerator';
  * Shared logic for InitOperation and PublishOperation.
  * Provides common methods for Git initialization, commit creation,
  * GitHub repository creation, and rollback.
+ * 
+ * Both operations initialize Git in projectPath/codebase/ (the main worktree).
+ * PublishOperation additionally creates per-feature worktrees via WorktreeService.
+ * No branch checkout is performed in the main worktree — it always stays on the base branch.
  */
 export abstract class BaseGitSetupOperation {
   constructor(
@@ -20,21 +24,6 @@ export abstract class BaseGitSetupOperation {
     protected readonly githubAuthService?: GitHubAuthService,
     protected readonly onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
   ) {}
-
-  protected resolveCodebasePath(projectPath: string, config: any): string {
-    if (config.repoType === 'local') {
-      if (!config.localPath) {
-        throw new Error('Local path not configured');
-      }
-      return config.localPath.startsWith('~')
-        ? config.localPath.replace('~', process.env.HOME || '')
-        : path.isAbsolute(config.localPath)
-        ? config.localPath
-        : path.resolve(process.cwd(), config.localPath);
-    } else {
-      return path.join(projectPath, 'codebase');
-    }
-  }
 
   protected async loadConfig(projectId: string, userContext: UserContext): Promise<{ config: any; projectPath: string; codebasePath: string }> {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
@@ -50,7 +39,8 @@ export abstract class BaseGitSetupOperation {
       throw new Error('GitHub repository not configured in project config');
     }
 
-    const codebasePath = this.resolveCodebasePath(projectPath, config);
+    // Use centralized codebase path resolution (main worktree for init/publish operations)
+    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
 
     return { config, projectPath, codebasePath };
   }

@@ -115,7 +115,7 @@ export async function resolveToolPath(
   }
 
   const p = await import('path');
-  const projectRoot = fileSystem.getWorkspaceRoot();
+  const projectRoot = fileSystem.getRootPath();
 
   // Absolute path: make it project-root relative
   if (p.isAbsolute(rawPath)) {

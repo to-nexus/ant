@@ -435,6 +435,16 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
         await runJob(targetAgent, response.suggestedJob, response.directive);
       }
 
+      // Handle proceedAnyway: continue despite blocked status (skip triage to avoid loop)
+      if (response.type === 'continue' && response.action === 'proceedAnyway') {
+        const currentAgent = useStore.getState().selectedAgent;
+        const currentJob = useStore.getState().selectedJobType;
+        const label = '진행됨';
+        state.setLocalResolvedLabel(label);
+        state.persistChoice(options.positive.action, label);
+        await runJob(currentAgent, currentJob, response.directive, { skipTriage: true });
+      }
+
       // Handle guide
       if (response.type === 'guide') {
         const label = '가이드 제공됨';

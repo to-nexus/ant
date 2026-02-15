@@ -187,10 +187,10 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
     if (process.env.ANT_USER_EMAIL) {
       // Cloud mode: Parse user email
       const [userId, organizationId] = process.env.ANT_USER_EMAIL.split('@');
-      userContext = { userId, organizationId, workspacePath: '' };
+      userContext = { userId, organizationId };
     } else {
       // Local mode: Use default
-      userContext = { userId: 'local', organizationId: 'local', workspacePath: '' };
+      userContext = { userId: 'local', organizationId: 'local' };
     }
     
     // ✅ Extract chat-related environment variables (already declared at line 100)

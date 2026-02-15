@@ -2,9 +2,17 @@ import { TaskQueue, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 
+export interface ParsedProfile {
+  environment: string;
+  environmentReasoning: string;
+  language: string;
+  framework?: string | null;
+}
+
 export interface ParsedDecomposeResponse {
   tasks: CodeTask[];
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>;
+  profile?: ParsedProfile;
 }
 
 /**
@@ -32,6 +40,39 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       throw new Error('Invalid response: tasks must be an array');
     }
     
+    // ✅ Extract profile from <profile> tag (environment + language + framework)
+    let profile: ParsedProfile | undefined;
+    const profileMatch = rawResponse.match(/<profile>\s*([\s\S]*?)\s*<\/profile>/);
+    
+    if (profileMatch) {
+      try {
+        const parsedProfile = JSON.parse(profileMatch[1]);
+        profile = {
+          environment: parsedProfile.environment || 'unknown',
+          environmentReasoning: parsedProfile.environmentReasoning || '',
+          language: parsedProfile.language || 'typescript',
+          framework: parsedProfile.framework || null,
+        };
+      } catch (error) {
+        console.warn('⚠️  [Decompose] Failed to parse <profile> tag content:', error);
+        // Default profile when parsing fails
+        profile = {
+          environment: 'unknown',
+          environmentReasoning: 'Failed to parse profile',
+          language: 'typescript',
+          framework: null,
+        };
+      }
+    } else {
+      console.warn('⚠️  [Decompose] No <profile> tag found, using defaults');
+      profile = {
+        environment: 'unknown',
+        environmentReasoning: 'No profile tag in response',
+        language: 'typescript',
+        framework: null,
+      };
+    }
+
     // ✅ Extract references from <references> tag (OPTIONAL but must use tag format if present)
     let referenceRequests: Array<{project: string; branch?: string; reason?: string}> | undefined;
     const referencesMatch = rawResponse.match(/<references>\s*([\s\S]*?)\s*<\/references>/);
@@ -52,7 +93,8 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     
     return {
       tasks,
-      referenceRequests
+      referenceRequests,
+      profile,
     };
     
   } catch (error) {

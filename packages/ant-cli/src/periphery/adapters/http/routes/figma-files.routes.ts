@@ -27,7 +27,6 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
       return {
         userId: (req as any).user.id,
         organizationId: (req as any).organization.id,
-        workspacePath: ''
       };
     }
     
@@ -37,11 +36,11 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
     
     if (email) {
       const [userId, organizationId] = email.split('@');
-      return { userId, organizationId, workspacePath: '' };
+      return { userId, organizationId };
     }
     
     // Fallback for local mode
-    return { userId: 'local', organizationId: 'local', workspacePath: '' };
+    return { userId: 'local', organizationId: 'local' };
   };
   
   /**

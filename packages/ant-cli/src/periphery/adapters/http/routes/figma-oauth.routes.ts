@@ -53,7 +53,6 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
       return {
         userId: (req as any).user.id,
         organizationId: (req as any).organization.id,
-        workspacePath: ''
       };
     }
     
@@ -65,7 +64,7 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
     if (email) {
       console.log('[Figma getUserContext] Using email from header/query:', email);
       const [userId, organizationId] = email.split('@');
-      return { userId, organizationId, workspacePath: '' };
+      return { userId, organizationId };
     }
     
     console.log('[Figma getUserContext] No user context found');
@@ -199,7 +198,6 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
       const userContext = {
         userId: stateData.userId,
         organizationId: stateData.organizationId,
-        workspacePath: ''  // Will be resolved by UserConfigManager
       };
       
       // Get redirect URI from state (same as used in authorize)

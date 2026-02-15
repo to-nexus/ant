@@ -65,9 +65,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
     // FileSystemPort expects paths relative to workspace root.
     // featurePath is an absolute path, so convert it.
-    const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-    const featureDirRel = workspaceRoot
-      ? path.relative(workspaceRoot, state.context.featurePath)
+    const rootPath = fileSystem.getRootPath?.() || '';
+    const featureDirRel = rootPath
+      ? path.relative(rootPath, state.context.featurePath)
       : state.context.featurePath.replace(/^\//, '');
     
     // ✅ All design documents go to outputs/design

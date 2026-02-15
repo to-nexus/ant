@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHelper } from '../helper/GitHelper';
@@ -20,42 +19,21 @@ export class StatusService {
   /**
    * Get Git status (hasGit, hasCodebase, hasFeatures, currentBranch)
    */
-  async getGitStatus(projectId: string, userContext: UserContext): Promise<{
+  async getGitStatus(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasGit: boolean;
     hasCodebase: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
   }> {
     try {
-      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-      const configPath = path.join(projectPath, 'config.json');
-      
-      if (!fs.existsSync(configPath)) {
-        return { hasGit: false, hasCodebase: false, hasFeatures: false };
-      }
-
-      const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
-      
-      // Determine codebase path
-      let codebasePath: string;
-      if (config.repoType === 'local') {
-        if (!config.localPath) {
-          return { hasGit: false, hasCodebase: false, hasFeatures: false };
-        }
-        codebasePath = config.localPath.startsWith('~')
-          ? config.localPath.replace('~', process.env.HOME || '')
-          : path.isAbsolute(config.localPath)
-          ? config.localPath
-          : path.resolve(process.cwd(), config.localPath);
-      } else {
-        codebasePath = path.join(projectPath, 'codebase');
-      }
+      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 
       const hasCodebase = fs.existsSync(codebasePath);
       const gitDir = path.join(codebasePath, '.git');
       const hasGit = fs.existsSync(gitDir);
       
       // Check if features exist
+      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
       const featuresPath = path.join(projectPath, 'features');
       const hasFeatures = fs.existsSync(featuresPath) && 
         fs.readdirSync(featuresPath).filter(f => !f.startsWith('.')).length > 0;
@@ -85,7 +63,7 @@ export class StatusService {
   /**
    * Get Git changes with detailed file status and ahead/behind information
    */
-  async getGitChanges(projectId: string, userContext: UserContext): Promise<{
+  async getGitChanges(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasChanges: boolean;
     staged: string[];
     unstaged: string[];
@@ -97,29 +75,7 @@ export class StatusService {
     error?: string;
   }> {
     try {
-      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-      const configPath = path.join(projectPath, 'config.json');
-      
-      if (!fs.existsSync(configPath)) {
-        throw new Error('Project config not found');
-      }
-
-      const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
-      
-      // Determine codebase path
-      let codebasePath: string;
-      if (config.repoType === 'local') {
-        if (!config.localPath) {
-          throw new Error('Local path not configured');
-        }
-        codebasePath = config.localPath.startsWith('~')
-          ? config.localPath.replace('~', process.env.HOME || '')
-          : path.isAbsolute(config.localPath)
-          ? config.localPath
-          : path.resolve(process.cwd(), config.localPath);
-      } else {
-        codebasePath = path.join(projectPath, 'codebase');
-      }
+      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 
       // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
       await GitHelper.ensureSafeDirectory(codebasePath);
@@ -197,22 +153,7 @@ export class StatusService {
    */
   async checkCloneStatus(projectId: string, userContext: UserContext): Promise<boolean> {
     try {
-      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-      const configPath = path.join(projectPath, 'config.json');
-      
-      if (!fs.existsSync(configPath)) {
-        return false;
-      }
-
-      const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
-      
-      // Determine codebase path
-      let codebasePath: string;
-      if (config.repoType === 'local') {
-        return true; // Local repos are always "ready"
-      } else {
-        codebasePath = path.join(projectPath, 'codebase');
-      }
+      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
 
       // Check if .git exists
       const gitDir = path.join(codebasePath, '.git');

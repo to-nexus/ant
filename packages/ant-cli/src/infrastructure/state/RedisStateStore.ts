@@ -573,9 +573,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     projectId: string,
     port: number,
     host: string,
-    podId: string
+    podId: string,
+    feature: string = 'main'
   ): Promise<void> {
-    const portKey = createIDEKey(tenantId, userId, projectId);
+    const portKey = createIDEKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
     
     const state: IDEState = {
@@ -605,7 +606,8 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async getIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature: string = 'main'
   ): Promise<IDEState | null> {
     // Validate all key components are present
     if (!tenantId || !userId || !projectId) {
@@ -613,7 +615,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       return null;
     }
     
-    const portKey = createIDEKey(tenantId, userId, projectId);
+    const portKey = createIDEKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
     const data = await this.redis.get(key);
 
@@ -635,9 +637,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async getIDEPort(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature: string = 'main'
   ): Promise<number | null> {
-    const state = await this.getIDE(tenantId, userId, projectId);
+    const state = await this.getIDE(tenantId, userId, projectId, feature);
     return state?.port ?? null;
   }
 
@@ -647,9 +650,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async touchIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature: string = 'main'
   ): Promise<void> {
-    const portKey = createIDEKey(tenantId, userId, projectId);
+    const portKey = createIDEKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
     const data = await this.redis.get(key);
 
@@ -668,9 +672,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async unregisterIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature: string = 'main'
   ): Promise<void> {
-    const portKey = createIDEKey(tenantId, userId, projectId);
+    const portKey = createIDEKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
 
     const pipeline = this.redis.pipeline();

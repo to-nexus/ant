@@ -74,12 +74,11 @@ export async function getGitInstance(project: string, config: any) {
       maxConcurrentProcesses: 6
     });
   } else if (config.repoType === "cloud") {
-    // Cloud workspace: use projectPath/codebase
-    // ✅ CRITICAL: Cloud repos MUST be in projectPath/codebase, NOT projectPath!
+    // Cloud workspace: use ANT_CODEBASE_PATH (feature-aware) or projectPath/codebase
     if (!config.projectPath) {
       throw new Error(`projectPath is required for repoType "cloud"`);
     }
-    const codebasePath = path.join(config.projectPath, 'codebase');
+    const codebasePath = process.env.ANT_CODEBASE_PATH || path.join(process.env.ANT_FEATURE_PATH || config.projectPath, 'codebase');
     console.log(`📂 Working directory (cloud): ${codebasePath}`);
     
     // ✅ Only create directory if it doesn't exist

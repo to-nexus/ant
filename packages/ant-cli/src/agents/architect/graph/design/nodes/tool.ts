@@ -216,9 +216,9 @@ async function handleReadFile(
     : path.join(featurePath, filePath);
   
   // ✅ Convert to workspace-relative path for fileSystem port
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, absolutePath)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, absolutePath)
     : absolutePath.replace(/^\//, '');
   
   // ✅ Add reading status and get index
@@ -269,9 +269,9 @@ async function handleListFiles(
     : path.join(featurePath, directory || '.');
   
   // ✅ Convert to workspace-relative path for fileSystem port
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, absoluteDir)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, absoluteDir)
     : absoluteDir.replace(/^\//, '');
   
   const files = await fileSystem.listFiles(relativePath, [
@@ -330,9 +330,9 @@ async function handleSearchCode(
   }
   
   // ✅ Convert to workspace-relative path for fileSystem port
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, featurePath)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, featurePath)
     : featurePath.replace(/^\//, '');
   
   // Simple search implementation using workspace-relative paths
@@ -411,9 +411,9 @@ async function handleDeleteFile(
     : path.join(featurePath, filePath);
   
   // ✅ Convert to workspace-relative path for fileSystem port
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, absolutePath)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, absolutePath)
     : absolutePath.replace(/^\//, '');
   
   const exists = await fileSystem.fileExists(relativePath);
@@ -463,9 +463,9 @@ async function handleEditFile(
     : path.join(featurePath, filePath);
   
   // ✅ Convert to workspace-relative path for fileSystem port
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, absolutePath)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, absolutePath)
     : absolutePath.replace(/^\//, '');
   
   // ✅ Start file edit UI notification
@@ -549,9 +549,9 @@ async function handleMkdir(
     : path.join(featurePath, dirPath);
   
   // ✅ Convert to workspace-relative path for fileSystem port
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, absolutePath)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, absolutePath)
     : absolutePath.replace(/^\//, '');
   
   await fileSystem.createDirectory(relativePath);
@@ -605,9 +605,9 @@ async function handleReadReferenceImage(
   }
   
   // ✅ Convert to workspace-relative path for fileSystem port
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, absolutePath)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, absolutePath)
     : absolutePath.replace(/^\//, '');
   
   // ✅ Check file exists using relative path
@@ -702,9 +702,9 @@ async function handleListReferenceImages(
     : referencesDir;
   
   // ✅ Convert to workspace-relative path (required by fileSystem port)
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, targetDir)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, targetDir)
     : targetDir.replace(/^\//, '');
   
   // ✅ Use fileSystem port with relative path
@@ -731,12 +731,12 @@ async function handleListReferenceImages(
   });
   
   // ✅ Convert workspace-relative paths to feature-relative paths for grouping
-  const featureRelPath = workspaceRoot
-    ? path.relative(workspaceRoot, featurePath)
+  const featureRelPath = rootPath
+    ? path.relative(rootPath, featurePath)
     : featurePath.replace(/^\//, '');
   
-  const referencesRelPath = workspaceRoot
-    ? path.relative(workspaceRoot, referencesDir)
+  const referencesRelPath = rootPath
+    ? path.relative(rootPath, referencesDir)
     : referencesDir.replace(/^\//, '');
   
   // ✅ Dynamic grouping by actual subdirectory names
@@ -808,9 +808,9 @@ async function handleListAssets(
     : assetsDir;
   
   // ✅ Convert to workspace-relative path (required by fileSystem port)
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const relativePath = workspaceRoot
-    ? path.relative(workspaceRoot, targetDir)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, targetDir)
     : targetDir.replace(/^\//, '');
   
   // ✅ Use fileSystem port with relative path
@@ -831,12 +831,12 @@ async function handleListAssets(
   }
   
   // ✅ Convert workspace-relative paths to feature-relative paths
-  const featureRelPath = workspaceRoot
-    ? path.relative(workspaceRoot, featurePath)
+  const featureRelPath = rootPath
+    ? path.relative(rootPath, featurePath)
     : featurePath.replace(/^\//, '');
   
-  const assetsRelPath = workspaceRoot
-    ? path.relative(workspaceRoot, assetsDir)
+  const assetsRelPath = rootPath
+    ? path.relative(rootPath, assetsDir)
     : assetsDir.replace(/^\//, '');
   
   // ✅ Dynamic grouping by actual subdirectory names

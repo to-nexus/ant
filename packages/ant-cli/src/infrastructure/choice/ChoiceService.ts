@@ -234,7 +234,7 @@ export class ChoiceService {
         return this.handleProceed(triageResult, pending.originalDirective);
         
       case 'proceedAnyway':
-        return this.handleProceedAnyway(triageResult);
+        return this.handleProceedAnyway(triageResult, pending.originalDirective);
         
       case 'redirect':
         return this.handleRedirect(triageResult, pending.originalDirective);
@@ -276,10 +276,11 @@ export class ChoiceService {
   /**
    * Handle proceed anyway choice (for blocked with canProceed)
    */
-  private handleProceedAnyway(triageResult: TriageResult): ChoiceResponse {
+  private handleProceedAnyway(triageResult: TriageResult, originalDirective?: string): ChoiceResponse {
     return {
       type: 'continue',
-      action: 'proceedAnyway'
+      action: 'proceedAnyway',
+      directive: originalDirective
     };
   }
   

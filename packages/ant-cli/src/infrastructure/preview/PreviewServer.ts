@@ -154,13 +154,21 @@ export class PreviewServer {
   }
 
   /**
-   * Resolve workspace path for a project
+   * Resolve workspace path for a project (feature-aware)
    */
   private resolveWorkspacePath(
     userContext: { organizationId: string; userId: string },
-    projectId: string
+    projectId: string,
+    feature?: string
   ): string {
     const basePath = this.options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
+    
+    if (feature && feature !== 'main') {
+      // Feature worktree path: basePath/org/user/projectId/features/{feature}/codebase
+      return path.join(basePath, userContext.organizationId, userContext.userId, projectId, 'features', feature, 'codebase');
+    }
+    
+    // Main codebase path: basePath/org/user/projectId/codebase
     return path.join(basePath, userContext.organizationId, userContext.userId, projectId, 'codebase');
   }
 
@@ -250,7 +258,7 @@ export class PreviewServer {
           component: 'PreviewServer'
         });
 
-        const workspacePath = this.resolveWorkspacePath(userContext, projectId);
+        const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
 
         const result = await this.previewService.startPreview(
           userContext.organizationId,
@@ -334,7 +342,7 @@ export class PreviewServer {
         let canStart = false;
         if (!status.running && status.phase !== 'installing' && status.phase !== 'starting') {
           try {
-            const workspacePath = this.resolveWorkspacePath(userContext, projectId);
+            const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
             canStart = await this.checkCanStart(workspacePath);
           } catch {
             // Filesystem check failure → canStart remains false
@@ -375,7 +383,8 @@ export class PreviewServer {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
 
-        const workspacePath = this.resolveWorkspacePath(userContext, projectId);
+        const feature = req.query.feature as string || 'main';
+        const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
         const result = await this.previewService.validatePreviewSetup(workspacePath);
 
         res.json({

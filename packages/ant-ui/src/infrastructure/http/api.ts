@@ -1601,7 +1601,7 @@ export async function checkIDEInstalled(ide: 'cursor' | 'vscode'): Promise<Check
 // ========================================
 
 export interface CloudIDEInstance {
-  url: string;          // proxy url (e.g. /ide/org:user:project) - project-level
+  url: string;          // proxy url (e.g. /ide/org:user:project:feature) - feature-level
   directUrl?: string;   // ✅ local direct access (e.g. http://localhost:45xxx)
   port: number;
   status: string;
@@ -2120,41 +2120,9 @@ export async function syncWithRemote(projectId: string): Promise<{
   return await response.json();
 }
 
-/**
- * Switch to feature branch
- */
-export async function switchToFeatureBranch(
-  projectId: string,
-  featureName: string
-): Promise<{ success: boolean; error?: string; branchName?: string; currentBranch?: string }> {
-  try {
-    const response = await authFetch(
-      `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/checkout`,
-      { method: 'POST' }
-    );
-    
-    const result = await response.json();
-    
-    if (!response.ok) {
-      return {
-        success: false,
-        error: result.error || `HTTP ${response.status}`
-      };
-    }
-    
-    return { 
-      success: true, 
-      branchName: result.branchName,
-      currentBranch: result.currentBranch  // ✅ Return actual current branch from Git
-    };
-  } catch (error: any) {
-    console.error('Error switching branch:', error);
-    return {
-      success: false,
-      error: error.message || 'Network error'
-    };
-  }
-}
+// Note: switchToFeatureBranch() has been removed.
+// With Git worktrees, each feature has its own working directory with the correct
+// branch already checked out. Branch switching is handled at feature creation time.
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Triage Choice API

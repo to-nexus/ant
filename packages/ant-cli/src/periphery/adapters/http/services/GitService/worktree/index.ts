@@ -1,0 +1,329 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import simpleGit, { SimpleGit } from 'simple-git';
+import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/WorkspaceResolver';
+import { UserContext } from '../../../../../../core/types/user';
+import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
+import { GitHelper } from '../helper/GitHelper';
+import { logger } from '../../../../../../utils/logger';
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  isMain: boolean;
+}
+
+/**
+ * WorktreeService
+ * 
+ * Manages Git worktrees for feature-based codebase isolation.
+ * Replaces BranchService's checkout/stash logic with worktree-based isolation.
+ * 
+ * Each feature gets its own worktree directory (features/{name}/codebase/)
+ * backed by a feature/{name} branch. The main worktree lives at projectPath/codebase/.
+ * 
+ * Key operations:
+ * - createWorktree: Creates a new worktree + branch for a feature
+ * - removeWorktree: Removes worktree and optionally deletes the branch
+ * - listWorktrees: Lists all active worktrees
+ */
+export class WorktreeService {
+  constructor(
+    private readonly workspaceResolver: WorkspaceResolver,
+    private readonly githubAuthService?: GitHubAuthService
+  ) {}
+
+  /**
+   * Create a worktree for a feature.
+   * 
+   * This creates a new Git worktree at the feature's codebase path,
+   * either from an existing remote branch or as a new branch from base.
+   */
+  async createWorktree(
+    projectId: string,
+    featureName: string,
+    userContext: UserContext
+  ): Promise<WorktreeInfo> {
+    const mainCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
+    const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+    const branchName = GitHelper.sanitizeBranchName(featureName);
+
+    logger.info(`Creating worktree for feature: ${featureName}`, {
+      component: 'WorktreeService',
+      projectId,
+      featureName
+    });
+
+    // Ensure main codebase has git initialized
+    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+    if (!git) {
+      // No git repo yet - just create the directory for the worktree
+      // The worktree will be created later when git is initialized
+      logger.info(`Git not initialized, creating codebase directory only`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+      await fs.promises.mkdir(worktreePath, { recursive: true });
+      return { path: worktreePath, branch: branchName, isMain: false };
+    }
+
+    await GitHelper.ensureSafeDirectory(mainCodebasePath);
+    await GitHelper.ensureUserConfig(git, userContext);
+
+    // Check if repository has any commits
+    const log = await git.log({ maxCount: 1 }).catch(() => null);
+    if (!log?.latest) {
+      logger.info(`Empty repository, creating codebase directory only`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+      await fs.promises.mkdir(worktreePath, { recursive: true });
+      return { path: worktreePath, branch: branchName, isMain: false };
+    }
+
+    // Ensure worktree parent directory exists
+    await fs.promises.mkdir(path.dirname(worktreePath), { recursive: true });
+
+    // Remove stale worktree if path already exists but isn't registered
+    if (fs.existsSync(worktreePath)) {
+      await fs.promises.rm(worktreePath, { recursive: true, force: true });
+    }
+
+    // Check if remote branch exists
+    let remoteExists = false;
+    if (this.githubAuthService) {
+      try {
+        await this.updateRemoteUrl(git, projectId, userContext);
+        await git.fetch(['origin']);
+        const remoteBranches = await git.branch(['-r']);
+        remoteExists = remoteBranches.all.includes(`origin/${branchName}`);
+        logger.info(`Remote branch check: ${branchName} ${remoteExists ? 'EXISTS' : 'NOT FOUND'}`, {
+          component: 'WorktreeService',
+          projectId,
+          featureName
+        });
+      } catch (err) {
+        logger.info(`Could not check remote (non-critical)`, {
+          component: 'WorktreeService',
+          projectId,
+          featureName
+        });
+      }
+    }
+
+    // Check if branch already exists locally
+    const localBranches = await git.branchLocal();
+    const localExists = localBranches.all.includes(branchName);
+
+    if (localExists) {
+      // Branch exists locally - create worktree pointing to it
+      await git.raw(['worktree', 'add', worktreePath, branchName]);
+      logger.info(`Created worktree from existing local branch: ${branchName}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+    } else if (remoteExists) {
+      // Remote branch exists - create worktree tracking it
+      await git.raw(['worktree', 'add', '--track', '-b', branchName, worktreePath, `origin/${branchName}`]);
+      logger.info(`Created worktree tracking remote branch: origin/${branchName}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+    } else {
+      // New branch - create worktree with new branch from current HEAD
+      await git.raw(['worktree', 'add', '-b', branchName, worktreePath]);
+      logger.info(`Created worktree with new branch: ${branchName}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+
+      // Push new branch to remote if GitHub is configured
+      if (this.githubAuthService) {
+        try {
+          const worktreeGit = simpleGit({ baseDir: worktreePath });
+          await GitHelper.ensureSafeDirectory(worktreePath);
+          await GitHelper.ensureUserConfig(worktreeGit, userContext);
+          await worktreeGit.push(['-u', 'origin', branchName]);
+          logger.info(`Pushed new branch to remote: ${branchName}`, {
+            component: 'WorktreeService',
+            projectId,
+            featureName
+          });
+        } catch (pushErr: any) {
+          logger.warn(`Could not push new branch (non-critical): ${pushErr.message}`, {
+            component: 'WorktreeService',
+            projectId,
+            featureName
+          });
+        }
+      }
+    }
+
+    // Ensure safe.directory for the worktree
+    await GitHelper.ensureSafeDirectory(worktreePath);
+
+    return { path: worktreePath, branch: branchName, isMain: false };
+  }
+
+  /**
+   * Remove a worktree for a feature.
+   * Also deletes the local branch after removal.
+   */
+  async removeWorktree(
+    projectId: string,
+    featureName: string,
+    userContext: UserContext
+  ): Promise<void> {
+    const mainCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
+    const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+    const branchName = GitHelper.sanitizeBranchName(featureName);
+
+    logger.info(`Removing worktree for feature: ${featureName}`, {
+      component: 'WorktreeService',
+      projectId,
+      featureName
+    });
+
+    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+    if (!git) {
+      // No git - just remove the directory
+      if (fs.existsSync(worktreePath)) {
+        await fs.promises.rm(worktreePath, { recursive: true, force: true });
+      }
+      return;
+    }
+
+    // Remove the worktree
+    try {
+      await git.raw(['worktree', 'remove', worktreePath, '--force']);
+      logger.info(`Worktree removed: ${worktreePath}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+    } catch (err: any) {
+      // Worktree might not be registered (e.g., if git wasn't initialized when feature was created)
+      logger.info(`Worktree remove failed (cleaning up directory): ${err.message}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+      if (fs.existsSync(worktreePath)) {
+        await fs.promises.rm(worktreePath, { recursive: true, force: true });
+      }
+    }
+
+    // Prune worktree references
+    try {
+      await git.raw(['worktree', 'prune']);
+    } catch {
+      // Non-critical
+    }
+
+    // Delete the local branch
+    try {
+      await git.branch(['-D', branchName]);
+      logger.info(`Deleted local branch: ${branchName}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+    } catch (err: any) {
+      logger.info(`Could not delete branch ${branchName} (may not exist): ${err.message}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+    }
+  }
+
+  /**
+   * List all worktrees for a project.
+   */
+  async listWorktrees(
+    projectId: string,
+    userContext: UserContext
+  ): Promise<WorktreeInfo[]> {
+    const mainCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
+
+    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+    if (!git) {
+      return [];
+    }
+
+    try {
+      const output = await git.raw(['worktree', 'list', '--porcelain']);
+      const worktrees: WorktreeInfo[] = [];
+      
+      const blocks = output.split('\n\n').filter(b => b.trim());
+      for (const block of blocks) {
+        const lines = block.split('\n');
+        let wtPath = '';
+        let branch = '';
+        
+        for (const line of lines) {
+          if (line.startsWith('worktree ')) {
+            wtPath = line.substring('worktree '.length);
+          }
+          if (line.startsWith('branch ')) {
+            branch = line.substring('branch refs/heads/'.length);
+          }
+        }
+        
+        if (wtPath) {
+          worktrees.push({
+            path: wtPath,
+            branch: branch || 'HEAD',
+            isMain: wtPath === mainCodebasePath
+          });
+        }
+      }
+
+      return worktrees;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Update the remote URL with authenticated credentials.
+   */
+  private async updateRemoteUrl(
+    git: SimpleGit,
+    projectId: string,
+    userContext: UserContext
+  ): Promise<void> {
+    if (!this.githubAuthService) return;
+
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const configPath = path.join(projectPath, 'config.json');
+
+    if (!fs.existsSync(configPath)) return;
+
+    const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
+    if (!config.githubRepo) return;
+
+    const credentialContext = {
+      org: userContext.organizationId,
+      user: userContext.userId
+    };
+    const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
+      credentialContext,
+      config.githubRepo
+    );
+
+    try {
+      const remotes = await git.getRemotes(true);
+      if (remotes.some(r => r.name === 'origin')) {
+        await git.remote(['set-url', 'origin', authenticatedUrl]);
+      }
+    } catch {
+      // Non-critical
+    }
+  }
+}

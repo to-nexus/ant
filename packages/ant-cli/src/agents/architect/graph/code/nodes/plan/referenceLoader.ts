@@ -43,11 +43,9 @@ export async function loadReferenceContexts(
       const userContext = {
         userId: state.context.userId || 'local',
         organizationId: state.context.organizationId || 'local',
-        workspacePath: ''
       };
       
-      const refProjectPath = workspaceResolver.getProjectPath(userContext, ref.project);
-      const refCodebasePath = path.join(refProjectPath, 'codebase');
+      const refCodebasePath = workspaceResolver.getCodebasePath(userContext, ref.project);
       
       const refQuery = keywords.join(' ');
       console.log(`🔍 [Plan] Searching reference [${ref.project}] with: ${keywords.join(', ')}`);

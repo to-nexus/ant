@@ -74,18 +74,18 @@ export class FileRenderer {
 
     // If caller accidentally passed an absolute path, normalize it back to project-root-relative.
     if (path.isAbsolute(originalPath)) {
-      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
-      if (workspaceRoot) {
-        return path.relative(workspaceRoot, originalPath);
+      const rootPath = this.fileSystem.getRootPath?.();
+      if (rootPath) {
+        return path.relative(rootPath, originalPath);
       }
       return originalPath.startsWith('/') ? originalPath.slice(1) : originalPath;
     }
 
     // Design jobs: prefix with feature directory relative path
     if (this.jobType === 'design' && this.featurePath) {
-      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
-      if (workspaceRoot && path.isAbsolute(this.featurePath)) {
-        const featureDirRel = path.relative(workspaceRoot, this.featurePath);
+      const rootPath = this.fileSystem.getRootPath?.();
+      if (rootPath && path.isAbsolute(this.featurePath)) {
+        const featureDirRel = path.relative(rootPath, this.featurePath);
         return path.join(featureDirRel, originalPath);
       }
     }
@@ -97,9 +97,9 @@ export class FileRenderer {
     // CRITICAL: normalizeToCodebasePath NEVER strips src/ or other intermediate dirs.
     // This prevents the read/write path mismatch that caused duplicate directories.
     if (this.jobType === 'code' && this.codebasePath) {
-      const workspaceRoot = this.fileSystem.getWorkspaceRoot?.();
-      if (workspaceRoot) {
-        const codebaseRel = path.relative(workspaceRoot, this.codebasePath).replace(/\\/g, '/');
+      const rootPath = this.fileSystem.getRootPath?.();
+      if (rootPath) {
+        const codebaseRel = path.relative(rootPath, this.codebasePath).replace(/\\/g, '/');
         if (codebaseRel) {
           // Use shared normalizer for known patterns (src/, app/, lib/, etc.)
           const { normalized, wasFixed, reason } = normalizeToCodebasePath(originalPath, codebaseRel);

@@ -52,6 +52,9 @@
     "selfTransferHint": "Items will be transferred immediately to the selected location.",
     "otherTransferHint": "The transfer will be sent once the recipient accepts. (Original is preserved)"
   },
+  "success": {
+    "selfTransfer": "{{count}} item(s) {{mode}} to {{project}}/{{feature}} completed."
+  },
   "error": {
     "noItems": "Please add files/directories to send.",
     "title": "Transfer Error",

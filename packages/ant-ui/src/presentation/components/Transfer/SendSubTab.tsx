@@ -28,6 +28,7 @@ import {
   type TransferRequest,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { Clock, CheckCircle, XCircle, Ban, Timer, ArrowRight, Plus, ChevronDown, AlertTriangle, X } from 'lucide-react';
 import { TransferFileList, countFilesUnderPath } from './TransferFileList';
 import { Button } from '../common/button';
@@ -45,6 +46,7 @@ export function SendSubTab() {
   const sentRequests = useStore((s) => s.sentRequests);
   const setSentRequests = useStore((s) => s.setSentRequests);
   const { showError } = useAlertModalContext();
+  const { toast } = useToastContext();
 
   // Source state
   const [srcProjectId, setSrcProjectId] = useState(preselected?.projectId || selectedProject || '');
@@ -183,7 +185,6 @@ export function SendSubTab() {
       return;
     }
     setSrcPaths(prev => normalizePaths([...prev, { path, type }]));
-    setIsAddingPath(false);
   };
 
   const handleRemovePath = (path: string) => {
@@ -229,6 +230,8 @@ export function SendSubTab() {
         }
         setSrcPaths([]);
         useStore.getState().refreshFileTree();
+        const modeLabel = mode === 'copy' ? t('mode.copy') : t('mode.move');
+        toast.success(t('success.selfTransfer', { count: srcPaths.length, mode: modeLabel, project: destProjectId, feature: destFeatureId }));
       } else {
         // Use source path as destination path (same relative location)
         if (!targetUserId) {

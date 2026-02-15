@@ -284,7 +284,7 @@ function generateAgentCapabilities(currentAgent: string): string {
       scope: [
         'PRD (Product Requirements Document) creation',
         'PRD refinement and improvement',
-        'Product requirement definition and scoping',
+        'PRD scoping and requirement structuring',
       ],
     },
   };

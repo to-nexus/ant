@@ -45,11 +45,9 @@ Please mention the reference project in your directive to register it.`;
     const userContext = {
       userId: state.context.userId || 'local',
       organizationId: state.context.organizationId || 'local',
-      workspacePath: ''
     };
     
-    const refProjectPath = state.deps.workspaceResolver.getProjectPath(userContext, project);
-    const refCodebasePath = path.join(refProjectPath, 'codebase');
+    const refCodebasePath = state.deps.workspaceResolver.getCodebasePath(userContext, project);
     
     // 5. Search vector DB using CodebaseRetriever
     const searchResult = await state.deps.retriever.retrieve(

@@ -157,8 +157,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     });
   }
 
-  // Instance key creation uses createIDEKey from ideKeyUtils.ts
-  // Format: org:user:project (3 parts)
+  // Instance key creation uses createIDEKey from redisKeyUtils.ts
+  // Format: org:user:project:feature (4 parts)
 
   /**
    * Create safe K8s resource name from instance key
@@ -352,7 +352,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
   /**
    * Convert full workspace path to EFS subPath
-   * e.g., /mnt/workspaces/to.nexus/probe/ant-ogf/codebase -> to.nexus/probe/ant-ogf/codebase
+   * e.g., /mnt/workspaces/to.nexus/probe/ant-ogf/codebase -> to.nexus/probe/ant-ogf/codebase (main)
+   *        /mnt/workspaces/to.nexus/probe/ant-ogf/features/login/codebase -> to.nexus/probe/ant-ogf/features/login/codebase (feature)
    */
   private getSubPath(workspacePath: string): string {
     // Remove WORKSPACE_BASE_PATH prefix to get relative subPath
@@ -394,8 +395,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
   async start(params: IDEParams): Promise<IDEStartResult> {
     const { userContext, projectId, workspacePath, feature = 'main' } = params;
-    // Use centralized function for IDE instance key (org:user:project)
-    const instanceKey = createIDEKey(userContext.organizationId, userContext.userId, projectId);
+    // Use centralized function for IDE instance key (org:user:project:feature)
+    const instanceKey = createIDEKey(userContext.organizationId, userContext.userId, projectId, feature);
     const resourceName = this.createResourceName(instanceKey);
     const startTime = new Date().toISOString();
 
@@ -471,14 +472,15 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`
       );
 
-      // Register in state store (IDE is project-level, no feature)
+      // Register in state store (IDE is feature-level)
       await this.stateStore.registerIDE(
         userContext.organizationId,
         userContext.userId,
         projectId,
         IDE_PORT,
         pod.status?.podIP || resourceName,
-        resourceName  // podId
+        resourceName,  // podId
+        feature
       );
 
       const instance: IDEInstance = {
@@ -644,7 +646,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     });
     
     // Update last access time in state store (with timeout to prevent hanging)
-    // IDE is project-level, no feature
+    // IDE is feature-level
     try {
       const registerPromise = this.stateStore.registerIDE(
         userContext.organizationId,
@@ -652,7 +654,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         projectId,
         IDE_PORT,
         pod.status?.podIP || pod.metadata.name,
-        pod.metadata.name  // podId
+        pod.metadata.name,  // podId
+        feature
       );
       
       // Timeout for Redis operation to prevent hanging
@@ -746,8 +749,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const orgId = tenantParts[0] || '';
     const userId = tenantParts.length > 1 ? tenantParts[1] : '';
     
-    // Use centralized function for IDE instance key (org:user:project)
-    const instanceKey = createIDEKey(orgId, userId, projectId);
+    // Use centralized function for IDE instance key (org:user:project:feature)
+    const instanceKey = createIDEKey(orgId, userId, projectId, feature);
     const resourceName = this.createResourceName(instanceKey);
 
     logger.info(`Stopping K8s IDE: ${instanceKey}`, {
@@ -757,7 +760,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     try {
       await this.deleteResources(resourceName);
 
-      await this.stateStore.unregisterIDE(orgId, userId, projectId);
+      await this.stateStore.unregisterIDE(orgId, userId, projectId, feature);
 
       return { success: true };
     } catch (error: any) {
@@ -779,8 +782,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const orgId = tenantParts[0] || '';
     const userId = tenantParts.length > 1 ? tenantParts[1] : '';
     
-    // Use centralized function for IDE instance key (org:user:project)
-    const instanceKey = createIDEKey(orgId, userId, projectId);
+    // Use centralized function for IDE instance key (org:user:project:feature)
+    const instanceKey = createIDEKey(orgId, userId, projectId, feature);
     const resourceName = this.createResourceName(instanceKey);
 
     try {
@@ -849,7 +852,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           tenantId: parsed.tenantId,
           userId: parsed.userId,
           projectId: parsed.projectId,
-          feature: 'main'  // IDE is project-level, always 'main'
+          feature: parsed.feature || 'main'
         };
       });
     } catch (error: any) {
@@ -896,7 +899,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           tenantId: parsed.tenantId,
           userId: parsed.userId,
           projectId: parsed.projectId,
-          feature: 'main'  // IDE is project-level, always 'main'
+          feature: parsed.feature || 'main'
         };
       });
     } catch (error: any) {
@@ -982,11 +985,12 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         continue;
       }
       
-      // Check last access time from state store (IDE is project-level, no feature)
+      // Check last access time from state store (IDE is feature-level)
       const portMapping = await this.stateStore.getIDE(
         instance.tenantId,
         instance.userId,
-        instance.projectId
+        instance.projectId,
+        instance.feature || 'main'
       );
 
       if (portMapping) {

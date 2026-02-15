@@ -213,12 +213,12 @@ export async function loadSemanticFiles(
   // FileSystemPort expects paths relative to workspace root, not absolute paths.
   // state.context.workingDir is absolute (e.g., /…/ant-prediction/codebase),
   // so we must convert to workspace-relative (e.g., codebase/.eslintignore).
-  const workspaceRoot = fileSystem.getWorkspaceRoot();
+  const rootPath = fileSystem.getRootPath();
   
   for (const filePath of allPaths) {
     try {
       const fullPath = path.join(state.context.workingDir, filePath);
-      const relativePath = path.relative(workspaceRoot, fullPath);
+      const relativePath = path.relative(rootPath, fullPath);
       const content = await fileSystem.readFile(relativePath);
       
       if (content) {

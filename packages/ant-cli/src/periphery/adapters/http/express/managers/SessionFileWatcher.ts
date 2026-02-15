@@ -33,7 +33,6 @@ export class SessionFileWatcher {
     const userContext: UserContext = mapping?.userContext || {
       userId: 'local',
       organizationId: 'local',
-      workspacePath: ''
     };
     
     this.deps.sessionService.watchSessionFile(

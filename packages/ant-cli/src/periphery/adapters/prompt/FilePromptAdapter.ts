@@ -81,6 +81,9 @@ Promise.all([
   fs.readFile(join(codePhaseRulesBase, "decompose/design-doc-guide.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/phases/decompose/design-doc-guide", content))
     .catch(() => {}),
+  fs.readFile(join(codePhaseRulesBase, "decompose/profile-rules.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/phases/decompose/profile-rules", content))
+    .catch(() => {}),
   // Detect rules (detectEnvironment node)
   fs.readFile(join(codePhaseRulesBase, "detect/rules.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/phases/detect/rules", content))

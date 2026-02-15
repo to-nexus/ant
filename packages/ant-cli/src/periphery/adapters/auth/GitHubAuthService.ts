@@ -85,7 +85,6 @@ export class GitHubAuthService {
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
-      workspacePath: ''
     };
     
     await this.userConfig.credentials.set<GitHubCredentials>(
@@ -113,7 +112,6 @@ export class GitHubAuthService {
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
-      workspacePath: ''
     };
     
     const credentials = await this.userConfig.credentials.get<GitHubCredentials>(credContext, 'github');
@@ -143,7 +141,6 @@ export class GitHubAuthService {
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
-      workspacePath: ''
     };
     
     const credentials = await this.userConfig.credentials.get<GitHubCredentials>(credContext, 'github');
@@ -171,7 +168,6 @@ export class GitHubAuthService {
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
-      workspacePath: ''
     };
     
     return await this.userConfig.credentials.has(credContext, 'github');
@@ -184,7 +180,6 @@ export class GitHubAuthService {
     const credContext: UserContext = {
       organizationId: userContext.org,
       userId: userContext.user,
-      workspacePath: ''
     };
     
     await this.userConfig.credentials.delete(credContext, 'github');

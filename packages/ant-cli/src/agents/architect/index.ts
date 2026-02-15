@@ -99,7 +99,7 @@ export async function architectAgent(
   
   // 5. Extract UserContext for path resolution
   // ✅ Get from deps (passed by orchestrator)
-  const userContext = deps?.userContext || { userId: 'local', organizationId: 'local', workspacePath: '' };
+  const userContext = deps?.userContext || { userId: 'local', organizationId: 'local' };
   const { userId, organizationId } = userContext;
   
   // 6. (Optional) Pre-calculate featurePath for performance
@@ -109,7 +109,7 @@ export async function architectAgent(
   if (!featurePath && deps?.workspaceResolver) {
     // Fallback: calculate from workspaceResolver
     try {
-      const userContext = { userId, organizationId, workspacePath: '' };
+      const userContext = { userId, organizationId };
       featurePath = deps.workspaceResolver.getFeaturePath(userContext, project, featureFolder);
     } catch (error) {
       // featurePath resolution failed - will proceed without it

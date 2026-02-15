@@ -144,8 +144,9 @@ export async function orchestrator(params: {
       const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
       
       // ✅ Get FileSystemPort and GitPort (separated responsibilities)
-      const codebasePath = path.join(projectPath, 'codebase');
-      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(projectPath);  // ✅ Use projectPath for full workspace access
+      // Use ANT_CODEBASE_PATH (set by JobWorker for feature-aware worktree paths)
+      const codebasePath = process.env.ANT_CODEBASE_PATH || path.join(featurePath, 'codebase');
+      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(featurePath);  // ✅ Use featurePath (feature root: inputs/outputs/sessions/codebase)
       const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, codebasePath);
 
       if (jobType === 'design') {

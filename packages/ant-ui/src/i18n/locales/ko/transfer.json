@@ -52,6 +52,9 @@
     "selfTransferHint": "선택한 위치로 즉시 전송됩니다.",
     "otherTransferHint": "상대방이 수락하면 복사 전송됩니다. (원본은 유지)"
   },
+  "success": {
+    "selfTransfer": "{{count}}개 항목을 {{project}}/{{feature}}에 {{mode}} 완료했습니다."
+  },
   "error": {
     "noItems": "보낼 파일/디렉토리를 추가하세요.",
     "title": "전송 오류",

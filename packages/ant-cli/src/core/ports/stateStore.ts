@@ -362,7 +362,8 @@ export interface StateStorePort {
     projectId: string,
     port: number,
     host: string,
-    podId: string
+    podId: string,
+    feature?: string
   ): Promise<void>;
   
   /**
@@ -371,7 +372,8 @@ export interface StateStorePort {
   getIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature?: string
   ): Promise<IDEState | null>;
   
   /**
@@ -380,7 +382,8 @@ export interface StateStorePort {
   touchIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature?: string
   ): Promise<void>;
   
   /**
@@ -389,7 +392,8 @@ export interface StateStorePort {
   unregisterIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature?: string
   ): Promise<void>;
   
   /**

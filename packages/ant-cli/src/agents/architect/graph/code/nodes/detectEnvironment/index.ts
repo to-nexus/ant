@@ -1,13 +1,13 @@
 /**
- * DetectEnvironment Node (Refactored with DetectionReport)
+ * DetectEnvironment Node (Lightweight Router)
  * 
  * Responsibilities:
  * 1. Detect job mode (generate/refactor/explain)
- * 2. Detect development environment (frontend/backend/fullstack/unknown)
- * 3. Determine if decompose needs RAG (requireRag)
- * 4. Generate decompose keywords (used once, then discarded)
+ * 2. Determine if decompose needs RAG (requireRag)
+ * 3. Generate decompose keywords (used once, then discarded)
  * 
- * ✅ Uses unified DetectionReport for all detection results
+ * NOTE: environment and profile detection moved to decompose node (SRP)
+ * Design documents are passed through unfiltered to decompose.
  */
 
 import { ArchitectGraphState } from '../../state';
@@ -18,75 +18,11 @@ import {
   createCodeDetectionReport, 
   formatDetectionReportForChat,
   JobMode,
-  JobEnvironment 
 } from '../../../../../../core/types/detection';
 
 // Import submodules
 import { parseDetectResponse } from './responseParser';
-import { selectDesignFiles, DesignDocs } from './designSelector';
 import { getEstimatingLabel } from '../../../../../common/graph/timing/estimatingLabels';
-
-/**
- * Build filtered design documents from selected file list.
- * Shared between normal path and resume fast path.
- */
-function buildFilteredDesign(
-  selectedDesignFiles: string[],
-  designDocs?: DesignDocs
-): { filteredDesign: string; filteredDesignDocs: DesignDocs | undefined } {
-  if (selectedDesignFiles.length === 0 || !designDocs) {
-    return { filteredDesign: '', filteredDesignDocs: undefined };
-  }
-
-  const filteredDesignDocs: DesignDocs = {};
-  const parts: string[] = [];
-
-  const feMultiPattern = /^fe-system-design-(.+)\.md$/;
-  const beMultiPattern = /^be-system-design-(.+)\.md$/;
-
-  for (const fileName of selectedDesignFiles) {
-    // Single docs
-    if (fileName === 'api-contract.md' && designDocs.apiContract) {
-      filteredDesignDocs.apiContract = designDocs.apiContract;
-      parts.push('# API Contract\n\n' + designDocs.apiContract);
-    } else if (fileName === 'fe-system-design.md' && designDocs.feDesign) {
-      filteredDesignDocs.feDesign = designDocs.feDesign;
-      parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
-    } else if (fileName === 'be-system-design.md' && designDocs.beDesign) {
-      filteredDesignDocs.beDesign = designDocs.beDesign;
-      parts.push('# Backend System Design\n\n' + designDocs.beDesign);
-    } else if (fileName === 'system-design.md' && designDocs.unifiedDesign) {
-      filteredDesignDocs.unifiedDesign = designDocs.unifiedDesign;
-      parts.push('# System Design\n\n' + designDocs.unifiedDesign);
-    }
-    // Multi-package frontend / backend (monorepo/MSA)
-    else {
-      const feMatch = fileName.match(feMultiPattern);
-      if (feMatch && designDocs.feDesigns) {
-        const pkgName = feMatch[1];
-        if (designDocs.feDesigns[pkgName]) {
-          if (!filteredDesignDocs.feDesigns) filteredDesignDocs.feDesigns = {};
-          filteredDesignDocs.feDesigns[pkgName] = designDocs.feDesigns[pkgName];
-          parts.push(`# Frontend: ${pkgName}\n\n` + designDocs.feDesigns[pkgName]);
-        }
-      }
-
-      const beMatch = fileName.match(beMultiPattern);
-      if (beMatch && designDocs.beDesigns) {
-        const svcName = beMatch[1];
-        if (designDocs.beDesigns[svcName]) {
-          if (!filteredDesignDocs.beDesigns) filteredDesignDocs.beDesigns = {};
-          filteredDesignDocs.beDesigns[svcName] = designDocs.beDesigns[svcName];
-          parts.push(`# Backend: ${svcName} Service\n\n` + designDocs.beDesigns[svcName]);
-        }
-      }
-    }
-  }
-
-  const filteredDesign = parts.join('\n\n────────────────────────────────────────\n\n');
-
-  return { filteredDesign, filteredDesignDocs };
-}
 
 export async function detectEnvironment(
   state: ArchitectGraphState
@@ -102,28 +38,15 @@ export async function detectEnvironment(
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Resume fast path: detectionReport already exists
-  // Skip LLM call, just filter/combine design docs
+  // Skip LLM call, pass all design docs through
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.detectionReport) {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔍 DETECT ENVIRONMENT: Resume — using existing detectionReport (LLM skip)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-    const env = state.detectionReport.environment || 'unknown';
-    const selectedDesignFiles = selectDesignFiles(env, state.designDocs);
-
-    console.log(`✅ Environment: ${env} (from existing detectionReport)`);
-    console.log(`📄 Selected Design Documents (${selectedDesignFiles.length}): ${selectedDesignFiles.join(', ')}`);
-
-    const { filteredDesign, filteredDesignDocs } = buildFilteredDesign(
-      selectedDesignFiles,
-      state.designDocs
-    );
-
-    if (filteredDesign) {
-      const tokenEstimate = Math.ceil(filteredDesign.length / 4);
-      console.log(`📊 Combined Design Context: ${tokenEstimate.toLocaleString()} tokens (${selectedDesignFiles.length} documents)\n`);
-    }
+    console.log(`✅ Job Mode: ${state.detectionReport.jobMode} (from existing detectionReport)`);
+    console.log(`   Require RAG: ${state.detectionReport.requireRag}`);
 
     // Workflow exit (if instrumented)
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -141,18 +64,15 @@ export async function detectEnvironment(
 
     return {
       detectionReport: state.detectionReport,
-      selectedDesignFiles,
       decomposeKeywords: state.decomposeKeywords || {
         errorFiles: [],
         keywords: [],
         references: new Map<string, string[]>()
       },
-      profile: state.detectionReport.profile ? {
-        language: state.detectionReport.profile.language,
-        framework: state.detectionReport.profile.framework,
-      } : state.profile,
-      designDocs: filteredDesignDocs || state.designDocs,
-      design: filteredDesign || state.design,
+      // ✅ Pass all designDocs through unfiltered (decompose handles profile)
+      designDocs: state.designDocs,
+      design: state.design,
+      profile: state.profile,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
@@ -160,7 +80,7 @@ export async function detectEnvironment(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Normal path: full LLM detection
+  // Normal path: LLM determines jobMode + requireRag + keywords
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const llm = state.deps?.llm as LLMClient;
   
@@ -194,7 +114,7 @@ export async function detectEnvironment(
   console.log('🔍 DETECT ENVIRONMENT: Analyzing development context');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  // 1. Build Prompt
+  // 1. Build Prompt (lightweight: directive + PRD only)
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
     throw new Error('[DetectEnvironment] PromptEngine not available');
@@ -202,8 +122,6 @@ export async function detectEnvironment(
   
   const prompt = await promptEngine.buildDetectEnvironmentPrompt(
     state.directive || '',
-    state.designDocs,
-    state.profile,
     state.prd
   );
   
@@ -222,8 +140,6 @@ export async function detectEnvironment(
           usedTemplates: ['code/phases/detect/rules'],
           injectedVariables: {
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            designDocs: state.designDocs ? 'SET' : undefined,
-            profile: state.profile ? 'SET' : undefined,
             prd: state.prd ? `[${state.prd.length} chars]` : undefined,
           },
         }
@@ -271,23 +187,17 @@ export async function detectEnvironment(
     }
   }
   
-  // 3. Parse Response
+  // 3. Parse Response (jobMode + requireRag + keywords only)
   const parsed = parseDetectResponse(response);
   
-  // 4. Create DetectionReport
+  // 4. Create DetectionReport (without environment/profile — decompose fills those)
   const detectionReport = createCodeDetectionReport({
     jobMode: parsed.mode as JobMode,
     jobModeReasoning: parsed.modeReasoning,
-    environment: parsed.environment as JobEnvironment,
-    environmentReasoning: parsed.environmentReasoning,
-    profile: parsed.profile ? {
-      language: parsed.profile.language,
-      framework: parsed.profile.framework,
-    } : undefined,
     requireRag: parsed.requireRagForDecompose,
   });
   
-  // 5. Display in Chat UI using formatDetectionReportForChat
+  // 5. Display in Chat UI
   const formattedReport = formatDetectionReportForChat(detectionReport, 'ko');
   await chatAPI.sendLLMEvent({
     type: 'text',
@@ -308,24 +218,10 @@ export async function detectEnvironment(
     }
   }
   
-  // 7. Select design files
-  const selectedDesignFiles = selectDesignFiles(parsed.environment, state.designDocs);
-  
-  // 8. Log Environment Analysis
+  // 7. Log Analysis
   console.log(`✅ Job Mode: ${detectionReport.jobMode}`);
   console.log(`   Reasoning: ${detectionReport.jobModeReasoning}`);
-  console.log(`✅ Environment: ${detectionReport.environment}`);
-  console.log(`   Reasoning: ${detectionReport.environmentReasoning}`);
-  console.log(`✅ Profile: ${detectionReport.profile?.language || 'unknown'}${detectionReport.profile?.framework ? ` + ${detectionReport.profile.framework}` : ''}`);
   console.log(`   Require RAG: ${detectionReport.requireRag}`);
-  
-  // ✅ CRITICAL: Log selected design files (for debugging fullstack)
-  if (selectedDesignFiles.length > 0) {
-    console.log(`📄 Selected Design Documents (${selectedDesignFiles.length}):`);
-    selectedDesignFiles.forEach(file => console.log(`   - ${file}`));
-  } else {
-    console.log(`⚠️  No design documents selected`);
-  }
   
   // ✅ Display keywords in Chat UI (analyzed status - keywords only)
   const errorFileCount = decomposeKeywords.errorFiles.length;
@@ -393,38 +289,6 @@ export async function detectEnvironment(
       console.log(`     - ${project}: ${keywords.join(', ')}`);
     });
   }
-  
-  console.log(`   Selected Design Files: ${selectedDesignFiles.join(', ')}\n`);
-  
-  // ✅ Filter designDocs based on selectedDesignFiles (using shared helper)
-  const { filteredDesign, filteredDesignDocs } = buildFilteredDesign(
-    selectedDesignFiles,
-    state.designDocs
-  );
-  
-  if (filteredDesign) {
-    const tokenEstimate = Math.ceil(filteredDesign.length / 4);
-    console.log(`   📊 Combined Design Context: ${tokenEstimate.toLocaleString()} tokens (${selectedDesignFiles.length} documents)\n`);
-  }
-  
-  // ✅ Broadcast structureType to frontend via SSE (for Preview Config canStart)
-  if (state.deps?.previewUpdate && state.context) {
-    const envToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
-      frontend: 'frontend-only',
-      backend: 'backend-only',
-      fullstack: 'fullstack',
-    };
-    const structureType = envToStructure[detectionReport.environment as string];
-    if (structureType) {
-      state.deps.previewUpdate.broadcastStructureType(
-        state.context.project,
-        state.context.featureFolder || 'main',
-        structureType,
-        (state as any).userContext
-      );
-      console.log(`📡 [DetectEnv] Broadcast structureType=${structureType} via SSE`);
-    }
-  }
 
   // Save detectionReport to session (enables decompose-direct routing on resume)
   if (state.deps?.session && state.context.featureFolder) {
@@ -457,17 +321,14 @@ export async function detectEnvironment(
   
   return {
     detectionReport,
-    selectedDesignFiles,
     decomposeKeywords,
-    profile: detectionReport.profile ? {
-      language: detectionReport.profile.language,
-      framework: detectionReport.profile.framework,
-    } : state.profile,
-    designDocs: filteredDesignDocs || state.designDocs,
-    design: filteredDesign || state.design,
+    // ✅ Pass all designDocs through unfiltered (decompose determines profile + environment)
+    designDocs: state.designDocs,
+    design: state.design,
+    profile: state.profile,
     tokenUsage: (state as any).tokenUsage,
-    recursionCount: state.recursionCount,   // ✅ FIX: Propagate to LangGraph channel (Partial return requires explicit inclusion)
-    recursionLimit: state.recursionLimit,   // ✅ FIX: Propagate to LangGraph channel
+    recursionCount: state.recursionCount,
+    recursionLimit: state.recursionLimit,
     _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
   };
 }

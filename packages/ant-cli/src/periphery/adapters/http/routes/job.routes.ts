@@ -18,7 +18,7 @@ import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/ut
 export function createJobRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   executeJob: (params: ExecuteJobParams) => Promise<any>;
-  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn' | 'plan', userContext?: { userId: string; organizationId: string; workspacePath: string }) => Promise<void>;
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn' | 'plan', userContext?: { userId: string; organizationId: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
   chatService: import('../services/ChatService').ChatService;
   stateStore: StateStorePort;

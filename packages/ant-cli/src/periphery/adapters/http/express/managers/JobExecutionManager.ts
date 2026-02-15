@@ -214,7 +214,6 @@ export class JobExecutionManager {
       // ✅ Pass user context for Redis session key
       ...(params.userContext?.userId && { ANT_USER_ID: params.userContext.userId }),
       ...(params.userContext?.organizationId && { ANT_ORG_ID: params.userContext.organizationId }),
-      ...(featurePath && { ANT_WORKSPACE_PATH: featurePath.split('/features/')[0] || '' }),
       ...(userEmail && { ANT_USER_EMAIL: userEmail }),
       ...(params.overrideDirective && { ANT_OVERRIDE_DIRECTIVE: params.overrideDirective }),
       ...(params.chatSource && { ANT_CHAT_SOURCE: 'true' })

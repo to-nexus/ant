@@ -304,7 +304,12 @@ export class FileSystemAdapter implements FileSystemPort {
     await fs.promises.rm(srcPath, { recursive: true, force: true });
   }
   
-  getWorkspaceRoot(): string {
+  getRootPath(): string {
     return this.basePath;
+  }
+
+  /** @deprecated Use getRootPath() instead */
+  getWorkspaceRoot(): string {
+    return this.getRootPath();
   }
 }

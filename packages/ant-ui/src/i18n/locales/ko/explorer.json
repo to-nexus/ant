@@ -62,6 +62,7 @@
     "switching": "전환 중...",
     "initializing": "초기화 중...",
     "cloning": "Clone 중...",
+    "publishing": "Publish 중...",
     "checking": "확인 중...",
     "updatingStatus": "Git 상태 업데이트 중...",
     "commitFiles": "커밋 ({{count}}) {{files}}",
