@@ -265,7 +265,18 @@ export async function tool(
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', (state as any).workerId ?? 0);
   }
-  
+
+  // ✅ CRITICAL: Flush current messages to chat.json after each tool execution.
+  // During long tool-call loops (e.g., 74 iterations in final verification),
+  // messages are only finalized when codeGen has no tool calls (task complete).
+  // Without this flush, ALL intermediate messages are lost if the job is interrupted,
+  // leaving the user with zero visibility into what happened during execution.
+  try {
+    await chatAPI.flushToChatFile();
+  } catch {
+    // Non-critical: don't fail tool execution if chat flush fails
+  }
+
   // ✅ CRITICAL: Preserve planText across tool calls
   // Without this, planText gets lost after first tool execution
   // causing "planText is missing" error in subsequent CodeGen calls

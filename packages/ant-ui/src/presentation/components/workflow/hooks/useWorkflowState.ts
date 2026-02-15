@@ -408,117 +408,127 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
     const processNext = async () => {
       globalProcessing = true;
       
-      const myJobIndex = globalSnapshotQueue.findIndex(s => s.jobId === stableJobId);
-      if (myJobIndex === -1) {
-        globalProcessing = false;
-        return;
-      }
-      
-      const nextItem = globalSnapshotQueue[myJobIndex];
-      
-      // Determine the "tracking" node (most recently entered)
-      const trackingNode = nextItem.activeNodes.length > 0
-        ? nextItem.activeNodes.reduce((latest, node) =>
-            node.enteredAt > latest.enteredAt ? node : latest
-          )
-        : null;
-      
-      // Wait for previous node's minimum display time
-      if (globalDisplayStartTime && globalDisplayedNodeId) {
-        const prevNodeElapsed = Date.now() - globalDisplayStartTime;
-        const prevNodeMinTime = NODE_MIN_DISPLAY_TIME[globalDisplayedNodeId] || DEFAULT_MIN_DISPLAY_TIME;
-        
-        if (prevNodeElapsed < prevNodeMinTime) {
-          const waitTime = prevNodeMinTime - prevNodeElapsed;
-          await new Promise(resolve => {
-            globalCurrentTimer = setTimeout(() => {
-              globalCurrentTimer = null;
-              resolve(undefined);
-            }, waitTime);
-          });
+      try {
+        const myJobIndex = globalSnapshotQueue.findIndex(s => s.jobId === stableJobId);
+        if (myJobIndex === -1) {
+          return;
         }
-      }
-      
-      // Remove from queue (before display to avoid re-processing)
-      const removeIndex = globalSnapshotQueue.findIndex(s => 
-        s.jobId === nextItem.jobId && s.timestamp === nextItem.timestamp
-      );
-      if (removeIndex !== -1) {
-        globalSnapshotQueue.splice(removeIndex, 1);
-      }
-      notifyQueueChange();
-      
-      // ✅ Empty activeNodes = all workers exited → schedule cleanup instead of displaying
-      if (nextItem.activeNodes.length === 0) {
-        // Cancel any existing cleanup timer
+        
+        const nextItem = globalSnapshotQueue[myJobIndex];
+        
+        // Determine the "tracking" node (most recently entered)
+        const trackingNode = nextItem.activeNodes.length > 0
+          ? nextItem.activeNodes.reduce((latest, node) =>
+              node.enteredAt > latest.enteredAt ? node : latest
+            )
+          : null;
+        
+        // Wait for previous node's minimum display time
+        if (globalDisplayStartTime && globalDisplayedNodeId) {
+          const prevNodeElapsed = Date.now() - globalDisplayStartTime;
+          const prevNodeMinTime = NODE_MIN_DISPLAY_TIME[globalDisplayedNodeId] || DEFAULT_MIN_DISPLAY_TIME;
+          
+          if (prevNodeElapsed < prevNodeMinTime) {
+            const waitTime = prevNodeMinTime - prevNodeElapsed;
+            await new Promise(resolve => {
+              globalCurrentTimer = setTimeout(() => {
+                globalCurrentTimer = null;
+                resolve(undefined);
+              }, waitTime);
+            });
+          }
+        }
+        
+        // Remove from queue (before display to avoid re-processing)
+        const removeIndex = globalSnapshotQueue.findIndex(s => 
+          s.jobId === nextItem.jobId && s.timestamp === nextItem.timestamp
+        );
+        if (removeIndex !== -1) {
+          globalSnapshotQueue.splice(removeIndex, 1);
+        }
+        notifyQueueChange();
+        
+        // ✅ Empty activeNodes = all workers exited → schedule cleanup instead of displaying
+        if (nextItem.activeNodes.length === 0) {
+          // Cancel any existing cleanup timer
+          if (globalCleanupTimer) {
+            clearTimeout(globalCleanupTimer);
+            globalCleanupTimer = null;
+          }
+          
+          // Wait for previous node's min display time, then clear
+          const elapsedSinceDisplay = globalDisplayStartTime ? Date.now() - globalDisplayStartTime : 0;
+          const lastNodeMinTime = globalDisplayedNodeId
+            ? (NODE_MIN_DISPLAY_TIME[globalDisplayedNodeId] || DEFAULT_MIN_DISPLAY_TIME)
+            : 0;
+          const remainingTime = Math.max(0, lastNodeMinTime - elapsedSinceDisplay);
+          
+          globalCleanupTimer = setTimeout(() => {
+            setDisplayedState(null);
+            globalDisplayedState = null;
+            globalDisplayedNodeId = null;
+            globalDisplayStartTime = 0;
+            globalCleanupTimer = null;
+          }, remainingTime);
+          
+          return;
+        }
+        
+        // ✅ Cancel any pending cleanup timer from previous empty-activeNodes snapshot.
+        // Without this, the sequence exitNode(A) → enterNode(B) causes:
+        //   1. Empty snapshot → cleanup timer schedules setDisplayedState(null)
+        //   2. B snapshot → setDisplayedState(B)
+        //   3. Cleanup timer fires → setDisplayedState(null) → B disappears!
         if (globalCleanupTimer) {
           clearTimeout(globalCleanupTimer);
           globalCleanupTimer = null;
         }
         
-        // Wait for previous node's min display time, then clear
-        const elapsedSinceDisplay = globalDisplayStartTime ? Date.now() - globalDisplayStartTime : 0;
-        const lastNodeMinTime = globalDisplayedNodeId
-          ? (NODE_MIN_DISPLAY_TIME[globalDisplayedNodeId] || DEFAULT_MIN_DISPLAY_TIME)
-          : 0;
-        const remainingTime = Math.max(0, lastNodeMinTime - elapsedSinceDisplay);
+        // Display the snapshot (non-empty activeNodes)
+        globalDisplayStartTime = Date.now();
+        globalDisplayedNodeId = trackingNode?.nodeId || null;
         
-        globalCleanupTimer = setTimeout(() => {
-          setDisplayedState(null);
-          globalDisplayedState = null;
-          globalDisplayedNodeId = null;
-          globalDisplayStartTime = 0;
-          globalCleanupTimer = null;
-        }, remainingTime);
+        // Build displayed state from the snapshot
+        setDisplayedState({
+          ...nextItem.state,
+          activeNodes: nextItem.activeNodes,
+        });
         
-        globalProcessing = false;
-        return;
-      }
-      
-      // ✅ Cancel any pending cleanup timer from previous empty-activeNodes snapshot.
-      // Without this, the sequence exitNode(A) → enterNode(B) causes:
-      //   1. Empty snapshot → cleanup timer schedules setDisplayedState(null)
-      //   2. B snapshot → setDisplayedState(B)
-      //   3. Cleanup timer fires → setDisplayedState(null) → B disappears!
-      if (globalCleanupTimer) {
-        clearTimeout(globalCleanupTimer);
-        globalCleanupTimer = null;
-      }
-      
-      // Display the snapshot (non-empty activeNodes)
-      globalDisplayStartTime = Date.now();
-      globalDisplayedNodeId = trackingNode?.nodeId || null;
-      
-      // Build displayed state from the snapshot
-      setDisplayedState({
-        ...nextItem.state,
-        activeNodes: nextItem.activeNodes,
-      });
-      
-      // If queue is empty and job ended, schedule cleanup
-      if (globalSnapshotQueue.length === 0 && jobEndedRef.current) {
-        if (globalCleanupTimer) {
-          clearTimeout(globalCleanupTimer);
-          globalCleanupTimer = null;
+        // If queue is empty and job ended, schedule cleanup
+        if (globalSnapshotQueue.length === 0 && jobEndedRef.current) {
+          if (globalCleanupTimer) {
+            clearTimeout(globalCleanupTimer);
+            globalCleanupTimer = null;
+          }
+          
+          const lastNodeDisplayTime = trackingNode?.nodeId
+            ? (NODE_MIN_DISPLAY_TIME[trackingNode.nodeId] || DEFAULT_MIN_DISPLAY_TIME)
+            : DEFAULT_MIN_DISPLAY_TIME;
+          const elapsedSinceDisplay = Date.now() - globalDisplayStartTime;
+          const remainingTime = Math.max(0, lastNodeDisplayTime - elapsedSinceDisplay);
+          
+          globalCleanupTimer = setTimeout(() => {
+            setDisplayedState(null);
+            globalDisplayedState = null;
+            globalCleanupTimer = null;
+          }, remainingTime);
         }
+      } finally {
+        globalProcessing = false;
         
-        const lastNodeDisplayTime = trackingNode?.nodeId
-          ? (NODE_MIN_DISPLAY_TIME[trackingNode.nodeId] || DEFAULT_MIN_DISPLAY_TIME)
-          : DEFAULT_MIN_DISPLAY_TIME;
-        const elapsedSinceDisplay = Date.now() - globalDisplayStartTime;
-        const remainingTime = Math.max(0, lastNodeDisplayTime - elapsedSinceDisplay);
-        
-        globalCleanupTimer = setTimeout(() => {
-          setDisplayedState(null);
-          globalDisplayedState = null;
-          globalCleanupTimer = null;
-        }, remainingTime);
+        // ✅ Safety net: if queue still has items for this job, force re-trigger.
+        // Prevents queue stall when queueLength state ends up at the same value
+        // after batched add+remove (React skips re-render → effect doesn't fire).
+        const remainingForJob = globalSnapshotQueue.some(s => s.jobId === stableJobId);
+        if (remainingForJob) {
+          setTimeout(() => notifyQueueChange(), 0);
+        }
       }
-      
-      globalProcessing = false;
     };
     
-    processNext();
+    processNext().catch((err) => {
+      console.error('[useWorkflowState] processNext error:', err);
+    });
   }, [queueLength]);
   
   // ✅ Stable return reference

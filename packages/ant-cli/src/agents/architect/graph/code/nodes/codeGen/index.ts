@@ -432,6 +432,7 @@ export async function codeGen(
       projectCodeContext: updatedProjectCodeContext,  // ✅ Propagate to next codeGen turn
       recursionCount: state.recursionCount,   // ✅ FIX: Propagate to LangGraph channel (Partial return requires explicit inclusion)
       recursionLimit: state.recursionLimit,   // ✅ FIX: Propagate to LangGraph channel
+      profile: state.profile,                 // ✅ FIX: Preserve profile for ModeController language detection
     };
   } catch (error) {
     console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');

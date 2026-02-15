@@ -30,17 +30,16 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 }>> {
   const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
   
-  // ✅ DEBUG: Verify planText was properly propagated from Plan node
-  console.log(`🔍 [CodeGen] Checking planText:`);
-  console.log(`   state.planText: ${state.planText ? state.planText.length + ' chars' : 'MISSING'}`);
-  
+  // planText check (empty is normal for final-verification and explain tasks)
   if (state.planText) {
-    console.log(`   ✅ planText received successfully`);
-    console.log(`   Preview: "${state.planText.substring(0, 100).replace(/\n/g, ' ')}..."`);
+    console.log(`🔍 [CodeGen] planText: ${state.planText.length} chars`);
   } else {
-    console.error(`   ❌ CRITICAL: planText is missing!`);
-    console.error(`   This indicates LangGraph state propagation failure.`);
-    console.error(`   Will use task.description only (degraded mode).`);
+    const taskType = state.currentTask?.type || 'unknown';
+    const priority = state.currentTask?.priority;
+    const isExpected = priority === 1000 || taskType === 'explain';
+    if (!isExpected) {
+      console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
+    }
   }
   
   const promptEngine = state.deps?.promptEngine;
@@ -84,10 +83,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   })();
   
   // Pass profile to context for TypeScript/React templates on new projects
+  // ✅ Also pass detectionReport.profile as fallback for ModeController language detection
   const contextWithProfile = {
     ...state.context,
     codebaseProfile: state.profile,
     detectedEnvironment: state.detectionReport?.environment,
+    detectionReportProfile: state.detectionReport?.profile,
   };
   
   // ✅ Select design doc based on task.packages (split injection)

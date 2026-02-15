@@ -448,6 +448,11 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.workers.delete(workerId);
       console.log(`[Orchestrator] Worker ${workerId} terminated. remaining=${this.workers.size}`);
 
+      // ✅ Immediately notify caller so it can clear this worker's stale
+      // workflow entry (badge). Without this, the worker's last-active-node
+      // stays visible in the UI until ALL workers finish.
+      this.callbacks.onWorkerTerminate?.(workerId);
+
       // After a worker dies, check if everything is done
       this.lock.runExclusive(() => {
         this.checkAllDone();

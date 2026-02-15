@@ -279,6 +279,20 @@ export class ChatAPIClient {
     this.currentMessageId = null;
   }
 
+  /**
+   * Flush current session state to chat.json without finalizing the active message.
+   * Call this after tool execution to persist intermediate progress, so messages
+   * are not lost if the job is interrupted during a long tool-call loop.
+   */
+  async flushToChatFile(): Promise<void> {
+    if (!this.enabled) return;
+
+    const service = await getLLMResponseService();
+    if (!service) return;
+
+    service.flushToChatFile();
+  }
+
   // ============================================================================
   // File Operations
   // ============================================================================

@@ -105,6 +105,25 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   
   const hasViolations = (violations && violations.length > 0);
   
+  // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
+  // Without this, a cancelled job can still mark the current task as "completed"
+  // if checkTaskStatus runs after the cancellation signal but before process termination.
+  const isStopRequested = typeof (state as any)._isStopRequested === 'function'
+    ? (state as any)._isStopRequested()
+    : false;
+
+  if (isStopRequested) {
+    console.log(`🛑 [checkTaskStatus] User stop requested — NOT marking task as completed`);
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
+    }
+    return {
+      violations: [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    };
+  }
+
   if (!hasViolations && state.currentTask) {
     // ✅ Task succeeded - mark as completed and record timing & token usage
     const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
@@ -360,6 +379,16 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       },
       onTaskFailure: (task, error, workerId) => {
         console.error(`[ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
+      },
+      onWorkerTerminate: (workerId) => {
+        // ✅ Immediately clear this worker's stale entry from WorkflowBroadcaster.
+        // Without this, the worker's last-active-node badge stays visible in the
+        // workflow UI until ALL parallel workers finish (clearWorkers at line 474).
+        if (state.deps?.workflowUpdate?.clearWorkers && state._httpJobId) {
+          state.deps.workflowUpdate.clearWorkers(state._httpJobId, [workerId]).catch((err: Error) => {
+            console.warn(`[ParallelOrchestrator] Failed to clear terminated worker ${workerId}:`, err.message);
+          });
+        }
       },
       onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
         if (state.deps?.kanbanUpdate && state._httpJobId) {
