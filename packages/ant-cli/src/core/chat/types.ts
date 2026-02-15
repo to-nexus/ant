@@ -19,6 +19,7 @@ export interface MessageContent {
      | 'reading' | 'read'         // File read
      | 'indexing' | 'indexed'     // Codebase indexing (learn job)
      | 'analyzing' | 'analyzed'   // File analysis (learn job)
+     | 'loading' | 'loaded'       // Required files loading (code job)
      | 'storing' | 'stored'       // Lesson storage (learn job)
      | 'learning' | 'learned'     // Codebase learning (code job - post task)
      // General content

@@ -16,8 +16,10 @@
  * This guarantees 100% local latest content.
  */
 
-import { GitPort } from "../../../../../../core/ports";
+import path from "path";
+import { GitPort, FileSystemPort } from "../../../../../../core/ports";
 import { ArchitectGraphState } from "../../state";
+import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { loadErrorFiles, LoadedFile } from "./errorFilesLoader";
 import { loadSemanticFiles, LessonResult } from "./semanticSearch";
 import { extractFilesFromCode } from "./utils";
@@ -47,6 +49,7 @@ export interface CombinedCodeContextResult {
 export interface TaskKeywords {
   errorFiles: string[];
   keywords: string[];
+  requiredFiles: string[];  // Specific file paths to force-load (from directory tree selection)
   references?: Map<string, string[]>;  // Optional reference project keywords
 }
 
@@ -72,14 +75,16 @@ export async function combineCodeContext(
   state: ArchitectGraphState,
   retriever: any,
   vectorDB: any,
-  git: GitPort
+  git: GitPort,
+  directoryTree?: string
 ): Promise<CombinedCodeContextResult | null> {
   const hasStackTrace = taskKeywords.errorFiles.length > 0;
   const hasKeywords = taskKeywords.keywords.length > 0;
+  const hasRequiredFiles = taskKeywords.requiredFiles.length > 0;
   
-  // If no keywords, return null (caller will create empty context)
-  if (!hasStackTrace && !hasKeywords) {
-    console.log(`   ℹ️  No stack trace or keywords - skipping RAG`);
+  // If nothing to search for, return null (caller will create empty context)
+  if (!hasStackTrace && !hasKeywords && !hasRequiredFiles) {
+    console.log(`   ℹ️  No required files, stack trace, or keywords - skipping RAG`);
     return null;
   }
   
@@ -89,7 +94,37 @@ export async function combineCodeContext(
     return null;
   }
   
-  console.log(`🔍 [RAG] Two-tier search (errorFiles → semantic)...`);
+  console.log(`🔍 [RAG] Three-tier search (requiredFiles → errorFiles → semantic)...`);
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Tier 0: Required files (highest priority - direct load, no quota)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const requiredFiles = await loadRequiredFiles(
+    taskKeywords.requiredFiles,
+    state,
+    fileSystem
+  );
+  
+  if (requiredFiles.length > 0) {
+    console.log(`   📄 Required files: ${requiredFiles.length} loaded directly`);
+    requiredFiles.forEach(f => console.log(`      - ${f.path}`));
+    
+    // ✅ Show in Chat UI
+    try {
+      const chatAPI = getChatAPIClient();
+      const loadMergeIndex = await chatAPI.showChatStatus('loading', {
+        filesCount: 0
+      });
+      await chatAPI.showChatStatus('loaded', {
+        filesCount: requiredFiles.length,
+        filesList: requiredFiles.map(f => f.path),
+        content: `Loaded: ${requiredFiles.length} required files`,
+        _mergeIndex: loadMergeIndex
+      });
+    } catch {
+      // Non-critical: UI update failed
+    }
+  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 1: Error files (priority - from violations)
@@ -104,6 +139,12 @@ export async function combineCodeContext(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 2: Semantic files (context, dynamic quota)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ✅ Exclude both requiredFiles and errorFiles from semantic quota
+  const excludePaths = [
+    ...requiredFiles.map(f => f.path),
+    ...errorFiles.map(f => f.path)
+  ];
+  
   const semanticResult = await loadSemanticFiles(
     taskKeywords.keywords,
     state,
@@ -111,7 +152,7 @@ export async function combineCodeContext(
     vectorDB,
     git,
     extractFilesFromCode,
-    errorFiles.map(f => f.path)  // ✅ Exclude already loaded - avoid duplicate content
+    excludePaths
   );
   
   const semanticFiles = semanticResult.files;
@@ -120,8 +161,8 @@ export async function combineCodeContext(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Merge & Deduplicate
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Error files come first (priority), then semantic
-  const allFiles = [...errorFiles, ...semanticFiles];
+  // Priority order: requiredFiles > errorFiles > semanticFiles
+  const allFiles = [...requiredFiles, ...errorFiles, ...semanticFiles];
   const uniqueFiles = Array.from(
     new Map(allFiles.map(f => [f.path, f])).values()
   );
@@ -141,7 +182,7 @@ export async function combineCodeContext(
     source: 'plan' as const
   };
   
-  console.log(`   ✅ Total: ${projectCodeContext.stats.filesLoaded} files (${errorFiles.length} error + ${semanticFiles.length} semantic)`);
+  console.log(`   ✅ Total: ${projectCodeContext.stats.filesLoaded} files (${requiredFiles.length} required + ${errorFiles.length} error + ${semanticFiles.length} semantic)`);
   if (projectCodeContext.stats.deduplicatedCount > 0) {
     console.log(`   🔄 Deduplicated: ${projectCodeContext.stats.deduplicatedCount} duplicates removed`);
   }
@@ -163,15 +204,20 @@ export async function combineCodeContext(
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Directory tree (for path decisions in Plan)
+  // Directory tree (reuse pre-generated or generate fresh)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  try {
-    projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
-    if (projectCodeContext.directoryTree) {
-      console.log(`   📂 Directory tree generated`);
+  if (directoryTree) {
+    projectCodeContext.directoryTree = directoryTree;
+    console.log(`   📂 Directory tree reused from earlier generation`);
+  } else {
+    try {
+      projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
+      if (projectCodeContext.directoryTree) {
+        console.log(`   📂 Directory tree generated`);
+      }
+    } catch (err) {
+      console.warn(`   ⚠️  Could not generate directory tree:`, err instanceof Error ? err.message : err);
     }
-  } catch (err) {
-    console.warn(`   ⚠️  Could not generate directory tree:`, err instanceof Error ? err.message : err);
   }
   
   // ✅ Return both context and lessons
@@ -179,6 +225,47 @@ export async function combineCodeContext(
     context: projectCodeContext,
     lessons
   };
+}
+
+/**
+ * Load required files directly from filesystem (no search needed)
+ * 
+ * These are files explicitly selected by the keyword LLM from the directory tree.
+ * They are loaded with highest priority and do not consume semantic search quota.
+ * 
+ * @param filePaths - Relative file paths from codebase root
+ * @param state - Current graph state
+ * @param fileSystem - FileSystemPort for file access
+ * @returns Array of loaded files
+ */
+async function loadRequiredFiles(
+  filePaths: string[],
+  state: ArchitectGraphState,
+  fileSystem: FileSystemPort
+): Promise<LoadedFile[]> {
+  const MAX_REQUIRED = 10;
+  const files: LoadedFile[] = [];
+  
+  if (filePaths.length === 0) return files;
+  
+  const rootPath = fileSystem.getRootPath();
+  
+  for (const filePath of filePaths.slice(0, MAX_REQUIRED)) {
+    try {
+      const fullPath = path.join(state.context.workingDir, filePath);
+      const relativePath = path.relative(rootPath, fullPath);
+      const content = await fileSystem.readFile(relativePath);
+      if (content) {
+        files.push({ path: filePath, content, source: 'local' });
+      } else {
+        console.warn(`      ⚠️  Required file empty or not found: ${filePath}`);
+      }
+    } catch {
+      console.warn(`      ⚠️  Required file unreadable: ${filePath}`);
+    }
+  }
+  
+  return files;
 }
 
 /**
@@ -191,7 +278,7 @@ export async function combineCodeContext(
  * @param maxDepth - Maximum depth to traverse (default: 4)
  * @returns Formatted directory tree string
  */
-async function generateDirectoryTree(
+export async function generateDirectoryTree(
   fileSystem: any,
   maxDepth: number = 4
 ): Promise<string | undefined> {

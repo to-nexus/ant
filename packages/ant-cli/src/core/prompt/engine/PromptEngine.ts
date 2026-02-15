@@ -433,7 +433,8 @@ export class PromptEngine {
     directive: string,  // ✅ Original directive for ground truth
     profile: any,
     mode: string,
-    referenceProjects?: Array<{project: string}>
+    referenceProjects?: Array<{project: string}>,
+    directoryTree?: string
   ): Promise<string> {
     // ✅ Uses base-keyword.md for keyword generation
     return await this.deps.promptPort.render('code/phases/plan/base-keyword', {
@@ -444,7 +445,9 @@ export class PromptEngine {
       framework: profile?.framework || 'unknown',
       mode: mode || 'unknown',
       hasReferences: referenceProjects && referenceProjects.length > 0,
-      referenceProjects: referenceProjects?.map(r => `- ${r.project}`).join('\n') || ''
+      referenceProjects: referenceProjects?.map(r => `- ${r.project}`).join('\n') || '',
+      directoryTree: directoryTree || '',
+      hasDirectoryTree: !!directoryTree,
     });
   }
 

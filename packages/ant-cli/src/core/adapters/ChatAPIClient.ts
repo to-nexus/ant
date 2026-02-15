@@ -175,6 +175,16 @@ export class ChatAPIClient {
   }
 
   /**
+   * Remove a chat status UI element by its content index
+   */
+  async removeChatStatus(contentIndex: number): Promise<void> {
+    if (!this.enabled) return;
+    const service = await getLLMResponseService();
+    if (!service) return;
+    service.removeChatStatus(contentIndex);
+  }
+
+  /**
    * Send LLM stream event
    */
   async sendLLMEvent(event: LLMStreamEvent): Promise<void> {

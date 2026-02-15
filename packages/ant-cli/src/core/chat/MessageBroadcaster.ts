@@ -144,6 +144,23 @@ export class MessageBroadcaster {
   }
 
   /**
+   * Broadcast content remove event
+   */
+  broadcastContentRemove(
+    projectId: string,
+    featureName: string,
+    messageId: string,
+    contentIndex: number,
+    userContext?: UserContext
+  ): void {
+    this.broadcast(projectId, featureName, {
+      type: 'content_remove',
+      messageId,
+      contentIndex
+    }, userContext);
+  }
+
+  /**
    * Broadcast thinking collapse event
    */
   broadcastThinkingCollapse(
