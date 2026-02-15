@@ -265,7 +265,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     
     // ✅ Workflow instrumentation: Exit node (task completed path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
     }
     
     return {
@@ -284,7 +284,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   
   // ✅ Workflow instrumentation: Exit node (task failed/has violations path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
   }
   
   // Task failed or has violations - propagate violations and recursion tracking
@@ -648,7 +648,10 @@ export function buildCodeGraph() {
       designDocs: null as any,  // ✅ Structured design docs for environment detection
       code: null as any,
       codeHead: null as any,
-      profile: null as any,
+      profile: {
+        value: (x: any, y?: any) => y ?? x,
+        default: () => undefined,
+      } as any,
       parsedUiDocs: null as any,  // ✅ CRITICAL: Parsed UI docs for split injection (from TaskArtifacts)
       
       // ✅ Runtime Assets Index (for asset copying tasks)
