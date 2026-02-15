@@ -371,7 +371,14 @@ export function createChatRoutes(deps: {
       // Write to inputs/sources/prd.md
       await fs.writeFile(targetPath, draftContent, 'utf-8');
 
-      console.log(`📋 [chat.routes] PRD applied: outputs/plan/prd-refine.md → inputs/sources/prd.md`);
+      // Remove staging copy (no longer needed after apply)
+      try {
+        await fs.unlink(sourcePath);
+      } catch {
+        // Non-critical — staging file may already be gone
+      }
+
+      console.log(`📋 [chat.routes] PRD applied: outputs/plan/prd-refine.md → inputs/sources/prd.md (staging removed)`);
 
       // ✅ Notify file tree update after PRD apply write
       if (deps.fileTreeNotifier) {
