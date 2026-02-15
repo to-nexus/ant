@@ -186,6 +186,39 @@ ${output}
 DO NOT guess - the error tells you exactly what's wrong.`;
     }
     
+    // ✅ CRITICAL: Detect false-positive success — exit code 0 but stderr contains critical errors.
+    // Compound shell commands can mask intermediate failures (e.g., background process crash,
+    // "command not found" followed by a succeeding command). Warn the LLM so it doesn't
+    // falsely assume the entire operation succeeded.
+    const criticalErrorPatterns: Array<{ pattern: RegExp; label: string }> = [
+      { pattern: /command not found/i, label: 'command not found' },
+      { pattern: /EADDRINUSE|address already in use/i, label: 'port already in use' },
+      { pattern: /connection refused/i, label: 'connection refused' },
+      { pattern: /panic:/i, label: 'runtime panic' },
+      { pattern: /FATAL|fatal error/i, label: 'fatal error' },
+      { pattern: /segmentation fault/i, label: 'segmentation fault' },
+      { pattern: /out of memory/i, label: 'out of memory' },
+    ];
+    
+    const detectedIssues = criticalErrorPatterns
+      .filter(({ pattern }) => pattern.test(stderr) || pattern.test(stdout))
+      .map(({ label }) => label);
+    
+    if (detectedIssues.length > 0) {
+      console.warn(`\n   ⚠️  Command exit code 0 but output contains errors: ${detectedIssues.join(', ')}\n`);
+      return `⚠️ COMMAND SUCCEEDED (exit code 0) BUT OUTPUT CONTAINS ERRORS: ${normalizedCommand}
+
+⚠️ DETECTED ISSUES IN OUTPUT:
+${detectedIssues.map(issue => `- ${issue}`).join('\n')}
+
+Full Output:
+${output}
+
+WARNING: Exit code was 0 but the output contains error indicators.
+The command may have PARTIALLY FAILED. You MUST check the output carefully
+and verify that the intended operation actually succeeded.`;
+    }
+    
     // ✅ SUCCESS - Return with output (may contain useful warnings/info)
     const hasOutput = output.trim().length > 0;
     

@@ -290,6 +290,15 @@ export class SessionStore {
   }
 
   /**
+   * Flush current session state to chat.json without finalizing the active message.
+   * Used to persist intermediate progress during long-running tool-call loops,
+   * so messages are not lost if the job is interrupted before the task completes.
+   */
+  flushToChatFile(): void {
+    this.saveToChatFile();
+  }
+
+  /**
    * Save session to chat.json file
    */
   private saveToChatFile(): void {

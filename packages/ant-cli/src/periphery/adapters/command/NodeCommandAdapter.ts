@@ -194,7 +194,14 @@ export class NodeCommandAdapter implements CommandPort {
 
       const isWindows = process.platform === 'win32';
       const shell = isWindows ? 'cmd' : 'sh';
-      const shellArgs = isWindows ? ['/c', trimmed] : ['-lc', trimmed];
+      // ✅ CRITICAL: For compound shell commands, prepend `set -e;` so the shell exits
+      // immediately when ANY sub-command fails. Without this, `sh -lc` only reports the
+      // exit code of the LAST foreground command, silently masking intermediate failures.
+      // Example: `timeout 10 curl ...; echo done` → without set -e, exit code is 0 (echo)
+      //          even though `timeout` failed with "command not found".
+      // The LLM can still use `|| true` to explicitly ignore expected failures.
+      const shellCommand = (!isWindows && needsShell) ? `set -e; ${trimmed}` : trimmed;
+      const shellArgs = isWindows ? ['/c', trimmed] : ['-lc', shellCommand];
 
       const [cmd, ...args] = needsShell ? [shell, ...shellArgs] : trimmed.split(/\s+/);
       
@@ -243,6 +250,8 @@ export class NodeCommandAdapter implements CommandPort {
         options.onStderr?.(chunk);
       });
 
+      let exitGraceTimer: NodeJS.Timeout | null = null;
+
       const cleanupTimers = () => {
         if (timeoutId) clearTimeout(timeoutId);
         timeoutId = null;
@@ -250,6 +259,8 @@ export class NodeCommandAdapter implements CommandPort {
         sigkillTimer = null;
         if (forceResolveTimer) clearTimeout(forceResolveTimer);
         forceResolveTimer = null;
+        if (exitGraceTimer) clearTimeout(exitGraceTimer);
+        exitGraceTimer = null;
       };
 
       const finish = (result: CommandResult) => {
@@ -306,7 +317,40 @@ export class NodeCommandAdapter implements CommandPort {
         }, 8000);
       }, timeout);
 
-      // Handle process exit
+      // Handle shell process exit
+      // 'exit' fires when the shell process terminates, but pipes may still be open
+      // if background processes (started with &) inherit them.
+      // Grace period: if 'close' doesn't fire within 5s after 'exit', force resolve
+      // to prevent hanging on background processes that keep pipes open.
+      child.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+        if (settled) return;
+        exitGraceTimer = setTimeout(() => {
+          if (settled) return;
+          console.log(`⚠️  [CommandAdapter] Shell exited (code=${code}) but pipes still open after 5s — forcing resolve (background process likely holding pipe)`);
+          // Kill the process group to clean up orphaned background processes
+          if (child.pid) {
+            try {
+              process.kill(-child.pid, 'SIGTERM');
+              console.log(`   🧹 Killed process group (pgid=${child.pid}) to clean up background children`);
+            } catch {
+              // Process group already gone
+            }
+          }
+          cleanupTimers();
+          const exitCode = code ?? (signal ? 1 : 0);
+          options.onExit?.(exitCode);
+          finish({
+            stdout: stdout.trim(),
+            stderr: stderr.trim(),
+            exitCode,
+            success: exitCode === 0,
+          });
+        }, 5000);
+      });
+
+      // Handle process close (fires when all stdio pipes are closed)
+      // For normal commands, this fires shortly after 'exit'.
+      // For commands with background processes, this may be delayed — the exit grace timer above handles that.
       child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         cleanupTimers();
 
@@ -314,15 +358,13 @@ export class NodeCommandAdapter implements CommandPort {
         options.onExit?.(exitCode);
 
         if (timeoutOccurred) {
-          // Timeout occurred
           finish({
             stdout: stdout.trim(),
             stderr: `Command timed out after ${timeout}ms\n${stderr}`.trim(),
-            exitCode: 124,  // Standard timeout exit code
+            exitCode: 124,
             success: false,
           });
         } else {
-          // Normal exit
           finish({
             stdout: stdout.trim(),
             stderr: stderr.trim(),

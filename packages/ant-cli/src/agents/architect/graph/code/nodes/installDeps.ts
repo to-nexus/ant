@@ -1,33 +1,20 @@
 /**
  * Install Dependencies Node
  * 
- * Handles post-validation tasks:
- * 1. Package installation based on detected project language
- * 2. Infrastructure startup for final verification (docker-compose)
+ * Handles dependency installation based on detected project language.
  * 
  * This runs AFTER validation to ensure we don't install dependencies
  * for invalid code (ellipsis, excessive deletion, etc.)
  * 
- * ✅ Hexagonal Architecture Compliance:
- * - Uses CommandPort for command execution
- * - Uses GitPort for file operations
- * 
- * ✅ Multi-language support via ProjectRuntime abstraction:
- * - Node.js/TypeScript: npm/pnpm/yarn install with dev-deps handling
- * - Go: go mod tidy
- * - Other languages: generic install via ProjectRuntimeConfig
- * 
- * ✅ Infrastructure startup (language-agnostic):
- * - Detects docker-compose.yml in project root
- * - Starts infrastructure services before runtimeValidate runs
- * - Best-effort: failure does not block validation
+ * Note: Infrastructure startup (docker-compose) is handled by the LLM
+ * via tool calls during codeGen (final verification / error tasks).
  */
 
 import { ArchitectGraphState, Violation } from "../state";
 import { detectProject } from "./diagnostics";
 import { Language } from "./diagnostics/types";
 import { getProjectRuntime, ProjectRuntimeConfig } from "./projectRuntime";
-import { InfrastructureManager } from "../../../../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager";
+import { isVerificationTask } from "../utils/taskClassification";
 
 export async function installDeps(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Increment recursion count (track every node execution)
@@ -110,10 +97,8 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
       cacheDirExists = await fileSystem.fileExists(cacheDirRelative);
     }
 
-    // ✅ Detect final/integration tasks
-    const isFinalTask = state.currentTask?.name?.toLowerCase().includes('final') ||
-                        state.currentTask?.name?.toLowerCase().includes('integration') ||
-                        state.currentTask?.name?.toLowerCase().includes('verification');
+    // ✅ Detect verification tasks (final, error, integration)
+    const isFinalTask = state.currentTask ? isVerificationTask(state.currentTask) : false;
 
     // ✅ Use runtime config to decide if install is needed
     const shouldInstall = runtime.dependency.shouldInstall({
@@ -160,49 +145,6 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
             runtime, resolvedPath, commandPort, violations, isFinalTask
           );
           break;
-      }
-    }
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // ✅ Infrastructure startup (language-agnostic safety net)
-    // 
-    // For final verification / error tasks: detect docker-compose.yml
-    // and start infrastructure services before runtimeValidate runs.
-    // This is a programmatic safety net — the LLM should also start
-    // infrastructure via its own tool calls, but if it didn't, this
-    // ensures services are running for the build/runtime checks.
-    //
-    // Best-effort: infrastructure failure does not block validation.
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (isFinalTask) {
-      try {
-        const infraManager = new InfrastructureManager();
-        const composeFile = infraManager.findComposeFile(resolvedPath);
-        
-        if (composeFile) {
-          console.log(`\n🐳 [installDeps] Docker infrastructure detected: ${composeFile}`);
-          console.log(`   Starting infrastructure services before validation...\n`);
-          
-          const onLog = (type: 'stdout' | 'stderr', msg: string) => {
-            const trimmed = msg.trim();
-            if (trimmed) console.log(`   [docker] ${trimmed}`);
-          };
-          
-          const infraStarted = await infraManager.startInfrastructure(resolvedPath, onLog);
-          
-          if (infraStarted) {
-            console.log(`\n✅ [installDeps] Infrastructure services ready`);
-          } else {
-            console.warn(`\n⚠️  [installDeps] Infrastructure startup failed (best-effort, continuing)`);
-          }
-          
-          // Store infraManager reference on state for cleanup later
-          (state as any)._infraManager = infraManager;
-          (state as any)._infraProjectPath = resolvedPath;
-        }
-      } catch (infraError: any) {
-        console.warn(`⚠️  [installDeps] Infrastructure startup error (best-effort): ${infraError.message}`);
-        // Do NOT add to violations — infrastructure failure is non-blocking
       }
     }
 

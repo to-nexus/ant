@@ -310,19 +310,13 @@ Run the project's dev/start command to verify the application starts.
 
 | Constraint | Rule |
 |-----------|------|
-| **Build = PRIMARY** | Build success is REQUIRED. If build fails, fix the error. |
+| **Step order** | Execute Steps 1-4 in sequence. Each step depends on the previous. |
+| **Build = required** | Build must pass. If build fails, fix the error. |
 | **Runtime = 1 attempt** | Run dev/start server ONCE. Do NOT retry, do NOT attempt to fix runtime errors. |
 | **Infrastructure failure** | If `docker compose up` fails, still attempt build. Skip runtime. |
 | **No infinite loops** | Do NOT repeatedly try to fix environment, config, or connection errors during runtime. |
-| **Build success = done** | When build passes, run dev/start ONCE, then output `<done>true</done>` regardless of dev result. |
+| **Completion** | After completing all applicable steps, output `<done>true</done>`. |
 | **Dev server is long-running** | Dev servers do NOT terminate. Success = outputs a startup/ready message. Do NOT wait for exit. |
-
-**🚨 EARLY-EXIT RULE (MANDATORY):**
-
-When build succeeds but dev server or runtime has issues:
-1. Do NOT attempt to fix the runtime error
-2. Do NOT retry dev server
-3. Output `<done>true</done>` IMMEDIATELY
 
 ────────────────────────────────────────────────────────────────────────────────
 

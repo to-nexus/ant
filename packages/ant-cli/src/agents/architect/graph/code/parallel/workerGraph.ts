@@ -89,6 +89,28 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
 
   const hasViolations = violations.length > 0;
 
+  // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
+  // Without this check, a task can be marked "completed" even when the user cancelled
+  // the job mid-execution, because checkTaskStatus only looked at violations.
+  const isStopRequested = typeof (state as any)._isStopRequested === 'function'
+    ? (state as any)._isStopRequested()
+    : false;
+
+  if (isStopRequested) {
+    console.log(`🛑 [Worker checkTaskStatus] User stop requested — NOT marking task as completed`);
+    // Workflow exit before early return
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      const workerId = (state as any).workerId ?? 0;
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+    }
+    return {
+      _taskCompleted: false,
+      violations: [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    } as any;
+  }
+
   // Workflow exit (await to ensure broadcast completes before next node's enterNode)
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const workerId = (state as any).workerId ?? 0;
@@ -190,7 +212,10 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
       designDocs: null as any,
       code: null as any,
       codeHead: null as any,
-      profile: null as any,
+      profile: {
+        value: (x: any, y?: any) => y ?? x,
+        default: () => undefined,
+      } as any,
       parsedUiDocs: null as any,
       runtimeAssetsIndex: null as any,
       referenceCodeContexts: null as any,

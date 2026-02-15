@@ -475,8 +475,12 @@ export class ModeController {
     // This function only maps the profile language to template paths
     
     // 1. Check if profile was set by LLM (detectEnvironment node)
-    if (context.codebaseProfile?.language) {
-      const lang = context.codebaseProfile.language.toLowerCase();
+    // 2. Fallback: Check detectionReport.profile (secondary source, same data via different path)
+    const profileLanguage = context.codebaseProfile?.language
+      || (context as any).detectionReportProfile?.language;
+    
+    if (profileLanguage) {
+      const lang = profileLanguage.toLowerCase();
       
       // Map known languages
       if (lang.includes('typescript') || lang.includes('javascript')) {
@@ -496,8 +500,13 @@ export class ModeController {
       }
     }
     
-    // 2. Default to TypeScript
-    // (LLM should set profile in detectEnvironment, but fallback to TS if not set)
+    // 3. Default to TypeScript
+    // ⚠️ WARNING: If we reach here, language detection failed — this may cause
+    // incorrect environment-specific rules injection (e.g., node-api for Go projects)
+    const detectedEnv = (context as any).detectedEnvironment;
+    if (detectedEnv && detectedEnv !== 'frontend') {
+      console.warn(`⚠️  [ModeController] detectLanguage: No codebaseProfile.language available (detectedEnvironment=${detectedEnv}). Defaulting to 'typescript'. This may inject wrong language rules.`);
+    }
     return 'typescript';
   }
   

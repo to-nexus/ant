@@ -62,6 +62,11 @@ export interface OrchestratorCallbacks<T extends BaseTask> {
     completedTasks: T[],
     tokenUsage?: TaskTokenUsage,
   ) => void;
+  /** Called when a worker terminates (no more tasks to process).
+   *  Used to immediately clear the worker's stale entry from WorkflowBroadcaster
+   *  so its last-active-node badge disappears from the UI without waiting for
+   *  all parallel workers to finish. */
+  onWorkerTerminate?: (workerId: number) => void;
 }
 
 /**

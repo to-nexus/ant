@@ -226,6 +226,13 @@ export class ContextAssembler {
       (assembled as any).detectedEnvironment = (context as any).detectedEnvironment;
     }
     
+    // ✅ Pass detectionReportProfile as fallback for ModeController language detection.
+    // When codebaseProfile is unavailable (e.g., worker state race condition),
+    // ModeController can still detect the correct language from detectionReport.profile.
+    if ((context as any).detectionReportProfile) {
+      (assembled as any).detectionReportProfile = (context as any).detectionReportProfile;
+    }
+    
     // ✅ Pass featurePath for runtime asset path resolution in templates
     if ((context as any).featurePath) {
       assembled.featurePath = (context as any).featurePath;

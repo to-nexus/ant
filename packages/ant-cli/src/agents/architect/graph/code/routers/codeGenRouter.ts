@@ -20,6 +20,7 @@
  */
 
 import { ArchitectGraphState, TASK_PRIORITIES } from '../state';
+import { isVerificationTask, isFinalVerificationTask } from '../utils/taskClassification';
 
 /**
  * Detect recent tool failures from command history
@@ -47,7 +48,7 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   }
   
   const currentTask = state.currentTask;
-  const isFinalTask = currentTask?.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+  const isFinalTask = currentTask ? isFinalVerificationTask(currentTask) : false;
   const isErrorTask = currentTask?.type === 'error';
   
   // ✅ DEBUG: Log task info
