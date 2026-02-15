@@ -116,6 +116,8 @@
 
 When the user requests evaluation of their documents (PRD, system design, UI design, code, or general evaluation).
 
+**Constraint**: This protocol activates ONLY when the user's PRIMARY expected output is a new quality score or assessment. If the primary output is a modified/improved artifact (even when referencing prior evaluations as context), this protocol does NOT apply — artifact modification belongs to the work path.
+
 ### Evaluation Attitude
 
 | Constraint | Description |

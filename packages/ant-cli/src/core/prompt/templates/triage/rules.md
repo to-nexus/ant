@@ -19,6 +19,7 @@
 - Request to score, grade, or assess quality → `ask` (rubric-based evaluation)
 - Request to explain or describe what was generated → `work` (current job's explain capability)
 - Request to modify or create artifacts → `work` (current job's generation capability)
+- Prior evaluation/assessment mentioned as context or basis for the request does NOT change the expected output type — observe the PRIMARY output the user expects, not the inputs they reference
 
 ### Step 2: Determine Job Match (for work intent)
 
@@ -100,6 +101,7 @@ When user input appears to be:
 ⚠️ **Artifact output = WORK**: Producing or modifying artifacts → `work`
 ⚠️ **Artifact explanation = WORK**: Explaining generated artifacts → `work` (job's explain mode)
 ⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → `ask`
+⚠️ **Reference source ≠ Requested output**: When evaluation, assessment, or scoring is mentioned as a BASIS or REFERENCE for the request (not as the requested output itself), the intent is determined by the actual expected output — not by the referenced source. Only classify as `ask` when the PRIMARY expected output is a new quality score.
 ⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → `design` job. But if the output is a quality score → still `ask`
 ⚠️ **Plan job exception**: When current job is `plan`, PRDs may include technology decisions, backend requirements, API overviews. These are normal PRD content, NOT design job territory. Do NOT redirect from plan to design unless the user explicitly asks to create a design specification document.
 ⚠️ **Target determines job**: Modifying UI SPEC = design, Modifying SOURCE CODE = code, Producing PRD = plan
