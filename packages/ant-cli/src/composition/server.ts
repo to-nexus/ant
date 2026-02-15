@@ -65,9 +65,9 @@ async function main() {
   } else {
     console.warn('  ⚠️  ANT_ENCRYPTION_KEY not found in environment!');
   }
-  // TEMP: hardcoded override — remove when devops sets env var
-  process.env.RECURSION_LIMIT = '100';
-  console.log(`  RECURSION_LIMIT: ${process.env.RECURSION_LIMIT} (⚠️ hardcoded override)`);
+  // TODO: 데브옵스팀이 vault에 RECURSION_LIMIT 설정하면 아래 하드코딩 삭제할 것
+  process.env.RECURSION_LIMIT = '200';
+  console.log(`  RECURSION_LIMIT: ${process.env.RECURSION_LIMIT} (⚠️ hardcoded override — TODO: remove)`);
   
   // Environment configuration
   const mode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
