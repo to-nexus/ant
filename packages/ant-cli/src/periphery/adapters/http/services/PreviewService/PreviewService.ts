@@ -156,6 +156,7 @@ export class PreviewService {
             url: state.port ? `/${toUrlKey(serverKey)}` : undefined,
             packages: state.packages || [],
             issues: state.issues || [],
+            structureType: state.structureType || undefined,
           };
         }
       } catch {

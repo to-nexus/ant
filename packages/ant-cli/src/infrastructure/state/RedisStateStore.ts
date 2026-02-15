@@ -34,6 +34,7 @@ import {
   PortRegistryPort, 
   PreviewState, 
   LinkedBackendConfig,
+  PreviewStructureType,
   IDEState,
   PreviewPackage,
   PreviewRuntimeIssue
@@ -486,11 +487,16 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    config: { linkedBackend?: LinkedBackendConfig | null }
+    config: { linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null }
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
-    await this.redis.set(key, JSON.stringify(config), 'EX', REDIS_TTL.INFRA.PREVIEW_CONFIG);
+    
+    // Merge with existing config to avoid overwriting other fields
+    const existing = await this.redis.get(key);
+    const merged = existing ? { ...JSON.parse(existing), ...config } : config;
+    
+    await this.redis.set(key, JSON.stringify(merged), 'EX', REDIS_TTL.INFRA.PREVIEW_CONFIG);
     logger.info(`[Preview] Config saved: ${portKey}`, { component: 'RedisStateStore' });
   }
 
@@ -503,7 +509,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<{ linkedBackend?: LinkedBackendConfig | null } | null> {
+  ): Promise<{ linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null } | null> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
     const data = await this.redis.get(key);

@@ -415,7 +415,8 @@ export class PreviewServer {
         const userContext = this.extractUserContext(req);
         const feature = req.query.feature as string || 'main';
 
-        // Read linkedBackend from dedicated config key (independent of runtime state)
+        // Read config from dedicated config key (independent of runtime state)
+        // Contains linkedBackend (user setting) and structureType (from decompose)
         const config = await this.stateStore.getPreviewConfig(
           userContext.organizationId,
           userContext.userId,
@@ -423,7 +424,7 @@ export class PreviewServer {
           feature
         );
 
-        // Read structureType from runtime status (may not exist if preview never started)
+        // Read structureType from runtime status (available after preview start)
         const status = await this.previewService.getPreviewStatus(
           userContext.organizationId,
           userContext.userId,
@@ -431,8 +432,9 @@ export class PreviewServer {
           feature
         );
 
+        // structureType: prefer runtime (filesystem detection) → fall back to config (decompose detection)
         res.json({
-          structureType: status.structureType || null,
+          structureType: status.structureType || config?.structureType || null,
           linkedBackend: config?.linkedBackend || null,
         });
       } catch (error: any) {
