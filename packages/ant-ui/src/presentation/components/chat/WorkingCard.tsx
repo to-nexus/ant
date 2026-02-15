@@ -12,14 +12,14 @@ import type { MessageContent } from '@/domain/models/chat';
 
 interface WorkingCardProps {
   content: MessageContent;
-  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'storing' | 'stored' | 'learning' | 'learned';
+  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned';
 }
 
 /**
  * Determine if variant is a progress state (~ing) or complete state (~ed)
  */
 function isProgressState(variant: string): boolean {
-  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'indexing', 'analyzing', 'storing', 'learning'].includes(variant);
+  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'indexing', 'analyzing', 'loading', 'storing', 'learning'].includes(variant);
 }
 
 /**
@@ -119,6 +119,17 @@ function getVariantConfig(variant: string, isProgress: boolean) {
         iconColorClass: isProgress ? 'text-emerald-600 dark:text-emerald-400' : 'text-emerald-500 dark:text-emerald-400',
         textClass: 'text-emerald-800 dark:text-emerald-300',
         detailClass: 'text-emerald-600 dark:text-emerald-400'
+      };
+    case 'load':
+      return {
+        Icon: isProgress ? Loader2 : FileSearch,
+        iconClass: isProgress ? 'animate-spin' : '',
+        containerClass: isProgress 
+          ? 'bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800'
+          : 'bg-teal-50/30 dark:bg-teal-900/20 hover:bg-teal-100/50 dark:hover:bg-teal-800/30',
+        iconColorClass: isProgress ? 'text-teal-600 dark:text-teal-400' : 'text-teal-500 dark:text-teal-400',
+        textClass: 'text-teal-800 dark:text-teal-300',
+        detailClass: 'text-teal-600 dark:text-teal-400'
       };
     case 'stor':
       return {

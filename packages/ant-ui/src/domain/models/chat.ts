@@ -25,6 +25,8 @@ export type MessageContentType =
   | 'indexed'        // Codebase indexing complete
   | 'analyzing'      // Analysis in progress
   | 'analyzed'       // Analysis complete
+  | 'loading'        // Loading required files (in progress)
+  | 'loaded'         // Required files loaded
   | 'storing'        // Storing lessons (in progress)
   | 'stored'         // Storing lessons complete
   | 'learning'       // Learning from code changes (in progress)
