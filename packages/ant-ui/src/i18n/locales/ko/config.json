@@ -1,11 +1,11 @@
 {
   "projectConfig": {
-    "title": "워크스페이스 설정",
+    "title": "프로젝트 설정",
     "saved": "설정이 저장되었습니다!",
     "saveFailed": "설정 저장에 실패했습니다. 다시 시도해주세요.",
     "revertConfirm": "변경사항을 모두 되돌릴까요?",
-    "loading": "워크스페이스 설정 로딩 중...",
-    "noConfig": "워크스페이스 설정이 로드되지 않았습니다."
+    "loading": "프로젝트 설정 로딩 중...",
+    "noConfig": "프로젝트 설정이 로드되지 않았습니다."
   },
   "accountConfig": {
     "title": "계정 설정"
@@ -28,7 +28,7 @@
     "saving": "저장 중...",
     "saveFailed": "GitHub PAT 저장에 실패했습니다. 다시 시도해주세요.",
     "deleteConfirm": "GitHub PAT를 삭제할까요?",
-    "deleteConfirmMsg": "GitHub PAT을 삭제할까요? 모든 워크스페이스에 영향이 있습니다.",
+    "deleteConfirmMsg": "GitHub PAT을 삭제할까요? 모든 프로젝트에 영향이 있습니다.",
     "deleteSuccess": "GitHub PAT이 삭제되었습니다",
     "deleteFailed": "GitHub PAT 삭제에 실패했습니다. 다시 시도해주세요.",
     "autoDetected": "PAT에서 자동 감지됨",
@@ -42,7 +42,7 @@
     "title": "Figma 연동",
     "description": "Figma 계정을 연결하여 디자인을 임포트합니다",
     "oauthFailed": "Figma OAuth 시작에 실패했습니다. 다시 시도해주세요.",
-    "disconnectConfirm": "Figma 연결을 해제할까요? Figma 연동을 사용하는 모든 워크스페이스에 영향이 있습니다.",
+    "disconnectConfirm": "Figma 연결을 해제할까요? Figma 연동을 사용하는 모든 프로젝트에 영향이 있습니다.",
     "disconnected": "Figma 연결이 해제되었습니다",
     "disconnectFailed": "Figma 연결 해제에 실패했습니다. 다시 시도해주세요.",
     "connected": "Figma 계정이 연결되었습니다. MCP 클라이언트 등록 후 디자인 임포트 기능이 지원될 예정입니다.",
@@ -52,7 +52,7 @@
     "optional": "선택 사항"
   },
   "projectEditor": {
-    "header": "워크스페이스 설정",
+    "header": "프로젝트 설정",
     "noChangesToDiscard": "되돌릴 변경사항 없음",
     "discardChanges": "변경사항 되돌리기",
     "saving": "저장 중...",
@@ -115,7 +115,7 @@
     "notConfigured": "설정되지 않음",
     "patSavedWithUser": "GitHub PAT 저장 완료! @{{username}}(으)로 연결됨",
     "patSaved": "GitHub PAT이 저장되었습니다!",
-    "ownerOverrideSet": "GitHub owner가 \"{{owner}}\"(으)로 설정되었습니다. 새 워크스페이스는 github.com/{{owner}}/{project}를 사용합니다",
+    "ownerOverrideSet": "GitHub owner가 \"{{owner}}\"(으)로 설정되었습니다. 새 프로젝트는 github.com/{{owner}}/{project}를 사용합니다",
     "ownerOverrideCleared": "Owner 오버라이드가 초기화되었습니다. 조직 기본값{{suffix}}(으)로 복원됩니다.",
     "revertedToOrgDefault": "조직 기본값{{suffix}}(으)로 복원되었습니다.",
     "figmaConnected": "✓ 연결됨",
@@ -129,13 +129,13 @@
     "connectFigma": "Figma 계정 연결",
     "figmaConnectedAs": "Figma가 {{email}}(으)로 연결되었습니다!",
     "resetAccount": "계정 초기화",
-    "resetAccountDesc": "모든 워크스페이스, 세션, 설정을 삭제합니다. Git 리포지토리는 보존됩니다.",
+    "resetAccountDesc": "모든 프로젝트, 세션, 설정을 삭제합니다. Git 리포지토리는 보존됩니다.",
     "resetAccountConfirm": "계정을 초기화하시겠습니까?",
-    "resetAccountConfirmMsg": "다음 항목이 삭제됩니다:\n• 모든 워크스페이스와 피처\n• 모든 세션 파일 및 채팅 기록\n• 사용자 설정\n\nGit 리포지토리는 보존됩니다.\n\n이 작업은 되돌릴 수 없습니다.",
+    "resetAccountConfirmMsg": "다음 항목이 삭제됩니다:\n• 모든 프로젝트와 피처\n• 모든 세션 파일 및 채팅 기록\n• 사용자 설정\n\nGit 리포지토리는 보존됩니다.\n\n이 작업은 되돌릴 수 없습니다.",
     "resetAccountSuccess": "계정이 초기화되었습니다. 페이지를 새로고침합니다.",
     "resetAccountFailed": "계정 초기화에 실패했습니다. 다시 시도해주세요.",
     "resetting": "초기화 중...",
-    "resetStepDeleting": "워크스페이스 및 세션 삭제",
+    "resetStepDeleting": "프로젝트 및 세션 삭제",
     "resetStepClearing": "로컬 캐시 정리",
     "resetStepDone": "완료, 새로고침 중..."
   },
@@ -144,7 +144,7 @@
     "setupStep1": "GitHub PAT 등록:",
     "setupStep1Desc": "우측 상단 프로필 메뉴 → 계정 설정 → GitHub Integration",
     "setupStep2": "Repository URL 설정:",
-    "setupStep2Desc": "워크스페이스명 옆 ⚙️ 아이콘 클릭 → GitHub Repository 필드 입력",
+    "setupStep2Desc": "프로젝트명 옆 ⚙️ 아이콘 클릭 → GitHub Repository 필드 입력",
     "setupComplete": "두 항목을 모두 설정하면 Clone/Initialize가 활성화됩니다.",
     "management": "Git 관리",
     "notInitialized": "Git 초기화되지 않음",

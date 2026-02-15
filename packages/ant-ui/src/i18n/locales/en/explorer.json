@@ -4,12 +4,12 @@
     "collapse": "Collapse Explorer",
     "expand": "Expand Explorer",
     "signInRequired": "Sign In Required",
-    "signInHint": "Please sign in to access your workspaces"
+    "signInHint": "Please sign in to access your projects"
   },
   "workspace": {
-    "title": "Workspace",
-    "placeholder": "Select a workspace...",
-    "inputPlaceholder": "Workspace name...",
+    "title": "Project",
+    "placeholder": "Select a project...",
+    "inputPlaceholder": "Project name...",
     "createFailed": "Failed to create configuration. Please try again."
   },
   "feature": {
@@ -47,7 +47,7 @@
     "error": "Connection Error",
     "disconnected": "Disconnected",
     "selectFile": "Select a file from Explorer to edit.",
-    "noConfig": "No workspace configuration loaded."
+    "noConfig": "No project configuration loaded."
   },
   "featureDropdown": {
     "featureNamePlaceholder": "Feature name..."
@@ -76,7 +76,7 @@
     "commits": "commits",
     "pullingFromRemote": "Pulling from remote",
     "noChanges": "No changes",
-    "gitRepoRequired": "In Cloud mode, you can only create features after a Git repository is initialized/cloned. Please Clone or Initialize from the Workspace Git menu first.",
+    "gitRepoRequired": "In Cloud mode, you can only create features after a Git repository is initialized/cloned. Please Clone or Initialize from the Project Git menu first.",
     "gitRepoRequiredTitle": "Git Repository Required",
     "uncommittedTitle": "Uncommitted Changes Detected",
     "uncommittedDesc": "You have {{count}} uncommitted change(s).",
@@ -146,7 +146,7 @@
     "running": "Preview is Running",
     "notRunning": "Preview is not Running",
     "open": "Open",
-    "noProjectFeature": "Please select a workspace and feature first",
+    "noProjectFeature": "Please select a project and feature first",
     "startFailed": "Failed to start preview",
     "stopFailed": "Failed to stop preview: {{message}}",
     "unknownError": "Unknown error occurred",
@@ -169,7 +169,7 @@
     "controls": "Preview Controls",
     "statusConsole": "Status Console",
     "noIssues": "No issues. Start the preview server to see status.",
-    "selectWorkspace": "Select a workspace to configure preview.",
+    "selectWorkspace": "Select a project to configure preview.",
     "structureType": "Structure Type:",
     "directUrl": "Direct URL",
     "antProject": "Ant Project",
@@ -185,6 +185,7 @@
     "saved": "Saved",
     "saveError": "Error: {{message}}",
     "unsavedChanges": "Unsaved changes",
+    "cancel": "Cancel",
     "activeConnection": "Active: {{connection}}",
     "statusRunning": "Running",
     "statusError": "Error",

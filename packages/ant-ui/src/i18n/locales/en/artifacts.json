@@ -41,7 +41,7 @@
   },
   "featureDetails": {
     "title": "Feature Details",
-    "selectPrompt": "Select a workspace and feature to view details",
+    "selectPrompt": "Select a project and feature to view details",
     "inputs": "📝 Inputs",
     "outputs": "📄 Outputs",
     "artifacts": "Artifacts",
