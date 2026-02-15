@@ -280,7 +280,6 @@ export class RouteConfigurator {
                   const userContext = {
                     userId,
                     organizationId,
-                    workspacePath: this.deps.workspaceResolver.getPhysicalWorkspacesPath()
                   };
                   await stateStore.publish(channel, {
                     projectId,
@@ -323,14 +322,13 @@ export class RouteConfigurator {
           } else if (projectId && featureName) {
             try {
               // Parse userEmail to extract userId and organizationId
-              let userContext: { userId: string; organizationId: string; workspacePath: string } | undefined;
+              let userContext: { userId: string; organizationId: string } | undefined;
               if (userEmail) {
                 const [userId, organizationId] = userEmail.split('@');
                 if (userId && organizationId) {
                   userContext = { 
                     userId, 
-                    organizationId, 
-                    workspacePath: this.deps.workspaceResolver.getPhysicalWorkspacesPath() 
+                    organizationId,
                   };
                 }
               }

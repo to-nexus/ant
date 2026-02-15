@@ -230,7 +230,7 @@ export class PreviewService {
       this.stateStore.publish(channel, {
         projectId,
         featureName: feature,
-        userContext: { organizationId: tenantId, userId, workspacePath: '' },
+        userContext: { organizationId: tenantId, userId },
         type: 'preview',  // SSEMessageType
         data: {
           type: 'log',    // subtype for frontend handler
@@ -260,7 +260,7 @@ export class PreviewService {
       this.stateStore.publish(channel, {
         projectId,
         featureName: feature,
-        userContext: { organizationId: tenantId, userId, workspacePath: '' },
+        userContext: { organizationId: tenantId, userId },
         type: 'preview',  // SSEMessageType
         data: {
           type: 'status', // subtype for frontend handler
@@ -376,11 +376,9 @@ export class PreviewService {
     }
     
     // Clean up orphan processes (from server restarts or crashed processes)
-    const codebasePath = path.join(localPath, 'codebase');
+    // localPath is already the correct worktree path (set by PreviewServer.resolveWorkspacePath)
     const fs = await import('fs');
-    const orphansKilled = this.processSpawner.killOrphanProcesses(
-      fs.existsSync(codebasePath) ? codebasePath : localPath
-    );
+    const orphansKilled = this.processSpawner.killOrphanProcesses(localPath);
     if (orphansKilled > 0) {
       logger.info(`Cleaned up ${orphansKilled} orphan process(es) before starting`, { component: 'PreviewService' });
       // Small delay after killing orphans

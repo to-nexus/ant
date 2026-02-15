@@ -95,7 +95,7 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
       : false;
 
     // ✅ Check if local cache directory exists (language-specific)
-    const fileSystemBase = fileSystem.getWorkspaceRoot();
+    const fileSystemBase = fileSystem.getRootPath();
     let cacheDirExists = true;  // Default true for languages with no local cache
     if (runtime.dependency.localCacheDir) {
       const cacheDirPath = p.join(resolvedPath, runtime.dependency.localCacheDir);
@@ -193,7 +193,7 @@ async function handleNodeInstall(
   p: any,
 ): Promise<void> {
   const pkgJsonPath = p.join(resolvedPath, 'package.json');
-  const fileSystemBase = fileSystem.getWorkspaceRoot();
+  const fileSystemBase = fileSystem.getRootPath();
   const pkgJsonRelative = p.relative(fileSystemBase, pkgJsonPath);
   const pkgExists = await fileSystem.fileExists(pkgJsonRelative);
 

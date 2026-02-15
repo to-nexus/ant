@@ -48,7 +48,7 @@ export function FeatureSection() {
     handleFeatureChange
   } = useFeatureActions(selectedProject, selectedFeature, baseBranch, showConfirm);
   
-  // Branch manager (auto-checkout)
+  // Feature status manager (auto-fetch for worktree)
   useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);
   
   // ✅ Get setPendingChatInput from Chat service

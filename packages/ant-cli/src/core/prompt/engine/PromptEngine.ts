@@ -7,7 +7,6 @@ import { TemplateComposer, ComposedPrompt } from "./TemplateComposer";
 import { PolicyInjector } from "./PolicyInjector";
 import { PromptFormatter, FormattedPrompt } from "./PromptFormatter";
 import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
-
 /**
  * Dependencies for PromptEngine
  */
@@ -297,58 +296,16 @@ export class PromptEngine {
 
   /**
    * Build prompt for DetectEnvironment node (code graph)
-   * Note: Mode inference is now part of this prompt (LLM-based)
+   * Determines: jobMode + requireRag + keywords (lightweight router)
+   * Note: environment and profile are now determined by decompose node
    */
   async buildDetectEnvironmentPrompt(
     directive: string,
-    designDocs: {
-      apiContract?: string;
-      feDesign?: string;
-      beDesign?: string;
-      unifiedDesign?: string;
-    } | undefined,
-    profile: any,
     prdSpec?: string
   ): Promise<string> {
-    // ✅ Build design doc content from object
-    const parts: string[] = [];
-    
-    if (designDocs) {
-      if (designDocs.feDesign) {
-        parts.push('# Frontend System Design (fe-system-design.md)\n\n' + designDocs.feDesign);
-      }
-      if (designDocs.beDesign) {
-        parts.push('# Backend System Design (be-system-design.md)\n\n' + designDocs.beDesign);
-      }
-      if (designDocs.unifiedDesign) {
-        parts.push('# System Design (system-design.md)\n\n' + designDocs.unifiedDesign);
-      }
-      if (designDocs.apiContract) {
-        parts.push('# API Contract (api-contract.md)\n\n' + designDocs.apiContract);
-      }
-    }
-    
-    const designDocsContent = parts.length > 0 
-      ? parts.join('\n\n────────────────────────────────────────\n\n')
-      : '';
-    
-    // ✅ Build design document availability metadata for environment detection
-    let designDocsMeta = '';
-    if (designDocs) {
-      const lines: string[] = [];
-      lines.push(`- fe-system-design: ${designDocs.feDesign ? 'present' : 'absent'}`);
-      lines.push(`- be-system-design: ${designDocs.beDesign ? 'present' : 'absent'}`);
-      lines.push(`- api-contract: ${designDocs.apiContract ? 'present' : 'absent'}`);
-      lines.push(`- system-design (unified): ${designDocs.unifiedDesign ? 'present' : 'absent'}`);
-      designDocsMeta = lines.join('\n');
-    }
-    
     // ✅ Uses phases/detect/base.md which includes {{> code/phases/detect/rules}}
     return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
-      designDocs: designDocsContent,
-      designDocsMeta,
-      profile,
       prdSpec: prdSpec || ''
     });
   }
@@ -408,6 +365,7 @@ export class PromptEngine {
     hasDesignDoc: boolean;
     mode: string;
     profile: any;
+    designDocsMeta?: string;       // ✅ Design document availability metadata (for profile detection)
     codebaseFilePaths?: string[];  // File paths from keyword search
     hasProjectCode?: boolean;      // ✅ CRITICAL: Actual project code existence (git-based)
     hasErrorInDirective?: boolean; // ✅ Error detected in directive

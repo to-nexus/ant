@@ -87,7 +87,7 @@ export interface PreviewState {
 // ============================================
 
 export interface IDEState {
-  // Identity (IDE is project-level, no feature)
+  // Identity (IDE is feature-level: org:user:project:feature)
   tenantId: string;
   userId: string;
   projectId: string;
@@ -213,7 +213,8 @@ export interface PortRegistryPort {
     projectId: string,
     port: number,
     host: string,
-    podId: string
+    podId: string,
+    feature?: string
   ): Promise<void>;
   
   /**
@@ -222,7 +223,8 @@ export interface PortRegistryPort {
   getIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature?: string
   ): Promise<IDEState | null>;
   
   /**
@@ -231,7 +233,8 @@ export interface PortRegistryPort {
   getIDEPort(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature?: string
   ): Promise<number | null>;
   
   /**
@@ -240,7 +243,8 @@ export interface PortRegistryPort {
   touchIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature?: string
   ): Promise<void>;
   
   /**
@@ -249,7 +253,8 @@ export interface PortRegistryPort {
   unregisterIDE(
     tenantId: string,
     userId: string,
-    projectId: string
+    projectId: string,
+    feature?: string
   ): Promise<void>;
   
   /**

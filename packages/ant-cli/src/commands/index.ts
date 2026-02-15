@@ -32,7 +32,6 @@ export async function indexCommand(
     const userContext: UserContext = {
       userId: 'local',
       organizationId: 'local',
-      workspacePath: ''
     };
 
     const projectPath = workspaceResolver.getProjectPath(userContext, project);
@@ -45,20 +44,8 @@ export async function indexCommand(
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
-    // 3. Determine codebase path
-    let codebasePath: string;
-    if (config.repoType === 'local') {
-      if (!config.localPath) {
-        throw new Error('Local path not configured');
-      }
-      codebasePath = config.localPath.startsWith('~')
-        ? config.localPath.replace('~', process.env.HOME || '')
-        : path.isAbsolute(config.localPath)
-        ? config.localPath
-        : path.resolve(process.cwd(), config.localPath);
-    } else {
-      codebasePath = path.join(projectPath, 'codebase');
-    }
+    // 3. Determine codebase path (centralized resolution)
+    const codebasePath = workspaceResolver.getCodebasePath(userContext, project);
 
     console.log(`📂 Codebase path: ${codebasePath}\n`);
 

@@ -47,7 +47,6 @@ export function createAuthRoutes(deps: {
     const workspacePath = workspaceResolver.getWorkspacePath({
       userId: authContext.user.id,
       organizationId: authContext.organization.id,
-      workspacePath: ''
     });
     
     return { authContext, workspacePath };

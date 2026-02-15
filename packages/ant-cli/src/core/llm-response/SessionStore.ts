@@ -23,16 +23,15 @@ export class SessionStore {
   private stateStore: StateStorePort;
   private context: SessionContext;
   private localSession: ChatSession | null = null;  // Local cache for hot path
-  private workspacePath: string | undefined;
+  private featurePath: string | undefined;
 
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
     this.stateStore = stateStore;
-    this.workspacePath = env.workspacePath;
+    this.featurePath = env.featurePath;
     
     const userContext = env.userId && env.organizationId ? {
       userId: env.userId,
       organizationId: env.organizationId,
-      workspacePath: env.workspacePath || ''
     } : undefined;
     
     this.context = {
@@ -279,31 +278,23 @@ export class SessionStore {
   /**
    * Get chat.json file path
    * 
-   * workspacePath can be either:
-   * - ANT_FEATURE_PATH: already the full feature path (e.g., .../features/localtest)
-   * - ANT_WORKSPACE_PATH: workspace root, needs projectId/featureName appended
+   * featurePath is the full feature directory path (e.g., .../features/skeleton)
+   * containing inputs/, outputs/, sessions/
    */
   private getChatFilePath(): string | null {
-    if (!this.workspacePath) {
+    if (!this.featurePath) {
       return null;
     }
     
-    // If workspacePath already contains /features/ (i.e., ANT_FEATURE_PATH), 
-    // it's already the feature directory — use directly
-    const isFeaturePath = this.workspacePath.includes('/features/');
-    const featurePath = isFeaturePath
-      ? this.workspacePath
-      : path.join(this.workspacePath, this.context.projectId, this.context.featureName);
-    
-    return path.join(featurePath, 'sessions', 'chat.json');
+    return path.join(this.featurePath, 'sessions', 'chat.json');
   }
 
   /**
    * Save session to chat.json file
    */
   private saveToChatFile(): void {
-    // Skip if no workspace path
-    if (!this.workspacePath || !this.localSession) {
+    // Skip if no feature path
+    if (!this.featurePath || !this.localSession) {
       return;
     }
 

@@ -23,24 +23,7 @@ Determine the **intent** of the directive by analyzing the **action verbs**:
 
 ---
 
-### 2. Environment Detection
-
-- **frontend**: UI, components, pages, styling, client-side
-- **backend**: API, database, server, business logic
-- **fullstack**: Both frontend and backend components
-- **unknown**: Unclear or non-code tasks
-
-**Observation Priority:**
-
-1. If the directive explicitly specifies the environment scope, that is the final answer.
-2. If design documents exist, observe the **Design Document Availability** section. The categories of documents that are present define the current work scope. Do NOT assume a missing category means "not yet created" — absence itself signals that tier is outside the current scope.
-3. PRD describes the overall project and may cover a broader scope than the current workspace. Do NOT infer environment from PRD alone when design documents are present.
-
-⚠️ **Blind Spot**: A PRD may describe multiple tiers, but if the corresponding design document for a tier is absent in this workspace, that tier is out of scope for this job.
-
----
-
-### 3. RAG Requirement
+### 2. RAG Requirement
 
 Does the `decompose` node need codebase context?
 
@@ -53,11 +36,11 @@ Does the `decompose` node need codebase context?
 **RAG is NOT needed when:**
 - ❌ Brand new empty project with no code yet
 
-**In practice:** Almost ALWAYS set `requireRagForDecompose: true` unless you're 100% certain it's an empty project.
+**In practice:** Almost ALWAYS set `requireRag: true` unless you're 100% certain it's an empty project.
 
 ---
 
-### 4. Keyword Generation (if RAG required)
+### 3. Keyword Generation (if RAG required)
 
 **🎯 PURPOSE:**
 
@@ -122,66 +105,6 @@ Extract:
 
 ---
 
-**Examples**:
-
-**GOOD** (Error with stack trace):
-```json
-{
-  "codebase": [
-    "UserList.ts",
-    "AuthService.ts",
-    "DataRepository.ts",
-    "RESOURCE_NOT_FOUND",
-    "UserService",
-    "fetchUsers",
-    "authentication",
-    "errorHandler",
-    "apiRequest"
-  ]
-}
-```
-**Why good**: 9 keywords, exact file names, focused semantic terms.
-
----
-
-**GOOD** (Feature without stack trace):
-```json
-{
-  "codebase": [
-    "userList",
-    "dashboard",
-    "dataDisplay",
-    "pagination",
-    "searchFilter",
-    "userStatus",
-    "itemCount",
-    "tableComponent"
-  ]
-}
-```
-**Why good**: 8 keywords, domain-focused, no generic terms.
-
----
-
-**BAD** (Over-generating):
-```json
-{
-  "codebase": [
-    "HttpClient", "http", "client", "request", "connection",
-    "UserPage", "user", "page", "component", "view component",
-    "DataContext", "data", "context", "state", "state management",
-    "provider", "DataProvider", "UserProvider", "context provider",
-    "lifecycle", "initialization", "setup", "hooks", "callbacks",
-    "error", "error handling", "try catch", "validation",
-    "user creation", "user update", "user delete", "user management",
-    "entity", "model", "client", "server"
-  ]
-}
-```
-**Why bad**: 36+ keywords, generic terms ("component", "state"), redundant variations ("http", "client", "request").
-
----
-
 **Reference Project Keywords**:
 
 If directive mentions other projects (e.g., "check backend API"):
@@ -197,78 +120,3 @@ If directive mentions other projects (e.g., "check backend API"):
 ```
 
 Maximum 8 keywords per reference project.
-
----
-
-### 5. Profile Detection (Language & Framework)
-
-**🎯 CRITICAL: Determine the programming language and framework from the design document**
-
-**Language Detection:**
-
-Analyze the design document for language indicators:
-- **TypeScript**: Mentions of TypeScript, tsconfig.json, @types/, React, Vue, Next.js, Vite
-- **JavaScript**: Pure JavaScript (ES6+) without TypeScript
-- **Python**: FastAPI, Django, Flask, requirements.txt, pyproject.toml
-- **Go**: Go, Golang, go.mod
-- **Rust**: Rust, Cargo.toml
-- **Java**: Java, Maven, Gradle, Spring
-
-**Framework Detection (if mentioned):**
-
-- **Frontend**: React, Vue, Next.js, Nuxt, SvelteKit, Angular
-- **Backend**: Express, Fastify, NestJS (Node), FastAPI, Django (Python), Gin (Go)
-- **Fullstack**: Next.js, Remix, Nuxt, SvelteKit
-
-**⚠️ DEFAULT BEHAVIOR (CRITICAL):**
-- **If language is unclear or uncertain:** ALWAYS default to `"typescript"`
-- **If no framework mentioned:** Set `framework: null`
-- **When in doubt:** Use TypeScript (most common for modern web/API projects)
-
-**DO NOT guess exotic languages** - TypeScript is the safe default for:
-- Web frontends (React, Vue, etc.)
-- Node.js backends (Express, NestJS, etc.)
-- Fullstack frameworks (Next.js, Remix, etc.)
-- Any project where language is ambiguous
-
-**Examples:**
-
-Design mentions "React + Vite + TypeScript":
-```json
-{
-  "profile": {
-    "language": "typescript",
-    "framework": "react"
-  }
-}
-```
-
-Design mentions "Express API server":
-```json
-{
-  "profile": {
-    "language": "typescript",
-    "framework": "express"
-  }
-}
-```
-
-Design mentions "FastAPI backend":
-```json
-{
-  "profile": {
-    "language": "python",
-    "framework": "fastapi"
-  }
-}
-```
-
-Unclear design:
-```json
-{
-  "profile": {
-    "language": "typescript",
-    "framework": null
-  }
-}
-```

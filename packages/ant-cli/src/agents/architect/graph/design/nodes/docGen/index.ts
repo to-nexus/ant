@@ -218,9 +218,9 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
     const designDirAbs = path.join(state.context.featurePath, targetDir);
     
     // ✅ Convert to workspace-relative path for fileSystem port
-    const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot?.() || '';
-    const designDirRel = workspaceRoot
-      ? path.relative(workspaceRoot, designDirAbs)
+    const rootPath = state.deps.fileSystem.getRootPath?.() || '';
+    const designDirRel = rootPath
+      ? path.relative(rootPath, designDirAbs)
       : designDirAbs.replace(/^\//, '');
     
     try {

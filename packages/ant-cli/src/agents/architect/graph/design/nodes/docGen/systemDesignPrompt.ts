@@ -68,9 +68,9 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       let designDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
       
       if (state.deps?.fileSystem) {
-        const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot?.();
-        if (workspaceRoot && pathModule.isAbsolute(designDocPath)) {
-          designDocPath = pathModule.relative(workspaceRoot, designDocPath);
+        const rootPath = state.deps.fileSystem.getRootPath?.();
+        if (rootPath && pathModule.isAbsolute(designDocPath)) {
+          designDocPath = pathModule.relative(rootPath, designDocPath);
         }
         
         const fileExists = await state.deps.fileSystem.fileExists(designDocPath);

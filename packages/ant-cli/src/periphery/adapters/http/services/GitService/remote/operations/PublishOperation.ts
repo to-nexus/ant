@@ -1,46 +1,51 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { SimpleGit } from 'simple-git';
+import simpleGit from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
 import { RemoteChecker } from '../helpers/RemoteChecker';
 import { BaseGitSetupOperation } from './BaseGitSetupOperation';
+import { WorktreeService } from '../../worktree';
 
 /**
  * PublishOperation
  * 
  * Publishes an existing codebase (with features already created) to a new GitHub repository.
- * Unlike InitOperation, this allows features to already exist.
+ * Designed for the "work first, git later" workflow using Git worktrees.
  * 
- * Key differences from InitOperation:
- * - Does NOT require workspace to be clean (features can exist)
- * - Creates feature branches for all existing features after pushing base branch
- * - Designed for the "work first, git later" workflow
+ * Key behaviors:
+ * - Does NOT require workspace to be clean (features can exist with code)
+ * - Seeds main codebase (base branch) from the active feature's code
+ * - Creates Git worktrees for all existing features (no branch checkout)
+ * - Each feature's existing code is preserved and committed to its worktree branch
  * 
  * Flow:
  * 1. Validate: Git not already initialized, remote repo doesn't exist
- * 2. git init with base branch
- * 3. Create .gitignore
- * 4. Initial commit with all existing code
- * 5. Create GitHub repository via API
- * 6. Push base branch
- * 7. Create and push feature branches for all existing features
- * 8. Checkout the current active feature's branch
- * 9. Trigger codebase indexing
+ * 2. Backup all feature codebase directories
+ * 3. Seed projectPath/codebase/ with active feature's code (base branch content)
+ * 4. git init + .gitignore + initial commit
+ * 5. Create GitHub repository + push base branch
+ * 6. For each feature: create worktree -> restore backed-up code -> commit -> push
+ * 7. Clean up backup directories
+ * 8. Trigger codebase indexing
  */
 export class PublishOperation extends BaseGitSetupOperation {
+  private readonly worktreeService: WorktreeService;
+
   protected get operationName(): string {
     return 'PublishOperation';
   }
 
   constructor(
     workspaceResolver: WorkspaceResolver,
+    worktreeService: WorktreeService,
     githubAuthService?: GitHubAuthService,
     onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
   ) {
     super(workspaceResolver, githubAuthService, onIndexingTrigger);
+    this.worktreeService = worktreeService;
   }
 
   async execute(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {
@@ -56,18 +61,31 @@ export class PublishOperation extends BaseGitSetupOperation {
     // Read existing features before Git operations
     const existingFeatures = await this.readExistingFeatures(projectPath);
 
+    // Backup feature codebase directories before Git operations may alter them
+    const featureBackups = await this.backupFeatureCodebases(projectId, existingFeatures, userContext);
+
+    // Determine which feature's code to seed the base branch with
+    const seedFeature = activeFeature && existingFeatures.includes(activeFeature)
+      ? activeFeature
+      : existingFeatures[0] || null;
+
+    // Seed main codebase from the seed feature's code (if main codebase is empty)
+    if (seedFeature) {
+      await this.seedMainCodebase(projectId, seedFeature, codebasePath, userContext);
+    }
+
     let gitInitialized = false;
 
     try {
-      // Prepare codebase
+      // Prepare codebase (creates dir + README if empty)
       const hasFiles = await this.prepareCodebase(codebasePath, projectId);
 
       console.log(`[PublishOperation] Publishing existing codebase to Git at ${codebasePath}...`);
 
       // Get base branch from config
       const baseBranch = config.branchBase || 'main';
-      
-      // Initialize Git
+
+      // Initialize Git in main codebase
       const git = await this.initializeGit(codebasePath, baseBranch, userContext);
       gitInitialized = true;
 
@@ -86,14 +104,19 @@ export class PublishOperation extends BaseGitSetupOperation {
       // Add remote and push base branch
       await this.addRemoteAndPush(git, defaultBranch, config, userContext);
 
-      // Create feature branches for existing features
+      // Create feature worktrees and restore code (replaces old createFeatureBranches)
       if (existingFeatures.length > 0) {
-        await this.createFeatureBranches(git, existingFeatures, defaultBranch, activeFeature);
+        await this.createFeatureWorktrees(
+          projectId,
+          existingFeatures,
+          featureBackups,
+          userContext
+        );
       }
 
       // Trigger indexing
       await this.triggerIndexing(projectId, codebasePath, userContext);
-      
+
     } catch (error) {
       // Rollback: Remove Git initialization if it was created
       if (gitInitialized) {
@@ -101,6 +124,9 @@ export class PublishOperation extends BaseGitSetupOperation {
         await this.rollback(codebasePath);
       }
       throw error;
+    } finally {
+      // Always clean up backup directories
+      await this.cleanupBackups(featureBackups);
     }
   }
 
@@ -122,7 +148,7 @@ export class PublishOperation extends BaseGitSetupOperation {
     // Check if remote repository already exists
     console.log(`[PublishOperation] Checking if remote repository already exists...`);
     const repoExists = await RemoteChecker.exists(githubRepo, userContext, this.githubAuthService);
-    
+
     if (repoExists) {
       throw new Error(
         `Remote repository already exists at ${githubRepo}. ` +
@@ -137,7 +163,7 @@ export class PublishOperation extends BaseGitSetupOperation {
    */
   private async readExistingFeatures(projectPath: string): Promise<string[]> {
     const featuresPath = path.join(projectPath, 'features');
-    
+
     if (!fs.existsSync(featuresPath)) {
       return [];
     }
@@ -160,52 +186,169 @@ export class PublishOperation extends BaseGitSetupOperation {
   }
 
   /**
-   * Create feature branches for all existing features and push them.
-   * Each feature branch is created from the base branch (identical content).
-   * After publish, future work on features creates proper diffs.
+   * Backup all feature codebase directories to sibling .codebase-backup/ locations.
+   * Returns a map of featureName -> backupPath for restoration after worktree creation.
+   * 
+   * This is necessary because WorktreeService.createWorktree() deletes the existing
+   * codebase directory before creating the worktree.
    */
-  private async createFeatureBranches(
-    git: SimpleGit,
+  private async backupFeatureCodebases(
+    projectId: string,
     features: string[],
-    baseBranch: string,
-    activeFeature?: string
+    userContext: UserContext
+  ): Promise<Map<string, string>> {
+    const backups = new Map<string, string>();
+
+    for (const featureName of features) {
+      const featureCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+
+      if (!fs.existsSync(featureCodebasePath)) continue;
+
+      const files = await fs.promises.readdir(featureCodebasePath);
+      if (files.length === 0) continue;
+
+      // Backup to sibling directory: features/{name}/.codebase-backup/
+      const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const backupPath = path.join(featurePath, '.codebase-backup');
+
+      console.log(`[PublishOperation] Backing up ${featureName} codebase (${files.length} items) -> ${backupPath}`);
+      await fs.promises.cp(featureCodebasePath, backupPath, { recursive: true });
+      backups.set(featureName, backupPath);
+    }
+
+    if (backups.size > 0) {
+      console.log(`[PublishOperation] ✅ Backed up ${backups.size} feature codebase(s)`);
+    }
+
+    return backups;
+  }
+
+  /**
+   * Seed the main codebase directory with the seed feature's code.
+   * This becomes the initial content of the base branch.
+   * Only seeds if the main codebase is empty or doesn't exist.
+   */
+  private async seedMainCodebase(
+    projectId: string,
+    seedFeature: string,
+    codebasePath: string,
+    userContext: UserContext
   ): Promise<void> {
-    console.log(`[PublishOperation] Creating ${features.length} feature branch(es)...`);
+    // Check if main codebase already has files (skip seeding if so)
+    if (fs.existsSync(codebasePath)) {
+      const existingFiles = await fs.promises.readdir(codebasePath);
+      if (existingFiles.length > 0) {
+        console.log(`[PublishOperation] Main codebase already has files, skipping seed from feature`);
+        return;
+      }
+    }
+
+    const featureCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, seedFeature);
+
+    if (!fs.existsSync(featureCodebasePath)) return;
+
+    const files = await fs.promises.readdir(featureCodebasePath);
+    if (files.length === 0) return;
+
+    // Ensure main codebase directory exists
+    await fs.promises.mkdir(codebasePath, { recursive: true });
+
+    // Copy seed feature's code to main codebase
+    console.log(`[PublishOperation] Seeding main codebase from feature: ${seedFeature}`);
+    await fs.promises.cp(featureCodebasePath, codebasePath, { recursive: true });
+    console.log(`[PublishOperation] ✅ Main codebase seeded with ${files.length} items from ${seedFeature}`);
+  }
+
+  /**
+   * Create Git worktrees for all existing features, restore their backed-up code,
+   * and commit+push the feature-specific changes.
+   * 
+   * Each worktree starts from the base branch content. After restoring the
+   * feature's original code, any differences from base are committed and pushed.
+   */
+  private async createFeatureWorktrees(
+    projectId: string,
+    features: string[],
+    featureBackups: Map<string, string>,
+    userContext: UserContext
+  ): Promise<void> {
+    console.log(`[PublishOperation] Creating ${features.length} feature worktree(s)...`);
 
     for (const featureName of features) {
       const branchName = GitHelper.sanitizeBranchName(featureName);
 
       try {
-        // Ensure we're on base branch before creating feature branch
-        await git.checkout(baseBranch);
-        
-        // Create feature branch from base
-        await git.checkoutLocalBranch(branchName);
-        console.log(`[PublishOperation] ✅ Created branch: ${branchName}`);
-        
-        // Push feature branch
-        await git.push(['-u', 'origin', branchName]);
-        console.log(`[PublishOperation] ✅ Pushed branch: ${branchName}`);
+        // Create worktree via WorktreeService (handles branch creation + remote push)
+        await this.worktreeService.createWorktree(projectId, featureName, userContext);
+        console.log(`[PublishOperation] ✅ Created worktree for: ${featureName}`);
+
+        // Restore backed-up code if available
+        const backupPath = featureBackups.get(featureName);
+        if (backupPath && fs.existsSync(backupPath)) {
+          const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+
+          // Clear worktree content (except .git file) and restore backup
+          await this.restoreToWorktree(backupPath, worktreePath);
+
+          // Commit and push the feature-specific changes
+          const worktreeGit = simpleGit({ baseDir: worktreePath });
+          await GitHelper.ensureSafeDirectory(worktreePath);
+          await GitHelper.ensureUserConfig(worktreeGit, userContext);
+
+          await worktreeGit.add('.');
+          const status = await worktreeGit.status();
+
+          if (status.files.length > 0) {
+            await worktreeGit.commit(`feat(${featureName}): initial code from feature`);
+            await worktreeGit.push(['-u', 'origin', branchName]);
+            console.log(`[PublishOperation] ✅ Committed and pushed feature code: ${featureName} (${status.files.length} files)`);
+          } else {
+            console.log(`[PublishOperation] No diff from base for: ${featureName} (code identical)`);
+          }
+        }
       } catch (error: any) {
-        console.error(`[PublishOperation] ⚠️  Failed to create/push branch ${branchName}:`, error.message);
+        console.error(`[PublishOperation] ⚠️ Failed to create worktree for ${featureName}:`, error.message);
         // Continue with other features - don't fail the whole operation
       }
     }
+  }
 
-    // Checkout the active feature's branch, or the first feature, or base branch
-    const targetFeature = activeFeature || features[0];
-    if (targetFeature) {
-      const targetBranch = GitHelper.sanitizeBranchName(targetFeature);
+  /**
+   * Restore backed-up files into a worktree directory.
+   * Clears existing content (except .git file used by worktrees) before restoring.
+   */
+  private async restoreToWorktree(backupPath: string, worktreePath: string): Promise<void> {
+    // Remove existing files in worktree (except .git which is a file, not dir, for worktrees)
+    const existingItems = await fs.promises.readdir(worktreePath);
+    for (const item of existingItems) {
+      if (item === '.git') continue; // Preserve worktree's .git reference
+      await fs.promises.rm(path.join(worktreePath, item), { recursive: true, force: true });
+    }
+
+    // Copy backup content into worktree
+    const backupItems = await fs.promises.readdir(backupPath);
+    for (const item of backupItems) {
+      if (item === '.git') continue; // Don't overwrite .git
+      await fs.promises.cp(
+        path.join(backupPath, item),
+        path.join(worktreePath, item),
+        { recursive: true }
+      );
+    }
+  }
+
+  /**
+   * Clean up all backup directories created during publish.
+   */
+  private async cleanupBackups(featureBackups: Map<string, string>): Promise<void> {
+    for (const [featureName, backupPath] of featureBackups) {
       try {
-        await git.checkout(targetBranch);
-        console.log(`[PublishOperation] ✅ Checked out active feature branch: ${targetBranch}`);
-      } catch {
-        // Fallback to base branch
-        await git.checkout(baseBranch);
-        console.log(`[PublishOperation] ⚠️  Fell back to base branch: ${baseBranch}`);
+        if (fs.existsSync(backupPath)) {
+          await fs.promises.rm(backupPath, { recursive: true, force: true });
+        }
+      } catch (error: any) {
+        console.warn(`[PublishOperation] ⚠️ Failed to clean up backup for ${featureName}: ${error.message}`);
       }
-    } else {
-      await git.checkout(baseBranch);
     }
   }
 }

@@ -218,10 +218,11 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
+      const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
       
       logger.info(`Pushing to GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
-      await deps.projectService.pushToGitHub(projectId, userContext);
+      await deps.projectService.pushToGitHub(projectId, userContext, featureName);
       res.json({ success: true, message: 'Changes pushed successfully' });
     } catch (error: any) {
       logger.warn(`Push failed: ${error.message}`, { component: 'Projects', projectId }, error);
@@ -236,10 +237,11 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
+      const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
       
       logger.info(`Pulling from GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
-      await deps.projectService.pullFromGitHub(projectId, userContext);
+      await deps.projectService.pullFromGitHub(projectId, userContext, featureName);
       res.json({ success: true, message: 'Changes pulled successfully' });
     } catch (error: any) {
       logger.warn(`Pull failed: ${error.message}`, { component: 'Projects', projectId }, error);
@@ -272,8 +274,9 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
+      const featureName = req.query.feature as string | undefined;
       
-      const status = await deps.projectService.getGitStatus(projectId, userContext);
+      const status = await deps.projectService.getGitStatus(projectId, userContext, featureName);
       res.json(status);
     } catch (error: any) {
       logger.warn(`Get Git status failed: ${error.message}`, { component: 'Projects', projectId }, error);
@@ -286,8 +289,9 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
+      const featureName = req.query.feature as string | undefined;
       
-      const changes = await deps.projectService.getGitChanges(projectId, userContext);
+      const changes = await deps.projectService.getGitChanges(projectId, userContext, featureName);
       res.json(changes);
     } catch (error: any) {
       logger.warn(`Get Git changes failed: ${error.message}`, { component: 'Projects', projectId }, error);
@@ -300,11 +304,11 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
-      const { message } = req.body;
+      const { message, feature: featureName } = req.body;
       
       logger.info(`Committing changes`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
-      const result = await deps.projectService.commitChanges(projectId, userContext, message);
+      const result = await deps.projectService.commitChanges(projectId, userContext, message, featureName);
       res.json(result);
     } catch (error: any) {
       logger.warn(`Commit failed: ${error.message}`, { component: 'Projects', projectId }, error);
@@ -317,10 +321,11 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
+      const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
       
       logger.info(`Syncing with remote`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
-      const result = await deps.projectService.syncWithRemote(projectId, userContext);
+      const result = await deps.projectService.syncWithRemote(projectId, userContext, featureName);
       res.json(result);
     } catch (error: any) {
       logger.warn(`Sync failed: ${error.message}`, { component: 'Projects', projectId }, error);
@@ -328,40 +333,10 @@ export function createProjectsRoutes(deps: {
     }
   });
 
-  // Switch to feature branch
-  router.post('/projects/:id/features/:featureName/checkout', async (req: Request, res: Response) => {
-    const { id: projectId, featureName } = req.params;
-    try {
-      const userContext = extractUserContext(req);
-      
-      logger.info(`Switching to feature branch`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName });
-      
-      const result = await deps.projectService.switchToFeatureBranch(projectId, featureName, userContext);
-      res.json({ 
-        success: true, 
-        message: 'Branch switched successfully', 
-        branchName: result.branchName,
-        currentBranch: result.currentBranch
-      });
-    } catch (error: any) {
-      // ✅ Graceful handling: if Git is not initialized, skip branch switch silently
-      // This supports the "work first, git later" workflow where features exist without Git.
-      if (error.message?.includes('not initialized') || error.message?.includes('Repository not initialized')) {
-        logger.info(`Git not initialized, skipping branch switch for ${featureName}`, { component: 'Projects', projectId, featureName });
-        res.json({ 
-          success: true, 
-          message: 'Feature selected (Git not initialized, branch switch skipped)', 
-          branchName: featureName,
-          currentBranch: null
-        });
-        return;
-      }
-      
-      logger.warn(`Branch switch failed: ${error.message}`, { component: 'Projects', projectId, featureName }, error);
-      
-      res.status(400).json({ success: false, error: error.message });
-    }
-  });
+  // Note: POST /projects/:id/features/:featureName/checkout has been removed.
+  // With Git worktrees, each feature has its own working directory with the correct
+  // branch already checked out. Branch switching is handled at worktree creation time
+  // by WorktreeService.createWorktree().
   
   return router;
 }

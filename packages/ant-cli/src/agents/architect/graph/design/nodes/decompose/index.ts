@@ -14,7 +14,6 @@ import {
   createDefaultTask,
   createExplainTask,
   updateKanban,
-  saveCheckpoint,
   enterDecomposeNode,
   exitDecomposeNode,
 } from "./helpers";
@@ -154,38 +153,6 @@ async function handleDefaultTask(
 }
 
 // ============================================
-// Fallback Task (on LLM failure)
-// ============================================
-
-async function handleFallbackTask(
-  state: DesignGraphState,
-  timing: TimingContext
-): Promise<DesignGraphState> {
-  const defaultTask = createDefaultTask();
-  const taskQueue = new TaskQueue<DesignTask>();
-  taskQueue.push(defaultTask);
-
-  await saveCheckpoint(state, {
-    taskQueue: taskQueue.getAll(),
-    completedTasks: [],
-    completedTasksDetails: [],
-    jobId: timing.newJobId,
-    jobTiming: timing.newJobTiming,
-  });
-
-  updateKanban(state, null, taskQueue.getAll());
-
-  return {
-    ...state,
-    taskQueue,
-    completedTasks: [],
-    _httpJobId: state._httpJobId,
-    jobId: timing.newJobId,
-    jobTiming: timing.newJobTiming,
-  } as any;
-}
-
-// ============================================
 // Main Entry Point
 // ============================================
 
@@ -242,17 +209,14 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // System Design: LLM-driven decomposition
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    try {
-      return await decomposeSystemDesign(state, {
-        phaseStart,
-        newJobId: timing.newJobId,
-        newJobTiming: timing.newJobTiming,
-        estimatingStartTime: timing.estimatingStartTime,
-      });
-    } catch (error) {
-      console.error('❌ Decomposition failed, falling back to default task');
-      return handleFallbackTask(state, timing);
-    }
+    // decomposeSystemDesign handles retry + minimum-task fallback internally.
+    // If it still throws, it's unrecoverable — let the error propagate.
+    return await decomposeSystemDesign(state, {
+      phaseStart,
+      newJobId: timing.newJobId,
+      newJobTiming: timing.newJobTiming,
+      estimatingStartTime: timing.estimatingStartTime,
+    });
   } finally {
     await exitDecomposeNode(state);
   }

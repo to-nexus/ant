@@ -19,7 +19,7 @@ export interface ServerKeyParts {
   tenantId: string;
   userId: string;
   projectId: string;
-  feature?: string;  // Optional for IDE (project-level only)
+  feature?: string;  // Feature name (used by both IDE and dev server)
   serverKey: string;  // Full key for reference
 }
 

@@ -218,15 +218,59 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     ? ArtifactService.getUiSectionsSummary(state.parsedUiDocs) 
     : undefined;
   
+  // ✅ Build design document availability metadata for profile detection
+  let designDocsMeta = '';
+  if (state.designDocs) {
+    const docs = state.designDocs;
+    const lines: string[] = [];
+    
+    // Frontend: monolith (single)
+    if (docs.feDesign) {
+      lines.push(`- fe-system-design: present`);
+    }
+    // Frontend: monorepo (multi-package)
+    if (docs.feDesigns) {
+      for (const pkg of Object.keys(docs.feDesigns)) {
+        lines.push(`- fe-system-design-${pkg}: present`);
+      }
+    }
+    // Frontend: absent
+    if (!docs.feDesign && (!docs.feDesigns || Object.keys(docs.feDesigns).length === 0)) {
+      lines.push(`- fe-system-design: absent`);
+    }
+    
+    // Backend: monolith (single)
+    if (docs.beDesign) {
+      lines.push(`- be-system-design: present`);
+    }
+    // Backend: MSA (multi-service)
+    if (docs.beDesigns) {
+      for (const svc of Object.keys(docs.beDesigns)) {
+        lines.push(`- be-system-design-${svc}: present`);
+      }
+    }
+    // Backend: absent
+    if (!docs.beDesign && (!docs.beDesigns || Object.keys(docs.beDesigns).length === 0)) {
+      lines.push(`- be-system-design: absent`);
+    }
+    
+    // Tier-neutral documents
+    lines.push(`- api-contract: ${docs.apiContract ? 'present' : 'absent'}`);
+    lines.push(`- system-design (unified): ${docs.unifiedDesign ? 'present' : 'absent'}`);
+    
+    designDocsMeta = lines.join('\n');
+  }
+  
   const decomposeVars = {
     directive: state.directive || '',
     designDoc,
     hasDesignDoc,
     mode: state.detectionReport?.jobMode || 'unknown',
     profile: state.profile,
-    codebaseFilePaths,  // ✅ File paths from keyword search (for task planning)
-    hasProjectCode,     // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
-    uiSectionsSummary,  // ✅ UI sections summary with token estimates (for split injection)
+    designDocsMeta,              // ✅ Design document availability for profile detection
+    codebaseFilePaths,           // ✅ File paths from keyword search (for task planning)
+    hasProjectCode,              // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
+    uiSectionsSummary,           // ✅ UI sections summary with token estimates (for split injection)
     runtimeAssetsIndex: state.runtimeAssetsIndex
   };
   
@@ -246,6 +290,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           templatePath: 'code/phases/decompose/base',
           usedTemplates: [
             'code/phases/decompose/rules',
+            'code/phases/decompose/profile-rules',
             'code/phases/decompose/mode-guide',
             'code/phases/decompose/error-or-general',
             'code/phases/decompose/existing-code-check',
@@ -254,6 +299,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           injectedVariables: {
             directive: decomposeVars.directive ? `[${decomposeVars.directive.length} chars]` : undefined,
             designDoc: designDoc ? `[${designDoc.length} chars]` : undefined,
+            designDocsMeta: designDocsMeta ? 'SET' : undefined,
             hasDesignDoc,
             mode: decomposeVars.mode,
             hasProjectCode,
@@ -302,7 +348,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw error;
   }
   
-  const { tasks, referenceRequests } = parsed;
+  const { tasks, referenceRequests, profile: parsedProfile } = parsed;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
@@ -313,7 +359,94 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   logTaskSummary(tasks, referenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 6.5: Exit decompose node for workflow tracking
+  // STEP 6.5: Apply profile from decompose response
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (parsedProfile) {
+    // Update state.profile
+    state.profile = {
+      language: parsedProfile.language,
+      framework: parsedProfile.framework || undefined,
+    };
+    
+    // Update detectionReport with environment + profile (decompose is the authoritative source)
+    if (state.detectionReport) {
+      state.detectionReport = {
+        ...state.detectionReport,
+        environment: parsedProfile.environment as any,
+        environmentReasoning: parsedProfile.environmentReasoning,
+        profile: {
+          language: parsedProfile.language,
+          framework: parsedProfile.framework || undefined,
+        },
+      };
+    }
+    
+    console.log(`✅ Profile: ${parsedProfile.language}${parsedProfile.framework ? ` + ${parsedProfile.framework}` : ''}`);
+    console.log(`✅ Environment: ${parsedProfile.environment}`);
+    console.log(`   Reasoning: ${parsedProfile.environmentReasoning}`);
+    
+    // ✅ Display profile in Chat UI (environment + language/framework only; jobMode already shown by detectEnv)
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const { formatProfileForChat } = await import('../../../../../../core/types/detection');
+    const chatAPI = getChatAPIClient();
+    
+    if (state.detectionReport) {
+      const formattedProfile = formatProfileForChat(state.detectionReport, 'ko');
+      if (formattedProfile) {
+        await chatAPI.sendLLMEvent({
+          type: 'text',
+          text: formattedProfile
+        });
+        await chatAPI.finalizeMessage();
+      }
+    }
+    
+    // ✅ Broadcast structureType to frontend via SSE (for Preview Config canStart)
+    if (state.deps?.previewUpdate && state.context) {
+      const envToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
+        frontend: 'frontend-only',
+        backend: 'backend-only',
+        fullstack: 'fullstack',
+      };
+      const structureType = envToStructure[parsedProfile.environment];
+      if (structureType) {
+        state.deps.previewUpdate.broadcastStructureType(
+          state.context.project,
+          state.context.featureFolder || 'main',
+          structureType,
+          (state as any).userContext
+        );
+        console.log(`📡 [Decompose] Broadcast structureType=${structureType} via SSE`);
+      }
+    }
+    
+    // ✅ Save updated detectionReport to session
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        const session = await state.deps.session.load(
+          state.context.project,
+          state.context.featureFolder,
+          'code'
+        );
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'code',
+          {
+            state: {
+              ...session.state,
+              detectionReport: state.detectionReport,
+            }
+          }
+        );
+      } catch (err) {
+        // Non-critical
+      }
+    }
+  }
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6.6: Exit decompose node for workflow tracking
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose', 0);

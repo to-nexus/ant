@@ -42,8 +42,8 @@ export class CloneOperation {
       throw new Error('GitHub repository not configured in project config');
     }
 
-    // Determine codebase path based on repoType
-    const codebasePath = this.resolveCodebasePath(projectPath, config);
+    // Determine codebase path (main worktree for clone operations)
+    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
 
     // Validate workspace is clean
     this.validateCleanWorkspace(projectPath, codebasePath);
@@ -111,22 +111,6 @@ export class CloneOperation {
     const gitInstance = GitHelper.getGitInstanceSafe(codebasePath);
     if (gitInstance) {
       await GitHelper.ensureUserConfig(gitInstance, userContext);
-    }
-  }
-
-  private resolveCodebasePath(projectPath: string, config: any): string {
-    if (config.repoType === 'local') {
-      if (!config.localPath) {
-        throw new Error('Local path not configured');
-      }
-      // Resolve localPath (supports ~/, absolute, relative)
-      return config.localPath.startsWith('~')
-        ? config.localPath.replace('~', process.env.HOME || '')
-        : path.isAbsolute(config.localPath)
-        ? config.localPath
-        : path.resolve(process.cwd(), config.localPath);
-    } else {
-      return path.join(projectPath, 'codebase');
     }
   }
 

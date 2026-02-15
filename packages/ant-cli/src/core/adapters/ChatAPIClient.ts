@@ -73,8 +73,8 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
     console.log(`🔍 [ChatAPIClient] Creating RedisStateStore with url...`);
     const stateStore = new RedisStateStore({ url: redisUrl });
     
-    const workspacePath = process.env.ANT_FEATURE_PATH || process.env.ANT_WORKSPACE_PATH;
-    console.log(`🔍 [ChatAPIClient] workspacePath=${workspacePath}`);
+    const featurePath = process.env.ANT_FEATURE_PATH;
+    console.log(`🔍 [ChatAPIClient] featurePath=${featurePath}`);
     
     console.log(`🔍 [ChatAPIClient] Creating LLMResponseService...`);
     llmResponseService = createLLMResponseServiceWithEnv(stateStore, {
@@ -84,8 +84,7 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
       userEmail: process.env.ANT_USER_EMAIL,
       userId: process.env.ANT_USER_ID,
       organizationId: process.env.ANT_ORG_ID,
-      // Use ANT_FEATURE_PATH for chat.json (feature-level), fallback to ANT_WORKSPACE_PATH (base)
-      workspacePath
+      featurePath
     });
     
     console.log(`✅ [ChatAPIClient] LLMResponseService created successfully`);

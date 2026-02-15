@@ -47,9 +47,8 @@ export class GitWatcherService {
       return;
     }
     
-    // Get codebase path (codebase lives at project level, not feature level)
-    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-    const codebasePath = path.join(projectPath, 'codebase');
+    // Get codebase path (feature-aware: worktree path for features, main for base)
+    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
     const gitIndexPath = path.join(codebasePath, '.git', 'index');
     
     // Check if Git repo exists

@@ -109,7 +109,7 @@ Or use a different approach that doesn't require initialization.`;
   // - codebase/... for code
   // - features/<feature>/inputs/assets/... for assets
   const p = await import('path');
-  const projectPath = fileSystem.getWorkspaceRoot();  // Project root (e.g., ant-ogf/)
+  const projectPath = fileSystem.getRootPath();  // Feature root (scope root for file operations)
   
   const workingDir = working_directory 
     ? (p.isAbsolute(working_directory) ? working_directory : p.join(projectPath, working_directory))

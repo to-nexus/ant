@@ -121,7 +121,6 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const userContext = {
     userId: context.userId || 'local',
     organizationId: context.organizationId || 'local',
-    workspacePath: ''
   };
   
   // ✅ Get fileSystem from state
@@ -175,7 +174,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   if (jobMode === 'generate' && !prd) {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
     const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
-    const root = (fileSystem as any).getWorkspaceRoot?.() || '';
+    const root = fileSystem.getRootPath?.() || '';
     const sourceDir = root ? path.relative(root, sourceDirAbs) : sourceDirAbs;
     const prdPath = path.join(sourceDir, 'prd.md');
     if (await fileSystem.fileExists(prdPath)) {

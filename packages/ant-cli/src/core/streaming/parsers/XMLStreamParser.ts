@@ -22,6 +22,7 @@ interface ParserContext {
   tasksContent: string;  // ✅ NEW: Accumulate tasks content
   insideReferences: boolean;  // ✅ NEW: <references> tag
   referencesContent: string;  // ✅ NEW: Accumulate references content
+  insideProfile: boolean;  // ✅ NEW: <profile> tag (decompose node — suppress from chat)
   insideClarify: boolean;  // ✅ NEW: <clarify> tag (planner mode — suppress from chat)
   clarifyContent: string;  // ✅ NEW: Accumulate clarify content (discarded)
   clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
@@ -41,6 +42,7 @@ export class XMLStreamParser implements IStreamParser {
     tasksContent: '',  // ✅ NEW
     insideReferences: false,  // ✅ NEW
     referencesContent: '',  // ✅ NEW
+    insideProfile: false,  // ✅ NEW
     insideClarify: false,  // ✅ NEW
     clarifyContent: '',  // ✅ NEW
     clarifyStartEmitted: false,  // ✅ NEW
@@ -327,6 +329,46 @@ export class XMLStreamParser implements IStreamParser {
       if (this.context.insideReferences && this.buffer.length > 0) {
         this.context.referencesContent += this.buffer;
         this.buffer = '';
+        continue;
+      }
+      
+      // 16aa. Check for <profile> opening (suppress from chat — parsed post-stream by responseParser)
+      if (!this.context.insideProfile && this.buffer.includes('<profile>')) {
+        const startIdx = this.buffer.indexOf('<profile>');
+        
+        // Emit any text before <profile> as response
+        const beforeTag = this.buffer.substring(0, startIdx);
+        if (beforeTag.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: beforeTag }
+          });
+        }
+        
+        this.buffer = this.buffer.substring(startIdx + '<profile>'.length);
+        this.context.insideProfile = true;
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 16ab. Check for </profile> closing (discard content)
+      if (this.context.insideProfile && this.buffer.includes('</profile>')) {
+        const endIdx = this.buffer.indexOf('</profile>');
+        
+        this.buffer = this.buffer.substring(endIdx + '</profile>'.length);
+        this.context.insideProfile = false;
+        
+        // ✅ DISCARD: <profile> content suppressed from chat UI.
+        // decompose/index.ts displays formatted profile via formatDetectionReportForChat().
+        
+        continueParsingLoop = true;
+        continue;
+      }
+      
+      // 16ac. Accumulate content inside <profile> (suppress)
+      if (this.context.insideProfile && this.buffer.length > 0) {
+        this.buffer = '';  // Suppress
         continue;
       }
       
@@ -700,6 +742,7 @@ export class XMLStreamParser implements IStreamParser {
       // 21. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
+          !this.context.insideProfile &&  // ✅ NEW: suppress <profile> from chat
           !this.context.insideLearnCommand &&  // ✅ NEW
           !this.context.insideClarify &&  // ✅ NEW: suppress <clarify> from chat
           !this.context.insideFunctionCalls &&  // ✅ SAFETY: suppress <function_calls> from chat
@@ -711,7 +754,7 @@ export class XMLStreamParser implements IStreamParser {
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
           // Note: detect/references tags are NOT parsed - they flow through as normal response for SpecialTagTransformer
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|file|delete|append|learn_command|clarify|function_calls|done)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|profile|file|delete|append|learn_command|clarify|function_calls|done)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
@@ -820,6 +863,10 @@ export class XMLStreamParser implements IStreamParser {
           }
         });
       }
+      // If inside profile, discard (responseParser handles it post-stream)
+      else if (this.context.insideProfile) {
+        // ✅ DISCARD: profile content suppressed from UI
+      }
       // If inside clarify, discard (post-hoc parsing handles it)
       else if (this.context.insideClarify) {
         // ✅ DISCARD: clarify content suppressed from UI
@@ -856,6 +903,7 @@ export class XMLStreamParser implements IStreamParser {
       tasksContent: '',  // ✅ NEW
       insideReferences: false,  // ✅ NEW
       referencesContent: '',  // ✅ NEW
+      insideProfile: false,  // ✅ NEW
       insideClarify: false,  // ✅ NEW
       clarifyContent: '',  // ✅ NEW
       clarifyStartEmitted: false,  // ✅ NEW

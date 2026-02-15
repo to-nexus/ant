@@ -283,7 +283,6 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
           const recipientUserContext = {
             userId: result.recipient.userId,
             organizationId: result.recipient.orgId,
-            workspacePath: '',
           };
           const destFeaturePath = workspaceResolver.getFeaturePath(
             recipientUserContext, result.destination.projectId, result.destination.featureId

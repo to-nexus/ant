@@ -3,25 +3,27 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { getSessionFilePathByJob, getInitSessionDirs } from '../../../../../core/utils/sessionPaths';
+import { WorktreeService } from '../GitService/worktree';
 
 /**
  * FeatureCrudService
  * 
- * Handles feature CRUD operations and session management
+ * Handles feature CRUD operations and session management.
+ * Uses WorktreeService for Git worktree-based feature isolation.
  */
 export class FeatureCrudService {
   private readonly workspaceResolver: WorkspaceResolver;
-  private switchToFeatureBranchFn?: (projectId: string, featureName: string, userContext: UserContext) => Promise<{ branchName: string; currentBranch: string }>;
+  private worktreeService?: WorktreeService;
   
   constructor(workspaceResolver: WorkspaceResolver) {
     this.workspaceResolver = workspaceResolver;
   }
   
   /**
-   * Set the switchToFeatureBranch function (injected from GitBranchService)
+   * Set the WorktreeService (injected after construction to avoid circular deps)
    */
-  setSwitchToFeatureBranchFn(fn: (projectId: string, featureName: string, userContext: UserContext) => Promise<{ branchName: string; currentBranch: string }>) {
-    this.switchToFeatureBranchFn = fn;
+  setWorktreeService(service: WorktreeService) {
+    this.worktreeService = service;
   }
   
   /**
@@ -172,16 +174,16 @@ export class FeatureCrudService {
     await fs.promises.mkdir(path.join(featurePath, 'inputs/references'), { recursive: true });
     // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/icons/*)
 
-    // ✅ Create Git branch for feature (if Git is initialized and function is injected)
-    if (this.switchToFeatureBranchFn) {
+    // ✅ Create Git worktree for feature (if WorktreeService is available)
+    if (this.worktreeService) {
       try {
-        await this.switchToFeatureBranchFn(projectId, featureName, userContext);
+        await this.worktreeService.createWorktree(projectId, featureName, userContext);
       } catch (error: any) {
         // If Git not initialized, silently skip (not an error for feature creation)
         if (error.message?.includes('not initialized')) {
           // Silently skip
         } else {
-          console.error(`[FeatureCrudService] Failed to create branch for ${featureName}:`, error);
+          console.error(`[FeatureCrudService] Failed to create worktree for ${featureName}:`, error);
           // Don't throw - feature directories are created successfully
         }
       }
@@ -189,7 +191,7 @@ export class FeatureCrudService {
   }
   
   /**
-   * Delete a feature
+   * Delete a feature (removes worktree, branch, and feature directory)
    */
   async deleteFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
@@ -200,6 +202,16 @@ export class FeatureCrudService {
       throw new Error('Feature not found');
     }
     
+    // Remove Git worktree and branch first
+    if (this.worktreeService) {
+      try {
+        await this.worktreeService.removeWorktree(projectId, featureName, userContext);
+      } catch (error: any) {
+        console.warn(`[FeatureCrudService] Worktree removal failed (non-critical): ${error.message}`);
+      }
+    }
+    
+    // Remove the entire feature directory
     await fs.promises.rm(featurePath, { recursive: true, force: true });
   }
 }

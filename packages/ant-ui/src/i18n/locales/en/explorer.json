@@ -62,6 +62,7 @@
     "switching": "Switching...",
     "initializing": "Initializing...",
     "cloning": "Cloning...",
+    "publishing": "Publishing...",
     "checking": "Checking...",
     "updatingStatus": "Updating Git status...",
     "commitFiles": "Commit ({{count}}) {{files}}",

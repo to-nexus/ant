@@ -301,6 +301,7 @@ export class JobWorker {
       const workspaceResolver = new UnifiedWorkspaceResolver(workspaceBase);
       const projectPath = workspaceResolver.getProjectPath(payload.userContext, payload.projectId);
       const featurePath = workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
+      const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
       
       // CLI source/dist root for internal resource paths (templates, policies, etc.)
       // __dirname is dist/infrastructure/worker/ in production
@@ -322,7 +323,7 @@ export class JobWorker {
         // Project paths (user workspaces)
         ANT_PROJECT_PATH: projectPath,
         ANT_FEATURE_PATH: featurePath,
-        ANT_WORKSPACE_PATH: workspaceBase,
+        ANT_CODEBASE_PATH: codebasePath,
         // CLI internal paths (for templates, policies, etc.)
         ANT_CLI_ROOT: cliRoot,
         // ✅ API Server connection for real-time updates (Kanban, FileTree, Workflow)

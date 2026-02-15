@@ -4,30 +4,32 @@
  * Centralized key generation and parsing for all Redis operations.
  * 
  * Key Formats:
- * - IDE:     org:user:project     (3 parts) - project-level, branch switching via git
+ * - IDE:     org:user:project:feature (4 parts) - feature-level (worktree-based isolation)
  * - Preview: org:user:project:feature (4 parts) - feature-level
  */
 
 // ============================================
-// IDE Keys (3 parts: org:user:project)
+// IDE Keys (4 parts: org:user:project:feature)
 // ============================================
 
 export interface IDEKeyComponents {
   tenantId: string;  // org
   userId: string;
   projectId: string;
+  feature: string;
 }
 
 /**
- * Create IDE port key (3 parts)
- * Used for Redis key: ant:ide:{org}:{user}:{project}
+ * Create IDE port key (4 parts)
+ * Used for Redis key: ant:ide:{org}:{user}:{project}:{feature}
  * 
  * @throws Error if any parameter is empty
  */
 export function createIDEKey(
   tenantId: string,
   userId: string,
-  projectId: string
+  projectId: string,
+  feature: string = 'main'
 ): string {
   // Validate all parts are non-empty
   if (!tenantId || !userId || !projectId) {
@@ -35,28 +37,29 @@ export function createIDEKey(
     console.error(`[createIDEKey] ERROR: ${error}`);
     throw new Error(error);
   }
-  return `${tenantId}:${userId}:${projectId}`;
+  return `${tenantId}:${userId}:${projectId}:${feature || 'main'}`;
 }
 
 /**
  * Parse IDE key into components
- * @param key - Format: org:user:project (3 parts)
+ * @param key - Format: org:user:project:feature (4 parts)
  * @returns Components or null if invalid format
  */
 export function parseIDEKey(key: string): IDEKeyComponents | null {
   const parts = key.split(':');
   
-  if (parts.length !== 3) {
+  if (parts.length < 4) {
     return null;
   }
   
-  const [tenantId, userId, projectId] = parts;
+  const [tenantId, userId, projectId, ...featureParts] = parts;
+  const feature = featureParts.join(':') || 'main';
   
   if (!tenantId || !userId || !projectId) {
     return null;
   }
   
-  return { tenantId, userId, projectId };
+  return { tenantId, userId, projectId, feature };
 }
 
 // ============================================

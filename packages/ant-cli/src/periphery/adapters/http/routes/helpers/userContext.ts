@@ -113,7 +113,6 @@ export function extractUserContext(req: Request): UserContext {
     return {
       userId,
       organizationId: domain,
-      workspacePath: ''
     };
   }
   
@@ -126,7 +125,6 @@ export function extractUserContext(req: Request): UserContext {
       return {
         userId,
         organizationId: domain,
-        workspacePath: ''
       };
     }
   }
@@ -136,7 +134,6 @@ export function extractUserContext(req: Request): UserContext {
     return {
       userId: req.user.id,
       organizationId: req.organization.id,
-      workspacePath: '' // Not used by WorkspaceResolver
     };
   }
   
@@ -151,7 +148,6 @@ export function extractUserContext(req: Request): UserContext {
   return {
     userId: inferred?.userId || 'local',
     organizationId: inferred?.organizationId || 'local',
-    workspacePath: ''
   };
 }
 

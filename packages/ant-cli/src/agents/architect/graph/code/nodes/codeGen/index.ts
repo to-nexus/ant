@@ -67,7 +67,7 @@ export async function codeGen(
   if (state.currentTask?.ui === true) {
     const path = await import('path');
 
-    const fileSystemRoot = (state.deps?.fileSystem as any)?.getWorkspaceRoot?.();
+    const fileSystemRoot = state.deps?.fileSystem?.getRootPath?.();
     const featurePathAbs = state.context.featurePath;
     const featurePathRel = (() => {
       if (!featurePathAbs) return undefined;
@@ -210,7 +210,7 @@ export async function codeGen(
   // ✅ Compute codebaseRel for consistent normalization
   const codebaseRel = (() => {
     if (!repoRootForWrites || !state.deps?.fileSystem) return 'codebase';
-    const wsRoot = (state.deps.fileSystem as any).getWorkspaceRoot?.();
+    const wsRoot = state.deps.fileSystem.getRootPath?.();
     if (!wsRoot) return 'codebase';
     return path.relative(wsRoot, repoRootForWrites).replace(/\\/g, '/') || 'codebase';
   })();

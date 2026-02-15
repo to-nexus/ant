@@ -181,7 +181,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         const fs = await import('fs');
         const path = await import('path');
 
-        const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot();
+        const rootPath = state.deps.fileSystem.getRootPath();
 
         const maxImages = parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10);
         const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10); // 2MB
@@ -213,8 +213,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           if (uiImageBlocks.filter(b => (b as any).type === 'image').length >= maxImages) break;
 
           // Resolve to absolute path safely within workspace root
-          const abs = path.resolve(workspaceRoot, rel);
-          if (!abs.startsWith(workspaceRoot)) continue;
+          const abs = path.resolve(rootPath, rel);
+          if (!abs.startsWith(rootPath)) continue;
           if (!fs.existsSync(abs)) continue;
 
           const stat = fs.statSync(abs);

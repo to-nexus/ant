@@ -60,8 +60,6 @@ export const CHILD_PROCESS_ENV = {
   PROJECT_PATH: 'ANT_PROJECT_PATH',
   /** Resolved feature path (full filesystem path) */
   FEATURE_PATH: 'ANT_FEATURE_PATH',
-  /** Base workspace path */
-  WORKSPACE_PATH: 'ANT_WORKSPACE_PATH',
 
   // --- Infrastructure (required) ---
   /** Redis URL for direct state access */

@@ -819,9 +819,9 @@ export function buildCodeGraph() {
       
       if (hasDetectionReport) {
         // Interrupted after detectEnvironment but before decompose
-        // Route through detectEnvironment again (LLM skip, filter/combine design docs only)
+        // Route through detectEnvironment again (LLM skip, pass-through only)
         // Then detectEnvironment → decompose → plan via hardcoded edges
-        console.log(`[RouteAfterResolve] Resume after detectEnv → detectEnvironment (LLM skip, filter only)`);
+        console.log(`[RouteAfterResolve] Resume after detectEnv → detectEnvironment (LLM skip, pass-through)`);
         return 'detectEnvironment';
       }
       

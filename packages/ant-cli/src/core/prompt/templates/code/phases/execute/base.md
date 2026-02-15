@@ -2,9 +2,9 @@
 
 You are implementing a specific task. Follow the instructions for your task type.
 
-## 📁 PATH CONVENTION (PROJECT ROOT)
+## 📁 PATH CONVENTION (feature root)
 
-**All paths are relative to PROJECT ROOT.**
+**All paths are relative to the feature root.**
 - Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
 - Assets source: `features/<feature>/inputs/assets/...`
 - Assets destination: `codebase/public/...`

@@ -44,7 +44,7 @@ import { LLMResponseService } from './LLMResponseService';
  * - ANT_USER_EMAIL (optional)
  * - ANT_USER_ID (optional)
  * - ANT_ORG_ID (optional)
- * - ANT_WORKSPACE_PATH (optional)
+ * - ANT_FEATURE_PATH (optional)
  */
 export function createLLMResponseService(stateStore: StateStorePort): LLMResponseService {
   const env: LLMResponseEnv = {
@@ -54,7 +54,7 @@ export function createLLMResponseService(stateStore: StateStorePort): LLMRespons
     userEmail: process.env.ANT_USER_EMAIL,
     userId: process.env.ANT_USER_ID,
     organizationId: process.env.ANT_ORG_ID,
-    workspacePath: process.env.ANT_WORKSPACE_PATH
+    featurePath: process.env.ANT_FEATURE_PATH
   };
   
   return new LLMResponseService(stateStore, env);

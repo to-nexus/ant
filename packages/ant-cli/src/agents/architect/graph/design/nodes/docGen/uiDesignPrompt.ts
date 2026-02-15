@@ -364,9 +364,9 @@ async function loadPreviousUiDocs(
   }
   
   const path = await import('path');
-  const workspaceRoot = fileSystem.getWorkspaceRoot?.() || '';
-  const featureDirRel = workspaceRoot
-    ? path.relative(workspaceRoot, state.context.featurePath)
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const featureDirRel = rootPath
+    ? path.relative(rootPath, state.context.featurePath)
     : state.context.featurePath.replace(/^\//, '');
   
   const designOutputDir = path.join(featureDirRel, 'outputs/design');
@@ -469,9 +469,9 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   if (state.deps?.fileSystem && state.context.featurePath) {
     try {
       const path = await import('path');
-      const workspaceRoot = state.deps.fileSystem.getWorkspaceRoot?.() || '';
-      const featureDirRel = workspaceRoot
-        ? path.relative(workspaceRoot, state.context.featurePath)
+      const rootPath = state.deps.fileSystem.getRootPath?.() || '';
+      const featureDirRel = rootPath
+        ? path.relative(rootPath, state.context.featurePath)
         : state.context.featurePath.replace(/^\//, '');
       
       const filePath = path.join(featureDirRel, 'outputs/design', actualTargetFile);

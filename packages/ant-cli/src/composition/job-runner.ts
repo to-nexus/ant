@@ -15,7 +15,6 @@
  *   ANT_MODE             - Execution mode (generate, refactor, explain)
  *   ANT_USER_ID          - User ID
  *   ANT_ORG_ID           - Organization ID
- *   ANT_WORKSPACE_PATH   - Workspace path
  *   ANT_OVERRIDE_DIRECTIVE - Override directive (optional)
  *   ANT_INPUT_FILE       - Input file path (optional)
  *   ANT_IS_RESUME        - Whether this is a resume (optional)
@@ -47,7 +46,6 @@ interface JobParams {
   mode: 'generate' | 'refactor' | 'explain';
   userId: string;
   orgId: string;
-  workspacePath: string;
   projectPath: string;    // Full project path (already resolved)
   featurePath: string;    // Full feature path (already resolved)
   overrideDirective?: string;
@@ -76,7 +74,6 @@ function getJobParams(): JobParams {
     mode: (process.env.ANT_MODE || 'generate') as 'generate' | 'refactor' | 'explain',
     userId: process.env.ANT_USER_ID!,
     orgId: process.env.ANT_ORG_ID!,
-    workspacePath: process.env.ANT_WORKSPACE_PATH || process.cwd(),
     projectPath: process.env.ANT_PROJECT_PATH!,
     featurePath: process.env.ANT_FEATURE_PATH!,
     overrideDirective: process.env.ANT_OVERRIDE_DIRECTIVE,
@@ -109,12 +106,11 @@ async function runJob(params: JobParams): Promise<void> {
   const userContext = {
     userId: params.userId,
     organizationId: params.orgId,
-    workspacePath: params.workspacePath
   };
   
   try {
     // Create workspace resolver for cloud mode
-    const workspaceResolver = new UnifiedWorkspaceResolver(params.workspacePath);
+    const workspaceResolver = new UnifiedWorkspaceResolver(process.env.ANT_WORKSPACE_BASE_PATH || process.cwd());
     
     // Use pre-resolved paths from environment variables
     const { projectPath, featurePath } = params;

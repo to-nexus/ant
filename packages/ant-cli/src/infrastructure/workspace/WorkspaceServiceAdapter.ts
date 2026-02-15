@@ -5,8 +5,9 @@
  * This allows gradual migration from WorkspaceResolver to WorkspaceService
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspaceResolver } from './WorkspaceResolver';
+import { WorkspaceResolver, resolveLocalPath } from './WorkspaceResolver';
 import { WorkspaceServicePort } from '../../core/ports/workspace';
 import { UserContext } from '../../core/types/user';
 
@@ -31,6 +32,32 @@ export class WorkspaceServiceAdapter implements WorkspaceResolver {
 
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
     return path.join(this.getProjectPath(userContext, projectId), 'features', featureId);
+  }
+
+  getCodebasePath(userContext: UserContext, projectId: string, featureId?: string): string {
+    const projectPath = this.getProjectPath(userContext, projectId);
+    
+    // Check if project uses a local repo path (repoType === 'local')
+    const configPath = path.join(projectPath, 'config.json');
+    try {
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.repoType === 'local' && config.localPath) {
+          return resolveLocalPath(config.localPath);
+        }
+      }
+    } catch {
+      // Config read failed, fall through to default
+    }
+    
+    // For features, return the feature's worktree codebase path
+    if (featureId && featureId !== 'main') {
+      const featurePath = this.getFeaturePath(userContext, projectId, featureId);
+      return path.join(featurePath, 'codebase');
+    }
+    
+    // Default: main codebase in project root
+    return path.join(projectPath, 'codebase');
   }
 
   getPhysicalWorkspacesPath(): string {

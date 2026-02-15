@@ -101,7 +101,6 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
     const contextWithPath: UserContext = {
       userId: userContext?.userId || 'local',
       organizationId: userContext?.organizationId || 'local',
-      workspacePath: '' // Not used by WorkspaceResolver
     };
     
     const featurePath = this.workspaceResolver.getFeaturePath(

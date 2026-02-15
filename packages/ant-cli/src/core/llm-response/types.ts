@@ -16,7 +16,7 @@ export interface LLMResponseEnv {
   userEmail?: string;
   userId?: string;
   organizationId?: string;
-  workspacePath?: string;
+  featurePath?: string;
 }
 
 /**

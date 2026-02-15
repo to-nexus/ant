@@ -76,7 +76,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       const userContext = {
         userId: state.context.userId || 'local',
         organizationId: state.context.organizationId || 'local',
-        workspacePath: ''
       };
       state.context.featurePath = state.deps.workspaceResolver.getFeaturePath(
         userContext as any,
@@ -90,16 +89,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     const fileSystem = state.deps?.fileSystem;
     if (gitPort && fileSystem) {
       try {
-        // Load raw design documents from disk (no filtering — detectEnvironment handles that)
-        const env = state.detectionReport?.environment || 'unknown';
-        state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, env);
+        // Load all design documents from disk (no filtering — decompose handles profile)
+        state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, 'unknown');
 
         // Load single design doc as fallback for state.design
-        // detectEnvironment will overwrite this with the properly filtered/combined version
-        const preferredEnv = env === 'frontend' ? 'frontend' as const
-          : env === 'backend' ? 'backend' as const
-          : undefined;
-        const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem, preferredEnv);
+        const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem);
         if (designResult?.content) {
           state.design = designResult.content;
           state.designDocPath = designResult.filePath;
@@ -247,7 +241,6 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const userContext = {
     userId: context.userId || 'local',
     organizationId: context.organizationId || 'local',
-    workspacePath: ''
   };
   
   const workspacePath = workspaceResolver.getProjectPath(userContext, context.project);

@@ -16,6 +16,5 @@ export interface Organization {
 export interface UserContext {
   userId: string;
   organizationId: string;
-  workspacePath: string;
 }
 

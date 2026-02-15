@@ -2,7 +2,6 @@ import { WorkspaceResolver } from '../../../../../infrastructure/workspace/Works
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
-import { BranchService } from './branch';
 import { StatusService } from './status';
 import { RemoteService } from './remote';
 import { IndexService } from './indexing';
@@ -11,16 +10,18 @@ import { IndexService } from './indexing';
  * GitService (Facade)
  * 
  * Main facade for all Git-related operations.
- * Provides a unified interface for branch, status, remote, and indexing operations.
+ * Provides a unified interface for status, remote, and indexing operations.
  * 
  * 📦 Architecture:
- * - BranchService: Branch switching and stash management
  * - StatusService: Git status queries
  * - RemoteService: Remote operations (clone, init, push, pull, fetch, sync)
  * - IndexService: AI/LLM indexing operations
+ * 
+ * Note: Branch switching is no longer needed. Each feature uses its own
+ * Git worktree (managed by WorktreeService), so the correct branch is
+ * always checked out in the worktree directory.
  */
 export class GitService {
-  private readonly branch: BranchService;
   private readonly status: StatusService;
   private readonly remote: RemoteService;
   private readonly index: IndexService;
@@ -30,7 +31,6 @@ export class GitService {
     githubAuthService?: GitHubAuthService,
     chatService?: ChatService
   ) {
-    this.branch = new BranchService(workspaceResolver, githubAuthService);
     this.status = new StatusService(workspaceResolver);
     this.index = new IndexService(workspaceResolver, chatService);
     
@@ -48,31 +48,19 @@ export class GitService {
   }
 
   // =====================================
-  // Branch Operations
-  // =====================================
-
-  async switchToFeatureBranch(
-    projectId: string,
-    featureName: string,
-    userContext: UserContext
-  ): Promise<{ branchName: string; currentBranch: string }> {
-    return this.branch.switchToFeatureBranch(projectId, featureName, userContext);
-  }
-
-  // =====================================
   // Status Operations
   // =====================================
 
-  async getGitStatus(projectId: string, userContext: UserContext): Promise<{
+  async getGitStatus(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasGit: boolean;
     hasCodebase: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
   }> {
-    return this.status.getGitStatus(projectId, userContext);
+    return this.status.getGitStatus(projectId, userContext, featureName);
   }
 
-  async getGitChanges(projectId: string, userContext: UserContext): Promise<{
+  async getGitChanges(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasChanges: boolean;
     staged: string[];
     unstaged: string[];
@@ -82,7 +70,7 @@ export class GitService {
     currentBranch?: string;
     isGitInitialized?: boolean;
   }> {
-    return this.status.getGitChanges(projectId, userContext);
+    return this.status.getGitChanges(projectId, userContext, featureName);
   }
 
   async checkCloneStatus(projectId: string, userContext: UserContext): Promise<boolean> {
@@ -101,32 +89,33 @@ export class GitService {
     return this.remote.initializeGitHubRepo(projectId, userContext);
   }
 
-  async pushToGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.remote.pushToGitHub(projectId, userContext);
+  async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    return this.remote.pushToGitHub(projectId, userContext, featureName);
   }
 
-  async pullFromGitHub(projectId: string, userContext: UserContext): Promise<void> {
-    return this.remote.pullFromGitHub(projectId, userContext);
+  async pullFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+    return this.remote.pullFromGitHub(projectId, userContext, featureName);
   }
 
   async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     return this.remote.fetchFromGitHub(projectId, userContext, featureName);
   }
 
-  async syncWithRemote(projectId: string, userContext: UserContext): Promise<{
+  async syncWithRemote(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     success: boolean;
     pulledChanges?: boolean;
     pushedChanges?: boolean;
   }> {
-    return this.remote.syncWithRemote(projectId, userContext);
+    return this.remote.syncWithRemote(projectId, userContext, featureName);
   }
 
   async commitChanges(
     projectId: string,
     userContext: UserContext,
-    message?: string
+    message?: string,
+    featureName?: string
   ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.remote.commitChanges(projectId, userContext, message);
+    return this.remote.commitChanges(projectId, userContext, message, featureName);
   }
 
   async publishToGitHub(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {

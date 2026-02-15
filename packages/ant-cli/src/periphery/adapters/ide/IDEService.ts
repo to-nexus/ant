@@ -228,23 +228,21 @@ export class IDEService {
   }
   
   /**
-   * Start IDE for user/project
+   * Start IDE for user/project/feature
    * 
-   * Note: IDE is project-level (not feature-level). The feature parameter is
-   * kept for API compatibility but always uses 'main' internally.
+   * IDE is feature-level: each feature gets its own isolated IDE container
+   * with its own worktree-based codebase.
    */
-  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, _feature: string = 'main'): Promise<IDEInstance> {
-    // IDE is project-level - always use 'main' regardless of passed feature
-    const feature = 'main';
+  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, feature: string = 'main'): Promise<IDEInstance> {
     const tenantId = `${userContext.organizationId}:${userContext.userId}`;
     const key = `${tenantId}:${projectId}:${feature}`;
 
     const sanitize = (value: string) => value.replace(/[^a-zA-Z0-9_.-]/g, '-');
-    const containerName = sanitize(`ant-ide-${userContext.organizationId}-${userContext.userId}-${projectId}`);
+    const containerName = sanitize(`ant-ide-${userContext.organizationId}-${userContext.userId}-${projectId}-${feature}`);
     const hostname = this.getInitialHostname(userContext, projectId);
     
-    // Base path for reverse proxy: /ide/org:user:project
-    const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
+    // Base path for reverse proxy: /ide/org:user:project:feature (4-part key)
+    const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
     const serverBasePath = `/ide/${serverKey}`;
     
     // Check if already running
@@ -252,11 +250,12 @@ export class IDEService {
     if (existing && existing.status === 'running') {
       existing.lastAccessedAt = new Date();
       
-      // Update last access in registry (IDE is project-level)
+      // Update last access in registry (IDE is feature-level)
       await this.portRegistry.touchIDE(
         userContext.organizationId,
         userContext.userId,
-        projectId
+        projectId,
+        feature
       );
       
       logger.info(`IDE already running`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature });
@@ -303,16 +302,17 @@ export class IDEService {
     await fs.promises.mkdir(ideHomeHostPath, { recursive: true });
     
     try {
-      // Register in PortRegistry (IDE is project-level, no feature)
+      // Register in PortRegistry (IDE is feature-level)
       await this.portRegistry.registerIDE(
         userContext.organizationId,
         userContext.userId,
         projectId,
         port,
         'localhost',
-        containerName  // podId (container name for Docker)
+        containerName,  // podId (container name for Docker)
+        feature
       );
-      logger.debug(`IDE registered in PortRegistry`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }, { port });
+      logger.debug(`IDE registered in PortRegistry`, { component: 'IDEService', organizationId: userContext.organizationId, userId: userContext.userId, projectId, featureName: feature }, { port });
 
       // ✅ Defensive: if a previous container with the same name exists (server restart),
       // remove it to avoid "Conflict. The container name is already in use".
@@ -440,7 +440,7 @@ export class IDEService {
       const instance: IDEInstance = {
         containerId: container.id,
         port,
-        url: serverBasePath,  // 3-part: /ide/org:user:project (project-level)
+        url: serverBasePath,  // 4-part: /ide/org:user:project:feature (feature-level)
         workspacePath: dockerWorkspacePath,  // ✅ Docker 내부 경로 저장
         tenantId,
         projectId,
@@ -462,7 +462,8 @@ export class IDEService {
       await this.portRegistry.unregisterIDE(
         userContext.organizationId,
         userContext.userId,
-        projectId
+        projectId,
+        feature
       ).catch(console.error);
       throw error;
     }
@@ -516,7 +517,7 @@ export class IDEService {
     
     try {
       const [orgId, userId] = tenantId.split(':');
-      await this.portRegistry.unregisterIDE(orgId, userId, projectId);
+      await this.portRegistry.unregisterIDE(orgId, userId, projectId, feature);
     } catch (e) {
       logger.debug(`Failed to unregister IDE from PortRegistry: ${key}`, { component: 'IDEService' }, e);
     }
@@ -538,9 +539,9 @@ export class IDEService {
     // Update last accessed
     instance.lastAccessedAt = new Date();
     
-    // Update in registry (IDE is project-level)
+    // Update in registry (IDE is feature-level)
     const [orgId, userId] = tenantId.split(':');
-    await this.portRegistry.touchIDE(orgId, userId, projectId);
+    await this.portRegistry.touchIDE(orgId, userId, projectId, feature);
     
     return instance;
   }

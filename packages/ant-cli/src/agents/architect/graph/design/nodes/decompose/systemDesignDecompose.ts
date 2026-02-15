@@ -178,6 +178,47 @@ function normalizeContractFirst(response: SystemDesignResponse): SystemDesignRes
 }
 
 // ============================================
+// Validation & Recovery
+// ============================================
+
+/**
+ * Universal validation: every targetFile must have at least one task with that targetFile.
+ */
+function validateTaskCoverage(response: SystemDesignResponse): { valid: boolean; uncovered: string[] } {
+  const coveredFiles = new Set(response.tasks.map(t => t.targetFile));
+  const uncovered = response.targetFiles.filter(f => !coveredFiles.has(f));
+  return { valid: uncovered.length === 0, uncovered };
+}
+
+/**
+ * Determine expected targetFiles from environment alone (no LLM needed).
+ */
+function getTargetFilesForEnvironment(env: string | undefined): string[] | null {
+  if (env === 'frontend' || env === 'backend') return ['system-design.md'];
+  if (env === 'fullstack') return ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
+  return null; // unknown — cannot determine
+}
+
+/**
+ * Generate minimum viable tasks from targetFiles.
+ * Each targetFile gets exactly one task. api-contract is exclusive, others get parallelGroup.
+ */
+function generateMinimumTasks(targetFiles: string[]): SystemDesignResponse['tasks'] {
+  return targetFiles.map((file, idx) => {
+    const baseName = file.replace('.md', '');
+    const isApiContract = file === 'api-contract.md';
+    return {
+      id: `design-${baseName}`,
+      name: `Design Document: ${baseName}`,
+      targetFile: file,
+      priority: 200 + idx * 20,
+      description: `Generate ${file} design document based on requirements.`,
+      ...(isApiContract ? { exclusive: true } : { parallelGroup: baseName }),
+    };
+  });
+}
+
+// ============================================
 // Task Queue Population
 // ============================================
 
@@ -259,12 +300,19 @@ export async function decomposeSystemDesign(
     }
   );
 
-  try {
-    await showChatPlaceholder();
-    const llmToUse = await resolveLLMClient(state);
-    if (!llmToUse) throw new Error('LLM client not available');
+  await showChatPlaceholder();
+  const maybeLlm = await resolveLLMClient(state);
+  if (!maybeLlm) throw new Error('LLM client not available');
+  const llmToUse = maybeLlm;
 
-    // Call LLM
+  const detectedEnv = state.detectionReport?.environment;
+  const MAX_ATTEMPTS = 2;
+
+  /**
+   * Single attempt: LLM call → parse → normalize → validate
+   * Throws on any failure (parse error, validation error).
+   */
+  async function attemptDecompose(): Promise<SystemDesignResponse> {
     const result = await llmToUse.invokeWithUsage?.(
       [{ role: 'user', content: prompt }],
       { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DECOMPOSE_SYSTEM }
@@ -273,10 +321,10 @@ export async function decomposeSystemDesign(
 
     await trackTokenUsage(state, result?.usage);
 
-    // Parse response
+    // Parse
     const parsedResponse = parseLLMJsonResponse(textResponse);
     let response: SystemDesignResponse;
-    
+
     if (parsedResponse.documentType && parsedResponse.targetFiles && parsedResponse.tasks) {
       response = parsedResponse;
     } else if (parsedResponse.tasks) {
@@ -292,78 +340,121 @@ export async function decomposeSystemDesign(
       throw new Error('Invalid task breakdown format from LLM');
     }
 
-    // Normalize based on detected environment
-    response = normalizeResponseForEnvironment(response, state.detectionReport?.environment);
+    // Normalize
+    response = normalizeResponseForEnvironment(response, detectedEnv);
 
-    console.log(`✅ System decompose: ${response.documentType}, ${response.tasks.length} tasks → [${response.targetFiles.join(', ')}]`);
-
-    // Build task queue
-    const taskQueue = buildTaskQueue(response);
-
-    // Log decompose result
-    await safeLogPrompt(
-      state.context.featurePath,
-      ctx.newJobId,
-      'decompose-systemDesign-result',
-      JSON.stringify(response).length,
-      {
-        templatePath: 'design/phases/decompose/base-system-design',
-        injectedVariables: {
-          documentType: response.documentType,
-          services: response.services || [],
-          targetFiles: response.targetFiles,
-          taskCount: response.tasks.length,
-          tasks: response.tasks.map(t => ({ id: t.id, name: t.name, targetFile: t.targetFile, priority: t.priority }))
-        },
-      }
-    );
-
-    if (taskQueue.size() === 0) {
-      throw new Error('No tasks in queue after decompose');
+    // Validate: every targetFile must have at least one task
+    const { valid, uncovered } = validateTaskCoverage(response);
+    if (!valid) {
+      throw new Error(`Task coverage incomplete: no tasks for [${uncovered.join(', ')}]`);
     }
 
-    // Snapshot estimating phase token usage
-    const estimatingTokenUsage = (state as any).tokenUsage
-      ? { ...(state as any).tokenUsage }
-      : undefined;
-
-    // Reset task-level token usage (will be used by first task in plan node)
-    const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-    resetTaskTokenUsage(state as any);
-
-    // Finalize estimating phase
-    const phaseBreakdown = { ...(state._phaseTimings || {}), decompose: Date.now() - ctx.phaseStart };
-    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(ctx.newJobTiming, ctx.estimatingStartTime, phaseBreakdown);
-    if (state.deps?.kanbanUpdate?.setJobTiming) {
-      state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
-    }
-
-    // Save checkpoint (no currentTask yet — plan node will pop first task)
-    await saveCheckpoint(state, {
-      taskQueue: taskQueue.getAll(),
-      completedTasks: [],
-      completedTasksDetails: [],
-      jobId: ctx.newJobId,
-      jobTiming: finalJobTiming,
-      tokenUsage: (state as any).tokenUsage,
-      estimatingTokenUsage,
-    });
-
-    // Update Kanban (tasks in queue, no in-progress yet)
-    updateKanban(state, null, taskQueue.getAll());
-
-    return {
-      ...state,
-      taskQueue,
-      currentTask: undefined,
-      completedTasks: [],
-      _httpJobId: state._httpJobId,
-      jobId: ctx.newJobId,
-      jobTiming: finalJobTiming,
-      _estimatingTokenUsage: estimatingTokenUsage,
-    } as any;
-  } catch (error) {
-    console.error('❌ Task decomposition failed:', error);
-    throw error;
+    return response;
   }
+
+  // ━━━ Attempt loop: try up to MAX_ATTEMPTS, then fall back to minimum tasks ━━━
+  let response: SystemDesignResponse | null = null;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      response = await attemptDecompose();
+      break; // success
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < MAX_ATTEMPTS) {
+        console.warn(`⚠️  [SystemDecompose] Attempt ${attempt} failed: ${lastError.message}. Retrying...`);
+      }
+    }
+  }
+
+  // All attempts failed → generate minimum tasks from environment
+  if (!response) {
+    const targetFiles = getTargetFilesForEnvironment(detectedEnv);
+    if (!targetFiles) {
+      // Cannot determine targetFiles → unrecoverable error
+      throw new Error(
+        `System design decompose failed after ${MAX_ATTEMPTS} attempts and environment is unknown.\n` +
+        `Last error: ${lastError?.message}`
+      );
+    }
+
+    console.warn(
+      `⚠️  [SystemDecompose] All ${MAX_ATTEMPTS} attempts failed. ` +
+      `Generating minimum tasks for env="${detectedEnv}" → [${targetFiles.join(', ')}]`
+    );
+    response = {
+      documentType: detectedEnv === 'fullstack' ? 'contract-first' : 'unified',
+      targetFiles,
+      tasks: generateMinimumTasks(targetFiles),
+    };
+  }
+
+  console.log(`✅ System decompose: ${response.documentType}, ${response.tasks.length} tasks → [${response.targetFiles.join(', ')}]`);
+
+  // Build task queue
+  const taskQueue = buildTaskQueue(response);
+
+  // Log decompose result
+  await safeLogPrompt(
+    state.context.featurePath,
+    ctx.newJobId,
+    'decompose-systemDesign-result',
+    JSON.stringify(response).length,
+    {
+      templatePath: 'design/phases/decompose/base-system-design',
+      injectedVariables: {
+        documentType: response.documentType,
+        services: response.services || [],
+        targetFiles: response.targetFiles,
+        taskCount: response.tasks.length,
+        tasks: response.tasks.map(t => ({ id: t.id, name: t.name, targetFile: t.targetFile, priority: t.priority }))
+      },
+    }
+  );
+
+  if (taskQueue.size() === 0) {
+    throw new Error('No tasks in queue after decompose');
+  }
+
+  // Snapshot estimating phase token usage
+  const estimatingTokenUsage = (state as any).tokenUsage
+    ? { ...(state as any).tokenUsage }
+    : undefined;
+
+  // Reset task-level token usage (will be used by first task in plan node)
+  const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+  resetTaskTokenUsage(state as any);
+
+  // Finalize estimating phase
+  const phaseBreakdown = { ...(state._phaseTimings || {}), decompose: Date.now() - ctx.phaseStart };
+  const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(ctx.newJobTiming, ctx.estimatingStartTime, phaseBreakdown);
+  if (state.deps?.kanbanUpdate?.setJobTiming) {
+    state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
+  }
+
+  // Save checkpoint (no currentTask yet — plan node will pop first task)
+  await saveCheckpoint(state, {
+    taskQueue: taskQueue.getAll(),
+    completedTasks: [],
+    completedTasksDetails: [],
+    jobId: ctx.newJobId,
+    jobTiming: finalJobTiming,
+    tokenUsage: (state as any).tokenUsage,
+    estimatingTokenUsage,
+  });
+
+  // Update Kanban (tasks in queue, no in-progress yet)
+  updateKanban(state, null, taskQueue.getAll());
+
+  return {
+    ...state,
+    taskQueue,
+    currentTask: undefined,
+    completedTasks: [],
+    _httpJobId: state._httpJobId,
+    jobId: ctx.newJobId,
+    jobTiming: finalJobTiming,
+    _estimatingTokenUsage: estimatingTokenUsage,
+  } as any;
 }

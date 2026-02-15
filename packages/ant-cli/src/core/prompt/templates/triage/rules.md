@@ -33,13 +33,18 @@
 | Source code files (.ts, .tsx, .js, .py, etc.) | `code` |
 | Code implementation, bug fixes | `code` |
 | Codebase analysis, indexing | `learn` |
+| PRD (Product Requirements Document) creation or editing | `plan` |
 
 **Principle**: 
 - "Update UI spec" → `design` (target is design document)
 - "Update component code" → `code` (target is source code)
 - If user explicitly mentions "design" or "planning" → `design`
 
-⚠️ **Blind Spot — Plan vs Design boundary (plan job only)**: When the current job is `plan`, PRDs legitimately contain technology stack decisions, backend requirements, API overviews, and architecture context. Mentioning these topics inside a PRD request does NOT mean the user wants a system design document. Only redirect from `plan` to `design` when the user **explicitly requests creating a design specification artifact**. This constraint does NOT apply to other jobs (code, learn) — those should redirect to `design` normally when design/planning work is requested.
+⚠️ **Blind Spot — Design ↔ Plan mutual boundary (design or plan job)**: Design and Plan jobs share overlapping context (requirements, architecture, scope). When EITHER is the current job, do NOT redirect to the other — **neither job NOR agent** — UNLESS the user names the other job's artifact type explicitly:
+- Current=`plan`: only redirect to `design`/`architect` when user explicitly names a design artifact (UI spec, system design doc). PRD content about technology/architecture is NOT a signal.
+- Current=`design`: only redirect to `plan`/`planner` when user explicitly names a plan artifact (PRD, product requirements document). Design spec content about requirements/scope is NOT a signal.
+- **General/ambiguous commands** ("start planning", "begin", "let's go", "start work") without naming a specific artifact type → ALWAYS belong to the **current job and current agent**. Do NOT set `suggestedJob` or `suggestedAgent`.
+This constraint does NOT apply to `code` or `learn` jobs — those redirect normally.
 
 ### Step 2.5: Determine Agent Match (for work intent)
 
@@ -51,6 +56,8 @@
 | Request belongs to a DIFFERENT agent's scope | Set `redirect` with `suggestedAgent` + `suggestedJob` |
 
 **Constraint**: PRD creation/refinement belongs to `planner` agent. Design, code, and learn belong to `architect` agent. If the current agent cannot handle the request, MUST set `suggestedAgent`.
+
+**Exception**: When the Design ↔ Plan mutual boundary applies (current job is `design` or `plan` and user did NOT name the other job's artifact type), do NOT set `suggestedAgent` to cross the `architect`↔`planner` boundary. The request belongs to the current agent.
 
 ### Step 3: Determine Status
 
@@ -103,9 +110,9 @@ When user input appears to be:
 ⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → `ask`
 ⚠️ **Reference source ≠ Requested output**: When evaluation, assessment, or scoring is mentioned as a BASIS or REFERENCE for the request (not as the requested output itself), the intent is determined by the actual expected output — not by the referenced source. Only classify as `ask` when the PRIMARY expected output is a new quality score.
 ⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → `design` job. But if the output is a quality score → still `ask`
-⚠️ **Plan job exception**: When current job is `plan`, PRDs may include technology decisions, backend requirements, API overviews. These are normal PRD content, NOT design job territory. Do NOT redirect from plan to design unless the user explicitly asks to create a design specification document.
+⚠️ **Design ↔ Plan mutual boundary**: When current job is `plan` or `design`, do NOT redirect to the other unless the user names the other job's artifact type by name (PRD / product requirements document / design spec / UI spec / system design). General commands like "start planning", "begin work", "let's design" without naming a specific artifact type are NOT redirect signals — they belong to the current job.
 ⚠️ **Target determines job**: Modifying UI SPEC = design, Modifying SOURCE CODE = code, Producing PRD = plan
 ⚠️ **Job mismatch = REDIRECT**: If request belongs to different job than current → MUST `redirect`
-⚠️ **Agent mismatch = REDIRECT**: If request belongs to different agent (e.g., PRD writing to architect) → MUST `redirect` with `suggestedAgent`
+⚠️ **Agent mismatch = REDIRECT**: If request belongs to different agent (e.g., PRD writing to architect) → MUST `redirect` with `suggestedAgent`. **Exception**: Design ↔ Plan mutual boundary — do NOT cross `architect`↔`planner` boundary unless user names the other job's artifact type.
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags

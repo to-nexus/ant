@@ -16,12 +16,13 @@ export class PullOperation {
     private readonly githubAuthService?: GitHubAuthService
   ) {}
 
-  async execute(projectId: string, userContext: UserContext): Promise<void> {
+  async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     if (!this.githubAuthService) {
       throw new Error('GitHub integration not configured');
     }
 
-    const { config, codebasePath } = await this.loadProjectConfig(projectId, userContext);
+    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+    const config = await this.loadGitHubConfig(projectId, userContext);
 
     // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
     await GitHelper.ensureSafeDirectory(codebasePath);
@@ -63,7 +64,7 @@ export class PullOperation {
     console.log('[PullOperation] ✅ Pull completed');
   }
 
-  private async loadProjectConfig(projectId: string, userContext: UserContext) {
+  private async loadGitHubConfig(projectId: string, userContext: UserContext) {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
     const configPath = path.join(projectPath, 'config.json');
     
@@ -77,21 +78,7 @@ export class PullOperation {
       throw new Error('GitHub repository not configured in project config');
     }
 
-    let codebasePath: string;
-    if (config.repoType === 'local') {
-      if (!config.localPath) {
-        throw new Error('Local path not configured');
-      }
-      codebasePath = config.localPath.startsWith('~')
-        ? config.localPath.replace('~', process.env.HOME || '')
-        : path.isAbsolute(config.localPath)
-        ? config.localPath
-        : path.resolve(process.cwd(), config.localPath);
-    } else {
-      codebasePath = path.join(projectPath, 'codebase');
-    }
-
-    return { config, codebasePath, projectPath };
+    return config;
   }
 }
 

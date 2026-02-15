@@ -100,9 +100,12 @@ export interface FileSystemPort {
   moveDirectory(src: string, dest: string): Promise<void>;
   
   /**
-   * Get workspace root path (for debugging/logging only)
+   * Get the scope root path for this adapter (featurePath)
    * ⚠️ Do not use for file operations - always use relative paths
    */
+  getRootPath(): string;
+
+  /** @deprecated Use getRootPath() instead */
   getWorkspaceRoot(): string;
 }
 

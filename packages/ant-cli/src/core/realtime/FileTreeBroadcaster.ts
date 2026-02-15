@@ -38,6 +38,7 @@ const EXCLUDE_PATTERNS = [
   '__pycache__',
   '.env',
   '.env.local',
+  'codebase',  // Git worktree directory — browsed via IDE, not Explorer
 ];
 
 interface FileTreeNode {
