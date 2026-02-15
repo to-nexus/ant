@@ -42,7 +42,7 @@
     "actors": "Actors:"
   },
   "workflow": {
-    "title": "🔄 Agent Workflow",
+    "title": "Agent Workflow",
     "noSelection": "No Project or Feature Selected",
     "loading": "Loading workflow graph...",
     "trackNode": "Track current node",

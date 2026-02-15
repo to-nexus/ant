@@ -42,7 +42,7 @@
     "actors": "Actor:"
   },
   "workflow": {
-    "title": "🔄 에이전트 작업흐름",
+    "title": "에이전트 작업흐름",
     "noSelection": "프로젝트 또는 피처가 선택되지 않았습니다",
     "loading": "작업흐름 그래프 로딩 중...",
     "trackNode": "현재 노드 추적",
