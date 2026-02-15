@@ -31,19 +31,19 @@ export function BoardContainer({
     <div className={`flex flex-col h-full overflow-hidden ${className}`}>
       {/* Compact Sticky Header - pinned at top when scrolling */}
       <div className="sticky top-0 z-10 bg-white dark:bg-[#161b22] border-b border-gray-200 dark:border-[#30363d] shrink-0 px-4 py-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">
               {title}
             </h3>
             {titleActions && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 {titleActions}
               </div>
             )}
           </div>
           {headerActions && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               {headerActions}
             </div>
           )}

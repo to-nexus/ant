@@ -345,24 +345,23 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         );
       }
 
-      // ✅ Queue activeNodes snapshots
+      // ✅ Queue activeNodes snapshots (including empty → clears stale worker badges)
       const activeNodes: ActiveWorkerNode[] = data.activeNodes || [];
-      if (activeNodes.length > 0) {
-        const messageJobId = data.jobId || stableJobId;
-        const fingerprint = activeNodesFingerprint(activeNodes);
+      const messageJobId = data.jobId || stableJobId;
+      const fingerprint = activeNodesFingerprint(activeNodes);
+      
+      // Deduplicate: skip if same fingerprint as last queued
+      // Empty activeNodes produces fingerprint '' — queued when transitioning from non-empty
+      if (fingerprint !== lastFingerprintRef.current) {
+        lastFingerprintRef.current = fingerprint;
         
-        // Deduplicate: skip if same fingerprint as last queued
-        if (fingerprint !== lastFingerprintRef.current) {
-          lastFingerprintRef.current = fingerprint;
-          
-          globalSnapshotQueue.push({
-            activeNodes,
-            state: data,
-            jobId: messageJobId,
-            timestamp: Date.now()
-          });
-          notifyQueueChange();
-        }
+        globalSnapshotQueue.push({
+          activeNodes,
+          state: data,
+          jobId: messageJobId,
+          timestamp: Date.now()
+        });
+        notifyQueueChange();
       }
       
       setRawState(data);
@@ -440,7 +439,43 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         }
       }
       
-      // Display the snapshot
+      // Remove from queue (before display to avoid re-processing)
+      const removeIndex = globalSnapshotQueue.findIndex(s => 
+        s.jobId === nextItem.jobId && s.timestamp === nextItem.timestamp
+      );
+      if (removeIndex !== -1) {
+        globalSnapshotQueue.splice(removeIndex, 1);
+      }
+      notifyQueueChange();
+      
+      // ✅ Empty activeNodes = all workers exited → schedule cleanup instead of displaying
+      if (nextItem.activeNodes.length === 0) {
+        // Cancel any existing cleanup timer
+        if (globalCleanupTimer) {
+          clearTimeout(globalCleanupTimer);
+          globalCleanupTimer = null;
+        }
+        
+        // Wait for previous node's min display time, then clear
+        const elapsedSinceDisplay = globalDisplayStartTime ? Date.now() - globalDisplayStartTime : 0;
+        const lastNodeMinTime = globalDisplayedNodeId
+          ? (NODE_MIN_DISPLAY_TIME[globalDisplayedNodeId] || DEFAULT_MIN_DISPLAY_TIME)
+          : 0;
+        const remainingTime = Math.max(0, lastNodeMinTime - elapsedSinceDisplay);
+        
+        globalCleanupTimer = setTimeout(() => {
+          setDisplayedState(null);
+          globalDisplayedState = null;
+          globalDisplayedNodeId = null;
+          globalDisplayStartTime = 0;
+          globalCleanupTimer = null;
+        }, remainingTime);
+        
+        globalProcessing = false;
+        return;
+      }
+      
+      // Display the snapshot (non-empty activeNodes)
       globalDisplayStartTime = Date.now();
       globalDisplayedNodeId = trackingNode?.nodeId || null;
       
@@ -449,15 +484,6 @@ export function useWorkflowSSE(jobId: string | undefined): WorkflowStateWithQueu
         ...nextItem.state,
         activeNodes: nextItem.activeNodes,
       });
-      
-      // Remove from queue
-      const removeIndex = globalSnapshotQueue.findIndex(s => 
-        s.jobId === nextItem.jobId && s.timestamp === nextItem.timestamp
-      );
-      if (removeIndex !== -1) {
-        globalSnapshotQueue.splice(removeIndex, 1);
-      }
-      notifyQueueChange();
       
       // If queue is empty and job ended, schedule cleanup
       if (globalSnapshotQueue.length === 0 && jobEndedRef.current) {
