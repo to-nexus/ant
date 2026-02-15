@@ -405,6 +405,9 @@ export class PreviewServer {
     /**
      * GET /preview/projects/:id/preview-config
      * Get preview configuration (linkedBackend, structureType)
+     * 
+     * linkedBackend is read from the dedicated config key (persists across preview start/stop).
+     * structureType is read from runtime status (auto-detected at preview start).
      */
     this.app.get('/projects/:id/preview-config', async (req: Request, res: Response) => {
       try {
@@ -412,6 +415,15 @@ export class PreviewServer {
         const userContext = this.extractUserContext(req);
         const feature = req.query.feature as string || 'main';
 
+        // Read linkedBackend from dedicated config key (independent of runtime state)
+        const config = await this.stateStore.getPreviewConfig(
+          userContext.organizationId,
+          userContext.userId,
+          projectId,
+          feature
+        );
+
+        // Read structureType from runtime status (may not exist if preview never started)
         const status = await this.previewService.getPreviewStatus(
           userContext.organizationId,
           userContext.userId,
@@ -421,7 +433,7 @@ export class PreviewServer {
 
         res.json({
           structureType: status.structureType || null,
-          linkedBackend: status.linkedBackend || null,
+          linkedBackend: config?.linkedBackend || null,
         });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config get error', { component: 'PreviewServer' }, error);
@@ -432,6 +444,8 @@ export class PreviewServer {
     /**
      * PUT /preview/projects/:id/preview-config
      * Save preview configuration (linkedBackend)
+     * 
+     * Saves to a dedicated config key, independent of preview runtime state.
      */
     this.app.put('/projects/:id/preview-config', async (req: Request, res: Response) => {
       try {
@@ -450,18 +464,16 @@ export class PreviewServer {
           };
         }
 
-        // Update in Redis via portRegistry
-        if (this.stateStore) {
-          await this.stateStore.updatePreview(
-            userContext.organizationId,
-            userContext.userId,
-            projectId,
-            feature,
-            { linkedBackend: resolvedLinkedBackend }
-          );
-        }
+        // Save to dedicated config key (independent of runtime state)
+        await this.stateStore.savePreviewConfig(
+          userContext.organizationId,
+          userContext.userId,
+          projectId,
+          feature,
+          { linkedBackend: resolvedLinkedBackend ?? null }
+        );
 
-        logger.info(`[PreviewServer] Preview config updated: ${projectId}/${feature}`, { component: 'PreviewServer' });
+        logger.info(`[PreviewServer] Preview config saved: ${projectId}/${feature}`, { component: 'PreviewServer' });
         res.json({ success: true, linkedBackend: resolvedLinkedBackend });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config save error', { component: 'PreviewServer' }, error);

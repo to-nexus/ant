@@ -146,8 +146,8 @@ export interface PendingChoiceData {
 // ============================================
 
 // Re-export from portRegistry
-export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase } from './portRegistry';
-import { PreviewState, IDEState, PortMapping } from './portRegistry';
+export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, LinkedBackendConfig } from './portRegistry';
+import { PreviewState, IDEState, PortMapping, LinkedBackendConfig } from './portRegistry';
 
 // ============================================
 // StateStorePort Interface
@@ -311,7 +311,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix'>>
   ): Promise<void>;
   
   /**
@@ -323,6 +323,29 @@ export interface StateStorePort {
     projectId: string,
     feature: string
   ): Promise<void>;
+  
+  /**
+   * Save preview config (user settings like linkedBackend).
+   * Stored separately from runtime state — persists across preview start/stop.
+   */
+  savePreviewConfig(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    config: { linkedBackend?: LinkedBackendConfig | null }
+  ): Promise<void>;
+  
+  /**
+   * Get preview config (user settings).
+   * Returns null if no config has been saved.
+   */
+  getPreviewConfig(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<{ linkedBackend?: LinkedBackendConfig | null } | null>;
   
   /**
    * Unregister preview

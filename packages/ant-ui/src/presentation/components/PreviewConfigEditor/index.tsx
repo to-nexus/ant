@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
@@ -25,6 +25,7 @@ import {
   Globe,
   FolderOpen,
   Save,
+  Undo2,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
@@ -66,7 +67,22 @@ export function PreviewConfigEditor() {
   const [backendUrl, setBackendUrl] = useState('');
   const [backendProjectId, setBackendProjectId] = useState('');
   const [backendFeature, setBackendFeature] = useState('main');
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Compute hasUnsavedChanges by comparing current form state with saved config
+  const hasUnsavedChanges = useMemo(() => {
+    if (!config) return false;
+    const saved = config.linkedBackend;
+    const savedType = saved?.type || 'url';
+    const savedUrl = saved?.url || '';
+    const savedProjectId = saved?.projectId || '';
+    const savedFeature = saved?.feature || 'main';
+
+    if (backendType !== savedType) return true;
+    if (backendType === 'url') {
+      return backendUrl !== savedUrl;
+    }
+    return backendProjectId !== savedProjectId || backendFeature !== savedFeature;
+  }, [config, backendType, backendUrl, backendProjectId, backendFeature]);
 
   // Available features for the selected backend project
   const [backendProjectFeatures, setBackendProjectFeatures] = useState<Feature[]>([]);
@@ -86,7 +102,6 @@ export function PreviewConfigEditor() {
           const featureNames = features.map((f) => f.name);
           if (backendFeature && !featureNames.includes(backendFeature)) {
             setBackendFeature(featureNames.includes('main') ? 'main' : featureNames[0] || 'main');
-            setHasUnsavedChanges(true);
           }
         }
       })
@@ -95,6 +110,21 @@ export function PreviewConfigEditor() {
       });
     return () => { cancelled = true; };
   }, [backendProjectId]);
+
+  // Reset form state to saved config values
+  const resetFormToSaved = useCallback(() => {
+    if (config?.linkedBackend) {
+      setBackendType(config.linkedBackend.type);
+      setBackendUrl(config.linkedBackend.url || '');
+      setBackendProjectId(config.linkedBackend.projectId || '');
+      setBackendFeature(config.linkedBackend.feature || 'main');
+    } else {
+      setBackendType('url');
+      setBackendUrl('');
+      setBackendProjectId('');
+      setBackendFeature('main');
+    }
+  }, [config]);
 
   // Load config (form state) — status comes from the store via SSE
   const loadConfig = useCallback(async () => {
@@ -116,7 +146,6 @@ export function PreviewConfigEditor() {
         setBackendProjectId('');
         setBackendFeature('main');
       }
-      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('[PreviewConfig] Failed to load config:', error);
     } finally {
@@ -142,7 +171,6 @@ export function PreviewConfigEditor() {
         : backendProjectId.trim() ? { type: 'project', projectId: backendProjectId.trim(), feature: backendFeature || 'main' } : null;
 
       await updatePreviewConfig(selectedProject, selectedFeature || 'main', { linkedBackend });
-      setHasUnsavedChanges(false);
       setSaveIsError(false);
       setSaveMessage(t('preview.saved', 'Saved'));
       setTimeout(() => setSaveMessage(null), 2000);
@@ -200,11 +228,6 @@ export function PreviewConfigEditor() {
     if (previewStatus?.url) {
       window.open(`${PREVIEW_BASE()}${previewStatus.url}`, '_blank');
     }
-  };
-
-  // Mark changes
-  const onFormChange = () => {
-    setHasUnsavedChanges(true);
   };
 
   if (!selectedProject) {
@@ -277,7 +300,7 @@ export function PreviewConfigEditor() {
             {/* Type selector */}
             <div className="flex gap-2 mb-4">
               <button
-                onClick={() => { setBackendType('url'); onFormChange(); }}
+                onClick={() => setBackendType('url')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
                   backendType === 'url'
                     ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
@@ -288,7 +311,7 @@ export function PreviewConfigEditor() {
                 {t('preview.directUrl', 'Direct URL')}
               </button>
               <button
-                onClick={() => { setBackendType('project'); onFormChange(); }}
+                onClick={() => setBackendType('project')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
                   backendType === 'project'
                     ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
@@ -309,7 +332,7 @@ export function PreviewConfigEditor() {
                 <input
                   type="text"
                   value={backendUrl}
-                  onChange={(e) => { setBackendUrl(e.target.value); onFormChange(); }}
+                  onChange={(e) => setBackendUrl(e.target.value)}
                   placeholder={t('preview.backendUrlPlaceholder', 'http://localhost:8080')}
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md 
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
@@ -319,16 +342,16 @@ export function PreviewConfigEditor() {
               </div>
             )}
 
-            {/* Ant Project selector */}
+            {/* Ant Project selector — horizontal layout */}
             {backendType === 'project' && (
-              <div className="space-y-3">
-                <div>
+              <div className="flex gap-3">
+                <div className="flex-1 min-w-0">
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                     {t('preview.project', 'Project')}
                   </label>
                   <select
                     value={backendProjectId}
-                    onChange={(e) => { setBackendProjectId(e.target.value); onFormChange(); }}
+                    onChange={(e) => setBackendProjectId(e.target.value)}
                     className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md 
                              bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
                              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -341,13 +364,13 @@ export function PreviewConfigEditor() {
                       ))}
                   </select>
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                     {t('preview.featureLabel', 'Feature')}
                   </label>
                   <select
                     value={backendFeature}
-                    onChange={(e) => { setBackendFeature(e.target.value); onFormChange(); }}
+                    onChange={(e) => setBackendFeature(e.target.value)}
                     disabled={!backendProjectId || backendProjectFeatures.length === 0}
                     className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md 
                              bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
@@ -366,8 +389,8 @@ export function PreviewConfigEditor() {
               </div>
             )}
 
-            {/* Save button */}
-            <div className="flex items-center gap-3 mt-4">
+            {/* Save / Cancel buttons */}
+            <div className="flex items-center gap-2 mt-4">
               <button
                 onClick={handleSave}
                 disabled={isSaving || !hasUnsavedChanges}
@@ -379,13 +402,22 @@ export function PreviewConfigEditor() {
                 <Save className="w-3.5 h-3.5" />
                 {isSaving ? t('preview.saving', 'Saving...') : t('preview.save', 'Save')}
               </button>
+              {hasUnsavedChanges && (
+                <button
+                  onClick={resetFormToSaved}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
+                           bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600
+                           text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700
+                           transition-colors"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  {t('preview.cancel', 'Cancel')}
+                </button>
+              )}
               {saveMessage && (
                 <span className={`text-xs ${saveIsError ? 'text-red-500' : 'text-green-500'}`}>
                   {saveMessage}
                 </span>
-              )}
-              {hasUnsavedChanges && (
-                <span className="text-xs text-amber-500">{t('preview.unsavedChanges', 'Unsaved changes')}</span>
               )}
             </div>
 

@@ -471,11 +471,11 @@ export class PreviewService {
             // Same-project backend (fullstack/monorepo)
             extraEnv.VITE_API_BASE_URL = `/${toUrlKey(serverKey)}`;
           } else {
-            // Check for cross-project linkedBackend from Preview Config
-            const existingState = this.portRegistry 
-              ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature) 
+            // Check for cross-project linkedBackend from Preview Config (dedicated config key)
+            const previewConfig = this.stateStore
+              ? await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature)
               : null;
-            const linkedBackend = existingState?.linkedBackend;
+            const linkedBackend = previewConfig?.linkedBackend;
             if (linkedBackend?.type === 'project' && linkedBackend.resolvedUrlKey) {
               extraEnv.VITE_API_BASE_URL = `/${linkedBackend.resolvedUrlKey}`;
               logger.info(`[Preview] Cross-project API base: /${linkedBackend.resolvedUrlKey}`, { component: 'PreviewService' });
@@ -507,9 +507,9 @@ export class PreviewService {
       if (structure.entry && this.portRegistry) {
         const backendPort = packagePorts.find(p => p.type === 'backend')?.port;
         
-        // Preserve linkedBackend from existing state (user-configured via Preview Config UI)
-        const existingPreviewState = this.portRegistry 
-          ? await this.portRegistry.getPreview(tenantId, userId, projectId, feature) 
+        // Read linkedBackend from dedicated config key (persists across preview restarts)
+        const savedConfig = this.stateStore
+          ? await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature)
           : null;
         
         const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
@@ -523,7 +523,7 @@ export class PreviewService {
           port: structure.entry.port!,
           backendPort,
           structureType: structure.type as any,
-          linkedBackend: existingPreviewState?.linkedBackend,
+          linkedBackend: savedConfig?.linkedBackend ?? undefined,
           host,
           podId: os.hostname(),
           packages: packagePorts,
