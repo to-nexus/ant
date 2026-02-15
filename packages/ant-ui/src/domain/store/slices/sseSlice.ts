@@ -362,7 +362,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           }
           break;
           
-        case 'content_delete':
+        case 'content_remove':
           const deleteMessage = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
           if (deleteMessage) {
             const deletedContents = [...deleteMessage.contents];

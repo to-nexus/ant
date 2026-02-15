@@ -223,6 +223,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     
     case 'learning':
       return <WorkingCard content={content} variant="learning" />;
+    
+    case 'loading':
+      return <WorkingCard content={content} variant="loading" />;
 
     // ===== Result States (~ed) =====
     case 'explored':
@@ -254,6 +257,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     
     case 'learned':
       return <WorkingCard content={content} variant="learned" />;
+    
+    case 'loaded':
+      return <WorkingCard content={content} variant="loaded" />;
 
     // ===== Context Loaded =====
     case 'context_loaded':
