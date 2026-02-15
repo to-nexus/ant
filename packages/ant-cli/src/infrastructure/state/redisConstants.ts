@@ -81,6 +81,8 @@ export const REDIS_KEYS = {
     IDE_INSTANCE: `${REDIS_DOMAINS.INFRA}:ide:instance:`,
     /** IDE last access time (K8s) - ant:infra:ide:lastAccess:{instanceKey} */
     IDE_LAST_ACCESS: `${REDIS_DOMAINS.INFRA}:ide:lastAccess:`,
+    /** Preview config (user settings, separate from runtime state) - ant:infra:preview-config:{portKey} */
+    PREVIEW_CONFIG: `${REDIS_DOMAINS.INFRA}:preview-config:`,
   },
   
   /** Index keys (ant:index:*) */
@@ -137,6 +139,7 @@ export const REDIS_TTL = {
   /** Infrastructure TTLs */
   INFRA: {
     PORT_MAPPING: 24 * 60 * 60,  // 24 hours
+    PREVIEW_CONFIG: 30 * 24 * 60 * 60,  // 30 days (user config, persists across preview restarts)
   },
   
   /** Transfer TTLs */

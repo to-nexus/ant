@@ -161,7 +161,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'linkedBackend'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix'>>
   ): Promise<void>;
   
   /**

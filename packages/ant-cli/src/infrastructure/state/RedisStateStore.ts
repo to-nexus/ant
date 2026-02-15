@@ -33,6 +33,7 @@ import type { TransferRequest } from '../../core/types/transfer';
 import { 
   PortRegistryPort, 
   PreviewState, 
+  LinkedBackendConfig,
   IDEState,
   PreviewPackage,
   PreviewRuntimeIssue
@@ -427,7 +428,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'setupReasoning' | 'setupReason' | 'suggestedFix'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix'>>
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW, portKey);
@@ -469,6 +470,49 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const state: PreviewState = JSON.parse(data);
     state.lastAccessedAt = new Date();
     await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
+  }
+
+  // ============================================
+  // Preview Config (User Settings, separate from runtime state)
+  // ============================================
+
+  /**
+   * Save preview config (user-configured settings like linkedBackend).
+   * Stored in a separate Redis key from runtime state so it persists
+   * across preview start/stop cycles.
+   */
+  async savePreviewConfig(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    config: { linkedBackend?: LinkedBackendConfig | null }
+  ): Promise<void> {
+    const portKey = createPreviewKey(tenantId, userId, projectId, feature);
+    const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
+    await this.redis.set(key, JSON.stringify(config), 'EX', REDIS_TTL.INFRA.PREVIEW_CONFIG);
+    logger.info(`[Preview] Config saved: ${portKey}`, { component: 'RedisStateStore' });
+  }
+
+  /**
+   * Get preview config (user-configured settings).
+   * Returns null if no config has been saved.
+   */
+  async getPreviewConfig(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<{ linkedBackend?: LinkedBackendConfig | null } | null> {
+    const portKey = createPreviewKey(tenantId, userId, projectId, feature);
+    const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
+    const data = await this.redis.get(key);
+
+    if (!data) {
+      return null;
+    }
+
+    return JSON.parse(data);
   }
 
   /**
