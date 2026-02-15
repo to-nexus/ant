@@ -438,6 +438,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
             const setRunning = get().setRunning;
             if (setRunning) {
               console.log('[Store] ✅ Job completed/failed, setting isRunning=false');
+              // setRunning(false) now also clears runningJobsByFeature for current feature
               setRunning(false);
             }
           } else if (event.status === 'running' || event.status === 'started') {

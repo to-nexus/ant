@@ -70,6 +70,21 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       ? (currentJobStartPending || !jobId)  // Keep true if already pending, or set if no jobId yet
       : false;  // Clear when job stops
     
+    // ✅ When job stops, clear current feature from runningJobsByFeature
+    // This prevents stale "in progress" state that blocks feature deletion
+    // (previously only cleared by updateKanban's final broadcast, which may not arrive reliably)
+    let runningJobsUpdate: Record<string, any> = {};
+    if (!isRunning) {
+      const { selectedProject, selectedFeature, runningJobsByFeature } = get();
+      const featureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
+      if (featureKey && runningJobsByFeature[featureKey]) {
+        const updated = { ...runningJobsByFeature };
+        delete updated[featureKey];
+        runningJobsUpdate = { runningJobsByFeature: updated };
+        console.log(`[Store] 📌 Cleared runningJobsByFeature for ${featureKey} (job stopped)`);
+      }
+    }
+    
     // Debug log for tracking state transitions
     console.log(`[Store] setRunning: isRunning=${isRunning}, jobId=${jobId}, jobStartPending=${jobStartPending} (was ${currentJobStartPending})`);
     
@@ -84,7 +99,9 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       jobStartPending,
       // Reset queue state when job stops
       ...(!isRunning ? { isQueued: false, queuePosition: null } : {}),
-      ...(isRunning ? { lastJobFailed: false } : {})
+      ...(isRunning ? { lastJobFailed: false } : {}),
+      // ✅ Clear runningJobsByFeature for current feature when job stops
+      ...runningJobsUpdate,
     });
 
     if (isRunning && jobId) {
