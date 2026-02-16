@@ -132,9 +132,11 @@ Thumbs.db
 
 ---
 
-## 4. .env.example
+## 4. .env.example AND .env
 
 **Principle**: Document all required environment variables with placeholder values. Connection variables MUST use `@connection` annotation (see preview-env-contract Section 4).
+
+**Constraint**: When creating `.env.example`, ALWAYS also create `.env` with the same variables. Use localhost/docker-compose default values for connection strings in `.env`.
 
 ```env
 # Plain configuration (no annotation)
@@ -164,7 +166,7 @@ ENV=development
 |----------------|---------|
 | `docker-compose.yml` | Local development environment for each observed service |
 | Makefile targets: `dev-infra`, `dev-infra-down` | Start/stop infrastructure services |
-| `.env.example` | Connection variables with `@connection` annotations (see preview-env-contract) |
+| `.env.example` AND `.env` | Template with `@connection` annotations AND active copy with localhost/docker defaults (see preview-env-contract) |
 
 **Constraints**:
 - Do NOT hardcode connection URLs in application code. Use environment variables.

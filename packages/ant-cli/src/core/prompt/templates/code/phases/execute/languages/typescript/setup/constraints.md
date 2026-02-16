@@ -39,6 +39,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Styling: tailwind.config.js, postcss.config.js
 - Linting: .eslintrc.* (MUST include ignorePatterns), .prettierrc
 - Project: .gitignore, README.md, index.html (entry point only)
+- Environment: `.env.example` (template with `@connection` annotations) AND `.env` (active copy with localhost/docker defaults)
 - Docker: Dockerfile, docker-compose.yml (see Infrastructure Services below)
 
 **❌ DON'T CREATE (Application layer)**
@@ -83,7 +84,7 @@ If `content` paths don't cover the directories where source files exist, zero ut
 |----------------|---------|
 | `docker-compose.yml` | Local development environment for each observed service |
 | `package.json` scripts: `"dev:infra"`, `"dev:infra:down"` | Start/stop infrastructure services |
-| `.env.example` | Connection variables with `@connection` annotations (see preview-env-contract) |
+| `.env.example` AND `.env` | Template with `@connection` annotations AND active copy with localhost/docker defaults (see preview-env-contract) |
 
 **Package-level setup**: Do NOT create docker-compose.yml or dev:infra scripts.
 Reference environment variables for service connections.

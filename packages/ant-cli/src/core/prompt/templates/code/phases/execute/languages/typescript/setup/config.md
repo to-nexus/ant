@@ -133,6 +133,12 @@ Configure as needed for project (Tailwind, ESLint, etc).
 - Include IDE/editor-specific files if appropriate
 - When uncertain about platform artifacts, research the framework's recommended gitignore patterns
 
+## 6. Environment Files
+
+**Principle**: When project requires environment variables, create both `.env.example` (committed template) and `.env` (active, gitignored).
+
+**Constraint**: `.env.example` MUST use `@connection` annotations for service connection variables (see preview-env-contract). `.env` MUST contain the same variables with localhost/docker-compose default values.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **COMMON MISTAKES:**
