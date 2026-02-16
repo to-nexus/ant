@@ -5,7 +5,7 @@
  * Single source of truth - both BE and FE import from here.
  */
 
-import type { DecomposableJobType, JobTiming } from './job';
+import type { JobTiming } from './job';
 import type { InterruptionDetails } from './interruption';
 
 // ============================================

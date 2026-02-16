@@ -98,8 +98,6 @@ export function useUIActionPolicy(): UIActionPolicy {
   const userEmail = useStore(state => state.userEmail);
   const isPreviewLoading = useStore(state => state.isPreviewLoading);
   const previewStatus = useStore(state => state.previewStatus);
-  const gitStatus = useStore(state => state.gitStatus);
-  const isGitStatusLoading = useStore(state => state.isGitStatusLoading);
   
   // ============================================
   // Policy Rules (정책 규칙)
