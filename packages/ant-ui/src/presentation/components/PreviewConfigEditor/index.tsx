@@ -365,7 +365,7 @@ export function PreviewConfigEditor() {
               onClick={() => setConnectionsExpanded(!connectionsExpanded)}
               className="flex items-center gap-2 text-left"
             >
-              {connectionsExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              {connectionsExpanded ? <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />}
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                 {t('preview.serviceConnections', 'Service Connections')}
               </h3>
@@ -480,7 +480,7 @@ export function PreviewConfigEditor() {
                     : phase}
                 </span>
               </div>
-            ) : phase === 'error' ? (
+            ) : phase === 'error' && previewStatus?.error ? (
               <div className="flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 text-red-500" />
                 <span className="text-sm font-medium text-red-700 dark:text-red-300">{t('preview.statusError', 'Error')}</span>
