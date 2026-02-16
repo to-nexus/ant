@@ -134,21 +134,21 @@ Thumbs.db
 
 ## 4. .env.example
 
-**Principle**: Document all required environment variables with placeholder values.
+**Principle**: Document all required environment variables with placeholder values. Connection variables MUST use `@connection` annotation (see preview-env-contract Section 4).
 
 ```env
-# Server
+# Plain configuration (no annotation)
 PORT=8080
 ENV=development
 
-# Database (if design doc specifies)
-DATABASE_URL=postgres://user:password@localhost:5432/dbname?sslmode=disable
-
-# Redis (if design doc specifies)
-REDIS_URL=redis://localhost:6379
+# Connection variables: annotate each with @connection
+# @connection {category} {name}                                -- external / infrastructure
+# @connection {category} {name} self                           -- same-project internal
+# @connection {category} {name} ant-project:{projectId}:{feature} -- cross-project
+# {ENV_VAR}={connection_url_pointing_to_localhost_with_compose_port}
 ```
 
-**Constraint**: Do NOT hardcode connection URLs in application code. Use environment variables.
+**Constraint**: Do NOT hardcode connection URLs in application code. Use environment variables with `@connection` annotation.
 
 ---
 
@@ -164,17 +164,18 @@ REDIS_URL=redis://localhost:6379
 |----------------|---------|
 | `docker-compose.yml` | Local development environment for each observed service |
 | Makefile targets: `dev-infra`, `dev-infra-down` | Start/stop infrastructure services |
-| `.env.example` | Connection URLs for each service |
+| `.env.example` | Connection variables with `@connection` annotations (see preview-env-contract) |
 
 **Constraints**:
 - Do NOT hardcode connection URLs in application code. Use environment variables.
 - Do NOT omit healthcheck for any service in docker-compose.yml.
 - Do NOT omit volume mounts for stateful services (data must survive container restart).
 - Do NOT run `docker compose up` in setup tasks. Only create the files.
+- `.env.example` MUST use `# @connection {category} {name}` annotation for every service connection variable.
 
 **Blind spot reminder**:
 - `dev-infra` / `dev-infra-down` Makefile targets are EASILY FORGOTTEN. Verify they exist.
-- `.env.example` must include ALL service connection URLs.
+- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Verify every connection variable has one.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

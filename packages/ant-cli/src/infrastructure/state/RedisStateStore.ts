@@ -33,7 +33,7 @@ import type { TransferRequest } from '../../core/types/transfer';
 import { 
   PortRegistryPort, 
   PreviewState, 
-  LinkedBackendConfig,
+  ServiceConnection,
   PreviewStructureType,
   IDEState,
   PreviewPackage,
@@ -478,7 +478,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   /**
-   * Save preview config (user-configured settings like linkedBackend).
+   * Save preview config (user-configured settings: connections, structureType, projectProfile).
    * Stored in a separate Redis key from runtime state so it persists
    * across preview start/stop cycles.
    */
@@ -487,7 +487,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    config: { linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null }
+    config: { connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null }
   ): Promise<void> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
@@ -509,7 +509,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<{ linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null } | null> {
+  ): Promise<{ connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null } | null> {
     const portKey = createPreviewKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.PREVIEW_CONFIG, portKey);
     const data = await this.redis.get(key);

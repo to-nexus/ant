@@ -3,12 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   getPreviewConfig,
-  updatePreviewConfig,
   startPreview,
   stopPreview,
+  updatePreviewConfig,
+  detectConnections,
+  fetchProjects,
   fetchFeatures,
   PREVIEW_BASE,
-  type LinkedBackendConfig,
+  type ServiceConnection,
+  type ConnectionResolution,
   type PreviewConfig,
   type Feature,
 } from '@/infrastructure/http/api';
@@ -21,131 +24,61 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
-  Link2,
-  Globe,
-  FolderOpen,
-  Save,
-  Undo2,
   ChevronDown,
   ChevronRight,
+  MessageSquare,
+  AlertTriangle,
+  Server,
+  Database,
+  Search,
+  Plus,
+  Trash2,
+  Pencil,
+  Package,
+  Save,
+  X,
+  Check,
 } from 'lucide-react';
+
+// Status badge color mappings
+const STATUS_COLORS: Record<string, string> = {
+  active: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
+  'not-started': 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400',
+  unreachable: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+};
 
 /**
  * PreviewConfigEditor
  * 
  * Main panel tab for configuring preview server settings:
- * - Project Info: detected structureType
- * - Backend Connection: direct URL or Ant project linking
+ * - Project Profile: detected structureType, language, framework
+ * - Service Connections: all detected connections grouped by category
  * - Preview Controls: start/stop/restart + running status
  * - Status Console: issues, warnings, and logs
- * 
- * Status fields (phase, running, ready, issues, logs, etc.) are read from the
- * shared Zustand store (previewStatus) which is kept in sync via SSE by
- * usePreviewManager (mounted in FeatureSection).  Only the config form state
- * (linkedBackend) is kept as local state.
  */
 export function PreviewConfigEditor() {
   const { t } = useTranslation('explorer');
   const selectedProject = useStore((s) => s.selectedProject);
   const selectedFeature = useStore((s) => s.selectedFeature);
-  const projects = useStore((s) => s.projects);
+  const setPendingChatInput = useStore((s) => s.setPendingChatInput);
 
   // Read preview status from shared store (updated via SSE by usePreviewManager)
   const previewStatus = useStore((s) => s.previewStatus);
 
-  // Local state — only for config form editing
+  // Local state
   const [config, setConfig] = useState<PreviewConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setSaving] = useState(false);
   const [isPreviewLoading, setPreviewLoading] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [saveIsError, setSaveIsError] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
+  const [connectionsExpanded, setConnectionsExpanded] = useState(true);
 
-  // LinkedBackend form state
-  const [backendType, setBackendType] = useState<'url' | 'project'>('url');
-  const [backendUrl, setBackendUrl] = useState('');
-  const [backendProjectId, setBackendProjectId] = useState('');
-  const [backendFeature, setBackendFeature] = useState('main');
-
-  // Compute hasUnsavedChanges by comparing current form state with saved config
-  const hasUnsavedChanges = useMemo(() => {
-    if (!config) return false;
-    const saved = config.linkedBackend;
-    const savedType = saved?.type || 'url';
-    const savedUrl = saved?.url || '';
-    const savedProjectId = saved?.projectId || '';
-    const savedFeature = saved?.feature || 'main';
-
-    if (backendType !== savedType) return true;
-    if (backendType === 'url') {
-      return backendUrl !== savedUrl;
-    }
-    return backendProjectId !== savedProjectId || backendFeature !== savedFeature;
-  }, [config, backendType, backendUrl, backendProjectId, backendFeature]);
-
-  // Available features for the selected backend project
-  const [backendProjectFeatures, setBackendProjectFeatures] = useState<Feature[]>([]);
-
-  // Fetch features when the selected backend project changes
-  useEffect(() => {
-    if (!backendProjectId) {
-      setBackendProjectFeatures([]);
-      return;
-    }
-    let cancelled = false;
-    fetchFeatures(backendProjectId)
-      .then((features) => {
-        if (!cancelled) {
-          setBackendProjectFeatures(features);
-          // If current backendFeature doesn't exist in the list, reset to 'main'
-          const featureNames = features.map((f) => f.name);
-          if (backendFeature && !featureNames.includes(backendFeature)) {
-            setBackendFeature(featureNames.includes('main') ? 'main' : featureNames[0] || 'main');
-          }
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setBackendProjectFeatures([]);
-      });
-    return () => { cancelled = true; };
-  }, [backendProjectId]);
-
-  // Reset form state to saved config values
-  const resetFormToSaved = useCallback(() => {
-    if (config?.linkedBackend) {
-      setBackendType(config.linkedBackend.type);
-      setBackendUrl(config.linkedBackend.url || '');
-      setBackendProjectId(config.linkedBackend.projectId || '');
-      setBackendFeature(config.linkedBackend.feature || 'main');
-    } else {
-      setBackendType('url');
-      setBackendUrl('');
-      setBackendProjectId('');
-      setBackendFeature('main');
-    }
-  }, [config]);
-
-  // Load config (form state) — status comes from the store via SSE
+  // Load config
   const loadConfig = useCallback(async () => {
     if (!selectedProject) return;
     setIsLoading(true);
     try {
       const configData = await getPreviewConfig(selectedProject, selectedFeature || 'main');
       setConfig(configData);
-
-      // Populate form from config
-      if (configData.linkedBackend) {
-        setBackendType(configData.linkedBackend.type);
-        setBackendUrl(configData.linkedBackend.url || '');
-        setBackendProjectId(configData.linkedBackend.projectId || '');
-        setBackendFeature(configData.linkedBackend.feature || 'main');
-      } else {
-        setBackendType('url');
-        setBackendUrl('');
-        setBackendProjectId('');
-        setBackendFeature('main');
-      }
     } catch (error) {
       console.error('[PreviewConfig] Failed to load config:', error);
     } finally {
@@ -157,40 +90,18 @@ export function PreviewConfigEditor() {
     loadConfig();
   }, [loadConfig]);
 
-  // No polling needed — store's previewStatus is kept in sync by
-  // usePreviewManager (SSE subscription + 5s fallback polling)
-
-  // Save config
-  const handleSave = async () => {
-    if (!selectedProject) return;
-    setSaving(true);
-    setSaveMessage(null);
-    try {
-      const linkedBackend: LinkedBackendConfig | null = backendType === 'url'
-        ? backendUrl.trim() ? { type: 'url', url: backendUrl.trim() } : null
-        : backendProjectId.trim() ? { type: 'project', projectId: backendProjectId.trim(), feature: backendFeature || 'main' } : null;
-
-      await updatePreviewConfig(selectedProject, selectedFeature || 'main', { linkedBackend });
-      setSaveIsError(false);
-      setSaveMessage(t('preview.saved', 'Saved'));
-      setTimeout(() => setSaveMessage(null), 2000);
-      // Refresh config form state
-      loadConfig();
-    } catch (error: any) {
-      setSaveIsError(true);
-      setSaveMessage(t('preview.saveError', 'Error: {{message}}', { message: error.message }));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Preview controls — after API calls, SSE updates the store automatically
+  // Preview controls
   const handleStart = async () => {
     if (!selectedProject) return;
     setPreviewLoading(true);
+    clearDismissed();
+    // Immediately set phase to installing in the store for instant UI feedback
+    const store = useStore.getState();
+    if (store.setPreviewStatus) {
+      store.setPreviewStatus({ ...store.previewStatus, phase: 'installing' } as any);
+    }
     try {
       await startPreview(selectedProject, selectedFeature || 'main');
-      // SSE will update store's previewStatus; loading cleared on next status update
     } catch (error) {
       console.error('[PreviewConfig] Start failed:', error);
     } finally {
@@ -230,6 +141,93 @@ export function PreviewConfigEditor() {
     }
   };
 
+  /**
+   * Chat Actions: send suggested fix or connection change instruction to chat
+   */
+  const handleApplyToChat = (message: string) => {
+    setPendingChatInput({
+      message,
+      jobType: 'code',
+      autoSubmit: false,
+    });
+  };
+
+  // Derive display values (must be before any conditional returns for hook stability)
+  const structureType = previewStatus?.structureType || config?.structureType || null;
+  const projectProfile = previewStatus?.projectProfile || config?.projectProfile || null;
+  const connections: ServiceConnection[] = useMemo(
+    () => config?.connections || [],
+    [config?.connections]
+  );
+  const phase = previewStatus?.phase || 'idle';
+  const isRunning = previewStatus?.running || false;
+  const isReady = previewStatus?.ready || false;
+  const issues = previewStatus?.issues || [];
+  const logs = previewStatus?.logs || [];
+  const fatalIssues = issues.filter((i) => i.severity === 'fatal');
+  const warningIssues = issues.filter((i) => i.severity === 'warning');
+
+  // Dismissed errors/issues (persisted to localStorage)
+  const dismissedKey = `ant-ui:dismissed-preview-errors:${selectedProject || ''}:${selectedFeature || 'main'}`;
+  const [dismissedSet, setDismissedSet] = useState<Set<string>>(new Set());
+
+  // Sync dismissed state from localStorage when key changes (project/feature switch)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(dismissedKey);
+      setDismissedSet(stored ? new Set(JSON.parse(stored)) : new Set());
+    } catch { setDismissedSet(new Set()); }
+  }, [dismissedKey]);
+
+  const dismissError = useCallback((key: string) => {
+    setDismissedSet(prev => {
+      const next = new Set(prev);
+      next.add(key);
+      try { localStorage.setItem(dismissedKey, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, [dismissedKey]);
+
+  const clearDismissed = useCallback(() => {
+    setDismissedSet(new Set());
+    try { localStorage.removeItem(dismissedKey); } catch {}
+  }, [dismissedKey]);
+
+  // Local connections state for editing
+  const [localConns, setLocalConns] = useState<ServiceConnection[]>([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [editingConnId, setEditingConnId] = useState<string | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [addingNew, setAddingNew] = useState(false);
+
+  // Sync server connections to local state (when not editing)
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      setLocalConns(connections);
+    }
+  }, [connections, hasUnsavedChanges]);
+
+  // Group connections by source (package)
+  const packageGroups = useMemo(() => {
+    const groups = new Map<string, ServiceConnection[]>();
+    for (const conn of localConns) {
+      const source = conn.source || '*';
+      if (!groups.has(source)) groups.set(source, []);
+      groups.get(source)!.push(conn);
+    }
+    // Sort within each group: business first, then infrastructure
+    for (const conns of groups.values()) {
+      conns.sort((a, b) => {
+        if (a.category === b.category) return 0;
+        return a.category === 'business' ? -1 : 1;
+      });
+    }
+    return groups;
+  }, [localConns]);
+
+  const isSinglePackage = packageGroups.size <= 1;
+
+  // Early returns (AFTER all hooks)
   if (!selectedProject) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
@@ -246,16 +244,63 @@ export function PreviewConfigEditor() {
     );
   }
 
-  // Derive display values from store's previewStatus (real-time via SSE)
-  // Fall back to config for structureType (in case status hasn't been fetched yet)
-  const structureType = previewStatus?.structureType || config?.structureType || null;
-  const phase = previewStatus?.phase || 'idle';
-  const isRunning = previewStatus?.running || false;
-  const isReady = previewStatus?.ready || false;
-  const issues = previewStatus?.issues || [];
-  const logs = previewStatus?.logs || [];
-  const fatalIssues = issues.filter((i) => i.severity === 'fatal');
-  const warningIssues = issues.filter((i) => i.severity === 'warning');
+  // Auto Detect handler
+  const handleAutoDetect = async () => {
+    if (!selectedProject) return;
+    setIsDetecting(true);
+    try {
+      const result = await detectConnections(selectedProject, selectedFeature || 'main');
+      if (result.success) {
+        setLocalConns(result.connections);
+        setConfig(prev => prev
+          ? { ...prev, connections: result.connections }
+          : { connections: result.connections } as any);
+        setHasUnsavedChanges(false);
+      }
+    } catch (err) {
+      console.error('[PreviewConfig] Auto-detect failed:', err);
+      setLocalConns([]);
+      setConfig(prev => prev ? { ...prev, connections: [] } : { connections: [] } as any);
+      setHasUnsavedChanges(false);
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
+  // Save connections
+  const handleSaveConnections = async () => {
+    if (!selectedProject) return;
+    try {
+      const result = await updatePreviewConfig(selectedProject, selectedFeature || 'main', { connections: localConns });
+      if (result.success && result.connections) {
+        setLocalConns(result.connections);
+      }
+      setHasUnsavedChanges(false);
+      setEditingConnId(null);
+    } catch (err) {
+      console.error('[PreviewConfig] Save failed:', err);
+    }
+  };
+
+  // Edit a connection locally
+  const handleUpdateConn = (id: string, updates: Partial<ServiceConnection>) => {
+    setLocalConns(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    setHasUnsavedChanges(true);
+  };
+
+  // Delete a connection locally
+  const handleDeleteConn = (id: string) => {
+    setLocalConns(prev => prev.filter(c => c.id !== id));
+    setHasUnsavedChanges(true);
+    if (editingConnId === id) setEditingConnId(null);
+  };
+
+  // Add a new connection
+  const handleAddConn = (conn: ServiceConnection) => {
+    setLocalConns(prev => [...prev, conn]);
+    setHasUnsavedChanges(true);
+    setAddingNew(false);
+  };
 
   return (
     <div className="h-full overflow-y-auto">
@@ -268,176 +313,150 @@ export function PreviewConfigEditor() {
           </h2>
         </div>
 
-        {/* Section 1: Project Info */}
+        {/* Section 1: Project Profile */}
         <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-            {t('preview.projectInfo', 'Project Info')}
+            {t('preview.projectProfile', 'Project Profile')}
           </h3>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 dark:text-gray-400">{t('preview.structureType', 'Structure Type:')}</span>
-            {structureType ? (
-              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200">
-                {structureType}
-              </span>
-            ) : (
-              <span className="text-sm text-gray-400 dark:text-gray-500 italic">
-                {t('preview.notDetected', 'Not detected (start preview to detect)')}
-              </span>
-            )}
-          </div>
-        </section>
-
-        {/* Section 2: Backend Connection */}
-        {(structureType === 'frontend-only' || !structureType) && (
-          <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-              {t('preview.backendConnection', 'Backend Connection')}
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              {t('preview.backendConnectionDesc', 'Connect this frontend project to a backend API for preview testing.')}
-            </p>
-
-            {/* Type selector */}
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setBackendType('url')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
-                  backendType === 'url'
-                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Globe className="w-3.5 h-3.5" />
-                {t('preview.directUrl', 'Direct URL')}
-              </button>
-              <button
-                onClick={() => setBackendType('project')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
-                  backendType === 'project'
-                    ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                <FolderOpen className="w-3.5 h-3.5" />
-                {t('preview.antProject', 'Ant Project')}
-              </button>
-            </div>
-
-            {/* Direct URL input */}
-            {backendType === 'url' && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  {t('preview.backendUrl', 'Backend URL')}
-                </label>
-                <input
-                  type="text"
-                  value={backendUrl}
-                  onChange={(e) => setBackendUrl(e.target.value)}
-                  placeholder={t('preview.backendUrlPlaceholder', 'http://localhost:8080')}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md 
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-                           placeholder-gray-400 dark:placeholder-gray-500
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            )}
-
-            {/* Ant Project selector — horizontal layout */}
-            {backendType === 'project' && (
-              <div className="flex gap-3">
-                <div className="flex-1 min-w-0">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    {t('preview.project', 'Project')}
-                  </label>
-                  <select
-                    value={backendProjectId}
-                    onChange={(e) => setBackendProjectId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-                             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">{t('preview.selectProject', 'Select a project...')}</option>
-                    {projects
-                      .filter((p) => p !== selectedProject)
-                      .map((p) => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                  </select>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    {t('preview.featureLabel', 'Feature')}
-                  </label>
-                  <select
-                    value={backendFeature}
-                    onChange={(e) => setBackendFeature(e.target.value)}
-                    disabled={!backendProjectId || backendProjectFeatures.length === 0}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-                             disabled:opacity-50 disabled:cursor-not-allowed
-                             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    {backendProjectFeatures.length === 0 ? (
-                      <option value="main">{backendProjectId ? t('preview.loadingFeatures', 'Loading...') : t('preview.selectProjectFirst', 'Select a project first')}</option>
-                    ) : (
-                      backendProjectFeatures.map((f) => (
-                        <option key={f.name} value={f.name}>{f.name}</option>
-                      ))
-                    )}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {/* Save / Cancel buttons */}
-            <div className="flex items-center gap-2 mt-4">
-              <button
-                onClick={handleSave}
-                disabled={isSaving || !hasUnsavedChanges}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
-                         bg-blue-600 text-white hover:bg-blue-700 
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         transition-colors"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {isSaving ? t('preview.saving', 'Saving...') : t('preview.save', 'Save')}
-              </button>
-              {hasUnsavedChanges && (
-                <button
-                  onClick={resetFormToSaved}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
-                           bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600
-                           text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700
-                           transition-colors"
-                >
-                  <Undo2 className="w-3.5 h-3.5" />
-                  {t('preview.cancel', 'Cancel')}
-                </button>
-              )}
-              {saveMessage && (
-                <span className={`text-xs ${saveIsError ? 'text-red-500' : 'text-green-500'}`}>
-                  {saveMessage}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400 w-28">{t('preview.structureType', 'Structure Type:')}</span>
+              {structureType ? (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200">
+                  {structureType}
+                </span>
+              ) : (
+                <span className="text-sm text-gray-400 dark:text-gray-500 italic">
+                  {t('preview.notDetected', 'Not detected')}
                 </span>
               )}
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400 w-28">{t('preview.language', 'Language:')}</span>
+              {projectProfile?.language ? (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
+                  {projectProfile.language}
+                </span>
+              ) : (
+                <span className="text-sm text-gray-400 dark:text-gray-500 italic">
+                  {t('preview.notDetected', 'Not detected')}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400 w-28">{t('preview.framework', 'Framework:')}</span>
+              {projectProfile?.framework ? (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200">
+                  {projectProfile.framework}
+                </span>
+              ) : (
+                <span className="text-sm text-gray-400 dark:text-gray-500 italic">
+                  {t('preview.notDetected', 'Not detected')}
+                </span>
+              )}
+            </div>
+          </div>
+        </section>
 
-            {/* Current connection info */}
-            {config?.linkedBackend && (
-              <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded-md">
-                <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  <Link2 className="w-3 h-3" />
-                  <span>
-                    {t('preview.activeConnection', 'Active: {{connection}}', {
-                      connection: config.linkedBackend.type === 'url'
-                        ? config.linkedBackend.url
-                        : `${config.linkedBackend.projectId} / ${config.linkedBackend.feature}`,
-                    })}
-                  </span>
-                </div>
-              </div>
-            )}
-          </section>
-        )}
+        {/* Section 2: Service Connections */}
+        <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="flex items-center justify-between mb-1">
+            <button
+              onClick={() => setConnectionsExpanded(!connectionsExpanded)}
+              className="flex items-center gap-2 text-left"
+            >
+              {connectionsExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                {t('preview.serviceConnections', 'Service Connections')}
+              </h3>
+              {localConns.length > 0 && (
+                <span className="text-xs text-gray-400 dark:text-gray-500">({localConns.length})</span>
+              )}
+            </button>
+            <div className="flex items-center gap-1.5">
+              {hasUnsavedChanges && (
+                <button
+                  onClick={handleSaveConnections}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
+                           bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300
+                           hover:bg-green-200 dark:hover:bg-green-800/50 transition-colors"
+                >
+                  <Save className="w-3 h-3" />
+                  {t('preview.save', 'Save')}
+                </button>
+              )}
+              <button
+                onClick={handleAutoDetect}
+                disabled={isDetecting}
+                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
+                         bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400
+                         hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors
+                         disabled:opacity-50"
+                title={t('preview.autoDetectTitle', 'Re-scan project files for connections')}
+              >
+                {isDetecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                {t('preview.autoDetect', 'Auto Detect')}
+              </button>
+            </div>
+          </div>
+
+          {connectionsExpanded && (
+            <div className="mt-3 space-y-4">
+              {localConns.length === 0 && !addingNew ? (
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  {t('preview.noConnections', 'No connections detected. Click "Auto Detect" to scan .env.example files.')}
+                </p>
+              ) : (
+                <>
+                  {/* Render by package groups */}
+                  {Array.from(packageGroups.entries()).map(([source, conns]) => (
+                    <div key={source}>
+                      {/* Package header (hidden for single-package projects) */}
+                      {!isSinglePackage && (
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Package className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                          <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                            {source === '*' ? 'Root' : source}
+                          </span>
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        {conns.map((conn) => (
+                          <ConnectionRow
+                            key={`${conn.source}:${conn.id}`}
+                            conn={conn}
+                            isEditing={editingConnId === conn.id}
+                            onEdit={() => setEditingConnId(editingConnId === conn.id ? null : conn.id)}
+                            onUpdate={(updates) => handleUpdateConn(conn.id, updates)}
+                            onDelete={() => handleDeleteConn(conn.id)}
+                            onFix={handleApplyToChat}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Add new connection */}
+              {addingNew ? (
+                <AddConnectionForm
+                  onAdd={handleAddConn}
+                  onCancel={() => setAddingNew(false)}
+                />
+              ) : (
+                <button
+                  onClick={() => setAddingNew(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
+                           text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  {t('preview.addConnection', 'Add Connection')}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* Section 3: Preview Controls */}
         <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -480,7 +499,7 @@ export function PreviewConfigEditor() {
               <button
                 onClick={handleStart}
                 disabled={isPreviewLoading || !(previewStatus?.canStart ?? false)}
-                title={!(previewStatus?.canStart ?? false) ? t('preview.cannotStart', 'No runnable project detected (needs package.json with dev/start script)') : undefined}
+                title={!(previewStatus?.canStart ?? false) ? t('preview.cannotStart', 'No runnable project detected') : undefined}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                          bg-green-600 text-white hover:bg-green-700
                          disabled:opacity-50 disabled:cursor-not-allowed
@@ -533,9 +552,18 @@ export function PreviewConfigEditor() {
           </div>
 
           {/* Error display */}
-          {previewStatus?.error && (
+          {previewStatus?.error && !dismissedSet.has(`error:${previewStatus.error}`) && (
             <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md">
-              <p className="text-sm text-red-700 dark:text-red-300">{previewStatus.error}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm text-red-700 dark:text-red-300">{previewStatus.error}</p>
+                <button
+                  onClick={() => dismissError(`error:${previewStatus.error}`)}
+                  className="p-0.5 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors flex-shrink-0"
+                  title="Dismiss"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
         </section>
@@ -546,37 +574,71 @@ export function PreviewConfigEditor() {
             {t('preview.statusConsole', 'Status Console')}
           </h3>
 
-          {/* Issues */}
-          {fatalIssues.length > 0 && (
+          {/* Issues with Fix buttons */}
+          {fatalIssues.filter(i => !dismissedSet.has(`issue:${i.reason}`)).length > 0 && (
             <div className="space-y-2 mb-3">
-              {fatalIssues.map((issue, idx) => (
+              {fatalIssues.filter(i => !dismissedSet.has(`issue:${i.reason}`)).map((issue, idx) => (
                 <div key={idx} className="p-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md">
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0" />
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-red-700 dark:text-red-300">{issue.reason}</p>
                       {issue.suggestedFix && (
-                        <p className="text-xs text-red-600/70 dark:text-red-400/70 mt-1">{t('preview.suggestedFix', 'Fix: {{fix}}', { fix: issue.suggestedFix })}</p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <button
+                            onClick={() => handleApplyToChat(issue.suggestedFix!)}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
+                                     bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300
+                                     hover:bg-red-200 dark:hover:bg-red-800/50 transition-colors"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            Fix
+                          </button>
+                        </div>
                       )}
                     </div>
+                    <button
+                      onClick={() => dismissError(`issue:${issue.reason}`)}
+                      className="p-0.5 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors flex-shrink-0"
+                      title="Dismiss"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {warningIssues.length > 0 && (
+          {warningIssues.filter(i => !dismissedSet.has(`issue:${i.reason}`)).length > 0 && (
             <div className="space-y-2 mb-3">
-              {warningIssues.map((issue, idx) => (
+              {warningIssues.filter(i => !dismissedSet.has(`issue:${i.reason}`)).map((issue, idx) => (
                 <div key={idx} className="p-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="w-3.5 h-3.5 text-yellow-500 mt-0.5 flex-shrink-0" />
-                    <div>
+                    <AlertTriangle className="w-3.5 h-3.5 text-yellow-500 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-yellow-700 dark:text-yellow-300">{issue.reason}</p>
                       {issue.suggestedFix && (
-                        <p className="text-xs text-yellow-600/70 dark:text-yellow-400/70 mt-1">{t('preview.suggestedFix', 'Fix: {{fix}}', { fix: issue.suggestedFix })}</p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <button
+                            onClick={() => handleApplyToChat(issue.suggestedFix!)}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
+                                     bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300
+                                     hover:bg-yellow-200 dark:hover:bg-yellow-800/50 transition-colors"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            Fix
+                          </button>
+                        </div>
                       )}
                     </div>
+                    <button
+                      onClick={() => dismissError(`issue:${issue.reason}`)}
+                      className="p-0.5 text-yellow-400 hover:text-yellow-600 dark:hover:text-yellow-300 transition-colors flex-shrink-0"
+                      title="Dismiss"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -623,6 +685,740 @@ export function PreviewConfigEditor() {
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+// Resolution type badge colors
+const RESOLUTION_COLORS: Record<string, string> = {
+  url: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+  docker: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300',
+  'ant-project': 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300',
+};
+
+// Category badge config
+const CATEGORY_BADGE: Record<string, { icon: typeof Server; color: string; label: string }> = {
+  business: { icon: Server, color: 'text-blue-500', label: 'business' },
+  infrastructure: { icon: Database, color: 'text-orange-500', label: 'infra' },
+};
+
+// Resolution options per category
+const RESOLUTION_OPTIONS: Record<string, string[]> = {
+  business: ['url', 'ant-project'],
+  infrastructure: ['url', 'docker'],
+};
+
+function getResolutionLabel(conn: ServiceConnection): string {
+  if (conn.resolution.type === 'docker') {
+    return `docker://${conn.resolution.service}${conn.resolution.port ? ':' + conn.resolution.port : ''}`;
+  }
+  if (conn.resolution.type === 'ant-project') {
+    const pid = conn.resolution.projectId === 'self' ? 'self' : conn.resolution.projectId;
+    const feat = conn.resolution.feature === 'self' ? 'self' : conn.resolution.feature;
+    return `ant://${pid}/${feat}`;
+  }
+  return conn.value || (conn.resolution as any).url || '';
+}
+
+/**
+ * Chip/badge selector: renders a row of selectable chips.
+ * Only one chip can be active at a time.
+ */
+function ChipSelector({
+  options,
+  value,
+  onChange,
+  colorMap,
+  disabled,
+}: {
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+  colorMap?: Record<string, string>;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {options.map((opt) => {
+        const isSelected = value === opt;
+        const activeColor = colorMap?.[opt] || 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300';
+        return (
+          <button
+            key={opt}
+            onClick={() => !disabled && onChange(opt)}
+            disabled={disabled}
+            className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
+              isSelected
+                ? activeColor
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const CATEGORY_CHIP_COLORS: Record<string, string> = {
+  business: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
+  infrastructure: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
+};
+
+/**
+ * ConnectionRow -- single connection with inline editing, badges, and actions
+ */
+function ConnectionRow({
+  conn,
+  isEditing,
+  onEdit,
+  onUpdate,
+  onDelete,
+  onFix,
+}: {
+  conn: ServiceConnection;
+  isEditing: boolean;
+  onEdit: () => void;
+  onUpdate: (updates: Partial<ServiceConnection>) => void;
+  onDelete: () => void;
+  onFix: (msg: string) => void;
+}) {
+  const statusClass = STATUS_COLORS[conn.status || 'not-started'] || STATUS_COLORS['not-started'];
+  const catBadge = CATEGORY_BADGE[conn.category] || CATEGORY_BADGE.business;
+  const CatIcon = catBadge.icon;
+  const resClass = RESOLUTION_COLORS[conn.resolution.type] || RESOLUTION_COLORS.url;
+
+  // Draft state for editing: resolution-specific fields instead of generic "value"
+  const [draft, setDraft] = useState({
+    name: conn.name,
+    category: conn.category as 'business' | 'infrastructure',
+    envVar: conn.envVar,
+    resolution: conn.resolution,
+    urlInput: '',
+    connectionString: '',
+  });
+
+  // Project/feature lists for ant-project resolution
+  const [projects, setProjects] = useState<string[]>([]);
+  const [features, setFeatures] = useState<Feature[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingFeatures, setLoadingFeatures] = useState(false);
+
+  const draftProjectId = draft.resolution.type === 'ant-project' ? draft.resolution.projectId : null;
+
+  // Derive the final env value from resolution settings
+  const derivedValue = useMemo(() => {
+    if (draft.resolution.type === 'url') return draft.urlInput;
+    if (draft.resolution.type === 'docker') return draft.connectionString;
+    if (draft.resolution.type === 'ant-project') return '(auto)';
+    return '';
+  }, [draft.resolution.type, draft.urlInput, draft.connectionString]);
+
+  // Allowed resolutions for current category
+  const allowedResolutions = RESOLUTION_OPTIONS[draft.category] || ['url'];
+
+  useEffect(() => {
+    if (isEditing) {
+      setDraft({
+        name: conn.name,
+        category: conn.category as 'business' | 'infrastructure',
+        envVar: conn.envVar,
+        resolution: conn.resolution,
+        urlInput: conn.resolution.type === 'url' ? (conn.value || (conn.resolution as any).url || '') : '',
+        connectionString: conn.resolution.type === 'docker' ? (conn.value || '') : '',
+      });
+    }
+  }, [isEditing, conn.name, conn.category, conn.envVar, conn.value, conn.resolution]);
+
+  // Fetch available projects when editing an ant-project connection
+  useEffect(() => {
+    if (isEditing && draft.resolution.type === 'ant-project') {
+      setLoadingProjects(true);
+      fetchProjects()
+        .then((p) => setProjects(p))
+        .catch(() => setProjects([]))
+        .finally(() => setLoadingProjects(false));
+    }
+  }, [isEditing, draft.resolution.type]);
+
+  // Fetch features when a specific (non-self) project is selected
+  useEffect(() => {
+    if (isEditing && draftProjectId && draftProjectId !== 'self') {
+      setLoadingFeatures(true);
+      fetchFeatures(draftProjectId)
+        .then((f) => setFeatures(f))
+        .catch(() => setFeatures([]))
+        .finally(() => setLoadingFeatures(false));
+    } else {
+      setFeatures([]);
+    }
+  }, [isEditing, draftProjectId]);
+
+  if (isEditing) {
+    const handleConfirm = () => {
+      let finalValue = '';
+      let finalResolution = draft.resolution;
+
+      if (draft.resolution.type === 'url') {
+        finalValue = draft.urlInput;
+        finalResolution = { type: 'url', url: draft.urlInput };
+      } else if (draft.resolution.type === 'docker') {
+        finalValue = draft.connectionString;
+      } else if (draft.resolution.type === 'ant-project') {
+        finalValue = '';
+      }
+
+      onUpdate({
+        name: draft.name,
+        category: draft.category,
+        envVar: draft.envVar,
+        value: finalValue,
+        resolution: finalResolution,
+        userModified: true,
+      });
+      onEdit();
+    };
+
+    const handleCategoryChange = (cat: string) => {
+      const category = cat as 'business' | 'infrastructure';
+      const allowed = RESOLUTION_OPTIONS[category] || ['url'];
+      if (!allowed.includes(draft.resolution.type)) {
+        const first = allowed[0];
+        let newRes: ConnectionResolution;
+        if (first === 'docker') newRes = { type: 'docker', service: conn.id };
+        else if (first === 'ant-project') newRes = { type: 'ant-project', projectId: 'self', feature: 'self' };
+        else newRes = { type: 'url', url: draft.urlInput || '' };
+        setDraft(d => ({ ...d, category, resolution: newRes }));
+      } else {
+        setDraft(d => ({ ...d, category }));
+      }
+    };
+
+    const handleResolutionChange = (type: string) => {
+      let resolution: ConnectionResolution;
+      if (type === 'docker') resolution = { type: 'docker', service: (conn.resolution as any).service || conn.id };
+      else if (type === 'ant-project') resolution = { type: 'ant-project', projectId: 'self', feature: 'self' };
+      else resolution = { type: 'url', url: draft.urlInput || '' };
+      setDraft(d => ({ ...d, resolution }));
+    };
+
+    return (
+      <div className="px-2.5 py-2.5 rounded-md bg-gray-50 dark:bg-gray-800/50 border border-blue-200 dark:border-blue-800 space-y-2.5">
+        {/* A. Name + Actions */}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={draft.name}
+            onChange={(e) => setDraft(d => ({ ...d, name: e.target.value }))}
+            className="flex-1 px-2 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600
+                     bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+            placeholder="Connection name"
+          />
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={handleConfirm} className="p-0.5 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors" title="Confirm">
+              <Check className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onEdit()} className="p-0.5 text-gray-400 hover:text-gray-600 transition-colors" title="Cancel">
+              <X className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onDelete} className="p-0.5 text-red-400 hover:text-red-600 transition-colors" title="Delete">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* B. Category + Resolution chips */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <ChipSelector
+            options={['business', 'infrastructure']}
+            value={draft.category}
+            onChange={handleCategoryChange}
+            colorMap={CATEGORY_CHIP_COLORS}
+          />
+          <span className="text-gray-300 dark:text-gray-600 text-xs">|</span>
+          <ChipSelector
+            options={allowedResolutions}
+            value={draft.resolution.type}
+            onChange={handleResolutionChange}
+            colorMap={RESOLUTION_COLORS}
+          />
+        </div>
+
+        {/* C. Resolution Detail */}
+        <div className="space-y-1.5">
+          {/* C-1: URL */}
+          {draft.resolution.type === 'url' && (
+            <div>
+              <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">URL</label>
+              <input
+                type="text"
+                value={draft.urlInput}
+                onChange={(e) => setDraft(d => ({ ...d, urlInput: e.target.value }))}
+                placeholder="http://localhost:3000/api"
+                className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
+                         bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+              />
+            </div>
+          )}
+
+          {/* C-2: Docker */}
+          {draft.resolution.type === 'docker' && (
+            <>
+              <div>
+                <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Service</label>
+                <input
+                  type="text"
+                  value={(draft.resolution as any).service || ''}
+                  onChange={(e) => setDraft(d => ({
+                    ...d,
+                    resolution: { type: 'docker', service: e.target.value, port: (d.resolution as any).port } as ConnectionResolution,
+                  }))}
+                  placeholder="e.g. database, redis"
+                  className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
+                           bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Connection</label>
+                <input
+                  type="text"
+                  value={draft.connectionString}
+                  onChange={(e) => setDraft(d => ({ ...d, connectionString: e.target.value }))}
+                  placeholder="postgres://user:pw@host:5432/db"
+                  className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
+                           bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+                />
+              </div>
+            </>
+          )}
+
+          {/* C-3: Ant Project */}
+          {draft.resolution.type === 'ant-project' && (
+            <div className="space-y-1.5">
+              <div>
+                <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Project</label>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    onClick={() => setDraft(d => ({
+                      ...d,
+                      name: d.name || 'self',
+                      resolution: { type: 'ant-project', projectId: 'self', feature: 'self' },
+                    }))}
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
+                      draftProjectId === 'self'
+                        ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    self
+                  </button>
+                  {loadingProjects ? (
+                    <span className="text-[10px] text-gray-400 px-2 py-0.5 flex items-center gap-1">
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading...
+                    </span>
+                  ) : (
+                    projects.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setDraft(d => ({
+                          ...d,
+                          name: d.name || p,
+                          resolution: { type: 'ant-project', projectId: p, feature: '' },
+                        }))}
+                        className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
+                          draftProjectId === p
+                            ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+              {draftProjectId && draftProjectId !== 'self' && (
+                <div>
+                  <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Feature</label>
+                  <div className="flex flex-wrap gap-1">
+                    {loadingFeatures ? (
+                      <span className="text-[10px] text-gray-400 px-2 py-0.5 flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading...
+                      </span>
+                    ) : features.length === 0 ? (
+                      <span className="text-[10px] text-gray-400 px-2 py-0.5 italic">No features found</span>
+                    ) : (
+                      features.map((f) => (
+                        <button
+                          key={f.name}
+                          onClick={() => setDraft(d => ({
+                            ...d,
+                            resolution: { type: 'ant-project', projectId: draftProjectId!, feature: f.name },
+                          }))}
+                          className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
+                            (draft.resolution as any).feature === f.name
+                              ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          {f.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+                <span>Proxy</span>
+                <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                  {draftProjectId === 'self' ? '(auto)' : `/${draftProjectId}--${(draft.resolution as any).feature || '...'}`}
+                </code>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* D. Env Injection Preview */}
+        <div className="rounded border border-dashed border-gray-300 dark:border-gray-600 px-2.5 py-1.5">
+          <div className="text-[9px] text-gray-400 dark:text-gray-500 mb-1 font-medium uppercase tracking-wider">.env</div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={draft.envVar}
+              onChange={(e) => setDraft(d => ({ ...d, envVar: e.target.value }))}
+              className="w-32 px-1.5 py-0.5 text-[11px] font-mono rounded border border-gray-300 dark:border-gray-600
+                       bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+              placeholder="ENV_VAR"
+            />
+            <span className="text-[11px] text-gray-400 font-mono">=</span>
+            <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 break-all flex-1 min-w-0">
+              {derivedValue || <span className="text-gray-300 dark:text-gray-600 italic">empty</span>}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Read-only mode
+  return (
+    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-gray-50 dark:bg-gray-800/50 group">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <CatIcon className={`w-3 h-3 ${catBadge.color} flex-shrink-0`} />
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
+            {conn.name}
+          </span>
+          <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${resClass}`}>
+            {conn.resolution.type}
+          </span>
+          <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${statusClass}`}>
+            {conn.status || 'not-started'}
+          </span>
+          {(conn.missingAnnotation || conn.userModified) && (
+            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300"
+              title={conn.userModified ? 'Changes not yet applied to project files' : 'Missing @connection annotation in .env.example'}
+            >
+              {conn.userModified ? 'modified' : '!annotation'}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-0.5">
+          <code className="text-[10px] text-gray-500 dark:text-gray-400">
+            {conn.envVar}
+          </code>
+          <span className="text-[10px] text-gray-400 dark:text-gray-500">&rarr;</span>
+          <code className="text-[10px] text-gray-500 dark:text-gray-400 break-all">
+            {getResolutionLabel(conn)}
+          </code>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button
+          onClick={onEdit}
+          className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          title="Edit"
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+        {(conn.missingAnnotation || conn.userModified) && (
+          <button
+            onClick={() => {
+              const source = conn.source && conn.source !== '*' ? conn.source + '/' : '';
+              const lines: string[] = [`[Service Connection Fix: ${conn.name}]`, ''];
+              let step = 1;
+
+              // Annotation fix
+              if (conn.missingAnnotation) {
+                let annotationSuffix = '';
+                if (conn.resolution.type === 'ant-project') {
+                  const pid = conn.resolution.projectId;
+                  const feat = conn.resolution.feature;
+                  annotationSuffix = (pid === 'self' && feat === 'self')
+                    ? ' self'
+                    : ` ant-project:${pid}:${feat}`;
+                }
+                lines.push(
+                  `${step}. ${source}.env.example 파일에서 ${conn.envVar} 위에 어노테이션을 추가해주세요:`,
+                  `   # @connection ${conn.category} ${conn.id}${annotationSuffix}`,
+                  `   ${conn.envVar}=${conn.value}`,
+                  '',
+                );
+                step++;
+              }
+
+              // Env value sync based on resolution type
+              if (conn.userModified) {
+                if (conn.resolution.type === 'url') {
+                  lines.push(
+                    `${step}. ${source}.env 파일에서 ${conn.envVar}의 값을 업데이트해주세요:`,
+                    `   ${conn.envVar}=${conn.value}`,
+                    '',
+                  );
+                  step++;
+                  lines.push(
+                    `${step}. ${source}.env.example 파일에서도 ${conn.envVar}의 기본값을 업데이트해주세요:`,
+                    `   ${conn.envVar}=${conn.value}`,
+                    '',
+                  );
+                  step++;
+                } else if (conn.resolution.type === 'docker') {
+                  const service = conn.resolution.service;
+                  lines.push(
+                    `${step}. ${source}.env 파일에서 ${conn.envVar}의 값을 업데이트해주세요:`,
+                    `   ${conn.envVar}=${conn.value}`,
+                    '',
+                  );
+                  step++;
+                  lines.push(
+                    `${step}. ${source}.env.example 파일에서도 ${conn.envVar}의 기본값을 업데이트해주세요:`,
+                    `   ${conn.envVar}=${conn.value}`,
+                    '',
+                  );
+                  step++;
+                  lines.push(
+                    `${step}. docker-compose.yml에서 ${service} 서비스가 정의되어 있는지 확인해주세요.`,
+                    '',
+                  );
+                  step++;
+                } else if (conn.resolution.type === 'ant-project') {
+                  const targetProject = conn.resolution.projectId;
+                  const targetFeature = conn.resolution.feature;
+                  const isSelf = targetProject === 'self' && targetFeature === 'self';
+                  const annotationSuffix = isSelf
+                    ? ' self'
+                    : ` ant-project:${targetProject}:${targetFeature}`;
+                  lines.push(
+                    `${step}. ${source}.env.example 파일에서 ${conn.envVar} 위에 어노테이션을 확인/추가해주세요:`,
+                    `   # @connection ${conn.category} ${conn.id}${annotationSuffix}`,
+                    `   ${conn.envVar}=(preview 시작 시 자동 주입)`,
+                    '',
+                  );
+                  step++;
+                  lines.push(
+                    `${step}. ${source}.env 파일에서 ${conn.envVar}가 있는지 확인해주세요 (값은 preview 시작 시 자동 설정됩니다).`,
+                    '',
+                  );
+                  step++;
+                  if (!isSelf) {
+                    lines.push(
+                      `참고: 참조 대상 프로젝트(${targetProject}/${targetFeature})의 설정은 해당 프로젝트에서 관리됩니다.`,
+                      '',
+                    );
+                  }
+                }
+              }
+
+              onFix(lines.join('\n'));
+              // Optimistic: clear userModified so Fix button hides immediately
+              onUpdate({ userModified: false });
+            }}
+            className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded
+                     bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300
+                     hover:bg-yellow-200 dark:hover:bg-yellow-800/50 transition-colors"
+            title="Apply changes to project files"
+          >
+            <MessageSquare className="w-3 h-3" />
+            Fix
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * AddConnectionForm -- inline form for adding a new connection.
+ * Same A-B-C-D layout as ConnectionRow edit mode.
+ */
+function AddConnectionForm({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (conn: ServiceConnection) => void;
+  onCancel: () => void;
+}) {
+  const [category, setCategory] = useState<'business' | 'infrastructure'>('business');
+  const [name, setName] = useState('');
+  const [envVar, setEnvVar] = useState('');
+  const [resType, setResType] = useState<'url' | 'docker' | 'ant-project'>('url');
+  const [urlInput, setUrlInput] = useState('');
+  const [dockerService, setDockerService] = useState('');
+  const [connectionString, setConnectionString] = useState('');
+
+  const allowedRes = RESOLUTION_OPTIONS[category] || ['url'];
+
+  const derivedValue = useMemo(() => {
+    if (resType === 'url') return urlInput;
+    if (resType === 'docker') return connectionString;
+    if (resType === 'ant-project') return '(auto)';
+    return '';
+  }, [resType, urlInput, connectionString]);
+
+  const handleCategoryChange = (cat: string) => {
+    const c = cat as 'business' | 'infrastructure';
+    setCategory(c);
+    const allowed = RESOLUTION_OPTIONS[c] || ['url'];
+    if (!allowed.includes(resType)) setResType(allowed[0] as any);
+  };
+
+  const handleSubmit = () => {
+    if (!name || !envVar) return;
+    let resolution: ConnectionResolution;
+    let value = '';
+    if (resType === 'docker') {
+      resolution = { type: 'docker', service: dockerService || name };
+      value = connectionString;
+    } else if (resType === 'ant-project') {
+      resolution = { type: 'ant-project', projectId: 'self', feature: 'self' };
+    } else {
+      resolution = { type: 'url', url: urlInput };
+      value = urlInput;
+    }
+    onAdd({
+      id: name.toLowerCase().replace(/\s+/g, '-'),
+      name,
+      category,
+      envVar,
+      value,
+      resolution,
+      source: '*',
+    });
+  };
+
+  return (
+    <div className="px-2.5 py-2.5 rounded-md border border-dashed border-gray-300 dark:border-gray-600 space-y-2.5">
+      {/* A. Name + Cancel */}
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="flex-1 px-2 py-1 text-xs font-medium rounded border border-gray-300 dark:border-gray-600
+                   bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+          placeholder="Connection name (e.g. PostgreSQL)"
+        />
+        <button onClick={onCancel} className="p-0.5 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0" title="Cancel">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* B. Category + Resolution chips */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <ChipSelector
+          options={['business', 'infrastructure']}
+          value={category}
+          onChange={handleCategoryChange}
+          colorMap={CATEGORY_CHIP_COLORS}
+        />
+        <span className="text-gray-300 dark:text-gray-600 text-xs">|</span>
+        <ChipSelector
+          options={allowedRes}
+          value={resType}
+          onChange={(v) => setResType(v as any)}
+          colorMap={RESOLUTION_COLORS}
+        />
+      </div>
+
+      {/* C. Resolution Detail */}
+      <div className="space-y-1.5">
+        {resType === 'url' && (
+          <div>
+            <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">URL</label>
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="http://localhost:3000/api"
+              className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
+                       bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+            />
+          </div>
+        )}
+        {resType === 'docker' && (
+          <>
+            <div>
+              <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Service</label>
+              <input
+                type="text"
+                value={dockerService}
+                onChange={(e) => setDockerService(e.target.value)}
+                placeholder="e.g. database, redis"
+                className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
+                         bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Connection</label>
+              <input
+                type="text"
+                value={connectionString}
+                onChange={(e) => setConnectionString(e.target.value)}
+                placeholder="postgres://user:pw@host:5432/db"
+                className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
+                         bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+              />
+            </div>
+          </>
+        )}
+        {resType === 'ant-project' && (
+          <div className="text-[10px] text-gray-400 dark:text-gray-500 italic px-1">
+            Project/feature will be configured after adding.
+          </div>
+        )}
+      </div>
+
+      {/* D. Env Injection Preview */}
+      <div className="rounded border border-dashed border-gray-300 dark:border-gray-600 px-2.5 py-1.5">
+        <div className="text-[9px] text-gray-400 dark:text-gray-500 mb-1 font-medium uppercase tracking-wider">.env</div>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            value={envVar}
+            onChange={(e) => setEnvVar(e.target.value)}
+            className="w-32 px-1.5 py-0.5 text-[11px] font-mono rounded border border-gray-300 dark:border-gray-600
+                     bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+            placeholder="ENV_VAR"
+          />
+          <span className="text-[11px] text-gray-400 font-mono">=</span>
+          <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 break-all flex-1 min-w-0">
+            {derivedValue || <span className="text-gray-300 dark:text-gray-600 italic">empty</span>}
+          </span>
+        </div>
+      </div>
+
+      {/* Submit */}
+      <button
+        onClick={handleSubmit}
+        disabled={!name || !envVar}
+        className="flex items-center gap-1 px-3 py-1 text-xs font-medium rounded
+                 bg-blue-600 text-white hover:bg-blue-700
+                 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        <Plus className="w-3 h-3" />
+        Add
+      </button>
     </div>
   );
 }

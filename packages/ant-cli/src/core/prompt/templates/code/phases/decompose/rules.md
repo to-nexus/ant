@@ -91,9 +91,9 @@ CRITICAL:
 
 ## Final Verification Task
 
-**Principle**: A final verification task (priority 1000) validates the entire project by running build, lint, and startup commands discovered from the project configuration.
+**Principle**: A final verification task (priority 1000) validates the entire project by running build and startup commands. It verifies ONLY that the integrated result builds and runs without errors.
 
-**Constraint**: The final verification task MUST NOT write new code, create new projects, or add new features. It only runs existing verification commands and fixes errors they reveal.
+**Constraint**: The final verification task fixes build and runtime errors ONLY. It MUST NOT review, add, complete, or improve feature implementations. Feature completeness is the responsibility of individual feature tasks.
 
 **Constraint**: Include final verification if there are any feature tasks. Skip ONLY if ALL tasks are error tasks.
 
@@ -199,6 +199,26 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Task Independence**: Each task creates its OWN files for its scope. Do NOT scaffold placeholder code for other tasks. Later tasks will add their own code and integrate.
 
+### Setup Task Description Requirements
+
+**Principle**: Setup tasks must produce a project the platform can start. The platform discovers dev commands from build tool config and detects service connections from `.env.example` annotations.
+
+**Observation targets** — before writing setup task descriptions, observe the specification:
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **External services** | Does the specification mention databases, caches, queues, or other infrastructure requiring a runtime process? |
+| **Service connections** | Are there connection URLs between the application and external services? |
+
+**Setup task description MUST mention (when applicable):**
+- `docker-compose.yml` with service definitions — if external services are observed in the specification
+- `.env.example` with `# @connection {category} {name}` annotation for every service connection variable
+- Cross-project connections with `# @connection {category} {name} ant-project:{projectId}:{feature}` — if the specification names a specific external Ant project as a dependency (e.g., "uses sketch-be as backend")
+
+**Constraint**: Do NOT omit infrastructure provisioning (`docker-compose.yml`) from setup task when the specification mentions external services. Do NOT omit `@connection` annotations — they are required for the platform to detect and manage service connections. Do NOT omit `ant-project:{projectId}:{feature}` modifier when the specification explicitly names a target project — without it, the platform cannot auto-resolve the cross-project proxy path.
+
+**Blind spot**: `docker-compose.yml` is EASILY FORGOTTEN when specification mentions only service names (e.g., "PostgreSQL", "Redis") without an explicit infrastructure section. `@connection` annotations are EASILY FORGOTTEN. The `ant-project:{projectId}:{feature}` modifier for cross-project dependencies is EASILY FORGOTTEN when the specification mentions another project by name. Verify all are included.
+
 ---
 
 ## Parallel Execution
@@ -220,6 +240,28 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **Constraint**: Only assign the SAME group ID when tasks are likely to modify the SAME source files.
 
 **Naming convention**: `"<package>-<scope>"` where scope is the functional area within the package.
+
+---
+
+## Shared Integration Points
+
+**Principle**: When multiple parallel tasks produce components that must be registered in a shared integration point (application entry point, route registry, dependency wiring), a dedicated integration task must consolidate them. This is divide-and-conquer: integration itself is a task.
+
+**Observation target**: Does the project have a single entry point that must import and wire components from multiple feature tasks?
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Entry point** | Will multiple feature tasks produce handlers, routes, or modules that must be registered in one place? |
+| **Parallel conflict risk** | Are feature tasks in different `parallelGroup` IDs, meaning they run concurrently and cannot see each other's outputs? |
+
+**Constraint**: If multiple parallel feature tasks produce components for a shared entry point, create a dedicated integration task:
+- `type: "feature"`, `exclusive: true`, priority 800-899 (after all feature tasks, before final verification)
+- Description: wire all feature outputs into the application entry point
+- Feature tasks MUST NOT create or modify the entry point file themselves
+
+**Constraint**: Do NOT assign entry point responsibility to setup tasks (setup does not know which features will be implemented) or to final verification (verification does not create functionality).
+
+**Blind spot**: Entry point conflicts are EASILY CAUSED when parallel feature tasks independently create their own entry point files. If the project has 2+ parallel groups contributing to the same application, an integration task is almost certainly needed.
 
 ---
 

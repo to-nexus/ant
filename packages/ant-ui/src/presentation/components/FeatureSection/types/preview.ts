@@ -90,7 +90,7 @@ export interface PreviewProgress {
  */
 export interface DismissedMessage {
   serverKey: string;
-  reasoning: SetupFailureReasoning;
+  reasoning: SetupFailureReasoning | string;
   dismissedAt: number;
 }
 

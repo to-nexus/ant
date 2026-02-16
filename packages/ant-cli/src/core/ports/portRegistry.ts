@@ -25,16 +25,48 @@ export type PreviewPhase = 'idle' | 'installing' | 'starting' | 'running' | 'err
 
 export type PreviewStructureType = 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo';
 
+// === External Service Contract ===
+
 /**
- * Cross-project backend connection configuration.
- * Used when frontend and backend are in separate projects.
+ * Service category.
+ *   business:        Frontend / backend / MSA business services
+ *   infrastructure:  DB, Redis, MQ, etc. — provided via docker-compose in dev
  */
-export interface LinkedBackendConfig {
-  type: 'url' | 'project';           // Direct URL input vs Ant project selection
-  url?: string;                       // type='url': User-provided URL (e.g., http://localhost:8080)
-  projectId?: string;                 // type='project': Ant project ID
-  feature?: string;                   // type='project': Feature name
-  resolvedUrlKey?: string;            // type='project': Auto-computed urlKey for proxy routing
+export type ServiceCategory = 'business' | 'infrastructure';
+
+/**
+ * How a connection is resolved (independent of category).
+ *   docker:       Service inside project's docker-compose (auto-detected)
+ *   ant-project:  Another Ant project or same-project internal (proxy routing auto-configured)
+ *   url:          Direct URL (user-provided or computed)
+ * 
+ * Resolution type constraints (enforced at API layer):
+ *   infrastructure → url | docker       (DB/cache/MQ are never Ant projects)
+ *   business       → url | ant-project  (business services are never docker-compose)
+ * 
+ * For same-project internal connections, ant-project uses projectId/feature of the current project.
+ * The `self` keyword in @connection annotations triggers this at detection time.
+ */
+export type ConnectionResolution =
+  | { type: 'docker'; service: string; port?: number }
+  | { type: 'ant-project'; projectId: string; feature: string; resolvedUrlKey?: string }
+  | { type: 'url'; url: string };
+
+/**
+ * A single service connection entry.
+ * Replaces the old LinkedBackendConfig with a generic model
+ * that covers FE->BE, BE->BE, service->infra connections.
+ */
+export interface ServiceConnection {
+  id: string;                         // Unique key ("postgres", "redis", "backend-api")
+  name: string;                       // Display name ("PostgreSQL", "Backend API")
+  category: ServiceCategory;          // business | infrastructure
+  envVar: string;                     // Environment variable name ("DATABASE_URL")
+  value: string;                      // Resolved value ("postgres://user:pw@localhost:5432/db")
+  resolution: ConnectionResolution;   // How the connection is resolved
+  source?: string;                    // Package requiring this ("backend", "frontend", "*")
+  status?: 'active' | 'unreachable' | 'not-started';
+  missingAnnotation?: boolean;        // Detected via fallback = .env.example lacks @connection
 }
 
 export interface PreviewState {
@@ -59,8 +91,11 @@ export interface PreviewState {
   // Project structure (auto-detected at preview start)
   structureType?: PreviewStructureType;
   
-  // Cross-project backend connection (user-configured via Preview Config UI)
-  linkedBackend?: LinkedBackendConfig;
+  // Project profile (language/framework, detected by decompose node)
+  projectProfile?: { language: string; framework?: string };
+  
+  // Service connections (auto-detected + user-configured via Preview Config UI)
+  connections: ServiceConnection[];
   
   // nativeBasePath removed — all frameworks now use native base path via env var injection.
   // Kept as optional field for backward compat with existing Redis entries during rollout.
@@ -161,7 +196,7 @@ export interface PortRegistryPort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'projectProfile' | 'setupReasoning' | 'setupReason' | 'suggestedFix'>>
   ): Promise<void>;
   
   /**

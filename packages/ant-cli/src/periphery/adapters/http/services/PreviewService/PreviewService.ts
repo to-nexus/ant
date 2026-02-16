@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { LogEntry } from '../../../../../core/ports/http';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
-import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase } from '../../../../../core/ports/portRegistry';
+import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase, ServiceConnection } from '../../../../../core/ports/portRegistry';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
 import { createServerKey, parseServerKey, toUrlKey } from './utils/serverKeyUtils';
@@ -12,6 +12,8 @@ import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
 import { ProjectValidator } from './validators/ProjectValidator';
 import { ProjectStructureDetector } from './detectors/ProjectStructureDetector';
+import { ConnectionDetector } from './detectors/ConnectionDetector';
+import { RuntimeDiagnostics } from './detectors/RuntimeDiagnostics';
 import { DependencyInstaller } from './managers/DependencyInstaller';
 import { ProcessSpawner } from './managers/ProcessSpawner';
 import { InfrastructureManager } from './managers/InfrastructureManager';
@@ -53,6 +55,9 @@ export class PreviewService {
   private stoppingPidsByServer: Map<string, Set<number>> = new Map();
   private stoppingCleanupTimers: Map<string, NodeJS.Timeout> = new Map();
   
+  // Spawn timestamps for early-exit detection (RuntimeDiagnostics)
+  private spawnTimestamps: Map<string, number> = new Map();
+  
   // Idle check
   private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private idleTimeoutMs: number = DEFAULT_IDLE_TIMEOUT_MS;
@@ -68,6 +73,8 @@ export class PreviewService {
   private packageDetector: PackageDetector;
   private projectValidator: ProjectValidator;
   private structureDetector: ProjectStructureDetector;
+  private connectionDetector: ConnectionDetector;
+  private runtimeDiagnostics: RuntimeDiagnostics;
   private dependencyInstaller: DependencyInstaller;
   private processSpawner: ProcessSpawner;
   private infrastructureManager: InfrastructureManager;
@@ -92,6 +99,8 @@ export class PreviewService {
     this.packageDetector = new PackageDetector();
     this.projectValidator = new ProjectValidator();
     this.structureDetector = new ProjectStructureDetector(this.packageDetector);
+    this.connectionDetector = new ConnectionDetector();
+    this.runtimeDiagnostics = new RuntimeDiagnostics();
     this.dependencyInstaller = new DependencyInstaller();
     this.processSpawner = new ProcessSpawner();
     this.infrastructureManager = new InfrastructureManager();
@@ -418,24 +427,38 @@ export class PreviewService {
       await this.updatePhase(serverKey, 'installing');
       
       // 1. Detect project structure
-      const structure = await this.structureDetector.detect(localPath);
+      //    Read projectProfile from Preview Config (set by decompose via PreviewBroadcaster)
+      let projectProfile: { language: string; framework?: string } | undefined;
+      if (this.stateStore) {
+        try {
+          const previewConfig = await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature);
+          if (previewConfig?.projectProfile) {
+            projectProfile = previewConfig.projectProfile;
+            logger.info(`[Preview] Using projectProfile from config: ${projectProfile.language}/${projectProfile.framework || 'none'}`, { component: 'PreviewService' });
+          }
+        } catch { /* best-effort */ }
+      }
+      
+      const structure = await this.structureDetector.detect(localPath, projectProfile);
       logger.warn(`[Preview] Structure: type=${structure.type}, packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
       
       if (structure.packages.length === 0) {
         throw new Error('No runnable packages found');
       }
       
-      // 1.1. Save structureType to Redis (auto-detect for Preview Config UI)
+      // 1.1. Save structureType + projectProfile to Redis (auto-detect for Preview Config UI)
+      const detectedProfile = structure.entry?.projectProfile || structure.packages[0]?.projectProfile;
       if (this.portRegistry) {
         await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, {
           structureType: structure.type as any,
+          ...(detectedProfile ? { projectProfile: detectedProfile } : {}),
         });
       }
       
       // 2. Install dependencies for all packages
       const logCallback = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
       for (const pkg of structure.packages) {
-        await this.dependencyInstaller.installIfNeeded(pkg.path, pkg.name, logCallback);
+        await this.dependencyInstaller.installIfNeeded(pkg.path, pkg.name, logCallback, pkg.projectProfile);
       }
       
       this.installingProjects.delete(serverKey);
@@ -455,41 +478,35 @@ export class PreviewService {
         return prio(a) - prio(b);
       });
       
+      // Allocate ports for all packages
       for (const pkg of orderedPackages) {
         const pkgPort = this.portManager 
           ? await this.portManager.allocate() 
           : 3000 + processes.length;
-        
         pkg.port = pkgPort;
-        
         if (!backendPort && pkg.type === 'backend') {
           backendPort = pkgPort;
         }
-        
-        const extraEnv: Record<string, string | undefined> = {};
-        if (pkg.type === 'frontend') {
-          if (backendPort) {
-            // Same-project backend (fullstack/monorepo)
-            extraEnv.VITE_API_BASE_URL = `/${toUrlKey(serverKey)}`;
-          } else {
-            // Check for cross-project linkedBackend from Preview Config (dedicated config key)
-            const previewConfig = this.stateStore
-              ? await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature)
-              : null;
-            const linkedBackend = previewConfig?.linkedBackend;
-            if (linkedBackend?.type === 'project' && linkedBackend.resolvedUrlKey) {
-              extraEnv.VITE_API_BASE_URL = `/${linkedBackend.resolvedUrlKey}`;
-              logger.info(`[Preview] Cross-project API base: /${linkedBackend.resolvedUrlKey}`, { component: 'PreviewService' });
-            } else if (linkedBackend?.type === 'url' && linkedBackend.url) {
-              extraEnv.VITE_API_BASE_URL = linkedBackend.url;
-              logger.info(`[Preview] Direct URL API base: ${linkedBackend.url}`, { component: 'PreviewService' });
-            }
-          }
-        }
+      }
+
+      // Read connections from Redis registry (single source of truth)
+      // Detection is handled by GET /preview-config and POST /detect-connections
+      const savedConfig = this.stateStore
+        ? await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature)
+        : null;
+      const connections: ServiceConnection[] = savedConfig?.connections || [];
+
+      logger.info(`[Preview] ${connections.length} connections from registry for ${serverKey}`, { component: 'PreviewService' });
+
+      // Spawn processes with connections (filtered by source in ProcessSpawner)
+      for (const pkg of orderedPackages) {
+        const pkgPort = pkg.port!;
+        const packageSource = path.relative(localPath, pkg.path) || '*';
         
         const childProcess = this.processSpawner.spawn(pkg, pkgPort, {
           serverKey,
-          extraEnv,
+          connections,
+          packageSource,
           onLog: (type, msg) => this.appendLog(serverKey, type, msg),
           onExit: (code, signal) => this.handleProcessExit(serverKey, pkg.name, code, signal),
           onError: (error) => this.handleProcessError(serverKey, pkg.name, error)
@@ -499,6 +516,9 @@ export class PreviewService {
         processes.push(childProcess);
       }
 
+      // Record spawn timestamp for early-exit detection
+      this.spawnTimestamps.set(serverKey, Date.now());
+
       // Build package ports for Redis registration
       const packagePorts = orderedPackages
         .filter(p => typeof p.port === 'number')
@@ -507,11 +527,6 @@ export class PreviewService {
       // 4. Update Redis with full port/package info + phase: 'starting'
       if (structure.entry && this.portRegistry) {
         const backendPort = packagePorts.find(p => p.type === 'backend')?.port;
-        
-        // Read linkedBackend from dedicated config key (persists across preview restarts)
-        const savedConfig = this.stateStore
-          ? await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature)
-          : null;
         
         const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
           tenantId,
@@ -524,7 +539,7 @@ export class PreviewService {
           port: structure.entry.port!,
           backendPort,
           structureType: structure.type as any,
-          linkedBackend: savedConfig?.linkedBackend ?? undefined,
+          connections,
           host,
           podId: os.hostname(),
           packages: packagePorts,
@@ -535,6 +550,9 @@ export class PreviewService {
         await this.portRegistry.registerPreview(previewState);
         logger.info(`[Preview] Registered: ${serverKey} -> ${host}:${structure.entry.port}`, { component: 'PreviewService' });
       }
+
+      // Connections already in registry — no need to re-save here
+
       await this.updatePhase(serverKey, 'starting', { running: true });
       
       // 5. Store processes (port is already in Redis via registerPreview)
@@ -771,8 +789,61 @@ export class PreviewService {
       this.appendLog(serverKey, 'stdout', `⚠️  ${pkgName} exited with code ${code}`);
     }
     
+    // Early-exit diagnostics: if process died within 10 seconds, likely a config issue
+    const spawnTime = this.spawnTimestamps.get(serverKey);
+    if (spawnTime && (Date.now() - spawnTime < 10_000) && code !== 0) {
+      this.runEarlyExitDiagnostics(serverKey).catch(err => {
+        logger.warn(`[Preview] RuntimeDiagnostics failed: ${err.message}`, { component: 'PreviewService' });
+      });
+    }
+    
     // Check if all processes are dead — if so, full cleanup
     this.cleanupIfAllDead(serverKey);
+  }
+
+  /**
+   * Run RuntimeDiagnostics on early process exit.
+   * Collects recent logs, analyzes against connections, broadcasts issues.
+   */
+  private async runEarlyExitDiagnostics(serverKey: string): Promise<void> {
+    const logs = this.logManager.getLogs(serverKey);
+    const recentLogText = logs.slice(-100).map(l => l.message).join('\n');
+    
+    // Get connections from Redis
+    const { tenantId, userId, projectId, feature } = this.parseServerKey(serverKey);
+    let connections: ServiceConnection[] = [];
+    if (this.stateStore) {
+      const config = await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature);
+      connections = config?.connections || [];
+    }
+
+    const result = this.runtimeDiagnostics.analyze(recentLogText, connections);
+    
+    if (result.issues.length > 0) {
+      logger.info(`[Preview] RuntimeDiagnostics found ${result.issues.length} issues for ${serverKey}`, { component: 'PreviewService' });
+      
+      // Update phase to error with diagnostic info
+      const firstFatal = result.issues.find(i => i.severity === 'fatal');
+      await this.updatePhase(serverKey, 'error', {
+        error: firstFatal?.reason || 'Process exited unexpectedly',
+      });
+
+      // Broadcast issues via SSE
+      if (this.stateStore) {
+        const channel = getRealtimeBroadcastChannel(tenantId, userId);
+        const message = {
+          projectId,
+          featureName: feature,
+          type: 'preview' as const,
+          data: {
+            type: 'issues',
+            data: { issues: result.issues, affectedConnections: result.affectedConnections },
+          },
+          userContext: { organizationId: tenantId, userId },
+        };
+        await this.stateStore.publish(channel, message);
+      }
+    }
   }
   
   private getCurrentPidForServer(serverKey: string): number | undefined {
@@ -965,7 +1036,8 @@ export class PreviewService {
     phase?: string;
     error?: string;
     structureType?: string;
-    linkedBackend?: any;
+    projectProfile?: { language: string; framework?: string };
+    connections?: ServiceConnection[];
     setupReasoning?: string;
     setupReason?: string;
     suggestedFix?: string;
@@ -993,7 +1065,8 @@ export class PreviewService {
             packages: redisState.packages || [],
             issues: (redisState.issues || []) as any,
             structureType: redisState.structureType,
-            linkedBackend: redisState.linkedBackend,
+            projectProfile: redisState.projectProfile,
+            connections: redisState.connections,
             setupReasoning: redisState.setupReasoning,
             setupReason: redisState.setupReason,
             suggestedFix: redisState.suggestedFix,

@@ -71,14 +71,19 @@ Before output, check each file:
 |----------------|---------|
 | `docker-compose.yml` | Local development environment for each observed service |
 | Makefile targets: `dev-infra`, `dev-infra-down` | Start/stop infrastructure services |
-| `.env.example` | Connection URLs for each service |
+| `.env.example` | Connection variables with `@connection` annotations (see preview-env-contract) |
 
 **Constraints**:
 - Do NOT hardcode connection URLs in application code. Use environment variables.
 - Do NOT omit healthcheck for any service in docker-compose.yml.
 - Do NOT omit volume mounts for stateful services (data must survive container restart).
 - Do NOT run `docker compose up` in setup tasks. Only create the files.
+- `.env.example` MUST use `# @connection {category} {name}` annotation for every service connection variable.
+- Same-project internal connections (e.g., frontend → backend in fullstack) MUST add `self`: `# @connection business {name} self`
+- Cross-project connections (e.g., frontend project referencing a separate backend project) MUST use `ant-project:{projectId}:{feature}`: `# @connection business {name} ant-project:{projectId}:{feature}`
 
 **Blind spot reminder**:
 - `dev-infra` / `dev-infra-down` Makefile targets are EASILY FORGOTTEN. Verify they exist.
-- `.env.example` must include ALL service connection URLs.
+- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Verify every connection variable has one.
+- The `self` keyword for internal connections is EASILY FORGOTTEN in fullstack/monorepo projects.
+- The `ant-project:{projectId}:{feature}` modifier for cross-project connections is EASILY FORGOTTEN when the specification names a specific external project as a dependency.

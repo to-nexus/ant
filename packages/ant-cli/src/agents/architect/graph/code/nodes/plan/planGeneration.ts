@@ -98,7 +98,8 @@ export async function generatePlanText(
     designDoc,
     projectCodeContext,
     violationsText,
-    uiDoc  // ✅ Pass uiDoc for UI-related tasks
+    uiDoc,  // ✅ Pass uiDoc for UI-related tasks
+    state.profile  // ✅ Pass profile for language-specific setup constraint injection
   );
   
   // ✅ Log prompt structure (not content)

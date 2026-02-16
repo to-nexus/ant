@@ -38,17 +38,18 @@ export class PreviewBroadcaster implements PreviewUpdatePort {
   }
 
   /**
-   * Broadcast structure type to frontend via SSE
+   * Broadcast structure type and project profile to frontend via SSE
    * Implements PreviewUpdatePort interface
    */
   broadcastStructureType(
     projectId: string,
     featureName: string,
     structureType: PreviewStructureType,
-    userContext?: UserContext
+    userContext?: UserContext,
+    projectProfile?: { language: string; framework?: string }
   ): void {
     const ctx = userContext || this.options.userContext;
-    this.doBroadcast(projectId, featureName, structureType, ctx)
+    this.doBroadcast(projectId, featureName, structureType, ctx, projectProfile)
       .catch(err => {
         console.warn(`[PreviewBroadcaster] Failed to broadcast structureType:`, err.message);
       });
@@ -58,7 +59,8 @@ export class PreviewBroadcaster implements PreviewUpdatePort {
     projectId: string,
     featureName: string,
     structureType: PreviewStructureType,
-    userContext: UserContext
+    userContext: UserContext,
+    projectProfile?: { language: string; framework?: string }
   ): Promise<void> {
     if (!userContext?.organizationId || !userContext?.userId) {
       console.warn(`[PreviewBroadcaster] Cannot broadcast without userContext`);
@@ -68,37 +70,45 @@ export class PreviewBroadcaster implements PreviewUpdatePort {
     // 1. Broadcast as SSE 'preview' type with 'status' subtype (real-time push)
     // Frontend usePreviewManager already handles type:'preview', subtype:'status'
     // structureType detected → code exists → canStart is true
+    const statusData: Record<string, any> = {
+      structureType,
+      canStart: true,
+    };
+    if (projectProfile) {
+      statusData.projectProfile = projectProfile;
+    }
+    
     const message = {
       projectId,
       featureName,
       type: 'preview' as const,
       data: {
         type: 'status',
-        data: {
-          structureType,
-          canStart: true,
-        },
+        data: statusData,
       },
       userContext,
     };
 
     const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
     await this.pubRedis.publish(channel, JSON.stringify(message));
-    console.log(`[PreviewBroadcaster] ✅ structureType=${structureType} broadcast to ${channel}`);
+    console.log(`[PreviewBroadcaster] ✅ structureType=${structureType}${projectProfile ? ` profile=${projectProfile.language}/${projectProfile.framework || 'none'}` : ''} broadcast to ${channel}`);
 
-    // 2. Persist structureType to PREVIEW_CONFIG Redis key (durable storage)
-    // This ensures GET /preview-config returns structureType even after page refresh,
+    // 2. Persist structureType + projectProfile to PREVIEW_CONFIG Redis key (durable storage)
+    // This ensures GET /preview-config returns these values even after page refresh,
     // before preview server has ever started.
     try {
       const configKey = `${REDIS_KEYS.INFRA.PREVIEW_CONFIG}${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName}`;
       const existing = await this.pubRedis.get(configKey);
       const config = existing ? JSON.parse(existing) : {};
       config.structureType = structureType;
+      if (projectProfile) {
+        config.projectProfile = projectProfile;
+      }
       await this.pubRedis.set(configKey, JSON.stringify(config), 'EX', REDIS_TTL.INFRA.PREVIEW_CONFIG);
-      console.log(`[PreviewBroadcaster] ✅ structureType=${structureType} persisted to ${configKey}`);
+      console.log(`[PreviewBroadcaster] ✅ structureType=${structureType}${projectProfile ? ` projectProfile=${JSON.stringify(projectProfile)}` : ''} persisted to ${configKey}`);
     } catch (err: any) {
       // Non-critical: SSE broadcast already delivered the value in real-time
-      console.warn(`[PreviewBroadcaster] Failed to persist structureType to Redis:`, err.message);
+      console.warn(`[PreviewBroadcaster] Failed to persist to Redis:`, err.message);
     }
   }
 

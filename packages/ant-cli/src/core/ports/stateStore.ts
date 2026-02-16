@@ -146,8 +146,8 @@ export interface PendingChoiceData {
 // ============================================
 
 // Re-export from portRegistry
-export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, LinkedBackendConfig } from './portRegistry';
-import { PreviewState, IDEState, PortMapping, LinkedBackendConfig, PreviewStructureType } from './portRegistry';
+export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, ServiceCategory, ConnectionResolution, ServiceConnection } from './portRegistry';
+import { PreviewState, IDEState, PortMapping, ServiceConnection, PreviewStructureType } from './portRegistry';
 
 // ============================================
 // StateStorePort Interface
@@ -325,7 +325,7 @@ export interface StateStorePort {
   ): Promise<void>;
   
   /**
-   * Save preview config (user settings like linkedBackend).
+   * Save preview config (user settings: connections, structureType, projectProfile).
    * Stored separately from runtime state — persists across preview start/stop.
    */
   savePreviewConfig(
@@ -333,7 +333,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    config: { linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null }
+    config: { connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null }
   ): Promise<void>;
   
   /**
@@ -345,7 +345,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<{ linkedBackend?: LinkedBackendConfig | null; structureType?: PreviewStructureType | null } | null>;
+  ): Promise<{ connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null } | null>;
   
   /**
    * Unregister preview

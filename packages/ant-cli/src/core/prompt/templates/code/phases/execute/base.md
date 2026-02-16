@@ -155,7 +155,8 @@ Create config files only. **NO source code, NO tests.**
 - Compiler/runtime config (e.g., `tsconfig.json` for TypeScript)
 - Build tool config (framework-specific)
 - `.gitignore` - Version control exclusions
-- `.env.example` - Environment variable template
+- `.env.example` - Environment variable template (connection variables MUST use `@connection` annotation)
+- `.env` - Active environment file. When creating `.env.example`, ALWAYS also create `.env` with the same variables. Use localhost/docker-compose default values for connection strings.
 - Entry file (framework-specific, e.g., index.html for SPA)
 - `docker-compose.yml` - Local infrastructure services (only if: root-level setup AND design specifies external services requiring a runtime process)
 
@@ -214,6 +215,7 @@ Follow the framework/language-specific setup instructions from:
 - Write/edit source code files
 - Ensure imports and syntax are correct
 - Copy assets if needed
+- If your feature requires new environment variables, update both `.env.example` (with `@connection` annotation if applicable) and `.env`
 
 **🚨 CRITICAL: If Plan specifies MODIFY, you MUST do it**
 
@@ -246,18 +248,26 @@ MODIFY: app/page.tsx - Add import and render new component
 
 {{#if currentTask}}
 {{#if (eq currentTask.priority 1000)}}
-## ✅ FINAL VERIFICATION: Build & Startup Check
+## FINAL VERIFICATION: Build & Runtime Check
 
 {{#if designDoc}}
 ────────────────────────────────────────────────────────────────────────────────
-## 📋 DESIGN SPECIFICATION
+## DESIGN SPECIFICATION (Reference Only)
 
 {{designDoc}}
 
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 
-**🎯 Purpose:** Verify the application builds and starts successfully.
+### Purpose
+
+Verify the application builds and starts without errors.
+
+**Principle**: Task decomposition follows divide-and-conquer. Feature completeness is the responsibility of individual feature tasks. This task verifies ONLY that the integrated result builds and runs.
+
+**Constraint**: Do NOT modify code to add, complete, or improve functionality. If it compiles and starts, it is outside your scope — even if the implementation appears incomplete.
+
+**Blind spot**: When reading code during error diagnosis, the temptation to "fix" incomplete-looking implementations is strong. Resist. Only build and startup errors are your responsibility.
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -272,37 +282,33 @@ Observe the project's configuration files to determine build, dev, and infrastru
 | **Build/dev commands** | Read project config files to find build and start commands. Do NOT assume. |
 | **Infrastructure definition** | Does `docker-compose.yml` (or `compose.yml`) exist? If yes, infrastructure is required. |
 | **Environment requirements** | Read `.env.example`, config files, or entry point to identify required environment variables. |
+| **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. Are same-project internal connections marked with `self`? |
 
-**Step 2: Infrastructure** (if infrastructure definition exists)
+**Step 2: Environment & Infrastructure**
 
-**Principle**: An application that depends on external services cannot start without them. Start infrastructure BEFORE attempting to run the application.
+**Principle**: An application cannot start without its environment configuration and dependent services. Resolve environment issues BEFORE attempting to build.
 
-| Checkpoint | What to observe |
-|-----------|----------------|
-| **Start services** | Run `docker compose up -d --wait` in the directory containing the compose file. |
-| **⚠️ Environment variable mapping** | Read the compose file's service definitions (ports, credentials, database names). Map these to the environment variables the application requires. |
-| **Verify readiness** | Services must be healthy before proceeding to runtime verification. |
+| Checkpoint | Action |
+|-----------|--------|
+| **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. Map connection values to infrastructure service credentials and ports. |
+| **Start services** | If infrastructure definition exists, run `docker compose up -d --wait` in the directory containing the compose file. |
+| **Verify readiness** | Services must be healthy before proceeding. |
 
-**⚠️ BLIND SPOT: Environment variables are EASILY MISSED.**
+**Blind spot**: Environment variables are EASILY MISSED. If `.env.example` exists, the application almost certainly requires a `.env` file with resolved values.
 
-After starting infrastructure, verify the application has connection configuration:
-1. Read the compose file — it contains service credentials and ports
-2. Read the application's environment requirements (`.env.example`, config loader, entry point)
-3. Ensure the application can reach the infrastructure (construct connection strings, set env vars)
+**Constraint**: If the compose file defines a service, the application requires it at runtime. Do NOT skip environment variable setup.
 
-**Constraint**: If the compose file defines a service, assume the application NEEDS it at runtime. Do NOT skip environment variable setup.
+**Step 3: Build**
 
-**Step 3: Build** (PRIMARY verification)
+Run the project's build/compile command.
 
-Run the project's build/compile command. This is the primary success criterion.
-
-**Principle**: Build (static compilation/bundling) typically succeeds without external services. Build success is the REQUIRED verification.
+**Principle**: Build errors are concrete and finite. Fix compilation errors and retry.
 
 **Step 4: Runtime** (if build succeeds)
 
 Run the project's dev/start command to verify the application starts.
 
-**Principle**: Runtime requires both build artifacts AND running infrastructure. This step validates the full stack.
+**Principle**: Runtime validates the full stack — build artifacts, infrastructure, and environment configuration. If startup fails due to environment or configuration issues, fix and retry.
 
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -310,13 +316,14 @@ Run the project's dev/start command to verify the application starts.
 
 | Constraint | Rule |
 |-----------|------|
-| **Step order** | Execute Steps 1-4 in sequence. Each step depends on the previous. |
-| **Build = required** | Build must pass. If build fails, fix the error. |
-| **Runtime = 1 attempt** | Run dev/start server ONCE. Do NOT retry, do NOT attempt to fix runtime errors. |
+| **Scope** | Build and runtime errors ONLY. Feature completeness is the responsibility of feature tasks, not this task. |
+| **No feature work** | Do NOT review, add, complete, or improve feature implementations. Do NOT search for incomplete code or missing functionality. |
+| **Build errors** | Fix compilation/build errors and retry. These are concrete problems with concrete solutions. |
+| **Runtime errors** | If startup fails due to environment, configuration, or infrastructure issues — fix and retry. Do NOT fix application logic errors. |
 | **Infrastructure failure** | If `docker compose up` fails, still attempt build. Skip runtime. |
-| **No infinite loops** | Do NOT repeatedly try to fix environment, config, or connection errors during runtime. |
+| **Step order** | Execute Steps 1-4 in sequence. Each step depends on the previous. |
 | **Completion** | After completing all applicable steps, output `<done>true</done>`. |
-| **Dev server is long-running** | Dev servers do NOT terminate. Success = outputs a startup/ready message. Do NOT wait for exit. |
+| **Dev server behavior** | Dev servers do NOT terminate. Success = outputs a startup/ready message. Do NOT wait for exit. |
 
 ────────────────────────────────────────────────────────────────────────────────
 

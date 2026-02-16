@@ -98,9 +98,47 @@ EFS(NFS)에서는 `inotify`가 작동하지 않는다. `ProcessSpawner`가 Dev S
 /{urlKey}/api/*   -> Backend (backend port)
 ```
 
-## Cross-Project Preview
+## Service Connections
 
-프론트엔드와 백엔드가 서로 다른 프로젝트일 때, Preview Config UI에서 `linkedBackend`를 설정한다. 프론트엔드의 `VITE_API_BASE_URL`에 백엔드의 urlKey 경로가 주입된다.
+Preview Config UI의 "Service Connections" 섹션은 프로젝트의 모든 외부 서비스 의존성을 관리한다.
+
+### 감지 메커니즘
+
+`ConnectionDetector`가 `.env.example`의 `@connection` 어노테이션을 파싱한다:
+
+```env
+# @connection {category} {name}           -- 외부 서비스
+# @connection {category} {name} self      -- 동일 프로젝트 내부 연결
+```
+
+- `self` 키워드: 같은 프로젝트의 다른 패키지를 참조 (fullstack FE→BE, 모노레포 내부). 프록시 경로가 자동 계산됨.
+- `enrichWithCompose()`: docker-compose.yml에서 infrastructure connection의 resolution을 `docker`로 업그레이드.
+
+### Resolution 타입 제약
+
+| 카테고리 | 허용 resolution | 예시 |
+|---------|----------------|------|
+| `infrastructure` | `url`, `docker` | DB, Redis, MQ |
+| `business` | `url`, `ant-project` | API, MSA 서비스 |
+
+### 패키지별 스코핑
+
+연결은 `source` 필드로 패키지에 소속된다. 모노레포에서 각 패키지는 자체 `.env.example`을 가진다.
+
+- Dedup 키: `${source}:${envVar}` (동일 envVar이 다른 패키지에서 공존 가능)
+- Env 주입: `ProcessSpawner`가 spawn 시 해당 패키지의 `source`에 맞는 connections만 필터링하여 주입
+- Config UI: 패키지별 그룹핑, 카테고리 뱃지(business/infrastructure), resolution 뱃지(url/docker/ant-project) 표시
+
+### 감지 타이밍
+
+- **자동 감지**: Config Panel 최초 열 때 레지스트리가 비어있으면 1회 실행 후 Redis에 캐싱
+- **수동 재감지**: "Auto Detect" 버튼 → POST /detect-connections → 파일시스템 재스캔, 레지스트리 전체 교체
+- **Preview Start**: Redis 레지스트리에서만 읽기 (감지 실행 안 함)
+
+### Cross-Project / Internal 연결
+
+- **Cross-Project**: `ant-project` resolution에 다른 프로젝트의 projectId/feature 지정 → 프록시 경로 자동 계산
+- **Same-Project (self)**: `ant-project` resolution에 자기 자신의 projectId/feature 지정 → 내부 프록시 경로 자동 계산. `.env.example`에서 `@connection business backend-api self`로 선언.
 
 ## Multi-Pod
 
