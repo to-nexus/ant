@@ -271,7 +271,7 @@ export async function loadSemanticFiles(
     // 0 Vector DB files: remove the 'retrieving' UI element entirely
     console.log(`   ℹ️  Retrieved: 0 files from Vector DB — removing retrieving UI`);
     if (retrievingIndex !== undefined) {
-      await chatAPI.removeChatStatus(retrievingIndex);
+      await chatAPI.removeChatStatus(retrievingIndex, 'retrieving');
     }
   }
   

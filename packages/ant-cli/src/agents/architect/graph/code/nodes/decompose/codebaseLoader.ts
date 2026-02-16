@@ -89,7 +89,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
         _mergeIndex: retrievingIndex
       });
     } else if (retrievingIndex !== undefined) {
-      await chatAPI.removeChatStatus(retrievingIndex);
+      await chatAPI.removeChatStatus(retrievingIndex, 'retrieving');
     }
   }
   
@@ -139,7 +139,7 @@ export async function loadCodebaseFilePaths(state: ArchitectGraphState): Promise
       });
     } else if (retrievingIndex !== undefined) {
       // 0 Vector DB files: remove the 'retrieving' UI element
-      await chatAPI.removeChatStatus(retrievingIndex);
+      await chatAPI.removeChatStatus(retrievingIndex, 'retrieving');
     }
     
     // Step 2: Explored - Git changes + added (all uncommitted files)

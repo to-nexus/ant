@@ -285,9 +285,9 @@ export class LLMResponseService {
   /**
    * Remove a chat status UI element by its content index
    */
-  removeChatStatus(contentIndex: number): void {
+  removeChatStatus(contentIndex: number, expectedType?: string): void {
     if (!this.enabled) return;
-    this.chatStatusHandler.removeChatStatus(contentIndex);
+    this.chatStatusHandler.removeChatStatus(contentIndex, expectedType);
   }
 
   // ============================================================================
