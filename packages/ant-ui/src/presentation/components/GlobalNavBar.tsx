@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Settings, Globe } from 'lucide-react';
+import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
 import { SignUpModal } from './auth/SignUpModal';
