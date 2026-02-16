@@ -28,14 +28,14 @@ export function isVerificationTask(task: {
 }
 
 /**
- * Determine whether a task is specifically the final verification task
- * (not just any verification task — excludes error tasks).
+ * Determine whether a task is specifically the final verification task.
+ * Only priority >= 1000 qualifies. Name-based matching was removed because
+ * keywords like "integration" caused feature tasks (e.g. route-integration)
+ * to be misclassified as final tasks, breaking routing and safety-net logic.
  */
 export function isFinalVerificationTask(task: {
   priority?: number;
   name?: string;
 }): boolean {
-  if (task.priority != null && task.priority >= TASK_PRIORITIES.FINAL_VERIFICATION) return true;
-  const name = task.name?.toLowerCase() || '';
-  return ['final', 'integration', 'verification'].some(k => name.includes(k));
+  return task.priority != null && task.priority >= TASK_PRIORITIES.FINAL_VERIFICATION;
 }
