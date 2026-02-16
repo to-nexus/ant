@@ -9,9 +9,13 @@
  * - FileRegistry for existence checks
  * - CodeGen for tracking created file paths
  * 
- * KEY PRINCIPLE: NEVER strip intermediate directories (src/, lib/, etc.)
- * They are valid project structure elements.
+ * KEY PRINCIPLES:
+ * - NEVER strip intermediate directories (src/, lib/, etc.)
+ * - Feature workspace structure: codebase/ | inputs/ | outputs/ | sessions/
+ *   Any path not under a sibling directory belongs to codebase/.
  */
+
+import { CANONICAL_FEATURE_DIRS } from './sessionPaths';
 
 /**
  * Normalize path separators and remove leading ./ or /
@@ -30,23 +34,21 @@ export interface PathNormalizationResult {
 }
 
 /**
- * Directories commonly found at the root of a codebase.
- * If a path starts with one of these, it should be under the codebase directory.
+ * Feature workspace sibling directory prefixes (derived from CANONICAL_FEATURE_DIRS).
  * 
- * IMPORTANT: src/ is included here. It is a VALID project directory
- * and must NEVER be stripped from paths.
+ * Feature workspace structure:
+ *   features/{feature}/
+ *   ├── codebase/    <- code files (handled by Rule 1)
+ *   ├── inputs/      <- input materials, assets
+ *   ├── outputs/     <- generated artifacts
+ *   └── sessions/    <- session state
+ * 
+ * Paths starting with these prefixes are NOT codebase files
+ * and must not be auto-corrected.
  */
-const CODEBASE_ROOT_DIRS = [
-  'app/', 'src/', 'components/', 'public/', 'styles/', 'lib/', 'utils/',
-  'hooks/', 'pages/', 'frontend/', 'packages/', 'backend/', 'server/',
-  'api/', 'shared/', 'common/', 'core/',
-];
-
-/** Common config files that should be under the codebase directory */
-const CODEBASE_CONFIG_FILES = [
-  'package.json', 'tsconfig.json', 'next.config', 'tailwind.config',
-  'postcss.config', '.eslintrc', '.gitignore',
-];
+const FEATURE_SIBLING_PREFIXES = [
+  ...new Set(CANONICAL_FEATURE_DIRS.map(d => d.split('/')[0]))
+].map(d => d + '/');
 
 /**
  * Normalize a file path to ensure it's under the codebase directory.
@@ -54,9 +56,8 @@ const CODEBASE_CONFIG_FILES = [
  * Rules (applied in order, first match wins):
  * 1. Already starts with codebaseRel/ -> no change
  * 2. features/<name>/<codebaseRel>/... -> codebaseRel/... (fix LLM nesting mistake)
- * 3. Starts with known code dir (app/, src/, lib/, etc.) -> prepend codebaseRel/
- * 4. Is a known config file -> prepend codebaseRel/
- * 5. Otherwise -> no change (might be features/ path or other valid location)
+ * 3. Starts with a feature sibling directory (inputs/, outputs/, sessions/) -> no change
+ * 4. Everything else -> prepend codebaseRel/ (it's a codebase file missing the prefix)
  * 
  * CRITICAL: This function NEVER strips path components (e.g., src/).
  * Stripping src/ causes read/write path mismatches that lead to duplicate files.
@@ -89,29 +90,19 @@ export function normalizeToCodebasePath(
     };
   }
 
-  // Rule 3: Known code directory -> prepend codebase/
-  // This includes src/ - which is a VALID directory that must be preserved, not stripped.
-  for (const dir of CODEBASE_ROOT_DIRS) {
-    if (normalized.startsWith(dir)) {
-      return {
-        normalized: `${prefix}${normalized}`,
-        wasFixed: true,
-        reason: `code files must be under ${codebaseRel}/`,
-      };
+  // Rule 3: Feature sibling directory (inputs/, outputs/, sessions/) -> no change
+  // These are legitimate non-codebase paths (e.g., inputs/assets/logo.png for copy operations)
+  for (const siblingPrefix of FEATURE_SIBLING_PREFIXES) {
+    if (normalized.startsWith(siblingPrefix)) {
+      return { normalized, wasFixed: false };
     }
   }
 
-  // Rule 4: Known config files -> prepend codebase/
-  for (const configFile of CODEBASE_CONFIG_FILES) {
-    if (normalized === configFile || normalized.startsWith(`${configFile.split('.')[0]}.`)) {
-      return {
-        normalized: `${prefix}${normalized}`,
-        wasFixed: true,
-        reason: `config files are inside ${codebaseRel}/`,
-      };
-    }
-  }
-
-  // Rule 5: No matching pattern - return as-is
-  return { normalized, wasFixed: false };
+  // Rule 4: Everything else belongs under codebase/
+  // This covers ALL languages and file types without maintaining an allowlist.
+  return {
+    normalized: `${prefix}${normalized}`,
+    wasFixed: true,
+    reason: `all code files belong under ${codebaseRel}/`,
+  };
 }

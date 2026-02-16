@@ -52,13 +52,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     throw new Error('[CodeGen] currentTask is required but not available in state');
   }
   
-  const codeGenProjectCodeContext = state.projectCodeContext ? {
-    ...state.projectCodeContext,
-    files: state.projectCodeContext.files?.map((f: any) => ({
-      path: f.path,
-      content: null
-    })) || []
-  } : undefined;
+  // Pass RAG-loaded file content directly to the prompt.
+  // Staleness is handled by edit_file's search/replace validation against disk.
+  // System prompt content is cached (cache_control: ephemeral), making this
+  // more token-efficient than stripping content and forcing read_file tool calls.
+  const codeGenProjectCodeContext = state.projectCodeContext ?? undefined;
 
   // ✅ UI doc injection: Always inject if available, unless explicitly disabled
   // Decompose sets task.ui flag - only skip if explicitly false
