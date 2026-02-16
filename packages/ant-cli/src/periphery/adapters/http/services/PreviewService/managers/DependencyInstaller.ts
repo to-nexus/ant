@@ -19,15 +19,42 @@ export class DependencyInstaller {
   private installedRoots: Set<string> = new Set();
 
   /**
-   * Install dependencies if needed
+   * Install dependencies if needed.
+   * Dispatches to language-specific install based on projectProfile.
    */
   async installIfNeeded(
     packagePath: string, 
     displayName: string,
+    onLog: LogCallback,
+    projectProfile?: { language: string; framework?: string }
+  ): Promise<void> {
+    const relativePath = displayName || path.basename(packagePath);
+    const lang = (projectProfile?.language || 'typescript').toLowerCase();
+    
+    switch (lang) {
+      case 'typescript':
+      case 'javascript':
+        return this.installNodeDeps(packagePath, relativePath, onLog);
+      case 'go':
+      case 'python':
+      case 'rust':
+      case 'java':
+        return this.installByLanguage(packagePath, relativePath, lang, onLog);
+      default:
+        logger.debug(`No dependency install for language: ${lang}`, { component: 'DependencyInstaller' });
+        return;
+    }
+  }
+  
+  /**
+   * Node.js / TypeScript dependency install
+   */
+  private async installNodeDeps(
+    packagePath: string,
+    displayName: string,
     onLog: LogCallback
   ): Promise<void> {
     const nodeModulesPath = path.join(packagePath, 'node_modules');
-    const relativePath = displayName || path.basename(packagePath);
     const projectRoot = this.findProjectRoot(packagePath);
     const isWorkspace = this.isWorkspaceProject(projectRoot);
     
@@ -60,10 +87,9 @@ export class DependencyInstaller {
     }
     
     // Non-workspace: install per package
-    // Check if node_modules exists
     if (!fs.existsSync(nodeModulesPath)) {
-      logger.info(`Installing dependencies (no node_modules): ${relativePath}`, { component: 'DependencyInstaller' });
-      return this.runInstall(packagePath, relativePath, onLog);
+      logger.info(`Installing dependencies (no node_modules): ${displayName}`, { component: 'DependencyInstaller' });
+      return this.runInstall(packagePath, displayName, onLog);
     }
     
     // Verify critical dependencies are actually installed
@@ -76,18 +102,126 @@ export class DependencyInstaller {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     const criticalDeps = this.identifyCriticalDeps(packageJson);
     
-    // Check if critical deps exist in node_modules
     const missingDeps = criticalDeps.filter(dep => 
       !fs.existsSync(path.join(nodeModulesPath, dep))
     );
     
     if (missingDeps.length > 0) {
-      logger.info(`Missing critical deps for ${relativePath}: ${missingDeps.join(', ')} (re-install)`, { component: 'DependencyInstaller' });
+      logger.info(`Missing critical deps for ${displayName}: ${missingDeps.join(', ')} (re-install)`, { component: 'DependencyInstaller' });
       onLog('stdout', `⚠️  Missing critical dependencies: ${missingDeps.join(', ')}`);
-      return this.runInstall(packagePath, relativePath, onLog);
+      return this.runInstall(packagePath, displayName, onLog);
     }
     
     logger.debug(`Dependencies already installed: ${packagePath}`, { component: 'DependencyInstaller' });
+  }
+  
+  /**
+   * Language-specific dependency install (Go, Python, Rust, Java)
+   */
+  private async installByLanguage(
+    packagePath: string,
+    displayName: string,
+    language: string,
+    onLog: LogCallback
+  ): Promise<void> {
+    let command: string;
+    let args: string[];
+    
+    switch (language) {
+      case 'go':
+        // Go modules: download dependencies
+        if (!fs.existsSync(path.join(packagePath, 'go.mod'))) {
+          logger.debug(`No go.mod found, skipping Go dep install`, { component: 'DependencyInstaller' });
+          return;
+        }
+        command = 'go';
+        args = ['mod', 'tidy'];
+        break;
+      case 'python':
+        if (fs.existsSync(path.join(packagePath, 'requirements.txt'))) {
+          command = 'pip';
+          args = ['install', '-r', 'requirements.txt'];
+        } else if (fs.existsSync(path.join(packagePath, 'pyproject.toml'))) {
+          command = 'pip';
+          args = ['install', '-e', '.'];
+        } else {
+          logger.debug(`No Python dependency file found, skipping`, { component: 'DependencyInstaller' });
+          return;
+        }
+        break;
+      case 'rust':
+        if (!fs.existsSync(path.join(packagePath, 'Cargo.toml'))) {
+          logger.debug(`No Cargo.toml found, skipping Rust dep install`, { component: 'DependencyInstaller' });
+          return;
+        }
+        command = 'cargo';
+        args = ['build'];
+        break;
+      case 'java':
+        if (fs.existsSync(path.join(packagePath, 'pom.xml'))) {
+          command = 'mvn';
+          args = ['dependency:resolve'];
+        } else if (fs.existsSync(path.join(packagePath, 'build.gradle')) || fs.existsSync(path.join(packagePath, 'build.gradle.kts'))) {
+          command = './gradlew';
+          args = ['dependencies'];
+        } else {
+          logger.debug(`No Java build file found, skipping`, { component: 'DependencyInstaller' });
+          return;
+        }
+        break;
+      default:
+        logger.debug(`Unsupported language for dep install: ${language}`, { component: 'DependencyInstaller' });
+        return;
+    }
+    
+    onLog('stdout', `📦 Installing ${language} dependencies for ${displayName}...`);
+    logger.info(`Running ${command} ${args.join(' ')} in: ${packagePath}`, { component: 'DependencyInstaller' });
+    
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      
+      const installProcess = spawn(command, args, {
+        cwd: packagePath,
+        shell: true,
+        stdio: 'pipe'
+      });
+      
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          const msg = `${command} ${args[0]} timed out after ${INSTALL_TIMEOUT_MS / 1000}s`;
+          logger.error(msg, { component: 'DependencyInstaller' });
+          onLog('stderr', `❌ ${msg}`);
+          try { installProcess.kill('SIGTERM'); } catch { /* ignore */ }
+          setTimeout(() => { try { installProcess.kill('SIGKILL'); } catch { /* ignore */ } }, 5000);
+          reject(new Error(msg));
+        }
+      }, INSTALL_TIMEOUT_MS);
+      
+      installProcess.stdout?.on('data', (data) => onLog('stdout', data.toString()));
+      installProcess.stderr?.on('data', (data) => onLog('stderr', data.toString()));
+      
+      installProcess.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          onLog('stdout', `✅ ${language} dependencies installed for ${displayName}`);
+          resolve();
+        } else {
+          logger.error(`${command} failed in ${packagePath} with code ${code}`, { component: 'DependencyInstaller' });
+          reject(new Error(`${command} ${args.join(' ')} failed with code ${code}`));
+        }
+      });
+      
+      installProcess.on('error', (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        logger.error(`Install process error in ${packagePath}`, { component: 'DependencyInstaller' }, err);
+        reject(err);
+      });
+    });
   }
   
   /**

@@ -30,6 +30,8 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { parsePreviewKey } from '../state/redisKeyUtils';
 import { toUrlKey, fromUrlKey, isUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
+import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -338,17 +340,23 @@ export class PreviewServer {
           feature
         );
 
-        // Compute canStart: lightweight filesystem check when idle
+        // Compute canStart + detect project profile: lightweight filesystem check when idle
         let canStart = false;
+        let fsProjectProfile: { language: string; framework?: string } | undefined;
+        let fsStructureType: string | undefined;
         if (!status.running && status.phase !== 'installing' && status.phase !== 'starting') {
           try {
             const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
-            canStart = await this.checkCanStart(workspacePath);
+            const detection = this.detectProjectQuick(workspacePath);
+            canStart = detection.canStart;
+            fsProjectProfile = detection.projectProfile;
+            fsStructureType = detection.structureType;
           } catch {
             // Filesystem check failure → canStart remains false
           }
         }
 
+        // Use Redis values (from decompose) first, filesystem detection as fallback
         res.json({
           running: status.running,
           ready: status.ready,
@@ -363,8 +371,9 @@ export class PreviewServer {
           setupReasoning: status.setupReasoning,
           setupReason: status.setupReason,
           suggestedFix: status.suggestedFix,
-          structureType: status.structureType || null,
-          linkedBackend: status.linkedBackend || null,
+          structureType: status.structureType || fsStructureType || null,
+          projectProfile: (status as any).projectProfile || fsProjectProfile || null,
+          connections: status.connections || [],
           canStart,
           logs: logs.slice(-50)
         });
@@ -404,27 +413,24 @@ export class PreviewServer {
 
     /**
      * GET /preview/projects/:id/preview-config
-     * Get preview configuration (linkedBackend, structureType)
-     * 
-     * linkedBackend is read from the dedicated config key (persists across preview start/stop).
-     * structureType is read from runtime status (auto-detected at preview start).
+     * Get preview configuration (connections, structureType, projectProfile).
+     * If connections registry is empty and project files exist, runs ConnectionDetector
+     * once and caches the result in Redis.
      */
     this.app.get('/projects/:id/preview-config', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
         const feature = req.query.feature as string || 'main';
+        const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
 
-        // Read config from dedicated config key (independent of runtime state)
-        // Contains linkedBackend (user setting) and structureType (from decompose)
-        const config = await this.stateStore.getPreviewConfig(
+        let config = await this.stateStore.getPreviewConfig(
           userContext.organizationId,
           userContext.userId,
           projectId,
           feature
         );
 
-        // Read structureType from runtime status (available after preview start)
         const status = await this.previewService.getPreviewStatus(
           userContext.organizationId,
           userContext.userId,
@@ -432,10 +438,35 @@ export class PreviewServer {
           feature
         );
 
-        // structureType: prefer runtime (filesystem detection) → fall back to config (decompose detection)
+        // Auto-detect connections if registry is empty and project files exist
+        let connections = config?.connections || [];
+        if (connections.length === 0) {
+          try {
+            const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+            if (fs.existsSync(workspacePath)) {
+              const detector = new ProjectStructureDetector();
+              const structure = await detector.detect(workspacePath);
+              if (structure) {
+                const connectionDetector = new ConnectionDetector();
+                connections = connectionDetector.detect(workspacePath, structure, serverKey);
+                if (connections.length > 0) {
+                  await this.stateStore.savePreviewConfig(
+                    userContext.organizationId, userContext.userId, projectId, feature,
+                    { connections }
+                  );
+                  logger.info(`[PreviewServer] Auto-detected ${connections.length} connections for ${projectId}/${feature}`, { component: 'PreviewServer' });
+                }
+              }
+            }
+          } catch (detectErr: any) {
+            logger.warn(`[PreviewServer] Connection auto-detect failed: ${detectErr.message}`, { component: 'PreviewServer' });
+          }
+        }
+
         res.json({
           structureType: status.structureType || config?.structureType || null,
-          linkedBackend: config?.linkedBackend || null,
+          projectProfile: config?.projectProfile || null,
+          connections,
         });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config get error', { component: 'PreviewServer' }, error);
@@ -445,40 +476,110 @@ export class PreviewServer {
 
     /**
      * PUT /preview/projects/:id/preview-config
-     * Save preview configuration (linkedBackend)
-     * 
-     * Saves to a dedicated config key, independent of preview runtime state.
+     * Save preview configuration (connections).
+     * Validates resolution type constraints and auto-computes ant-project proxy paths.
      */
     this.app.put('/projects/:id/preview-config', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
         const feature = req.body.feature || 'main';
-        const { linkedBackend } = req.body;
+        const { connections } = req.body;
 
-        // If linkedBackend type is 'project', compute the resolvedUrlKey
-        let resolvedLinkedBackend = linkedBackend;
-        if (linkedBackend?.type === 'project' && linkedBackend.projectId && linkedBackend.feature) {
-          const backendServerKey = `${userContext.organizationId}:${userContext.userId}:${linkedBackend.projectId}:${linkedBackend.feature}`;
-          resolvedLinkedBackend = {
-            ...linkedBackend,
-            resolvedUrlKey: toUrlKey(backendServerKey),
-          };
+        // Validate resolution type constraints
+        const VALID_RESOLUTIONS: Record<string, string[]> = {
+          infrastructure: ['url', 'docker'],
+          business: ['url', 'ant-project'],
+        };
+        for (const conn of (connections || [])) {
+          const allowed = VALID_RESOLUTIONS[conn.category];
+          if (allowed && conn.resolution?.type && !allowed.includes(conn.resolution.type)) {
+            res.status(400).json({
+              error: `Invalid resolution type '${conn.resolution.type}' for category '${conn.category}'. Allowed: ${allowed.join(', ')}`,
+              envVar: conn.envVar,
+            });
+            return;
+          }
         }
 
-        // Save to dedicated config key (independent of runtime state)
+        // Resolve ant-project connections: compute resolvedUrlKey and proxy path
+        const resolvedConnections = (connections || []).map((conn: any) => {
+          if (conn.resolution?.type === 'ant-project' && conn.resolution.projectId && conn.resolution.feature) {
+            // Resolve 'self' placeholders to actual project/feature
+            const resolvedProjectId = conn.resolution.projectId === 'self' ? projectId : conn.resolution.projectId;
+            const resolvedFeature = conn.resolution.feature === 'self' ? feature : conn.resolution.feature;
+            const backendServerKey = `${userContext.organizationId}:${userContext.userId}:${resolvedProjectId}:${resolvedFeature}`;
+            return {
+              ...conn,
+              resolution: {
+                ...conn.resolution,
+                resolvedUrlKey: toUrlKey(backendServerKey),
+              },
+              value: `/${toUrlKey(backendServerKey)}`,
+            };
+          }
+          return conn;
+        });
+
         await this.stateStore.savePreviewConfig(
           userContext.organizationId,
           userContext.userId,
           projectId,
           feature,
-          { linkedBackend: resolvedLinkedBackend ?? null }
+          { connections: resolvedConnections }
         );
 
-        logger.info(`[PreviewServer] Preview config saved: ${projectId}/${feature}`, { component: 'PreviewServer' });
-        res.json({ success: true, linkedBackend: resolvedLinkedBackend });
+        logger.info(`[PreviewServer] Preview config saved: ${projectId}/${feature} (${resolvedConnections.length} connections)`, { component: 'PreviewServer' });
+        res.json({ success: true, connections: resolvedConnections });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config save error', { component: 'PreviewServer' }, error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    /**
+     * POST /preview/projects/:id/detect-connections
+     * Re-scan project files for connections and overwrite the registry.
+     * Used by the "Auto Detect" button in Config UI.
+     */
+    this.app.post('/projects/:id/detect-connections', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const userContext = this.extractUserContext(req);
+        const feature = req.body.feature || req.query.feature as string || 'main';
+        const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
+
+        const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+        if (!fs.existsSync(workspacePath)) {
+          res.status(404).json({ error: 'Project workspace not found', path: workspacePath });
+          return;
+        }
+
+        let connections: import('../../core/ports/portRegistry').ServiceConnection[] = [];
+        try {
+          const structureDetector = new ProjectStructureDetector();
+          const structure = await structureDetector.detect(workspacePath);
+          if (structure) {
+            const connectionDetector = new ConnectionDetector();
+            connections = connectionDetector.detect(workspacePath, structure, serverKey);
+          }
+        } catch (detectErr: any) {
+          logger.warn(`[PreviewServer] Structure detection failed, clearing connections: ${detectErr.message}`, { component: 'PreviewServer' });
+        }
+
+        // Full overwrite of the registry
+        await this.stateStore.savePreviewConfig(
+          userContext.organizationId,
+          userContext.userId,
+          projectId,
+          feature,
+          { connections }
+        );
+
+        logger.info(`[PreviewServer] Detect-connections: found ${connections.length} for ${projectId}/${feature}`, { component: 'PreviewServer' });
+        res.json({ success: true, connections });
+      } catch (error: any) {
+        logger.error('[PreviewServer] Detect connections error', { component: 'PreviewServer' }, error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -627,56 +728,27 @@ export class PreviewServer {
    * Returns true if workspace has a package.json with dev/start scripts,
    * or a Makefile/go.mod indicating a runnable project.
    */
-  private async checkCanStart(workspacePath: string): Promise<boolean> {
+  /**
+   * Lightweight filesystem check: can the project be started, and what is its profile?
+   * Delegates to ProjectStructureDetector.quickDetect() for unified detection logic.
+   */
+  private detectProjectQuick(workspacePath: string): {
+    canStart: boolean;
+    projectProfile?: { language: string; framework?: string };
+    structureType?: string;
+  } {
     try {
-      // Check package.json with dev/start scripts
-      const pkgJsonPath = path.join(workspacePath, 'package.json');
-      try {
-        const content = await fs.promises.readFile(pkgJsonPath, 'utf-8');
-        const pkg = JSON.parse(content);
-        if (pkg.scripts && (pkg.scripts.dev || pkg.scripts.start)) {
-          return true;
-        }
-      } catch { /* no package.json or parse error */ }
-
-      // Check for Go project (go.mod)
-      try {
-        await fs.promises.access(path.join(workspacePath, 'go.mod'));
-        return true;
-      } catch { /* no go.mod */ }
-
-      // Check for Makefile with run/dev target
-      try {
-        const makefile = await fs.promises.readFile(path.join(workspacePath, 'Makefile'), 'utf-8');
-        if (/^(run|dev|serve):/m.test(makefile)) {
-          return true;
-        }
-      } catch { /* no Makefile */ }
-
-      // Check monorepo: any workspace package.json with dev/start
-      const dirs = ['packages', 'apps'];
-      for (const dir of dirs) {
-        try {
-          const entries = await fs.promises.readdir(path.join(workspacePath, dir), { withFileTypes: true });
-          for (const entry of entries) {
-            if (entry.isDirectory()) {
-              try {
-                const subPkg = await fs.promises.readFile(
-                  path.join(workspacePath, dir, entry.name, 'package.json'), 'utf-8'
-                );
-                const parsed = JSON.parse(subPkg);
-                if (parsed.scripts && (parsed.scripts.dev || parsed.scripts.start)) {
-                  return true;
-                }
-              } catch { /* skip */ }
-            }
-          }
-        } catch { /* dir doesn't exist */ }
+      const result = ProjectStructureDetector.quickDetect(workspacePath);
+      if (!result) {
+        return { canStart: false };
       }
-
-      return false;
+      return {
+        canStart: result.canStart,
+        projectProfile: { language: result.language },
+        structureType: result.structureType,
+      };
     } catch {
-      return false;
+      return { canStart: false };
     }
   }
 

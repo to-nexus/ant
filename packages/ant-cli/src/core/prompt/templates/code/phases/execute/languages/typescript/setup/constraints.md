@@ -83,7 +83,7 @@ If `content` paths don't cover the directories where source files exist, zero ut
 |----------------|---------|
 | `docker-compose.yml` | Local development environment for each observed service |
 | `package.json` scripts: `"dev:infra"`, `"dev:infra:down"` | Start/stop infrastructure services |
-| `.env.example` | Connection URLs for each service |
+| `.env.example` | Connection variables with `@connection` annotations (see preview-env-contract) |
 
 **Package-level setup**: Do NOT create docker-compose.yml or dev:infra scripts.
 Reference environment variables for service connections.
@@ -93,9 +93,14 @@ Reference environment variables for service connections.
 - Do NOT omit healthcheck for any service in docker-compose.yml.
 - Do NOT omit volume mounts for stateful services (data must survive container restart).
 - Do NOT run `docker compose up` in setup tasks. Only create the files.
+- `.env.example` MUST use `# @connection {category} {name}` annotation for every service connection variable.
+- Same-project internal connections (e.g., frontend → backend in fullstack) MUST add `self`: `# @connection business {name} self`
+- Cross-project connections (e.g., frontend project referencing a separate backend project) MUST use `ant-project:{projectId}:{feature}`: `# @connection business {name} ant-project:{projectId}:{feature}`
 
 ⚠️ **Blind spot reminder**:
 - `dev:infra` / `dev:infra:down` scripts are EASILY FORGOTTEN. Verify they exist in root package.json.
-- `.env.example` must include ALL service connection URLs.
+- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Verify every connection variable has one.
+- The `self` keyword for internal connections is EASILY FORGOTTEN in fullstack/monorepo projects.
+- The `ant-project:{projectId}:{feature}` modifier for cross-project connections is EASILY FORGOTTEN when the specification names a specific external project as a dependency.
 - Package-level setup must NOT duplicate infrastructure provisioning.
 

@@ -401,7 +401,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       }
     }
     
-    // ✅ Broadcast structureType to frontend via SSE (for Preview Config canStart)
+    // ✅ Broadcast structureType + projectProfile to frontend via SSE (for Preview Config)
     if (state.deps?.previewUpdate && state.context) {
       const envToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
         frontend: 'frontend-only',
@@ -410,13 +410,18 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       };
       const structureType = envToStructure[parsedProfile.environment];
       if (structureType) {
+        const projectProfile = {
+          language: parsedProfile.language,
+          framework: parsedProfile.framework || undefined,
+        };
         state.deps.previewUpdate.broadcastStructureType(
           state.context.project,
           state.context.featureFolder || 'main',
           structureType,
-          (state as any).userContext
+          (state as any).userContext,
+          projectProfile
         );
-        console.log(`📡 [Decompose] Broadcast structureType=${structureType} via SSE`);
+        console.log(`📡 [Decompose] Broadcast structureType=${structureType} projectProfile=${projectProfile.language}/${projectProfile.framework || 'none'} via SSE`);
       }
     }
     

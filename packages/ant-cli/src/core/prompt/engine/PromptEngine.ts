@@ -486,7 +486,8 @@ export class PromptEngine {
     designDoc: string | undefined,
     projectCodeContext: any,
     violationsText?: string,  // ✅ Formatted violations for retry context
-    uiDoc?: string  // ✅ UI spec/assets doc for UI-related tasks
+    uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
+    profile?: { language: string; [key: string]: any }  // ✅ Codebase profile for language-specific injection
   ): Promise<string> {
     // ✅ Format projectCodeContext as FILE PATHS ONLY (not full content)
     // Plan node is a strategic planner — CodeGen reads actual files via tools.
@@ -500,6 +501,20 @@ export class PromptEngine {
     
     // ✅ Extract directory tree if available
     const directoryTree = projectCodeContext?.directoryTree || '';
+    
+    // ✅ Load language-specific setup constraints for setup tasks
+    let setupConstraints = '';
+    if (task.type === 'setup' && profile?.language) {
+      const language = this.mapLanguageToTemplatePath(profile.language);
+      const templatePath = `code/phases/execute/languages/${language}/setup/constraints`;
+      try {
+        setupConstraints = await this.deps.promptPort.render(templatePath, {});
+        console.log(`📋 [PromptEngine] Injected setup constraints for language: ${language}`);
+      } catch {
+        // Template not found for this language — skip injection
+        console.log(`📋 [PromptEngine] No setup constraints template for language: ${language}`);
+      }
+    }
     
     // ✅ Uses base-plan.md for plan generation
     return await this.deps.promptPort.render('code/phases/plan/base-plan', {
@@ -515,8 +530,24 @@ export class PromptEngine {
       hasDesignDoc: !!designDoc,
       hasProjectCodeContext: !!formattedCodeContext,
       violationsText: violationsText,  // ✅ Formatted violations for retry
-      isRetry: !!violationsText  // ✅ Flag for template conditional
+      isRetry: !!violationsText,  // ✅ Flag for template conditional
+      setupConstraints: setupConstraints,  // ✅ Language-specific setup constraints
+      hasSetupConstraints: !!setupConstraints  // ✅ Flag for template conditional
     });
+  }
+  
+  /**
+   * Map profile language string to template directory name.
+   * Mirrors ModeController.detectLanguage() mapping logic.
+   */
+  private mapLanguageToTemplatePath(language: string): string {
+    const lang = language.toLowerCase();
+    if (lang.includes('go')) return 'golang';
+    if (lang.includes('typescript') || lang.includes('javascript')) return 'typescript';
+    if (lang.includes('python')) return 'python';
+    if (lang.includes('rust')) return 'rust';
+    if (lang.includes('java')) return 'java';
+    return 'typescript';
   }
 }
 

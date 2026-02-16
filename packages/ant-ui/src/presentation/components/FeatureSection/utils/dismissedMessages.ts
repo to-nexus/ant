@@ -30,7 +30,7 @@ export function loadDismissedMessages(): DismissedMessage[] {
  */
 export function saveDismissedMessage(
   serverKey: string,
-  reasoning: SetupFailureReasoning
+  reasoning: SetupFailureReasoning | string
 ): void {
   try {
     const existing = loadDismissedMessages();
@@ -85,7 +85,7 @@ export function clearDismissedMessages(): void {
  */
 export function isMessageDismissed(
   serverKey: string,
-  reasoning: SetupFailureReasoning
+  reasoning: SetupFailureReasoning | string
 ): boolean {
   const dismissed = loadDismissedMessages();
   return dismissed.some(

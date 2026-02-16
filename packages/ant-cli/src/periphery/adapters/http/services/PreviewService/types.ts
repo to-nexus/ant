@@ -21,7 +21,8 @@ export interface PackageInfo {
   name: string;
   path: string;
   type: 'frontend' | 'backend' | 'other';
-  packageJson: any;
+  packageJson?: any;  // Optional: not present for non-Node projects (Go, Python, etc.)
+  projectProfile?: { language: string; framework?: string };  // Detected by decompose node
   port?: number;
   process?: ChildProcess;
 }
@@ -55,7 +56,11 @@ export type SetupFailureReasoning =
 export type PreviewIssueReasoning =
   | SetupFailureReasoning
   | 'api-base-missing'          // Fullstack: frontend API base not configurable for dynamic backend ports
-  | 'cross-project-api-missing'; // Cross-project: frontend-only project without linked backend
+  | 'cross-project-api-missing' // Cross-project: frontend-only project without linked backend
+  | 'env-missing'               // Required environment variable not set
+  | 'infra-missing'             // Infrastructure service not running (DB, Redis, etc.)
+  | 'connection-refused'        // Service connection refused at runtime
+  | 'annotation-missing';       // Fallback-detected connection lacks @connection annotation in .env.example
 
 export type PreviewIssueSeverity = 'fatal' | 'warning';
 

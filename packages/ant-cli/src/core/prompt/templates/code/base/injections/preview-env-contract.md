@@ -53,7 +53,7 @@
 | Scenario | How `VITE_API_BASE_URL` is resolved |
 |----------|--------------------------------------|
 | **Same-project** (fullstack/monorepo) | Auto-injected as `/{urlKey}` pointing to backend in same project |
-| **Cross-project** (frontend-only + separate backend) | Injected from Preview Config linkedBackend — either `/{backendUrlKey}` for Ant project, or direct URL |
+| **Cross-project** (frontend-only + separate backend) | Injected from Preview Config connections — either `/{backendUrlKey}` for Ant project, or direct URL |
 | **No backend** | Empty string (API calls go to current origin or fallback) |
 
 **Constraint**: Frontend code does NOT need to know which scenario applies. It reads `VITE_API_BASE_URL` and prepends it to API requests. The platform resolves the value.
@@ -92,3 +92,79 @@
 | `PORT` | All packages | Dynamic port binding |
 
 See `preview-setup.md` for framework-specific base path configuration.
+
+---
+
+## 4) Service Connection Annotation
+
+### Principle
+**The platform auto-detects service dependencies by scanning `.env.example` for `@connection` annotations.** An environment variable that connects to an external service is fundamentally different from plain configuration. The platform needs to distinguish them.
+
+### Observation Target
+
+For each environment variable in `.env.example`, determine:
+**Does this variable connect to an external service (database, cache, queue, API)?**
+
+- If YES -> annotate with `# @connection {category} {name}` on the line above
+- If NO (PORT, NODE_ENV, LOG_LEVEL, etc.) -> no annotation
+
+### Contract
+
+| Line | Format |
+|------|--------|
+| Annotation | `# @connection {category} {name} [modifier]` |
+| Variable | `KEY=default_value` |
+
+Categories:
+- `business` -- frontend, backend, microservice, or any application-level endpoint
+- `infrastructure` -- database, cache, message queue, or any runtime dependency managed via docker-compose in development
+
+Modifier (optional, determines resolution):
+- **(none)** -- default `url` resolution. Use for external services, third-party APIs, or infrastructure with a direct URL.
+- **`self`** -- `ant-project` resolution targeting another package within the same project (e.g., frontend connecting to its own backend in a fullstack project, or backend-A connecting to backend-B in a monorepo). The platform auto-resolves to the correct internal proxy path at runtime.
+- **`ant-project:{projectId}:{feature}`** -- `ant-project` resolution targeting a **different Ant project**. Use when the specification explicitly names another project as a dependency (e.g., a frontend project that uses a separately managed backend project). The platform auto-resolves to the target project's proxy path at runtime.
+
+Examples:
+```env
+# Same-project internal connection (frontend → backend in fullstack/monorepo)
+# @connection business backend-api self
+VITE_API_BASE_URL=
+
+# Cross-project connection (frontend project → separate backend project)
+# @connection business backend-api ant-project:sketch-be:skeleton
+VITE_API_BASE_URL=
+
+# Infrastructure connection (no modifier)
+# @connection infrastructure postgres
+DATABASE_URL=postgres://user:password@localhost:5432/mydb
+
+# External third-party API (no modifier)
+# @connection business payment-api
+PAYMENT_API_URL=https://api.stripe.com
+```
+
+### Constraint
+- Variables WITHOUT annotation are invisible to the platform's connection registry
+- Annotation MUST be on the line immediately above the variable
+- `name` identifies the service for display purposes (lowercase, hyphens allowed)
+- `.env.example` is committed; `.env` is .gitignored
+- Resolution type is constrained by category:
+  - `infrastructure` connections resolve via `url` or `docker` only
+  - `business` connections resolve via `url` or `ant-project` only
+- For `ant-project:{projectId}:{feature}`, the `projectId` and `feature` MUST match existing Ant project identifiers
+
+### Why
+The platform uses annotations to:
+- Register connections and inject environment variables at runtime
+- Display connection status in the preview configuration UI (grouped by package)
+- Diagnose startup failures (missing infra, unreachable endpoints)
+- Auto-resolve internal proxy paths for `self` and cross-project `ant-project` connections
+
+Without annotation, a connection variable cannot be managed.
+
+### Blind Spot
+**`@connection` annotation is EASILY FORGOTTEN.**
+Before completing any task that creates or modifies `.env.example`, verify:
+- Every environment variable with a connection URL has `# @connection` above it
+- Same-project internal connections use the `self` keyword
+- Cross-project connections use `ant-project:{projectId}:{feature}` when the specification names a specific target project

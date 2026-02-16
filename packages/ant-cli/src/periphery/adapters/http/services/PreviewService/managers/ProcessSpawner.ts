@@ -1,11 +1,17 @@
 import { spawn, ChildProcess, execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
+import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { toUrlKey } from '../utils/serverKeyUtils';
 import { logger } from '../../../../../../utils/logger';
 
 export interface SpawnOptions {
   serverKey: string;
   extraEnv?: Record<string, string | undefined>;
+  connections?: ServiceConnection[];
+  /** Package subdirectory relative to project root (e.g. 'packages/frontend'). Used to filter connections by source. */
+  packageSource?: string;
   onLog: LogCallback;
   onExit: ExitCallback;
   onError: (error: Error) => void;
@@ -149,11 +155,80 @@ export class ProcessSpawner {
     }
   }
   /**
-   * Spawn dev process for a package
+   * Load environment variables from project .env files.
+   * Parses .env and .env.local (local overrides .env).
+   */
+  loadProjectEnv(projectPath: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    
+    for (const fileName of ['.env', '.env.local']) {
+      const filePath = path.join(projectPath, fileName);
+      if (!fs.existsSync(filePath)) continue;
+      
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIndex = trimmed.indexOf('=');
+          if (eqIndex === -1) continue;
+          const key = trimmed.substring(0, eqIndex).trim();
+          let value = trimmed.substring(eqIndex + 1).trim();
+          if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+          }
+          result[key] = value;
+        }
+      } catch (err) {
+        logger.warn(`[ProcessSpawner] Failed to parse ${filePath}: ${err}`, { component: 'ProcessSpawner' });
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Build merged environment from connections, filtered by package source.
+   * Only injects env vars belonging to the target package (or global '*').
+   */
+  private connectionsToEnv(connections?: ServiceConnection[], packageSource?: string): Record<string, string> {
+    if (!connections?.length) return {};
+    const result: Record<string, string> = {};
+    for (const conn of connections) {
+      if (!conn.envVar || !conn.value) continue;
+      if (conn.source === '*' || !packageSource || conn.source === packageSource) {
+        result[conn.envVar] = conn.value;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Spawn dev process for a package.
+   * Dispatches to language-specific spawn based on projectProfile.
    */
   spawn(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
+    const lang = (pkg.projectProfile?.language || 'typescript').toLowerCase();
+    
+    switch (lang) {
+      case 'typescript':
+      case 'javascript':
+        return this.spawnNode(pkg, port, options);
+      case 'go':
+      case 'python':
+      case 'rust':
+      case 'java':
+      default:
+        return this.spawnByLanguage(pkg, port, lang, options);
+    }
+  }
+  
+  /**
+   * Spawn Node.js / TypeScript dev process (vite, next, npm run dev, etc.)
+   */
+  private spawnNode(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
     const pkgJson = pkg.packageJson;
-    const devScript = pkgJson.scripts?.dev || pkgJson.scripts?.start;
+    const devScript = pkgJson?.scripts?.dev || pkgJson?.scripts?.start;
     
     let command: string;
     let args: string[] = [];
@@ -207,19 +282,25 @@ export class ProcessSpawner {
       }
     }
     
+    // Environment variable priority (low to high):
+    //   1. process.env (system)
+    //   2. project .env / .env.local
+    //   3. connections[].envVar=value
+    //   4. platform injected (PORT, base path, polling)
+    //   5. extraEnv (caller override)
+    const projectEnv = this.loadProjectEnv(pkg.path);
+    const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
+
     const env = {
       ...process.env,
+      ...projectEnv,
+      ...connectionsEnv,
       PORT: port.toString(),
       NODE_ENV: 'development',
-      // Prevent auto-opening browser (Vite, CRA, Next.js)
       BROWSER: 'none',
       BROWSER_ARGS: '--no-sandbox',
-      // File watching: use polling instead of fs.watch (inotify)
-      // Required for NFS/EFS cloud filesystems where inotify is not supported
-      // - CHOKIDAR_USEPOLLING: Vite (chokidar), Webpack 5+ dev server
-      // - WATCHPACK_POLLING: Next.js, Webpack 4 (watchpack)
       CHOKIDAR_USEPOLLING: 'true',
-      CHOKIDAR_INTERVAL: '3000',    // 3s interval — preview doesn't need instant HMR
+      CHOKIDAR_INTERVAL: '3000',
       WATCHPACK_POLLING: 'true',
       ...basePathEnv,
       ...(options.extraEnv || {})
@@ -259,6 +340,127 @@ export class ProcessSpawner {
     });
     
     return childProcess;
+  }
+  
+  /**
+   * Spawn dev process by language (Go, Python, Rust, Java, etc.).
+   * Checks Makefile first for dev/run/serve targets, then uses language-specific commands.
+   */
+  private spawnByLanguage(pkg: PackageInfo, port: number, language: string, options: SpawnOptions): ChildProcess {
+    let command: string;
+    let args: string[] = [];
+    
+    // Check Makefile for dev/run/serve targets first (language-agnostic)
+    const makefileTarget = this.detectMakefileTarget(pkg.path);
+    if (makefileTarget) {
+      command = 'make';
+      args = [makefileTarget];
+    } else {
+      // Language-specific fallback
+      switch (language) {
+        case 'go':
+          command = 'go';
+          args = ['run', '.'];
+          break;
+        case 'python': {
+          const framework = pkg.projectProfile?.framework?.toLowerCase();
+          if (framework === 'django') {
+            command = 'python';
+            args = ['manage.py', 'runserver', `0.0.0.0:${port}`];
+          } else if (framework === 'fastapi') {
+            command = 'uvicorn';
+            args = ['main:app', '--host', '0.0.0.0', '--port', port.toString(), '--reload'];
+          } else if (framework === 'flask') {
+            command = 'flask';
+            args = ['run', '--host', '0.0.0.0', '--port', port.toString()];
+          } else {
+            command = 'python';
+            args = ['main.py'];
+          }
+          break;
+        }
+        case 'rust':
+          command = 'cargo';
+          args = ['run'];
+          break;
+        case 'java':
+          if (fs.existsSync(path.join(pkg.path, 'gradlew'))) {
+            command = './gradlew';
+            args = ['bootRun'];
+          } else {
+            command = 'mvn';
+            args = ['spring-boot:run'];
+          }
+          break;
+        default:
+          // Unknown language: try make or fail gracefully
+          command = 'echo';
+          args = [`Unsupported language: ${language}`];
+          break;
+      }
+    }
+    
+    // Same priority chain as spawnNode
+    const projectEnv = this.loadProjectEnv(pkg.path);
+    const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
+
+    const env = {
+      ...process.env,
+      ...projectEnv,
+      ...connectionsEnv,
+      PORT: port.toString(),
+      ...(options.extraEnv || {})
+    };
+    
+    logger.warn(`[Preview] Starting ${language} ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
+    logger.warn(`[Preview] Command: ${command} ${args.join(' ')}`, { component: 'ProcessSpawner' });
+    options.onLog('stdout', `🚀 Starting ${pkg.name} (${language}) on port ${port}...`);
+    options.onLog('stdout', `📋 Command: ${command} ${args.join(' ')}`);
+    
+    const childProcess = spawn(command, args, {
+      cwd: pkg.path,
+      shell: true,
+      env,
+      stdio: 'pipe'
+    });
+    
+    logger.warn(`[Preview] Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });
+    
+    childProcess.stdout?.on('data', (data) => options.onLog('stdout', data.toString()));
+    childProcess.stderr?.on('data', (data) => options.onLog('stderr', data.toString()));
+    
+    childProcess.on('close', (code, signal) => {
+      logger.info(`Process exited PID=${childProcess.pid} code=${code}`, { component: 'ProcessSpawner' });
+      options.onExit(code, signal);
+    });
+    
+    childProcess.on('error', (error) => {
+      logger.error(`Process error PID=${childProcess.pid}: ${error.message}`, { component: 'ProcessSpawner' }, error);
+      options.onError(error);
+    });
+    
+    return childProcess;
+  }
+  
+  /**
+   * Detect runnable Makefile target (dev, run, serve)
+   */
+  private detectMakefileTarget(projectPath: string): string | null {
+    try {
+      const makefilePath = path.join(projectPath, 'Makefile');
+      if (!fs.existsSync(makefilePath)) return null;
+      
+      const content = fs.readFileSync(makefilePath, 'utf-8');
+      // Prefer 'dev' > 'run' > 'serve' order
+      for (const target of ['dev', 'run', 'serve']) {
+        if (new RegExp(`^${target}:`, 'm').test(content)) {
+          return target;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
   
   /**

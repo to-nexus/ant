@@ -122,16 +122,19 @@ export function usePreviewManager(
     }
 
     const reasoning = previewStatus?.setupReasoning;
-    if (reasoning && serverKey) {
+    const errorMsg = previewStatus?.error;
+    const dismissKey = reasoning || (errorMsg ? `error:${errorMsg}` : null);
+
+    if (dismissKey && serverKey) {
       const dismissed = loadDismissedMessages();
       const isMessageDismissed = dismissed.some(
-        d => d.serverKey === serverKey && d.reasoning === reasoning
+        d => d.serverKey === serverKey && d.reasoning === dismissKey
       );
       setIsDismissed(isMessageDismissed);
     } else {
       setIsDismissed(false);
     }
-  }, [previewStatus?.setupReasoning, serverKey, selectedProject, selectedFeature]);
+  }, [previewStatus?.setupReasoning, previewStatus?.error, serverKey, selectedProject, selectedFeature]);
 
   // Subscribe to preview events via existing unified SSEManager
   useEffect(() => {
@@ -281,15 +284,17 @@ export function usePreviewManager(
   // Dismiss message
   const dismissMessage = useCallback(() => {
     const reasoning = previewStatus?.setupReasoning;
-    if (reasoning && serverKey) {
-      saveDismissedMessage(serverKey, reasoning as SetupFailureReasoning);
+    const errorMsg = previewStatus?.error;
+    const dismissKey = reasoning || (errorMsg ? `error:${errorMsg}` : null);
+
+    if (dismissKey && serverKey) {
+      saveDismissedMessage(serverKey, dismissKey);
       setIsDismissed(true);
       return;
     }
     
-    // Allow dismissing non-setup errors as well (session-only)
     setIsDismissed(true);
-  }, [previewStatus?.setupReasoning, serverKey]);
+  }, [previewStatus?.setupReasoning, previewStatus?.error, serverKey]);
 
   // Build "Fix All" payload from issues (extensible)
   const effectiveSuggestedFix = (() => {
