@@ -418,6 +418,40 @@ export async function codeGen(
     
     if (toolCalls.length === 0 && !explicitDone) {
       console.warn(`⚠️  [CodeGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
+      
+      // ✅ FIX: Preserve LLM response in conversationHistory to prevent amnesia
+      // Without this, codeGen→codeGen loop loses all memory of previous response,
+      // causing the LLM to repeat the same work indefinitely.
+      // Strip XML tags before storing to reduce memory usage (promptBuilder also strips on read).
+      let cleanedResponse = textResponse;
+      cleanedResponse = cleanedResponse.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
+      cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
+      cleanedResponse = cleanedResponse.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
+      cleanedResponse = cleanedResponse.trim();
+      
+      if (cleanedResponse) {
+        const newHistory = [
+          ...(state.conversationHistory || []),
+          { role: 'assistant' as const, content: cleanedResponse },
+          { role: 'user' as const, content: 'Your previous response did not include <done>true</done>. If you have completed all work for this task, output <done>true</done> now. If there is remaining work, continue.' },
+        ];
+        
+        return {
+          llmResponse: {
+            thinking,
+            textResponse,
+            toolCalls,
+            done: explicitDone,
+            tokenUsage: capturedUsage,
+          },
+          conversationHistory: newHistory,
+          fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+          projectCodeContext: updatedProjectCodeContext,
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+          profile: state.profile,
+        };
+      }
     }
     
     return {
