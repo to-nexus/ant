@@ -76,7 +76,7 @@ export class ChatStatusHandler {
    * Remove a chat status UI element by its content index
    * Used when a progress indicator (e.g. retrieving) finishes with 0 results
    */
-  removeChatStatus(contentIndex: number): void {
+  removeChatStatus(contentIndex: number, expectedType?: string): void {
     const session = this.sessionStore.getSession();
     const ctx = this.sessionStore.getContext();
 
@@ -86,7 +86,8 @@ export class ChatStatusHandler {
       ctx.projectId,
       ctx.featureName,
       session,
-      contentIndex
+      contentIndex,
+      expectedType
     );
 
     this.sessionStore.updateCurrentMessage().catch(err => {

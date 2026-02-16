@@ -529,27 +529,51 @@ export class ContentMerger {
 
   /**
    * Remove content at index (splice from array, broadcast removal)
+   * 
+   * @param expectedType - If provided, verifies the entry at contentIndex matches this type.
+   *   When it doesn't (due to concurrent array modifications in parallel tasks), falls back
+   *   to reverse type-based search — same pattern as tryFallbackMerge.
    */
   removeContent(
     projectId: string,
     featureName: string,
     session: ChatSession,
-    contentIndex: number
+    contentIndex: number,
+    expectedType?: string
   ): void {
     if (!session.currentMessage) return;
     
     const existingContents = session.currentMessage.contents;
-    if (contentIndex < 0 || contentIndex >= existingContents.length) return;
+    let targetIndex = contentIndex;
+
+    if (expectedType) {
+      if (targetIndex < 0 || targetIndex >= existingContents.length ||
+          existingContents[targetIndex]?.type !== expectedType) {
+        // Index shifted due to concurrent modifications — reverse search by type
+        targetIndex = -1;
+        for (let i = existingContents.length - 1; i >= 0; i--) {
+          if (existingContents[i]?.type === expectedType) {
+            targetIndex = i;
+            break;
+          }
+        }
+        if (targetIndex !== -1) {
+          logger.debug(`removeContent: index shifted ${contentIndex} -> ${targetIndex} (type: ${expectedType})`, { component: 'ContentMerger', projectId, featureName });
+        }
+      }
+    }
+
+    if (targetIndex < 0 || targetIndex >= existingContents.length) return;
     
-    logger.debug(`REMOVED content @${contentIndex} (type: ${existingContents[contentIndex]?.type})`, { component: 'ContentMerger', projectId, featureName });
+    logger.debug(`REMOVED content @${targetIndex} (type: ${existingContents[targetIndex]?.type})`, { component: 'ContentMerger', projectId, featureName });
     
-    existingContents.splice(contentIndex, 1);
+    existingContents.splice(targetIndex, 1);
     
     this.broadcaster?.broadcastContentRemove(
       projectId,
       featureName,
       session.currentMessage.id,
-      contentIndex,
+      targetIndex,
       session.userContext
     );
   }

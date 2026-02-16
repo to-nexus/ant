@@ -177,11 +177,11 @@ export class ChatAPIClient {
   /**
    * Remove a chat status UI element by its content index
    */
-  async removeChatStatus(contentIndex: number): Promise<void> {
+  async removeChatStatus(contentIndex: number, expectedType?: string): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
     if (!service) return;
-    service.removeChatStatus(contentIndex);
+    service.removeChatStatus(contentIndex, expectedType);
   }
 
   /**
