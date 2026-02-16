@@ -29,7 +29,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Module: go.mod
 - Build: Makefile
 - Ignore: .gitignore
-- Environment: .env.example
+- Environment: `.env.example` (template with `@connection` annotations) AND `.env` (active copy with localhost/docker defaults)
 - Infrastructure: docker-compose.yml (see Infrastructure Services below)
 - Documentation: README.md
 
@@ -71,7 +71,7 @@ Before output, check each file:
 |----------------|---------|
 | `docker-compose.yml` | Local development environment for each observed service |
 | Makefile targets: `dev-infra`, `dev-infra-down` | Start/stop infrastructure services |
-| `.env.example` | Connection variables with `@connection` annotations (see preview-env-contract) |
+| `.env.example` AND `.env` | Template with `@connection` annotations AND active copy with localhost/docker defaults (see preview-env-contract) |
 
 **Constraints**:
 - Do NOT hardcode connection URLs in application code. Use environment variables.

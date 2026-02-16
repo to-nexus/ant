@@ -156,7 +156,6 @@ Create config files only. **NO source code, NO tests.**
 - Build tool config (framework-specific)
 - `.gitignore` - Version control exclusions
 - `.env.example` - Environment variable template (connection variables MUST use `@connection` annotation)
-- `.env` - Active environment file. When creating `.env.example`, ALWAYS also create `.env` with the same variables. Use localhost/docker-compose default values for connection strings.
 - Entry file (framework-specific, e.g., index.html for SPA)
 - `docker-compose.yml` - Local infrastructure services (only if: root-level setup AND design specifies external services requiring a runtime process)
 
