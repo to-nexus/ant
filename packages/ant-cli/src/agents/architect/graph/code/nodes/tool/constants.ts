@@ -49,6 +49,13 @@ export const LONG_RUNNING_PATTERNS = [
   /go\s+run\s+/,                // go run main.go, go run ./cmd/server
   /\bair\b/,                     // air (Go hot-reload dev server)
 
+  // ── Rust ──
+  /cargo\s+run\b/,              // cargo run
+
+  // ── Compiled binary after build chain ──
+  /&&\s*\.\/[a-zA-Z_][\w-]*\s*$/,   // cd dir && ./main, go build && ./app
+  /go\s+build.*&&.*\.\/[\w-]+/,      // go build -o app && ./app
+
   // ── Makefile (cross-language) ──
   /make\s+(run|serve|dev)\b/,   // make run, make serve, make dev
 ];
@@ -61,6 +68,24 @@ export const COMMAND_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 export const EARLY_ERROR_TIMEOUT = 3000; // 3 seconds
 export const STARTUP_VERIFICATION_TIMEOUT = 5000; // 5 seconds
 export const UI_CARD_ANIMATION_DELAY = 150; // 150ms
+
+// Compile-and-run languages (Go, Rust) need longer startup verification
+// because `go run` / `cargo run` compile before executing.
+export const COMPILE_RUN_STARTUP_TIMEOUT = 30000; // 30 seconds
+
+// Patterns that indicate a compile-and-run language (needs longer startup timeout)
+export const COMPILE_RUN_PATTERNS = [
+  /go\s+run\b/,
+  /cargo\s+run\b/,
+  /cargo\s+build.*&&/,
+  /go\s+build.*&&/,
+];
+
+// Runtime fallback: detect regular commands that are actually long-running servers.
+// If a regular (non-LONG_RUNNING_PATTERNS) command runs longer than this without exiting
+// AND its output matches SERVER_OUTPUT_PATTERNS, auto-terminate instead of blocking.
+export const SERVER_DETECTION_TIMEOUT = 60000; // 60 seconds
+export const SERVER_OUTPUT_PATTERNS = /listening\s+on|started\s+.*(?:server|port)|starting\s+server|server\s+(?:started|running|listening)|port\s+\d{4,5}|:\d{4,5}\b/i;
 
 export const ORCHESTRATOR_PORT = process.env.PORT || '8080';
 
