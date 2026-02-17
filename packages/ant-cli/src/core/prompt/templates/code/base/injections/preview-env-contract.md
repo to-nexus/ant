@@ -168,3 +168,9 @@ Before completing any task that creates or modifies `.env.example`, verify:
 - Every environment variable with a connection URL has `# @connection` above it
 - Same-project internal connections use the `self` keyword
 - Cross-project connections use `ant-project:{projectId}:{feature}` when the specification names a specific target project
+
+**`.env.example` / `.env` sync is EASILY BROKEN.**
+Any task that adds or modifies environment variables MUST update BOTH files:
+- `.env.example` with annotation and placeholder value
+- `.env` with the resolved localhost value
+If only one file is updated, either the platform cannot detect the connection OR the application fails at runtime.
