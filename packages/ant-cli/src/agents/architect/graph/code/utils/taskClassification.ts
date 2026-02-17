@@ -12,6 +12,7 @@ import { TASK_PRIORITIES } from '../state';
  * Determine whether a task requires verification (installDeps → runtimeValidate flow).
  * 
  * Covers:
+ * - Verification tasks (type = 'verification')
  * - Final verification tasks (priority >= 1000)
  * - Error tasks (type = 'error')
  * - Tasks with verification-related keywords in their name
@@ -21,6 +22,7 @@ export function isVerificationTask(task: {
   type?: string;
   name?: string;
 }): boolean {
+  if (task.type === 'verification') return true;
   if (task.priority != null && task.priority >= TASK_PRIORITIES.FINAL_VERIFICATION) return true;
   if (task.type === 'error') return true;
   const name = task.name?.toLowerCase() || '';
@@ -29,13 +31,13 @@ export function isVerificationTask(task: {
 
 /**
  * Determine whether a task is specifically the final verification task.
- * Only priority >= 1000 qualifies. Name-based matching was removed because
- * keywords like "integration" caused feature tasks (e.g. route-integration)
- * to be misclassified as final tasks, breaking routing and safety-net logic.
+ * Matches type = 'verification' OR priority >= 1000.
  */
 export function isFinalVerificationTask(task: {
   priority?: number;
+  type?: string;
   name?: string;
 }): boolean {
+  if (task.type === 'verification') return true;
   return task.priority != null && task.priority >= TASK_PRIORITIES.FINAL_VERIFICATION;
 }

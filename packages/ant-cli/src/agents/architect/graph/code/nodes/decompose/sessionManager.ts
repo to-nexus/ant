@@ -131,12 +131,12 @@ export function restoreFromSession(
     setup: 0,
     feature: 0,
     error: 0,
-    final: 0
+    verification: 0
   };
   
   taskQueue.getAll().forEach(task => {
-    if (task.priority === 1000) {
-      tasksByType.final++;
+    if (task.type === 'verification' || task.priority === 1000) {
+      tasksByType.verification++;
     } else if (task.type === 'error') {
       tasksByType.error++;
     } else if (task.type === 'setup') {
@@ -148,8 +148,8 @@ export function restoreFromSession(
   
   if (session.state.currentTask) {
     const currentTask = session.state.currentTask;
-    if (currentTask.priority === 1000) {
-      tasksByType.final++;
+    if (currentTask.type === 'verification' || currentTask.priority === 1000) {
+      tasksByType.verification++;
     } else if (currentTask.type === 'error') {
       tasksByType.error++;
     } else if (currentTask.type === 'setup') {
@@ -169,7 +169,7 @@ export function restoreFromSession(
   console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} remaining`);
   console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} remaining`);
   console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
-  console.log(`   Final:   ${tasksByType.final === 0 ? '✅' : '⬜'} ${tasksByType.final} remaining`);
+  console.log(`   Verify:  ${tasksByType.verification === 0 ? '✅' : '⬜'} ${tasksByType.verification} remaining`);
   console.log(``);
   
   if (session.state.referenceRequests && session.state.referenceRequests.length > 0) {

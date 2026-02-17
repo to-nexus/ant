@@ -17,10 +17,11 @@ import type { InterruptionDetails } from './interruption';
  * - setup: Environment/config setup (Code Job)
  * - feature: Feature implementation (Code Job)
  * - error: Error fixing (Code Job)
+ * - verification: Build & runtime verification (Code Job)
  * - explain: Explanation task (Code Job)
  * - doc: Document generation (Design Job)
  */
-export type TaskType = 'setup' | 'feature' | 'error' | 'explain' | 'doc';
+export type TaskType = 'setup' | 'feature' | 'error' | 'verification' | 'explain' | 'doc';
 
 /** Task status in Kanban flow */
 export type TaskStatus = 'todo' | 'in-progress' | 'completed';

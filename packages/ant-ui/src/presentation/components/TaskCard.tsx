@@ -55,15 +55,15 @@ export function TaskCard({
   //   });
   // }
   
-  // ✅ Determine display type: Priority 1000 = Final Verification
-  const displayType = task.priority === 1000 ? 'final' : task.type;
+  // ✅ Determine display type from task type
+  const displayType = task.type;
   
   // Type badge styling
   const typeBadgeMap: Record<string, {color: string, label: string}> = {
     'feature': { color: badgeColors.feature, label: 'FEATURE' },
     'setup': { color: badgeColors.setup, label: '⚙️ SETUP' },
     'error': { color: badgeColors.error, label: '🔧 ERROR' },
-    'final': { color: badgeColors.final, label: '🎯 FINAL' },
+    'verification': { color: badgeColors.final, label: '🎯 VERIFY' },
     'implementation': { color: 'bg-indigo-500 dark:bg-indigo-600 text-white', label: 'IMPL' },
     'testing': { color: 'bg-yellow-500 dark:bg-yellow-600 text-white', label: 'TEST' },
     'documentation': { color: 'bg-gray-500 dark:bg-gray-600 text-white', label: 'DOCS' },

@@ -52,7 +52,8 @@ export async function generatePlanText(
   remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>  // ✅ Remaining tasks for cross-task awareness
 ): Promise<string> {
   const requiresPlan = 
-    task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&  
+    task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&
+    task.type !== 'verification' &&
     task.type !== 'explain';
   
   if (!requiresPlan) {

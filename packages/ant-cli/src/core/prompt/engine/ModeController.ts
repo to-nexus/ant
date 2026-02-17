@@ -78,11 +78,14 @@ export class ModeController {
     // Base templates
     // ✅ design job uses explicit base-system-design.md and rules-system-design.md
     // ui-design has separate loading logic in docGen.ts (base-ui-design.md, rules-ui-design.md)
+    // ✅ verification tasks use dedicated verify/ templates (lean, no design doc bloat)
+    const isVerification = taskType === 'verification';
+    const verifyPhasePrefix = `${job}/phases/verify`;
     const baseTemplateName = job === 'design' ? 'base-system-design' : 'base';
     const rulesTemplateName = job === 'design' ? 'rules-system-design' : 'rules';
     const templates = {
-      base: `${phasePrefix}/${baseTemplateName}`,
-      rules: `${phasePrefix}/${rulesTemplateName}`,
+      base: isVerification ? `${verifyPhasePrefix}/base` : `${phasePrefix}/${baseTemplateName}`,
+      rules: isVerification ? `${verifyPhasePrefix}/rules` : `${phasePrefix}/${rulesTemplateName}`,
       injections: this.selectInjections(job, phase, context, taskType, mode)
     };
     
@@ -91,13 +94,15 @@ export class ModeController {
     
     // Feature flags
     const flags = {
-      // Examples are helpful for feature/error tasks but are counterproductive for setup:
-      // they increase the chance the model scaffolds extra files (components/sections) despite setup constraints.
-      includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup',
+      // Examples are helpful for feature/error tasks but counterproductive for setup/verification:
+      // setup: scaffolds extra files despite setup constraints
+      // verification: irrelevant code examples waste tokens
+      includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !isVerification,
       // ✅ CRITICAL: Include profiles for BOTH new and existing projects
       // Profile is detected by detectEnvironment node from design doc (new) or existing code (existing)
       // Without this, new projects have no TypeScript/React guidance and generate vanilla JS!
-      includeProfiles: phase === 'execute' && job === 'code',
+      // Verification tasks skip profiles - they just need to fix build errors, not follow language patterns
+      includeProfiles: phase === 'execute' && job === 'code' && !isVerification,
       includeMemory: context.stats.hasMemory,
       strictValidation: job === 'code'
     };
@@ -135,6 +140,10 @@ export class ModeController {
       }
     }
     
+    // ✅ Verification tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
+    // These are irrelevant to build/runtime verification and waste ~40K tokens per call
+    const isVerification = taskType === 'verification';
+
     // ✅ Common injections (used by ALL jobs - code, design, learn)
     if (context.stats.hasDirective) {
       injections.push(`${commonPrefix}/directive`);
@@ -144,17 +153,17 @@ export class ModeController {
       injections.push(`${commonPrefix}/memory`);
     }
     
-    if (context.designDoc) {
+    if (context.designDoc && !isVerification) {
       injections.push(`${commonPrefix}/design-doc`);
     }
     
     // ✅ PRD for both design and code jobs (prevents information loss in design transformation)
-    if (context.prdSpec) {
+    if (context.prdSpec && !isVerification) {
       injections.push(`${commonPrefix}/prd-spec`);
     }
     
     // ✅ Optional UI doc (Figma-derived) - pass only when caller decides it's UI-relevant
-    if (context.uiDoc) {
+    if (context.uiDoc && !isVerification) {
       injections.push(`${commonPrefix}/ui-doc`);
     }
     

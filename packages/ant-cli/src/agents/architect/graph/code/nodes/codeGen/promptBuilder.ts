@@ -30,13 +30,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 }>> {
   const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
   
-  // planText check (empty is normal for final-verification and explain tasks)
+  // planText check (empty is normal for verification and explain tasks)
   if (state.planText) {
     console.log(`🔍 [CodeGen] planText: ${state.planText.length} chars`);
   } else {
     const taskType = state.currentTask?.type || 'unknown';
     const priority = state.currentTask?.priority;
-    const isExpected = priority === 1000 || taskType === 'explain';
+    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'explain';
     if (!isExpected) {
       console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
     }
@@ -60,9 +60,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
   // ✅ UI doc injection: Always inject if available, unless explicitly disabled
   // Decompose sets task.ui flag - only skip if explicitly false
+  // Verification tasks skip UI docs entirely (irrelevant to build/runtime checks)
   const uiDocForTask = (() => {
     if (!state.parsedUiDocs) return undefined;
     if (!state.currentTask) return undefined;
+    if (state.currentTask.type === 'verification') return undefined;
     
     // Only skip if explicitly disabled by decompose
     if (state.currentTask.ui === false) return undefined;
@@ -89,12 +91,18 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     detectionReportProfile: state.detectionReport?.profile,
   };
   
+  // ✅ Verification tasks skip designDoc entirely (irrelevant to build/runtime verification)
+  const isVerificationTask = state.currentTask.type === 'verification';
+  
   // ✅ Select design doc based on task.packages (split injection)
   // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
   // If missing, fall back to state.design but warn — this indicates a decompose bug.
   let designDocForTask: string | undefined;
   
-  if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
+  if (isVerificationTask) {
+    designDocForTask = undefined;
+    console.log(`📄 [CodeGen] Verification task — skipping designDoc injection`);
+  } else if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
     // Package-based split injection (fe, fe-*, be, be-*, shared)
     designDocForTask = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
     console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → ${designDocForTask.length} chars`);
@@ -112,8 +120,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     {
       directive: state.directive,
       designDoc: designDocForTask,
-      prdSpec: state.prd,
-      uiDoc: uiDocForTask,  // ✅ Split-injected UI doc (only requested sections)
+      prdSpec: isVerificationTask ? undefined : state.prd,
+      uiDoc: isVerificationTask ? undefined : uiDocForTask,
       projectCodeContext: codeGenProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
@@ -151,10 +159,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Block 2: Project Context (CACHED - changes per task)
+  // Verification tasks skip prdSpec and designDoc (irrelevant to build checks)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const projectContextParts = [
     composed.injections,
-    state.prd ? `# Requirements\n\n${state.prd}` : null,
+    (!isVerificationTask && state.prd) ? `# Requirements\n\n${state.prd}` : null,
     designDocForTask ? `# Design Document\n\n${designDocForTask}` : null,
   ].filter(Boolean);
   
@@ -397,7 +406,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           callIndex: state._codeGenCallIndex,
-          templatePath: 'code/phases/execute/base',
+          templatePath: isVerificationTask ? 'code/phases/verify/base' : 'code/phases/execute/base',
           usedTemplates: [
             'code/phases/execute/rules',
             'code/base/injections/text-format-compact',

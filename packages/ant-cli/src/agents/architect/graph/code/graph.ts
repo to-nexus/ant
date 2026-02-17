@@ -250,7 +250,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
           const finalTask: CodeTask = {
             id: `final-verification-recheck-${Date.now()}`,
             name: 'Final Verification (Recheck)',
-            type: 'feature' as const,
+            type: 'verification' as const,
             priority: TASK_PRIORITIES.FINAL_VERIFICATION,
             description: 'Re-verify all errors are resolved after error fixes',
           };
