@@ -174,6 +174,18 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 ---
 
+## Feature Task Descriptions
+
+**Principle**: Task descriptions specify WHAT to implement (functional scope, endpoints, business logic), not WHERE to place files. CodeGen observes the actual directory tree and determines file paths.
+
+**Constraint**: Do NOT include concrete file paths or directory names in feature task descriptions. Describe functional scope and reference design document sections instead.
+
+**Constraint**: Do NOT embed language-specific directory conventions in descriptions. Directory structure decisions belong to CodeGen, which applies language conventions after observing the codebase.
+
+**Blind spot reminder**: It is easy to convert design document layer names directly into file paths in task descriptions. Describe the functional boundary, not the file location.
+
+---
+
 ## UI Task Descriptions
 
 **Principle**: Task descriptions for UI tasks should provide DIRECTION, not DETAILS. The Plan stage reads design documents to extract complete requirements.
@@ -213,7 +225,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Setup task description MUST mention (when applicable):**
 - `docker-compose.yml` with service definitions — if external services are observed in the specification
-- `.env.example` with `# @connection {category} {name}` annotation for every service connection variable
+- `.env.example` with `# @connection {category} {name}` annotation for each service connection endpoint URL (not individual components like host, port, user, password)
 - `.env` with resolved localhost values matching `.env.example` variable keys
 - Application configuration variables (secrets, API keys) observed in the specification — listed by name so feature tasks do not invent their own variable names
 - Cross-project connections with `# @connection {category} {name} ant-project:{projectId}:{feature}` — if the specification names a specific external Ant project as a dependency (e.g., "uses sketch-be as backend")
