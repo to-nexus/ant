@@ -56,6 +56,31 @@ Your responsibility:
 
 {{taskDescription}}
 
+{{#if hasRemainingTasks}}
+────────────────────────────────────────────────────────────────────────────────
+## Remaining Tasks
+────────────────────────────────────────────────────────────────────────────────
+
+The following tasks will be executed after yours (or in parallel):
+
+{{#each remainingTasks}}
+- **{{this.name}}** (priority {{this.priority}}): {{this.description}}
+{{/each}}
+
+### Task Boundary Principle
+
+Your plan MUST only include work that belongs to YOUR task's scope.
+If a remaining task's description already covers a responsibility,
+that work belongs to THAT task — not yours.
+
+Produce your own deliverables (modules, handlers, services, etc.)
+but do NOT register, wire, or integrate them into shared entry points
+or files that another task is responsible for. The responsible task
+will consume your outputs and perform the integration.
+
+────────────────────────────────────────────────────────────────────────────────
+{{/if}}
+
 ## Original Directive (Ground Truth)
 
 ```

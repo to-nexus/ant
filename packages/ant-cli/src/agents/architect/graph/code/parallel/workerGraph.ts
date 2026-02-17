@@ -64,7 +64,13 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
       let violationType: ViolationType;
       let suggestedFix: string | undefined;
 
-      if (errorMsg.includes('Cannot edit non-existing file') || errorMsg.includes('non-existing file')) {
+      if (errorMsg.includes('already created by task') || errorMsg.includes('was already created by')) {
+        // ✅ Cross-worker file conflict: another worker owns this file
+        violationType = 'cross_worker_conflict';
+        suggestedFix = filePath
+          ? `This file was created by another parallel task. Use read_file("${filePath}") to read the current content, then use edit_file to merge your changes.`
+          : `This file was created by another parallel task. Read the file first, then use edit_file to merge.`;
+      } else if (errorMsg.includes('Cannot edit non-existing file') || errorMsg.includes('non-existing file')) {
         violationType = 'missing_file';
         suggestedFix = filePath ? `File does not exist. Use <file path="${filePath}"> to create it first.` : undefined;
       } else if (errorMsg.includes('Search block not found')) {
@@ -280,7 +286,6 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
       llmResponse: null as any,
       toolResults: null as any,
       conversationHistory: null as any,
-      fileBuffers: null as any,
       interruption: null as any,
 
       // Worker-specific

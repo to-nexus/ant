@@ -73,17 +73,7 @@ This is a binary file (${ext}) and cannot be read as text.
   return withErrorHandling('readFile', async () => {
     logFileOperation('readFile', 'Reading file', resolved.displayPath, { fsPath: resolved.fsPath, scope: resolved.scope });
     
-    // ✅ Check buffer first (uncommitted changes)
-    const fileBuffers = state.fileBuffers || new Map();
-    const buffered = fileBuffers.get(resolved.displayPath) || fileBuffers.get(filePath) || fileBuffers.get(resolved.fsPath);
-    
-    if (buffered && !buffered.committed) {
-      console.log(`[readFile] ✅ Reading from buffer: ${resolved.displayPath}`);
-      await chatAPI.addReadComplete(resolved.displayPath, mergeIndex);
-      return buffered.content;
-    }
-    
-    // ✅ Read from filesystem
+    // ✅ Read from filesystem (WorkerFileSystem checks SharedFileBuffer first in parallel mode)
     const content = await fileSystem.readFile(resolved.fsPath);
     
     if (!content) {

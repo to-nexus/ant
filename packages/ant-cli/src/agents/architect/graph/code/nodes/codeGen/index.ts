@@ -252,6 +252,24 @@ export async function codeGen(
     }
   }
   
+  // ✅ Cross-worker awareness: Track other workers' files SEPARATELY
+  // These paths are added to existingFiles (for LLM prompt context — "this file exists")
+  // but also tracked in otherWorkerPaths so FileRegistry.isKnownAtStart() returns false
+  // for them. This forces the writeNewFile() path in FileRenderer, triggering
+  // SharedFileBuffer's ownership check instead of a silent overwrite.
+  const otherWorkerPaths = new Set<string>();
+  const workerFS = state.deps?.fileSystem as any;
+  if (workerFS?.sharedBuffer && typeof workerFS.sharedBuffer.getAllWrittenPaths === 'function') {
+    const sharedPaths: string[] = workerFS.sharedBuffer.getAllWrittenPaths();
+    for (const p of sharedPaths) {
+      existingFiles.add(p);
+      otherWorkerPaths.add(p);
+    }
+    if (sharedPaths.length > 0) {
+      console.log(`📁 [CodeGen] Added ${sharedPaths.length} path(s) from SharedFileBuffer (${otherWorkerPaths.size} as otherWorkerPaths)`);
+    }
+  }
+  
   // existingFiles Set initialized (prevents duplicate file creation)
   
   const orchestrator = new StreamOrchestrator({
@@ -259,6 +277,7 @@ export async function codeGen(
     renderStrategy,
     existingFiles,
     codebaseRel,  // ✅ Pass to FileRegistry for consistent path normalization
+    otherWorkerPaths,  // ✅ Other workers' paths — forces writeNewFile() path for conflict detection
   });
   
   // Collect LLM output
@@ -342,6 +361,88 @@ export async function codeGen(
       for (const error of fileErrors) {
         console.error(`   - ${error}`);
       }
+    }
+    
+    // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
+    // Instead of: codeGen → checkTaskStatus → enforce → plan → codeGen → read_file → tool → codeGen (4-5 LLM calls)
+    // Optimized:  codeGen → codeGen with merge instruction (1 LLM call)
+    const fileConflicts = finalizeResult.fileConflicts || [];
+    if (fileConflicts.length > 0) {
+      console.log(`🔀 [CodeGen] ${fileConflicts.length} cross-worker conflict(s) — injecting direct merge instruction`);
+
+      // 1. Authorize worker for post-merge writes (prevents re-conflict on next write)
+      const workerFSForAuth = state.deps?.fileSystem as any;
+      const currentWorkerId = (state as any).workerId ?? 0;
+      if (workerFSForAuth?.sharedBuffer?.authorizeWriter) {
+        for (const conflict of fileConflicts) {
+          workerFSForAuth.sharedBuffer.authorizeWriter(conflict.path, currentWorkerId);
+          console.log(`   🔑 Authorized worker ${currentWorkerId} for merge-write: ${conflict.path}`);
+        }
+      }
+
+      // 2. Build merge instruction with both contents
+      const mergeBlocks = fileConflicts.map(c => {
+        const ownerInfo = c.ownerTask ? ` (by task "${c.ownerTask}")` : '';
+        return [
+          `### FILE MERGE: ${c.path}`,
+          `This file was already created by another parallel task${ownerInfo}.`,
+          ``,
+          `CURRENT content (from other task):`,
+          '```',
+          c.currentContent,
+          '```',
+          ``,
+          `YOUR intended content:`,
+          '```',
+          c.intendedContent,
+          '```',
+          ``,
+          `Output the MERGED result as <file path="${c.path}">merged content</file>.`,
+          `Do NOT call read_file — you already have both versions above.`,
+        ].join('\n');
+      }).join('\n\n---\n\n');
+
+      const mergeInstruction = [
+        `FILE MERGE REQUIRED — ${fileConflicts.length} file(s) need merging.`,
+        ``,
+        mergeBlocks,
+        ``,
+        `After outputting all merged files, continue with your remaining work or output <done>true</done> if complete.`,
+      ].join('\n');
+
+      // 3. Inject into conversation and loop back (no enforce/plan needed)
+      let cleanedResponse = textResponse;
+      cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed - conflict]');
+      cleanedResponse = cleanedResponse.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
+      cleanedResponse = cleanedResponse.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
+      cleanedResponse = cleanedResponse.trim();
+
+      const newHistory = [
+        ...(state.conversationHistory || []),
+        ...(cleanedResponse ? [{ role: 'assistant' as const, content: cleanedResponse }] : []),
+        { role: 'user' as const, content: mergeInstruction },
+      ];
+
+      // Workflow exit
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen', (state as any).workerId ?? 0);
+      }
+
+      return {
+        llmResponse: {
+          thinking,
+          textResponse,
+          toolCalls,
+          done: false,
+          tokenUsage: capturedUsage,
+        },
+        conversationHistory: newHistory,
+        fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+        projectCodeContext: state.projectCodeContext,
+        recursionCount: state.recursionCount,
+        recursionLimit: state.recursionLimit,
+        profile: state.profile,
+      };
     }
     
     // ✅ CRITICAL: Extract files from FileRegistry for state.files

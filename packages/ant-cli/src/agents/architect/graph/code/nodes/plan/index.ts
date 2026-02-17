@@ -345,6 +345,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     return uiDoc;
   })();
   
+  // ✅ Extract remaining tasks for cross-task awareness in plan prompt
+  const remainingTasks = (state.taskQueue?.getAll() || [])
+    .filter(t => t.id !== nextTask.id)
+    .map(t => ({ id: t.id, name: t.name, description: t.description, priority: t.priority }));
+  
   const planText = await generatePlanText(
     llm,
     nextTask,
@@ -352,7 +357,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     projectCodeContext,
     referenceCodeContexts,
     state.violations,  // ✅ Pass violations for retry context
-    uiDocForPlan  // ✅ Pass uiDoc for UI-related tasks
+    uiDocForPlan,  // ✅ Pass uiDoc for UI-related tasks
+    remainingTasks  // ✅ Pass remaining tasks for task boundary awareness
   );
   
   // ✅ DO NOT clear violations here! They need to be passed to CodeGen node for retry context

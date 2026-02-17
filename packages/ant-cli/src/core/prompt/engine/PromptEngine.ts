@@ -487,7 +487,8 @@ export class PromptEngine {
     projectCodeContext: any,
     violationsText?: string,  // ✅ Formatted violations for retry context
     uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
-    profile?: { language: string; [key: string]: any }  // ✅ Codebase profile for language-specific injection
+    profile?: { language: string; [key: string]: any },  // ✅ Codebase profile for language-specific injection
+    remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>  // ✅ Remaining tasks for task boundary awareness
   ): Promise<string> {
     // ✅ Format projectCodeContext as FILE PATHS ONLY (not full content)
     // Plan node is a strategic planner — CodeGen reads actual files via tools.
@@ -532,7 +533,9 @@ export class PromptEngine {
       violationsText: violationsText,  // ✅ Formatted violations for retry
       isRetry: !!violationsText,  // ✅ Flag for template conditional
       setupConstraints: setupConstraints,  // ✅ Language-specific setup constraints
-      hasSetupConstraints: !!setupConstraints  // ✅ Flag for template conditional
+      hasSetupConstraints: !!setupConstraints,  // ✅ Flag for template conditional
+      remainingTasks: remainingTasks,  // ✅ Remaining tasks for task boundary awareness
+      hasRemainingTasks: remainingTasks && remainingTasks.length > 0  // ✅ Flag for template conditional
     });
   }
   

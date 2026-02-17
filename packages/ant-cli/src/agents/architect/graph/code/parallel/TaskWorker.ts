@@ -16,6 +16,8 @@
 import type { BaseTask, TaskTokenUsage } from '@ant/shared';
 import type { TaskOrchestrator } from './TaskOrchestrator';
 import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
+import type { SharedFileBuffer } from './SharedFileBuffer';
+import { WorkerFileSystem } from './WorkerFileSystem';
 
 export class TaskWorker<T extends BaseTask> {
   readonly workerId: number;
@@ -91,15 +93,26 @@ export class TaskWorker<T extends BaseTask> {
     const graph = this.graphBuilder(includeInstallValidate);
 
     // Build initial worker state from shared context + task
+    // ✅ Create per-worker WorkerFileSystem for cross-worker file conflict detection
+    const sharedFileBuffer: SharedFileBuffer | undefined = this.sharedContext._sharedFileBuffer;
+    const originalFileSystem = this.sharedContext.deps?.fileSystem;
+    const workerFileSystem = sharedFileBuffer && originalFileSystem
+      ? new WorkerFileSystem(originalFileSystem, sharedFileBuffer, this.workerId, task.name)
+      : originalFileSystem;
+
     const workerState = {
       ...this.sharedContext,
       workerId: this.workerId,
       currentTask: task,
+      // ✅ Override fileSystem with per-worker WorkerFileSystem
+      deps: {
+        ...this.sharedContext.deps,
+        fileSystem: workerFileSystem,
+      },
       // Per-worker independent state
       planText: '',
       conversationHistory: [],
       toolResults: [],
-      fileBuffers: new Map(),
       violations: [],
       retries: 0,
       enforcementHistory: [],

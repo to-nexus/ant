@@ -8,14 +8,21 @@ import { normalizeToCodebasePath } from '../../utils/pathNormalizer';
 
 export class FileRegistry {
   private existingFiles: Set<string>;
+  private otherWorkerPaths: Set<string>;
   private streamedFiles: Map<string, FileStreamInfo> = new Map();
   private fileSystem?: FileSystemPort;  // ✅ For real-time disk checks
   private codebaseRel: string;  // ✅ For path normalization consistency
   
-  constructor(existingFiles: Set<string>, fileSystem?: FileSystemPort, codebaseRel: string = 'codebase') {
+  constructor(
+    existingFiles: Set<string>,
+    fileSystem?: FileSystemPort,
+    codebaseRel: string = 'codebase',
+    otherWorkerPaths?: Set<string>,
+  ) {
     this.existingFiles = existingFiles;
     this.fileSystem = fileSystem;
     this.codebaseRel = codebaseRel;
+    this.otherWorkerPaths = otherWorkerPaths || new Set();
   }
   
   /**
@@ -54,6 +61,24 @@ export class FileRegistry {
     }
     
     return false;
+  }
+  
+  /**
+   * Check if file was known at codeGen start (existingFiles Set only, no disk fallback).
+   * Used by FileRenderer to determine isOverwrite flag at file_start time.
+   *
+   * CRITICAL: Files created by OTHER parallel workers (otherWorkerPaths) return false
+   * even though they exist in existingFiles. This forces the writeNewFile() path in
+   * FileRenderer, which triggers SharedFileBuffer's ownership check and prevents
+   * silent cross-worker overwrites.
+   */
+  isKnownAtStart(filePath: string): boolean {
+    const { normalized } = normalizeToCodebasePath(filePath, this.codebaseRel);
+    // Other workers' files must NOT be treated as overwrite targets
+    if (this.otherWorkerPaths.has(normalized) || this.otherWorkerPaths.has(filePath)) {
+      return false;
+    }
+    return this.existingFiles.has(normalized) || this.existingFiles.has(filePath);
   }
   
   /**

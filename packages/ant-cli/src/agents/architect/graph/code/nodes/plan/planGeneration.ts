@@ -48,7 +48,8 @@ export async function generatePlanText(
   projectCodeContext: any,
   referenceCodeContexts: any[],
   violations?: Violation[],
-  uiDoc?: string  // ✅ UI spec/assets doc for UI-related tasks
+  uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
+  remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>  // ✅ Remaining tasks for cross-task awareness
 ): Promise<string> {
   const requiresPlan = 
     task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&  
@@ -99,7 +100,8 @@ export async function generatePlanText(
     projectCodeContext,
     violationsText,
     uiDoc,  // ✅ Pass uiDoc for UI-related tasks
-    state.profile  // ✅ Pass profile for language-specific setup constraint injection
+    state.profile,  // ✅ Pass profile for language-specific setup constraint injection
+    remainingTasks  // ✅ Pass remaining tasks for task boundary awareness
   );
   
   // ✅ Log prompt structure (not content)

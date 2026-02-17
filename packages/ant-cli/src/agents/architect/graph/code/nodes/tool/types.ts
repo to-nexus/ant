@@ -66,4 +66,3 @@ export interface CreateFileArgs {
   path: string;
   content: string;
 }
-
