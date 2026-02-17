@@ -1,47 +1,4 @@
-## ⚠️ CRITICAL: ONE TOOL CALL PER TURN
-
-**SYSTEM CONSTRAINT**: The system drops all tool calls after the first one.
-
-### Why This Exists
-- System architecture: Only first tool call is executed
-- Better UX: Shows step-by-step progress
-- Error handling: Can adjust after each result
-
-### Pattern
-```
-Turn 1: [tool_call: read_file("main.ts")]      → Wait for result
-Turn 2: [tool_call: search_code("UserService")]     → Wait for result
-Turn 3: [tool_call: run_command("build")]   → Wait for result
-```
-
-### ❌ WRONG
-```
-// All in one turn - ONLY FIRST will execute!
-[tool_call: read_file("main.ts")]
-[tool_call: read_file("config.ts")]     ← DROPPED
-[tool_call: read_file("types.ts")]      ← DROPPED
-```
-
-### ✅ CORRECT
-```
-Turn 1: Read first file
-Turn 2: Read second file
-Turn 3: Read third file
-```
-
-**Rule**: One tool call per turn. If you need 10 operations, that's 10 separate turns. No exceptions.
-
-### 🚨 CRITICAL: Tool Usage Rules
-
-**Important**: The system automatically provides tools. When you need information (read file, search code, run command), simply use the tool and wait for results.
-
-**Rules**: 
-1. ONE tool call per turn, then WAIT for results
-2. Explain AFTER you get tool results, not before
-
----
-
-## 🔍 Command Execution Principles
+## Command Execution Principles
 
 ### Core Principle: Observe Before Repeating
 
@@ -73,10 +30,9 @@ Before retrying a failed command, gather information:
 
 ---
 
-## 🖼️ Binary File Rule
+## Binary File Rule
 
 **Never `read_file` on binary files** (images, fonts, archives, etc.)
 
 - Check existence: `list_files`
 - Use in code: reference path directly
-

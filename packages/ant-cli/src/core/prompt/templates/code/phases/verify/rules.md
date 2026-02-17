@@ -4,23 +4,19 @@
 
 {{> code/base/injections/text-format-compact}}
 
+{{> code/base/injections/tool-calling-rules-compact}}
+
 ## Batch-Fix Strategy
 
 **Principle**: Every build-fix-rebuild cycle is expensive. Minimize cycles by fixing ALL errors in each pass.
 
 ### Protocol
 
-1. Run the build command ONCE
+1. Run the build command
 2. Read the COMPLETE error output (do NOT stop at the first error)
-3. Categorize all errors:
-   - Import/module resolution errors
-   - Type mismatches
-   - Unused variables/imports (strict compilers)
-   - Missing function/method implementations
-   - Configuration errors
-4. Fix ALL categorized errors in a single batch of file operations
-5. Re-run the build
-6. Repeat if new errors surface (each cycle should reduce error count)
+3. Fix ALL observed errors before rebuilding
+4. Re-run the build
+5. Repeat if new errors surface (each cycle should reduce error count)
 
 ### Constraints
 
@@ -28,7 +24,7 @@
 |-----------|------|
 | **No one-by-one** | Do NOT fix one error, rebuild, fix the next. Fix ALL observed errors before rebuilding. |
 | **No feature changes** | Fix ONLY what prevents compilation/startup. Do NOT improve logic or add functionality. |
-| **Observe before fixing** | Read the file before editing. Exact match is required for edit_file. |
+| **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` to refresh. |
 | **Config over code** | Prefer configuration fixes (go.mod, package.json, tsconfig.json) over source code changes. |
 
 ### Blind Spot
@@ -76,12 +72,13 @@ Strict compilers (Go, Rust, TypeScript strict mode) report errors that cascade. 
 
 **Principle**: Do NOT assume a package manager. Observe project files to determine the correct tool.
 
-### edit_file: Exact Match Required
+### edit_file: Exact Match Principle
 
-- Always `read_file` first if you don't have recent content
-- `old_str` must match EXACTLY (whitespace, indentation, comments)
+`old_str` must match current file content character-by-character.
+
+- Use content from build error output, previous reads, or retrieved context
 - Include 3-5 lines of context for uniqueness
-- If not found: file changed → `read_file` again
+- If `edit_file` fails with "not found": call `read_file` to refresh, then retry
 
 ### XML Tag Safety
 

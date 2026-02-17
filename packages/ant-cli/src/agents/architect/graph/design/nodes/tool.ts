@@ -1,5 +1,5 @@
 /**
- * Tool Node (Design Job) - 단일 도구 실행
+ * Tool Node (Design Job) - 도구 실행 (배치 지원)
  * 
  * NOTE: Code job의 tool 노드와 거의 동일하지만 DesignGraphState 사용
  */
@@ -9,112 +9,68 @@ import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 
-// ✅ Initialize tool result manager (singleton for consistency)
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager);
 
-export async function tool(
-  state: DesignGraphState
-): Promise<Partial<DesignGraphState>> {
-  // ✅ Increment recursion count (track node execution for UI gauge)
-  state.recursionCount = (state.recursionCount || 0) + 1;
-
-  // Get tool calls from llmResponse
-  const toolCalls = state.llmResponse?.toolCalls || [];
-  
-  if (toolCalls.length === 0) {
-    return {};
-  }
-  
-  // Only process FIRST tool call (Code job pattern)
-  const toolCall = toolCalls[0];
-  const { id, name, args } = toolCall;
-  
-  console.log(`🔧 [Tool] ${name}`);
-  
-  // ✅ Workflow update
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    const taskInfo = state.currentTask ? {
-      id: state.currentTask.id,
-      name: state.currentTask.name,
-      type: state.currentTask.type,
-      description: state.currentTask.description,
-      priority: state.currentTask.priority
-    } : undefined;
-    await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 
-      'tool', 
-      (state as any).workerId ?? 0,
-      taskInfo, 
-      undefined, // llmInfo
-      state.recursionCount,
-      state.recursionLimit
-    );
-  }
-  
-  // UI delay for delete_file
-  if (name === 'delete_file') {
-    await new Promise(resolve => setTimeout(resolve, 150));
-  }
-  
+/**
+ * Execute a single design tool and return its result content (Anthropic format)
+ */
+async function executeDesignTool(
+  name: string,
+  state: DesignGraphState,
+  args: Record<string, any>
+): Promise<{ result: any; error?: string; toolResultContent: any }> {
   let result: any;
   let error: string | undefined;
-  
+
   try {
-    // ✅ Execute tool
     switch (name) {
       case 'read_file':
-        result = await handleReadFile(state, args as { path: string });
+        result = await handleReadFile(state, args as any);
         break;
       case 'list_files':
-        result = await handleListFiles(state, args as { directory?: string; pattern?: string });
+        result = await handleListFiles(state, args as any);
         break;
       case 'search_code':
-        result = await handleSearchCode(state, args as { pattern: string; file_pattern?: string });
+        result = await handleSearchCode(state, args as any);
         break;
       case 'delete_file':
-        result = await handleDeleteFile(state, args as { path: string });
+        result = await handleDeleteFile(state, args as any);
         break;
       case 'edit_file':
-        result = await handleEditFile(state, args as { path: string; old_str: string; new_str: string });
+        result = await handleEditFile(state, args as any);
         break;
       case 'mkdir':
-        result = await handleMkdir(state, args as { path: string });
+        result = await handleMkdir(state, args as any);
         break;
-      // ✅ UI Design specific tools
       case 'read_reference_image':
-        result = await handleReadReferenceImage(state, args as { path: string });
+        result = await handleReadReferenceImage(state, args as any);
         break;
       case 'list_reference_images':
-        result = await handleListReferenceImages(state, args as { category?: string });
+        result = await handleListReferenceImages(state, args as any);
         break;
       case 'list_assets':
-        result = await handleListAssets(state, args as { category?: string });
+        result = await handleListAssets(state, args as any);
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
-    
-    console.log(`✅ [Tool] Tool executed successfully`);
-    const resultPreview = typeof result === 'string' 
-      ? result.substring(0, 200) 
+
+    console.log(`✅ [Tool] ${name} executed successfully`);
+    const resultPreview = typeof result === 'string'
+      ? result.substring(0, 200)
       : JSON.stringify(result, null, 2).substring(0, 200);
     console.log(`   Result: ${resultPreview}...`);
   } catch (e) {
     error = (e as Error).message;
-    console.error(`❌ [Tool] Tool execution failed:`, error);
+    console.error(`❌ [Tool] ${name} execution failed:`, error);
   }
-  
-  // ✅ Build tool result content
+
+  // Build tool result content (handles image multimodal)
   let toolResultContent: any;
-  let imageContent: any[] = [];
-  
+
   if (name === 'read_reference_image' && result && typeof result === 'object' && result.type === 'image') {
-    // ✅ Image tool returns structured data - convert to multimodal format
     const imageData = result as { type: 'image'; path: string; base64: string; mediaType: string };
-    
-    // ✅ CRITICAL: For Anthropic API, image must be INSIDE tool_result content
-    // NOT as a separate content block before tool_result
     toolResultContent = [
       {
         type: 'image',
@@ -129,62 +85,87 @@ export async function tool(
         text: `✅ Image loaded: ${imageData.path}\n\nAnalyze the visual elements above for design token extraction, component specifications, or layout analysis as needed for your current task.`,
       },
     ];
-    
     console.log(`   🖼️  Multimodal: Image added to conversation (${Math.round(imageData.base64.length / 1024)}KB base64)`);
   } else {
-    // ✅ Standard tool result - truncate as usual
     const truncation = toolResultManager.truncateResult(name, result, error);
     toolResultContent = truncation.content;
-    
     if (truncation.wasTruncated) {
       console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
-      console.log(`   Reason: ${truncation.reason}`);
     }
   }
-  
-  // ✅ Update conversation history (Code job pattern)
-  // CRITICAL: Add BOTH tool_use AND tool_result here (docGen doesn't add tool_use)
-  // NOTE: When enableThinking is disabled after tool calls, assistant message contains ONLY tool_use (no thinking)
+
+  return { result, error, toolResultContent };
+}
+
+export async function tool(
+  state: DesignGraphState
+): Promise<Partial<DesignGraphState>> {
+  state.recursionCount = (state.recursionCount || 0) + 1;
+
+  const toolCalls = state.llmResponse?.toolCalls || [];
+
+  if (toolCalls.length === 0) {
+    return {};
+  }
+
+  // Workflow: enter once per batch
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    const taskInfo = state.currentTask ? {
+      id: state.currentTask.id,
+      name: state.currentTask.name,
+      type: state.currentTask.type,
+      description: state.currentTask.description,
+      priority: state.currentTask.priority
+    } : undefined;
+    await state.deps.workflowUpdate.enterNode(
+      state._httpJobId,
+      'tool',
+      (state as any).workerId ?? 0,
+      taskInfo,
+      undefined,
+      state.recursionCount,
+      state.recursionLimit
+    );
+  }
+
+  // Execute ALL tool calls sequentially
+  const toolUseBlocks: any[] = [];
+  const toolResultBlocks: any[] = [];
+
+  console.log(`🔧 [Tool] Executing ${toolCalls.length} tool call(s)`);
+
+  for (const tc of toolCalls) {
+    const { id, name, args } = tc;
+    console.log(`🔧 [Tool] ${name}`);
+
+    if (name === 'delete_file') {
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    const { toolResultContent } = await executeDesignTool(name, state, args);
+
+    toolUseBlocks.push({ type: 'tool_use', id, name, input: args });
+    toolResultBlocks.push({ type: 'tool_result', tool_use_id: id, content: toolResultContent });
+  }
+
+  // Build batch conversation history (Anthropic multi-tool format)
   const newHistory = [
     ...(state.conversationHistory || []),
-    // Assistant's tool call (FIRST only - prompt instructs LLM to request one at a time)
-    {
-      role: 'assistant' as const,
-      content: [
-        {
-          type: 'tool_use',
-          id,
-          name,
-          input: args,
-        },
-      ],
-    },
-    // User's tool result (image is INSIDE tool_result.content for multimodal)
-    {
-      role: 'user' as const,
-      content: [
-        {
-          type: 'tool_result',
-          tool_use_id: id,
-          content: toolResultContent, // string or content blocks array (for images)
-        },
-      ],
-    },
+    { role: 'assistant' as const, content: toolUseBlocks },
+    { role: 'user' as const, content: toolResultBlocks },
   ];
-  
-  // ✅ Workflow instrumentation: Exit node
+
+  // Workflow: exit once per batch
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', (state as any).workerId ?? 0);
   }
-  
-  // ✅ CRITICAL: Clear toolCalls to prevent infinite loop
-  // Code job pattern: LLM re-decides next action in next turn
+
   return {
     conversationHistory: newHistory,
     files: state.files,
     llmResponse: {
       ...state.llmResponse!,
-      toolCalls: [], // Clear all pending tool calls
+      toolCalls: [],
     },
   };
 }

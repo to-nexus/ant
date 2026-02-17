@@ -66,11 +66,11 @@ export interface AskGraphState {
   
   // Tool execution tracking
   toolCalls: AskToolCall[];
-  pendingToolCall?: {
-    id: string;  // Tool use ID for result matching
+  pendingToolCalls: Array<{
+    id: string;
     name: string;
     args: Record<string, any>;
-  };
+  }>;
   
   // Output
   response?: string;
@@ -118,6 +118,7 @@ export function createInitialAskState(params: {
     currentAgent: params.currentAgent,
     conversationHistory: [],  // Anthropic native format
     toolCalls: [],
+    pendingToolCalls: [],
     deps: params.deps,
     _httpJobId: params._httpJobId,
   };

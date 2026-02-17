@@ -71,7 +71,7 @@ export function buildPlanGraph() {
       conversation: null as any,
       isConversationContinuation: null as any,
       conversationHistory: null as any,
-      pendingToolCall: null as any,
+      pendingToolCalls: null as any,
       generatedDocument: null as any,
       // TriageableState fields
       context: null as any,

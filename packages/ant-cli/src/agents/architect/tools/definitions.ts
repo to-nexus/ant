@@ -32,7 +32,7 @@ export const ARCHITECT_TOOLS = {
   
   edit_file: {
     name: 'edit_file',
-    description: `Edit an existing file by replacing old_str with new_str. The old_str must match EXACTLY (including whitespace and indentation). If the file content has changed since you last read it, you must read_file again before calling edit_file.`,
+    description: `Edit an existing file by replacing old_str with new_str. The old_str must match the current file content EXACTLY (including whitespace and indentation). Use content from your context (retrieved files, previous reads). If edit fails with "not found", call read_file to get current content and retry.`,
     input_schema: {
       type: 'object' as const,
       properties: {

@@ -62,7 +62,7 @@ content...
 ```
 read_file(path="src/App.tsx")
 ```
-**Use when**: Need to see current file content before editing
+**Use when**: Need to see file content not already in your context
 
 #### Edit File
 ```
@@ -74,8 +74,8 @@ edit_file(
 ```
 **Use when**: Modifying specific parts of an existing file  
 **Requirements**: 
-- `old_str` must match EXACTLY (including whitespace)
-- Call `read_file` first if you don't have current content
+- `old_str` must match current file content EXACTLY (including whitespace)
+- If edit fails with "not found", call `read_file` to refresh and retry
 
 #### Delete File
 ```
