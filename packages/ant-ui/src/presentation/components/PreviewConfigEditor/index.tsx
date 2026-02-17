@@ -1129,7 +1129,10 @@ function ConnectionRow({
             {conn.envVar}
           </code>
           <span className="text-[10px] text-gray-400 dark:text-gray-500">&rarr;</span>
-          <code className="text-[10px] text-gray-500 dark:text-gray-400 break-all">
+          <code
+            className="text-[10px] text-gray-500 dark:text-gray-400 break-all"
+            title={conn.resolution.type !== 'url' && conn.value ? conn.value : undefined}
+          >
             {getResolutionLabel(conn)}
           </code>
         </div>
