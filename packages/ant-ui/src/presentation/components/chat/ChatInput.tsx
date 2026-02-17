@@ -54,6 +54,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     return saved ? parseInt(saved, 10) : MIN_HEIGHT;
   });
   const [isResizing, setIsResizing] = useState(false);
+  // Captures the textarea's bottom Y in viewport coords at resize start.
+  // This stays constant during drag because the input is bottom-anchored (flex-shrink-0).
+  const resizeBaseRef = useRef(0);
   
   const menuRef = useRef<HTMLDivElement>(null);
   const agentMenuRef = useRef<HTMLDivElement>(null);  // ✅ Agent menu ref
@@ -560,8 +563,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           style={{ zIndex: 9999 }}
           onMouseMove={(e) => {
             e.preventDefault();
-            const containerBottom = window.innerHeight;
-            const newHeight = Math.max(MIN_HEIGHT, containerBottom - e.clientY);
+            const newHeight = Math.max(MIN_HEIGHT, resizeBaseRef.current - e.clientY);
             setTextareaHeight(newHeight);
           }}
           onMouseUp={(e) => {
@@ -590,7 +592,13 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           }}
           onMouseDown={(e) => {
             e.preventDefault();
-            e.stopPropagation(); // Prevent any parent interference
+            e.stopPropagation();
+            // Capture textarea bottom position before resize starts.
+            // The input is bottom-anchored, so this value stays constant during drag.
+            const textareaEl = document.querySelector('[data-chat-input]') as HTMLElement;
+            if (textareaEl) {
+              resizeBaseRef.current = textareaEl.getBoundingClientRect().bottom;
+            }
             setIsResizing(true);
           }}
           title={`Drag to resize (always available)`}
