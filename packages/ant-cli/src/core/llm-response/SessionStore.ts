@@ -300,6 +300,10 @@ export class SessionStore {
 
   /**
    * Save session to chat.json file
+   * 
+   * Uses read-merge-write to handle parallel workers writing to the same file.
+   * Each worker's localSession only contains its own messages, so we merge
+   * with existing messages from other workers using message ID deduplication.
    */
   private saveToChatFile(): void {
     // Skip if no feature path
@@ -327,33 +331,52 @@ export class SessionStore {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      // Load existing file to preserve createdAt
+      // Read existing file for merge (preserves createdAt and other workers' messages)
       let createdAt = new Date().toISOString();
+      let existingMessages: Array<{ id?: string; [key: string]: any }> = [];
       if (fs.existsSync(filePath)) {
         try {
           const existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           if (existing.createdAt) {
             createdAt = existing.createdAt;
           }
+          if (Array.isArray(existing.messages)) {
+            existingMessages = existing.messages;
+          }
         } catch {
-          // Ignore parse errors, use new createdAt
+          // Ignore parse errors, start fresh
         }
       }
+
+      // Merge: deduplicate by message ID, then sort by timestamp
+      const localMessages = this.localSession.messages.map(msg => ({
+        ...msg,
+        isStreaming: undefined,  // Don't persist streaming flag
+        isComplete: true  // Mark as complete
+      }));
+
+      const localIds = new Set(localMessages.map(m => m.id));
+      const mergedMessages = [
+        // Keep existing messages from other workers (not in local set)
+        ...existingMessages.filter(m => m.id && !localIds.has(m.id)),
+        // Add all local messages (authoritative for this worker)
+        ...localMessages,
+      ].sort((a, b) => {
+        const ta = a.timestamp || '';
+        const tb = b.timestamp || '';
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
 
       const sessionFile = {
         projectId: this.context.projectId,
         featureName: this.context.featureName,
-        messages: this.localSession.messages.map(msg => ({
-          ...msg,
-          isStreaming: undefined,  // Don't persist streaming flag
-          isComplete: true  // Mark as complete
-        })),
+        messages: mergedMessages,
         createdAt,
         updatedAt: new Date().toISOString()
       };
 
       fs.writeFileSync(filePath, JSON.stringify(sessionFile, null, 2), 'utf-8');
-      logger.debug(`Saved chat.json: ${this.localSession.messages.length} messages`, { 
+      logger.debug(`Saved chat.json: ${mergedMessages.length} messages (${localMessages.length} local, ${existingMessages.length} existing)`, { 
         component: 'SessionStore' 
       });
     } catch (error) {

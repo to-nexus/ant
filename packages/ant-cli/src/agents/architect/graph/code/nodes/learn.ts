@@ -201,8 +201,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   }
   
   // 0. Generate quality evaluation report (optional, if files were generated)
-  const files = state.projectCodeContext?.files || [];
-  if (files.length > 0) {
+  // Use filePaths (always populated) instead of files array (empty for memory optimization)
+  const filePaths = state.projectCodeContext?.filePaths || [];
+  if (filePaths.length > 0) {
     try {
       const gitPort = state.gitPort || state.deps?.git;
       const fileSystem = state.deps?.fileSystem;
@@ -235,7 +236,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   // ✅ Enhanced metadata for lesson storage
   const lessonMetadata = {
-    relatedFiles: files.map(f => f.path),
+    relatedFiles: filePaths,
     tags: extractTags(lessons, state.directive || ''),
     directive: state.directive,
     taskType: state.currentTask?.type,
@@ -246,14 +247,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // learn node only handles lesson extraction and metadata storage
   
   // Log files that were written in writeFiles
-  if (files.length > 0) {
-    console.log(`\n✏️  ${files.length} files modified:`);
-    for (const f of files) {
-      console.log(`   - ${f.path}`);
+  if (filePaths.length > 0) {
+    console.log(`\n✏️  ${filePaths.length} files modified:`);
+    for (const fp of filePaths) {
+      console.log(`   - ${fp}`);
     }
   }
   
-  const filesWritten = files.length;
+  const filesWritten = filePaths.length;
   
   // 3. Save turn to session file first (to get sessionId and turnId)
   // Skip turn recording in worker context (only main orchestrator should record)
@@ -297,8 +298,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       output: {
         branch: branch,
         filesWritten: filesWritten,
-        files: files.map(f => f.path),
-        modifications: files.length > 0 ? files.map(f => f.path) : []
+        files: filePaths,
+        modifications: filePaths.length > 0 ? [...filePaths] : []
       }
     };
     
@@ -631,12 +632,12 @@ function extractProblem(state: ArchitectGraphState): string {
  */
 function extractSolution(state: ArchitectGraphState): string {
   const parts: string[] = [];
-  const files = state.projectCodeContext?.files || [];
+  const filePaths = state.projectCodeContext?.filePaths || [];
   
   // File operations
   const filesToDelete = state.filesToDelete || [];
-  if (files.length > 0) {
-    parts.push(`Generated ${files.length} file(s)`);
+  if (filePaths.length > 0) {
+    parts.push(`Generated ${filePaths.length} file(s)`);
   }
   if (filesToDelete.length > 0) {
     parts.push(`deleted ${filesToDelete.length} file(s)`);
@@ -695,8 +696,8 @@ function extractAntipatterns(state: ArchitectGraphState): string[] {
  * Extract related files (max 5)
  */
 function extractRelatedFiles(state: ArchitectGraphState): string[] {
-  const files = state.projectCodeContext?.files || [];
-  return files.slice(0, 5).map(f => f.path);
+  const filePaths = state.projectCodeContext?.filePaths || [];
+  return filePaths.slice(0, 5);
 }
 
 /**
@@ -763,13 +764,13 @@ function extractPatterns(state: ArchitectGraphState): string[] {
   }
   
   // Infer from file structures
-  const files = state.projectCodeContext?.files || [];
-  const hasTests = files.some(f => f.path.includes('test') || f.path.includes('spec'));
+  const filePaths = state.projectCodeContext?.filePaths || [];
+  const hasTests = filePaths.some(fp => fp.includes('test') || fp.includes('spec'));
   if (hasTests) {
     patterns.push('test-driven-development');
   }
   
-  const hasComponents = files.some(f => f.path.includes('component'));
+  const hasComponents = filePaths.some(fp => fp.includes('component'));
   if (hasComponents) {
     patterns.push('component-based-architecture');
   }
