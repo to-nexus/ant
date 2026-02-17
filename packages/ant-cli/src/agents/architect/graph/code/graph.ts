@@ -69,23 +69,8 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         // File exists but search block doesn't match (outdated content)
         violationType = 'file_operation_failed';
         suggestedFix = filePath 
-          ? `⚠️ CRITICAL: Your search block is OUTDATED!\n` +
-            `\n` +
-            `You used STALE content for the search block.\n` +
-            `\n` +
-            `CORRECT workflow:\n` +
-            `   1. Check "📦 Retrieved Codebase Context" - ${filePath} is listed there\n` +
-            `   2. Call read_file("${filePath}") to get CURRENT content\n` +
-            `   3. Use the EXACT code from THAT read_file result for edit_file tool\n` +
-            `\n` +
-            `DO NOT:\n` +
-            `   ❌ Use file content from conversation history (messages above)\n` +
-            `   ❌ Conversation history contains OLD content from previous responses\n` +
-            `\n` +
-            `Source of Truth:\n` +
-            `   ✅ File existence: 📦 Retrieved Codebase Context\n` +
-            `   ✅ File content: read_file() in THIS response\n` +
-            `   ❌ NEVER: tool_result from conversation history`
+          ? `The file content has changed since you last saw it.\n` +
+            `Call read_file("${filePath}") to get current content, then retry edit_file with the exact match.`
           : undefined;
       } else {
         // Other file operation errors

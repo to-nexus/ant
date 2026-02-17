@@ -1,30 +1,3 @@
-## ⚠️ CRITICAL: ONE TOOL CALL PER TURN
-
-**SYSTEM CONSTRAINT**: The system drops all tool calls after the first one.
-
-### Why This Exists
-- System architecture: Only first tool call is executed
-- Better UX: Shows step-by-step progress
-- Error handling: Can adjust after each result
-
-### ❌ WRONG
-```
-// All in one turn - ONLY FIRST will execute!
-[tool_call: list_reference_images()]
-[tool_call: list_assets()]           ← DROPPED
-[tool_call: read_reference_image()]  ← DROPPED
-```
-
-### ✅ CORRECT
-```
-Turn 1: list_reference_images() → Wait for result
-Turn 2: read_reference_image("screen1.png") → Wait for result
-Turn 3: read_reference_image("screen2.png") → Wait for result
-Turn 4: Generate document with <file> tag
-```
-
-**Rule**: One tool call per turn. No exceptions.
-
 ════════════════════════════════════════════════════════════════════════════════
 
 ## TOOL USAGE

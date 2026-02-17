@@ -34,7 +34,7 @@ export function buildAskGraph() {
       
       // Tool execution
       toolCalls: null as any,
-      pendingToolCall: null as any,
+      pendingToolCalls: null as any,
       
       // Output
       response: null as any,

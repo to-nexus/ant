@@ -156,14 +156,6 @@ The following structure is a guideline. Adapt sections as appropriate for the pr
 6. **Constraints / Risks** - Known limitations and risks
 7. **Technical Considerations** - Stack preferences, integration points (if known)
 
-## SYSTEM CONSTRAINT: One Tool Call Per Turn
-
-**Principle**: The system executes only the first tool call per turn. All subsequent tool calls in the same turn are silently dropped.
-
-**Constraint**: Do NOT issue multiple tool calls in a single turn. Issue one tool call, wait for the result, then decide the next action based on the result.
-
-⚠️ **Blind Spot**: When multiple pieces of information are needed (e.g., reading a file AND searching the web), there is a tendency to batch them in one turn. Only the first call will execute; the rest are lost without error.
-
 ## Tool Usage
 
 ### Information Freshness Principle

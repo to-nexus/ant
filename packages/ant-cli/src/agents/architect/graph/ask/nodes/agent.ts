@@ -122,6 +122,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   let responseText = '';
   let thinkingText = '';
   let toolCall: { id: string; name: string; args: Record<string, any> } | undefined;
+  const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
   
   // Convert tools to ToolDefinition format
   // Include workspace tools when workspace context is available
@@ -169,11 +170,13 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
       // Handle tool use events
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
-        toolCall = { 
-          id: id || uuidv4(),  // Use provided ID or generate one
+        const tc = { 
+          id: id || uuidv4(),
           name, 
           args: input 
         };
+        toolCalls.push(tc);
+        toolCall = tc;
         
         if (DEBUG) {
           console.log(`   → Tool call detected: ${name}`);
@@ -198,12 +201,15 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
       responseText = response.content || '';
       
       if (response.toolCalls && response.toolCalls.length > 0) {
-        const tc = response.toolCalls[0];
-        toolCall = { 
-          id: tc.id || uuidv4(), 
-          name: tc.name, 
-          args: tc.args 
-        };
+        for (const rtc of response.toolCalls) {
+          const tc = { 
+            id: rtc.id || uuidv4(), 
+            name: rtc.name, 
+            args: rtc.args 
+          };
+          toolCalls.push(tc);
+          toolCall = tc;
+        }
       }
       
       if (response.usage) {
@@ -244,19 +250,17 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   }
   
   // Add assistant response
-  if (toolCall) {
-    // When making a tool call, add tool_use content block (Anthropic native format)
+  if (toolCalls.length > 0) {
     newHistory.push({
       role: 'assistant',
-      content: [{
-        type: 'tool_use',
-        id: toolCall.id,
-        name: toolCall.name,
-        input: toolCall.args,
-      }],
+      content: toolCalls.map(tc => ({
+        type: 'tool_use' as const,
+        id: tc.id,
+        name: tc.name,
+        input: tc.args,
+      })),
     });
   } else if (responseText) {
-    // Final text response
     newHistory.push({
       role: 'assistant',
       content: responseText,
@@ -265,8 +269,8 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   
   return {
     conversationHistory: newHistory,
-    pendingToolCall: toolCall,
-    response: toolCall ? undefined : responseText,
+    pendingToolCalls: toolCalls.length > 0 ? toolCalls : [],
+    response: toolCalls.length > 0 ? undefined : responseText,
     streamingCompleted,
     chatMessageStarted: streamingStarted,  // ✅ Persist across tool calls
     isEvaluation,   // ✅ Persist evaluation state across nodes
@@ -279,7 +283,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
  * Router: decide next node based on agent output
  */
 export function routeAfterAgent(state: AskGraphState): 'tool' | 'respond' {
-  if (state.pendingToolCall) {
+  if (state.pendingToolCalls && state.pendingToolCalls.length > 0) {
     return 'tool';
   }
   return 'respond';

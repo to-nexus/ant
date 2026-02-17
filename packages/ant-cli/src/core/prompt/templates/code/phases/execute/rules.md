@@ -44,21 +44,12 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 }
 ```
 
-**How to execute each field:**
+**Execution approach:**
 
-| JSON Field | Your Action |
-|------------|-------------|
-| `create[].name` + `location` | `list_files` → verify location → create file |
-| `modify[].target` | `read_file` → apply `changes` |
-| `assets[].source/destination` | Copy asset file |
-
-**Path Determination Workflow:**
-```
-1. Parse plan JSON
-2. For each create: list_files → find exact path → create file
-3. For each modify: read_file → apply changes
-4. For each asset: copy from source to destination
-```
+| Phase | Action |
+|-------|--------|
+| **Gather** | Verify paths exist. Read targets to modify. |
+| **Implement** | Create, modify, copy per plan fields. |
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 2. Implementation Decisions (Your Judgment)
@@ -172,29 +163,12 @@ code...
 | `mkdir` | Create directory |
 
 ────────────────────────────────────────────────────────────────────────────────
-### Build System / Package Manager Detection
-
-**Before running install/build commands, identify the project's build system:**
-
-| Indicator | Build System / Package Manager |
-|-----------|-------------------------------|
-| `pnpm-workspace.yaml` or `pnpm-lock.yaml` | pnpm |
-| `yarn.lock` | yarn |
-| `package-lock.json` | npm |
-| `go.mod` | Go modules (`go get`, `go mod tidy`, `go build`) |
-| `Cargo.toml` | Cargo (`cargo build`, `cargo run`) |
-| `requirements.txt` or `pyproject.toml` | pip / poetry |
-| `Makefile` | Make (check targets: `make build`, `make run`) |
-
-**Principle**: Do NOT assume a package manager. Observe project files to determine the correct tool.
-
-────────────────────────────────────────────────────────────────────────────────
 ### Decision Tree
 
 | Operation | Method |
 |-----------|--------|
 | Create NEW file | `<file path="...">` tag |
-| Edit EXISTING file | `edit_file` tool (after `read_file`) |
+| Edit EXISTING file | `edit_file` tool |
 | Append to file | `<append path="...">` tag |
 | Delete single file | `delete_file` tool |
 | Delete directory / multiple files | `run_command` with `rm` |
@@ -203,21 +177,19 @@ code...
 ## 📝 File Operations Rules
 ════════════════════════════════════════════════════════════════════════════════
 
-### 1. edit_file: Exact Match Required
+### 1. edit_file: Exact Match Principle
 
-```python
-# ❌ WRONG - Whitespace mismatch
-edit_file(path, old_str="function() {\nreturn 1;\n}", ...)
+`old_str` must match the file's current content character-by-character.
 
-# ✅ CORRECT - Exact match from read_file
-edit_file(path, old_str="function() {\n  return 1;\n}", ...)
-```
+| Content source | Trust level |
+|---------------|-------------|
+| Retrieved codebase context (in this prompt) | Current at task start |
+| Previous `read_file` result (in this conversation) | Current unless you edited the file since |
+| Your own `edit_file` output | You know the new state |
 
-**Rules:**
-- Always `read_file` first if you don't have recent content
-- `old_str` must match EXACTLY (whitespace, indentation, comments)
-- Include 3-5 lines of context for uniqueness
-- If not found: file changed → `read_file` again
+**Constraint**: If `edit_file` fails with "not found", the file has changed. Call `read_file` to refresh, then retry.
+
+**Constraint**: Include 3-5 lines of context in `old_str` for uniqueness.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 2. XML Tag Safety
@@ -239,18 +211,18 @@ const y = "</append>";    // Use: "</" + "append>"
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Before Any CREATE: Check First
 
-**Even if Plan says "CREATE", verify first:**
+**Constraint**: Do NOT use `<file>` tag on a file that already exists. It overwrites all content.
 
-```
-Step 1: list_files(target_area) → See what exists
-Step 2: Similar file found?
-        ├─ YES → read_file → extend/modify existing
-        └─ NO  → create new file
-```
+| Check | Source |
+|-------|--------|
+| File already in retrieved context? | Retrieved Codebase Context section |
+| File in directory tree? | Directory tree in this prompt |
+| File created earlier in this session? | Your own previous output |
+| Uncertain? | `list_files` to verify |
 
-**Also check:** Did I already create this file in this session? → Use `edit_file`
+Existing files: `edit_file` or `<append>`. New files only: `<file>`.
 
-**Constraint:** Only create/modify files within YOUR task's scope. Do NOT modify shared entry points or files that other tasks own.
+**Constraint**: Only create/modify files within YOUR task's scope. Do NOT modify shared entry points or files that other tasks own.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 4. No Duplicates
@@ -369,8 +341,6 @@ const speed = PADDLE_SPEED;
 | ❌ Wrong | ✅ Correct |
 |----------|-----------|
 | `<file>` on existing file | `edit_file` tool |
-| `edit_file` without reading | `read_file` first |
-| Wrong package manager/build tool | Detect from project files → use correct tool |
 | Hardcoded values when constants exist | Import and use constants |
 | Create module but never import it | Import and use within your task's files |
 | Asset TODO placeholders | Copy asset file, then reference |

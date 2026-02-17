@@ -34,11 +34,11 @@ export interface PlanGraphState {
   
   // LLM conversation (ReAct loop)
   conversationHistory: Array<{ role: string; content: any }>;
-  pendingToolCall?: {
+  pendingToolCalls: Array<{
     id: string;
     name: string;
     args: Record<string, any>;
-  };
+  }>;
   
   // Output
   generatedDocument?: string;
@@ -102,6 +102,7 @@ export function createInitialPlanState(params: {
     mode: params.mode || 'generate',
     isResume: params.isResume,
     conversationHistory: [],
+    pendingToolCalls: [],
     conversation: [],
     isConversationContinuation: false,
     // TriageableState fields

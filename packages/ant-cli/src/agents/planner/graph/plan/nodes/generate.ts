@@ -283,10 +283,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
-        // Send only the first tool_use to UI (standard pattern: system drops subsequent calls)
-        if (toolCalls.length === 0) {
-          await chatAPI.sendLLMEvent(event);
-        }
+        await chatAPI.sendLLMEvent(event);
         toolCalls.push({ id: id || uuidv4(), name, args: input });
       }
       
@@ -330,10 +327,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     updatedHistory.push({ role: 'user', content: recordedMessage });
   }
   
-  // Only process first tool call (standard pattern: Code/Design jobs do the same)
-  const toolCall = toolCalls.length > 0 ? toolCalls[0] : undefined;
-  
-  if (toolCall) {
+  if (toolCalls.length > 0) {
     // Tool call path — finalize orchestrator (keep message open for tool execution)
     await orchestrator.finalize(true);
     
@@ -346,11 +340,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       role: 'assistant',
       content: [
         ...(responseText ? [{ type: 'text', text: responseText }] : []),
-        { type: 'tool_use', id: toolCall.id, name: toolCall.name, input: toolCall.args },
+        ...toolCalls.map(tc => ({ type: 'tool_use' as const, id: tc.id, name: tc.name, input: tc.args })),
       ],
     });
     
-    // ✅ Update stateSnapshot for SIGTERM handler access (tool node will save full checkpoint)
+    // Update stateSnapshot for SIGTERM handler access
     if (state.deps?.stateSnapshot) {
       state.deps.stateSnapshot.conversationHistory = updatedHistory;
       state.deps.stateSnapshot.directive = state.directive;
@@ -359,7 +353,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     
     return {
       conversationHistory: updatedHistory,
-      pendingToolCall: toolCall,
+      pendingToolCalls: toolCalls,
       tokenUsage: state.tokenUsage,
       recursionCount,
     };
@@ -426,7 +420,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       conversationHistory: updatedHistory,
       conversation: updatedConversation,
       generatedDocument: undefined,
-      pendingToolCall: undefined,
+      pendingToolCalls: [],
       tokenUsage: state.tokenUsage,
       recursionCount,
     };
@@ -588,7 +582,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     conversationHistory: updatedHistory,
     conversation: updatedConversation,
     generatedDocument,
-    pendingToolCall: undefined,
+    pendingToolCalls: [],
     tokenUsage: state.tokenUsage,
     recursionCount,
   };
@@ -699,7 +693,7 @@ async function saveConversationToSession(
  * Router: decide next node after generate
  */
 export function routeAfterGenerate(state: PlanGraphState): 'tool' | '__end__' {
-  if (state.pendingToolCall) {
+  if (state.pendingToolCalls && state.pendingToolCalls.length > 0) {
     return 'tool';
   }
   return '__end__';

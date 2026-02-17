@@ -2,6 +2,7 @@
  * Tool Node
  * 
  * Executes tools called by the generate node and returns results.
+ * Supports batch execution of multiple tool calls.
  */
 
 import { PlanGraphState } from '../state';
@@ -9,10 +10,10 @@ import { PLANNER_TOOLS } from '../../tools';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 
 export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
-  const pending = state.pendingToolCall;
-  if (!pending) {
-    console.warn('[Planner:Tool] No pending tool call');
-    return { pendingToolCall: undefined };
+  const pending = state.pendingToolCalls || [];
+  if (pending.length === 0) {
+    console.warn('[Planner:Tool] No pending tool calls');
+    return { pendingToolCalls: [] };
   }
   
   // Workflow instrumentation (pass recursion info for badge display)
@@ -24,45 +25,45 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
     );
   }
   
-  console.log(`🔧 [Planner:Tool] Executing: ${pending.name}`);
-  
-  // Show placeholder status before tool execution (same as code job tool node)
   const chatAPI = getChatAPIClient();
-  await chatAPI.showChatStatus('placeholder', {
-    content: `${pending.name}`
-  });
-  
-  const tool = PLANNER_TOOLS.find(t => t.name === pending.name);
-  if (!tool) {
-    console.error(`[Planner:Tool] Unknown tool: ${pending.name}`);
-    const errorResult = `Error: Unknown tool "${pending.name}"`;
+  const toolResultBlocks: any[] = [];
+
+  console.log(`🔧 [Planner:Tool] Executing ${pending.length} tool call(s)`);
+
+  for (const tc of pending) {
+    console.log(`🔧 [Planner:Tool] Executing: ${tc.name}`);
     
-    const updatedHistory = [...state.conversationHistory];
-    updatedHistory.push({
-      role: 'user',
-      content: [{ type: 'tool_result', tool_use_id: pending.id, content: errorResult }],
+    await chatAPI.showChatStatus('placeholder', { content: `${tc.name}` });
+    
+    const tool = PLANNER_TOOLS.find(t => t.name === tc.name);
+    if (!tool) {
+      console.error(`[Planner:Tool] Unknown tool: ${tc.name}`);
+      toolResultBlocks.push({
+        type: 'tool_result',
+        tool_use_id: tc.id,
+        content: `Error: Unknown tool "${tc.name}"`,
+      });
+      continue;
+    }
+    
+    let result: string;
+    try {
+      result = await tool.execute(tc.args);
+    } catch (error: any) {
+      result = `Error: ${error.message}`;
+      console.error(`[Planner:Tool] Error: ${error.message}`);
+    }
+    
+    console.log(`   Result: ${result.substring(0, 100)}${result.length > 100 ? '...' : ''}`);
+    
+    toolResultBlocks.push({
+      type: 'tool_result',
+      tool_use_id: tc.id,
+      content: result,
     });
-    
-    return {
-      conversationHistory: updatedHistory,
-      pendingToolCall: undefined,
-    };
   }
-  
-  let result: string;
-  try {
-    result = await tool.execute(pending.args);
-  } catch (error: any) {
-    result = `Error: ${error.message}`;
-    console.error(`[Planner:Tool] Error: ${error.message}`);
-  }
-  
-  console.log(`   Result: ${result.substring(0, 100)}${result.length > 100 ? '...' : ''}`);
-  
-  // Finalize current message after each tool execution (intermediate session save).
-  // This ensures each generate→tool cycle is saved to chat.json independently,
-  // matching code/design job behavior where each task iteration is persisted.
-  // The next generateNode's showChatStatus('placeholder') will auto-start a new message.
+
+  // Finalize current message after batch execution
   await chatAPI.finalizeMessage();
   
   // Workflow instrumentation
@@ -70,15 +71,14 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', 0);
   }
   
+  // Add batch tool_result to conversation history
   const updatedHistory = [...state.conversationHistory];
   updatedHistory.push({
     role: 'user',
-    content: [{ type: 'tool_result', tool_use_id: pending.id, content: result }],
+    content: toolResultBlocks,
   });
   
-  // ✅ Checkpoint: save conversationHistory to session after tool execution.
-  // This is the most complete state point in the ReAct loop (tool_result included).
-  // Enables resume from exact point of interruption.
+  // Checkpoint: save conversationHistory to session after tool execution
   const session = state.deps?.session;
   if (session) {
     const pid = session.projectId || process.env.ANT_PROJECT_ID || 'default';
@@ -98,7 +98,7 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
     }
   }
   
-  // ✅ Update stateSnapshot for SIGTERM handler access
+  // Update stateSnapshot for SIGTERM handler access
   if (state.deps?.stateSnapshot) {
     state.deps.stateSnapshot.conversationHistory = updatedHistory;
     state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
@@ -106,6 +106,6 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
   
   return {
     conversationHistory: updatedHistory,
-    pendingToolCall: undefined,
+    pendingToolCalls: [],
   };
 }
