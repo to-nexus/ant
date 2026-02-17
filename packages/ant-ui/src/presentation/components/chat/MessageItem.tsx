@@ -42,7 +42,7 @@ export function MessageItem({ message }: MessageItemProps) {
         {/* User messages */}
         {isUser && (
           <div className="px-4 py-3 rounded-lg">
-            <div className="text-sm text-gray-900 dark:text-gray-100">
+            <div className="text-sm text-gray-900 dark:text-gray-100 select-text">
               {message.contents[0]?.content}
             </div>
           </div>
@@ -113,8 +113,8 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
       // ✅ Cursor/Copilot-style: ALWAYS show full content (never truncate general responses)
       // Only thinking and file cards can be collapsed, not summary/response text
       return (
-        <div className="px-1 py-2 w-full">
-          <div className="prose prose-sm dark:prose-invert max-w-none w-full"
+        <div className="px-1 py-2 w-full select-text">
+          <div className="prose prose-sm dark:prose-invert max-w-none w-full select-text"
                style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
             <ReactMarkdown 
                 remarkPlugins={[remarkGfm]}

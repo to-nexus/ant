@@ -78,6 +78,8 @@ export function useResizeHandlers(layout: LayoutState) {
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       
       // ✅ Cleanup RAF on unmount
       if (rafIdExplorerRef.current !== null) {
@@ -145,6 +147,8 @@ export function useResizeHandlers(layout: LayoutState) {
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       
       // ✅ Cleanup RAF on unmount
       if (rafIdChatRef.current !== null) {

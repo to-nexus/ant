@@ -8,12 +8,28 @@
  * - If it's a user message → no pin (the question is already visible)
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, forwardRef } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import type { ChatMessage } from '@/domain/models/chat';
 import { MessageItem } from './MessageItem';
 import { TypingIndicator } from './TypingIndicator';
 import { useStore } from '@/domain/store';
+
+/**
+ * Custom Scroller for Virtuoso that ensures text selection works.
+ * react-virtuoso's alignToBottom mode uses internal CSS (e.g. display:table)
+ * that can interfere with native text drag-selection. Explicitly setting
+ * userSelect: 'text' on the scroller overrides this.
+ */
+const ScrollerWithTextSelect = forwardRef<HTMLDivElement, React.ComponentPropsWithRef<'div'>>(
+  ({ style, ...props }, ref) => (
+    <div
+      ref={ref}
+      style={{ ...style, userSelect: 'text', WebkitUserSelect: 'text' }}
+      {...props}
+    />
+  )
+);
 
 interface ChatHistoryProps {
   messages: ChatMessage[];
@@ -331,7 +347,7 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       atBottomStateChange={handleAtBottomStateChange}
       increaseViewportBy={{ top: 0, bottom: 200 }}
       itemContent={itemContent}
-      components={{ Footer }}
+      components={{ Footer, Scroller: ScrollerWithTextSelect }}
     />
   );
 }
