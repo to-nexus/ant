@@ -26,6 +26,10 @@ import {
   COMMAND_TIMEOUT,
   EARLY_ERROR_TIMEOUT,
   STARTUP_VERIFICATION_TIMEOUT,
+  COMPILE_RUN_STARTUP_TIMEOUT,
+  COMPILE_RUN_PATTERNS,
+  SERVER_DETECTION_TIMEOUT,
+  SERVER_OUTPUT_PATTERNS,
   ORCHESTRATOR_PORT 
 } from '../constants';
 
@@ -144,7 +148,14 @@ Or use a different approach that doesn't require initialization.`;
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Normal command: wait for completion
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const result = await commandPort.execute(normalizedCommand, {
+    
+    // ✅ Runtime fallback: detect regular commands that are actually long-running servers.
+    // If a command runs > SERVER_DETECTION_TIMEOUT without exiting AND its output matches
+    // SERVER_OUTPUT_PATTERNS, it's likely a server binary (e.g., ./main after go build).
+    // Auto-terminate to prevent blocking for the full COMMAND_TIMEOUT (10 min).
+    let serverDetectionTimer: NodeJS.Timeout | null = null;
+    
+    const commandPromise = commandPort.execute(normalizedCommand, {
       cwd: workingDir,
       timeout: effectiveTimeout,
       onStdout: (chunk: string) => {
@@ -157,10 +168,61 @@ Or use a different approach that doesn't require initialization.`;
       },
       onExit: (code: number) => {
         console.log(`   Exit code: ${code}`);
+        if (serverDetectionTimer) {
+          clearTimeout(serverDetectionTimer);
+          serverDetectionTimer = null;
+        }
       },
     });
     
-    // ✅ Use result from execute (more reliable than callbacks)
+    // Race: normal completion vs server detection timeout
+    const serverDetectionPromise = new Promise<'server_detected'>((resolve) => {
+      serverDetectionTimer = setTimeout(() => {
+        const allOutput = streamedStdout + streamedStderr;
+        if (SERVER_OUTPUT_PATTERNS.test(allOutput)) {
+          console.warn(`\n   ⚠️  [Server Detection] Command running >${SERVER_DETECTION_TIMEOUT / 1000}s with server-like output — likely a long-running server\n`);
+          resolve('server_detected');
+        }
+      }, SERVER_DETECTION_TIMEOUT);
+    });
+    
+    const raceResult = await Promise.race([
+      commandPromise.then(r => ({ type: 'completed' as const, result: r })),
+      serverDetectionPromise.then(() => ({ type: 'server_detected' as const })),
+    ]);
+    
+    // Clean up timer if command completed normally
+    if (serverDetectionTimer) {
+      clearTimeout(serverDetectionTimer);
+      serverDetectionTimer = null;
+    }
+    
+    // Handle server detection: command is still running, terminate and return
+    if (raceResult.type === 'server_detected') {
+      const allOutput = streamedStdout + streamedStderr;
+      
+      // Prevent unhandled promise rejection from the still-pending commandPromise.
+      // The underlying process will be cleaned up by commandPort's own timeout.
+      commandPromise.catch(() => {});
+      
+      await chatAPI.commandComplete(normalizedCommand, true, 0,
+        `Server detected (auto-terminated)\n\nOutput:\n${allOutput}`, mergeIndex);
+      
+      return `⚠️ LONG-RUNNING SERVER DETECTED: ${normalizedCommand}
+
+The command appears to be a long-running server process (did not exit after ${SERVER_DETECTION_TIMEOUT / 1000}s).
+It was auto-terminated to prevent blocking.
+
+Output captured:
+${allOutput.slice(0, 3000)}${allOutput.length > 3000 ? '\n...(truncated)' : ''}
+
+✅ The server started successfully (startup output observed).
+If you need the server to keep running, use run_command with keep_running=true.
+For verification: build success + server startup = task complete.`;
+    }
+    
+    // Normal completion path
+    const result = raceResult.result;
     const { stdout, stderr, exitCode, success } = result;
     const output = stdout + stderr;
     
@@ -379,9 +441,16 @@ ${stdout.slice(0, 1000)}`));
       }
     }, EARLY_ERROR_TIMEOUT);
     
-    // ✅ Wait 5 seconds for startup verification (most servers start within 2-4s)
+    // ✅ Dynamic startup timeout: compile-and-run languages (Go, Rust) need longer
+    // because `go run` / `cargo run` compile before executing.
+    const isCompileRun = COMPILE_RUN_PATTERNS.some(p => p.test(command));
+    const effectiveStartupTimeout = isCompileRun ? COMPILE_RUN_STARTUP_TIMEOUT : STARTUP_VERIFICATION_TIMEOUT;
+    if (isCompileRun) {
+      console.log(`   ⏱️  Compile-and-run detected → startup timeout: ${effectiveStartupTimeout / 1000}s`);
+    }
+    
     const startupTimeout = setTimeout(async () => {
-      // If still running after 5s with no errors = success
+      // If still running after timeout with no errors = success
       if (!hasError && child.exitCode === null) {
         console.log(`\n   ✅ Server process started, verifying page render...`);
         
@@ -505,7 +574,7 @@ ${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
 🧹 Server was terminated after verification (default behavior).`, true);
         }
       } else if (hasError) {
-        // ✅ If error detected but process still running after 10s, fail
+        // ✅ If error detected but process still running after timeout, fail
         console.error(`\n   ❌ Error detected during startup - failing\n`);
         await chatAPI.commandComplete(command, false, 1, `Error:\n${stderr}\n${stdout}`, mergeIndex);
         safeReject(new Error(`❌ SERVER FAILED TO START: ${command}
@@ -516,7 +585,7 @@ ${stderr.slice(0, 2000)}
 Stdout:
 ${stdout.slice(0, 1000)}`));
       }
-    }, STARTUP_VERIFICATION_TIMEOUT);
+    }, effectiveStartupTimeout);
     
     child.on('exit', async (code, signal) => {
       const output = stdout + stderr;

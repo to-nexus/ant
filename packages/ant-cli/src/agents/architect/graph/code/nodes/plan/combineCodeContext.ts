@@ -24,6 +24,7 @@ import { loadErrorFiles, LoadedFile } from "./errorFilesLoader";
 import { loadSemanticFiles, LessonResult } from "./semanticSearch";
 import { extractFilesFromCode } from "./utils";
 import { generateGitDiffSummary, GitDiffSummary } from "../../../../../../core/codebase/GitDiffSummary";
+import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
 
 export interface ProjectCodeContext {
   filePaths: string[];
@@ -78,6 +79,86 @@ export async function combineCodeContext(
   git: GitPort,
   directoryTree?: string
 ): Promise<CombinedCodeContextResult | null> {
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    console.warn(`   ⚠️  FileSystemPort not available, skipping RAG`);
+    return null;
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // EXCLUSIVE TASK FAST PATH: Load ALL codebase files directly
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Exclusive tasks (integration, verification) need full codebase awareness.
+  // RAG keyword search is insufficient — load everything to eliminate read_file loops.
+  const isExclusiveTask = state.currentTask?.exclusive === true;
+  if (isExclusiveTask) {
+    console.log(`🔍 [RAG] Exclusive task detected → loading ALL codebase files directly`);
+    
+    const allCodebaseFiles = await loadAllCodebaseFiles(fileSystem);
+    
+    // Also load error files if this is a retry
+    const errorFiles = taskKeywords.errorFiles.length > 0
+      ? await loadErrorFiles(taskKeywords.errorFiles, state, git, fileSystem)
+      : [];
+    
+    // Merge: errorFiles override codebase files (more recent content)
+    const allFiles = [...allCodebaseFiles, ...errorFiles];
+    const uniqueFiles = Array.from(
+      new Map(allFiles.map(f => [f.path, f])).values()
+    );
+    
+    console.log(`   ✅ Exclusive context: ${uniqueFiles.length} files (${allCodebaseFiles.length} codebase + ${errorFiles.length} error, ${allFiles.length - uniqueFiles.length} dedup)`);
+    uniqueFiles.forEach(f => console.log(`      📄 ${f.path}`));
+    
+    // Show in Chat UI
+    try {
+      const chatAPI = getChatAPIClient();
+      const loadMergeIndex = await chatAPI.showChatStatus('loading', { filesCount: 0 });
+      await chatAPI.showChatStatus('loaded', {
+        filesCount: uniqueFiles.length,
+        filesList: uniqueFiles.map(f => f.path),
+        content: `Loaded: ${uniqueFiles.length} codebase files (exclusive task)`,
+        _mergeIndex: loadMergeIndex
+      });
+    } catch {
+      // Non-critical
+    }
+    
+    const projectCodeContext: ProjectCodeContext = {
+      filePaths: uniqueFiles.map(f => f.path),
+      files: uniqueFiles,
+      stats: {
+        filesLoaded: uniqueFiles.length,
+        errorFilesCount: errorFiles.length,
+        semanticCount: 0,
+        deduplicatedCount: allFiles.length - uniqueFiles.length,
+      },
+      source: 'plan' as const
+    };
+    
+    // Git diff
+    if (git) {
+      const gitDiffResult = await generateGitDiffSummary(git, state.context.workingDir, projectCodeContext.filePaths);
+      projectCodeContext.gitDiff = gitDiffResult ?? undefined;
+    }
+    
+    // Directory tree
+    if (directoryTree) {
+      projectCodeContext.directoryTree = directoryTree;
+    } else {
+      try {
+        projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
+      } catch {
+        // Non-critical
+      }
+    }
+    
+    return { context: projectCodeContext, lessons: [] };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // NORMAL TASK PATH: Three-tier RAG search
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const hasStackTrace = taskKeywords.errorFiles.length > 0;
   const hasKeywords = taskKeywords.keywords.length > 0;
   const hasRequiredFiles = taskKeywords.requiredFiles.length > 0;
@@ -85,12 +166,6 @@ export async function combineCodeContext(
   // If nothing to search for, return null (caller will create empty context)
   if (!hasStackTrace && !hasKeywords && !hasRequiredFiles) {
     console.log(`   ℹ️  No required files, stack trace, or keywords - skipping RAG`);
-    return null;
-  }
-  
-  const fileSystem = state.deps?.fileSystem;
-  if (!fileSystem) {
-    console.warn(`   ⚠️  FileSystemPort not available, skipping RAG`);
     return null;
   }
   
@@ -225,6 +300,81 @@ export async function combineCodeContext(
     context: projectCodeContext,
     lessons
   };
+}
+
+/**
+ * Load ALL codebase files for exclusive tasks (integration, verification).
+ * 
+ * Exclusive tasks need full codebase awareness to wire components together.
+ * Loading all files upfront (~30-80K tokens) is far cheaper than the alternative:
+ * iterative read_file calls that accumulate conversation history (~2M+ tokens).
+ * 
+ * Safeguards:
+ * - File count capped at EXCLUSIVE_MAX_FILES
+ * - Large files truncated to EXCLUSIVE_MAX_FILE_LINES
+ * - Binary files skipped
+ * 
+ * @param fileSystem - FileSystemPort for file access
+ * @returns Array of loaded files from codebase/
+ */
+async function loadAllCodebaseFiles(
+  fileSystem: FileSystemPort
+): Promise<LoadedFile[]> {
+  const BINARY_EXTENSIONS = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
+    '.woff', '.woff2', '.ttf', '.eot', '.otf',
+    '.zip', '.tar', '.gz', '.br', '.zst',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+    '.mp3', '.mp4', '.wav', '.avi', '.mov',
+    '.exe', '.dll', '.so', '.dylib', '.wasm',
+    '.sqlite', '.db',
+  ]);
+
+  const files: LoadedFile[] = [];
+
+  try {
+    const allPaths = await fileSystem.listFiles('codebase', [
+      'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
+      'coverage', '__pycache__', 'venv', '.venv', 'target',
+      '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
+    ]);
+
+    // Filter out binary files
+    const textPaths = allPaths.filter(p => {
+      const ext = path.extname(p).toLowerCase();
+      return !BINARY_EXTENSIONS.has(ext);
+    });
+
+    // Cap at EXCLUSIVE_MAX_FILES
+    const cappedPaths = textPaths.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES);
+    if (textPaths.length > RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES) {
+      console.log(`   ⚠️  Capped codebase files: ${textPaths.length} → ${RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES}`);
+    }
+
+    for (const filePath of cappedPaths) {
+      try {
+        const content = await fileSystem.readFile(filePath);
+        if (!content) continue;
+
+        // Truncate very large files to keep prompt size manageable
+        const lines = content.split('\n');
+        const truncated = lines.length > RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES
+          ? lines.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES).join('\n') +
+            `\n\n// ... truncated (${lines.length - RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES} more lines)`
+          : content;
+
+        files.push({ path: filePath, content: truncated, source: 'local' });
+      } catch {
+        // Skip unreadable files
+      }
+    }
+
+    console.log(`   📦 [Exclusive] Loaded ${files.length} codebase files (${textPaths.length} total, ${allPaths.length - textPaths.length} binary skipped)`);
+  } catch (err) {
+    console.warn(`   ⚠️  Failed to list codebase files:`, err instanceof Error ? err.message : err);
+  }
+
+  return files;
 }
 
 /**

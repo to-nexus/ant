@@ -36,5 +36,15 @@ export const RETRIEVAL_CONFIG = {
    */
   getSemanticQuota(errorFileCount: number): number {
     return Math.max(0, this.TOTAL_MAX - errorFileCount);
-  }
+  },
+
+  /**
+   * Exclusive task configuration
+   * 
+   * Exclusive tasks (e.g., application-integration, verification) need access to
+   * ALL codebase files because they wire together outputs from all feature tasks.
+   * RAG keyword search is insufficient — these tasks load the full codebase directly.
+   */
+  EXCLUSIVE_MAX_FILES: 60,
+  EXCLUSIVE_MAX_FILE_LINES: 200,
 } as const;
