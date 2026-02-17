@@ -209,15 +209,18 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 |-----------|----------------|
 | **External services** | Does the specification mention databases, caches, queues, or other infrastructure requiring a runtime process? |
 | **Service connections** | Are there connection URLs between the application and external services? |
+| **Application configuration** | Does the specification mention secrets, API keys, or configuration that must be provided via environment variables? |
 
 **Setup task description MUST mention (when applicable):**
 - `docker-compose.yml` with service definitions — if external services are observed in the specification
 - `.env.example` with `# @connection {category} {name}` annotation for every service connection variable
+- `.env` with resolved localhost values matching `.env.example` variable keys
+- Application configuration variables (secrets, API keys) observed in the specification — listed by name so feature tasks do not invent their own variable names
 - Cross-project connections with `# @connection {category} {name} ant-project:{projectId}:{feature}` — if the specification names a specific external Ant project as a dependency (e.g., "uses sketch-be as backend")
 
 **Constraint**: Do NOT omit infrastructure provisioning (`docker-compose.yml`) from setup task when the specification mentions external services. Do NOT omit `@connection` annotations — they are required for the platform to detect and manage service connections. Do NOT omit `ant-project:{projectId}:{feature}` modifier when the specification explicitly names a target project — without it, the platform cannot auto-resolve the cross-project proxy path.
 
-**Blind spot**: `docker-compose.yml` is EASILY FORGOTTEN when specification mentions only service names (e.g., "PostgreSQL", "Redis") without an explicit infrastructure section. `@connection` annotations are EASILY FORGOTTEN. The `ant-project:{projectId}:{feature}` modifier for cross-project dependencies is EASILY FORGOTTEN when the specification mentions another project by name. Verify all are included.
+**Blind spot**: `docker-compose.yml` is EASILY FORGOTTEN when specification mentions only service names (e.g., "PostgreSQL", "Redis") without an explicit infrastructure section. `@connection` annotations are EASILY FORGOTTEN. The `ant-project:{projectId}:{feature}` modifier for cross-project dependencies is EASILY FORGOTTEN when the specification mentions another project by name. `.env` is EASILY FORGOTTEN when `.env.example` is mentioned — both MUST appear together. Application configuration variables (secrets, API keys) are EASILY LEFT TO FEATURE TASKS — listing them in setup prevents variable name inconsistency across tasks. Verify all are included.
 
 ---
 

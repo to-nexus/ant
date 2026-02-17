@@ -84,6 +84,13 @@ When error occurs:
 - Asset specified in mapping → NOT a text substitute
 - Copy asset BEFORE referencing in code
 
+### 5. ENV FILE SYNC CONTRACT
+**`.env.example` and `.env` MUST contain identical variable keys.**
+- `.env.example` = committed template (placeholder values + `@connection` annotations)
+- `.env` = active config, gitignored (resolved values for local development)
+- Modifying one without the other = inconsistency the platform cannot recover from
+- Variable names defined by setup are the canonical contract — do NOT rename in later tasks
+
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if (eq currentTask.type "explain")}}
@@ -156,8 +163,11 @@ Create config files only. **NO source code, NO tests.**
 - Build tool config (framework-specific)
 - `.gitignore` - Version control exclusions
 - `.env.example` - Environment variable template (connection variables MUST use `@connection` annotation)
+- `.env` - Active environment config with resolved localhost values matching `.env.example` variable keys
 - Entry file (framework-specific, e.g., index.html for SPA)
 - `docker-compose.yml` - Local infrastructure services (only if: root-level setup AND design specifies external services requiring a runtime process)
+
+**Blind spot**: `.env` is EASILY FORGOTTEN when `.env.example` is created. Both files MUST be created together with identical variable keys. Variable names defined here become the contract for all subsequent tasks.
 
 **Framework-Specific Requirements:**
 
@@ -214,7 +224,12 @@ Follow the framework/language-specific setup instructions from:
 - Write/edit source code files
 - Ensure imports and syntax are correct
 - Copy assets if needed
-- If your feature requires new environment variables, update both `.env.example` (with `@connection` annotation if applicable) and `.env`
+- If your feature requires new environment variables, update both `.env.example` and `.env`
+
+**⚠️ Env File Sync — EASILY BROKEN in feature tasks:**
+- ⛔ Adding a variable to only ONE of `.env.example` / `.env` = PROTOCOL VIOLATION
+- ⛔ Renaming variables that setup defined = PROTOCOL VIOLATION (read `.env.example` to observe current names first)
+- ✅ New variable → update BOTH files. Connection variables need `@connection` annotation in `.env.example`
 
 **🚨 CRITICAL: If Plan specifies MODIFY, you MUST do it**
 
@@ -282,6 +297,7 @@ Observe the project's configuration files to determine build, dev, and infrastru
 | **Infrastructure definition** | Does `docker-compose.yml` (or `compose.yml`) exist? If yes, infrastructure is required. |
 | **Environment requirements** | Read `.env.example`, config files, or entry point to identify required environment variables. |
 | **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. Are same-project internal connections marked with `self`? |
+| **Env file consistency** | Do `.env.example` and `.env` contain the same variable keys? If a variable exists in one but not the other, add it to the missing file. |
 
 **Step 2: Environment & Infrastructure**
 
@@ -289,7 +305,7 @@ Observe the project's configuration files to determine build, dev, and infrastru
 
 | Checkpoint | Action |
 |-----------|--------|
-| **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. Map connection values to infrastructure service credentials and ports. |
+| **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. If both exist, verify variable keys match — add missing variables to whichever file is incomplete. Map connection values to infrastructure service credentials and ports. |
 | **Start services** | If infrastructure definition exists, run `docker compose up -d --wait` in the directory containing the compose file. |
 | **Verify readiness** | Services must be healthy before proceeding. |
 
