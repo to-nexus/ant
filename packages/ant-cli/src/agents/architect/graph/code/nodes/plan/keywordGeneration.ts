@@ -81,12 +81,38 @@ export async function generateTaskKeywords(
 
   try {
     // ✅ Use centralized LLM wrapper with automatic token tracking
-    const { invokeWithTracking } = await import('../../../../../common/graph/llmHelpers');
+    const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+    const beforeUsage = getTaskTokenUsage(state as any);
     const response = await invokeWithTracking(
       llm,
       [{ role: 'user', content: prompt }],
       state as any,
       { temperature: LLM_TEMPERATURE.PLAN_KEYWORD, maxTokens: LLM_MAX_TOKENS.KEYWORD }
+    );
+
+    // ✅ Log to debug/tokens/
+    const afterUsage = getTaskTokenUsage(state as any);
+    const kwCallUsage = {
+      inputTokens: afterUsage.inputTokens - beforeUsage.inputTokens,
+      outputTokens: afterUsage.outputTokens - beforeUsage.outputTokens,
+      cacheReadTokens: (afterUsage.cacheReadTokens || 0) - (beforeUsage.cacheReadTokens || 0),
+      cacheCreationTokens: (afterUsage.cacheCreationTokens || 0) - (beforeUsage.cacheCreationTokens || 0),
+    };
+    logTokenUsageToFile(
+      state.context?.featurePath,
+      state._httpJobId,
+      kwCallUsage as any,
+      {
+        taskId: state.currentTask?.id || 'unknown',
+        taskName: state.currentTask?.name || 'unknown',
+        node: 'plan-keyword',
+        callIndex: 0,
+        conversationHistoryLength: 0,
+        projectCodeContextFiles: 0,
+        estimatedPromptChars: prompt.length,
+        taskCumulativeInput: beforeUsage.inputTokens,
+        taskCumulativeOutput: beforeUsage.outputTokens,
+      }
     );
 
     const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) ||

@@ -112,6 +112,7 @@ export class TaskWorker<T extends BaseTask> {
       // Per-worker independent state
       planText: '',
       conversationHistory: [],
+      _codeGenCallIndex: 0,
       toolResults: [],
       violations: [],
       retries: 0,

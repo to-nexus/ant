@@ -137,14 +137,40 @@ export async function generatePlanText(
   }
   
   // ✅ Use centralized LLM wrapper with automatic token tracking
-  const { invokeWithTracking } = await import('../../../../../common/graph/llmHelpers');
+  const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+  const beforeUsage = getTaskTokenUsage(state as any);
   const response = await invokeWithTracking(
     llmToUse,
     [{ role: 'user', content: prompt }],
     state as any,
     { temperature: LLM_TEMPERATURE.PLAN_GENERATION, maxTokens: LLM_MAX_TOKENS.PLAN }
   );
-  
+
+  // ✅ Log to debug/tokens/
+  const afterUsage = getTaskTokenUsage(state as any);
+  const planCallUsage = {
+    inputTokens: afterUsage.inputTokens - beforeUsage.inputTokens,
+    outputTokens: afterUsage.outputTokens - beforeUsage.outputTokens,
+    cacheReadTokens: (afterUsage.cacheReadTokens || 0) - (beforeUsage.cacheReadTokens || 0),
+    cacheCreationTokens: (afterUsage.cacheCreationTokens || 0) - (beforeUsage.cacheCreationTokens || 0),
+  };
+  logTokenUsageToFile(
+    state.context?.featurePath,
+    state._httpJobId,
+    planCallUsage as any,
+    {
+      taskId: state.currentTask?.id || 'unknown',
+      taskName: state.currentTask?.name || 'unknown',
+      node: 'plan-planGen',
+      callIndex: 0,
+      conversationHistoryLength: 0,
+      projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
+      estimatedPromptChars: prompt.length,
+      taskCumulativeInput: beforeUsage.inputTokens,
+      taskCumulativeOutput: beforeUsage.outputTokens,
+    }
+  );
+
   // ✅ Extract <plan> tag content (REQUIRED - structured JSON output)
   const planMatch = response.match(/<plan>([\s\S]*?)<\/plan>/);
   

@@ -9,6 +9,7 @@
 
 import { LLMClient, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '@ant/shared';
+import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger';
 
 /**
  * Re-export TaskTokenUsage as TokenUsage for convenience
@@ -207,6 +208,30 @@ export function finalizeStreamTokenUsage(
   if (usage.cacheCreationTokens) {
     console.log(`   Cache creation: ${usage.cacheCreationTokens} tokens`);
   }
+}
+
+/**
+ * Log token usage to debug file (non-blocking, fire-and-forget).
+ * Call this after each LLM call with the captured usage and context.
+ * 
+ * @param featurePath - Absolute path to feature directory
+ * @param jobId - Job identifier
+ * @param usage - Token usage from API response
+ * @param context - Call context (task, node, metrics)
+ */
+export function logTokenUsageToFile(
+  featurePath: string | undefined,
+  jobId: string | undefined,
+  usage: TokenUsage,
+  context: TokenLogContext
+): void {
+  if (!featurePath || !jobId) return;
+
+  // Fire-and-forget: don't await, don't block execution
+  const logger = getTokenLogger({ featurePath, jobId });
+  logger.log(usage, context).catch(() => {
+    // Silently ignore - non-blocking
+  });
 }
 
 /**

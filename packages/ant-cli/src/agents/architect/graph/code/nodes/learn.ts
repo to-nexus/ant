@@ -531,6 +531,31 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
   }
   
+  // ✅ Log job_complete event and finalize debug loggers
+  if (state.context?.featurePath && state._httpJobId) {
+    const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');
+    const { clearTokenLogger } = await import('../../../../../core/utils/tokenLogger');
+    const execLogger = getExecutionLogger({
+      featurePath: state.context.featurePath,
+      jobId: state._httpJobId,
+      jobType: 'code',
+    });
+    const jobTokenUsage = (state as any).tokenUsage;
+    const jobTiming = (state as any).jobTiming;
+    const startedAt = jobTiming?.startedAt ? new Date(jobTiming.startedAt).getTime() : 0;
+    await execLogger.logJobComplete({
+      totalTasks: (state.completedTasksDetails || []).length,
+      totalTokens: jobTokenUsage?.totalTokens || 0,
+      totalInputTokens: jobTokenUsage?.inputTokens || 0,
+      totalOutputTokens: jobTokenUsage?.outputTokens || 0,
+      totalCacheReadTokens: jobTokenUsage?.cacheReadTokens || 0,
+      elapsedMs: startedAt ? Date.now() - startedAt : 0,
+    });
+    // Finalize JSON arrays
+    await clearExecutionLogger(state._httpJobId);
+    await clearTokenLogger(state._httpJobId);
+  }
+
   // Note: lessons string is used for session/vector DB storage, not returned in state
   // State.lessons is for structured lesson objects (different type)
   return { ...state, branch, filesWritten };

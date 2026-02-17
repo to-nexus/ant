@@ -206,6 +206,7 @@ export const CANONICAL_FEATURE_DIRS: ReadonlyArray<string> = [
   'sessions/architect/debug/plans',
   'sessions/architect/debug/keywords',
   'sessions/architect/debug/logs',
+  'sessions/architect/debug/tokens',
   'sessions/architect/debug/asks',
   'sessions/planner',
   'sessions/planner/debug',

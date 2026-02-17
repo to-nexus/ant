@@ -396,6 +396,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
+          callIndex: state._codeGenCallIndex,
           templatePath: 'code/phases/execute/base',
           usedTemplates: [
             'code/phases/execute/rules',

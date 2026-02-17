@@ -323,8 +323,27 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     
     // ✅ Accumulate decompose token usage to job-level (not task-level, as decompose runs before tasks)
     if (decomposeTokenUsage) {
-      const { finalizeStreamTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+      const { finalizeStreamTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
       finalizeStreamTokenUsage(state as any, decomposeTokenUsage, { taskLevel: false, jobLevel: true });
+
+      // ✅ Log to debug/tokens/
+      logTokenUsageToFile(
+        state.context?.featurePath,
+        state._httpJobId,
+        decomposeTokenUsage,
+        {
+          taskId: 'decompose',
+          taskName: 'Decompose',
+          node: 'decompose',
+          callIndex: 0,
+          conversationHistoryLength: 0,
+          projectCodeContextFiles: 0,
+          estimatedPromptChars: prompt?.length || 0,
+          taskCumulativeInput: 0,
+          taskCumulativeOutput: 0,
+        }
+      );
+
       // ✅ Push live token update to Kanban UI during estimating phase
       if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
         state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
