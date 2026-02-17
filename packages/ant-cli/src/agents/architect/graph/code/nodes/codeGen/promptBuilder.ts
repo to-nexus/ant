@@ -331,8 +331,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       }
       
       // Remove code XML tags from assistant messages for token efficiency
+      // 2-pass chain: first extract file paths where possible, then fallback to strip remaining
       if (msg.role === 'assistant' && typeof msg.content === 'string') {
         let cleanedContent = msg.content;
+        // Pass 1: Extract file paths (preserves awareness of which files were touched)
+        cleanedContent = cleanedContent.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
+        cleanedContent = cleanedContent.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file created: $1]');
+        cleanedContent = cleanedContent.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
+        // Pass 2: Safety net - strip any remaining tags that Pass 1 didn't match
         cleanedContent = cleanedContent.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
         cleanedContent = cleanedContent.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
         cleanedContent = cleanedContent.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
@@ -540,6 +546,46 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   
   // Note: Violations are injected at the top of prompt, not here
   
+  // ✅ Session File Manifest: Show files created by OTHER parallel workers
+  // This gives the LLM awareness of cross-worker files without requiring read_file.
+  // Own files are already visible via generateFileTree() (projectCodeContext.filePaths accumulation).
+  const otherWorkerFiles: Array<{ path: string; taskName?: string }> | undefined = (state as any)._otherWorkerFiles;
+  if (otherWorkerFiles && otherWorkerFiles.length > 0) {
+    const MAX_MANIFEST_ENTRIES = 40;
+    const filesToShow = otherWorkerFiles.slice(0, MAX_MANIFEST_ENTRIES);
+    
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(`📋 Files Created by Parallel Tasks`);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(``);
+    lines.push(`The following files were created by other tasks running in parallel with yours.`);
+    lines.push(`Do NOT create duplicates. If you need to import from or extend these files, use \`read_file\` to check their content first.`);
+    lines.push(``);
+    
+    // Group by task name for readability
+    const byTask = new Map<string, string[]>();
+    for (const f of filesToShow) {
+      const taskKey = f.taskName || 'unknown';
+      if (!byTask.has(taskKey)) byTask.set(taskKey, []);
+      byTask.get(taskKey)!.push(f.path);
+    }
+    
+    for (const [taskName, paths] of byTask) {
+      lines.push(`**${taskName}**:`);
+      for (const p of paths) {
+        lines.push(`  - ${p}`);
+      }
+    }
+    
+    if (otherWorkerFiles.length > MAX_MANIFEST_ENTRIES) {
+      lines.push(``);
+      lines.push(`... and ${otherWorkerFiles.length - MAX_MANIFEST_ENTRIES} more files`);
+    }
+    lines.push(``);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(``);
+  }
+
   const fileTree = generateFileTree(state);
   if (fileTree) {
     lines.push(fileTree);
