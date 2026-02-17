@@ -36,11 +36,20 @@ export interface ParsedAction {
 // Stream Result
 // ============================================================================
 
+/** Cross-worker file conflict with both contents for direct merge */
+export interface FileConflict {
+  path: string;
+  intendedContent: string;
+  currentContent: string;
+  ownerTask?: string;
+}
+
 export interface StreamResult {
   raw: string;
   streamedFiles: string[];
   completedActions: ParsedAction[];
   fileErrors?: string[];  // ✅ File operation errors for self-healing
+  fileConflicts?: FileConflict[];  // ✅ Cross-worker conflicts for direct merge (bypasses enforce/plan)
   explicitDone?: boolean; // ✅ True if LLM output <done>true</done> explicitly
 }
 

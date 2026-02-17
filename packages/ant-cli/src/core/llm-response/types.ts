@@ -72,4 +72,5 @@ export type ChatStatusType =
   | 'context_loaded'  // ✅ Context loaded notification (eval report, PRD, design docs, etc.)
   | 'triage_choice'  // ✅ Triage redirect/blocked choice
   | 'choice_card'    // ✅ Generic choice card (eval_save, prd_apply, etc.)
-  | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed';
+  | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed'
+  | 'file_conflict' | 'file_conflict_retry';

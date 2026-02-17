@@ -1,12 +1,17 @@
 /**
  * Handle edit_file tool
  * Applies search/replace operation to existing file
+ *
+ * Supports automatic I/O-level retry for stale content conflicts
+ * in parallel mode (WorkerFileSystem + SharedFileBuffer).
  */
 
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { EditFileArgs } from '../types';
 import { resolveToolPath } from './utils';
+
+const MAX_IO_RETRIES = 3;
 
 export async function handleEditFile(
   state: ArchitectGraphState,
@@ -25,9 +30,6 @@ export async function handleEditFile(
   
   const chatAPI = getChatAPIClient();
   
-  // ✅ NOTE: Loading card (file_editing) is already created by tool_use event handler
-  // No need to call startFileEdit here - it would be redundant
-  
   try {
     const resolved = await resolveToolPath(state, filePath);
 
@@ -37,38 +39,53 @@ export async function handleEditFile(
       throw new Error(`File does not exist: ${resolved.displayPath}. Use <file> tag to create new files.`);
     }
     
-    // ✅ Read current file content (always from disk to ensure latest state)
-    const originalContent = await fileSystem.readFile(resolved.fsPath);
-    if (!originalContent) {
-      throw new Error(`Failed to read file: ${resolved.displayPath}`);
-    }
-    
-    // ✅ Apply search/replace using existing logic
+    // ✅ I/O level auto-retry loop for stale content conflicts
+    // When another worker modifies the file between our read and write,
+    // SharedFileBuffer detects the version mismatch (stale). We re-read
+    // the latest content and re-apply the search/replace up to MAX_IO_RETRIES times.
     const { applySearchReplace } = await import('../../../../../../../core/streaming/strategies/common/EditOperations');
-    const modifiedContent = applySearchReplace(
-      originalContent,
-      old_str,
-      new_str,
-      resolved.displayPath
-    );
+    const { FileConflictError } = await import('../../../parallel/WorkerFileSystem');
     
-    // ✅ Write modified content back to disk
-    await fileSystem.writeFile(resolved.fsPath, modifiedContent);
+    let modifiedContent: string = '';
+    
+    for (let attempt = 0; attempt < MAX_IO_RETRIES; attempt++) {
+      // Read current file content (WorkerFileSystem tracks version via readVersions)
+      const originalContent = await fileSystem.readFile(resolved.fsPath);
+      if (!originalContent) {
+        throw new Error(`Failed to read file: ${resolved.displayPath}`);
+      }
+      
+      // Apply search/replace
+      modifiedContent = applySearchReplace(
+        originalContent,
+        old_str,
+        new_str,
+        resolved.displayPath
+      );
+      
+      try {
+        // Write modified content (SharedFileBuffer checks version)
+        await fileSystem.writeFile(resolved.fsPath, modifiedContent);
+        break; // Success
+      } catch (e) {
+        if (e instanceof FileConflictError && e.stale && attempt < MAX_IO_RETRIES - 1) {
+          console.log(`⚠️ [EditFile] Stale content detected for ${resolved.displayPath}, retrying (attempt ${attempt + 1}/${MAX_IO_RETRIES})`);
+          await chatAPI.showChatStatus('file_conflict_retry' as any, {
+            filePath: resolved.displayPath,
+            attempt: attempt + 1,
+            maxRetries: MAX_IO_RETRIES,
+          });
+          continue; // Re-read, re-apply, re-write
+        }
+        throw e; // Non-stale error or max retries exceeded
+      }
+    }
     
     console.log(`✅ [EditFile] Successfully edited ${resolved.displayPath}`);
     console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);
     
     // ✅ UI notification: file edit complete
     await chatAPI.completeFileEdit(resolved.displayPath, old_str, new_str);
-    
-    // ✅ Update file buffer (for subsequent read_file calls)
-    const fileBuffers = state.fileBuffers || new Map();
-    fileBuffers.set(resolved.displayPath, {
-      filePath: resolved.displayPath,
-      content: modifiedContent,
-      committed: false,
-      lastModified: Date.now()
-    });
     
     // ✅ Broadcast file tree update
     if (state.deps?.fileTreeUpdate) {

@@ -12,6 +12,22 @@ import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
 import { normalizeToCodebasePath } from '../../../utils/pathNormalizer';
 
+/**
+ * Structured data for cross-worker file conflicts.
+ * Contains both contents so codeGen can inject a merge instruction
+ * into the conversation without requiring read_file tool calls.
+ */
+export interface FileConflict {
+  /** Normalized file path */
+  path: string;
+  /** Content the current worker intended to write */
+  intendedContent: string;
+  /** Content currently in the file (written by another worker) */
+  currentContent: string;
+  /** Task name of the file owner */
+  ownerTask?: string;
+}
+
 export interface FileRendererConfig {
   chatAPI: ChatAPIClient;
   gitPort?: GitPort;
@@ -46,7 +62,9 @@ export class FileRenderer {
   // ✅ Track file operation completion
   
   // ✅ Track file operation errors (don't throw, collect for violation)
-  private fileErrors: string[] = [];  
+  private fileErrors: string[] = [];
+  // ✅ Cross-worker conflicts with structured data for direct merge
+  private fileConflicts: FileConflict[] = [];  
   private completionPromises: Map<string, Promise<void>> = new Map();
   private completionResolvers: Map<string, (value: void | PromiseLike<void>) => void> = new Map();
   private completionRejectors: Map<string, (reason?: any) => void> = new Map();
@@ -201,12 +219,18 @@ export class FileRenderer {
     }
     registry.markAsStreamed(canonicalPath, finalActionType);
     
+    // ✅ Determine isOverwrite: was this file known at codeGen start?
+    // If yes, this is a legitimate overwrite (existing file in codebase).
+    // If no, this is a new file creation — subject to cross-worker conflict check.
+    const isOverwrite = registry.isKnownAtStart(canonicalPath);
+    
     this.activeFiles.set(canonicalPath, {
       filePath: canonicalPath,
       actionType: finalActionType,
       startedAt: Date.now(),
-      contentBuffer: ''
-    });
+      contentBuffer: '',
+      isOverwrite,
+    } as any);
     
     this.lineBuffers.init(canonicalPath);
     
@@ -329,7 +353,44 @@ export class FileRenderer {
         await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
       } else {
         if (!this.fileSystem) throw new Error('FileSystemPort not available');
-        await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
+        
+        // ✅ Cross-worker conflict detection for new file creation
+        const isOverwrite = (fileInfo as any).isOverwrite === true;
+        if (isOverwrite) {
+          // Legitimate overwrite of a known file — direct write
+          await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
+        } else {
+          // New file creation — use writeNewFile for cross-worker ownership check
+          const workerFS = this.fileSystem as any;
+          if (typeof workerFS.writeNewFile === 'function') {
+            const result = await workerFS.writeNewFile(fsPath, fileInfo.contentBuffer);
+            if (!result.success) {
+              if (result.currentContent !== undefined) {
+                // Cross-worker conflict with content available — store for direct merge
+                console.log(`⚠️ [FileRenderer] Cross-worker conflict (direct merge path): ${filePath}`);
+                this.fileConflicts.push({
+                  path: filePath,
+                  intendedContent: fileInfo.contentBuffer,
+                  currentContent: result.currentContent,
+                  ownerTask: result.ownerTask,
+                });
+              } else {
+                // Conflict without content (shouldn't happen, but fallback to fileErrors)
+                console.log(`⚠️ [FileRenderer] Cross-worker conflict (fallback): ${result.error}`);
+                this.fileErrors.push(result.error || `File "${filePath}" was already created by another task.`);
+              }
+              await this.chatAPI.showChatStatus('file_conflict' as any, {
+                filePath,
+                ownerTask: result.ownerTask,
+              });
+              await this.chatAPI.failFileCreation(filePath, result.error || 'Cross-worker file conflict');
+              return;
+            }
+          } else {
+            // Non-parallel mode: direct write
+            await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
+          }
+        }
       }
       
       // ✅ Schedule debounced file tree notification after disk write
@@ -696,6 +757,15 @@ export class FileRenderer {
   getFileErrors(): string[] {
     return this.fileErrors;
   }
+
+  /**
+   * Get cross-worker file conflicts with structured data for direct merge.
+   * These are NOT included in fileErrors — codeGen handles them directly
+   * by injecting both contents into the conversation (1 LLM call instead of 4-5).
+   */
+  getFileConflicts(): FileConflict[] {
+    return this.fileConflicts;
+  }
   
   /**
    * Reset state for stream retry
@@ -717,6 +787,7 @@ export class FileRenderer {
     this.completionResolvers.clear();
     this.completionRejectors.clear();
     this.fileErrors = [];
+    this.fileConflicts = [];
     
     // ✅ Cancel pending file tree notification on reset
     if (this.fileTreeNotifyTimer) {

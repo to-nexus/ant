@@ -163,7 +163,28 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   const errorType = focusedViolations[0]?.type;
   const fileCount = focusedViolations.length;
   
-  if (errorType === 'file_operation_failed') {
+  if (errorType === 'cross_worker_conflict') {
+    // Cross-worker file conflicts: another parallel task owns these files
+    const conflictFiles = focusedViolations
+      .map(v => v.file)
+      .filter(Boolean);
+    const fileList = conflictFiles.map(f => `  - ${f}`).join('\n');
+    
+    formattedViolations = `
+🚨 CROSS-WORKER FILE CONFLICT
+
+Another parallel task already created these files:
+${fileList}
+
+⛔ DO NOT use <file> tag to overwrite these files directly.
+
+✅ REQUIRED (2 steps):
+1. Call read_file("path") to get the CURRENT content and version
+2. Then EITHER:
+   a. Use <file path="path"> with MERGED content (full rewrite)
+   b. Use edit_file tool to partially modify
+`;
+  } else if (errorType === 'file_operation_failed') {
     // Search block errors need special handling
     const searchBlockErrors = focusedViolations.filter(v => 
       v.message.includes('Search block not found') || 

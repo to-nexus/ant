@@ -51,6 +51,7 @@ export type ViolationType =
   | 'environment_issue'     // 환경 설정 문제 (NODE_ENV, PATH 등)
   | 'no_files'              // 파일 생성 안 됨
   | 'file_operation_failed' // 파일 작업 실패 (edit search block not found 등)
+  | 'cross_worker_conflict' // 병렬 작업 간 파일 충돌 (다른 워커가 이미 생성/수정)
   | 'other';                // 기타
 
 /**
@@ -268,14 +269,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
     error?: string;
   }>;
   
-  // ✅ NEW: File Buffers (state-level, 노드 로컬 아님!)
-  fileBuffers?: Map<string, {
-    path: string;
-    content: string;
-    actionType: 'create' | 'edit' | 'append' | 'delete';
-    committed: boolean;          // 디스크 저장 완료 여부
-    tempPath?: string;           // 임시 파일 경로
-  }>;
+  // ✅ REMOVED: fileBuffers (replaced by SharedFileBuffer for cross-worker visibility)
+  // SharedFileBuffer is managed at graph level and injected via WorkerFileSystem
   
   // ✅ NEW: Conversation History (멀티턴 대화)
   conversationHistory?: Array<{

@@ -31,6 +31,8 @@ export interface MessageContent {
      | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
      | 'file_editing' | 'file_updating' | 'file_edit' | 'file_edit_failed'
      | 'file_deleting' | 'file_delete' | 'file_delete_failed'
+     // File Conflict - Parallel task file conflicts
+     | 'file_conflict' | 'file_conflict_retry'
      // Context Loaded - Informational notification
      | 'context_loaded'  // Context loaded notification (eval report, PRD, design docs, etc.)
      // Tool Actions - Cursor/Copilot style

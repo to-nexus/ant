@@ -37,7 +37,7 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 {
   "task": { "id": "...", "goal": "..." },
   "implementation": {
-    "create": [{ "name": "...", "location": "...", "integrates_with": "..." }],
+    "create": [{ "name": "...", "location": "...", "purpose": "..." }],
     "modify": [{ "target": "...", "action": "...", "changes": [...] }],
     "assets": [{ "source": "...", "destination": "..." }]
   }
@@ -49,7 +49,6 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 | JSON Field | Your Action |
 |------------|-------------|
 | `create[].name` + `location` | `list_files` → verify location → create file |
-| `create[].integrates_with` | `read_file` target → add import + usage |
 | `modify[].target` | `read_file` → apply `changes` |
 | `assets[].source/destination` | Copy asset file |
 
@@ -57,9 +56,8 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 ```
 1. Parse plan JSON
 2. For each create: list_files → find exact path → create file
-3. For each create.integrates_with: read_file → add import
-4. For each modify: read_file → apply changes
-5. For each asset: copy from source to destination
+3. For each modify: read_file → apply changes
+4. For each asset: copy from source to destination
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -248,10 +246,11 @@ Step 1: list_files(target_area) → See what exists
 Step 2: Similar file found?
         ├─ YES → read_file → extend/modify existing
         └─ NO  → create new file
-Step 3: Integrate with target (import, call)
 ```
 
 **Also check:** Did I already create this file in this session? → Use `edit_file`
+
+**Constraint:** Only create/modify files within YOUR task's scope. Do NOT modify shared entry points or files that other tasks own.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 4. No Duplicates
@@ -266,7 +265,7 @@ Step 3: Integrate with target (import, call)
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
-## 🔗 Integration Rules (CRITICAL)
+## 🔗 Module Quality Rules
 ════════════════════════════════════════════════════════════════════════════════
 
 ### 🚨 THE REPLACEMENT PRINCIPLE
@@ -278,81 +277,43 @@ This is the #1 cause of "orphan modules" - files that exist but are never used.
 ```
 Module Creation = File Created + Imported + REPLACES Inline Code
                   ─────────────────────────────────────────────────
-                              ALL THREE ARE MANDATORY
+                   ALL THREE ARE MANDATORY (within your task scope)
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
-### Integration Workflow (ALL Module Types)
+### Module Workflow (within YOUR task scope)
 
 **STEP 1: Create the module file**
-**STEP 2: Find the integration point** (`read_file` on target)
-**STEP 3: Replace inline code with module usage** (`edit_file`)
-**STEP 4: Verify no duplicate code remains**
+**STEP 2: Import and use it** in other files YOU own in this task
+**STEP 3: Verify no duplicate code remains** within your files
 
-| Module Type | Integration Pattern |
-|-------------|---------------------|
-| UI Component | `import X` → `<X />` replaces inline JSX/HTML |
-| Utility function | `import { fn }` → `fn()` replaces inline logic |
-| Service class | `import Service` → `service.method()` replaces scattered code |
-| Hook | `import { useX }` → `useX()` replaces inline state |
-| API handler | `import { api }` → `api.call()` replaces inline fetch |
+**⚠️ Scope constraint:** Only modify files within YOUR task's scope. If your module needs to be wired into a shared entry point (e.g., application router, main file), that is the integration task's responsibility — NOT yours.
 
 ────────────────────────────────────────────────────────────────────────────────
-### ❌ TASK FAILURE Pattern (Module + Inline Both Exist)
+### ❌ TASK FAILURE Pattern (Duplicate Code)
 
 ```
 [module file] EXISTS with implementation
-BUT [integration target] STILL has inline code for same functionality
+BUT [caller file you own] STILL has inline code for same functionality
 → DUPLICATE! → TASK FAILURE
 ```
 
-**Failure indicators:**
-- Module file created ✓
-- Import statement missing ✗
-- Inline implementation still present ✗
-
 ────────────────────────────────────────────────────────────────────────────────
-### ✅ TASK SUCCESS Pattern (Module REPLACES Inline)
+### ✅ TASK SUCCESS Pattern
 
 ```
 [module file] EXISTS
-[integration target] has:
+[caller file you own] has:
   - import [Module] from '[path]'  ✓
   - [Module] usage (render/call)   ✓
   - NO inline implementation       ✓
 → SUCCESS
 ```
 
-**Success indicators:**
-- Module file created ✓
-- Import statement added ✓
-- Module used (called/rendered) ✓
-- Inline code REMOVED ✓
-
-────────────────────────────────────────────────────────────────────────────────
-### 🔍 Pre-Completion Verification (MANDATORY)
-
-**Before marking task complete, VERIFY:**
-
-1. **Module file exists** (created via `<file>`)
-2. **Import statement added** to integration target
-3. **Module is called/rendered** in the target
-4. **NO inline duplicate** of the same functionality remains
-
-**Verification Command Pattern:**
-```
-read_file(integration_target) → Search for:
-  ✅ Import statement present
-  ✅ Module usage present (function call, component render, etc.)
-  ❌ Inline implementation should NOT exist
-```
-
-**If inline code still exists after creating module → Use `edit_file` to REPLACE it**
-
 ────────────────────────────────────────────────────────────────────────────────
 ### ⚠️ Common Trap: "It's Already Implemented"
 
-Sometimes the integration target already has working inline code (not just a placeholder).
+Sometimes a file already has working inline code (not just a placeholder).
 
 **WRONG thinking:** "The inline code works, my component works, both exist = done"
 **CORRECT thinking:** "Inline code + Component both exist = DUPLICATION = Must replace"
@@ -362,9 +323,6 @@ Principle: There should be ONE source of truth.
            If a module exists for functionality X,
            then inline code for X must be REMOVED and REPLACED.
 ```
-
-> **Note:** This applies regardless of whether the inline code was a "placeholder comment", 
-> "temporary implementation", or "fully working code". If a module exists → inline must go.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 📦 Code Quality Rules
@@ -414,7 +372,7 @@ const speed = PADDLE_SPEED;
 | `edit_file` without reading | `read_file` first |
 | Wrong package manager/build tool | Detect from project files → use correct tool |
 | Hardcoded values when constants exist | Import and use constants |
-| Create file without integration | Import and use in entry point |
+| Create module but never import it | Import and use within your task's files |
 | Asset TODO placeholders | Copy asset file, then reference |
 | Duplicate files with similar names | One file per purpose |
 | Markdown in content (` ```code``` `) | Raw code only |

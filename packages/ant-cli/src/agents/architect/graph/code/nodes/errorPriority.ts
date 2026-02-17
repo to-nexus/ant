@@ -46,7 +46,18 @@ export function calculateErrorImpact(
     shouldRetry = true;
   }
   
-  // 🎯 Rule 1.5: File operation failures = CRITICAL
+  // 🎯 Rule 1.5: Cross-worker file conflict = ALWAYS blocking
+  // Another parallel worker already owns this file. The LLM must read_file first
+  // then use <file> (full rewrite) or edit_file (partial) to merge changes.
+  // NEVER reduce priority — circuit breaker handles repeated conflicts.
+  else if (error.type === 'cross_worker_conflict') {
+    score = 95;
+    category = 'blocking';
+    explanation = 'Cross-worker file conflict - must read first, then merge';
+    shouldRetry = true;
+  }
+  
+  // 🎯 Rule 1.6: File operation failures = CRITICAL
   // Covers all file operation errors that prevent task completion:
   // - Search block not found (LLM has outdated code, needs read_file)
   // - Missing closing tag (LLM output interrupted, incomplete operation)
@@ -146,18 +157,19 @@ export function calculateErrorImpact(
       'environment_error',
       'module_not_found',
       'edit_failed',  // ✅ EDIT failures must be retried (LLM needs to switch to FILE format)
-      'file_operation_failed'  // ✅ CRITICAL: File edits failed (Search block, duplicate edits, etc.)
+      'file_operation_failed',  // ✅ CRITICAL: File edits failed (Search block, duplicate edits, etc.)
+      'cross_worker_conflict'  // ✅ CRITICAL: Another worker owns this file — must merge, not overwrite
     ];
     const isCritical = criticalTypes.includes(error.type);
     
-    // ✅ SPECIAL CASE: file_operation_failed NEVER gets retry penalty
-    // All file operation errors are critical and must be retried
-    // (Search block not found, missing closing tag, duplicate edits, etc.)
+    // ✅ SPECIAL CASE: file_operation_failed and cross_worker_conflict NEVER get retry penalty
+    // These errors are critical and must always be retried with full priority.
     const isFileOperationError = error.type === 'file_operation_failed';
-    if (isFileOperationError) {
-      score = 90;  // Override any score reduction, maintain consistent priority
+    const isCrossWorkerConflict = error.type === 'cross_worker_conflict';
+    if (isFileOperationError || isCrossWorkerConflict) {
+      score = isCrossWorkerConflict ? 95 : 90;
       shouldRetry = true;  // Force retry
-      explanation = explanation.replace(' | Priority lowered (retry ', ' | CRITICAL: File operation error (retry ');
+      explanation = explanation.replace(' | Priority lowered (retry ', ` | CRITICAL: ${isCrossWorkerConflict ? 'Cross-worker conflict' : 'File operation error'} (retry `);
     }
     
     // After 2 retries, only block on critical issues OR non-critical with score >= 80

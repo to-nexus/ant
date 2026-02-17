@@ -12,7 +12,7 @@ Generate a **concrete implementation plan** for this task.
 |---------------|-------------------|
 | **What to create** | Component/file names and purposes |
 | **Semantic location** | "components area", "utils", "api layer" |
-| **Integration intent** | "used by X module", "called from Y service" |
+| **Module purpose** | "handles authentication", "validates input" |
 | **Module relationships** | Which files interact with which |
 | **Asset mappings** | Source → destination logic |
 
@@ -37,7 +37,7 @@ Generate a **concrete implementation plan** for this task.
 ```
 <analysis>
 (Your Chain-of-Thought reasoning here - analyze directory structure, 
-existing modules, design specs, integration points, etc.)
+existing modules, design specs, dependencies, etc.)
 </analysis>
 
 <plan>
@@ -71,8 +71,7 @@ existing modules, design specs, integration points, etc.)
         "name": "[module name]",
         "type": "[component | util | hook | api | service | class]",
         "location": "[semantic area - observe from directory tree]",
-        "purpose": "[what this module does]",
-        "integrates_with": "[file that MUST import/use this - REQUIRED]"
+        "purpose": "[what this module does]"
       }
     ],
     "modify": [
@@ -98,23 +97,14 @@ existing modules, design specs, integration points, etc.)
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
-## 🔗 INTEGRATION RULES
+## 🔒 TASK SCOPE PRINCIPLE
 ────────────────────────────────────────────────────────────────────────────────
 
-**Every module you CREATE must be USED.**
+**Constraint**: Create and modify ONLY files that belong to YOUR task's scope.
 
-| What you create | integrates_with | What gets REPLACED |
-|-----------------|-----------------|-------------------|
-| UI Component | Page, parent component | Inline JSX/HTML section |
-| Utility function | Service/component | Inline logic/validation |
-| Service class | Controller | Scattered fetch/API calls |
-| Hook | Component | Inline state management |
-
-**⚠️ `integrates_with` triggers TWO mandatory actions:**
-1. **IMPORT**: CodeGen adds import statement to target file
-2. **REPLACE**: CodeGen removes existing inline code and uses the new module
-
-**Without proper `integrates_with` → module created but never used → TASK FAILURE**
+- Do NOT modify shared entry points, routers, or wiring files that another task is responsible for
+- If your module needs to be registered in a shared integration point, the dedicated integration task will handle it
+- Within YOUR task scope, ensure modules you create are properly imported and used by other files you own
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🚫 DUPLICATE PREVENTION
@@ -137,7 +127,6 @@ In your `<analysis>` section, cover:
 1. **📂 DIRECTORY STRUCTURE ANALYSIS**
    - Observe existing patterns from directory tree
    - Identify existing similar modules (avoid duplicates)
-   - Determine integration points
 
 2. **📦 ASSET INVENTORY**
    - Search ui-assets.json for assets related to this task
@@ -148,10 +137,6 @@ In your `<analysis>` section, cover:
    - Extract layout intentions from ui-spec.json
    - List visual properties, typography, interaction states
    - Note design token references
-
-4. **🔗 INTEGRATION ANALYSIS**
-   - Where will new modules be imported?
-   - What existing code will be replaced?
 {{/if}}
 
 {{#unless hasUiDoc}}
@@ -164,9 +149,6 @@ In your `<analysis>` section, cover:
 2. **📋 REQUIREMENTS ANALYSIS**
    - Extract requirements from API Contract / specs
    - Identify dependencies
-
-3. **🔗 INTEGRATION ANALYSIS**
-   - Where will new modules be used?
 {{/unless}}
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -177,7 +159,7 @@ Before outputting, verify:
 
 - [ ] `<analysis>` section contains thorough reasoning
 - [ ] `<plan>` section contains valid JSON
-- [ ] Every `create` item has `integrates_with` field
+- [ ] All files belong to YOUR task scope (no shared entry points)
 - [ ] No duplicate modules (checked directory tree)
 - [ ] For UI: assets are listed if needed
 - [ ] For UI: design tokens are specified
@@ -194,7 +176,7 @@ Cover these checkpoints:
 1. **Directory patterns** - What structure exists? Where do similar modules live?
 2. **Existing modules** - Does similar functionality already exist? → MODIFY, not CREATE
 3. **Asset requirements** - What assets does ui-assets.json specify for this task?
-4. **Integration points** - Where will new modules be imported? What gets replaced?
+4. **Task scope** - Are all planned files within YOUR task's responsibility?
 
 **Constraint**: Do NOT copy example text. Analyze the ACTUAL project context provided.
 
@@ -203,7 +185,7 @@ Cover these checkpoints:
 **Principle**: Valid JSON following the schema above.
 
 **Constraints**:
-- Every `create` item MUST have `integrates_with` field
+- All created files MUST belong to your task's scope (no shared entry points)
 - `location` must be derived from observed directory patterns
 - `assets` must match EXACT paths from ui-assets.json
 - Do NOT invent assets not in ui-assets.json

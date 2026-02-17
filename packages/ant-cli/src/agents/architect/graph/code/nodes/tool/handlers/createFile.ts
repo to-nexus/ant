@@ -39,23 +39,24 @@ export async function handleCreateFile(
   try {
     const resolved = await resolveToolPath(state, filePath);
     
-    // Write file to disk (writeFile auto-creates parent directories)
-    await fileSystem.writeFile(resolved.fsPath, content);
+    // ✅ Use writeNewFile for cross-worker conflict detection (parallel mode)
+    const workerFS = fileSystem as any;
+    if (typeof workerFS.writeNewFile === 'function') {
+      const result = await workerFS.writeNewFile(resolved.fsPath, content);
+      if (!result.success) {
+        console.log(`⚠️ [CreateFile] Conflict: ${result.error}`);
+        throw new Error(result.error || `File "${resolved.displayPath}" was already created by another task. Use read_file + edit_file to merge your changes.`);
+      }
+    } else {
+      // Non-parallel mode: direct write
+      await fileSystem.writeFile(resolved.fsPath, content);
+    }
     
     console.log(`✅ [CreateFile] Created ${resolved.displayPath} (${content.length} chars)`);
     console.log(`   ⚠️  Shadow tool used - LLM should use <file> XML tag instead`);
     
     // UI notification: complete file creation (FileCard transition: file_creating → file_create)
     await chatAPI.completeFileCreation(resolved.displayPath, content);
-    
-    // Update file buffer (for subsequent read_file calls)
-    const fileBuffers = state.fileBuffers || new Map();
-    fileBuffers.set(resolved.displayPath, {
-      filePath: resolved.displayPath,
-      content,
-      committed: false,
-      lastModified: Date.now()
-    });
     
     // Broadcast file tree update
     if (state.deps?.fileTreeUpdate) {

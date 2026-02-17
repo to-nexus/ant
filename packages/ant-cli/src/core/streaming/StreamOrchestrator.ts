@@ -27,6 +27,7 @@ export interface StreamOrchestratorConfig {
   existingFiles: Set<string>;
   fileSystem?: any;  // ✅ FileSystemPort for disk checks (optional)
   codebaseRel?: string;  // ✅ Codebase directory relative to workspace (for path normalization)
+  otherWorkerPaths?: Set<string>;  // ✅ Paths created by other parallel workers (must not be treated as overwrite targets)
 }
 
 export class StreamOrchestrator {
@@ -39,7 +40,7 @@ export class StreamOrchestrator {
   constructor(config: StreamOrchestratorConfig) {
     this.parser = config.parser;
     this.renderStrategy = config.renderStrategy;
-    this.registry = new FileRegistry(config.existingFiles, config.fileSystem, config.codebaseRel);
+    this.registry = new FileRegistry(config.existingFiles, config.fileSystem, config.codebaseRel, config.otherWorkerPaths);
     this.state = new StreamState();
   }
   
@@ -121,6 +122,9 @@ export class StreamOrchestrator {
       const fileRenderer = (this.renderStrategy as any).getFileRenderer?.();
       const fileErrors = fileRenderer?.getFileErrors?.() || [];
       
+      // ✅ Get cross-worker conflicts for direct merge (bypass enforce/plan)
+      const fileConflicts = fileRenderer?.getFileConflicts?.() || [];
+      
       // ✅ Detect silent failure: file JSON pattern in text that wasn't processed as <file> XML
       const raw = this.state.getRaw();
       const streamedFiles = this.registry.getStreamedFiles();
@@ -134,6 +138,7 @@ export class StreamOrchestrator {
         streamedFiles,
         completedActions: [],  // TODO: track if needed
         fileErrors,  // ✅ Include file errors for self-healing
+        fileConflicts: fileConflicts.length > 0 ? fileConflicts : undefined,  // ✅ Direct merge conflicts
         explicitDone  // ✅ Include explicit done status
       };
     } catch (error) {

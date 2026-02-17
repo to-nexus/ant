@@ -350,6 +350,19 @@ export class ChatStatusHandler {
         return `❌ ${filePath}: ${reason}`;
       }
       
+      case 'file_conflict': {
+        const filePath = metadata?.filePath ?? 'file';
+        const ownerTask = metadata?.ownerTask ?? 'another task';
+        return `⚠️ File conflict: ${filePath} (owned by "${ownerTask}")`;
+      }
+      
+      case 'file_conflict_retry': {
+        const filePath = metadata?.filePath ?? 'file';
+        const attempt = metadata?.attempt ?? 1;
+        const maxRetries = metadata?.maxRetries ?? 3;
+        return `🔄 Retrying file write: ${filePath} (attempt ${attempt}/${maxRetries})`;
+      }
+      
       default:
         return 'Processing...';
     }

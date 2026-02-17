@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { StateGraph, END } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
@@ -324,6 +325,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   const { TaskOrchestrator: OrchestratorClass } = await import('./parallel/TaskOrchestrator');
   const { createCodeWorkerGraphBuilder } = await import('./parallel/workerGraph');
   const { registerActiveOrchestrator, unregisterActiveOrchestrator } = await import('../../../../composition/gracefulShutdown');
+  const { SharedFileBuffer } = await import('./parallel/SharedFileBuffer');
 
   const maxWorkers = getTaskConcurrency();
   console.log(`\n🔀 [ParallelOrchestrator] Starting with maxWorkers=${maxWorkers}`);
@@ -333,6 +335,17 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     console.log(`[ParallelOrchestrator] No tasks in queue, skipping`);
     return {};
   }
+
+  // ✅ Create SharedFileBuffer for cross-worker file conflict detection
+  const repoRoot = state.deps?.git ? await state.deps.git.getRepoRoot() : undefined;
+  const codebaseRel = (() => {
+    if (!repoRoot || !state.deps?.fileSystem) return 'codebase';
+    const wsRoot = state.deps.fileSystem.getRootPath?.();
+    if (!wsRoot) return 'codebase';
+    return path.relative(wsRoot, repoRoot).replace(/\\/g, '/') || 'codebase';
+  })();
+  const sharedFileBuffer = new SharedFileBuffer(codebaseRel);
+  console.log(`📁 [ParallelOrchestrator] SharedFileBuffer created (codebaseRel=${codebaseRel})`);
 
   // Build shared context for workers (everything they need except per-task state)
   const sharedContext = {
@@ -366,6 +379,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     jobTiming: (state as any).jobTiming,
     featureTasks: state.featureTasks,
     referenceRequests: state.referenceRequests,
+    _sharedFileBuffer: sharedFileBuffer,
   };
 
   const graphBuilder = createCodeWorkerGraphBuilder();
@@ -784,7 +798,6 @@ export function buildCodeGraph() {
       llmResponse: null as any,     // LLM response (thinking, text, tool calls)
       toolResults: null as any,     // Tool execution results
       conversationHistory: null as any,  // Multi-turn conversation
-      fileBuffers: null as any,          // File buffers
       interruption: null as any,         // Interruption details
     } as any,
   } as any);
