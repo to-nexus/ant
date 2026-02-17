@@ -49,6 +49,7 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   
   const currentTask = state.currentTask;
   const isFinalTask = currentTask ? isFinalVerificationTask(currentTask) : false;
+  const isVerifyTask = currentTask?.type === 'verification';
   const isErrorTask = currentTask?.type === 'error';
   
   // ✅ DEBUG: Log task info
@@ -58,6 +59,7 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   console.log(`   Type: ${currentTask?.type || 'none'}`);
   console.log(`   Priority: ${currentTask?.priority || 'none'}`);
   console.log(`   isFinalTask: ${isFinalTask}`);
+  console.log(`   isVerifyTask: ${isVerifyTask}`);
   console.log(`   isErrorTask: ${isErrorTask}`);
   console.log(`   response.done: ${response.done}`);
   console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
@@ -113,8 +115,8 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   
   // ✅ 2. Done이면 → priority & task type 기반 분기
   if (response.done) {
-    if (isFinalTask) {
-      console.log(`\n🎯 [Router] ✅ FINAL TASK DONE → installDeps (will lead to runtimeValidate)`);
+    if (isFinalTask || isVerifyTask) {
+      console.log(`\n🎯 [Router] ✅ VERIFICATION TASK DONE → installDeps (will lead to runtimeValidate)`);
       console.log(`   Expected flow: codeGen → installDeps → runtimeValidate → checkTaskStatus\n`);
       return 'installDeps';
     } else if (isErrorTask) {

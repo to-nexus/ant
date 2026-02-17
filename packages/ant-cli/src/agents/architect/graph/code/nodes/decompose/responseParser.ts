@@ -124,7 +124,7 @@ export function createTaskQueue(tasks: CodeTask[]): {
     task.type === 'feature' && task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION
   );
   const allTasksAreErrors = tasks.length > 0 && tasks.every(task => 
-    task.type === 'error' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
+    task.type === 'error' || task.type === 'verification' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
   );
   
   // Final task is required only if there are feature tasks
@@ -151,7 +151,7 @@ export function createTaskQueue(tasks: CodeTask[]): {
     // - Explicit from LLM takes precedence
     // - Fallback: setup, error, and final (priority 1000) are always exclusive
     const isExplicitExclusive = typeof (task as any).exclusive === 'boolean' ? (task as any).exclusive : undefined;
-    const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+    const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.type === 'verification' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
     const exclusive = isExplicitExclusive ?? isTypeExclusive;
     
     // parallelGroup only applies when not exclusive
@@ -159,11 +159,16 @@ export function createTaskQueue(tasks: CodeTask[]): {
       ? (task as any).parallelGroup 
       : undefined;
     
+    // Determine task type: final verification tasks are always 'verification'
+    const resolvedType = task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
+      ? 'verification' as const
+      : (task.type || 'feature');
+
     // Ensure task has required fields
     const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: task.name,
-      type: task.type || 'feature',
+      type: resolvedType,
       priority: task.priority || TASK_PRIORITIES.FEATURE_NORMAL,
       description: task.description,
       errors: task.errors,
@@ -197,19 +202,19 @@ export function logTaskSummary(
 ): void {
   console.log(`\n✅ Task breakdown complete:`);
   
-  // ✅ Count actual Final Verification tasks (don't assume +1!)
+  // ✅ Count actual task types
   const tasksByType = {
     setup: tasks.filter(t => t.type === 'setup').length,
     feature: tasks.filter(t => t.type === 'feature' && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION).length,
     error: tasks.filter(t => t.type === 'error').length,
-    final: tasks.filter(t => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length
+    verification: tasks.filter(t => t.type === 'verification' || t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length,
   };
   
   console.log(`   Total tasks: ${tasks.length}`);
   console.log(`   Setup: ${tasksByType.setup}`);
   console.log(`   Feature: ${tasksByType.feature}`);
   console.log(`   Error: ${tasksByType.error}`);
-  console.log(`   Final: ${tasksByType.final}`);
+  console.log(`   Verification: ${tasksByType.verification}`);
   
   // Parallel execution summary
   const exclusiveTasks = tasks.filter(t => t.exclusive);

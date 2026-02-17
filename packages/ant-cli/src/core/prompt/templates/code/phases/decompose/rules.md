@@ -56,8 +56,8 @@ Each task object MUST follow this schema:
 |-------|----------|-------------|
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
-| `type` | Yes | `"setup"` (new project config), `"feature"` (new capability), or `"error"` (broken behavior fix) |
-| `priority` | Yes | 100: setup, 200-219: critical, 220-249: important, 250-899: nice-to-have, 1000: final verification |
+| `type` | Yes | `"setup"` (project config), `"feature"` (new capability), `"error"` (broken behavior fix), or `"verification"` (build & runtime check) |
+| `priority` | Yes | 100: setup, 200-219: critical, 220-249: important, 250-899: nice-to-have, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined ONLY by the task's `type` field and `priority` value — never by task name |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
@@ -89,13 +89,13 @@ CRITICAL:
 
 ---
 
-## Final Verification Task
+## Verification Task
 
-**Principle**: A final verification task (priority 1000) validates the entire project by running build and startup commands. It verifies ONLY that the integrated result builds and runs without errors.
+**Principle**: A verification task (`type: "verification"`, priority 1000) validates the entire project by running build and startup commands. It verifies ONLY that the integrated result builds and runs without errors.
 
-**Constraint**: The final verification task fixes build and runtime errors ONLY. It MUST NOT review, add, complete, or improve feature implementations. Feature completeness is the responsibility of individual feature tasks.
+**Constraint**: The verification task fixes build and runtime errors ONLY. It MUST NOT review, add, complete, or improve feature implementations. Feature completeness is the responsibility of individual feature tasks.
 
-**Constraint**: Include final verification if there are any feature tasks. Skip ONLY if ALL tasks are error tasks.
+**Constraint**: Include verification task if there are any feature tasks. Skip ONLY if ALL tasks are error tasks.
 
 ---
 
@@ -243,7 +243,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` field and `priority` value:
 - `type: "setup"` -> always exclusive (installs dependencies, modifies lock files)
 - `type: "error"` -> always exclusive (may modify shared configs)
-- `priority: 1000` (final verification) -> always exclusive
+- `type: "verification"` (priority 1000) -> always exclusive
 - Any task that installs packages or modifies shared build configs
 
 ⚠️ **CONSTRAINT**: `exclusive` is determined ONLY by the `type` field value and `priority` value. Do NOT infer `exclusive` from task name or description content.
@@ -270,7 +270,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 | **Parallel conflict risk** | Are feature tasks in different `parallelGroup` IDs, meaning they run concurrently and cannot see each other's outputs? |
 
 **Constraint**: If multiple parallel feature tasks produce components for a shared entry point, create a dedicated integration task:
-- `type: "feature"`, `exclusive: true`, priority 800-899 (after all feature tasks, before final verification)
+- `type: "feature"`, `exclusive: true`, priority 800-899 (after all feature tasks, before verification)
 - Description: wire all feature outputs into the application entry point
 - Feature tasks MUST NOT create or modify the entry point file themselves
 
