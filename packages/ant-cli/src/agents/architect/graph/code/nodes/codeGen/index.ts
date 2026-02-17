@@ -130,6 +130,21 @@ export async function codeGen(
     }
   }
 
+  // ✅ Collect other workers' files for Session File Manifest (cross-worker awareness)
+  // In parallel mode, SharedFileBuffer tracks all files written by all workers.
+  // We inject other workers' file list into the prompt so the LLM knows what already exists.
+  // In sequential mode (no SharedFileBuffer), this is a no-op.
+  const currentWorkerId = (state as any).workerId ?? 0;
+  const workerFSForManifest = state.deps?.fileSystem as any;
+  if (workerFSForManifest?.sharedBuffer?.getWrittenFilesByOtherWorkers) {
+    const otherWorkerFiles: Array<{ path: string; taskName?: string }> =
+      workerFSForManifest.sharedBuffer.getWrittenFilesByOtherWorkers(currentWorkerId);
+    if (otherWorkerFiles.length > 0) {
+      (state as any)._otherWorkerFiles = otherWorkerFiles;
+      console.log(`📋 [CodeGen] Session manifest: ${otherWorkerFiles.length} file(s) from other workers`);
+    }
+  }
+
   // ✅ Build messages from conversation history + current task
   const messages = await buildMessages(state);
   
@@ -316,9 +331,7 @@ export async function codeGen(
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
         
-        if (toolCalls.length === 0) {
-          await chatAPI.sendLLMEvent(event);
-        }
+        await chatAPI.sendLLMEvent(event);
         
         toolCalls.push({ id, name, args: input });
       }
@@ -432,7 +445,11 @@ export async function codeGen(
       ].join('\n');
 
       // 3. Inject into conversation and loop back (no enforce/plan needed)
+      // 2-pass chain: extract file paths where possible, then strip remaining
       let cleanedResponse = textResponse;
+      cleanedResponse = cleanedResponse.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file created: $1 - conflict]');
+      cleanedResponse = cleanedResponse.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
+      cleanedResponse = cleanedResponse.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
       cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed - conflict]');
       cleanedResponse = cleanedResponse.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
       cleanedResponse = cleanedResponse.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
@@ -544,8 +561,11 @@ export async function codeGen(
       // ✅ FIX: Preserve LLM response in conversationHistory to prevent amnesia
       // Without this, codeGen→codeGen loop loses all memory of previous response,
       // causing the LLM to repeat the same work indefinitely.
-      // Strip XML tags before storing to reduce memory usage (promptBuilder also strips on read).
+      // 2-pass chain: extract file paths where possible, then strip remaining
       let cleanedResponse = textResponse;
+      cleanedResponse = cleanedResponse.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
+      cleanedResponse = cleanedResponse.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file created: $1]');
+      cleanedResponse = cleanedResponse.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
       cleanedResponse = cleanedResponse.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
       cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
       cleanedResponse = cleanedResponse.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
