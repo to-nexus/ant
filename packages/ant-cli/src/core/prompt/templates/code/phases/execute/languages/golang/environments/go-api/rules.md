@@ -36,6 +36,31 @@
 
 ---
 
+### Reference Project Layout
+
+The following is the reference directory structure for Go backend projects.
+Use this as the default layout. Adapt (reduce or extend directories) only
+when the architecture in System Design does not fit this structure.
+
+```
+cmd/           Entry points
+config/        Configuration loading
+docs/          API documentation
+internal/      Private application packages
+router/        Route definitions and setup
+schema/        Database schemas and migrations
+test/          Integration and E2E tests
+```
+
+**Constraint**: Do NOT flatten architecture layers into root-level directories.
+Layers from System Design (handler, service, repository, etc.) belong as
+sub-packages within this layout, not as root directories.
+
+**Constraint**: Before creating any directory, observe the existing directory
+tree. Follow established structure.
+
+---
+
 ### Concurrency Considerations
 
 **Principle**: Observe whether shared mutable state exists before introducing synchronization.

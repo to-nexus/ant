@@ -143,11 +143,12 @@ Thumbs.db
 PORT=8080
 ENV=development
 
-# Connection variables: annotate each with @connection
+# Connection endpoint URLs only — annotate with @connection
+# Do NOT annotate individual components (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD)
 # @connection {category} {name}                                -- external / infrastructure
 # @connection {category} {name} self                           -- same-project internal
 # @connection {category} {name} ant-project:{projectId}:{feature} -- cross-project
-# {ENV_VAR}={connection_url_pointing_to_localhost_with_compose_port}
+# {CONNECTION_URL}={url_pointing_to_localhost_with_compose_port}
 ```
 
 **Constraint**: Do NOT hardcode connection URLs in application code. Use environment variables with `@connection` annotation.
