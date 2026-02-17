@@ -128,6 +128,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   if (!hasViolations && state.currentTask) {
     // ✅ Task succeeded - mark as completed and record timing & token usage
     const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
+    const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
     
     // Gather token usage from llmResponse (codeGen) and accumulated task tokens (plan)
     const codeGenTokenUsage = state.llmResponse?.tokenUsage;
@@ -178,10 +179,29 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     } else {
       console.log(`✅ Task "${completedTask.name}" completed!`);
     }
+
+    // ✅ Log task_complete event to debug/logs/
+    if (state.context?.featurePath && state._httpJobId) {
+      const execLogger = getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'code',
+      });
+      execLogger.logTaskComplete(completedTask.id, {
+        taskName: completedTask.name,
+        elapsedMs: completedTask.timing?.elapsedTime || 0,
+        inputTokens: completedTask.tokenUsage?.inputTokens || 0,
+        outputTokens: completedTask.tokenUsage?.outputTokens || 0,
+        cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
+        cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
+        llmCallCount: state._codeGenCallIndex || 0,
+      }).catch(() => {});
+    }
     
     // ✅ CRITICAL: Clear conversation history for next task
     // Each task should start fresh without previous task's conversation
     state.conversationHistory = [];
+    state._codeGenCallIndex = 0;
     console.log(`🧹 [checkTaskStatus] Cleared conversation history for next task`);
     
     // ✅ CRITICAL: Clear violations for next task
@@ -295,6 +315,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       retries: 0,
       violations: [],
       conversationHistory: [],  // ✅ Clear for next task
+      _codeGenCallIndex: 0,     // ✅ Reset call counter for next task
       planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
       projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
@@ -302,6 +323,23 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     };
   }
   
+  // ✅ Log violation event to debug/logs/
+  if (state.context?.featurePath && state._httpJobId && state.currentTask) {
+    const { getExecutionLogger: getExecLogger } = await import('../../../../core/utils/executionLogger');
+    const execLogger = getExecLogger({
+      featurePath: state.context.featurePath,
+      jobId: state._httpJobId,
+      jobType: 'code',
+    });
+    execLogger.logTaskError(state.currentTask.id, {
+      taskName: state.currentTask.name,
+      violationType: violations[0]?.type || 'unknown',
+      violationCount: violations.length,
+      retryCount: state.retries || 0,
+      message: violations.map((v: any) => v.message).join('; ').substring(0, 500),
+    }).catch(() => {});
+  }
+
   // ✅ Workflow instrumentation: Exit node (task failed/has violations path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
@@ -483,6 +521,22 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );
 
+  // ✅ Log parallel_start event to debug/logs/
+  const parallelStartTime = Date.now();
+  if (state.context?.featurePath && state._httpJobId) {
+    const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
+    const execLogger = getExecutionLogger({
+      featurePath: state.context.featurePath,
+      jobId: state._httpJobId,
+      jobType: 'code',
+    });
+    const allTaskIds = taskQueue.getAll().map((t: any) => t.id);
+    execLogger.logParallelStart({
+      taskIds: allTaskIds,
+      concurrency: maxWorkers,
+    }).catch(() => {});
+  }
+
   // Register orchestrator for graceful shutdown (SIGTERM handler)
   registerActiveOrchestrator(orchestrator);
   let result;
@@ -503,6 +557,20 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   console.log(`   Failed: ${result.failedTasks.length}`);
   console.log(`   Remaining: ${result.remainingQueue.length}`);
   console.log(`   Interrupted: ${result.hasInterruptedTasks}`);
+
+  // ✅ Log parallel_complete event to debug/logs/
+  if (state.context?.featurePath && state._httpJobId) {
+    const { getExecutionLogger: getExecLog } = await import('../../../../core/utils/executionLogger');
+    const execLog = getExecLog({
+      featurePath: state.context.featurePath,
+      jobId: state._httpJobId,
+      jobType: 'code',
+    });
+    execLog.logParallelComplete({
+      taskIds: result.completedTasks.map((t: any) => t.id),
+      elapsedMs: Date.now() - parallelStartTime,
+    }).catch(() => {});
+  }
   if (result.failedTasks.length > 0) {
     for (const f of result.failedTasks) {
       console.error(`   ❌ FAILED: "${f.task.name}" (id=${f.task.id}) — ${f.error.message}`);

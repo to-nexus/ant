@@ -278,6 +278,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
     content: string | any[];     // Anthropic 형식 지원
   }>;
 
+  /** Per-task LLM call counter (reset on task transition, used for debug logging) */
+  _codeGenCallIndex?: number;
+
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열
   violationMessage?: string; // ✅ enforce node에서 생성한 강화된 violation 메시지 (promptBuilder에서 사용)

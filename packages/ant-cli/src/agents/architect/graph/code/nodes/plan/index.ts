@@ -87,6 +87,24 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // ✅ Initialize token usage tracking for new task
     const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     resetTaskTokenUsage(state as any);
+    state._codeGenCallIndex = 0;
+
+    // ✅ Log task_start event to debug/logs/
+    if (state.context?.featurePath && state._httpJobId) {
+      const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
+      const execLogger = getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'code',
+      });
+      execLogger.logTaskStart(nextTask.id, {
+        taskName: nextTask.name,
+        taskType: nextTask.type,
+        priority: nextTask.priority,
+        isParallel: !!(nextTask as any).parallelGroup,
+        parallelGroup: (nextTask as any).parallelGroup,
+      }).catch(() => {});
+    }
     
     // Update Kanban UI
     // Skip in worker context — TaskOrchestrator handles kanban for parallel mode

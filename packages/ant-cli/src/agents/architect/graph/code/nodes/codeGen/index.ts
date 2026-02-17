@@ -327,10 +327,31 @@ export async function codeGen(
         isDone = true;
         
         // ✅ Extract token usage and accumulate to task-level
-        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
           accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
+
+          // ✅ Log to debug/tokens/ for per-call analysis
+          const callIdx = state._codeGenCallIndex || 0;
+          state._codeGenCallIndex = callIdx + 1;
+          const taskUsage = state._currentTaskTokenUsage;
+          logTokenUsageToFile(
+            state.context?.featurePath,
+            state._httpJobId,
+            capturedUsage,
+            {
+              taskId: state.currentTask?.id || 'unknown',
+              taskName: state.currentTask?.name || 'unknown',
+              node: 'codeGen',
+              callIndex: callIdx,
+              conversationHistoryLength: state.conversationHistory?.length || 0,
+              projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
+              estimatedPromptChars: 0, // Captured in prompt logger
+              taskCumulativeInput: (taskUsage?.inputTokens || 0) - (capturedUsage.inputTokens || 0),
+              taskCumulativeOutput: (taskUsage?.outputTokens || 0) - (capturedUsage.outputTokens || 0),
+            }
+          );
         }
       }
     }

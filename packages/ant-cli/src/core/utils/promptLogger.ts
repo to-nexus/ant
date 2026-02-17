@@ -21,6 +21,8 @@ export interface PromptLogEntry {
   nodeId: string;
   taskId?: string;
   taskName?: string;
+  /** nth LLM call within this task (for cross-reference with tokens/ log) */
+  callIndex?: number;
   timestamp: string;
   /** Main template file path (e.g., 'design/phases/execute/base-ui-design') */
   templatePath?: string;
@@ -151,6 +153,10 @@ export class PromptLogger {
     
     if (entry.taskName) {
       content += `- **Task Name**: ${entry.taskName}\n`;
+    }
+    
+    if (entry.callIndex !== undefined) {
+      content += `- **Call Index**: ${entry.callIndex}\n`;
     }
     
     // ✅ Log template files used (primary info)
@@ -291,6 +297,7 @@ export async function logPrompt(
   options?: {
     taskId?: string;
     taskName?: string;
+    callIndex?: number;
     templatePath?: string;
     usedTemplates?: string[];
     injectedVariables?: Record<string, any>;
@@ -302,6 +309,7 @@ export async function logPrompt(
     nodeId,
     taskId: options?.taskId,
     taskName: options?.taskName,
+    callIndex: options?.callIndex,
     templatePath: options?.templatePath,
     usedTemplates: options?.usedTemplates,
     injectedVariables: options?.injectedVariables,
