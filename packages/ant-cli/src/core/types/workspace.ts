@@ -137,7 +137,7 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
   // Read default model from environment variable
-  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';  // ✅ Latest default
+  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-6-20250929';  // ✅ Latest default
   
   return {
     projectName,

@@ -8,28 +8,28 @@
 
 ## Batch-Fix Strategy
 
-**Principle**: Every build-fix-rebuild cycle is expensive. Minimize cycles by fixing ALL errors in each pass.
+**Principle**: Every build-fix-rebuild cycle is expensive (1 full LLM iteration each). You have a limited iteration budget. Minimize rebuild cycles by fixing ALL errors per pass.
 
 ### Protocol
 
 1. Run the build command
-2. Read the COMPLETE error output (do NOT stop at the first error)
-3. Fix ALL observed errors before rebuilding
-4. Re-run the build
-5. Repeat if new errors surface (each cycle should reduce error count)
+2. Read the COMPLETE error output — do NOT stop at the first error, scroll through ALL output
+3. List every distinct error mentally before making any edit
+4. Issue ALL edit_file calls for ALL errors in a single batch, THEN rebuild
+5. Repeat only if NEW errors surface (each cycle MUST reduce error count)
 
 ### Constraints
 
 | Constraint | Rule |
 |-----------|------|
-| **No one-by-one** | Do NOT fix one error, rebuild, fix the next. Fix ALL observed errors before rebuilding. |
+| **No one-by-one** | Do NOT fix one error, rebuild, fix the next. Fix ALL observed errors in one batch before rebuilding. Each unnecessary rebuild wastes an iteration from your budget. |
 | **No feature changes** | Fix ONLY what prevents compilation/startup. Do NOT improve logic or add functionality. |
 | **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` to refresh. |
 | **Config over code** | Prefer configuration fixes (go.mod, package.json, tsconfig.json) over source code changes. |
 
 ### Blind Spot
 
-Strict compilers (Go, Rust, TypeScript strict mode) report errors that cascade. Unused imports appear AFTER removing the code that used them. Fix the root cause first, then clean up cascading errors.
+Strict compilers (Go, Rust, TypeScript strict mode) report errors that cascade. Unused imports appear AFTER removing the code that used them. Fix the root cause first, then clean up cascading errors in the SAME batch.
 
 ---
 

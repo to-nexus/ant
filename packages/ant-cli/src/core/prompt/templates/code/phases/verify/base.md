@@ -46,12 +46,12 @@ An application cannot start without its environment configuration and dependent 
 Run the project's build/compile command.
 
 **Principle**: Build errors are concrete and finite. When the build fails:
-1. Read the COMPLETE error output
-2. Identify ALL distinct errors (not just the first one)
-3. Fix ALL errors in a single pass
-4. Re-run the build
+1. Read the COMPLETE error output — scroll through ALL of it
+2. List EVERY distinct error (file, line, message) before writing any fix
+3. Fix ALL errors across ALL files in a single batch of edit_file calls
+4. Only THEN re-run the build
 
-**Constraint**: Do NOT fix errors one-by-one. Each build-fix-rebuild cycle costs significant time. Batch ALL fixes before re-running.
+**Constraint**: Do NOT fix-and-rebuild after each individual error. Each rebuild costs a full iteration. If the build reports 8 errors, fix all 8 before rebuilding. A single rebuild cycle that fixes 8 errors is 8x more efficient than 8 separate cycles.
 
 ### Step 4: Runtime (if build succeeds)
 

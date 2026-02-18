@@ -8,7 +8,7 @@
  * 
  * Creates files in sessions/debug/logs/ directory.
  * 
- * File naming: {jobId}-events.json
+ * File naming: log-{jobId}.json
  */
 
 import * as path from 'path';
@@ -52,11 +52,13 @@ export class ExecutionLogger {
   private logDirPath: string;
   private logFilePath: string;
   private initialized = false;
+  private hasEntries = false;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: ExecutionLoggerOptions) {
     this.options = options;
     this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'logs');
-    this.logFilePath = path.join(this.logDirPath, `${options.jobId}-events.json`);
+    this.logFilePath = path.join(this.logDirPath, `log-${options.jobId}.json`);
   }
 
   /**
@@ -168,38 +170,48 @@ export class ExecutionLogger {
   // File I/O
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  /**
+   * Serialize all writes through a promise queue to prevent race conditions.
+   * Without this, concurrent appendEvent calls can read the file simultaneously,
+   * both decide no comma is needed, and produce `}{` instead of `},{`.
+   */
+  private enqueue(fn: () => Promise<void>): Promise<void> {
+    this.writeQueue = this.writeQueue.then(fn, fn);
+    return this.writeQueue;
+  }
+
   private async appendEvent(event: ExecutionEvent): Promise<void> {
-    await this.ensureLogDir();
+    return this.enqueue(async () => {
+      await this.ensureLogDir();
 
-    if (!this.initialized) {
-      try {
-        await fs.access(this.logFilePath);
-        this.initialized = true;
-      } catch {
-        await fs.writeFile(this.logFilePath, '[\n');
-        this.initialized = true;
+      if (!this.initialized) {
+        try {
+          await fs.access(this.logFilePath);
+          const content = await fs.readFile(this.logFilePath, 'utf-8');
+          this.hasEntries = content.trim().length > 2;
+          this.initialized = true;
+        } catch {
+          await fs.writeFile(this.logFilePath, '[\n');
+          this.initialized = true;
+        }
       }
-    }
 
-    const content = await fs.readFile(this.logFilePath, 'utf-8');
-    const needsComma = content.trim().length > 2;
-
-    const eventJson = JSON.stringify(event, null, 2);
-    const prefix = needsComma ? ',\n' : '';
-    await fs.appendFile(this.logFilePath, prefix + eventJson);
+      const eventJson = JSON.stringify(event, null, 2);
+      const prefix = this.hasEntries ? ',\n' : '';
+      await fs.appendFile(this.logFilePath, prefix + eventJson);
+      this.hasEntries = true;
+    });
   }
 
   /**
    * Finalize the JSON array (call when job completes)
    */
   async finalize(): Promise<void> {
-    try {
+    return this.enqueue(async () => {
       if (this.initialized) {
         await fs.appendFile(this.logFilePath, '\n]\n');
       }
-    } catch {
-      // Non-blocking
-    }
+    }).catch(() => {});
   }
 
   private async ensureLogDir(): Promise<void> {

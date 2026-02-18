@@ -19,8 +19,8 @@ export interface LLMModelInfo {
 const AVAILABLE_MODELS: LLMModelInfo[] = [
   // Anthropic Models
   {
-    id: 'claude-sonnet-4-5-20250929',
-    displayName: 'Sonnet 4.5',
+    id: 'claude-sonnet-4-6',
+    displayName: 'Sonnet 4.6',
     provider: 'anthropic',
     description: 'Latest Claude Sonnet model, best for coding',
     recommended: true,
@@ -79,7 +79,7 @@ export function createModelsRoutes(): Router {
     try {
       res.json({
         models: AVAILABLE_MODELS,
-        default: 'claude-sonnet-4-5-20250929'  // ✅ Latest Claude Sonnet 4.5 as default
+        default: 'claude-sonnet-4-6'  // ✅ Latest Claude Sonnet 4.6 as default
       });
     } catch (error) {
       console.error('[Models API] Error:', error);

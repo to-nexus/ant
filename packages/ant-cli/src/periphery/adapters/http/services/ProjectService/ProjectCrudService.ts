@@ -98,7 +98,7 @@ export class ProjectCrudService {
     const configPath = path.join(projectPath, 'config.json');
     
     // ✅ Get LLM config from environment variables
-    const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';  // ✅ Latest default
+    const defaultModel = process.env.AI_MODEL_NAME;
     
     // ✅ Determine if Cloud Mode
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';

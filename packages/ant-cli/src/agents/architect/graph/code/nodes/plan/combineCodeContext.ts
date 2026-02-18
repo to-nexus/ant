@@ -92,9 +92,10 @@ export async function combineCodeContext(
   // RAG keyword search is insufficient — load everything to eliminate read_file loops.
   const isExclusiveTask = state.currentTask?.exclusive === true;
   if (isExclusiveTask) {
-    console.log(`🔍 [RAG] Exclusive task detected → loading ALL codebase files directly`);
+    console.log(`🔍 [RAG] Exclusive task detected → loading codebase files (core=content, reference=path-only)`);
     
-    const allCodebaseFiles = await loadAllCodebaseFiles(fileSystem);
+    const language = state.detectionReport?.profile?.language;
+    const allCodebaseFiles = await loadAllCodebaseFiles(fileSystem, state.currentTask?.description, language);
     
     // Also load error files if this is a retry
     const errorFiles = taskKeywords.errorFiles.length > 0
@@ -305,20 +306,24 @@ export async function combineCodeContext(
 /**
  * Load ALL codebase files for exclusive tasks (integration, verification).
  * 
- * Exclusive tasks need full codebase awareness to wire components together.
- * Loading all files upfront (~30-80K tokens) is far cheaper than the alternative:
- * iterative read_file calls that accumulate conversation history (~2M+ tokens).
+ * Uses Option B strategy: Core files get FULL CONTENT, reference files get PATH ONLY.
+ * Core files are identified by language-aware patterns and optional task keywords.
+ * Reference files are still listed (LLM can read_file if needed), but their content
+ * is omitted from the prompt to reduce token usage by ~50%.
  * 
  * Safeguards:
  * - File count capped at EXCLUSIVE_MAX_FILES
- * - Large files truncated to EXCLUSIVE_MAX_FILE_LINES
+ * - Large core files truncated to EXCLUSIVE_MAX_FILE_LINES
  * - Binary files skipped
  * 
  * @param fileSystem - FileSystemPort for file access
- * @returns Array of loaded files from codebase/
+ * @param taskDescription - Current task description for keyword-based core file detection
+ * @returns Array of loaded files (core files with content, reference files without)
  */
 async function loadAllCodebaseFiles(
-  fileSystem: FileSystemPort
+  fileSystem: FileSystemPort,
+  taskDescription?: string,
+  language?: string
 ): Promise<LoadedFile[]> {
   const BINARY_EXTENSIONS = new Set([
     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
@@ -339,42 +344,99 @@ async function loadAllCodebaseFiles(
       '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
     ]);
 
-    // Filter out binary files
     const textPaths = allPaths.filter(p => {
       const ext = path.extname(p).toLowerCase();
       return !BINARY_EXTENSIONS.has(ext);
     });
 
-    // Cap at EXCLUSIVE_MAX_FILES
     const cappedPaths = textPaths.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES);
     if (textPaths.length > RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES) {
       console.log(`   ⚠️  Capped codebase files: ${textPaths.length} → ${RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES}`);
     }
 
+    const corePatterns = getCorePatterns(language);
+    const taskKeywords = extractTaskKeywords(taskDescription);
+
+    let coreCount = 0;
+    let refCount = 0;
+
     for (const filePath of cappedPaths) {
-      try {
-        const content = await fileSystem.readFile(filePath);
-        if (!content) continue;
+      const isCore = coreCount < RETRIEVAL_CONFIG.EXCLUSIVE_MAX_CORE_FILES &&
+        isCoreFile(filePath, corePatterns, taskKeywords);
 
-        // Truncate very large files to keep prompt size manageable
-        const lines = content.split('\n');
-        const truncated = lines.length > RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES
-          ? lines.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES).join('\n') +
-            `\n\n// ... truncated (${lines.length - RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES} more lines)`
-          : content;
+      if (isCore) {
+        try {
+          const content = await fileSystem.readFile(filePath);
+          if (!content) continue;
 
-        files.push({ path: filePath, content: truncated, source: 'local' });
-      } catch {
-        // Skip unreadable files
+          const lines = content.split('\n');
+          const truncated = lines.length > RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES
+            ? lines.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES).join('\n') +
+              `\n\n// ... truncated (${lines.length - RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES} more lines)`
+            : content;
+
+          files.push({ path: filePath, content: truncated, source: 'local' });
+          coreCount++;
+        } catch {
+          // Skip unreadable files
+        }
+      } else {
+        files.push({ path: filePath, content: '', source: 'local' });
+        refCount++;
       }
     }
 
-    console.log(`   📦 [Exclusive] Loaded ${files.length} codebase files (${textPaths.length} total, ${allPaths.length - textPaths.length} binary skipped)`);
+    console.log(`   📦 [Exclusive] ${files.length} files: ${coreCount} core (full content) + ${refCount} reference (path only). ${allPaths.length - textPaths.length} binary skipped`);
   } catch (err) {
     console.warn(`   ⚠️  Failed to list codebase files:`, err instanceof Error ? err.message : err);
   }
 
   return files;
+}
+
+/**
+ * Build core file patterns by combining universal patterns with language-specific ones.
+ * Falls back to TypeScript patterns when language is unknown (widest coverage).
+ */
+function getCorePatterns(language?: string): string[] {
+  const universal = [...RETRIEVAL_CONFIG.EXCLUSIVE_CORE_PATTERNS_UNIVERSAL];
+  const langMap = RETRIEVAL_CONFIG.EXCLUSIVE_CORE_PATTERNS_BY_LANGUAGE;
+  const langKey = language
+    ? Object.keys(langMap).find(k => language.toLowerCase().includes(k))
+    : undefined;
+  const langSpecific = langKey ? [...langMap[langKey]] : [...(langMap['typescript'] || [])];
+  return [...universal, ...langSpecific];
+}
+
+/**
+ * Check if a file path matches core file patterns or task keywords.
+ */
+function isCoreFile(
+  filePath: string,
+  patterns: readonly string[],
+  taskKeywords: string[]
+): boolean {
+  const lower = filePath.toLowerCase();
+  for (const pattern of patterns) {
+    if (lower.includes(pattern.toLowerCase())) return true;
+  }
+  for (const kw of taskKeywords) {
+    if (lower.includes(kw)) return true;
+  }
+  return false;
+}
+
+/**
+ * Extract meaningful keywords from task description for core file matching.
+ * Returns lowercase path-friendly fragments (e.g., "auth", "handler", "profile").
+ */
+function extractTaskKeywords(description?: string): string[] {
+  if (!description) return [];
+  const words = description.toLowerCase()
+    .replace(/[^a-z0-9\s_-]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 4 && w.length <= 30);
+  return [...new Set(words)];
 }
 
 /**

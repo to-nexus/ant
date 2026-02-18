@@ -47,4 +47,39 @@ export const RETRIEVAL_CONFIG = {
    */
   EXCLUSIVE_MAX_FILES: 60,
   EXCLUSIVE_MAX_FILE_LINES: 200,
+
+  /**
+   * Universal core file patterns for exclusive tasks (Option B optimization).
+   * These match regardless of detected language.
+   *
+   * Core files: loaded with FULL CONTENT (essential for wiring/verification).
+   * Reference files: loaded as PATH ONLY (LLM uses read_file if needed).
+   *
+   * Patterns are matched against the file path (case-insensitive).
+   */
+  EXCLUSIVE_CORE_PATTERNS_UNIVERSAL: [
+    'docker-compose', 'dockerfile', 'makefile',
+    '.env.example', '.env',
+    'router', 'routes', 'server.',
+    'migration',
+  ] as readonly string[],
+
+  /**
+   * Language-specific core file patterns.
+   * Selected at runtime via state.detectionReport.profile.language.
+   * Unknown languages fall back to 'typescript' (widest coverage).
+   */
+  EXCLUSIVE_CORE_PATTERNS_BY_LANGUAGE: {
+    typescript: ['package.json', 'tsconfig', 'index.', 'app.', 'next.config', 'vite.config'],
+    go:         ['go.mod', 'go.sum', 'cmd/', 'main.go'],
+    python:     ['requirements.txt', 'pyproject.toml', 'manage.py', 'app.py', 'main.py', 'wsgi', 'asgi'],
+    rust:       ['Cargo.toml', 'main.rs', 'lib.rs', 'build.rs'],
+    java:       ['pom.xml', 'build.gradle', 'Main.java', 'Application.java'],
+  } as Record<string, readonly string[]>,
+
+  /**
+   * Maximum number of core files allowed for exclusive tasks.
+   * If more files match core patterns, excess files become reference files.
+   */
+  EXCLUSIVE_MAX_CORE_FILES: 25,
 } as const;
