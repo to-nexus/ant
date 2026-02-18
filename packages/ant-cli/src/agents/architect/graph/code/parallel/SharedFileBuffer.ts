@@ -42,6 +42,8 @@ export interface WriteOptions {
   expectedVersion?: number;
   /** True for new file creation. Fails if another worker owns the file. */
   isNewFile?: boolean;
+  /** True for <file> tag overwrite of a pre-existing file. Fails if another worker modified it. */
+  isOverwrite?: boolean;
   /** Task name for conflict messages. */
   taskName?: string;
 }
@@ -123,9 +125,10 @@ export class SharedFileBuffer {
    * All file writes go through this single method:
    * 1. Acquire per-file mutex (serialize concurrent writes)
    * 2. If expectedVersion provided: check for stale content (editFile path)
-   * 3. If isNewFile: check for cross-worker ownership conflict (<file> tag / createFile path)
-   * 4. Write to buffer + disk
-   * 5. Release mutex
+   * 3. If isOverwrite: check if another worker modified the file (<file> tag on pre-existing file)
+   * 4. If isNewFile: check for cross-worker ownership conflict (<file> tag on new file)
+   * 5. Write to buffer + disk
+   * 6. Release mutex
    */
   async write(
     filePath: string,
@@ -157,7 +160,30 @@ export class SharedFileBuffer {
         }
       }
 
-      // 2. Cross-worker ownership check (new file creation path)
+      // 2. Overwrite-without-read check (<file> tag on pre-existing file)
+      // The worker is overwriting a file that existed at task start, but another
+      // worker has since modified it. The overwriter's content is based on the
+      // original (pre-task) state and would silently discard the other worker's changes.
+      if (options.isOverwrite && existing && existing.workerId !== workerId) {
+        const authorized = this.authorizedWriters.get(normalized);
+        if (authorized?.has(workerId)) {
+          authorized.delete(workerId);
+          if (authorized.size === 0) this.authorizedWriters.delete(normalized);
+          // Fall through to write section below
+        } else {
+          return {
+            success: false,
+            conflict: true,
+            ownerTask: existing.taskName,
+            currentContent: existing.content,
+            error:
+              `File "${filePath}" was modified by task "${existing.taskName}" ` +
+              `since task start. Your <file> tag would overwrite their changes.`,
+          };
+        }
+      }
+
+      // 3. Cross-worker ownership check (new file creation path)
       // If this is a new file creation and another worker already created it,
       // check if this worker was authorized (post-conflict merge).
       if (options.isNewFile && existing && existing.workerId !== workerId) {
@@ -180,7 +206,7 @@ export class SharedFileBuffer {
         }
       }
 
-      // 3. Write: new file, same worker re-write, or legitimate overwrite
+      // 4. Write: new file, same worker re-write, or legitimate overwrite
       const newVersion = (existing?.version || 0) + 1;
       this.files.set(normalized, {
         content,

@@ -346,7 +346,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ✅ Add conversation history (if exists)
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     const tokenManager = new TokenBudgetManager();
-    const historyManager = new HistoryManager(tokenManager);
+    const historyConfig = isVerificationTask
+      ? { maxTokens: 40000, minTurnsToKeep: 2 }
+      : undefined;
+    const historyManager = new HistoryManager(tokenManager, historyConfig);
     
     // Filter out initial user prompts (replaced by fresh prompt)
     let skipInitialUserMessages = true;

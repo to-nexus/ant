@@ -19,7 +19,7 @@
 
 **Setup Task Scope:**
 ```
-PHASE 1 (Setup):    Config files in codebase/ → go get → Ready for code
+PHASE 1 (Setup):    Config files in codebase/ → Done (system handles dependency download)
 PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 ```
 
@@ -38,13 +38,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Application files: main.go, handler.go, service.go, repository.go
 - Any .go source files
 
-**Validation Rule:**
-```
-Before output, check each file:
-  Application code directory? → DELETE
-  Application entry/source file? → DELETE
-  Config/build file? → KEEP
-```
+**Constraint**: Only create configuration-layer files. Do NOT create application code directories (cmd/*, internal/*, pkg/*) or .go source files.
 
 **Critical Requirements:**
 1. `go.mod` must have correct module path
@@ -82,8 +76,8 @@ Before output, check each file:
 - Same-project internal connections (e.g., frontend → backend in fullstack) MUST add `self`: `# @connection business {name} self`
 - Cross-project connections (e.g., frontend project referencing a separate backend project) MUST use `ant-project:{projectId}:{feature}`: `# @connection business {name} ant-project:{projectId}:{feature}`
 
-**Blind spot reminder**:
-- `dev-infra` / `dev-infra-down` Makefile targets are EASILY FORGOTTEN. Verify they exist.
-- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Verify every connection endpoint URL has one (but not individual components like host, port, user, password).
+**Blind spot reminder — include these when creating files:**
+- `dev-infra` / `dev-infra-down` Makefile targets are EASILY FORGOTTEN. Include them when creating the Makefile.
+- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Include annotation for every connection endpoint URL (but not individual components like host, port, user, password).
 - The `self` keyword for internal connections is EASILY FORGOTTEN in fullstack/monorepo projects.
 - The `ant-project:{projectId}:{feature}` modifier for cross-project connections is EASILY FORGOTTEN when the specification names a specific external project as a dependency.

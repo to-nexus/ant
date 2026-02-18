@@ -76,7 +76,7 @@ When error occurs:
 - ❌ "Let me also fix these other files just in case"
 - ❌ "I'll apply multiple fixes to be extra sure"
 - ❌ "While I'm here, let me refactor this too"
-- ✅ Apply the CORRECT solution → Verify → Done
+- ✅ Apply the CORRECT solution → Done
 
 ### 4. ASSET-FIRST FOR UI (When UI spec exists)
 **Before implementing UI elements, check the asset mapping table.**
@@ -189,13 +189,18 @@ Follow the framework/language-specific setup instructions from:
 - ✅ Install ALL dependencies needed for the project
 - ✅ Use exact versions from design doc if specified
 
+**⚠️ SETUP EFFICIENCY CONSTRAINTS:**
+- ❌ DO NOT `read_file` on a file you just created with `<file>` — you already know its content
+- ❌ DO NOT create a file and then immediately `edit_file` to fix it — create it correctly the first time
+- ✅ Variable names come from the design specification or project conventions. Do NOT derive variable names from format examples in injected prompts
+
 **⛔ FORBIDDEN in Setup Task:**
 - Build/dev/start commands (e.g., `npm run build`, `go build`, `cargo build`) - verification happens in final-verification task
 - `docker compose up`, `docker compose down` - infrastructure startup happens in preview/verification
-- ONLY dependency install is allowed
-- Do NOT verify build success - just install dependencies and complete
+- Do NOT verify build success
+- Only run dependency install commands explicitly allowed by the language-specific setup rules injected below. If no install command is specified, the system handles it automatically after file creation.
 
-**Actions:** Write files → Run install command ONLY → Output `<done>true</done>`
+**Actions:** Write all files (with complete content from the start) → Run install if language rules permit → Output `<done>true</done>`
 
 {{/unless}}
 {{/if}}

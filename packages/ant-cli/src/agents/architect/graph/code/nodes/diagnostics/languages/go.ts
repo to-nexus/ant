@@ -127,7 +127,6 @@ export const GO_PATTERNS: ErrorPattern[] = [
       rootCause: 'Required module is not listed in go.mod',
       suggestedActions: [
         `Run: go get ${match[1] || '<package>'}`,
-        'Then run: go mod tidy',
       ],
       isRetryable: true,
       canLLMFix: true,

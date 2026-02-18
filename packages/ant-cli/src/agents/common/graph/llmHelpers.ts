@@ -248,13 +248,18 @@ export function updateKanbanTokenUsage(
     return;
   }
   
-  const isWorkerCtx = (state as any).workerId !== undefined && (state as any).workerId !== null;
-  if (isWorkerCtx) {
-    return;
-  }
-  
   const taskTokens = getTaskTokenUsage(state);
   const jobTokens = getJobTokenUsage(state);
+
+  const isWorkerCtx = (state as any).workerId !== undefined && (state as any).workerId !== null;
+  if (isWorkerCtx) {
+    state.currentTask.tokenUsage = { ...taskTokens };
+    state.deps.kanbanUpdate.updateInProgressTaskTokenUsage?.(
+      state.currentTask.id,
+      { ...taskTokens }
+    );
+    return;
+  }
   
   if (computeTotal(jobTokens) === 0) {
     return;

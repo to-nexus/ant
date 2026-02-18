@@ -72,6 +72,13 @@ export interface TaskQueueUpdatePort {
   setEstimatingTokenUsage?(tokenUsage: TaskTokenUsage): void;
 
   /**
+   * Update a single in-progress task's token usage and re-broadcast.
+   * Designed for parallel workers that only know their own task's tokens.
+   * Uses the broadcaster's cached task lists from the last updateTaskQueue call.
+   */
+  updateInProgressTaskTokenUsage?(taskId: string, taskTokenUsage: TaskTokenUsage): void;
+
+  /**
    * Save a checkpoint snapshot to Redis for disaster recovery.
    * Unlike updateTaskQueue, this does NOT broadcast via Pub/Sub — it only
    * persists the snapshot to Redis so that cleanupJobState can use it as

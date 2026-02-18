@@ -442,16 +442,21 @@ export async function codeGen(
         ``,
         mergeBlocks,
         ``,
-        `After outputting all merged files, continue with your remaining work or output <done>true</done> if complete.`,
+        `After outputting all merged files, output <done>true</done>. Files marked [file written to disk: ...] are already saved — do NOT regenerate them.`,
       ].join('\n');
 
       // 3. Inject into conversation and loop back (no enforce/plan needed)
-      // 2-pass chain: extract file paths where possible, then strip remaining
+      // Distinguish conflict vs successfully-written files so LLM doesn't regenerate everything
+      const conflictPaths = new Set(fileConflicts.map(c => c.path));
       let cleanedResponse = textResponse;
-      cleanedResponse = cleanedResponse.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file created: $1 - conflict]');
+      cleanedResponse = cleanedResponse.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g,
+        (_match: string, filePath: string) => conflictPaths.has(filePath)
+          ? `[file NOT written - conflict: ${filePath}]`
+          : `[file written to disk: ${filePath}]`
+      );
       cleanedResponse = cleanedResponse.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
       cleanedResponse = cleanedResponse.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-      cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed - conflict]');
+      cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
       cleanedResponse = cleanedResponse.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
       cleanedResponse = cleanedResponse.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
       cleanedResponse = cleanedResponse.trim();

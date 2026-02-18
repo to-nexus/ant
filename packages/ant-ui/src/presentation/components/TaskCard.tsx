@@ -192,9 +192,6 @@ export function TaskCard({
               <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
                 <Coins className="w-3.5 h-3.5" />
                 {formatTokenUsageCompact(task.tokenUsage)}
-                {status === 'in-progress' && (
-                  <span className="ml-0.5 opacity-70 animate-pulse">↻</span>
-                )}
               </span>
             )}
           </div>

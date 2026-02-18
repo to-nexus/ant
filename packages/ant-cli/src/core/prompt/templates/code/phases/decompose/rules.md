@@ -172,6 +172,8 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 - Task touches both tiers -> combine (e.g., `["fe", "be"]`)
 - Root workspace setup -> `["shared"]`
 
+⚠️ **Blind spot**: `shared` alone injects ONLY api-contract.md — no system design documents. If a task needs to observe infrastructure patterns from system design (e.g., shared foundation task), it MUST combine tier tags (e.g., `["shared", "be"]`).
+
 ---
 
 ## Task Scope Constraint
@@ -187,13 +189,20 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Constraint**: If a task requires MORE THAN ONE independent persistence boundary with its own business logic and API layer, split into separate tasks — one per boundary.
 
-**Constraint**: Entities that the design document groups in the same section but that have SEPARATE persistence boundaries MUST be separate tasks.
+**Exception — shared implementation modules**: When multiple persistence boundaries will be implemented in the SAME code files (same handler, service, or repository file), merge them into a SINGLE task. A second task re-reading, extending, and fixing files the first task created multiplies token cost disproportionately.
+
+**Observation target**: For entities that appear separable by persistence boundary, check whether they share implementation modules.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Shared code files** | Will two entities be implemented in the same handler/service/repository files? |
+| **Architecture grouping** | Does the project group by layer (handler/, service/, repository/) rather than by domain? |
+
+**Constraint**: In layer-grouped architectures, entities in the same domain section share the same files per layer. Merge them into one task.
 
 **Constraint**: Do NOT split below the persistence boundary level. An entity with its business logic and API layer is the minimum useful task unit. Splitting further (e.g., data access alone, business logic alone) creates tasks that cannot be verified independently and wastes per-task overhead.
 
-**Blind spot**: Entities that reference each other are easily perceived as inseparable. The test is whether each has its own persistence boundary — if yes, they are independent and should be separate tasks.
-
-⚠️ **Blind spot**: Entities with a parent-child or lifecycle relationship (e.g., "requests" that become "matches", "orders" that generate "invoices") appear tightly coupled but have INDEPENDENT persistence boundaries. The relationship between them is business logic, not a reason to merge tasks. Each entity with its own table/collection and API endpoints is a separate task.
+⚠️ **Blind spot**: Entities with separate database tables appear independent, but in layer-grouped projects they produce OVERLAPPING implementation files. The second task must read, understand, and extend files the first task created — each interaction replays the full conversation, multiplying token cost. Observe the architecture pattern to decide split vs. merge.
 
 ---
 
@@ -223,24 +232,27 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 ---
 
-## Shared Types Task
+## Shared Foundation Task
 
-**Principle**: When parallel feature tasks will operate on entities defined in the same schema (database, API contract), the type definitions that multiple tasks depend on must be established before those tasks execute. Without this, parallel tasks independently create conflicting type definitions.
+**Principle**: When parallel feature tasks will define symbols in the same language-level namespace scope, those shared symbols must be established before the parallel tasks execute. Without this, parallel tasks independently create conflicting definitions of the same symbol.
 
-**Observation target**: Does the project have a shared type/model layer that multiple feature tasks will read or write?
+**Observation target**: Will 2+ parallel tasks define symbols in the same namespace scope?
 
 | Checkpoint | What to observe |
 |-----------|----------------|
-| **Shared schema** | Are there domain types (models, entities, DTOs) referenced by 2+ feature tasks? |
-| **Parallel conflict risk** | Will 2+ parallel tasks need to define or extend types in the same package/module? |
+| **Shared infrastructure symbols** | Will 2+ parallel tasks need middleware types, error/response utilities, or shared definitions in the same namespace scope? |
+| **Cross-cutting utilities** | Will 2+ parallel tasks define helper functions that serve the same purpose in the same namespace scope? |
+| **Shared schema types** | Are there domain types (models, entities, DTOs) referenced by 2+ feature tasks? |
 
-**Constraint**: If 2+ parallel feature tasks depend on the same domain types, create a dedicated exclusive task (priority 150-199, after setup, before features) that defines ALL shared type definitions.
+**Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create a dedicated exclusive task (priority 150-199, after setup, before features) that defines ALL shared symbols for that scope.
 
-**Constraint**: This task defines types/interfaces ONLY. It does NOT implement business logic, API handlers, or data access.
+**Constraint**: This task defines types, interfaces, and shared utility functions ONLY. It does NOT implement business logic, API handlers, or data access.
 
-**Constraint**: Feature tasks that depend on shared types MUST NOT redefine them. They import and use what the shared types task established.
+**Constraint**: The `packages` field MUST include all tier tags that parallel feature tasks span, combined with `"shared"`. Example: if parallel tasks use `["be"]`, the foundation task uses `["shared", "be"]`. `"shared"` alone provides only API contract — system design documents are required for the plan phase to identify infrastructure symbols.
 
-⚠️ **Blind spot**: When a schema migration creates tables, the corresponding application-level type definitions are EASILY LEFT to individual feature tasks. If those feature tasks run in parallel, each creates its own version of the same type → compile errors. The shared types task prevents this.
+**Constraint**: Feature tasks that depend on shared foundation symbols MUST NOT redefine them. They import and use what the shared foundation task established.
+
+⚠️ **Blind spot**: Domain types are easily identified as shared, but infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing duplicate symbol errors. Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.
 
 ---
 
@@ -273,7 +285,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 - `docker-compose.yml` with service definitions — if external services are observed in the specification
 - `.env.example` with `# @connection {category} {name}` annotation for each service connection endpoint URL (not individual components like host, port, user, password)
 - `.env` with resolved localhost values matching `.env.example` variable keys
-- Application configuration variables (secrets, API keys) observed in the specification — listed by name so feature tasks do not invent their own variable names
+- Application configuration variables (secrets, API keys) observed in the specification — mention their existence so the setup task provisions them
 - Cross-project connections with `# @connection {category} {name} ant-project:{projectId}:{feature}` — if the specification names a specific external Ant project as a dependency (e.g., "uses sketch-be as backend")
 
 **Constraint**: Do NOT omit infrastructure provisioning (`docker-compose.yml`) from setup task when the specification mentions external services. Do NOT omit `@connection` annotations — they are required for the platform to detect and manage service connections. Do NOT omit `ant-project:{projectId}:{feature}` modifier when the specification explicitly names a target project — without it, the platform cannot auto-resolve the cross-project proxy path.
@@ -300,7 +312,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 **Constraint**: Only assign the SAME group ID when tasks are likely to modify the SAME source files.
 
-**Observation target**: For each pair of feature tasks, check if they access the same persistence boundary.
+**Observation target**: For each pair of feature tasks, check if they share a persistence boundary.
 
 | Checkpoint | What to observe |
 |-----------|----------------|
@@ -308,6 +320,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 | **Shared data-access module** | Will two tasks need to add operations to the same repository or data-access layer? |
 
 **Constraint**: Tasks that access the SAME persistence boundary MUST share the same parallelGroup -- even if they expose different API endpoints or serve different features. In layered architectures, one persistence boundary maps to one data-access module; concurrent writes to that module cause conflicts.
+
+**Constraint**: If tasks share a namespace scope but NO shared foundation task (see Shared Foundation Task section) covers that namespace, they MUST share the same parallelGroup.
 
 ⚠️ **Blind spot**: Tasks that appear logically independent (different features, different endpoints) may share the same underlying persistence boundary. Task names suggest independence but the data layer reveals coupling. Observe the design document's schema section to determine overlap.
 

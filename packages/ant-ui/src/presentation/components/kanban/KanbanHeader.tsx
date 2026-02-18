@@ -172,9 +172,8 @@ export function ElapsedTimeBadge({
         {!isEstimatingFinalized && estimatingActivity && (
           <div className="pl-2 mt-1">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-purple-600 dark:text-purple-400 flex items-center gap-1">
+              <span className="text-purple-600 dark:text-purple-400">
                 • {estimatingActivity.label}
-                <span className="animate-pulse">↻</span>
               </span>
               <span className="font-mono text-purple-600 dark:text-purple-400">
                 <LiveElapsedTime startedAt={estimatingActivity.startedAt} />
@@ -197,9 +196,8 @@ export function ElapsedTimeBadge({
             {/* In-progress tasks (real-time) */}
             {inProgressTasks?.map(task => (
               <div key={task.id} className="flex justify-between items-center text-sm">
-                <span className="text-blue-600 dark:text-blue-400 truncate max-w-[200px] flex items-center gap-1" title={task.name}>
+                <span className="text-blue-600 dark:text-blue-400 truncate max-w-[200px]" title={task.name}>
                   • {task.name}
-                  <span className="text-xs animate-pulse">↻</span>
                 </span>
                 <span className="font-mono text-blue-600 dark:text-blue-400">
                   {task.timing?.startedAt
@@ -436,9 +434,8 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                           <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={task.name}>
                             • {task.name}
                           </span>
-                          <span className="font-mono text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                          <span className="font-mono text-gray-600 dark:text-gray-400">
                             {formatTokenCount(m.billableInputTokens)} / {formatTokenCount(m.outputTokens)}
-                            <span className="text-xs opacity-70 animate-pulse">↻</span>
                           </span>
                         </div>
                       ) : null;

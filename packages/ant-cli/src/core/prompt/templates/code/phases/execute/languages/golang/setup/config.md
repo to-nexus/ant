@@ -59,9 +59,16 @@ go 1.22
 - Use the latest stable Go version unless design doc specifies otherwise
 - If the task description requires declaring dependencies, list them in the `require` block
 
-**Constraint**: Do NOT run `go mod tidy` in setup tasks. Use `go get ./...` to resolve declared dependencies.
+**⛔ Do NOT run any `go` commands (`go mod tidy`, `go mod download`, `go get`, `go get ./...`) during setup.**
 
-⚠️ **Blind spot**: `go mod tidy` removes dependencies not imported by any source file. Setup tasks produce no `.go` files, so ALL declared dependencies get stripped from `go.mod`.
+**Principle**: All Go dependency commands resolve against `.go` source files or the `require` block. Setup creates no `.go` files, so:
+- `go mod tidy` scans imports → finds none → **deletes all require entries**
+- `go mod download` with an empty require block → "no module dependencies to download"
+- `go get ./...` resolves package imports → finds none → "matched no packages"
+
+Each of these produces a warning or destructive side-effect that triggers unnecessary file re-creation.
+
+**What to do instead**: Declare all dependencies directly in go.mod's `require` block when creating the file. The system handles dependency download automatically after file creation — you do not need to run any command.
 
 ---
 
@@ -180,9 +187,9 @@ ENV=development
 - Do NOT run `docker compose up` in setup tasks. Only create the files.
 - `.env.example` MUST use `# @connection {category} {name}` annotation for every service connection variable.
 
-**Blind spot reminder**:
-- `dev-infra` / `dev-infra-down` Makefile targets are EASILY FORGOTTEN. Verify they exist.
-- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Verify every connection variable has one.
+**Blind spot reminder — include these when creating files:**
+- `dev-infra` / `dev-infra-down` Makefile targets are EASILY FORGOTTEN. Include them when creating the Makefile.
+- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Include annotation for every connection variable.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

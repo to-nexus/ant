@@ -87,7 +87,7 @@ tree. Follow established structure.
 **For build/module errors:**
 - Check `go.mod` and `go.sum` first
 - Understand the module path and import structure
-- Consider whether dependencies need `go mod tidy`
+- Resolve missing dependencies with `go get {package}`
 
 **Key principle:** Configuration fixes over source code changes. Minimal changes.
 
@@ -105,3 +105,13 @@ tree. Follow established structure.
 ---
 
 **Remember:** You already know Go server development. Analyze the specific error and project setup before deciding on a solution.
+
+---
+
+### Type Visibility
+
+**Principle**: Identifiers starting with an uppercase letter are exported (cross-package accessible). Lowercase identifiers are package-private.
+
+**Constraint**: When defining a type that will be referenced by another package in the same project, the type name MUST start with an uppercase letter. Decide visibility at definition time, not after a compile error.
+
+⚠️ **Blind spot**: Data-transfer types in a repository package (row structs, result types) are easily created as unexported. If any service or handler package references these types, the build fails. Fixing visibility after the fact causes cascading renames across interface signatures, function returns, and variable declarations — each rename a separate interaction that replays the full conversation.

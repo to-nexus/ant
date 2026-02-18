@@ -49,6 +49,11 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedRecursionLimit?: number;
   private cachedTokenUsage?: TaskTokenUsage;
   private cachedEstimatingTokenUsage?: TaskTokenUsage;
+  // Cached task lists from last updateTaskQueue (NOT from broadcastKanbanUpdate,
+  // which is also called during estimating with empty arrays).
+  private cachedCurrentTasks: BaseTask[] = [];
+  private cachedQueue: BaseTask[] = [];
+  private cachedCompletedTasks: BaseTask[] = [];
   
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -170,6 +175,38 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Update a single in-progress task's token usage and re-broadcast
+   * using cached task lists. Safe for parallel workers: each worker only
+   * knows its own task, but the broadcaster holds the full cached state
+   * from the last orchestrator updateTaskQueue call.
+   *
+   * Skips broadcast if the task is not found in cached state (e.g.,
+   * orchestrator hasn't broadcast the task assignment yet).
+   */
+  updateInProgressTaskTokenUsage(taskId: string, taskTokenUsage: TaskTokenUsage): void {
+    if (!this.cachedCurrentTasks.some(t => t.id === taskId)) {
+      return;
+    }
+
+    const updatedTasks = this.cachedCurrentTasks.map(t =>
+      t.id === taskId ? { ...t, tokenUsage: taskTokenUsage } : t
+    );
+    this.cachedCurrentTasks = updatedTasks;
+
+    this.broadcastKanbanUpdate(
+      this.jobId,
+      updatedTasks,
+      this.cachedQueue,
+      this.cachedCompletedTasks,
+      this.cachedRecursionCount,
+      this.cachedRecursionLimit,
+      this.cachedTokenUsage,
+    ).catch(err => {
+      console.warn(`[KanbanBroadcaster] Failed to broadcast task token update:`, err.message);
+    });
+  }
+
+  /**
    * Update task queue snapshot
    * Implements TaskQueueUpdatePort interface
    */
@@ -191,6 +228,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     const currentTasks: BaseTask[] = currentTask
       ? (Array.isArray(currentTask) ? currentTask : [currentTask])
       : [];
+
+    // Cache task lists so updateInProgressTaskTokenUsage can re-broadcast
+    // without needing the full state from the caller.
+    this.cachedCurrentTasks = currentTasks;
+    this.cachedQueue = queue;
+    this.cachedCompletedTasks = completedTasks;
 
     // Fire-and-forget with error logging
     this.broadcastKanbanUpdate(
