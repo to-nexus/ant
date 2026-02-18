@@ -123,7 +123,7 @@ Configure as needed for project (Tailwind, ESLint, etc).
 
 **Principle**: `content` MUST list every directory where source files with styling classes will exist.
 
-**Constraint**: Do NOT assume existing `content` paths are correct. Observe where the framework convention places source files, and verify `content` matches before finalizing.
+**Constraint**: Do NOT assume existing `content` paths are correct. Observe where the framework convention places source files, and ensure `content` paths match.
 
 ## 5. .gitignore
 

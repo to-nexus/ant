@@ -32,7 +32,7 @@ export interface DependencyConfig {
   /** Local cache directory that indicates deps are installed (e.g. 'node_modules'), null if language uses global cache */
   localCacheDir: string | null;
   /** Returns the install command string. pm is the detected Node.js package manager (npm/pnpm/yarn) */
-  getInstallCommand(pm?: string): string;
+  getInstallCommand(pm?: string, opts?: { isSetup?: boolean }): string;
   /** Determines whether dependency installation should run */
   shouldInstall(opts: { configChanged: boolean; cacheDirExists: boolean; isFinalTask: boolean }): boolean;
 }
@@ -160,7 +160,8 @@ const GO_RUNTIME: ProjectRuntimeConfig = {
   dependency: {
     configFile: 'go.mod',
     localCacheDir: null,  // Go uses global module cache ($GOPATH/pkg/mod)
-    getInstallCommand(): string {
+    getInstallCommand(_pm?: string, opts?: { isSetup?: boolean }): string {
+      if (opts?.isSetup) return 'go mod download';
       return 'go mod tidy';
     },
     shouldInstall({ configChanged, isFinalTask }): boolean {

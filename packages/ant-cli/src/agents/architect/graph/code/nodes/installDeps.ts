@@ -135,7 +135,8 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
 
         case Language.GO:
           await handleGoInstall(
-            runtime, resolvedPath, commandPort, violations, p
+            runtime, resolvedPath, commandPort, violations, p,
+            state.currentTask?.type === 'setup'
           );
           break;
 
@@ -331,14 +332,15 @@ async function handleGoInstall(
   commandPort: any,
   violations: Violation[],
   p: any,
+  isSetupTask: boolean = false,
 ): Promise<void> {
-  const goModPath = p.join(resolvedPath, runtime.dependency.configFile);
+  const installCmd = runtime.dependency.getInstallCommand(undefined, { isSetup: isSetupTask });
 
-  console.log(`📦 Running ${runtime.dependency.getInstallCommand()}...`);
+  console.log(`📦 Running ${installCmd}...`);
 
-  const result = await commandPort.execute(runtime.dependency.getInstallCommand(), {
+  const result = await commandPort.execute(installCmd, {
     cwd: resolvedPath,
-    timeout: 5 * 60 * 1000,  // 5 minutes for go mod tidy
+    timeout: 5 * 60 * 1000,
   });
 
   if (result.success) {
@@ -351,9 +353,8 @@ async function handleGoInstall(
       }
     }
     
-    // go mod tidy outputs warnings to stderr (e.g. unused modules)
     if (result.stderr && result.stderr.trim().length > 0) {
-      console.log('\n⚠️  go mod tidy messages:');
+      console.log(`\n⚠️  ${installCmd} messages:`);
       const lines = result.stderr.split('\n').filter((l: string) => l.trim());
       console.log(lines.slice(-10).join('\n'));
     }

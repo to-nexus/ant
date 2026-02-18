@@ -88,10 +88,80 @@ export async function combineCodeContext(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // EXCLUSIVE TASK FAST PATH: Load ALL codebase files directly
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Exclusive tasks (integration, verification) need full codebase awareness.
-  // RAG keyword search is insufficient — load everything to eliminate read_file loops.
+  // Exclusive tasks need codebase awareness, but the strategy differs by task type:
+  // - Verification: paths-only (reads files on demand via build error output)
+  // - Integration/other: core=content, reference=path-only (Option B)
   const isExclusiveTask = state.currentTask?.exclusive === true;
   if (isExclusiveTask) {
+    const isVerificationTask = state.currentTask?.type === 'verification';
+
+    if (isVerificationTask) {
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // VERIFICATION: Paths-only (no file content I/O)
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Verification runs builds and fixes errors. It reads specific files on demand
+      // via read_file when build errors point to them. Injecting full content upfront
+      // wastes tokens and tempts the LLM to review code instead of running builds.
+      console.log(`🔍 [RAG] Verification task → paths-only (no content loading)`);
+
+      const BINARY_EXTENSIONS = new Set([
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
+        '.woff', '.woff2', '.ttf', '.eot', '.otf',
+        '.zip', '.tar', '.gz', '.br', '.zst',
+        '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+        '.mp3', '.mp4', '.wav', '.avi', '.mov',
+        '.exe', '.dll', '.so', '.dylib', '.wasm',
+        '.sqlite', '.db',
+      ]);
+
+      let filePaths: string[] = [];
+      try {
+        const allPaths = await fileSystem.listFiles('codebase', [
+          'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
+          'coverage', '__pycache__', 'venv', '.venv', 'target',
+          '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
+        ]);
+        const textPaths = allPaths.filter(p => !BINARY_EXTENSIONS.has(path.extname(p).toLowerCase()));
+        filePaths = textPaths.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES);
+        console.log(`   ✅ Verification context: ${filePaths.length} file paths (no content)`);
+      } catch (err) {
+        console.warn(`   ⚠️  Failed to list codebase files:`, err instanceof Error ? err.message : err);
+      }
+
+      try {
+        const chatAPI = getChatAPIClient();
+        const loadMergeIndex = await chatAPI.showChatStatus('loading', { filesCount: 0 });
+        await chatAPI.showChatStatus('loaded', {
+          filesCount: filePaths.length,
+          filesList: filePaths,
+          content: `Loaded: ${filePaths.length} file paths (verification, paths-only)`,
+          _mergeIndex: loadMergeIndex
+        });
+      } catch {
+        // Non-critical
+      }
+
+      const projectCodeContext: ProjectCodeContext = {
+        filePaths,
+        files: [],
+        stats: { filesLoaded: filePaths.length, errorFilesCount: 0, semanticCount: 0, deduplicatedCount: 0 },
+        source: 'plan' as const
+      };
+
+      if (directoryTree) {
+        projectCodeContext.directoryTree = directoryTree;
+      } else {
+        try {
+          projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
+        } catch { /* Non-critical */ }
+      }
+
+      return { context: projectCodeContext, lessons: [] };
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // INTEGRATION / OTHER EXCLUSIVE: Core=content, Reference=path-only
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     console.log(`🔍 [RAG] Exclusive task detected → loading codebase files (core=content, reference=path-only)`);
     
     const language = state.detectionReport?.profile?.language;

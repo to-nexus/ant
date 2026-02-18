@@ -47,13 +47,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Application files: main.ts, App.tsx, server.ts, index.tsx
 - Any .tsx/.jsx/.ts/.js outside of *.config.* files
 
-**Validation Rule:**
-```
-Before output, check each file:
-  Application code directory? → DELETE
-  Application entry/component? → DELETE
-  Config file? → KEEP
-```
+**Constraint**: Only create configuration-layer files. Do NOT create application code directories (src/*, app/*, pages/*, components/*) or application source files (.tsx/.jsx/.ts/.js outside *.config.*).
 
 **Critical Requirements:**
 1. ESLint MUST have `ignorePatterns: ["dist", "build", "node_modules", "*.config.*"]`
@@ -62,7 +56,7 @@ Before output, check each file:
 4. **Tailwind `content` paths MUST match actual source directories**
 
 ⚠️ **Blind spot — `content` path mismatch**:
-If `content` paths don't cover the directories where source files exist, zero utility classes will be generated. The CSS file still loads normally — it just contains only the base reset, making this invisible in network/console. Verify `content` matches where source files will actually be created.
+If `content` paths don't cover the directories where source files exist, zero utility classes will be generated. The CSS file still loads normally — it just contains only the base reset, making this invisible in network/console. Ensure `content` paths match the directories where source files will be created.
 
 ## Infrastructure Services (Observe Design Document)
 
@@ -98,9 +92,9 @@ Reference environment variables for service connections.
 - Same-project internal connections (e.g., frontend → backend in fullstack) MUST add `self`: `# @connection business {name} self`
 - Cross-project connections (e.g., frontend project referencing a separate backend project) MUST use `ant-project:{projectId}:{feature}`: `# @connection business {name} ant-project:{projectId}:{feature}`
 
-⚠️ **Blind spot reminder**:
-- `dev:infra` / `dev:infra:down` scripts are EASILY FORGOTTEN. Verify they exist in root package.json.
-- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Verify every connection endpoint URL has one (but not individual components like host, port, user, password).
+⚠️ **Blind spot reminder — include these when creating files:**
+- `dev:infra` / `dev:infra:down` scripts are EASILY FORGOTTEN. Include them in root package.json when infrastructure services are observed.
+- `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Include annotation for every connection endpoint URL (but not individual components like host, port, user, password).
 - The `self` keyword for internal connections is EASILY FORGOTTEN in fullstack/monorepo projects.
 - The `ant-project:{projectId}:{feature}` modifier for cross-project connections is EASILY FORGOTTEN when the specification names a specific external project as a dependency.
 - Package-level setup must NOT duplicate infrastructure provisioning.

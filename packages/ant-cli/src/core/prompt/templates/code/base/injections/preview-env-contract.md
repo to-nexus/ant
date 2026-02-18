@@ -48,15 +48,7 @@
 - Frontend MUST use it as a prefix for all API calls
 - Frontend MUST define its own API path structure (project-specific)
 
-### Scenarios
-
-| Scenario | How `VITE_API_BASE_URL` is resolved |
-|----------|--------------------------------------|
-| **Same-project** (fullstack/monorepo) | Auto-injected as `/{urlKey}` pointing to backend in same project |
-| **Cross-project** (frontend-only + separate backend) | Injected from Preview Config connections — either `/{backendUrlKey}` for Ant project, or direct URL |
-| **No backend** | Empty string (API calls go to current origin or fallback) |
-
-**Constraint**: Frontend code does NOT need to know which scenario applies. It reads `VITE_API_BASE_URL` and prepends it to API requests. The platform resolves the value.
+**Constraint**: Frontend code does NOT need to know how `VITE_API_BASE_URL` is resolved. It reads the variable and prepends it to API requests. The platform resolves the value at runtime.
 
 ### Why
 - Browser cannot reach server's internal network directly
@@ -136,14 +128,15 @@ VITE_API_BASE_URL=
 
 # Infrastructure connection (no modifier)
 # @connection infrastructure postgres
-DATABASE_URL=postgres://user:password@localhost:5432/mydb
+{VAR_NAME}={connection_string}
 
 # External third-party API (no modifier)
 # @connection business payment-api
-PAYMENT_API_URL=https://api.stripe.com
+{VAR_NAME}={service_url}
 ```
 
 ### Constraint
+- Variable names in examples above are PLACEHOLDERS showing annotation FORMAT only. Actual variable names MUST come from the task description or design specification. Do NOT treat example variable names as recommendations
 - Variables WITHOUT annotation are invisible to the platform's connection registry
 - Annotation MUST be on the line immediately above the variable
 - `name` identifies the service for display purposes (lowercase, hyphens allowed)

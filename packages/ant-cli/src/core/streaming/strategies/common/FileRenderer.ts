@@ -354,11 +354,37 @@ export class FileRenderer {
       } else {
         if (!this.fileSystem) throw new Error('FileSystemPort not available');
         
-        // ✅ Cross-worker conflict detection for new file creation
+        // ✅ Cross-worker conflict detection for file creation and overwrite
         const isOverwrite = (fileInfo as any).isOverwrite === true;
         if (isOverwrite) {
-          // Legitimate overwrite of a known file — direct write
-          await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
+          // Pre-existing file overwrite — check if another worker modified it
+          const workerFS = this.fileSystem as any;
+          if (typeof workerFS.writeOverwrite === 'function') {
+            const result = await workerFS.writeOverwrite(fsPath, fileInfo.contentBuffer);
+            if (!result.success) {
+              if (result.currentContent !== undefined) {
+                console.log(`⚠️ [FileRenderer] Overwrite conflict (direct merge path): ${filePath}`);
+                this.fileConflicts.push({
+                  path: filePath,
+                  intendedContent: fileInfo.contentBuffer,
+                  currentContent: result.currentContent,
+                  ownerTask: result.ownerTask,
+                });
+              } else {
+                console.log(`⚠️ [FileRenderer] Overwrite conflict (fallback): ${result.error}`);
+                this.fileErrors.push(result.error || `File "${filePath}" was modified by another task.`);
+              }
+              await this.chatAPI.showChatStatus('file_conflict' as any, {
+                filePath,
+                ownerTask: result.ownerTask,
+              });
+              await this.chatAPI.failFileCreation(filePath, result.error || 'Cross-worker overwrite conflict');
+              return;
+            }
+          } else {
+            // Non-parallel mode: direct write
+            await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
+          }
         } else {
           // New file creation — use writeNewFile for cross-worker ownership check
           const workerFS = this.fileSystem as any;

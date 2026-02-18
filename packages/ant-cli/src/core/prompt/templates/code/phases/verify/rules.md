@@ -15,6 +15,7 @@
 | **No feature changes** | Fix ONLY what prevents compilation/startup. Do NOT improve logic or add functionality. |
 | **Config over code** | Prefer configuration fixes (go.mod, package.json, tsconfig.json) over source code changes. |
 | **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` to refresh. |
+| **No redundant reads** | Files listed in "Files in Context" are known by path only — their content is NOT pre-loaded. Use `read_file` ONLY when build/runtime errors point to a specific file AND its content was not returned in a previous turn. Exception: after a failed `edit_file`, `read_file` to refresh is allowed. |
 
 ---
 

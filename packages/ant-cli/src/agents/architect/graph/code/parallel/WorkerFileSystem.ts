@@ -122,6 +122,37 @@ export class WorkerFileSystem implements FileSystemPort {
     return { success: true };
   }
 
+  // ─── Write Overwrite (<file> tag on pre-existing file — cross-worker check) ──
+
+  /**
+   * Overwrite a pre-existing file. Returns result instead of throwing to allow
+   * graceful error collection in FileRenderer (fileConflicts array).
+   * Detects when another worker has modified the file since task start.
+   */
+  async writeOverwrite(path: string, content: string): Promise<NewFileWriteResult> {
+    const result = await this.sharedBuffer.write(
+      path,
+      content,
+      this.workerId,
+      this.delegate,
+      {
+        isOverwrite: true,
+        taskName: this.taskName,
+      },
+    );
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error,
+        ownerTask: result.ownerTask,
+        currentContent: result.currentContent,
+      };
+    }
+
+    return { success: true };
+  }
+
   // ─── Delegate methods (pass through unchanged) ───────────────────
 
   async fileExists(path: string): Promise<boolean> {
