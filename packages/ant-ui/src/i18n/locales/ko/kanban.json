@@ -21,17 +21,18 @@
   },
   "tokenStats": {
     "input": "입력",
+    "inputDescription": "과금",
     "output": "출력",
     "newCacheMiss": "신규 (캐시 미스):",
     "cacheHit": "캐시 히트:",
     "cacheCreated": "캐시 생성:",
     "cacheHitRate": "캐시 히트율:",
-    "billableInput": "과금 입력:",
-    "inputSavings": "입력 절감:",
+    "cacheEfficiency": "입력 캐시 효율",
+    "totalProcessed": "총 입력:",
+    "savings": "입력 절감:",
     "byPhase": "단계별",
     "estimating": "계획:",
-    "noCacheActivity": "캐시 활동 없음",
-    "outputDescription": "캐시 불가 · 입력 대비 5배 가격",
+    "outputDescription": "과금 · 캐시 불가",
     "noTokenData": "토큰 사용 데이터 없음"
   },
   "task": {

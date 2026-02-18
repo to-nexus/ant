@@ -842,6 +842,7 @@ export function buildCodeGraph() {
       // ✅ Token tracking (internal, accumulated across LLM calls)
       _currentTaskTokenUsage: null as any,  // Task-level token usage (reset per task)
       tokenUsage: null as any,              // Job-level token usage (accumulated across all tasks + decompose)
+      _estimatingTokenUsage: null as any,   // Estimating phase snapshot (captured at end of decompose)
       
       // ✅ codeGen call counter (per task, reset in checkTaskStatus)
       _codeGenCallIndex: {
