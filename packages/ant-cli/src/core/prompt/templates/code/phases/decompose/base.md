@@ -55,9 +55,10 @@ Break this specification into a prioritized list of implementation tasks.
 ════════════════════════════════════════════════════════════════════════════════
 
 **Task Granularity:**
-- Not too large: Each task should be independently implementable
-- Not too small: Avoid micro-tasks like "Create one file"
-- Good size: A feature that delivers value (e.g., "Login system")
+- Not too large: Each task should have ONE independent persistence boundary
+- Not too small: Each task should be independently verifiable (build + run)
+- Description = scope boundary + design doc section reference (NOT implementation detail)
+- See rules for detailed scope constraints
 
 **Priority Assignment** (LOWER NUMBER = HIGHER PRIORITY):
 - 100: Setup (if needed, only in generate mode)

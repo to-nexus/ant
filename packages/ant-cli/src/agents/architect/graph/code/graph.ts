@@ -843,6 +843,12 @@ export function buildCodeGraph() {
       _currentTaskTokenUsage: null as any,  // Task-level token usage (reset per task)
       tokenUsage: null as any,              // Job-level token usage (accumulated across all tasks + decompose)
       
+      // ✅ codeGen call counter (per task, reset in checkTaskStatus)
+      _codeGenCallIndex: {
+        value: (_prev: number, next: number) => next,
+        default: () => 0,
+      } as any,
+
       // Recursion tracking
       recursionCount: null as any,  // ✅ Current iteration count
       recursionLimit: null as any,  // ✅ Maximum allowed iterations

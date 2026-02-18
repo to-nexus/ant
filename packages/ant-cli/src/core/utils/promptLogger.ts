@@ -8,9 +8,7 @@
  * 
  * Creates files in sessions/debug/prompts/ directory.
  * 
- * File naming:
- * - Design Job: prompt-design-{jobId}.md
- * - Code Job: prompt-code-{jobId}.md
+ * File naming: prompt-{jobId}.md
  */
 
 import * as path from 'path';
@@ -58,7 +56,7 @@ export class PromptLogger {
     this.logDirPath = getSessionDebugDir(options.featurePath, agent, 'prompts');
     this.logFilePath = path.join(
       this.logDirPath,
-      `prompt-${options.jobType}-${options.jobId}.md`
+      `prompt-${options.jobId}.md`
     );
   }
 
@@ -257,7 +255,7 @@ const loggerInstances: Map<string, PromptLogger> = new Map();
  * Get or create a prompt logger for a job
  */
 export function getPromptLogger(options: PromptLoggerOptions): PromptLogger {
-  const key = `${options.jobType}-${options.jobId}`;
+  const key = options.jobId;
   
   if (!loggerInstances.has(key)) {
     loggerInstances.set(key, new PromptLogger(options));
@@ -270,8 +268,7 @@ export function getPromptLogger(options: PromptLoggerOptions): PromptLogger {
  * Clear logger instance (call when job completes)
  */
 export function clearPromptLogger(jobType: 'design' | 'code' | 'plan', jobId: string): void {
-  const key = `${jobType}-${jobId}`;
-  loggerInstances.delete(key);
+  loggerInstances.delete(jobId);
 }
 
 /**

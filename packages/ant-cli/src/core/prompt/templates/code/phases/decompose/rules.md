@@ -63,7 +63,7 @@ Each task object MUST follow this schema:
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `ui` | Yes | `true` if task involves the visual presentation layer |
 | `uiSections` | When ui=true | Array of UI doc section IDs to inject (see specification for available sections) |
-| `description` | Yes | What to do. Prefix with `<ui>` when `ui: true` |
+| `description` | Yes | Scope boundary + design doc section reference. Prefix with `<ui>` when `ui: true` |
 
 CRITICAL:
 - The JSON inside `<tasks>` tags MUST be valid JSON (no trailing commas, proper quotes)
@@ -174,15 +174,38 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 ---
 
+## Task Scope Constraint
+
+**WHY this matters**: A task with multiple persistence boundaries forces repeated interactions that replay the full conversation history, causing disproportionate token consumption. A task below one persistence boundary cannot be verified independently and wastes per-task overhead.
+
+**Observation target**: Count the number of independent persistence boundaries in each task.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Persistence boundaries** | How many independent data access interfaces does this task require? |
+| **Endpoint groups** | How many logically independent API endpoint groups does this task expose? |
+
+**Constraint**: If a task requires MORE THAN ONE independent persistence boundary with its own business logic and API layer, split into separate tasks — one per boundary.
+
+**Constraint**: Entities that the design document groups in the same section but that have SEPARATE persistence boundaries MUST be separate tasks.
+
+**Constraint**: Do NOT split below the persistence boundary level. An entity with its business logic and API layer is the minimum useful task unit. Splitting further (e.g., data access alone, business logic alone) creates tasks that cannot be verified independently and wastes per-task overhead.
+
+**Blind spot**: Entities that reference each other are easily perceived as inseparable. The test is whether each has its own persistence boundary — if yes, they are independent and should be separate tasks.
+
+---
+
 ## Feature Task Descriptions
 
-**Principle**: Task descriptions specify WHAT to implement (functional scope, endpoints, business logic), not WHERE to place files. CodeGen observes the actual directory tree and determines file paths.
+**Principle**: Description defines the scope boundary — WHAT the task delivers, not HOW it implements. The Plan phase determines implementation details using available context (design documents, existing codebase, directive).
 
-**Constraint**: Do NOT include concrete file paths or directory names in feature task descriptions. Describe functional scope and reference design document sections instead.
+**Constraint**: Description states WHICH persistence boundary and WHICH endpoints/functionality the task covers. It does NOT state HOW they are implemented (method signatures, parameters, return types, error code strings, transaction steps).
 
-**Constraint**: Do NOT embed language-specific directory conventions in descriptions. Directory structure decisions belong to CodeGen, which applies language conventions after observing the codebase.
+**Constraint**: When design documents are available, reference the relevant sections. Do NOT duplicate content from those sections into the description.
 
-**Blind spot reminder**: It is easy to convert design document layer names directly into file paths in task descriptions. Describe the functional boundary, not the file location.
+**Constraint**: Do NOT include concrete file paths, directory names, or language-specific directory conventions in descriptions.
+
+**Blind spot**: Copying implementation details into descriptions — whether from design documents, PRD, or directive — creates a parallel specification. When parallel tasks reference the same copied details, they generate conflicting implementations. The description marks scope; the Plan phase extracts implementation details from available sources.
 
 ---
 

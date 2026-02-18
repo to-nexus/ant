@@ -58,7 +58,7 @@ function resolveModelForContext(
   context: LLMContext | undefined,
   workspaceConfig: any
 ): string {
-  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-5-20250929';  // ✅ Latest default
+  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-6';
   
   // If no context provided, use default
   if (!context) {

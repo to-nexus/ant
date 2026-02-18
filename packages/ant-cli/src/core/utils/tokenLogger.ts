@@ -77,11 +77,13 @@ export class TokenLogger {
   private logDirPath: string;
   private logFilePath: string;
   private initialized = false;
+  private hasEntries = false;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: TokenLoggerOptions) {
     this.options = options;
     this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'tokens');
-    this.logFilePath = path.join(this.logDirPath, `${options.jobId}.json`);
+    this.logFilePath = path.join(this.logDirPath, `token-${options.jobId}.json`);
   }
 
   /**
@@ -98,6 +100,8 @@ export class TokenLogger {
       const outputTokens = usage.outputTokens || 0;
       const totalForRatio = cacheReadTokens + inputTokens;
 
+      const cacheHitRatio = totalForRatio > 0 ? Math.round((cacheReadTokens / totalForRatio) * 1000) / 1000 : 0;
+
       const entry: TokenLogEntry = {
         taskId: context.taskId,
         taskName: context.taskName,
@@ -111,10 +115,35 @@ export class TokenLogger {
         conversationHistoryLength: context.conversationHistoryLength,
         projectCodeContextFiles: context.projectCodeContextFiles,
         estimatedPromptChars: context.estimatedPromptChars,
-        cacheHitRatio: totalForRatio > 0 ? Math.round((cacheReadTokens / totalForRatio) * 1000) / 1000 : 0,
+        cacheHitRatio,
         taskCumulativeInput: context.taskCumulativeInput + inputTokens,
         taskCumulativeOutput: context.taskCumulativeOutput + outputTokens,
       };
+
+      // ━━━ Monitoring alerts ━━━
+      if (context.callIndex > 0 && cacheHitRatio < 0.5 && context.node === 'codeGen') {
+        console.warn(
+          `⚠️  [TokenMonitor] Low cache hit: ${(cacheHitRatio * 100).toFixed(1)}% ` +
+          `(task=${context.taskId}, call=${context.callIndex}). ` +
+          `cacheRead=${cacheReadTokens} input=${inputTokens} creation=${cacheCreationTokens}`
+        );
+      }
+
+      if (context.callIndex > 0 && context.callIndex % 5 === 0 && context.node === 'codeGen') {
+        const cumInput = context.taskCumulativeInput + inputTokens;
+        const cumOutput = context.taskCumulativeOutput + outputTokens;
+        console.log(
+          `📊 [TokenMonitor] Task ${context.taskId} iteration ${context.callIndex}: ` +
+          `cumulative ${cumInput + cumOutput} tokens (in=${cumInput} out=${cumOutput})`
+        );
+      }
+
+      if (context.callIndex >= 15 && context.node === 'codeGen') {
+        console.warn(
+          `⚠️  [TokenMonitor] High iteration count: ${context.callIndex} calls ` +
+          `(task=${context.taskId} "${context.taskName}")`
+        );
+      }
 
       await this.appendEntry(entry);
     } catch (error) {
@@ -123,42 +152,48 @@ export class TokenLogger {
     }
   }
 
+  /**
+   * Serialize all writes through a promise queue to prevent race conditions.
+   * Without this, concurrent appendEntry calls can read the file simultaneously,
+   * both decide no comma is needed, and produce `}{` instead of `},{`.
+   */
+  private enqueue(fn: () => Promise<void>): Promise<void> {
+    this.writeQueue = this.writeQueue.then(fn, fn);
+    return this.writeQueue;
+  }
+
   private async appendEntry(entry: TokenLogEntry): Promise<void> {
-    await this.ensureLogDir();
+    return this.enqueue(async () => {
+      await this.ensureLogDir();
 
-    if (!this.initialized) {
-      // First entry: create file with JSON array start
-      try {
-        await fs.access(this.logFilePath);
-        // File already exists (e.g., resumed job) — read and parse to append
-        this.initialized = true;
-      } catch {
-        // File doesn't exist, create with opening bracket
-        await fs.writeFile(this.logFilePath, '[\n');
-        this.initialized = true;
+      if (!this.initialized) {
+        try {
+          await fs.access(this.logFilePath);
+          const content = await fs.readFile(this.logFilePath, 'utf-8');
+          this.hasEntries = content.trim().length > 2;
+          this.initialized = true;
+        } catch {
+          await fs.writeFile(this.logFilePath, '[\n');
+          this.initialized = true;
+        }
       }
-    }
 
-    // Read current file to check if we need a comma
-    const content = await fs.readFile(this.logFilePath, 'utf-8');
-    const needsComma = content.trim().length > 2; // More than just "[\n"
-
-    const entryJson = JSON.stringify(entry, null, 2);
-    const prefix = needsComma ? ',\n' : '';
-    await fs.appendFile(this.logFilePath, prefix + entryJson);
+      const entryJson = JSON.stringify(entry, null, 2);
+      const prefix = this.hasEntries ? ',\n' : '';
+      await fs.appendFile(this.logFilePath, prefix + entryJson);
+      this.hasEntries = true;
+    });
   }
 
   /**
    * Finalize the JSON array (call when job completes)
    */
   async finalize(): Promise<void> {
-    try {
+    return this.enqueue(async () => {
       if (this.initialized) {
         await fs.appendFile(this.logFilePath, '\n]\n');
       }
-    } catch {
-      // Non-blocking
-    }
+    }).catch(() => {});
   }
 
   private async ensureLogDir(): Promise<void> {

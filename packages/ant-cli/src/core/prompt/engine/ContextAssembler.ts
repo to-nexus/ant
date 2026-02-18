@@ -194,20 +194,29 @@ export class ContextAssembler {
       Object.assign(assembled, loaded);
     }
     
-    // ✅ FIX: Re-apply artifact values that take priority over contextLoader
-    // The contextLoader re-loads design docs from disk on every call, but uses generic defaults
-    // (findLatestDesign always picks fe-system-design.md first, loadDesignDocuments uses 'unknown' env).
-    // The artifact values from promptBuilder are more specific (split-injected per task, env-filtered).
+    // ✅ FIX: Re-apply ALL artifact values that take priority over contextLoader.
+    // The contextLoader re-reads from disk on every buildExecutePrompt call and
+    // Object.assign overwrites artifact values. This causes cache invalidation when
+    // the loader returns even slightly different content (e.g., different designDocPath).
+    // Artifacts from promptBuilder are the authoritative source — always restore them.
     if (artifacts) {
-      // designDoc: promptBuilder's buildDesignDocForTask selects correct doc per task packages
-      // (e.g., be-system-design.md for backend tasks). Loader's findLatestDesign always returns FE first.
+      if (artifacts.directive !== undefined) {
+        assembled.directive = artifacts.directive;
+      }
       if (artifacts.designDoc !== undefined) {
         assembled.designDoc = artifacts.designDoc;
       }
-      // designDocs: resolve.ts loads with detected environment (e.g., 'fullstack' → both FE+BE).
-      // Loader uses 'unknown' which may load differently than the env-filtered version.
       if (artifacts.designDocs !== undefined) {
         assembled.designDocs = artifacts.designDocs;
+      }
+      if (artifacts.projectCodeContext !== undefined) {
+        assembled.projectCodeContext = artifacts.projectCodeContext;
+      }
+      if (artifacts.referenceCodeContexts !== undefined) {
+        assembled.referenceCodeContexts = artifacts.referenceCodeContexts;
+      }
+      if (artifacts.currentTask !== undefined) {
+        assembled.currentTask = artifacts.currentTask;
       }
     }
     

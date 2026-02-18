@@ -299,6 +299,7 @@ export async function codeGen(
   let thinking = '';
   let textResponse = '';
   let isDone = false;  // ✅ Track done event (don't propagate immediately)
+  let newCallIndex = (state._codeGenCallIndex || 0) + 1;
   const toolCalls: Array<{
     id: string;
     name: string;
@@ -346,8 +347,7 @@ export async function codeGen(
           accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
 
           // ✅ Log to debug/tokens/ for per-call analysis
-          const callIdx = state._codeGenCallIndex || 0;
-          state._codeGenCallIndex = callIdx + 1;
+          const callIdx = newCallIndex - 1;
           const taskUsage = state._currentTaskTokenUsage;
           logTokenUsageToFile(
             state.context?.featurePath,
@@ -477,6 +477,7 @@ export async function codeGen(
         conversationHistory: newHistory,
         fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
         projectCodeContext: state.projectCodeContext,
+        _codeGenCallIndex: newCallIndex,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         profile: state.profile,
@@ -589,6 +590,7 @@ export async function codeGen(
           conversationHistory: newHistory,
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           projectCodeContext: updatedProjectCodeContext,
+          _codeGenCallIndex: newCallIndex,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           profile: state.profile,
@@ -601,14 +603,15 @@ export async function codeGen(
         thinking,
         textResponse,
         toolCalls,
-        done: explicitDone,  // ✅ Only done when LLM explicitly says so
+        done: explicitDone,
         tokenUsage: capturedUsage,
       },
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
-      projectCodeContext: updatedProjectCodeContext,  // ✅ Propagate to next codeGen turn
-      recursionCount: state.recursionCount,   // ✅ FIX: Propagate to LangGraph channel (Partial return requires explicit inclusion)
-      recursionLimit: state.recursionLimit,   // ✅ FIX: Propagate to LangGraph channel
-      profile: state.profile,                 // ✅ FIX: Preserve profile for ModeController language detection
+      projectCodeContext: updatedProjectCodeContext,
+      _codeGenCallIndex: newCallIndex,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      profile: state.profile,
     };
   } catch (error) {
     console.error('[ERROR] ❌ [CodeGen] Error during reasoning:');

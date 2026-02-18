@@ -284,7 +284,7 @@ async function saveKeywordsForDebug(
     const keywordsDir = getSessionDebugDir(featurePath, 'architect', 'keywords');
     await fs.mkdir(keywordsDir, { recursive: true });
 
-    const filepath = path.join(keywordsDir, `${jobId}.json`);
+    const filepath = path.join(keywordsDir, `keyword-${jobId}.json`);
 
     // Load existing entries or start fresh
     let entries: any[] = [];
@@ -343,7 +343,7 @@ export async function updateKeywordsWithRetrieval(
     if (!featurePath || !jobId) return;
 
     const keywordsDir = getSessionDebugDir(featurePath, 'architect', 'keywords');
-    const filepath = path.join(keywordsDir, `${jobId}.json`);
+    const filepath = path.join(keywordsDir, `keyword-${jobId}.json`);
 
     let entries: any[] = [];
     try {

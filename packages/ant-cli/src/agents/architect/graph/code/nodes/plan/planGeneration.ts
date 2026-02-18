@@ -227,7 +227,7 @@ async function savePlanTextForDebug(
     const planTextDir = getSessionDebugDir(featurePath, 'architect', 'plans');
     await fs.mkdir(planTextDir, { recursive: true });
     
-    const filepath = path.join(planTextDir, `${jobId}.json`);
+    const filepath = path.join(planTextDir, `plan-${jobId}.json`);
     
     // Load existing plans array or create new
     let plansArray: any[] = [];

@@ -7,6 +7,7 @@
  * - Current task, user directive (not cached - changes frequently)
  */
 
+import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { HistoryManager } from "../../../../../../core/utils/historyManager";
@@ -15,6 +16,8 @@ import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
+
+let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
@@ -172,6 +175,34 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     text: projectContextParts.join('\n\n'),
     cache_control: { type: 'ephemeral' }
   };
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Cache stability check: detect non-deterministic block content
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    const currentTaskId = state.currentTask?.id || 'unknown';
+    if (_lastCacheBlockHashes.taskId !== currentTaskId) {
+      _lastCacheBlockHashes = { taskId: currentTaskId };
+    }
+
+    const b1Hash = createHash('md5').update(systemPromptBlock.text).digest('hex').slice(0, 12);
+    const b2Hash = createHash('md5').update(projectContextBlock.text).digest('hex').slice(0, 12);
+    const b1Len = systemPromptBlock.text.length;
+    const b2Len = projectContextBlock.text.length;
+    const histLen = state.conversationHistory?.length || 0;
+
+    if (_lastCacheBlockHashes.block1 && _lastCacheBlockHashes.block1 !== b1Hash) {
+      console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${_lastCacheBlockHashes.block1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
+    }
+    if (_lastCacheBlockHashes.block2 && _lastCacheBlockHashes.block2 !== b2Hash) {
+      console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${_lastCacheBlockHashes.block2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
+    }
+
+    if (histLen === 0) {
+      console.log(`🔑 [CacheStability] New task → Block1=${b1Hash}(${b1Len}) Block2=${b2Hash}(${b2Len})`);
+    }
+    _lastCacheBlockHashes = { block1: b1Hash, block2: b2Hash, taskId: currentTaskId };
+  }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Block 2.5: UI Images (NOT CACHED - multimodal blocks)
@@ -584,6 +615,36 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(``);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(``);
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Iteration budget awareness
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const callIndex = state._codeGenCallIndex || 0;
+  const taskType = state.currentTask?.type || 'feature';
+  const softLimits: Record<string, number> = {
+    verification: 12,
+    feature: 18,
+    setup: 10,
+    error: 8,
+  };
+  const softLimit = softLimits[taskType] || 15;
+
+  if (callIndex > 0) {
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(`⏱ Iteration ${callIndex + 1} of ~${softLimit} budget`);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(``);
+
+    if (callIndex >= softLimit) {
+      lines.push(`⚠️ OVER BUDGET. Wrap up immediately:`);
+      lines.push(`- If there are remaining errors, fix ALL of them in this single pass.`);
+      lines.push(`- Do NOT start new build-fix cycles. Apply all known fixes, then output <done>true</done>.`);
+      lines.push(``);
+    } else if (callIndex >= softLimit - 3) {
+      lines.push(`⚠️ Approaching budget limit. Prioritize batch operations to finish efficiently.`);
+      lines.push(``);
+    }
   }
 
   const fileTree = generateFileTree(state);

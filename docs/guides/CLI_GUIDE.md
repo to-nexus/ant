@@ -235,7 +235,7 @@ Generated code written to repository root (`src/`, `lib/`), not `workspace/outpu
   "strictValidation": true,
   "runTests": false,
   "llmProvider": "anthropic",
-  "llmModel": "claude-sonnet-4-5"
+  "llmModel": "claude-sonnet-4-6"
 }
 ```
 
