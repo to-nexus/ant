@@ -81,7 +81,7 @@ export async function generateTaskKeywords(
 
   try {
     // ✅ Use centralized LLM wrapper with automatic token tracking
-    const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+    const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     const beforeUsage = getTaskTokenUsage(state as any);
     const response = await invokeWithTracking(
       llm,
@@ -89,8 +89,9 @@ export async function generateTaskKeywords(
       state as any,
       { temperature: LLM_TEMPERATURE.PLAN_KEYWORD, maxTokens: LLM_MAX_TOKENS.KEYWORD }
     );
+    updateKanbanTokenUsage(state as any);
 
-    // ✅ Log to debug/tokens/
+    // Log to debug/tokens/
     const afterUsage = getTaskTokenUsage(state as any);
     const kwCallUsage = {
       inputTokens: afterUsage.inputTokens - beforeUsage.inputTokens,

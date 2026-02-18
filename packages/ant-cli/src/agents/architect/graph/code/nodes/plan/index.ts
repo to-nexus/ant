@@ -127,7 +127,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // ✅ CRITICAL: Save checkpoint after task started so session has correct currentTask
     // Without this, manual cancel during codeGen can't find the in-progress task
     // (session still has stale currentTask from previous learn node save)
-    if (state.deps?.session && state.context.featureFolder) {
+    // Skip in worker context — orchestrator manages parallel checkpoints separately
+    if (!isWorkerCtx && state.deps?.session && state.context.featureFolder) {
       try {
         const { saveCheckpoint } = await import('../checkpoint');
         await saveCheckpoint({

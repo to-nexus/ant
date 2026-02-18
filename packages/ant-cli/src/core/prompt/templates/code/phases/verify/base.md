@@ -53,6 +53,21 @@ Run the project's build/compile command.
 
 **Constraint**: Do NOT fix-and-rebuild after each individual error. Each rebuild costs a full iteration. If the build reports 8 errors, fix all 8 before rebuilding. A single rebuild cycle that fixes 8 errors is 8x more efficient than 8 separate cycles.
 
+### Common Build Error: Duplicate Symbols
+
+**Principle**: When parallel tasks independently create the same type, function, or variable in a shared namespace, the compiler reports duplicate/redeclared symbol errors. These are NOT independent errors — they share a single root cause: the symbol exists in multiple files.
+
+**Resolution strategy**:
+1. Identify ALL files that declare the duplicated symbol (`search_code`)
+2. Choose the ONE file that is the most complete or most appropriate owner
+3. Delete or remove the duplicate declarations from all other files
+4. Update imports in files that referenced the deleted declarations
+5. Repeat for ALL duplicate symbols before rebuilding
+
+**Constraint**: Resolve ALL duplicate symbols in a single batch before rebuilding. Each duplicate symbol may cascade into multiple compiler errors (unused imports, missing references). Fixing the root cause (removing duplicate declarations) resolves the cascading errors together.
+
+⚠️ **Blind spot**: A single duplicate struct/type can produce 5-10 compiler errors (redeclaration + each method/usage). Count unique duplicate symbols, not error lines.
+
 ### Step 4: Runtime (if build succeeds)
 
 Run the project's dev/start command to verify the application starts.

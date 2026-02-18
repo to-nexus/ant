@@ -236,6 +236,28 @@ Existing files: `edit_file` or `<append>`. New files only: `<file>`.
    [area]/[name].ts         ← Single source of truth
 ```
 
+────────────────────────────────────────────────────────────────────────────────
+### 5. Symbol-Level Duplicate Prevention
+
+**Principle**: Before defining a new type, struct, class, function, or interface, check whether one with the same purpose already exists in the same namespace scope (package, module, directory).
+
+**Constraint**: Use `search_code` or `read_file` to verify no existing symbol serves the same purpose BEFORE writing a new definition. If one exists, import/use it — do NOT redefine.
+
+**Constraint**: Utility functions (error helpers, response formatters, context extractors, middleware) MUST exist in exactly one file per scope. If a shared utility file already exists in the directory, add to it rather than creating a new one.
+
+⚠️ **Blind spot**: When multiple tasks run in parallel, each task cannot see the other's output. Common collision points:
+- Middleware (auth, logging, error handling)
+- Response/error helper functions
+- Repository/data-access structs for shared entities
+- Type definitions and interfaces in a shared package
+
+If your plan references a component that another task owns, define a **minimal local interface** describing only what your module consumes. Do NOT create the implementation.
+
+────────────────────────────────────────────────────────────────────────────────
+{{#unless (eq currentTask.type "feature")}}
+{{> code/base/injections/batch-fix}}
+{{/unless}}
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 🔗 Module Quality Rules
 ════════════════════════════════════════════════════════════════════════════════

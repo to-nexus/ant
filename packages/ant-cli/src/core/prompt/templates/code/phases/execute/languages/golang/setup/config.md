@@ -57,7 +57,11 @@ go 1.22
 **Key points:**
 - Module path should match the intended repository path
 - Use the latest stable Go version unless design doc specifies otherwise
-- Dependencies are added via `go get` during feature tasks, not during setup
+- If the task description requires declaring dependencies, list them in the `require` block
+
+**Constraint**: Do NOT run `go mod tidy` in setup tasks. Use `go get ./...` to resolve declared dependencies.
+
+⚠️ **Blind spot**: `go mod tidy` removes dependencies not imported by any source file. Setup tasks produce no `.go` files, so ALL declared dependencies get stripped from `go.mod`.
 
 ---
 

@@ -341,12 +341,13 @@ export async function codeGen(
         isDone = true;
         
         // ✅ Extract token usage and accumulate to task-level
-        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
+        const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
           accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
+          updateKanbanTokenUsage(state as any);
 
-          // ✅ Log to debug/tokens/ for per-call analysis
+          // Log to debug/tokens/ for per-call analysis
           const callIdx = newCallIndex - 1;
           const taskUsage = state._currentTaskTokenUsage;
           logTokenUsageToFile(

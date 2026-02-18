@@ -17,22 +17,13 @@
 - NOT → Setup task to rebuild infrastructure
 - Principle: Fix the gap, don't rebuild the foundation
 
-**Task Description Quality:**
-```
-Good pattern:
-"[Action] [Target] - [Method using existing]"
+**Task Description Principle:**
 
-Examples:
-├─ "Fix main.ts - add bootstrap using existing FileStorage"
-├─ "Complete AuthService - add login to existing service"
-├─ "Extend User entity with balance field"
-└─ "Update WebSocket URL in websocket.service.ts"
+Descriptions define WHAT scope the task covers, not HOW it is implemented.
 
-Bad patterns (creating from scratch when code exists):
-├─ "Implement authentication system" (AuthService already exists!)
-├─ "Create database entities" (entities already exist!)
-└─ "Build user module" (user module already exists!)
-```
+**Constraint**: When existing code is detected, descriptions use action verbs that acknowledge existing code ("Fix", "Extend", "Add to", "Complete") — not "Create" or "Implement from scratch".
+
+**Constraint**: Do NOT include file paths, method signatures, or specific class names in descriptions. The Plan phase discovers those from the codebase.
 
 **File Analysis:**
 {{fileCount}} files detected in codebase:

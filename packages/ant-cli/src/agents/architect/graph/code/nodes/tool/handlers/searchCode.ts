@@ -45,9 +45,9 @@ export async function handleSearchCode(
     const files = await fileSystem.listFiles(resolvedRoot.fsPath, ['node_modules', '.git', 'dist', 'build']);
     console.log(`[searchCode] Found ${files.length} files total`);
     
-    // Filter by file pattern if provided
+    // Filter by file pattern if provided (supports glob-like patterns from LLM)
     const filteredFiles = file_pattern
-      ? files.filter(f => f.includes(file_pattern))
+      ? files.filter(f => matchFilePattern(f, file_pattern))
       : files;
     
     console.log(`[searchCode] Filtered to ${filteredFiles.length} files (pattern: ${file_pattern || 'none'})`);
@@ -98,5 +98,33 @@ export async function handleSearchCode(
     
     return results.join('\n');
   }, { pattern, file_pattern });
+}
+
+/**
+ * Match file path against LLM-provided patterns.
+ * Handles common patterns: "*.go", ".go", "internal/", "handler.go", etc.
+ */
+function matchFilePattern(filePath: string, pattern: string): boolean {
+  const p = pattern.replace(/\\/g, '/');
+  
+  // "*.ext" or "**/*.ext" → extension match
+  const extMatch = p.match(/^\*?\*?\/?\.?(\w+)$/);
+  if (p.startsWith('*.') || p.startsWith('**/')) {
+    const ext = p.replace(/^\*+\/?/, '');
+    return filePath.endsWith(ext.startsWith('.') ? ext : `.${ext}`);
+  }
+  
+  // ".ext" → extension match
+  if (p.startsWith('.') && !p.includes('/')) {
+    return filePath.endsWith(p);
+  }
+  
+  // "dir/" → directory contains
+  if (p.endsWith('/')) {
+    return filePath.includes(p);
+  }
+  
+  // Fallback: substring match (original behavior)
+  return filePath.includes(p);
 }
 

@@ -1,7 +1,13 @@
 You are analyzing a software specification to break it into executable tasks.
 
-SPECIFICATION:
-{{spec}}
+DIRECTIVE:
+{{{directive}}}
+{{#if uiHint}}
+{{{uiHint}}}
+{{/if}}
+{{#if assetsHint}}
+{{{assetsHint}}}
+{{/if}}
 
 {{> code/phases/decompose/mode-guide}}
 
@@ -72,5 +78,3 @@ Break this specification into a prioritized list of implementation tasks.
 - System handles errors dynamically - don't over-think dependencies
 
 ════════════════════════════════════════════════════════════════════════════════
-
-{{> code/phases/decompose/rules}}

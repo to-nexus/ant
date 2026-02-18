@@ -17,7 +17,9 @@ export function getTempFilePath(state: ArchitectGraphState, filePath: string): s
 }
 
 /**
- * Build task reminder text for tool call loops
+ * Build task reminder text for tool call loops.
+ * Appended to every tool result message so budget awareness stays
+ * in the LLM's recency window (not only in messages[0]).
  */
 export function buildTaskReminder(state: ArchitectGraphState): string {
   if (!state.currentTask) return '';
@@ -26,7 +28,6 @@ export function buildTaskReminder(state: ArchitectGraphState): string {
     `**${state.currentTask.name}** (${state.currentTask.type})\n\n` +
     `${state.currentTask.description}`;
   
-  // ✅ CRITICAL: Setup task MUST install dependencies after config files
   if (state.currentTask.type === 'setup') {
     taskReminder += `\n\n⚠️  **SETUP TASK - MANDATORY STEPS:**\n` +
       `1. ✅ Generate ALL config files (package.json, tsconfig.json, etc.)\n` +

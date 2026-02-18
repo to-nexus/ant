@@ -51,6 +51,9 @@ Promise.all([
     .catch(() => {}),
   fs.readFile(join(codeBaseInjectionsPath, "git-diff.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/base/injections/git-diff", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "batch-fix.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/batch-fix", content))
     .catch(() => {})
 ]).catch(() => {});
 

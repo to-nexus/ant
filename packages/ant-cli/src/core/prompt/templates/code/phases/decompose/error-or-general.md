@@ -56,40 +56,16 @@ Description: "config.ts validation receiving wrong connection string"
 **Task decomposition approach:**
 
 1. **Extract what user wants** (objective):
-   - Feature to add (e.g., "room list display")
-   - Problem to solve (e.g., "slow page load")
-   - Component to modify (e.g., "login form styling")
+   - Feature to add, problem to solve, component to modify
 
 2. **Separate user's how from what**:
-   - What: "Display room list"
-   - How (user's suggestion): "using DataTable component"
-   - **Task should focus on WHAT, let execution phase decide HOW**
+   - Task description focuses on WHAT (scope boundary)
+   - HOW is determined by the Plan phase using design documents and codebase context
 
-3. **Create focused, what-oriented tasks**:
+3. **Create scope-boundary descriptions**:
    - Task name: What needs to be done (not how)
-   - Task description: Requirements, context, constraints
-   - **Don't** prescribe implementation details
-   - **Don't** assume user's suggested approach is best
-
-**Example:**
-
-User directive: "Add room list using DataTable component with real-time updates via WebSocket"
-
-✅ GOOD task:
-```
-Name: "Implement room list display with real-time updates"
-Description: "Display list of available game rooms with:
-             - Room name, player count, status
-             - Real-time updates when rooms change
-             - User suggested: DataTable component, WebSocket (consider but don't mandate)"
-```
-
-❌ BAD task:
-```
-Name: "Add DataTable component for room list with WebSocket"
-Description: "Create DataTable component with WebSocket connection for room updates"
-```
-**Why bad?** Prescribes implementation (DataTable, WebSocket), limits execution phase options.
+   - Task description: Which persistence boundary, which endpoints/functionality, which design doc sections
+   - **Do NOT** prescribe implementation details, method signatures, or specific libraries
 
 ════════════════════════════════════════════════════════════════════════════════
 
