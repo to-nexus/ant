@@ -116,6 +116,34 @@ existing modules, design specs, dependencies, etc.)
 - ✅ If similar module exists, use MODIFY instead of CREATE
 
 ────────────────────────────────────────────────────────────────────────────────
+## 🔗 CROSS-BOUNDARY DEPENDENCIES (Parallel Execution)
+────────────────────────────────────────────────────────────────────────────────
+
+**Principle**: When your task needs to call into another task's domain (listed in
+Remaining Tasks), define a **minimal local dependency interface** describing ONLY
+what your module needs. Do NOT create or implement the other domain's component.
+
+**Principle**: When multiple modules share a namespace scope (same package or
+directory where declarations are visible to each other), a utility function MUST
+exist in exactly one dedicated file. Do NOT inline identical helper functions in
+multiple module files.
+
+**Constraint**: If another task owns a persistence boundary (repository, store,
+data access), your task MUST NOT create that component. Define a local interface
+with only the methods your module consumes. The application wiring task connects
+implementations to interfaces.
+
+**Constraint**: Before creating a utility or helper function, check the directory
+tree for an existing shared utility file in the same scope. If one exists, plan to
+reuse it. If none exists and the utility is likely needed by sibling modules,
+create it in a dedicated shared file — not inline in your module.
+
+⚠️ **Blind spot**: Parallel tasks cannot see each other's code at execution time.
+If two tasks independently create the same type, struct, class, or function in a
+shared namespace scope, the build fails with duplicate symbol errors. Define ONLY
+what YOU own; depend on interfaces for what others own.
+
+────────────────────────────────────────────────────────────────────────────────
 ## 📝 ANALYSIS SECTION GUIDE
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -161,6 +189,8 @@ Before outputting, verify:
 - [ ] `<plan>` section contains valid JSON
 - [ ] All files belong to YOUR task scope (no shared entry points)
 - [ ] No duplicate modules (checked directory tree)
+- [ ] Cross-boundary deps use local interfaces, not full implementations
+- [ ] Shared utilities in dedicated files, not inlined in multiple modules
 - [ ] For UI: assets are listed if needed
 - [ ] For UI: design tokens are specified
 
