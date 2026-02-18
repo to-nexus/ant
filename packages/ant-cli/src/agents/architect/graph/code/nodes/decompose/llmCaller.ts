@@ -13,7 +13,7 @@ import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
  */
 export async function callLLMForDecompose(
   llm: LLMClient,
-  prompt: string,
+  prompt: string | { system: string; user: string },
   workspaceConfig?: any
 ): Promise<{ response: string; tokenUsage?: any }> {
   console.log('🤖 [Decompose] Calling LLM for task breakdown...');
@@ -51,9 +51,14 @@ export async function callLLMForDecompose(
   let response = '';
   let capturedUsage: any = undefined;
   
-  for await (const event of llmToUse.stream([
-    { role: 'user', content: prompt }
-  ], {
+  const messages = typeof prompt === 'string'
+    ? [{ role: 'user', content: prompt }]
+    : [
+        { role: 'system', content: prompt.system },
+        { role: 'user', content: prompt.user },
+      ];
+  
+  for await (const event of llmToUse.stream(messages, {
     temperature: LLM_TEMPERATURE.DECOMPOSE,
     maxTokens: 16000
   })) {

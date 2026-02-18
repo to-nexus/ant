@@ -445,39 +445,29 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           callIndex: state._codeGenCallIndex,
           templatePath: isVerificationTask ? 'code/phases/verify/base' : 'code/phases/execute/base',
           usedTemplates: [
-            'code/phases/execute/rules',
-            'code/base/injections/text-format-compact',
-            'code/base/injections/tool-calling-rules-compact',
-            'code/base/injections/system-design-guide',
-            'code/base/injections/ui-design-guide',
-            'code/base/injections/retrieved-code',
-            'code/base/injections/reference-code',
-          ],
+            promptResult.modeConfig.templates.base,
+            promptResult.modeConfig.templates.rules,
+            ...(promptResult.modeConfig.templates.injections || []),
+          ].filter(Boolean),
           injectedVariables: {
-            // Content lengths
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             designDoc: designDocForTask ? `[${designDocForTask.length} chars]` : undefined,
-            packages: state.currentTask?.packages || undefined,  // ✅ Log packages for debugging
+            packages: state.currentTask?.packages || undefined,
             prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
             uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
-            // Config
             jobMode: state.detectionReport?.jobMode,
             taskType: state.currentTask?.type,
             detectedEnvironment: state.detectionReport?.environment,
-            // Context counts
             projectCodeContextFiles: codeGenProjectCodeContext?.files?.length || 0,
             referenceCodeContexts: state.referenceCodeContexts?.length || 0,
-            // UI images
             uiImageBlocksCount: uiImageBlocks.filter(b => (b as any).type === 'image').length,
-            // Violations (retry scenario)
             hasViolations: !!(state.violations?.length),
             violationsCount: state.violations?.length || 0,
-            // History
             messageCount: messages.length,
             conversationHistoryLength: state.conversationHistory?.length || 0,
-            // Runtime assets
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
+            failedTemplates: composed.failedTemplates.length > 0 ? composed.failedTemplates : undefined,
           },
         }
       );
@@ -615,36 +605,6 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(``);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(``);
-  }
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Iteration budget awareness
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const callIndex = state._codeGenCallIndex || 0;
-  const taskType = state.currentTask?.type || 'feature';
-  const softLimits: Record<string, number> = {
-    verification: 12,
-    feature: 18,
-    setup: 10,
-    error: 8,
-  };
-  const softLimit = softLimits[taskType] || 15;
-
-  if (callIndex > 0) {
-    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`⏱ Iteration ${callIndex + 1} of ~${softLimit} budget`);
-    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(``);
-
-    if (callIndex >= softLimit) {
-      lines.push(`⚠️ OVER BUDGET. Wrap up immediately:`);
-      lines.push(`- If there are remaining errors, fix ALL of them in this single pass.`);
-      lines.push(`- Do NOT start new build-fix cycles. Apply all known fixes, then output <done>true</done>.`);
-      lines.push(``);
-    } else if (callIndex >= softLimit - 3) {
-      lines.push(`⚠️ Approaching budget limit. Prioritize batch operations to finish efficiently.`);
-      lines.push(``);
-    }
   }
 
   const fileTree = generateFileTree(state);

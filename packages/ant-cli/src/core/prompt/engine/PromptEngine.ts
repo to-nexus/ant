@@ -374,23 +374,14 @@ export class PromptEngine {
       count: number;
       files: string[];
     };
-  }): Promise<string> {
-    // ✅ CRITICAL: Use hasProjectCode (git-based) as primary indicator
-    // Fallback to codebaseFilePaths only if hasProjectCode not provided
+  }): Promise<{ system: string; user: string }> {
     const hasExistingCode = context.hasProjectCode ?? 
                            (context.codebaseFilePaths && context.codebaseFilePaths.length > 0);
     
-    // ✅ File list from keyword-based RAG search (only if codebaseFilePaths exists)
     const fileList = (context.codebaseFilePaths && context.codebaseFilePaths.length > 0)
       ? context.codebaseFilePaths.map(f => `- ${f}`).join('\n')
       : '';
     
-    // ✅ Build spec from directive + design doc
-    const spec = context.hasDesignDoc 
-      ? `## Directive\n${context.directive}\n\n## Design Document\n${context.designDoc}`
-      : context.directive;
-    
-    // ✅ UI sections summary for split injection (shows available sections with token estimates)
     const uiHint = context.uiSectionsSummary
       ? `\n\n${context.uiSectionsSummary}\n`
       : '';
@@ -410,16 +401,19 @@ export class PromptEngine {
     
     const enrichedContext = {
       ...context,
-      spec: `${spec}${uiHint}${assetsHint}`,
       hasExistingCode,
       fileList,
       fileCount: context.codebaseFilePaths?.length || 0,
-      hasErrorInDirective: context.hasErrorInDirective || false, // ✅ Pass to template
-      hasUiDocs: Boolean(context.uiSectionsSummary), // ✅ UI docs available (for setup task ui flag)
+      hasErrorInDirective: context.hasErrorInDirective || false,
+      hasUiDocs: Boolean(context.uiSectionsSummary),
+      uiHint,
+      assetsHint,
     };
     
-    // decompose/base.md now includes {{> code/phases/decompose/rules}}
-    return await this.deps.promptPort.render('code/phases/decompose/base', enrichedContext);
+    const system = await this.deps.promptPort.render('code/phases/decompose/rules', enrichedContext);
+    const user = await this.deps.promptPort.render('code/phases/decompose/base', enrichedContext);
+    
+    return { system, user };
   }
 
   /**

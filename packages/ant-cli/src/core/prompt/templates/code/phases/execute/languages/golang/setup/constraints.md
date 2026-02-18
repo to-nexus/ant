@@ -19,7 +19,7 @@
 
 **Setup Task Scope:**
 ```
-PHASE 1 (Setup):    Config files in codebase/ → go mod tidy → Ready for code
+PHASE 1 (Setup):    Config files in codebase/ → go get → Ready for code
 PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 ```
 

@@ -235,8 +235,11 @@ export function logTokenUsageToFile(
 }
 
 /**
- * Update Kanban with real-time token usage for in-progress task
- * Call this after each LLM interaction to reflect token consumption immediately
+ * Update Kanban with real-time token usage for in-progress task.
+ * Call this after each LLM interaction to reflect token consumption immediately.
+ *
+ * Copies task-level usage onto currentTask so individual task cards update,
+ * and passes job-level usage to the broadcaster for the header badge.
  */
 export function updateKanbanTokenUsage(
   state: any  // ArchitectGraphState or DesignGraphState
@@ -245,19 +248,25 @@ export function updateKanbanTokenUsage(
     return;
   }
   
-  const tokenUsage = getTaskTokenUsage(state);
-  
-  // Only update if there's actual token usage
-  if (computeTotal(tokenUsage) === 0) {
+  const isWorkerCtx = (state as any).workerId !== undefined && (state as any).workerId !== null;
+  if (isWorkerCtx) {
     return;
   }
   
-  // Get current snapshot to preserve other data
-  const taskQueue = (state as any).taskQueue;
-  const queue = taskQueue ? taskQueue.getRemaining() : [];
-  const completedTasks = (state as any).completedTasksDetails || [];
+  const taskTokens = getTaskTokenUsage(state);
+  const jobTokens = getJobTokenUsage(state);
   
-  console.log(`[Token Usage] 📊 Updating Kanban with real-time tokens: ${computeTotal(tokenUsage)} total`);
+  if (computeTotal(jobTokens) === 0) {
+    return;
+  }
+  
+  // Sync task-level accumulation onto the live task object so the
+  // broadcaster's snapshot includes per-task token counts.
+  state.currentTask.tokenUsage = { ...taskTokens };
+  
+  const taskQueue = (state as any).taskQueue;
+  const queue = taskQueue ? (taskQueue.getRemaining?.() ?? taskQueue.getAll?.() ?? []) : [];
+  const completedTasks = (state as any).completedTasksDetails || [];
   
   state.deps.kanbanUpdate.updateTaskQueue(
     state._httpJobId,
@@ -266,6 +275,6 @@ export function updateKanbanTokenUsage(
     completedTasks,
     state.recursionCount,
     state.recursionLimit,
-    tokenUsage
+    jobTokens
   );
 }

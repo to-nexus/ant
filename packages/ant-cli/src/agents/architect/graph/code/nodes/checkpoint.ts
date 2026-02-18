@@ -20,6 +20,14 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     return; // No session port available
   }
   
+  // Workers must NOT write global session checkpoint — orchestrator handles it.
+  // Worker state has taskQueue=undefined, so writing here would clobber the
+  // session's taskQueue with [] and lose all queued tasks.
+  const _wid = (state as any).workerId;
+  if (_wid !== undefined && _wid !== null) {
+    return;
+  }
+  
   console.log(`[saveCheckpoint] 💾 Saving checkpoint:`, {
     completedTasksCount: state.completedTasks?.length ?? 0,
     completedTasksDetailsCount: state.completedTasksDetails?.length ?? 0,

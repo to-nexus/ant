@@ -63,7 +63,7 @@ Each task object MUST follow this schema:
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `ui` | Yes | `true` if task involves the visual presentation layer |
 | `uiSections` | When ui=true | Array of UI doc section IDs to inject (see specification for available sections) |
-| `description` | Yes | Scope boundary + design doc section reference. Prefix with `<ui>` when `ui: true` |
+  | `description` | Yes | Scope boundary + design doc section reference. Prefix with `<ui>` when `ui: true` |
 
 CRITICAL:
 - The JSON inside `<tasks>` tags MUST be valid JSON (no trailing commas, proper quotes)
@@ -193,6 +193,8 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Blind spot**: Entities that reference each other are easily perceived as inseparable. The test is whether each has its own persistence boundary — if yes, they are independent and should be separate tasks.
 
+⚠️ **Blind spot**: Entities with a parent-child or lifecycle relationship (e.g., "requests" that become "matches", "orders" that generate "invoices") appear tightly coupled but have INDEPENDENT persistence boundaries. The relationship between them is business logic, not a reason to merge tasks. Each entity with its own table/collection and API endpoints is a separate task.
+
 ---
 
 ## Feature Task Descriptions
@@ -218,6 +220,27 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 **Constraint**: Do NOT create a separate task for copying assets. UI tasks handle asset integration as part of their implementation.
 
 **Constraint**: Do NOT create a separate design tokens task. Include token configuration in the Setup task (new project) or the first UI task (existing project).
+
+---
+
+## Shared Types Task
+
+**Principle**: When parallel feature tasks will operate on entities defined in the same schema (database, API contract), the type definitions that multiple tasks depend on must be established before those tasks execute. Without this, parallel tasks independently create conflicting type definitions.
+
+**Observation target**: Does the project have a shared type/model layer that multiple feature tasks will read or write?
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Shared schema** | Are there domain types (models, entities, DTOs) referenced by 2+ feature tasks? |
+| **Parallel conflict risk** | Will 2+ parallel tasks need to define or extend types in the same package/module? |
+
+**Constraint**: If 2+ parallel feature tasks depend on the same domain types, create a dedicated exclusive task (priority 150-199, after setup, before features) that defines ALL shared type definitions.
+
+**Constraint**: This task defines types/interfaces ONLY. It does NOT implement business logic, API handlers, or data access.
+
+**Constraint**: Feature tasks that depend on shared types MUST NOT redefine them. They import and use what the shared types task established.
+
+⚠️ **Blind spot**: When a schema migration creates tables, the corresponding application-level type definitions are EASILY LEFT to individual feature tasks. If those feature tasks run in parallel, each creates its own version of the same type → compile errors. The shared types task prevents this.
 
 ---
 
@@ -276,6 +299,17 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **Principle**: Maximize parallelism by assigning different group IDs to tasks that modify independent scopes (different directories, different modules, different layers).
 
 **Constraint**: Only assign the SAME group ID when tasks are likely to modify the SAME source files.
+
+**Observation target**: For each pair of feature tasks, check if they access the same persistence boundary.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Shared persistence boundary** | Do two tasks read/write the same database table, collection, or data store? |
+| **Shared data-access module** | Will two tasks need to add operations to the same repository or data-access layer? |
+
+**Constraint**: Tasks that access the SAME persistence boundary MUST share the same parallelGroup -- even if they expose different API endpoints or serve different features. In layered architectures, one persistence boundary maps to one data-access module; concurrent writes to that module cause conflicts.
+
+⚠️ **Blind spot**: Tasks that appear logically independent (different features, different endpoints) may share the same underlying persistence boundary. Task names suggest independence but the data layer reveals coupling. Observe the design document's schema section to determine overlap.
 
 **Naming convention**: `"<package>-<scope>"` where scope is the functional area within the package.
 

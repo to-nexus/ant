@@ -54,6 +54,7 @@ export interface ComposedPrompt {
   rules: string;               // Rules and constraints
   injections: string;          // Dynamic context injections
   examples: string;            // Few-shot examples
+  failedTemplates: string[];   // Templates that failed to render (for diagnostics)
 }
 
 /**
@@ -82,6 +83,8 @@ export class TemplateComposer {
     context: ProjectContext,
     assembled: AssembledContext
   ): Promise<ComposedPrompt> {
+    const failedTemplates: string[] = [];
+
     // 1. Load system prompt (cached)
     const system = await this.getSystemPrompt(modeConfig.job);
     
@@ -100,6 +103,7 @@ export class TemplateComposer {
     const base = await this.renderTemplate(
       modeConfig.templates.base,
       {
+
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // Variables used by code/phases/execute/base.md and design/phases/execute/base-system-design.md
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -138,13 +142,11 @@ export class TemplateComposer {
         
         // ✅ Used in {{#if hasUiDoc}} for UI specification existence
         hasUiDoc: (assembled as any).hasUiDoc || false
-      }
+      },
+      failedTemplates
     );
     
     // 5. Render rules template
-    // ✅ FIX: Pass lastSectionNumber, sectionPattern, currentTask and isLastTaskForDocument to rules template
-    // rules.md uses {{#if lastSectionNumber}} for continuation task detection
-    // rules.md uses {{#if isLastTaskForDocument}} to skip metadata output on final task
     const rules = await this.renderTemplate(
       modeConfig.templates.rules,
       {
@@ -152,7 +154,8 @@ export class TemplateComposer {
         sectionPattern: assembled.sectionPattern ?? undefined,
         currentTask: assembled.currentTask || null,
         isLastTaskForDocument: assembled.isLastTaskForDocument || false
-      }
+      },
+      failedTemplates
     );
     
     // 6. Build injections
@@ -163,16 +166,21 @@ export class TemplateComposer {
     
     // 7. Load examples (if enabled)
     const examples = modeConfig.flags.includeExamples
-      ? await this.renderTemplate(`${modeConfig.job}/base/examples`, {})
+      ? await this.renderTemplate(`${modeConfig.job}/base/examples`, {}, failedTemplates)
       : '';
     
+    if (failedTemplates.length > 0) {
+      console.error(`🚨 [TemplateComposer] ${failedTemplates.length} template(s) failed: ${failedTemplates.join(', ')}`);
+    }
+
     return {
       system,
       profiles,
       base,
       rules,
       injections,
-      examples
+      examples,
+      failedTemplates
     };
   }
   
@@ -405,21 +413,21 @@ export class TemplateComposer {
    */
   private async renderTemplate(
     templatePath: string,
-    vars: Record<string, any>
+    vars: Record<string, any>,
+    failedTemplates?: string[]
   ): Promise<string> {
     try {
       return await this.promptPort.render(templatePath, vars);
     } catch (error) {
-      // Plan phase templates don't exist (plan node doesn't use LLM)
       if (templatePath.includes('phases/plan/')) {
         return '';
       }
       
-      console.error(`[TemplateComposer] Failed to load template: ${templatePath}`);
-      console.error(`[TemplateComposer] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
-      console.error(`[TemplateComposer] Error message: ${error instanceof Error ? error.message : String(error)}`);
-      if (error instanceof Error && error.stack) {
-        console.error(`[TemplateComposer] Stack trace:`, error.stack.split('\n').slice(0, 5).join('\n'));
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`❌ [TemplateComposer] TEMPLATE RENDER FAILED: ${templatePath}`);
+      console.error(`   → ${errorMsg}`);
+      if (failedTemplates) {
+        failedTemplates.push(templatePath);
       }
       return '';
     }

@@ -274,9 +274,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     runtimeAssetsIndex: state.runtimeAssetsIndex
   };
   
-  const prompt = await state.deps.promptEngine.buildDecomposePrompt(decomposeVars);
+  const prompts = await state.deps.promptEngine.buildDecomposePrompt(decomposeVars);
   
-  // ✅ Log prompt structure (not content)
   const jobId = state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
@@ -285,9 +284,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         jobId,
         'code',
         'decompose',
-        prompt.length,
+        prompts.system.length + prompts.user.length,
         {
-          templatePath: 'code/phases/decompose/base',
+          templatePath: 'code/phases/decompose/base (user) + code/phases/decompose/rules (system)',
           usedTemplates: [
             'code/phases/decompose/rules',
             'code/phases/decompose/profile-rules',
@@ -317,7 +316,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   let rawResponse: string;
   let decomposeTokenUsage: any;
   try {
-    const result = await callLLMForDecompose(llm, prompt, state.workspaceConfig);
+    const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig);
     rawResponse = result.response;
     decomposeTokenUsage = result.tokenUsage;
     
@@ -338,7 +337,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           callIndex: 0,
           conversationHistoryLength: 0,
           projectCodeContextFiles: 0,
-          estimatedPromptChars: prompt?.length || 0,
+          estimatedPromptChars: (prompts.system.length + prompts.user.length) || 0,
           taskCumulativeInput: 0,
           taskCumulativeOutput: 0,
         }
