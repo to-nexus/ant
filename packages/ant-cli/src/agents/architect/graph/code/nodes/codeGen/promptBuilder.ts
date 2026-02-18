@@ -16,6 +16,7 @@ import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
+import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -365,21 +366,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       }
       
       // Remove code XML tags from assistant messages for token efficiency
-      // 2-pass chain: first extract file paths where possible, then fallback to strip remaining
       if (msg.role === 'assistant' && typeof msg.content === 'string') {
-        let cleanedContent = msg.content;
-        // Pass 1: Extract file paths (preserves awareness of which files were touched)
-        cleanedContent = cleanedContent.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
-        cleanedContent = cleanedContent.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file created: $1]');
-        cleanedContent = cleanedContent.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-        // Pass 2: Safety net - strip any remaining tags that Pass 1 didn't match
-        cleanedContent = cleanedContent.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
-        cleanedContent = cleanedContent.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
-        cleanedContent = cleanedContent.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
-        
         filteredHistory.push({
           ...msg,
-          content: cleanedContent
+          content: cleanFileContentFromResponse(msg.content)
         });
       } else {
         filteredHistory.push(msg);

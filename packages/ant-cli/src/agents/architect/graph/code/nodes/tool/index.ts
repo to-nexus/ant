@@ -46,6 +46,7 @@ import { ArchitectGraphState } from '../../state';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
+import { cleanFileContentFromResponse } from '../../utils/responseCleaners';
 import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY } from './constants';
 import { CommandExecutionResult } from './types';
 import {
@@ -241,12 +242,22 @@ export async function tool(
   // Build batch conversation history (Anthropic multi-tool format)
   const taskReminder = buildTaskReminder(state);
 
+  // Preserve file creation awareness: when LLM creates files AND uses tools in
+  // the same response, the text portion (containing file tags) must be included
+  // alongside tool_use blocks. Without this, the LLM loses memory of written
+  // files and recreates them on the next codeGen call.
+  const textResponse = state.llmResponse?.textResponse || '';
+  const cleanedText = cleanFileContentFromResponse(textResponse);
+
+  const assistantContent = cleanedText
+    ? [{ type: 'text' as const, text: cleanedText }, ...toolUseBlocks]
+    : toolUseBlocks;
+
   const newHistory = [
     ...(state.conversationHistory || []),
-    // Single assistant message with ALL tool_use blocks
     {
       role: 'assistant' as const,
-      content: toolUseBlocks,
+      content: assistantContent,
     },
     // Single user message with ALL tool_result blocks + task reminder
     {
