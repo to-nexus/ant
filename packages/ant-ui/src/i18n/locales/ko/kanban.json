@@ -13,7 +13,7 @@
   },
   "header": {
     "total": "전체:",
-    "estimatingPhase": "추정 단계:",
+    "estimatingPhase": "계획 단계:",
     "paused": "일시정지:",
     "timeBreakdown": "시간 분석",
     "tokenUsage": "토큰 사용량",
@@ -29,7 +29,7 @@
     "billableInput": "과금 입력:",
     "inputSavings": "입력 절감:",
     "byPhase": "단계별",
-    "estimating": "추정:",
+    "estimating": "계획:",
     "noCacheActivity": "캐시 활동 없음",
     "outputDescription": "캐시 불가 · 입력 대비 5배 가격",
     "noTokenData": "토큰 사용 데이터 없음"

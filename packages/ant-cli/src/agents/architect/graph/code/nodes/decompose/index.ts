@@ -535,6 +535,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     : undefined;
   if (estimatingTokenUsage) {
     console.log(`📊 [Decompose] Estimating phase tokens captured: ${estimatingTokenUsage.inputTokens + estimatingTokenUsage.outputTokens} (input: ${estimatingTokenUsage.inputTokens}, output: ${estimatingTokenUsage.outputTokens}, cacheRead: ${estimatingTokenUsage.cacheReadTokens || 0}, cacheCreate: ${estimatingTokenUsage.cacheCreationTokens || 0})`);
+    if (state.deps?.kanbanUpdate?.setEstimatingTokenUsage) {
+      state.deps.kanbanUpdate.setEstimatingTokenUsage(estimatingTokenUsage);
+    }
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

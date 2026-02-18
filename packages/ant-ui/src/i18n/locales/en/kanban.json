@@ -13,7 +13,7 @@
   },
   "header": {
     "total": "Total:",
-    "estimatingPhase": "Estimating Phase:",
+    "estimatingPhase": "Planning Phase:",
     "paused": "Paused:",
     "timeBreakdown": "Time Breakdown",
     "tokenUsage": "Token Usage",
@@ -29,7 +29,7 @@
     "billableInput": "Billable input:",
     "inputSavings": "Input savings:",
     "byPhase": "By Phase",
-    "estimating": "Estimating:",
+    "estimating": "Planning:",
     "noCacheActivity": "No cache activity",
     "outputDescription": "Not cacheable · 5x input price",
     "noTokenData": "No token usage data yet"
