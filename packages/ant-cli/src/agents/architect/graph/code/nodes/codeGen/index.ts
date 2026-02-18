@@ -29,6 +29,7 @@ import { buildMessages } from './promptBuilder';
 import { getAvailableTools } from './toolDefinitions';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
+import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -448,18 +449,7 @@ export async function codeGen(
       // 3. Inject into conversation and loop back (no enforce/plan needed)
       // Distinguish conflict vs successfully-written files so LLM doesn't regenerate everything
       const conflictPaths = new Set(fileConflicts.map(c => c.path));
-      let cleanedResponse = textResponse;
-      cleanedResponse = cleanedResponse.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g,
-        (_match: string, filePath: string) => conflictPaths.has(filePath)
-          ? `[file NOT written - conflict: ${filePath}]`
-          : `[file written to disk: ${filePath}]`
-      );
-      cleanedResponse = cleanedResponse.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
-      cleanedResponse = cleanedResponse.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-      cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
-      cleanedResponse = cleanedResponse.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
-      cleanedResponse = cleanedResponse.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
-      cleanedResponse = cleanedResponse.trim();
+      const cleanedResponse = cleanFileContentWithConflicts(textResponse, conflictPaths);
 
       const newHistory = [
         ...(state.conversationHistory || []),
@@ -568,21 +558,13 @@ export async function codeGen(
       // ✅ FIX: Preserve LLM response in conversationHistory to prevent amnesia
       // Without this, codeGen→codeGen loop loses all memory of previous response,
       // causing the LLM to repeat the same work indefinitely.
-      // 2-pass chain: extract file paths where possible, then strip remaining
-      let cleanedResponse = textResponse;
-      cleanedResponse = cleanedResponse.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
-      cleanedResponse = cleanedResponse.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file created: $1]');
-      cleanedResponse = cleanedResponse.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-      cleanedResponse = cleanedResponse.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
-      cleanedResponse = cleanedResponse.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
-      cleanedResponse = cleanedResponse.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
-      cleanedResponse = cleanedResponse.trim();
+      const cleanedResponse = cleanFileContentFromResponse(textResponse);
       
       if (cleanedResponse) {
         const newHistory = [
           ...(state.conversationHistory || []),
           { role: 'assistant' as const, content: cleanedResponse },
-          { role: 'user' as const, content: 'Your previous response did not include <done>true</done>. If you have completed all work for this task, output <done>true</done> now. If there is remaining work, continue.' },
+          { role: 'user' as const, content: 'Your previous response did not include <done>true</done>. If you have completed all work for this task, output <done>true</done> now. If there is remaining work, continue. Files marked [file written to disk: ...] are already saved — do NOT regenerate them.' },
         ];
         
         return {
