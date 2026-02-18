@@ -421,6 +421,9 @@ export async function decomposeSystemDesign(
   const estimatingTokenUsage = (state as any).tokenUsage
     ? { ...(state as any).tokenUsage }
     : undefined;
+  if (estimatingTokenUsage && state.deps?.kanbanUpdate?.setEstimatingTokenUsage) {
+    state.deps.kanbanUpdate.setEstimatingTokenUsage(estimatingTokenUsage);
+  }
 
   // Reset task-level token usage (will be used by first task in plan node)
   const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');

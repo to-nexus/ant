@@ -65,6 +65,13 @@ export interface TaskQueueUpdatePort {
   updateTokenUsage?(tokenUsage: TaskTokenUsage): void;
 
   /**
+   * Snapshot estimating phase token usage (decompose + detectEnvironment, before tasks).
+   * Called once at end of decompose, included in all subsequent broadcasts
+   * so the frontend can show estimating vs task breakdown without subtraction.
+   */
+  setEstimatingTokenUsage?(tokenUsage: TaskTokenUsage): void;
+
+  /**
    * Save a checkpoint snapshot to Redis for disaster recovery.
    * Unlike updateTaskQueue, this does NOT broadcast via Pub/Sub — it only
    * persists the snapshot to Redis so that cleanupJobState can use it as

@@ -295,12 +295,20 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
     return null;
   }
 
-  const effectiveUsage: TaskTokenUsage = tokenUsage || tasksUsage || { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-  const effective = getTokenUsageMetrics(effectiveUsage);
   const tasks = getTokenUsageMetrics(tasksUsage);
 
-  // Estimating phase: prefer direct tracking, fallback to subtraction
+  // Estimating phase: prefer direct tracking, fallback to subtraction from job total
   const estimatingMetrics = estimatingTokenUsage ? getTokenUsageMetrics(estimatingTokenUsage) : null;
+
+  // Effective total: use the LARGER of job-level snapshot vs (estimating + tasks).
+  // Job-level tokenUsage can be stale (broadcast snapshot) while task-level is more current.
+  const partsSum = sumTokenUsages([estimatingTokenUsage, tasksUsage]);
+  const partsMetrics = getTokenUsageMetrics(partsSum);
+  const jobMetrics = getTokenUsageMetrics(tokenUsage);
+  const effective = (partsSum && partsMetrics.totalInputProcessed >= jobMetrics.totalInputProcessed)
+    ? partsMetrics
+    : jobMetrics;
+
   const estimatingInput = estimatingMetrics
     ? estimatingMetrics.totalInputProcessed
     : (tokenUsage ? Math.max(0, effective.totalInputProcessed - tasks.totalInputProcessed) : 0);

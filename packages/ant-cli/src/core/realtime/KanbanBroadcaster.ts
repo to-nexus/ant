@@ -48,6 +48,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedRecursionCount?: number;
   private cachedRecursionLimit?: number;
   private cachedTokenUsage?: TaskTokenUsage;
+  private cachedEstimatingTokenUsage?: TaskTokenUsage;
   
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -160,6 +161,15 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Snapshot estimating phase token usage, included in all subsequent broadcasts.
+   * Called once at end of decompose node.
+   */
+  setEstimatingTokenUsage(tokenUsage: TaskTokenUsage): void {
+    this.cachedEstimatingTokenUsage = tokenUsage;
+    console.log(`[KanbanBroadcaster] 📊 Estimating token usage snapshot set (input: ${tokenUsage.inputTokens}, output: ${tokenUsage.outputTokens})`);
+  }
+
+  /**
    * Update task queue snapshot
    * Implements TaskQueueUpdatePort interface
    */
@@ -230,6 +240,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionCount: recursionCount ?? 0,
       recursionLimit: recursionLimit ?? 50,
       tokenUsage: effectiveTokenUsage,
+      ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       // Include estimating activity for reconnect/recovery
       ...(this.estimatingLabel && {
         estimatingLabel: this.estimatingLabel,
@@ -258,6 +269,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionCount,
       recursionLimit,
       tokenUsage: effectiveTokenUsage,
+      ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       jobType: this.jobType,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)
       ...(this.jobTiming && { jobTiming: this.jobTiming }),

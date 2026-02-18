@@ -324,14 +324,14 @@ export class KanbanService {
           recursionLimit: sessionState.recursionLimit || finalLimit,
           totalElapsedTime,
           jobTiming: sessionState.jobTiming,
-          tokenUsage: sessionState.tokenUsage,
-          estimatingTokenUsage: (sessionState as any).estimatingTokenUsage,
-          // Node activity banner from snapshot
-          estimatingLabel: liveSnapshot.estimatingLabel,
-          estimatingStartedAt: liveSnapshot.estimatingStartedAt,
-          estimatingNodeId: liveSnapshot.estimatingNodeId,
-        };
-      }
+        tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
+        estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage,
+        // Node activity banner from snapshot
+        estimatingLabel: liveSnapshot.estimatingLabel,
+        estimatingStartedAt: liveSnapshot.estimatingStartedAt,
+        estimatingNodeId: liveSnapshot.estimatingNodeId,
+      };
+    }
       
       dlog(`\n🔴 [KanbanService] LIVE DATA from Redis returned\n`);
       
@@ -358,8 +358,8 @@ export class KanbanService {
         tasksRemaining: sessionState.tasksRemaining || 0,
         totalElapsedTime,
         jobTiming: sessionState.jobTiming,
-        tokenUsage: sessionState.tokenUsage,
-        estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
+        tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
+        estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage
       };
     }
     
