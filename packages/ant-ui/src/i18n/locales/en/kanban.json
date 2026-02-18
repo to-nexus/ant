@@ -21,17 +21,18 @@
   },
   "tokenStats": {
     "input": "Input",
+    "inputDescription": "billable",
     "output": "Output",
     "newCacheMiss": "New (cache-miss):",
     "cacheHit": "Cache hit:",
     "cacheCreated": "Cache created:",
     "cacheHitRate": "Cache hit rate:",
-    "billableInput": "Billable input:",
-    "inputSavings": "Input savings:",
+    "cacheEfficiency": "Input Cache Efficiency",
+    "totalProcessed": "Total input:",
+    "savings": "Input savings:",
     "byPhase": "By Phase",
     "estimating": "Planning:",
-    "noCacheActivity": "No cache activity",
-    "outputDescription": "Not cacheable · 5x input price",
+    "outputDescription": "billable · not cacheable",
     "noTokenData": "No token usage data yet"
   },
   "task": {

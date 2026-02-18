@@ -271,18 +271,19 @@ interface TokenUsageBadgeProps {
 }
 
 /**
- * TokenUsageBadge - Display token usage with Input/Output separation
+ * TokenUsageBadge - Display token usage with billing-centric display
  *
  * Architecture: docs/architecture/13-token-usage-tracking.md
  *
- * DESIGN PRINCIPLE: Input and Output tokens have fundamentally different costs
- * (Output is 5x more expensive). Never sum them into a single "total".
+ * DESIGN PRINCIPLE: Show billable (cost-weighted) input tokens, not raw volume.
+ *   - billableInput = new×1.0 + creation×1.25 + read×0.1
+ *   - Output is always 1:1 (not cacheable)
  *
- * Badge: "445K in · 16K out" — compact, honest, no false totals
+ * Badge: "132K in · 4.9K out" — billable input, actual cost
  * Tooltip sections:
- *   1. Input — volume, cache breakdown, cost savings
- *   2. Output — generation count
- *   3. Phase Breakdown — estimating + individual tasks
+ *   1. Billing — billable input + output (what you pay)
+ *   2. Cache Efficiency — volume, hit rate, savings (when cache active)
+ *   3. Phase Breakdown — planning + individual tasks
  */
 export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, completedTasks, inProgressTasks }: TokenUsageBadgeProps) {
   const { t } = useTranslation('kanban');
@@ -296,8 +297,6 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
   }
 
   const tasks = getTokenUsageMetrics(tasksUsage);
-
-  // Estimating phase: prefer direct tracking, fallback to subtraction from job total
   const estimatingMetrics = estimatingTokenUsage ? getTokenUsageMetrics(estimatingTokenUsage) : null;
 
   // Effective total: use the LARGER of job-level snapshot vs (estimating + tasks).
@@ -305,18 +304,19 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
   const partsSum = sumTokenUsages([estimatingTokenUsage, tasksUsage]);
   const partsMetrics = getTokenUsageMetrics(partsSum);
   const jobMetrics = getTokenUsageMetrics(tokenUsage);
-  const effective = (partsSum && partsMetrics.totalInputProcessed >= jobMetrics.totalInputProcessed)
+  const effective = (partsSum && partsMetrics.billableInputTokens >= jobMetrics.billableInputTokens)
     ? partsMetrics
     : jobMetrics;
 
+  // Planning phase billable input (prefer direct tracking, fallback to subtraction)
   const estimatingInput = estimatingMetrics
-    ? estimatingMetrics.totalInputProcessed
-    : (tokenUsage ? Math.max(0, effective.totalInputProcessed - tasks.totalInputProcessed) : 0);
+    ? estimatingMetrics.billableInputTokens
+    : (tokenUsage ? Math.max(0, effective.billableInputTokens - tasks.billableInputTokens) : 0);
   const estimatingOutput = estimatingMetrics
     ? estimatingMetrics.outputTokens
     : (tokenUsage ? Math.max(0, effective.outputTokens - tasks.outputTokens) : 0);
 
-  const hasTokenData = effective.totalInputProcessed > 0 || effective.outputTokens > 0;
+  const hasTokenData = effective.billableInputTokens > 0 || effective.outputTokens > 0;
   const taskCount = (completedTasks?.length || 0) + (inProgressTasks?.length || 0);
 
   const tooltipContent = (
@@ -327,18 +327,37 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
 
       {hasTokenData ? (
         <>
-          {/* ━━ Input Tokens ━━ */}
+          {/* ━━ Section 1: Billing (input + output) ━━ */}
           <div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-800 dark:text-gray-100 font-semibold">{t('tokenStats.input')}</span>
+              <span className="text-gray-800 dark:text-gray-100 font-semibold">
+                {t('tokenStats.input')} <span className="text-xs text-gray-500 dark:text-gray-500 font-normal italic">{t('tokenStats.inputDescription')}</span>
+              </span>
               <span className="font-mono font-semibold text-gray-900 dark:text-white">
-                {formatTokenCount(effective.totalInputProcessed)}
+                {formatTokenCount(effective.billableInputTokens)}
               </span>
             </div>
+            <div className="flex justify-between items-center mt-1">
+              <span className="text-gray-800 dark:text-gray-100 font-semibold">
+                {t('tokenStats.output')} <span className="text-xs text-gray-500 dark:text-gray-500 font-normal italic">{t('tokenStats.outputDescription')}</span>
+              </span>
+              <span className="font-mono font-semibold text-gray-900 dark:text-white">
+                {formatTokenCount(effective.outputTokens)}
+              </span>
+            </div>
+          </div>
 
-            {/* Cache breakdown (only for input) */}
-            {effective.hasCache ? (
-              <div className="pl-2 text-xs space-y-0.5 mt-1">
+          {/* ━━ Section 2: Cache Efficiency (only when cache active) ━━ */}
+          {effective.hasCache && (
+            <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
+              <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">{t('tokenStats.cacheEfficiency')}</div>
+              <div className="pl-2 text-xs space-y-0.5">
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.totalProcessed')}</span>
+                  <span className="font-mono text-gray-600 dark:text-gray-400">
+                    {formatTokenCount(effective.totalInputProcessed)}
+                  </span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.newCacheMiss')}</span>
                   <span className="font-mono text-gray-600 dark:text-gray-400">
@@ -361,59 +380,32 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                     </span>
                   </div>
                 )}
-
-                {/* Cache efficiency summary */}
-                <div className="pt-1 mt-1 border-t border-emerald-200 dark:border-emerald-800 space-y-0.5">
-                  {effective.cacheHitRate > 0 && (
-                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                      <span className="font-semibold">{t('tokenStats.cacheHitRate')}</span>
-                      <span className="font-mono font-semibold">
-                        {formatPercent(effective.cacheHitRate)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">{t('tokenStats.billableInput')}</span>
-                    <span className="font-mono text-gray-600 dark:text-gray-400">
-                      {formatTokenCount(effective.billableInputTokens)}
+                {effective.cacheHitRate > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 pt-0.5">
+                    <span className="font-semibold">{t('tokenStats.cacheHitRate')}</span>
+                    <span className="font-mono font-semibold">
+                      {formatPercent(effective.cacheHitRate)}
                     </span>
                   </div>
-                  {effective.inputSavingsPercent > 0 && (
-                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                      <span className="font-semibold">{t('tokenStats.inputSavings')}</span>
-                      <span className="font-mono font-semibold">
-                        ~{formatPercent(effective.inputSavingsPercent)}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                )}
+                {effective.inputSavingsPercent > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                    <span className="font-semibold">{t('tokenStats.savings')}</span>
+                    <span className="font-mono font-semibold">
+                      ~{formatPercent(effective.inputSavingsPercent)}
+                    </span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 italic">
-                {t('tokenStats.noCacheActivity')}
-              </div>
-            )}
-          </div>
-
-          {/* ━━ Output Tokens ━━ */}
-          <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-800 dark:text-gray-100 font-semibold">{t('tokenStats.output')}</span>
-              <span className="font-mono font-semibold text-gray-900 dark:text-white">
-                {formatTokenCount(effective.outputTokens)}
-              </span>
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 italic">
-              {t('tokenStats.outputDescription')}
-            </div>
-          </div>
+          )}
 
-          {/* ━━ Phase Breakdown ━━ */}
+          {/* ━━ Section 3: Phase Breakdown ━━ */}
           {(tokenUsage || taskCount > 0) && (
             <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
               <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">{t('tokenStats.byPhase')}</div>
 
-              {/* Estimating Phase */}
+              {/* Planning Phase */}
               {tokenUsage && (
                 <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500 mb-1">
                   <div className="flex justify-between items-center text-xs">
@@ -433,19 +425,19 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                       {t('header.tasksCount', { count: taskCount })}
                     </span>
                     <span className="font-mono text-gray-700 dark:text-gray-200">
-                      {formatTokenCount(tasks.totalInputProcessed)} in · {formatTokenCount(tasks.outputTokens)} out
+                      {formatTokenCount(tasks.billableInputTokens)} in · {formatTokenCount(tasks.outputTokens)} out
                     </span>
                   </div>
                   <div className="pl-2 space-y-0.5">
                     {inProgressTasks?.filter(t => t.tokenUsage).map(task => {
                       const m = getTokenUsageMetrics(task.tokenUsage!);
-                      return (m.totalInputProcessed > 0 || m.outputTokens > 0) ? (
+                      return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
                         <div key={task.id} className="flex justify-between items-center text-xs">
                           <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={task.name}>
                             • {task.name}
                           </span>
                           <span className="font-mono text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                            {formatTokenCount(m.totalInputProcessed)} / {formatTokenCount(m.outputTokens)}
+                            {formatTokenCount(m.billableInputTokens)} / {formatTokenCount(m.outputTokens)}
                             <span className="text-xs opacity-70 animate-pulse">↻</span>
                           </span>
                         </div>
@@ -459,7 +451,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                             • {task.name}
                           </span>
                           <span className="font-mono text-gray-600 dark:text-gray-400">
-                            {m ? `${formatTokenCount(m.totalInputProcessed)} / ${formatTokenCount(m.outputTokens)}` : '0'}
+                            {m ? `${formatTokenCount(m.billableInputTokens)} / ${formatTokenCount(m.outputTokens)}` : '0'}
                           </span>
                         </div>
                       );
@@ -485,7 +477,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
           <Coins className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
           <span className="text-xs text-amber-700 dark:text-amber-300 font-medium leading-none whitespace-nowrap">
             {hasTokenData
-              ? `${formatTokenCount(effective.totalInputProcessed)} in · ${formatTokenCount(effective.outputTokens)} out`
+              ? `${formatTokenCount(effective.billableInputTokens)} in · ${formatTokenCount(effective.outputTokens)} out`
               : '0'}
           </span>
         </div>

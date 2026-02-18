@@ -190,18 +190,18 @@ export function formatPercent(ratio: number): string {
 
 /**
  * Format token usage as "input in · output out"
- * Keeps input and output separate — they have different costs.
+ * Uses billable input (cost-weighted) — what actually gets charged.
  */
 export function formatTokenUsage(tokenUsage: TaskTokenUsage): string {
   const m = getTokenUsageMetrics(tokenUsage);
-  return `${formatTokenCount(m.totalInputProcessed)} in · ${formatTokenCount(m.outputTokens)} out`;
+  return `${formatTokenCount(m.billableInputTokens)} in · ${formatTokenCount(m.outputTokens)} out`;
 }
 
 /**
  * Format compact token usage as "input in · output out"
- * Used in badges and compact displays.
+ * Uses billable input (cost-weighted) for badges and compact displays.
  */
 export function formatTokenUsageCompact(tokenUsage: TaskTokenUsage): string {
   const m = getTokenUsageMetrics(tokenUsage);
-  return `${formatTokenCount(m.totalInputProcessed)} in · ${formatTokenCount(m.outputTokens)} out`;
+  return `${formatTokenCount(m.billableInputTokens)} in · ${formatTokenCount(m.outputTokens)} out`;
 }
