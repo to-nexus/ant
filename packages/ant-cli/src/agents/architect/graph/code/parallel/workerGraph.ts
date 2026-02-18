@@ -281,6 +281,7 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
       _errorIsRepeating: null as any,
       _currentTaskTokenUsage: null as any,
       tokenUsage: null as any,
+      _codeGenCallIndex: null as any,
       recursionCount: null as any,
       recursionLimit: null as any,
       llmResponse: null as any,
