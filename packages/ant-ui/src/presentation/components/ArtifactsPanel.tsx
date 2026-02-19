@@ -9,6 +9,7 @@ import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
+import { isCanonicalDir } from '@/shared/utils/canonical-dirs';
 
 interface DirectoryViewProps {
   title: string;
@@ -172,18 +173,9 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
           )}
           <div className={cn("flex items-center gap-1 transition-opacity", isMenuActive ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
             {(() => {
-              const pathParts = node.path.split('/');
               const isSession = isSessionSection || node.path.startsWith('sessions');
-              const isClearable = 
-                node.type === 'directory' &&
-                (
-                  (pathParts.length === 2 && pathParts[0] === 'outputs') ||
-                  (pathParts.length === 3 && pathParts[0] === 'sessions' && (pathParts[2] === 'debug' || pathParts[2] === 'log-prompt'))
-                );
-              const isProtected = 
-                node.type === 'directory' && 
-                pathParts.length === 2 && 
-                pathParts[0] === 'inputs';
+              const isClearable = node.type === 'directory' && isCanonicalDir(node.path);
+              const isProtected = false;
 
               return (
                 <FileActionMenu
@@ -196,7 +188,6 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                   onSend={onSend}
                   onDownload={onDownload}
                   onMarkAllSeen={isDirectory && unseenCount > 0 && onMarkSeen ? () => {
-                    // Mark ALL (recursive) unseen files under this directory as seen
                     const allUnseen = unseenArtifacts.filter(p => p.startsWith(node.path + '/') || p === node.path);
                     if (allUnseen.length > 0) {
                       onMarkSeen(allUnseen);
@@ -215,21 +206,21 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                   onUpload={node.type === 'directory' && onUploadFiles ? () => {
                     document.getElementById(`upload-${node.path}`)?.click();
                   } : undefined}
-                  onDelete={onDelete && !isProtected && !isClearable ? () => {
+                  onDelete={onDelete && !isClearable ? () => {
                     showConfirm(t('confirm.deleteItem', { type: node.type, name: node.name }), {
                       type: 'warning',
-                      title: 'Delete?',
-                      confirmText: 'Delete',
-                      cancelText: 'Cancel',
+                      title: t('confirm.deleteTitle'),
+                      confirmText: t('confirm.deleteType', { type: node.type }),
+                      cancelText: t('common:button.cancel'),
                       onConfirm: () => onDelete(node.path)
                     });
                   } : undefined}
                   onClearContents={isClearable && onDelete ? () => {
-                    showConfirm(t('confirm.clearContents', { name: node.name }), {
+                    showConfirm(t('confirm.clearContentsDetail', { name: node.name }), {
                       type: 'warning',
-                      title: 'Clear Contents?',
-                      confirmText: 'Clear All',
-                      cancelText: 'Cancel',
+                      title: t('confirm.clearContentsTitle'),
+                      confirmText: t('confirm.clearAll'),
+                      cancelText: t('common:button.cancel'),
                       onConfirm: () => onDelete(node.path)
                     });
                   } : undefined}
