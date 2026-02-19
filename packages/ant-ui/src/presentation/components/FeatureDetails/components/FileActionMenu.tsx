@@ -177,7 +177,9 @@ export function FileActionMenu({
     setMenuPos({ top, left });
   }, [menuItems]);
 
-  // Close on outside click or scroll
+  // Close on outside click or scroll.
+  // Scroll listener is deferred by one animation frame to avoid catching
+  // layout-triggered scroll events caused by the portal mount / CSS changes.
   useEffect(() => {
     if (!isOpen) return;
     
@@ -194,9 +196,14 @@ export function FileActionMenu({
     const handleResize = () => setOpenState(false);
     
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('scroll', handleScroll, true);
     window.addEventListener('resize', handleResize);
+
+    const rafId = requestAnimationFrame(() => {
+      document.addEventListener('scroll', handleScroll, true);
+    });
+
     return () => {
+      cancelAnimationFrame(rafId);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('scroll', handleScroll, true);
       window.removeEventListener('resize', handleResize);
