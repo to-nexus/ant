@@ -165,35 +165,61 @@ export class TokenLogger {
   private async appendEntry(entry: TokenLogEntry): Promise<void> {
     return this.enqueue(async () => {
       await this.ensureLogDir();
+      const entryJson = JSON.stringify(entry, null, 2);
 
       if (!this.initialized) {
-        try {
-          await fs.access(this.logFilePath);
-          const content = await fs.readFile(this.logFilePath, 'utf-8');
-          this.hasEntries = content.trim().length > 2;
-          this.initialized = true;
-        } catch {
-          await fs.writeFile(this.logFilePath, '[\n');
-          this.initialized = true;
+        await this.initLogFile();
+      } else {
+        // File always ends with \n]\n (3 bytes) — truncate to reopen the array
+        const stat = await fs.stat(this.logFilePath);
+        if (stat.size > 3) {
+          await fs.truncate(this.logFilePath, stat.size - 3);
         }
       }
 
-      const entryJson = JSON.stringify(entry, null, 2);
       const prefix = this.hasEntries ? ',\n' : '';
-      await fs.appendFile(this.logFilePath, prefix + entryJson);
+      await fs.appendFile(this.logFilePath, prefix + entryJson + '\n]\n');
       this.hasEntries = true;
     });
   }
 
   /**
-   * Finalize the JSON array (call when job completes)
+   * No-op: file is always valid JSON after each appendEntry.
+   * Kept for API compatibility with clearTokenLogger.
    */
-  async finalize(): Promise<void> {
-    return this.enqueue(async () => {
-      if (this.initialized) {
-        await fs.appendFile(this.logFilePath, '\n]\n');
+  async finalize(): Promise<void> {}
+
+  /**
+   * Read existing log file to determine state, handling both properly closed
+   * files (\n]\n trailer) and crash-recovered files (no closing bracket).
+   */
+  private async initLogFile(): Promise<void> {
+    try {
+      const stat = await fs.stat(this.logFilePath);
+      if (stat.size >= 3) {
+        const fh = await fs.open(this.logFilePath, 'r');
+        try {
+          const buf = Buffer.alloc(3);
+          await fh.read(buf, 0, 3, stat.size - 3);
+
+          if (buf.toString('utf-8') === '\n]\n') {
+            await fs.truncate(this.logFilePath, stat.size - 3);
+            this.hasEntries = stat.size > 5;
+          } else {
+            this.hasEntries = stat.size > 2;
+          }
+        } finally {
+          await fh.close();
+        }
+      } else {
+        await fs.writeFile(this.logFilePath, '[\n');
+        this.hasEntries = false;
       }
-    }).catch(() => {});
+    } catch {
+      await fs.writeFile(this.logFilePath, '[\n');
+      this.hasEntries = false;
+    }
+    this.initialized = true;
   }
 
   private async ensureLogDir(): Promise<void> {

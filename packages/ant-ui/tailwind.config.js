@@ -9,6 +9,14 @@ export default {
       fontFamily: {
         'display': ['Space Grotesk', 'system-ui', 'sans-serif'],
       },
+      typography: {
+        DEFAULT: {
+          css: {
+            'code::before': { content: 'none' },
+            'code::after': { content: 'none' },
+          },
+        },
+      },
       colors: {
         // Primary Brand Colors
         primary: {

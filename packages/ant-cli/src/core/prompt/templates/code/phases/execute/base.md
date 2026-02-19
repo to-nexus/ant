@@ -248,9 +248,9 @@ MODIFY: app/page.tsx - Add import and render new component
 **Task Completion Checklist:**
 1. ✅ CREATE: New files specified in Plan
 2. ✅ MODIFY: Update existing files as specified in Plan (if any)
-3. ✅ VERIFY: Read the entry point file and confirm your component is imported AND rendered
+3. ✅ VERIFY: Confirm imports, type references, and function signatures are consistent across your created/modified files
 
-**Actions:** Write code → Modify as planned → Verify integration by reading file → Output `<done>true</done>`
+**Actions:** Write code → Modify as planned → Verify consistency → Output `<done>true</done>`
 
 ⛔ **NEVER** run build, dev, or start commands in feature tasks (e.g., `npm run build`, `go build`, `cargo build`, `make build`, etc.)
 

@@ -28,6 +28,7 @@ export interface BaseCodeContext {
  */
 export interface ProjectCodeContext extends BaseCodeContext {
   source: 'decompose' | 'plan' | 'codeGen';
+  directoryTree?: string;
 }
 
 /**

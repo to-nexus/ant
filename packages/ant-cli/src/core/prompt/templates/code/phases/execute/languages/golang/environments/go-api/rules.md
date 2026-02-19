@@ -79,32 +79,20 @@ tree. Follow established structure.
 
 ### When Solving Problems
 
-**Analyze first:**
-- What does the existing codebase structure look like?
-- What patterns are already established?
-- What's the error actually telling you?
+**Principle**: Observe the existing codebase structure and established patterns before making changes. Minimal, targeted changes only.
 
-**For build/module errors:**
-- Check `go.mod` and `go.sum` first
-- Understand the module path and import structure
-- Resolve missing dependencies with `go get {package}`
+**Constraint**: Do NOT run build, module, or dependency commands (`go build`, `go mod tidy`, `go get`, `go run`, `go test`). Build and dependency verification is handled by the verification task — not yours.
 
-**Key principle:** Configuration fixes over source code changes. Minimal changes.
+⚠️ **Blind spot**: When a source file has import errors or type mismatches, the instinct is to run a build command to "check if it compiles." Resist this — fix the source code issue directly. If a dependency is missing from `go.mod`, add it to the `require` block via `edit_file` instead of running `go get`.
 
 ---
 
 ### Common Considerations
 
-| Concern | Things to Check |
+| Concern | What to Observe |
 |---------|-----------------|
-| Import errors | go.mod module path, package naming, circular imports |
-| Build errors | Go version compatibility, build tags, CGO dependencies |
-| Runtime errors | nil pointer, interface assertion, closed channel |
-| Dependencies | go.mod/go.sum consistency, major version suffixes |
-
----
-
-**Remember:** You already know Go server development. Analyze the specific error and project setup before deciding on a solution.
+| Import errors | Module path in `go.mod`, package naming, circular imports |
+| Type errors | Visibility (exported vs unexported), interface satisfaction |
 
 ---
 

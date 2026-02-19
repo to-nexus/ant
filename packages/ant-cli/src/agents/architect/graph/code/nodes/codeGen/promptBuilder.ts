@@ -597,6 +597,16 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(``);
   }
 
+  const dirTree = state.projectCodeContext?.directoryTree;
+  if (dirTree && state.currentTask?.type === 'verification') {
+    lines.push('════════════════════════════════════════════════════════════════════════════════');
+    lines.push('🗂️ Codebase Directory Structure (pre-loaded — do NOT list_files)');
+    lines.push('════════════════════════════════════════════════════════════════════════════════');
+    lines.push('');
+    lines.push(dirTree);
+    lines.push('');
+  }
+
   const fileTree = generateFileTree(state);
   if (fileTree) {
     lines.push(fileTree);
@@ -607,39 +617,71 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
 }
 
 /**
- * Generate file tree for context
- * 
- * Shows files loaded from RAG search for this task.
- * Self-healing will handle file operation errors automatically.
+ * Generate file tree for context.
+ *
+ * Splits files into two groups based on actual content availability:
+ * - "loaded" files (content present) → do NOT re-read
+ * - "path only" files (no content)  → read_file when needed for modification
+ *
+ * This must mirror the labels in retrieved-code.md to avoid prompt contradictions.
  */
 export function generateFileTree(state: ArchitectGraphState): string | null {
-  const files = state.projectCodeContext?.filePaths || [];
-  
-  if (files.length === 0) {
+  const filePaths = state.projectCodeContext?.filePaths || [];
+
+  if (filePaths.length === 0) {
     return null;
   }
-  
-  const lines = [
-    '════════════════════════════════════════════════════════════════════════════════',
-    '📋 Files Loaded in Code Context (do NOT re-read)',
-    '════════════════════════════════════════════════════════════════════════════════',
-    'These files are already loaded above with full content. Do NOT call read_file on them.',
-    '',
-  ];
-  
+
+  const loadedFiles = state.projectCodeContext?.files || [];
+  const contentLoadedSet = new Set(
+    loadedFiles
+      .filter(f => f.content && f.content.length > 0)
+      .map(f => f.path)
+  );
+
+  const loaded: string[] = [];
+  const pathOnly: string[] = [];
+  for (const fp of filePaths) {
+    if (contentLoadedSet.has(fp)) {
+      loaded.push(fp);
+    } else {
+      pathOnly.push(fp);
+    }
+  }
+
+  const lines: string[] = [];
+
+  if (loaded.length > 0) {
+    lines.push('════════════════════════════════════════════════════════════════════════════════');
+    lines.push('📋 Files Loaded with Content (do NOT re-read)');
+    lines.push('════════════════════════════════════════════════════════════════════════════════');
+    lines.push('These files are already loaded above with full content. Do NOT call read_file on them.');
+    lines.push('');
+    appendTree(lines, loaded);
+  }
+
+  if (pathOnly.length > 0) {
+    lines.push('════════════════════════════════════════════════════════════════════════════════');
+    lines.push('📂 Files Available (path only — read_file when needed)');
+    lines.push('════════════════════════════════════════════════════════════════════════════════');
+    lines.push('These files exist in the codebase but are NOT loaded above.');
+    lines.push('Use read_file ONLY when you need to modify them.');
+    lines.push('');
+    appendTree(lines, pathOnly);
+  }
+
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+function appendTree(lines: string[], paths: string[]): void {
   const dirs: Record<string, string[]> = {};
-  for (const file of files) {
+  for (const file of paths) {
     const parts = file.split('/');
     const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
     const filename = parts[parts.length - 1];
-    
-    if (!dirs[dir]) {
-      dirs[dir] = [];
-    }
+    if (!dirs[dir]) dirs[dir] = [];
     dirs[dir].push(filename);
   }
-  
-  // Format tree
   for (const [dir, filenames] of Object.entries(dirs).sort()) {
     lines.push(`📁 ${dir}/`);
     for (const filename of filenames.sort()) {
@@ -647,6 +689,4 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
     }
     lines.push('');
   }
-  
-  return lines.join('\n');
 }
