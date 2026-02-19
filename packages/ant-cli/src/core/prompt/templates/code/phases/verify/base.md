@@ -90,6 +90,7 @@ After completing all applicable steps, output `<done>true</done>`.
 
 All paths are relative to the feature root.
 - Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
+- Wrong paths: `app/page.tsx` (missing prefix), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
 
 {{#if referenceRequests}}
 ## REFERENCE PROJECTS

@@ -12,10 +12,18 @@
  * - Zero dependencies on LLM client
  */
 
+export interface TokenAreaBudgets {
+  systemPrompt: number;         // System prompt + rules + profile
+  projectContext: number;       // PRD, design docs, codebase context
+  taskContext: number;           // Current task, plan, file tree, violations
+  conversationHistory: number;  // Tool call/result history
+}
+
 export interface TokenBudgetConfig {
   maxTokens: number;           // 최대 허용 토큰 (Anthropic limit: 200K)
   safetyMargin: number;         // 안전 마진 (기본: 10%)
   warningThreshold: number;     // 경고 임계값 (기본: 80%)
+  areaBudgets: TokenAreaBudgets;
 }
 
 export interface TokenEstimation {
@@ -38,7 +46,22 @@ export class TokenBudgetManager {
       maxTokens: config?.maxTokens || 200000,  // Anthropic limit
       safetyMargin: config?.safetyMargin || 0.10,  // 10% margin
       warningThreshold: config?.warningThreshold || 0.80,  // 80% threshold
+      areaBudgets: config?.areaBudgets || {
+        systemPrompt: 30000,        // ~15% — base.md + rules.md + profile
+        projectContext: 30000,      // ~15% — PRD, design doc, codebase context
+        taskContext: 25000,         // ~12.5% — task plan, file tree, violations
+        conversationHistory: 75000, // ~37.5% — matches HistoryManager.maxTokens
+        // Remaining ~20K is safety margin + output tokens
+      },
     };
+  }
+
+  getAreaBudgets(): TokenAreaBudgets {
+    return { ...this.config.areaBudgets };
+  }
+
+  getHistoryBudget(): number {
+    return this.config.areaBudgets.conversationHistory;
   }
   
   /**
@@ -151,6 +174,16 @@ export class TokenBudgetManager {
       console.warn(`⚠️  [TokenBudget] Near limit (>${this.config.warningThreshold * 100}%).`);
     } else {
       console.log(`✅ [TokenBudget] Within safe limits.`);
+    }
+
+    // Area-level warnings
+    const areas = this.config.areaBudgets;
+    const { systemPrompt: sp, conversationHistory: ch } = estimation.breakdown;
+    if (sp > areas.systemPrompt + areas.projectContext + areas.taskContext) {
+      console.warn(`⚠️  [TokenBudget] First message (${sp.toLocaleString()}) exceeds combined area budget (${(areas.systemPrompt + areas.projectContext + areas.taskContext).toLocaleString()})`);
+    }
+    if (ch > areas.conversationHistory) {
+      console.warn(`⚠️  [TokenBudget] History (${ch.toLocaleString()}) exceeds area budget (${areas.conversationHistory.toLocaleString()})`);
     }
     
     return estimation;

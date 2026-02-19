@@ -73,6 +73,7 @@ Do NOT read any source file before attempting a build.
 
 - Use content from build error output, previous reads, or retrieved context
 - Include 3-5 lines of context for uniqueness
+- If a previous `read_file` result shows `[read_file result: ... — content omitted]`, the content has been compacted. You MUST call `read_file` again before using `edit_file` on that file.
 - If `edit_file` fails with "not found": call `read_file` on that specific file to refresh, then retry. Do NOT use this as justification to read unrelated files.
 
 ### XML Tag Safety

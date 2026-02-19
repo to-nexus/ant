@@ -11,6 +11,8 @@ You are implementing a specific task. Follow the instructions for your task type
 
 When writing files, use `codebase/` prefix for all code files.
 
+**Wrong paths (do NOT use):** `app/page.tsx` (missing prefix), `src/app/page.tsx` (wrong structure), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
+
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚨 CRITICAL: Specification Compliance is MANDATORY
