@@ -191,6 +191,8 @@ code...
 
 **Constraint**: If `edit_file` fails with "not found", `old_str` does not match the file's current content. Reconstruct the correct `old_str` from the trust table above — do NOT default to `read_file`. Only use `read_file` if the file was modified by an external source and you have NO record of its current state in this conversation.
 
+**Constraint**: If a previous `read_file` result shows `[read_file result: ... — content omitted]`, the content has been compacted. You MUST call `read_file` again to get current content before using `edit_file` on that file.
+
 **Constraint**: Include 3-5 lines of context in `old_str` for uniqueness.
 
 ────────────────────────────────────────────────────────────────────────────────

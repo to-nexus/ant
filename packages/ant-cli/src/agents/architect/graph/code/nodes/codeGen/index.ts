@@ -416,25 +416,76 @@ export async function codeGen(
         }
       }
 
-      // 2. Build merge instruction with both contents
+      // 2. Build merge instruction — smart diff to reduce token usage
+      // Full file contents for both versions can be 50-100K+ tokens.
+      // Instead, show only the differing sections with context.
       const mergeBlocks = fileConflicts.map(c => {
         const ownerInfo = c.ownerTask ? ` (by task "${c.ownerTask}")` : '';
+        const currentLines = (c.currentContent || '').split('\n');
+        const intendedLines = (c.intendedContent || '').split('\n');
+
+        // For small files (< 150 lines each), inline full content is acceptable
+        if (currentLines.length < 150 && intendedLines.length < 150) {
+          return [
+            `### FILE MERGE: ${c.path}`,
+            `This file was already created by another parallel task${ownerInfo}.`,
+            ``,
+            `CURRENT content (from other task):`,
+            '```',
+            c.currentContent,
+            '```',
+            ``,
+            `YOUR intended content:`,
+            '```',
+            c.intendedContent,
+            '```',
+            ``,
+            `Output the MERGED result as <file path="${c.path}">merged content</file>.`,
+            `Do NOT call read_file — you already have both versions above.`,
+          ].join('\n');
+        }
+
+        // For large files: show CURRENT in full (it's the on-disk version the LLM
+        // hasn't seen), and only the differing regions of YOUR intended version
+        // (the LLM wrote this content earlier, so shared sections are redundant).
+        const CONTEXT = 5;
+        const diffRegions: string[] = [];
+        const maxLen = Math.max(currentLines.length, intendedLines.length);
+        let regionStart = -1;
+
+        for (let i = 0; i <= maxLen; i++) {
+          const same = i < maxLen && i < currentLines.length && i < intendedLines.length
+            && currentLines[i] === intendedLines[i];
+          if (!same && regionStart === -1) {
+            regionStart = i;
+          }
+          if ((same || i === maxLen) && regionStart !== -1) {
+            const from = Math.max(0, regionStart - CONTEXT);
+            const to = Math.min(maxLen, i + CONTEXT);
+            diffRegions.push(
+              `--- YOUR intended lines ${from + 1}-${to} ---\n` +
+              intendedLines.slice(from, Math.min(to, intendedLines.length)).map((l, idx) => `${from + idx + 1}| ${l}`).join('\n')
+            );
+            regionStart = -1;
+          }
+        }
+
         return [
           `### FILE MERGE: ${c.path}`,
           `This file was already created by another parallel task${ownerInfo}.`,
           ``,
-          `CURRENT content (from other task):`,
+          `CURRENT content on disk (${currentLines.length} lines, from other task — FULL):`,
           '```',
           c.currentContent,
           '```',
           ``,
-          `YOUR intended content:`,
-          '```',
-          c.intendedContent,
-          '```',
+          `YOUR intended changes (only differing sections from your ${intendedLines.length}-line version):`,
           ``,
+          diffRegions.join('\n\n'),
+          ``,
+          `Merge: start from the CURRENT content above, then apply YOUR intended changes into it.`,
           `Output the MERGED result as <file path="${c.path}">merged content</file>.`,
-          `Do NOT call read_file — you already have both versions above.`,
+          `Do NOT call read_file — you have the full current version and your changes above.`,
         ].join('\n');
       }).join('\n\n---\n\n');
 

@@ -10,7 +10,7 @@
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
-import { HistoryManager } from "../../../../../../core/utils/historyManager";
+import { HistoryManager, microcompactToolResults, autoCompactHistory } from "../../../../../../core/utils/historyManager";
 import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -373,17 +373,34 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       }
     }
     
-    // Prune filtered history to fit token budget
-    const { prunedHistory } = historyManager.pruneHistory(filteredHistory);
+    // Step 1: Microcompact old tool results (keeps last 3 turns intact)
+    const { compacted: microcompactedHistory } = microcompactToolResults(
+      filteredHistory, 3, tokenManager
+    );
+
+    // Step 2: Auto-compact if still over 50K tokens
+    // Replaces old turns with a structured summary, keeping last 5 turns in full
+    const { compacted: autoCompactedHistory, wasCompacted } = autoCompactHistory(
+      microcompactedHistory, 50000, 5, tokenManager
+    );
     
-    // Convert history to CacheableContent format (no caching for history)
+    // Step 3: Prune to fit final token budget
+    const { prunedHistory } = historyManager.pruneHistory(autoCompactedHistory);
+    
+    // Convert history to CacheableContent format
+    // If auto-compaction occurred, mark the summary block for prompt caching
+    // (it stays identical across turns until next compaction trigger)
+    let isFirstMsg = true;
     for (const msg of prunedHistory) {
       if (typeof msg.content === 'string') {
+        const shouldCache = wasCompacted && isFirstMsg && msg.role === 'assistant'
+          && msg.content.startsWith('[Auto-compacted:');
         messages.push({
           role: msg.role as 'user' | 'assistant',
           content: [{
             type: 'text',
-            text: msg.content
+            text: msg.content,
+            ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
           }]
         });
       } else {
@@ -393,6 +410,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           content: msg.content
         });
       }
+      isFirstMsg = false;
     }
     
     // Check final token budget
@@ -478,29 +496,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 export function buildRuntimeContext(state: ArchitectGraphState): string {
   const lines: string[] = [];
   
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🚨 PATH RULES REMINDER - Injected EVERY task to prevent LLM drift
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-  lines.push(`🚨 PATH RULES (CRITICAL - READ EVERY TASK)`);
-  lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-  lines.push(``);
-  lines.push(`All paths are relative to PROJECT ROOT. Use these prefixes:`);
-  lines.push(``);
-  lines.push(`✅ CORRECT paths:`);
-  lines.push(`   - codebase/app/page.tsx`);
-  lines.push(`   - codebase/components/Header.tsx`);
-  lines.push(`   - codebase/public/logo.svg`);
-  lines.push(`   - features/<feature>/inputs/assets/... (for asset SOURCE only)`);
-  lines.push(``);
-  lines.push(`❌ WRONG paths (DO NOT USE):`);
-  lines.push(`   - app/page.tsx (missing codebase/ prefix)`);
-  lines.push(`   - src/app/page.tsx (wrong structure)`);
-  lines.push(`   - features/<feature>/codebase/... (codebase is NOT inside features!)`);
-  lines.push(``);
-  lines.push(`The codebase/ directory is at PROJECT ROOT, NOT inside features/.`);
-  lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-  lines.push(``);
   
   if (state.currentTask) {
     lines.push(`# Current Task`);

@@ -18,23 +18,20 @@ export function getTempFilePath(state: ArchitectGraphState, filePath: string): s
 
 /**
  * Build task reminder text for tool call loops.
- * Appended to every tool result message so budget awareness stays
- * in the LLM's recency window (not only in messages[0]).
+ * Appended to every tool result message so the LLM keeps task identity
+ * in its recency window. Full task context is already in messages[0]
+ * (Block 3 / buildRuntimeContext), so this is intentionally minimal
+ * to reduce per-turn token accumulation in conversation history.
  */
 export function buildTaskReminder(state: ArchitectGraphState): string {
   if (!state.currentTask) return '';
 
-  let taskReminder = `\n\n# Current Task Reminder\n` +
-    `**${state.currentTask.name}** (${state.currentTask.type})\n\n` +
-    `${state.currentTask.description}`;
-  
+  let taskReminder = `\n\nTask: **${state.currentTask.name}** (${state.currentTask.type})` +
+    ` — When all work is complete, output <done>true</done>.` +
+    ` Files marked [file written to disk: ...] are already saved — do NOT regenerate.`;
+
   if (state.currentTask.type === 'setup') {
-    taskReminder += `\n\n**SETUP TASK:**\n` +
-      `1. Generate ALL required config files\n` +
-      `2. Run dependency install if language-specific rules permit\n` +
-      `3. Output: <done>true</done>\n\n` +
-      `Do NOT create directories (mkdir) — folders are created automatically when files are added.\n` +
-      `Do NOT regenerate files already written to disk.`;
+    taskReminder += `\n**SETUP:** Generate config files, run install if rules permit, then <done>true</done>. No mkdir.`;
   }
 
   return taskReminder;
