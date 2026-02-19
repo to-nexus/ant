@@ -344,35 +344,9 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
       console.log(`[UserReset] Found ${projectDirs.length} projects to delete`);
 
-      // Delete each project's workspace data
+      // Delete each project directory entirely
       for (const projectId of projectDirs) {
         const projectPath = path.join(userWorkspacePath, projectId);
-        
-        // Read feature directories
-        const featureDirs = fs.existsSync(projectPath)
-          ? fs.readdirSync(projectPath, { withFileTypes: true })
-              .filter(dirent => dirent.isDirectory())
-              .map(dirent => dirent.name)
-          : [];
-
-        console.log(`[UserReset] Project ${projectId}: deleting ${featureDirs.length} features`);
-
-        // Delete each feature's session/workspace data (preserve Git)
-        for (const featureName of featureDirs) {
-          const featurePath = path.join(projectPath, featureName);
-          
-          // Delete session files (outputs, inputs, .ant-session)
-          const sessionDirs = ['outputs', 'inputs', '.ant-session'];
-          for (const dir of sessionDirs) {
-            const dirPath = path.join(featurePath, dir);
-            if (fs.existsSync(dirPath)) {
-              await fs.promises.rm(dirPath, { recursive: true, force: true });
-              console.log(`[UserReset] Deleted ${projectId}/${featureName}/${dir}`);
-            }
-          }
-        }
-
-        // Delete the entire project directory (features are now empty)
         await fs.promises.rm(projectPath, { recursive: true, force: true });
         console.log(`[UserReset] Deleted project ${projectId}`);
       }

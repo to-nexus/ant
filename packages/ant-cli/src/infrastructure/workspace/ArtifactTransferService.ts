@@ -20,7 +20,7 @@ import { WorkspaceResolver } from './WorkspaceResolver';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { REDIS_KEYS, REDIS_TTL } from '../state/redisConstants';
 import { logger } from '../../utils/logger';
-import { isCanonicalDir, CANONICAL_FEATURE_DIRS } from '../../core/utils/sessionPaths';
+import { isCanonicalDir, CANONICAL_FEATURE_DIRS, clearCanonicalDirectory } from '../../core/utils/sessionPaths';
 import type { UserContext } from '../../core/types/user';
 import type {
   TransferParams,
@@ -505,25 +505,12 @@ export class ArtifactTransferService {
 
   /**
    * Remove source after move, handling canonical directories.
+   * Delegates to the shared clearCanonicalDirectory utility with sessions skip.
    */
   private async removeSourceAfterMove(srcFullPath: string, relativePath: string): Promise<void> {
     const stat = await fs.promises.stat(srcFullPath);
     if (stat.isDirectory()) {
-      // For directories, remove contents but preserve canonical structure
-      const entries = await fs.promises.readdir(srcFullPath, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.name === 'sessions') continue; // Never remove sessions
-
-        const entryPath = path.join(srcFullPath, entry.name);
-        const entryRelative = path.join(relativePath, entry.name).replace(/\\/g, '/');
-
-        if (entry.isDirectory() && isCanonicalDir(entryRelative)) {
-          // Canonical subdir: recurse to clear contents but keep structure
-          await this.removeSourceAfterMove(entryPath, entryRelative);
-        } else {
-          await fs.promises.rm(entryPath, { recursive: true, force: true });
-        }
-      }
+      await clearCanonicalDirectory(srcFullPath, relativePath, { skipSessions: true });
     } else {
       await fs.promises.unlink(srcFullPath);
     }
