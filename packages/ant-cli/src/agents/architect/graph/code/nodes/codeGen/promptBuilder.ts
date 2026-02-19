@@ -165,10 +165,15 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // Block 2: Project Context (CACHED - changes per task)
   // Verification tasks skip prdSpec and designDoc (irrelevant to build checks)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const foundationContract = isVerificationTask ? null : await buildFoundationContract(state);
+  const schemaAnchor = isVerificationTask ? null : await buildSchemaAnchor(state);
+
   const projectContextParts = [
     composed.injections,
     (!isVerificationTask && state.prd) ? `# Requirements\n\n${state.prd}` : null,
     designDocForTask ? `# Design Document\n\n${designDocForTask}` : null,
+    foundationContract,
+    schemaAnchor,
   ].filter(Boolean);
   
   const projectContextBlock: CacheableContent = {
@@ -684,4 +689,186 @@ function appendTree(lines: string[], paths: string[]): void {
     }
     lines.push('');
   }
+}
+
+/**
+ * Build Foundation Contract: exported symbol summary from completed foundation task files.
+ * Injected into feature tasks so they discover shared utilities and avoid duplicate definitions.
+ * Active only in parallel mode (SharedFileBuffer provides cross-worker file info).
+ */
+async function buildFoundationContract(state: ArchitectGraphState): Promise<string | null> {
+  const otherWorkerFiles: Array<{ path: string; taskName?: string }> | undefined =
+    (state as any)._otherWorkerFiles;
+  if (!otherWorkerFiles || otherWorkerFiles.length === 0) return null;
+
+  const completedTasks = state.completedTasksDetails || [];
+  const foundationTasks = completedTasks.filter(t => t.priority >= 150 && t.priority <= 199);
+  if (foundationTasks.length === 0) return null;
+
+  const foundationTaskNames = new Set(foundationTasks.map(t => t.name));
+  const foundationFiles = otherWorkerFiles.filter(
+    f => f.taskName && foundationTaskNames.has(f.taskName)
+  );
+  if (foundationFiles.length === 0) return null;
+
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) return null;
+
+  const language = state.profile?.language || state.detectionReport?.profile?.language;
+
+  const sections: string[] = [];
+  sections.push('# Foundation Contract (read-only, do NOT modify these files)\n');
+  sections.push('The following symbols were defined by the shared foundation task.');
+  sections.push('Import and use them — do NOT redefine or create alternatives.\n');
+
+  let symbolCount = 0;
+
+  for (const file of foundationFiles) {
+    try {
+      const content = await fileSystem.readFile(file.path);
+      if (!content) continue;
+
+      const symbols = extractExportedSymbols(content, language);
+      if (symbols.length === 0) continue;
+
+      sections.push(`### ${file.path}`);
+      for (const sym of symbols) {
+        sections.push(`  - ${sym}`);
+      }
+      sections.push('');
+      symbolCount += symbols.length;
+    } catch {
+      // Non-fatal: skip files that can't be read
+    }
+  }
+
+  if (symbolCount === 0) return null;
+
+  const result = sections.join('\n');
+  console.log(`📋 [CodeGen] Foundation contract: ${foundationFiles.length} file(s), ${symbolCount} symbol(s), ${result.length} chars`);
+  return result;
+}
+
+/**
+ * Extract exported symbol signatures from source code.
+ * Captures only top-level exported declarations (types, functions, constants).
+ */
+function extractExportedSymbols(content: string, language?: string): string[] {
+  const lines = content.split('\n');
+  const symbols: string[] = [];
+
+  if (language === 'golang' || language === 'go') {
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (/^type\s+[A-Z]/.test(trimmed)) {
+        symbols.push(trimmed.replace(/\s*\{.*$/, ''));
+      } else if (/^func\s+(\([^)]+\)\s+)?[A-Z]/.test(trimmed)) {
+        symbols.push(trimmed.replace(/\s*\{.*$/, ''));
+      } else if (/^(var|const)\s+[A-Z]/.test(trimmed)) {
+        symbols.push(trimmed.replace(/\s*=.*$/, ''));
+      }
+    }
+  } else if (language === 'typescript' || language === 'javascript') {
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (/^export\s+(function|class|interface|type|const|let|var|enum|abstract)\s/.test(trimmed)) {
+        symbols.push(trimmed.replace(/\s*[{=].*$/, ''));
+      }
+    }
+  } else {
+    return ['(symbol extraction not available — use read_file to inspect)'];
+  }
+
+  return symbols;
+}
+
+/**
+ * Build Schema Anchor: concise table/type summary extracted from migration SQL files.
+ * Prevents feature tasks from referencing non-existent columns or tables.
+ * Works in both parallel mode (otherWorkerFiles) and sequential mode (projectCodeContext).
+ */
+async function buildSchemaAnchor(state: ArchitectGraphState): Promise<string | null> {
+  const otherWorkerFiles: Array<{ path: string; taskName?: string }> | undefined =
+    (state as any)._otherWorkerFiles;
+  const codeContextFiles = state.projectCodeContext?.files || [];
+
+  const migrationPaths = new Set<string>();
+  const contentCache = new Map<string, string>();
+
+  if (otherWorkerFiles) {
+    for (const f of otherWorkerFiles) {
+      if (isMigrationFile(f.path)) migrationPaths.add(f.path);
+    }
+  }
+  for (const f of codeContextFiles) {
+    if (f.path && isMigrationFile(f.path)) {
+      migrationPaths.add(f.path);
+      if (f.content) contentCache.set(f.path, f.content);
+    }
+  }
+
+  if (migrationPaths.size === 0) return null;
+
+  const fileSystem = state.deps?.fileSystem;
+  const schemas: string[] = [];
+
+  const sortedPaths = Array.from(migrationPaths).sort();
+  for (const filePath of sortedPaths) {
+    let content = contentCache.get(filePath);
+    if (!content && fileSystem) {
+      try { content = await fileSystem.readFile(filePath) || undefined; } catch { /* skip */ }
+    }
+    if (!content) continue;
+
+    const tables = extractTableSchemas(content);
+    schemas.push(...tables);
+  }
+
+  if (schemas.length === 0) return null;
+
+  const sections = [
+    '# Database Schema (from migrations, read-only reference)\n',
+    'Use this schema when writing queries. Do NOT reference columns not listed here.\n',
+    ...schemas,
+  ];
+
+  const result = sections.join('\n');
+  console.log(`📋 [CodeGen] Schema anchor: ${migrationPaths.size} migration(s), ${schemas.length} table/type(s), ${result.length} chars`);
+  return result;
+}
+
+function isMigrationFile(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  if (!lower.endsWith('.sql')) return false;
+  return lower.includes('migration') || lower.includes('schema') || lower.includes('migrate');
+}
+
+function extractTableSchemas(sql: string): string[] {
+  const results: string[] = [];
+
+  const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(\w+)["'`]?\s*\(([\s\S]*?)\);/gi;
+  let match;
+  while ((match = tableRegex.exec(sql)) !== null) {
+    const tableName = match[1];
+    const body = match[2];
+    const columns: string[] = [];
+
+    for (const rawLine of body.split('\n')) {
+      const trimmed = rawLine.trim().replace(/,\s*$/, '');
+      if (!trimmed) continue;
+      if (/^(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE\s*\(|CHECK\s*\(|CONSTRAINT\s)/i.test(trimmed)) continue;
+      columns.push(`  ${trimmed}`);
+    }
+
+    if (columns.length > 0) {
+      results.push(`**${tableName}**:\n${columns.join('\n')}\n`);
+    }
+  }
+
+  const enumRegex = /CREATE\s+TYPE\s+["'`]?(\w+)["'`]?\s+AS\s+ENUM\s*\(([^)]+)\)/gi;
+  while ((match = enumRegex.exec(sql)) !== null) {
+    results.push(`**${match[1]}** (ENUM): ${match[2].trim()}\n`);
+  }
+
+  return results;
 }
