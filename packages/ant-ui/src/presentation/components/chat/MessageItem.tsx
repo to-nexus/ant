@@ -119,23 +119,27 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
             <ReactMarkdown 
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  // 코드 블록 스타일링
-                  code: ({ node, inline, className, children, ...props }: any) => {
-                    return inline ? (
-                      <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono break-all" {...props}>
+                  pre: ({ node, className, children, ...props }: any) => (
+                    <pre
+                      className="my-2 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
+                      style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                      {...props}
+                    >
+                      {children}
+                    </pre>
+                  ),
+                  code: ({ node, className, children, ...props }: any) => {
+                    const hasLanguage = /language-\w+/.test(className || '');
+                    const isMultiLine = String(children).includes('\n');
+
+                    if (hasLanguage || isMultiLine) {
+                      return <code className={className} {...props}>{children}</code>;
+                    }
+
+                    return (
+                      <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono break-words" {...props}>
                         {children}
                       </code>
-                    ) : (
-                      // ✅ Reduced margin (my-2 instead of my-4) to prevent excessive line breaks
-                      <pre className="my-2 p-0 bg-transparent">
-                        <code 
-                          className="block px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
-                          style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                          {...props}
-                        >
-                          {children}
-                        </code>
-                      </pre>
                     );
                   },
                   // 링크 스타일링
