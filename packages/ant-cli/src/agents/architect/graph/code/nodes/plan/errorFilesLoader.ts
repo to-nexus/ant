@@ -43,7 +43,7 @@ export async function loadErrorFiles(
   // Apply limit to error files (priority files with strict quota)
   const fileLimit = Math.min(errorFilePaths.length, RETRIEVAL_CONFIG.MAX_STACK_TRACE);
   console.log(`   📍 Error files: ${errorFilePaths.length} files → loading ${fileLimit} files (max ${RETRIEVAL_CONFIG.MAX_STACK_TRACE})...`);
-  console.log(`   📊 Remaining quota for semantic: ${RETRIEVAL_CONFIG.TOTAL_MAX - fileLimit} files`);
+  console.log(`   📊 Error files loaded: ${fileLimit} (semantic quota will adjust accordingly)`);
   
   const { resolveStackTraceFile } = await import('../../../../../../core/utils/filePathResolver');
   

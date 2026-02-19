@@ -91,219 +91,149 @@ export async function combineCodeContext(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // EXCLUSIVE TASK FAST PATH: Load ALL codebase files directly
+  // VERIFICATION FAST PATH: Config pre-loaded, source paths-only
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Exclusive tasks need codebase awareness, but the strategy differs by task type:
-  // - Verification: paths-only (reads files on demand via build error output)
-  // - Integration/other: core=content, reference=path-only (Option B)
-  const isExclusiveTask = state.currentTask?.exclusive === true;
-  if (isExclusiveTask) {
-    const isVerificationTask = state.currentTask?.type === 'verification';
+  // Only verification tasks use a special loading strategy because they
+  // discover source files on demand via build error output.
+  // All other exclusive tasks (integration, setup) use the normal 3-tier
+  // RAG path below — files are selected by relevance and loaded with FULL
+  // content (no truncation), which eliminates redundant read_file calls.
+  const isVerificationTask = state.currentTask?.exclusive === true
+    && state.currentTask?.type === 'verification';
 
-    if (isVerificationTask) {
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // VERIFICATION: Config files pre-loaded, rest paths-only
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Config/infra files are pre-loaded with content (cached in prompt) so the
-      // LLM can immediately identify build commands, dependencies, and infrastructure
-      // without wasting 3-4 rounds on read_file calls. Source files remain paths-only
-      // and are read on demand when build errors point to them.
-      console.log(`🔍 [RAG] Verification task → config pre-loaded, rest paths-only`);
+  if (isVerificationTask) {
+    console.log(`🔍 [RAG] Verification task → config pre-loaded, rest paths-only`);
 
-      const BINARY_EXTENSIONS = new Set([
-        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
-        '.woff', '.woff2', '.ttf', '.eot', '.otf',
-        '.zip', '.tar', '.gz', '.br', '.zst',
-        '.pdf', '.doc', '.docx', '.xls', '.xlsx',
-        '.mp3', '.mp4', '.wav', '.avi', '.mov',
-        '.exe', '.dll', '.so', '.dylib', '.wasm',
-        '.sqlite', '.db',
+    const BINARY_EXTENSIONS = new Set([
+      '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
+      '.woff', '.woff2', '.ttf', '.eot', '.otf',
+      '.zip', '.tar', '.gz', '.br', '.zst',
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+      '.mp3', '.mp4', '.wav', '.avi', '.mov',
+      '.exe', '.dll', '.so', '.dylib', '.wasm',
+      '.sqlite', '.db',
+    ]);
+
+    const CONFIG_BASENAMES = new Set([
+      'go.mod', 'go.sum', 'package.json', 'cargo.toml',
+      'requirements.txt', 'pyproject.toml',
+      'tsconfig.json', 'makefile',
+      'docker-compose.yml', 'docker-compose.yaml',
+      'compose.yml', 'compose.yaml', 'dockerfile',
+      '.env.example', '.env',
+    ]);
+
+    const CONFIG_PREFIXES = [
+      'vite.config', 'webpack.config', 'rollup.config',
+    ];
+
+    const ENTRY_SUFFIXES = [
+      '/main.go', '/main.ts', '/main.js',
+      '/index.ts', '/index.js',
+      '/app.ts', '/app.js',
+      '/cmd/main.go', '/src/main.ts', '/src/index.ts', '/src/app.ts',
+    ];
+
+    const MAX_CONFIG_LINES = 200;
+
+    let pathsOnly: string[] = [];
+    let preloadedFiles: Array<{ path: string; content: string; source: 'local' }> = [];
+
+    try {
+      const allPaths = await fileSystem.listFiles('codebase', [
+        'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
+        'coverage', '__pycache__', 'venv', '.venv', 'target',
+        '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
       ]);
+      const textPaths = allPaths.filter(p => !BINARY_EXTENSIONS.has(path.extname(p).toLowerCase()));
+      const cappedPaths = textPaths.slice(0, RETRIEVAL_CONFIG.VERIFICATION_MAX_FILES);
 
-      const CONFIG_BASENAMES = new Set([
-        'go.mod', 'go.sum', 'package.json', 'cargo.toml',
-        'requirements.txt', 'pyproject.toml',
-        'tsconfig.json', 'makefile',
-        'docker-compose.yml', 'docker-compose.yaml',
-        'compose.yml', 'compose.yaml', 'dockerfile',
-        '.env.example', '.env',
-      ]);
-
-      const CONFIG_PREFIXES = [
-        'vite.config', 'webpack.config', 'rollup.config',
-      ];
-
-      const ENTRY_SUFFIXES = [
-        '/main.go', '/main.ts', '/main.js',
-        '/index.ts', '/index.js',
-        '/app.ts', '/app.js',
-        '/cmd/main.go', '/src/main.ts', '/src/index.ts', '/src/app.ts',
-      ];
-
-      const MAX_CONFIG_LINES = 200;
-
-      let pathsOnly: string[] = [];
-      let preloadedFiles: Array<{ path: string; content: string; source: 'local' }> = [];
-
-      try {
-        const allPaths = await fileSystem.listFiles('codebase', [
-          'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
-          'coverage', '__pycache__', 'venv', '.venv', 'target',
-          '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
-        ]);
-        const textPaths = allPaths.filter(p => !BINARY_EXTENSIONS.has(path.extname(p).toLowerCase()));
-        const cappedPaths = textPaths.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES);
-
-        const isConfigFile = (filePath: string): boolean => {
-          const basename = path.basename(filePath).toLowerCase();
-          if (CONFIG_BASENAMES.has(basename)) return true;
-          return CONFIG_PREFIXES.some(prefix => basename.startsWith(prefix));
-        };
-
-        const isEntryFile = (filePath: string): boolean => {
-          const lower = filePath.toLowerCase();
-          return ENTRY_SUFFIXES.some(suffix => lower.endsWith(suffix));
-        };
-
-        const configPaths: string[] = [];
-        let entryLoaded = false;
-
-        for (const p of cappedPaths) {
-          if (isConfigFile(p)) {
-            configPaths.push(p);
-          } else if (!entryLoaded && isEntryFile(p)) {
-            configPaths.push(p);
-            entryLoaded = true;
-          } else {
-            pathsOnly.push(p);
-          }
-        }
-
-        for (const configPath of configPaths) {
-          try {
-            const content = await fileSystem.readFile(configPath);
-            if (content) {
-              const lines = content.split('\n');
-              const truncated = lines.length > MAX_CONFIG_LINES
-                ? lines.slice(0, MAX_CONFIG_LINES).join('\n') +
-                  `\n\n// ... truncated (${lines.length - MAX_CONFIG_LINES} more lines)`
-                : content;
-              preloadedFiles.push({ path: configPath, content: truncated, source: 'local' as const });
-            }
-          } catch {
-            pathsOnly.push(configPath);
-          }
-        }
-
-        console.log(`   ✅ Verification context: ${preloadedFiles.length} config files (pre-loaded), source files omitted (discover via build errors)`);
-        preloadedFiles.forEach(f => console.log(`      📄 [pre-loaded] ${f.path}`));
-      } catch (err) {
-        console.warn(`   ⚠️  Failed to list codebase files:`, err instanceof Error ? err.message : err);
-      }
-
-      try {
-        const chatAPI = getChatAPIClient();
-        const loadMergeIndex = await chatAPI.showChatStatus('loading', { filesCount: 0 });
-        await chatAPI.showChatStatus('loaded', {
-          filesCount: preloadedFiles.length,
-          filesList: preloadedFiles.map(f => f.path),
-          content: `Loaded: ${preloadedFiles.length} config files (content). Source files not listed — discover from build errors.`,
-          _mergeIndex: loadMergeIndex
-        });
-      } catch {
-        // Non-critical
-      }
-
-      const projectCodeContext: ProjectCodeContext = {
-        filePaths: [],
-        files: preloadedFiles,
-        stats: {
-          filesLoaded: preloadedFiles.length,
-          errorFilesCount: 0,
-          semanticCount: 0,
-          deduplicatedCount: 0,
-        },
-        source: 'plan' as const
+      const isConfigFile = (filePath: string): boolean => {
+        const basename = path.basename(filePath).toLowerCase();
+        if (CONFIG_BASENAMES.has(basename)) return true;
+        return CONFIG_PREFIXES.some(prefix => basename.startsWith(prefix));
       };
 
-      if (directoryTree) {
-        projectCodeContext.directoryTree = directoryTree;
-      } else {
-        try {
-          projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
-        } catch { /* Non-critical */ }
+      const isEntryFile = (filePath: string): boolean => {
+        const lower = filePath.toLowerCase();
+        return ENTRY_SUFFIXES.some(suffix => lower.endsWith(suffix));
+      };
+
+      const configPaths: string[] = [];
+      let entryLoaded = false;
+
+      for (const p of cappedPaths) {
+        if (isConfigFile(p)) {
+          configPaths.push(p);
+        } else if (!entryLoaded && isEntryFile(p)) {
+          configPaths.push(p);
+          entryLoaded = true;
+        } else {
+          pathsOnly.push(p);
+        }
       }
 
-      return { context: projectCodeContext, lessons: [] };
+      for (const configPath of configPaths) {
+        try {
+          const content = await fileSystem.readFile(configPath);
+          if (content) {
+            const lines = content.split('\n');
+            const truncated = lines.length > MAX_CONFIG_LINES
+              ? lines.slice(0, MAX_CONFIG_LINES).join('\n') +
+                `\n\n// ... truncated (${lines.length - MAX_CONFIG_LINES} more lines)`
+              : content;
+            preloadedFiles.push({ path: configPath, content: truncated, source: 'local' as const });
+          }
+        } catch {
+          pathsOnly.push(configPath);
+        }
+      }
+
+      console.log(`   ✅ Verification context: ${preloadedFiles.length} config files (pre-loaded), source files omitted (discover via build errors)`);
+      preloadedFiles.forEach(f => console.log(`      📄 [pre-loaded] ${f.path}`));
+    } catch (err) {
+      console.warn(`   ⚠️  Failed to list codebase files:`, err instanceof Error ? err.message : err);
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // INTEGRATION / OTHER EXCLUSIVE: Core=content, Reference=path-only
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    console.log(`🔍 [RAG] Exclusive task detected → loading codebase files (core=content, reference=path-only)`);
-    
-    const language = state.detectionReport?.profile?.language;
-    const allCodebaseFiles = await loadAllCodebaseFiles(fileSystem, state.currentTask?.description, language);
-    
-    // Also load error files if this is a retry
-    const errorFiles = taskKeywords.errorFiles.length > 0
-      ? await loadErrorFiles(taskKeywords.errorFiles, state, git, fileSystem)
-      : [];
-    
-    // Merge: errorFiles override codebase files (more recent content)
-    const allFiles = [...allCodebaseFiles, ...errorFiles];
-    const uniqueFiles = Array.from(
-      new Map(allFiles.map(f => [f.path, f])).values()
-    );
-    
-    console.log(`   ✅ Exclusive context: ${uniqueFiles.length} files (${allCodebaseFiles.length} codebase + ${errorFiles.length} error, ${allFiles.length - uniqueFiles.length} dedup)`);
-    uniqueFiles.forEach(f => console.log(`      📄 ${f.path}`));
-    
-    // Show in Chat UI
     try {
       const chatAPI = getChatAPIClient();
       const loadMergeIndex = await chatAPI.showChatStatus('loading', { filesCount: 0 });
       await chatAPI.showChatStatus('loaded', {
-        filesCount: uniqueFiles.length,
-        filesList: uniqueFiles.map(f => f.path),
-        content: `Loaded: ${uniqueFiles.length} codebase files (exclusive task)`,
+        filesCount: preloadedFiles.length,
+        filesList: preloadedFiles.map(f => f.path),
+        content: `Loaded: ${preloadedFiles.length} config files (content). Source files not listed — discover from build errors.`,
         _mergeIndex: loadMergeIndex
       });
     } catch {
       // Non-critical
     }
-    
+
     const projectCodeContext: ProjectCodeContext = {
-      filePaths: uniqueFiles.map(f => f.path),
-      files: uniqueFiles,
+      filePaths: [],
+      files: preloadedFiles,
       stats: {
-        filesLoaded: uniqueFiles.length,
-        errorFilesCount: errorFiles.length,
+        filesLoaded: preloadedFiles.length,
+        errorFilesCount: 0,
         semanticCount: 0,
-        deduplicatedCount: allFiles.length - uniqueFiles.length,
+        deduplicatedCount: 0,
       },
       source: 'plan' as const
     };
-    
-    // Git diff
-    if (git) {
-      const gitDiffResult = await generateGitDiffSummary(git, state.context.workingDir, projectCodeContext.filePaths);
-      projectCodeContext.gitDiff = gitDiffResult ?? undefined;
-    }
-    
-    // Directory tree
+
     if (directoryTree) {
       projectCodeContext.directoryTree = directoryTree;
     } else {
       try {
         projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
-      } catch {
-        // Non-critical
-      }
+      } catch { /* Non-critical */ }
     }
-    
+
     return { context: projectCodeContext, lessons: [] };
   }
+
+  // Determine if this is an integration exclusive task (higher file quota)
+  const isIntegrationExclusive = state.currentTask?.exclusive === true
+    && state.currentTask?.type !== 'verification';
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // NORMAL TASK PATH: Three-tier RAG search
@@ -318,7 +248,11 @@ export async function combineCodeContext(
     return null;
   }
   
-  console.log(`🔍 [RAG] Three-tier search (requiredFiles → errorFiles → semantic)...`);
+  if (isIntegrationExclusive) {
+    console.log(`🔍 [RAG] Integration exclusive task → 3-tier search with extended quota (${RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX} files)...`);
+  } else {
+    console.log(`🔍 [RAG] Three-tier search (requiredFiles → errorFiles → semantic)...`);
+  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Tier 0: Required files (highest priority - direct load, no quota)
@@ -376,7 +310,8 @@ export async function combineCodeContext(
     vectorDB,
     git,
     extractFilesFromCode,
-    excludePaths
+    excludePaths,
+    isIntegrationExclusive
   );
   
   const semanticFiles = semanticResult.files;
@@ -449,142 +384,6 @@ export async function combineCodeContext(
     context: projectCodeContext,
     lessons
   };
-}
-
-/**
- * Load ALL codebase files for exclusive tasks (integration, verification).
- * 
- * Uses Option B strategy: Core files get FULL CONTENT, reference files get PATH ONLY.
- * Core files are identified by language-aware patterns and optional task keywords.
- * Reference files are still listed (LLM can read_file if needed), but their content
- * is omitted from the prompt to reduce token usage by ~50%.
- * 
- * Safeguards:
- * - File count capped at EXCLUSIVE_MAX_FILES
- * - Large core files truncated to EXCLUSIVE_MAX_FILE_LINES
- * - Binary files skipped
- * 
- * @param fileSystem - FileSystemPort for file access
- * @param taskDescription - Current task description for keyword-based core file detection
- * @returns Array of loaded files (core files with content, reference files without)
- */
-async function loadAllCodebaseFiles(
-  fileSystem: FileSystemPort,
-  taskDescription?: string,
-  language?: string
-): Promise<LoadedFile[]> {
-  const BINARY_EXTENSIONS = new Set([
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
-    '.woff', '.woff2', '.ttf', '.eot', '.otf',
-    '.zip', '.tar', '.gz', '.br', '.zst',
-    '.pdf', '.doc', '.docx', '.xls', '.xlsx',
-    '.mp3', '.mp4', '.wav', '.avi', '.mov',
-    '.exe', '.dll', '.so', '.dylib', '.wasm',
-    '.sqlite', '.db',
-  ]);
-
-  const files: LoadedFile[] = [];
-
-  try {
-    const allPaths = await fileSystem.listFiles('codebase', [
-      'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
-      'coverage', '__pycache__', 'venv', '.venv', 'target',
-      '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
-    ]);
-
-    const textPaths = allPaths.filter(p => {
-      const ext = path.extname(p).toLowerCase();
-      return !BINARY_EXTENSIONS.has(ext);
-    });
-
-    const cappedPaths = textPaths.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES);
-    if (textPaths.length > RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES) {
-      console.log(`   ⚠️  Capped codebase files: ${textPaths.length} → ${RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES}`);
-    }
-
-    const corePatterns = getCorePatterns(language);
-    const taskKeywords = extractTaskKeywords(taskDescription);
-
-    let coreCount = 0;
-    let refCount = 0;
-
-    for (const filePath of cappedPaths) {
-      const isCore = coreCount < RETRIEVAL_CONFIG.EXCLUSIVE_MAX_CORE_FILES &&
-        isCoreFile(filePath, corePatterns, taskKeywords);
-
-      if (isCore) {
-        try {
-          const content = await fileSystem.readFile(filePath);
-          if (!content) continue;
-
-          const lines = content.split('\n');
-          const truncated = lines.length > RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES
-            ? lines.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES).join('\n') +
-              `\n\n// ... truncated (${lines.length - RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILE_LINES} more lines)`
-            : content;
-
-          files.push({ path: filePath, content: truncated, source: 'local' });
-          coreCount++;
-        } catch {
-          // Skip unreadable files
-        }
-      } else {
-        files.push({ path: filePath, content: '', source: 'local' });
-        refCount++;
-      }
-    }
-
-    console.log(`   📦 [Exclusive] ${files.length} files: ${coreCount} core (full content) + ${refCount} reference (path only). ${allPaths.length - textPaths.length} binary skipped`);
-  } catch (err) {
-    console.warn(`   ⚠️  Failed to list codebase files:`, err instanceof Error ? err.message : err);
-  }
-
-  return files;
-}
-
-/**
- * Build core file patterns by combining universal patterns with language-specific ones.
- * Falls back to TypeScript patterns when language is unknown (widest coverage).
- */
-function getCorePatterns(language?: string): string[] {
-  const universal = [...RETRIEVAL_CONFIG.EXCLUSIVE_CORE_PATTERNS_UNIVERSAL];
-  const langMap = RETRIEVAL_CONFIG.EXCLUSIVE_CORE_PATTERNS_BY_LANGUAGE;
-  const langKey = language
-    ? Object.keys(langMap).find(k => language.toLowerCase().includes(k))
-    : undefined;
-  const langSpecific = langKey ? [...langMap[langKey]] : [...(langMap['typescript'] || [])];
-  return [...universal, ...langSpecific];
-}
-
-/**
- * Check if a file path matches core file patterns or task keywords.
- */
-function isCoreFile(
-  filePath: string,
-  patterns: readonly string[],
-  taskKeywords: string[]
-): boolean {
-  const lower = filePath.toLowerCase();
-  for (const pattern of patterns) {
-    if (lower.includes(pattern.toLowerCase())) return true;
-  }
-  for (const kw of taskKeywords) {
-    if (lower.includes(kw)) return true;
-  }
-  return false;
-}
-
-/**
- * Extract meaningful keywords from task description for core file matching.
- * Returns lowercase path-friendly fragments (e.g., "auth", "handler", "profile").
- */
-function extractTaskKeywords(description?: string): string[] {
-  if (!description) return [];
-  const words = description.toLowerCase()
-    .replace(/[^a-z0-9\s_-]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length >= 4 && w.length <= 30);
-  return [...new Set(words)];
 }
 
 /**

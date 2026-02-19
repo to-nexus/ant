@@ -11,75 +11,36 @@ export const RETRIEVAL_CONFIG = {
   MAX_STACK_TRACE: 5,
   
   /**
-   * Absolute maximum total files (for plan node only)
-   * Decompose has no limit (file paths are cheap)
-   * 
-   * ✅ Increased to 20 to handle projects with many files
-   * - Most projects have 15-20 uncommitted files during development
+   * Absolute maximum total files for regular feature tasks (plan node).
+   * Decompose has no limit (file paths are cheap).
    */
   TOTAL_MAX: 20,
+
+  /**
+   * Higher file limit for integration exclusive tasks.
+   * Integration tasks wire together outputs from ALL parallel feature tasks,
+   * so they typically need more files than a single-feature task.
+   * Uses the same 3-tier RAG pipeline (keyword → error → semantic) — files
+   * are loaded with FULL content (no truncation), selected by relevance.
+   */
+  INTEGRATION_TOTAL_MAX: 30,
   
   /**
-   * Calculate semantic quota based on stack trace count
+   * Calculate semantic quota based on already-loaded file count.
    * 
-   * CRITICAL: Semantic search MUST exclude stack trace files to avoid wasting quota!
-   * 
-   * @param errorFileCount - Number of files already loaded from stack trace
-   * @returns Maximum number of NEW semantic files to load (after excluding stack trace files)
-   * 
-   * @example
-   * - errorFiles: 0 → semantic: 15 (use full quota)
-   * - errorFiles: 3 → semantic: 12 (15 - 3) ← Can load 12 NEW files
-   * - errorFiles: 5 → semantic: 10 (15 - 5) ← Can load 10 NEW files
-   * - errorFiles: 10 → semantic: 5  (15 - 10)
-   * - errorFiles: 15 → semantic: 0  (quota exhausted)
+   * @param preloadedCount - Files already loaded (required + error)
+   * @param isIntegration - True for integration exclusive tasks (higher limit)
    */
-  getSemanticQuota(errorFileCount: number): number {
-    return Math.max(0, this.TOTAL_MAX - errorFileCount);
+  getSemanticQuota(preloadedCount: number, isIntegration?: boolean): number {
+    const max = isIntegration ? this.INTEGRATION_TOTAL_MAX : this.TOTAL_MAX;
+    return Math.max(0, max - preloadedCount);
   },
 
   /**
-   * Exclusive task configuration
-   * 
-   * Exclusive tasks (e.g., application-integration, verification) need access to
-   * ALL codebase files because they wire together outputs from all feature tasks.
-   * RAG keyword search is insufficient — these tasks load the full codebase directly.
+   * Verification task configuration.
+   * Verification tasks list all codebase files (paths-only) and pre-load
+   * config/infra files with content. Source files are discovered on demand
+   * via build error output.
    */
-  EXCLUSIVE_MAX_FILES: 60,
-  EXCLUSIVE_MAX_FILE_LINES: 200,
-
-  /**
-   * Universal core file patterns for exclusive tasks (Option B optimization).
-   * These match regardless of detected language.
-   *
-   * Core files: loaded with FULL CONTENT (essential for wiring/verification).
-   * Reference files: loaded as PATH ONLY (LLM uses read_file if needed).
-   *
-   * Patterns are matched against the file path (case-insensitive).
-   */
-  EXCLUSIVE_CORE_PATTERNS_UNIVERSAL: [
-    'docker-compose', 'dockerfile', 'makefile',
-    '.env.example', '.env',
-    'router', 'routes', 'server.',
-    'migration',
-  ] as readonly string[],
-
-  /**
-   * Language-specific core file patterns.
-   * Selected at runtime via state.detectionReport.profile.language.
-   * Unknown languages fall back to 'typescript' (widest coverage).
-   */
-  EXCLUSIVE_CORE_PATTERNS_BY_LANGUAGE: {
-    typescript: ['package.json', 'tsconfig', 'index.', 'app.', 'next.config', 'vite.config'],
-    go:         ['go.mod', 'go.sum', 'cmd/', 'main.go'],
-    python:     ['requirements.txt', 'pyproject.toml', 'manage.py', 'app.py', 'main.py', 'wsgi', 'asgi'],
-    rust:       ['Cargo.toml', 'main.rs', 'lib.rs', 'build.rs'],
-    java:       ['pom.xml', 'build.gradle', 'Main.java', 'Application.java'],
-  } as Record<string, readonly string[]>,
-
-  /**
-   * Maximum number of core files allowed for exclusive tasks.
-   * If more files match core patterns, excess files become reference files.
-   */
-  EXCLUSIVE_MAX_CORE_FILES: 25,
+  VERIFICATION_MAX_FILES: 60,
 } as const;
