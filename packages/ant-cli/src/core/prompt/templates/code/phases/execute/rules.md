@@ -2,6 +2,8 @@
 
 {{> common/rules}}
 
+{{> code/base/injections/tool-calling-rules-compact}}
+
 {{> code/base/injections/text-format-compact}}
 
 ## 📚 REFERENCE PROJECT USAGE RULES
@@ -187,7 +189,7 @@ code...
 | Previous `read_file` result (in this conversation) | Current unless you edited the file since |
 | Your own `edit_file` output | You know the new state |
 
-**Constraint**: If `edit_file` fails with "not found", the file has changed. Call `read_file` to refresh, then retry.
+**Constraint**: If `edit_file` fails with "not found", `old_str` does not match the file's current content. Reconstruct the correct `old_str` from the trust table above — do NOT default to `read_file`. Only use `read_file` if the file was modified by an external source and you have NO record of its current state in this conversation.
 
 **Constraint**: Include 3-5 lines of context in `old_str` for uniqueness.
 
@@ -241,7 +243,7 @@ Existing files: `edit_file` or `<append>`. New files only: `<file>`.
 
 **Principle**: Before defining a new type, struct, class, function, or interface, check whether one with the same purpose already exists in the same namespace scope (package, module, directory).
 
-**Constraint**: Use `search_code` or `read_file` to verify no existing symbol serves the same purpose BEFORE writing a new definition. If one exists, import/use it — do NOT redefine.
+**Constraint**: Use `search_code` to verify no existing symbol serves the same purpose BEFORE writing a new definition. If one exists, import/use it — do NOT redefine.
 
 **Constraint**: Utility functions (error helpers, response formatters, context extractors, middleware) MUST exist in exactly one file per scope. If a shared utility file already exists in the directory, add to it rather than creating a new one.
 

@@ -6,44 +6,46 @@ You are verifying that the integrated codebase builds and starts without errors.
 
 **Build and startup errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.
 
+## Pre-loaded Context
+
+Configuration files, entry points, and the directory tree are already in your context. Use them directly — do NOT re-read or re-list what is already provided.
+
+| Context | Use for |
+|---------|---------|
+| **Config files** (go.mod, package.json, Makefile, etc.) | Build commands, dependencies |
+| **Infrastructure files** (docker-compose.yml, etc.) | Whether infrastructure is required |
+| **Entry point** (main.go, index.ts, etc.) | Environment variable requirements |
+| **Environment files** (.env.example, .env) | Connection configuration |
+| **Directory tree** | Project structure — do NOT call `list_files` |
+
 ## Constraints
 
 | Constraint | Rule |
 |-----------|------|
 | **No feature work** | Do NOT review, add, complete, or improve feature implementations. Do NOT search for incomplete code or missing functionality. |
 | **No over-engineering** | Fix only what prevents build or startup. Do NOT refactor, reorganize, or "improve" working code. |
+| **No proactive file reading** | Do NOT `read_file` on source files to "understand" the codebase. Build errors name exactly which files need attention. `read_file` is permitted ONLY for files referenced in build error output. |
 | **Batch-fix** | Collect ALL errors from a single build output, then fix them ALL in one pass. Do NOT fix one error and re-run. |
 | **Dev server behavior** | Dev servers do NOT terminate. Success = outputs a startup/ready message. Do NOT wait for exit. |
 
 ## Verification Protocol
 
-### Step 1: Discover
-
-Observe the project's configuration files to determine build, dev, and infrastructure commands.
-
-| Checkpoint | What to observe |
-|-----------|----------------|
-| **Build/dev commands** | Dependency, build, infrastructure, and environment files are pre-loaded in your context. Observe them to identify build and start commands. Do NOT re-read files already in context. |
-| **Infrastructure definition** | Is an infrastructure definition file present in context? If yes, infrastructure is required. |
-| **Environment requirements** | Observe environment config or entry point in context to identify required environment variables. |
-| **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. Are same-project internal connections marked with `self`? |
-| **Env file consistency** | Do `.env.example` and `.env` contain the same variable keys? If a variable exists in one but not the other, add it to the missing file. |
-
-### Step 2: Environment & Infrastructure
+### Step 1: Environment & Infrastructure
 
 An application cannot start without its environment configuration and dependent services. Resolve environment issues BEFORE attempting to build.
 
 | Checkpoint | Action |
 |-----------|--------|
+| **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. Are same-project internal connections marked with `self`? |
 | **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. If both exist, verify variable keys match. Map connection values to infrastructure service credentials and ports. |
 | **Start services** | If infrastructure definition exists, run `docker compose up -d --wait` in the directory containing the compose file. |
 | **Verify readiness** | Services must be healthy before proceeding. |
 
-**Blind spot**: Environment variables are EASILY MISSED. If `.env.example` exists, the application almost certainly requires a `.env` file with resolved values.
+⚠️ **Blind spot**: Environment variables are EASILY MISSED. If `.env.example` exists, the application almost certainly requires a `.env` file with resolved values.
 
 ⚠️ **Blind spot**: Infrastructure services may retain state from previous runs. If the application cannot connect despite services reporting healthy, consider whether service state needs resetting before re-diagnosing application code.
 
-### Step 3: Build
+### Step 2: Build
 
 Run the project's build/compile command.
 
@@ -72,7 +74,7 @@ Run the project's build/compile command.
 
 ⚠️ **Blind spot**: A single duplicate struct/type can produce 5-10 compiler errors (redeclaration + each method/usage). Count unique duplicate symbols, not error lines.
 
-### Step 4: Runtime (if build succeeds)
+### Step 3: Runtime (if build succeeds)
 
 Run the project's dev/start command to verify the application starts.
 

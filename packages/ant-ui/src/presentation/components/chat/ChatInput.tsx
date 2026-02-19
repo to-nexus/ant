@@ -48,7 +48,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const [showFileList, setShowFileList] = useState(false);  // ✅ Cursor-style file list toggle
   
   // ✅ Resizable textarea state
-  const MIN_HEIGHT = 80; // 최소 높이 (rows=3 기준 약 80px)
+  const MIN_HEIGHT = 40; // 최소 높이 (1줄 입력 기준 약 40px)
   const [textareaHeight, setTextareaHeight] = useState(() => {
     const saved = localStorage.getItem('chatInputHeight');
     return saved ? parseInt(saved, 10) : MIN_HEIGHT;

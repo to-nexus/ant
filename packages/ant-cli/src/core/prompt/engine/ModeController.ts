@@ -193,31 +193,37 @@ export class ModeController {
     
     // Phase-specific injections
     if (phase === 'execute') {
-      // Environment-specific rules (code job only)
       const language = this.detectLanguage(context);
       const environment = this.detectEnvironment(context, language);
       
-      if (language && job === 'code') {
-        const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
-        injections.push(envPath);
-        console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
-        
-        // ✅ Preview setup for frontend projects (base path configuration)
-        if (environment === 'browser' || environment === 'fullstack') {
-          injections.push(`${jobPrefix}/preview-setup`);
-          console.log(`[ModeController] Adding preview-setup for frontend environment`);
+      // Verification tasks use dedicated verify/ templates (base + rules).
+      // Environment-specific rules (e.g. go-api/rules.md) contain "Do NOT run build commands"
+      // which directly contradicts verification's purpose. tool-calling-rules-compact is
+      // already included via Handlebars partial in verify/rules.md.
+      if (!isVerification) {
+        if (language && job === 'code') {
+          const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
+          injections.push(envPath);
+          console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
+          
+          if (environment === 'browser' || environment === 'fullstack') {
+            injections.push(`${jobPrefix}/preview-setup`);
+            console.log(`[ModeController] Adding preview-setup for frontend environment`);
+          }
         }
-        // ✅ Preview runtime contract (PORT binding + @connection annotations) — ALL environments
-        injections.push(`${jobPrefix}/preview-env-contract`);
-        console.log(`[ModeController] Adding preview-env-contract for environment=${environment}`);
+        
+        if (job === 'code') {
+          injections.push(`${jobPrefix}/tool-calling-rules-compact`);
+          console.log(`[ModeController] Adding compact tool-calling rules`);
+        }
       }
       
-      // ✅ NEW: Compact tool-calling rules (replaces verbose version)
+      // preview-env-contract (@connection annotations) and port-management
+      // are needed for ALL code tasks including verification
       if (job === 'code') {
-        injections.push(`${jobPrefix}/tool-calling-rules-compact`);
-        console.log(`[ModeController] Adding compact tool-calling rules`);
+        injections.push(`${jobPrefix}/preview-env-contract`);
+        console.log(`[ModeController] Adding preview-env-contract`);
         
-        // ✅ Port management guide (CRITICAL for run_command safety)
         injections.push(`code/phases/execute/injections/port-management`);
         console.log(`[ModeController] Adding port-management guide`);
       }

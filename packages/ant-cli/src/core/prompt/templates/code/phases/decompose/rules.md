@@ -189,7 +189,9 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Constraint**: If a task requires MORE THAN ONE independent persistence boundary with its own business logic and API layer, split into separate tasks — one per boundary.
 
-**Exception — shared implementation modules**: When multiple persistence boundaries will be implemented in the SAME code files (same handler, service, or repository file), merge them into a SINGLE task. A second task re-reading, extending, and fixing files the first task created multiplies token cost disproportionately.
+**Exception — shared implementation modules**: When multiple persistence boundaries will be implemented in the SAME output files (same handler, service, or repository file), merge them into a SINGLE task. A second task re-reading, extending, and fixing files the first task created multiplies token cost disproportionately.
+
+**Constraint**: Cross-entity dependency via imported interface does NOT constitute shared implementation. If a service for boundary A calls a repository for boundary B through an interface defined by a shared foundation task, A and B produce separate output files — do NOT merge.
 
 **Observation target**: For entities that appear separable by persistence boundary, check whether they share implementation modules.
 
@@ -197,12 +199,15 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 |-----------|----------------|
 | **Shared code files** | Will two entities be implemented in the same handler/service/repository files? |
 | **Architecture grouping** | Does the project group by layer (handler/, service/, repository/) rather than by domain? |
+| **Shared foundation coverage** | Does a shared foundation task (priority 150-199) define the cross-boundary types and interfaces? If yes, does file overlap persist even with shared definitions in place? |
 
 **Constraint**: In layer-grouped architectures, entities in the same domain section share the same files per layer. Merge them into one task.
 
 **Constraint**: Do NOT split below the persistence boundary level. An entity with its business logic and API layer is the minimum useful task unit. Splitting further (e.g., data access alone, business logic alone) creates tasks that cannot be verified independently and wastes per-task overhead.
 
 ⚠️ **Blind spot**: Entities with separate database tables appear independent, but in layer-grouped projects they produce OVERLAPPING implementation files. The second task must read, understand, and extend files the first task created — each interaction replays the full conversation, multiplying token cost. Observe the architecture pattern to decide split vs. merge.
+
+⚠️ **Blind spot**: Entities in the same domain appear tightly coupled when one operation spans both persistence boundaries. Cross-entity transactions do NOT require shared output files when a shared foundation task provides the interfaces. Evaluate file overlap based on the output files each task PRODUCES — not on the interfaces each task IMPORTS.
 
 ---
 
@@ -242,17 +247,17 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 |-----------|----------------|
 | **Shared infrastructure symbols** | Will 2+ parallel tasks need middleware types, error/response utilities, or shared definitions in the same namespace scope? |
 | **Cross-cutting utilities** | Will 2+ parallel tasks define helper functions that serve the same purpose in the same namespace scope? |
-| **Shared schema types** | Are there domain types (models, entities, DTOs) referenced by 2+ feature tasks? |
+| **Shared schema types** | Are there domain types (models, entities, response DTOs, input structs) referenced by 2+ feature tasks? |
 
 **Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create a dedicated exclusive task (priority 150-199, after setup, before features) that defines ALL shared symbols for that scope.
 
-**Constraint**: This task defines types, interfaces, and shared utility functions ONLY. It does NOT implement business logic, API handlers, or data access.
+**Constraint**: This task defines types, interfaces, response DTOs, and shared utility functions ONLY. It does NOT implement business logic, API handlers, or data access.
 
 **Constraint**: The `packages` field MUST include all tier tags that parallel feature tasks span, combined with `"shared"`. Example: if parallel tasks use `["be"]`, the foundation task uses `["shared", "be"]`. `"shared"` alone provides only API contract — system design documents are required for the plan phase to identify infrastructure symbols.
 
 **Constraint**: Feature tasks that depend on shared foundation symbols MUST NOT redefine them. They import and use what the shared foundation task established.
 
-⚠️ **Blind spot**: Domain types are easily identified as shared, but infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing duplicate symbol errors. Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.
+⚠️ **Blind spot**: Domain types are easily identified as shared, but response DTOs (enriched types that combine entity data with joined fields) and infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing feature tasks to MODIFY shared files or create duplicate types. Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.
 
 ---
 

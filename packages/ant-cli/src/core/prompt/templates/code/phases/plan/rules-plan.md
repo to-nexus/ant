@@ -97,6 +97,14 @@ existing modules, design specs, dependencies, etc.)
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
+## 📐 MODIFY FIELD CONSTRAINT
+────────────────────────────────────────────────────────────────────────────────
+
+**Principle**: `modify.action` and `modify.changes` describe WHAT to change, not HOW to execute it. CodeGen decides the operational steps.
+
+**Constraint**: Do NOT include tool execution instructions in MODIFY fields (e.g., "Read existing content first", "Use read_file to check", "Run list_files"). State only the intended change.
+
+────────────────────────────────────────────────────────────────────────────────
 ## 🔒 TASK SCOPE PRINCIPLE
 ────────────────────────────────────────────────────────────────────────────────
 
@@ -114,6 +122,8 @@ existing modules, design specs, dependencies, etc.)
 
 - ❌ DO NOT create new module if similar functionality already exists
 - ✅ If similar module exists, use MODIFY instead of CREATE
+
+**Constraint**: Files created by a prior exclusive task (e.g., shared foundation) are a stable contract. Do NOT plan MODIFY on them. If the established types or interfaces are insufficient for your needs, define supplementary types within YOUR module's scope.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🔗 CROSS-BOUNDARY DEPENDENCIES (Parallel Execution)

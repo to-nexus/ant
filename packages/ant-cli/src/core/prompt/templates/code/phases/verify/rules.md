@@ -14,6 +14,7 @@
 Do NOT read any source file before attempting a build.
 
 - Config and entry files are pre-loaded in your context — observe them for build commands.
+- Directory structure is pre-loaded in your context — do NOT use `list_files` for exploration.
 - Build errors will name exactly which source files need inspection.
 - `read_file` is permitted ONLY for files named in build error output, or after a failed `edit_file`.
 
@@ -23,7 +24,7 @@ Do NOT read any source file before attempting a build.
 |-----------|------|
 | **No feature changes** | Fix ONLY what prevents compilation/startup. Do NOT improve logic or add functionality. |
 | **Config over code** | Prefer configuration fixes (go.mod, package.json, tsconfig.json) over source code changes. |
-| **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` to refresh. |
+| **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` the target file to refresh — but ONLY if that file was already identified from build error output. |
 
 ---
 
@@ -72,7 +73,7 @@ Do NOT read any source file before attempting a build.
 
 - Use content from build error output, previous reads, or retrieved context
 - Include 3-5 lines of context for uniqueness
-- If `edit_file` fails with "not found": call `read_file` to refresh, then retry
+- If `edit_file` fails with "not found": call `read_file` on that specific file to refresh, then retry. Do NOT use this as justification to read unrelated files.
 
 ### XML Tag Safety
 
