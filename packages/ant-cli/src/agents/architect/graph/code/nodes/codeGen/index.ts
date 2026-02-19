@@ -317,7 +317,7 @@ export async function codeGen(
     // ✅ Single stream (no loop!)
     for await (const event of llmToUse.stream(messages, {
       tools,
-      maxTokens: 16000,
+      maxTokens: 32000,
       enableThinking: !isAfterToolCall,
     })) {
       await orchestrator.processEvent(event);

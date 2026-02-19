@@ -20,6 +20,7 @@ export interface TruncationConfig {
   maxSearchResults: number;        // search_code 최대 결과 수 (기본: 20)
   maxListFiles: number;            // list_files 최대 파일 수 (기본: 50)
   maxReadFileTokens: number;       // read_file 최대 토큰 (기본: 3000)
+  maxRunCommandTokens: number;     // run_command 최대 토큰 (기본: 2500)
   preserveErrors: boolean;         // 에러는 truncate 안함 (기본: true)
 }
 
@@ -45,6 +46,7 @@ export class ToolResultManager {
       maxSearchResults: config?.maxSearchResults || 20,
       maxListFiles: config?.maxListFiles || 50,
       maxReadFileTokens: config?.maxReadFileTokens || 3000,
+      maxRunCommandTokens: config?.maxRunCommandTokens || 2500,
       preserveErrors: config?.preserveErrors !== false,
     };
   }
@@ -73,6 +75,8 @@ export class ToolResultManager {
         return this.truncateSearchCode(result);
       case 'read_file':
         return this.truncateReadFile(result);
+      case 'run_command':
+        return this.truncateRunCommand(result);
       case 'list_files':
         return this.truncateListFiles(result);
       default:
@@ -198,6 +202,54 @@ export class ToolResultManager {
     };
   }
   
+  /**
+   * run_command 결과 truncation
+   * 전략: Header(30%) + Tail(50%) 보존. Build error는 보통 출력 끝에 위치하므로
+   * tail을 더 많이 보존한다.
+   */
+  private truncateRunCommand(result: any): TruncationResult {
+    const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+    const originalTokens = this.tokenManager.estimateTokens(resultStr);
+    const maxTokens = this.config.maxRunCommandTokens;
+
+    if (originalTokens <= maxTokens) {
+      return {
+        content: resultStr,
+        wasTruncated: false,
+        originalTokens,
+        truncatedTokens: originalTokens,
+      };
+    }
+
+    const lines = resultStr.split('\n');
+    const keepRatio = maxTokens / originalTokens;
+    const totalKeepLines = Math.max(10, Math.floor(lines.length * keepRatio));
+    const keepStart = Math.min(Math.floor(totalKeepLines * 0.35), Math.floor(lines.length * 0.3));
+    const keepEnd = Math.min(totalKeepLines - keepStart, Math.floor(lines.length * 0.5));
+    const omittedLines = lines.length - keepStart - keepEnd;
+
+    const truncated = [
+      ...lines.slice(0, keepStart),
+      `\n... (${omittedLines} lines omitted, output too large: ${originalTokens.toLocaleString()} tokens → ${maxTokens.toLocaleString()} limit) ...\n`,
+      ...lines.slice(-keepEnd),
+    ].join('\n');
+
+    const truncatedTokens = this.tokenManager.estimateTokens(truncated);
+
+    console.log(`\n✂️  [ToolResult] Truncated run_command:`);
+    console.log(`   Original: ${originalTokens.toLocaleString()} tokens (${lines.length} lines)`);
+    console.log(`   Truncated: ${truncatedTokens.toLocaleString()} tokens`);
+    console.log(`   Kept: First ${keepStart} + Last ${keepEnd} lines (target: ${maxTokens} tokens)`);
+
+    return {
+      content: truncated,
+      wasTruncated: true,
+      originalTokens,
+      truncatedTokens,
+      reason: `Command output too large, kept header and tail`,
+    };
+  }
+
   /**
    * list_files 결과 truncation
    * 전략: 상위 N개 파일만 포함

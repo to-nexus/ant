@@ -23,9 +23,9 @@ Observe the project's configuration files to determine build, dev, and infrastru
 
 | Checkpoint | What to observe |
 |-----------|----------------|
-| **Build/dev commands** | Read project config files to find build and start commands. Do NOT assume. |
-| **Infrastructure definition** | Does `docker-compose.yml` (or `compose.yml`) exist? If yes, infrastructure is required. |
-| **Environment requirements** | Read `.env.example`, config files, or entry point to identify required environment variables. |
+| **Build/dev commands** | Dependency, build, infrastructure, and environment files are pre-loaded in your context. Observe them to identify build and start commands. Do NOT re-read files already in context. |
+| **Infrastructure definition** | Is an infrastructure definition file present in context? If yes, infrastructure is required. |
+| **Environment requirements** | Observe environment config or entry point in context to identify required environment variables. |
 | **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. Are same-project internal connections marked with `self`? |
 | **Env file consistency** | Do `.env.example` and `.env` contain the same variable keys? If a variable exists in one but not the other, add it to the missing file. |
 
@@ -41,6 +41,8 @@ An application cannot start without its environment configuration and dependent 
 
 **Blind spot**: Environment variables are EASILY MISSED. If `.env.example` exists, the application almost certainly requires a `.env` file with resolved values.
 
+⚠️ **Blind spot**: Infrastructure services may retain state from previous runs. If the application cannot connect despite services reporting healthy, consider whether service state needs resetting before re-diagnosing application code.
+
 ### Step 3: Build
 
 Run the project's build/compile command.
@@ -51,7 +53,9 @@ Run the project's build/compile command.
 3. Fix ALL errors across ALL files in a single batch of edit_file calls
 4. Only THEN re-run the build
 
-**Constraint**: Do NOT fix-and-rebuild after each individual error. Each rebuild costs a full iteration. If the build reports 8 errors, fix all 8 before rebuilding. A single rebuild cycle that fixes 8 errors is 8x more efficient than 8 separate cycles.
+**Constraint**: Do NOT fix-and-rebuild after each individual error. If the build reports 8 errors, fix all 8 before rebuilding.
+
+**Constraint**: Minimize total build cycles. Target: 2-3 build attempts maximum for the entire verification. Before each rebuild, confirm ALL known errors from the previous output are addressed.
 
 ### Common Build Error: Duplicate Symbols
 
