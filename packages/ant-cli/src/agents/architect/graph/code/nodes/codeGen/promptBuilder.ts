@@ -347,10 +347,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ✅ Add conversation history (if exists)
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     const tokenManager = new TokenBudgetManager();
-    const historyConfig = isVerificationTask
-      ? { maxTokens: 40000, minTurnsToKeep: 2 }
-      : undefined;
-    const historyManager = new HistoryManager(tokenManager, historyConfig);
+    const historyManager = new HistoryManager(tokenManager);
     
     // Filter out initial user prompts (replaced by fresh prompt)
     let skipInitialUserMessages = true;
@@ -624,8 +621,9 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
   
   const lines = [
     '════════════════════════════════════════════════════════════════════════════════',
-    '📋 Files in Context',
+    '📋 Files Loaded in Code Context (do NOT re-read)',
     '════════════════════════════════════════════════════════════════════════════════',
+    'These files are already loaded above with full content. Do NOT call read_file on them.',
     '',
   ];
   

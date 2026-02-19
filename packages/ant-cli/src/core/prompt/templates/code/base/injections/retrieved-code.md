@@ -1,19 +1,11 @@
-# 📦 Retrieved Codebase Context
+# Project Code Context
 
 {{#if files.length}}
-## ⚠️ CRITICAL: These Files ALREADY EXIST!
-
-The following {{files.length}} files were retrieved from the **actual codebase**.
-
-🚨 **Before creating any file, check if it exists below!**
-
----
-
-**Existing Files:**
+{{files.length}} files from the current codebase.
 
 {{#each files}}
 {{#if this.content}}
-### 📄 `{{this.path}}`
+### `{{this.path}}` (loaded)
 
 ```
 {{this.content}}
@@ -21,10 +13,13 @@ The following {{files.length}} files were retrieved from the **actual codebase**
 
 ---
 {{else}}
-- 📄 `{{this.path}}` ← Call `read_file("{{this.path}}")` to see content
+- `{{this.path}}` (path only)
 {{/if}}
 {{/each}}
 
+**Constraint**: Files marked `(loaded)` have their full content above — do NOT `read_file` on them.
+Files marked `(path only)` — use `read_file` only when you need to modify them.
+
 {{else}}
-No code files were retrieved. You may create new files as needed.
+No code files were retrieved.
 {{/if}}

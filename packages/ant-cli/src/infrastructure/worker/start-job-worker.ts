@@ -19,11 +19,8 @@ import 'dotenv/config';
 import { startJobWorker } from './JobWorker';
 import { logger } from '../../utils/logger';
 
-// TODO: 데브옵스팀이 vault에 RECURSION_LIMIT 설정하면 아래 하드코딩 삭제할 것
-process.env.RECURSION_LIMIT = '200';
-
 async function main(): Promise<void> {
-  logger.info(`Starting Job Worker process... (RECURSION_LIMIT: ${process.env.RECURSION_LIMIT} ⚠️ hardcoded override)`, { component: 'JobWorkerProcess' });
+  logger.info(`Starting Job Worker process... (RECURSION_LIMIT: ${process.env.RECURSION_LIMIT || 'not set'})`, { component: 'JobWorkerProcess' });
 
   try {
     const worker = await startJobWorker();

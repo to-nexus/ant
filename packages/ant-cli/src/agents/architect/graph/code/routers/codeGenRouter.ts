@@ -87,6 +87,17 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     }
   }
   
+  // ✅ Safety Net D: Verification task codeGen call budget
+  if (isVerifyTask) {
+    const callIndex = state._codeGenCallIndex || 0;
+    const maxVerificationCalls = 15;
+    if (callIndex >= maxVerificationCalls) {
+      console.warn(`⚠️  [Router] Verification codeGen call limit reached (${callIndex}/${maxVerificationCalls})`);
+      console.warn(`   🚨 Forcing validation to prevent runaway loop`);
+      return 'installDeps';
+    }
+  }
+
   // ✅ Safety Net C: Final task without progress (no done, no tools, just looping)
   if (isFinalTask && !response.done && (!response.toolCalls || response.toolCalls.length === 0)) {
     // Count how many times we've been in this state

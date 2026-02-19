@@ -96,7 +96,7 @@ list_files(directory="src", pattern="*.tsx")
 | Create new file | `<file>` |
 | Add to end | `<append>` |
 | Modify existing | `edit_file` tool |
-| See content | `read_file` tool |
+| See content not in context | `read_file` tool |
 | Remove file | `delete_file` tool |
 
 **CRITICAL**: Never use `<file>` on existing files - it overwrites everything!

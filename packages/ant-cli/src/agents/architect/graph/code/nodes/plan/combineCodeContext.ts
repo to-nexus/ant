@@ -79,6 +79,11 @@ export async function combineCodeContext(
   git: GitPort,
   directoryTree?: string
 ): Promise<CombinedCodeContextResult | null> {
+  if (state.retries > 0 && state.projectCodeContext) {
+    console.log(`♻️  [CodeContext] Retry #${state.retries}: reusing existing context (${state.projectCodeContext.files.length} files) to preserve cache`);
+    return { context: state.projectCodeContext as ProjectCodeContext, lessons: [] };
+  }
+
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) {
     console.warn(`   ⚠️  FileSystemPort not available, skipping RAG`);
@@ -97,12 +102,13 @@ export async function combineCodeContext(
 
     if (isVerificationTask) {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // VERIFICATION: Paths-only (no file content I/O)
+      // VERIFICATION: Config files pre-loaded, rest paths-only
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Verification runs builds and fixes errors. It reads specific files on demand
-      // via read_file when build errors point to them. Injecting full content upfront
-      // wastes tokens and tempts the LLM to review code instead of running builds.
-      console.log(`🔍 [RAG] Verification task → paths-only (no content loading)`);
+      // Config/infra files are pre-loaded with content (cached in prompt) so the
+      // LLM can immediately identify build commands, dependencies, and infrastructure
+      // without wasting 3-4 rounds on read_file calls. Source files remain paths-only
+      // and are read on demand when build errors point to them.
+      console.log(`🔍 [RAG] Verification task → config pre-loaded, rest paths-only`);
 
       const BINARY_EXTENSIONS = new Set([
         '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
@@ -114,7 +120,31 @@ export async function combineCodeContext(
         '.sqlite', '.db',
       ]);
 
-      let filePaths: string[] = [];
+      const CONFIG_BASENAMES = new Set([
+        'go.mod', 'go.sum', 'package.json', 'cargo.toml',
+        'requirements.txt', 'pyproject.toml',
+        'tsconfig.json', 'makefile',
+        'docker-compose.yml', 'docker-compose.yaml',
+        'compose.yml', 'compose.yaml', 'dockerfile',
+        '.env.example', '.env',
+      ]);
+
+      const CONFIG_PREFIXES = [
+        'vite.config', 'webpack.config', 'rollup.config',
+      ];
+
+      const ENTRY_SUFFIXES = [
+        '/main.go', '/main.ts', '/main.js',
+        '/index.ts', '/index.js',
+        '/app.ts', '/app.js',
+        '/cmd/main.go', '/src/main.ts', '/src/index.ts', '/src/app.ts',
+      ];
+
+      const MAX_CONFIG_LINES = 200;
+
+      let pathsOnly: string[] = [];
+      let preloadedFiles: Array<{ path: string; content: string; source: 'local' }> = [];
+
       try {
         const allPaths = await fileSystem.listFiles('codebase', [
           'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
@@ -122,8 +152,51 @@ export async function combineCodeContext(
           '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
         ]);
         const textPaths = allPaths.filter(p => !BINARY_EXTENSIONS.has(path.extname(p).toLowerCase()));
-        filePaths = textPaths.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES);
-        console.log(`   ✅ Verification context: ${filePaths.length} file paths (no content)`);
+        const cappedPaths = textPaths.slice(0, RETRIEVAL_CONFIG.EXCLUSIVE_MAX_FILES);
+
+        const isConfigFile = (filePath: string): boolean => {
+          const basename = path.basename(filePath).toLowerCase();
+          if (CONFIG_BASENAMES.has(basename)) return true;
+          return CONFIG_PREFIXES.some(prefix => basename.startsWith(prefix));
+        };
+
+        const isEntryFile = (filePath: string): boolean => {
+          const lower = filePath.toLowerCase();
+          return ENTRY_SUFFIXES.some(suffix => lower.endsWith(suffix));
+        };
+
+        const configPaths: string[] = [];
+        let entryLoaded = false;
+
+        for (const p of cappedPaths) {
+          if (isConfigFile(p)) {
+            configPaths.push(p);
+          } else if (!entryLoaded && isEntryFile(p)) {
+            configPaths.push(p);
+            entryLoaded = true;
+          } else {
+            pathsOnly.push(p);
+          }
+        }
+
+        for (const configPath of configPaths) {
+          try {
+            const content = await fileSystem.readFile(configPath);
+            if (content) {
+              const lines = content.split('\n');
+              const truncated = lines.length > MAX_CONFIG_LINES
+                ? lines.slice(0, MAX_CONFIG_LINES).join('\n') +
+                  `\n\n// ... truncated (${lines.length - MAX_CONFIG_LINES} more lines)`
+                : content;
+              preloadedFiles.push({ path: configPath, content: truncated, source: 'local' as const });
+            }
+          } catch {
+            pathsOnly.push(configPath);
+          }
+        }
+
+        console.log(`   ✅ Verification context: ${preloadedFiles.length} config files (pre-loaded), source files omitted (discover via build errors)`);
+        preloadedFiles.forEach(f => console.log(`      📄 [pre-loaded] ${f.path}`));
       } catch (err) {
         console.warn(`   ⚠️  Failed to list codebase files:`, err instanceof Error ? err.message : err);
       }
@@ -132,9 +205,9 @@ export async function combineCodeContext(
         const chatAPI = getChatAPIClient();
         const loadMergeIndex = await chatAPI.showChatStatus('loading', { filesCount: 0 });
         await chatAPI.showChatStatus('loaded', {
-          filesCount: filePaths.length,
-          filesList: filePaths,
-          content: `Loaded: ${filePaths.length} file paths (verification, paths-only)`,
+          filesCount: preloadedFiles.length,
+          filesList: preloadedFiles.map(f => f.path),
+          content: `Loaded: ${preloadedFiles.length} config files (content). Source files not listed — discover from build errors.`,
           _mergeIndex: loadMergeIndex
         });
       } catch {
@@ -142,9 +215,14 @@ export async function combineCodeContext(
       }
 
       const projectCodeContext: ProjectCodeContext = {
-        filePaths,
-        files: [],
-        stats: { filesLoaded: filePaths.length, errorFilesCount: 0, semanticCount: 0, deduplicatedCount: 0 },
+        filePaths: [],
+        files: preloadedFiles,
+        stats: {
+          filesLoaded: preloadedFiles.length,
+          errorFilesCount: 0,
+          semanticCount: 0,
+          deduplicatedCount: 0,
+        },
         source: 'plan' as const
       };
 
