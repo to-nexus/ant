@@ -37,20 +37,22 @@ export async function loadSemanticFiles(
   vectorDB: any,
   git: GitPort,
   extractFilesFromCode: (code: string) => Array<{path: string; content: string}>,
-  excludePaths: string[] = []  // Exclude already loaded (from requiredFiles + errorFiles)
+  excludePaths: string[] = [],
+  isIntegration: boolean = false
 ): Promise<SemanticSearchResult> {
   const chatAPI = getChatAPIClient();
   
   if (keywords.length === 0) return { files: [], lessons: [] };
   
-  const semanticQuota = RETRIEVAL_CONFIG.getSemanticQuota(excludePaths.length);
+  const semanticQuota = RETRIEVAL_CONFIG.getSemanticQuota(excludePaths.length, isIntegration);
+  const totalMax = isIntegration ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX;
   
   if (semanticQuota === 0) {
-    console.log(`   ⚠️  Semantic search skipped: quota exhausted (${excludePaths.length}/${RETRIEVAL_CONFIG.TOTAL_MAX} files already loaded)`);
+    console.log(`   ⚠️  Semantic search skipped: quota exhausted (${excludePaths.length}/${totalMax} files already loaded)`);
     return { files: [], lessons: [] };
   }
   
-  console.log(`   🔍 Semantic search: ${keywords.length} keywords → quota ${semanticQuota} NEW files (${excludePaths.length} already loaded will be excluded)...`);
+  console.log(`   🔍 Semantic search: ${keywords.length} keywords → quota ${semanticQuota} NEW files (${excludePaths.length} already loaded will be excluded)${isIntegration ? ' [integration mode]' : ''}...`);
   console.log(`   📊 Target: ${excludePaths.length} pre-loaded + ${semanticQuota} semantic = ${excludePaths.length + semanticQuota} total files`);
   
   const searchQuery = keywords.join(' ');
