@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
-import { getSessionFilePathByJob, getInitSessionDirs } from '../../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, getInitFeatureDirs } from '../../../../../core/utils/sessionPaths';
 import { WorktreeService } from '../GitService/worktree';
 
 /**
@@ -127,22 +127,8 @@ export class FeatureCrudService {
   async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string): Promise<void> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     
-    // Create feature directory structure
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/design'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/code'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/directives/learn'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/sources'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/design'), { recursive: true });
-    
-    // ✅ Evaluations (평가 리포트 - 영구 보존 산출물)
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/prd'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/ui-design'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/system-design'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'outputs/evals/code'), { recursive: true });
-    
-    // ✅ Sessions (agent-nested structure)
-    const sessionDirs = getInitSessionDirs(featurePath);
-    for (const dir of sessionDirs) {
+    // Create all canonical directories (single source of truth: CANONICAL_FEATURE_DIRS)
+    for (const dir of getInitFeatureDirs(featurePath)) {
       await fs.promises.mkdir(dir, { recursive: true });
     }
 

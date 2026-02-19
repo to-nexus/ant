@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
-import { isCanonicalDir } from '../../../../../core/utils/sessionPaths';
+import { isCanonicalDir, clearCanonicalDirectory } from '../../../../../core/utils/sessionPaths';
 
 /**
  * FileOperationService
@@ -22,37 +22,11 @@ export class FileOperationService {
   }
   
   /**
-   * Smart-clear a canonical directory: remove files, preserve canonical subdirectories,
-   * and fully delete non-canonical subdirectories.
-   * 
-   * @param dirPath - Absolute path to the directory
-   * @param relativePath - Path relative to feature root (e.g., 'outputs/evals')
+   * @deprecated Use clearCanonicalDirectory() from sessionPaths.ts directly.
+   * Kept as a thin wrapper for backward compatibility within this class.
    */
   private async smartClearDirectory(dirPath: string, relativePath: string): Promise<void> {
-    let items: fs.Dirent[];
-    try {
-      items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-    } catch {
-      return; // directory doesn't exist — nothing to clear
-    }
-    
-    for (const item of items) {
-      const itemPath = path.join(dirPath, item.name);
-      const itemRelPath = `${relativePath}/${item.name}`;
-      
-      if (item.isDirectory()) {
-        if (isCanonicalDir(itemRelPath)) {
-          // Canonical subdirectory: recurse — remove files, keep structure
-          await this.smartClearDirectory(itemPath, itemRelPath);
-        } else {
-          // Non-canonical subdirectory: fully delete
-          await fs.promises.rm(itemPath, { recursive: true, force: true });
-        }
-      } else {
-        // File: delete
-        await fs.promises.unlink(itemPath);
-      }
-    }
+    return clearCanonicalDirectory(dirPath, relativePath);
   }
   
   /**

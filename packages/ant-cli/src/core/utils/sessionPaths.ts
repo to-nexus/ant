@@ -22,6 +22,7 @@
  *     chat.json          ← UI-level, not agent-nested
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import type { JobType, SessionableJobType } from '@ant/shared';
 
@@ -242,4 +243,68 @@ export function getInitSessionDirs(featurePath: string): string[] {
   return CANONICAL_FEATURE_DIRS
     .filter(d => d.startsWith('sessions/'))
     .map(d => path.join(featurePath, d));
+}
+
+/**
+ * Get all canonical directories that should be created when initializing a feature.
+ * Derived from CANONICAL_FEATURE_DIRS (all entries).
+ * 
+ * @param featurePath - Absolute path to the feature directory
+ * @returns Array of absolute directory paths to create
+ */
+export function getInitFeatureDirs(featurePath: string): string[] {
+  return CANONICAL_FEATURE_DIRS.map(d => path.join(featurePath, d));
+}
+
+// ============================================
+// Canonical Directory Clearing (Single Source of Truth)
+// ============================================
+
+export interface ClearCanonicalDirectoryOptions {
+  /** If true, skip the 'sessions' directory entirely (used by transfer operations) */
+  skipSessions?: boolean;
+}
+
+/**
+ * Clear a canonical directory's contents while preserving canonical structure.
+ * 
+ * This is the SINGLE implementation for "empty a directory" across the codebase.
+ * All artifact folder clearing MUST use this function to ensure consistent behavior:
+ * 
+ * - Files: deleted
+ * - Canonical subdirectories: recursively cleared (structure preserved)
+ * - Non-canonical subdirectories: fully deleted (rm -rf), including all nested content
+ * 
+ * @param dirPath - Absolute path to the directory to clear
+ * @param relativePath - Path relative to feature root (e.g., 'outputs/evals')
+ * @param options - Optional behavior configuration
+ */
+export async function clearCanonicalDirectory(
+  dirPath: string,
+  relativePath: string,
+  options?: ClearCanonicalDirectoryOptions,
+): Promise<void> {
+  let items: fs.Dirent[];
+  try {
+    items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const item of items) {
+    const itemPath = path.join(dirPath, item.name);
+    const itemRelPath = `${relativePath}/${item.name}`;
+
+    if (options?.skipSessions && item.name === 'sessions') continue;
+
+    if (item.isDirectory()) {
+      if (isCanonicalDir(itemRelPath)) {
+        await clearCanonicalDirectory(itemPath, itemRelPath, options);
+      } else {
+        await fs.promises.rm(itemPath, { recursive: true, force: true });
+      }
+    } else {
+      await fs.promises.unlink(itemPath);
+    }
+  }
 }

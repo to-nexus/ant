@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { getDefaultWorkspaceConfig } from "../core/types/workspace";
-import { getInitSessionDirs } from '../core/utils/sessionPaths';
+import { getInitFeatureDirs } from '../core/utils/sessionPaths';
 
 /**
  * Initialize a new workspace with boilerplate structure
@@ -118,21 +118,8 @@ export function initFeature(workspaceName: string, featureName: string): void {
     process.exit(1);
   }
 
-  // Create feature structure
-  fs.mkdirSync(path.join(featureDir, "inputs/sources"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "inputs/directives/design"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "inputs/directives/code"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "inputs/directives/learn"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "outputs/design"), { recursive: true });
-  
-  // ✅ Evaluations (평가 리포트 - 영구 보존 산출물)
-  fs.mkdirSync(path.join(featureDir, "outputs/evals/prd"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "outputs/evals/ui-design"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "outputs/evals/system-design"), { recursive: true });
-  fs.mkdirSync(path.join(featureDir, "outputs/evals/code"), { recursive: true });
-  
-  // ✅ Sessions (세션 상태) - agent-nested structure
-  for (const dir of getInitSessionDirs(featureDir)) {
+  // Create all canonical directories (single source of truth: CANONICAL_FEATURE_DIRS)
+  for (const dir of getInitFeatureDirs(featureDir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
   
