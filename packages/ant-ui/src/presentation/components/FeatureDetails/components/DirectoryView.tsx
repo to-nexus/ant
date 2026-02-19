@@ -5,6 +5,7 @@ import { FileNode } from '@/infrastructure/http/api';
 import { Button } from '../../common/button';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { isCanonicalDir } from '@/shared/utils/canonical-dirs';
 
 interface DirectoryViewProps {
   title: string;
@@ -137,28 +138,10 @@ export function DirectoryView({
                 </Button>
               </>
             )}
-            {/* 삭제 버튼 로직 */}
             {onDelete && (() => {
-              const pathParts = node.path.split('/');
+              const isClearable = node.type === 'directory' && isCanonicalDir(node.path);
               
-              // "Clear contents" 대상 폴더들 (폴더는 유지, 하위 파일만 삭제)
-              const isClearableDir = 
-                node.type === 'directory' &&
-                (
-                  // outputs의 직계 자식 디렉토리들 (design, reports, debug 등)
-                  (pathParts.length === 2 && pathParts[0] === 'outputs') ||
-                  // sessions/{agent}/debug, sessions/{agent}/log-prompt (agent-nested)
-                  (pathParts.length === 3 && pathParts[0] === 'sessions' && (pathParts[2] === 'debug' || pathParts[2] === 'log-prompt'))
-                );
-              
-              // inputs의 직계 자식 디렉토리는 삭제 불가
-              const isProtectedInputsDir = 
-                node.type === 'directory' && 
-                pathParts.length === 2 && 
-                pathParts[0] === 'inputs';
-              
-              if (isClearableDir) {
-                // 하위 파일 전체 삭제 버튼 (폴더는 유지)
+              if (isClearable) {
                 return (
                   <Button
                     size="sm"
@@ -181,12 +164,6 @@ export function DirectoryView({
                 );
               }
               
-              // inputs의 직계 자식 디렉토리는 버튼 없음
-              if (isProtectedInputsDir) {
-                return null;
-              }
-              
-              // 일반 파일/폴더: 삭제 버튼
               return (
                 <Button
                   size="sm"

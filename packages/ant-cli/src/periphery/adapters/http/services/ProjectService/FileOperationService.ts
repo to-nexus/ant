@@ -9,9 +9,9 @@ import { isCanonicalDir, clearCanonicalDirectory } from '../../../../../core/uti
  * 
  * Handles file and directory operations within features.
  * 
- * Deletion behavior:
- * - Canonical directories (defined in CANONICAL_FEATURE_DIRS): preserved on delete,
- *   only files inside are removed. Canonical subdirectories are recursively preserved.
+ * Deletion / clearing behavior:
+ * - Canonical directories (defined in CANONICAL_FEATURE_DIRS): contents cleared,
+ *   directory structure preserved. Non-canonical subdirectories within are fully removed.
  * - Non-canonical directories (user-created): fully deleted (rm -rf).
  */
 export class FileOperationService {
@@ -145,8 +145,8 @@ export class FileOperationService {
   }
   
   /**
-   * Delete a file or directory
-   * - Canonical directories: smart-clear (remove files, preserve canonical subdirs, delete non-canonical subdirs)
+   * Delete a file or clear a directory's contents.
+   * - Canonical directories: clear contents (preserve structure, remove files and non-canonical subdirs)
    * - Non-canonical directories: fully deleted
    * - Files: deleted
    */
@@ -163,16 +163,13 @@ export class FileOperationService {
     
     if (stat.isDirectory()) {
       if (isCanonicalDir(filePath)) {
-        // Canonical directory: remove files, preserve canonical subdirs
         await this.smartClearDirectory(fullPath, filePath);
-        console.log(`[FileOperationService] Smart-cleared canonical directory: ${filePath}`);
+        console.log(`[FileOperationService] Cleared contents: ${filePath}`);
       } else {
-        // Non-canonical directory: fully delete
         await fs.promises.rm(fullPath, { recursive: true, force: true });
-        console.log(`[FileOperationService] Deleted directory: ${filePath}`);
+        console.log(`[FileOperationService] Deleted: ${filePath}`);
       }
     } else {
-      // Delete file
       await fs.promises.unlink(fullPath);
     }
   }
