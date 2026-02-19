@@ -103,3 +103,22 @@ tree. Follow established structure.
 **Constraint**: When defining a type that will be referenced by another package in the same project, the type name MUST start with an uppercase letter. Decide visibility at definition time, not after a compile error.
 
 ⚠️ **Blind spot**: Data-transfer types in a repository package (row structs, result types) are easily created as unexported. If any service or handler package references these types, the build fails. Fixing visibility after the fact causes cascading renames across interface signatures, function returns, and variable declarations — each rename a separate interaction that replays the full conversation.
+
+---
+
+### Data Access Layer Consistency
+
+**Principle**: Persistence operations belong in exactly one architectural layer. When an architecture defines a dedicated persistence layer, that layer is the single owner of all persistence operations.
+
+**Observation target**: In which architectural layers do persistence statements appear?
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Statement containment** | Do persistence statements appear outside the designated persistence layer? |
+| **Cross-boundary atomicity** | When a service coordinates atomic operations across multiple persistence interfaces, does the coordination mechanism live in the persistence layer or the business logic layer? |
+
+**Constraint**: If the architecture designates a persistence layer, other layers MUST NOT contain persistence statements — even when coordinating atomic operations across multiple persistence interfaces.
+
+**Constraint**: When atomic coordination across persistence boundaries is needed, the mechanism MUST be exposed through the persistence layer's interface. The business logic layer orchestrates WHAT participates in the atomic operation; the persistence layer owns HOW it executes.
+
+⚠️ **Blind spot**: When a service needs to update 2+ persistence interfaces atomically, it is tempting to bypass those interfaces and write persistence statements directly in the service layer. This creates a parallel data access path that breaks layer separation and is invisible to the persistence interface's contract. Verify that ALL persistence statements — including those inside atomic coordination — go through the designated persistence layer.
