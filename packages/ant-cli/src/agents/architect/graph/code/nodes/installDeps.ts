@@ -10,6 +10,7 @@
  * via tool calls during codeGen (final verification / error tasks).
  */
 
+import * as nodeFs from 'fs';
 import { ArchitectGraphState, Violation } from "../state";
 import { detectProject } from "./diagnostics";
 import { Language } from "./diagnostics/types";
@@ -84,9 +85,15 @@ export async function installDeps(state: ArchitectGraphState): Promise<Architect
 
     // ✅ Check if the dependency config file was modified in current task
     const files = state.projectCodeContext?.files || [];
-    const configChanged = runtime.dependency.configFile
+    let configChanged = runtime.dependency.configFile
       ? files.some(f => f.path.endsWith(runtime.dependency.configFile))
       : false;
+    
+    // Go workspace: also trigger install when go.work is modified
+    // (go.mod changes are already caught by the configFile check above)
+    if (!configChanged && projectDetection.language === Language.GO) {
+      configChanged = files.some(f => f.path.endsWith('go.work'));
+    }
 
     // ✅ Check if local cache directory exists (language-specific)
     const fileSystemBase = fileSystem.getRootPath();
@@ -334,7 +341,26 @@ async function handleGoInstall(
   p: any,
   isSetupTask: boolean = false,
 ): Promise<void> {
-  const installCmd = runtime.dependency.getInstallCommand(undefined, { isSetup: isSetupTask });
+  const hasGoWork = nodeFs.existsSync(p.join(resolvedPath, 'go.work'));
+  const hasRootGoMod = nodeFs.existsSync(p.join(resolvedPath, 'go.mod'));
+  
+  // For go.work workspace: sync cross-module consistency before standard install
+  if (hasGoWork && !isSetupTask) {
+    console.log(`📦 Go workspace detected — running go work sync...`);
+    const syncResult = await commandPort.execute('go work sync', {
+      cwd: resolvedPath,
+      timeout: 5 * 60 * 1000,
+    });
+    if (!syncResult.success) {
+      console.warn(`⚠️  go work sync warning: ${syncResult.stderr}`);
+    }
+  }
+
+  // go mod tidy requires a go.mod in the working directory.
+  // In workspace-only projects (go.work without root go.mod), use go mod download instead.
+  const installCmd = (hasGoWork && !hasRootGoMod && !isSetupTask)
+    ? 'go mod download'
+    : runtime.dependency.getInstallCommand(undefined, { isSetup: isSetupTask });
 
   console.log(`📦 Running ${installCmd}...`);
 

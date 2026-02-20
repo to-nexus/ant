@@ -7,10 +7,21 @@
 **All files MUST be created under `codebase/` directory.**
 
 ```
-✅ CORRECT:
+✅ CORRECT (single service):
   codebase/go.mod
   codebase/Makefile
   codebase/.gitignore
+
+✅ CORRECT (MSA root setup):
+  codebase/go.work
+  codebase/Makefile
+  codebase/docker-compose.yml
+  codebase/.gitignore
+  codebase/.env.example
+
+✅ CORRECT (MSA service setup):
+  codebase/services/{svc}/go.mod
+  codebase/services/{svc}/Makefile
 
 ❌ WRONG:
   go.mod          ← Missing codebase/ prefix!
@@ -25,13 +36,17 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 ### File Categories:
 
-**✅ CREATE (Configuration layer)**
-- Module: go.mod
+**✅ CREATE (Configuration layer — single service OR MSA root setup)**
+- Module: go.mod (single service) OR go.work (MSA root)
 - Build: Makefile
 - Ignore: .gitignore
 - Environment: `.env.example` (template with `@connection` annotations) AND `.env` (active copy with localhost/docker defaults)
 - Infrastructure: docker-compose.yml (see Infrastructure Services below)
 - Documentation: README.md
+
+**✅ CREATE (Configuration layer — MSA service setup)**
+- Module: services/{svc}/go.mod
+- Build: services/{svc}/Makefile
 
 **❌ DON'T CREATE (Application layer)**
 - Source directories: cmd/*, internal/*, pkg/*
@@ -40,8 +55,10 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 **Constraint**: Only create configuration-layer files. Do NOT create application code directories (cmd/*, internal/*, pkg/*) or .go source files.
 
+**MSA Root vs Service Setup Constraint**: In multi-service projects, the root setup task creates workspace-level files (`go.work`, root `Makefile`, `docker-compose.yml`, `.gitignore`, `.env.example`, `.env`). Service-level setup tasks create ONLY `services/{svc}/go.mod` and `services/{svc}/Makefile`. Do NOT create `docker-compose.yml`, `.env.example`, or `.gitignore` inside service directories.
+
 **Critical Requirements:**
-1. `go.mod` must have correct module path
+1. `go.mod` (or `go.work` for MSA) must have correct module path(s)
 2. `Makefile` must include `build`, `run`, `test` targets
 3. Next task will create ALL application code - don't do it now
 4. Include ALL infrastructure services in docker-compose.yml if design doc specifies them
