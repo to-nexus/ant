@@ -6,7 +6,7 @@
 
 {{> code/base/injections/tool-calling-rules-compact}}
 
-{{> code/base/injections/batch-fix}}
+{{> code/base/injections/batch-operations}}
 
 ## MANDATORY: Build First
 
