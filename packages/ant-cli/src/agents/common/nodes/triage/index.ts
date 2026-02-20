@@ -47,6 +47,23 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
 }
 
 /**
+ * Check whether the workspace has input materials for the target job.
+ * Directive is excluded — it is always present when the user types anything.
+ */
+function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState): boolean {
+  switch (targetJob) {
+    case 'design':
+      return ws.hasPrd || ws.hasReferences || ws.hasAssets;
+    case 'code':
+      return ws.hasPrd || ws.hasDesignDoc || ws.hasCodebase;
+    case 'learn':
+      return ws.hasCodebase;
+    default:
+      return true;
+  }
+}
+
+/**
  * Triage Node
  * 
  * Entry point for analyzing user input and determining the correct path
@@ -166,20 +183,17 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 4.5: Programmatic guard — plan→design redirect prerequisite check
-  // Program enforces: redirect is only valid when target job's input materials exist.
+  // Step 4.5: Programmatic guard — plan outbound redirect prerequisite check
+  // Redirect is only valid when the target job's input materials exist.
   // Directive is excluded (always present when user types anything).
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (triageResult.workStatus === 'redirect'
       && currentJob === 'plan'
-      && triageResult.suggestedJob === 'design') {
-    const hasAnyDesignPrereq =
-      workspaceState.hasPrd ||
-      workspaceState.hasReferences ||
-      workspaceState.hasAssets;
+      && triageResult.suggestedJob) {
+    const targetJob = triageResult.suggestedJob;
 
-    if (!hasAnyDesignPrereq) {
-      console.log('🛡️ [Triage] Guard: plan→design redirect blocked — no design prerequisites in workspace');
+    if (!hasTargetJobPrerequisites(targetJob, workspaceState)) {
+      console.log(`🛡️ [Triage] Guard: plan→${targetJob} redirect blocked — no target job prerequisites in workspace`);
       triageResult.workStatus = 'proceed';
       triageResult.suggestedJob = undefined;
       triageResult.suggestedAgent = undefined;
@@ -187,7 +201,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
       triageResult.choiceOptions = undefined;
       triageResult.redirectReason = undefined;
       triageResult.displayMessage = '작업을 시작합니다.';
-      triageResult._guardMessage = 'Design 작업을 위해서는 PRD, 참조 이미지(references), 또는 에셋(assets)이 필요합니다. 현재 워크스페이스에 해당 자료가 없어 plan 작업을 계속 진행합니다.';
+      triageResult._guardMessage = `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다. 먼저 PRD를 작성한 후 진행해주세요.`;
     }
   }
 
@@ -219,7 +233,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 5.5: Send guard message if plan→design redirect was blocked
+  // Step 5.5: Send guard message if plan outbound redirect was blocked
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (triageResult._guardMessage) {
     try {
