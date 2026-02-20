@@ -15,6 +15,8 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Play, Loader2, XCircle, Save, FileCheck } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
@@ -219,8 +221,10 @@ function ChoiceCardShell({
           <span className={t.iconColor}>{icon}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-            {title}
+          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 prose prose-sm dark:prose-invert max-w-none [&>p]:my-1 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {title}
+            </ReactMarkdown>
           </div>
           {subtitle && (
             <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">

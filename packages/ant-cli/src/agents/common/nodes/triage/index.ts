@@ -165,6 +165,32 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     throw new Error('Failed to parse triage response from LLM. Expected <triage> block not found.');
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 4.5: Programmatic guard — plan→design redirect prerequisite check
+  // Program enforces: redirect is only valid when target job's input materials exist.
+  // Directive is excluded (always present when user types anything).
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (triageResult.workStatus === 'redirect'
+      && currentJob === 'plan'
+      && triageResult.suggestedJob === 'design') {
+    const hasAnyDesignPrereq =
+      workspaceState.hasPrd ||
+      workspaceState.hasReferences ||
+      workspaceState.hasAssets;
+
+    if (!hasAnyDesignPrereq) {
+      console.log('🛡️ [Triage] Guard: plan→design redirect blocked — no design prerequisites in workspace');
+      triageResult.workStatus = 'proceed';
+      triageResult.suggestedJob = undefined;
+      triageResult.suggestedAgent = undefined;
+      triageResult.needsChoice = undefined;
+      triageResult.choiceOptions = undefined;
+      triageResult.redirectReason = undefined;
+      triageResult.displayMessage = '작업을 시작합니다.';
+      triageResult._guardMessage = 'Design 작업을 위해서는 PRD, 참조 이미지(references), 또는 에셋(assets)이 필요합니다. 현재 워크스페이스에 해당 자료가 없어 plan 작업을 계속 진행합니다.';
+    }
+  }
+
   logTriageResult(triageResult);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -192,6 +218,22 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     };
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 5.5: Send guard message if plan→design redirect was blocked
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (triageResult._guardMessage) {
+    try {
+      console.log('📤 [Triage] Sending guard message to Chat UI...');
+      const chatAPI = new ChatAPIClient();
+      await chatAPI.startMessage();
+      await chatAPI.sendLLMEvent({ type: 'text', text: triageResult._guardMessage });
+      await chatAPI.finalizeMessage();
+      console.log('✅ [Triage] Guard message sent');
+    } catch (chatError) {
+      console.error('❌ [Triage] Failed to send guard message:', chatError);
+    }
+  }
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Step 6: Send Response to Chat UI (for non-proceed, non-ask cases)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
