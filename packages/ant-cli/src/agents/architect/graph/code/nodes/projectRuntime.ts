@@ -175,7 +175,7 @@ const GO_RUNTIME: ProjectRuntimeConfig = {
   validation: {
     typeCheck: {
       name: 'Go vet',
-      indicators: ['go.mod'],
+      indicators: ['go.mod', 'go.work'],
       getCommand(): string {
         return 'go vet ./...';
       },
@@ -184,7 +184,7 @@ const GO_RUNTIME: ProjectRuntimeConfig = {
     lint: null,  // golangci-lint is external; not guaranteed to be installed
     build: {
       name: 'Go build',
-      indicators: ['go.mod'],
+      indicators: ['go.mod', 'go.work'],
       getCommand(): string {
         return 'go build ./...';
       },

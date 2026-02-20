@@ -285,8 +285,8 @@ export async function detectProject(
     };
   }
 
-  // Check Go
-  if (await exists('go.mod')) {
+  // Check Go (workspace or single module)
+  if ((await exists('go.work')) || (await exists('go.mod'))) {
     return {
       language: Language.GO,
       buildTool: BuildTool.NONE,

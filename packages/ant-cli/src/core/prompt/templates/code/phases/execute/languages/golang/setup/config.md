@@ -44,12 +44,74 @@ codebase/
 
 **Constraint**: If design document specifies architecture boundaries (e.g., handler/service/repository layers), each boundary MUST correspond to a directory under `internal/`.
 
+**Multi-service (MSA — when multiple backend design documents exist):**
+```
+codebase/
+├── go.work                     # Go workspace declaration
+├── shared/                     # Shared library module (if cross-service types exist)
+│   ├── go.mod
+│   └── types/
+├── services/
+│   ├── {svc-a}/
+│   │   ├── go.mod              # Independent module
+│   │   ├── cmd/server/         # Entry point (main.go)
+│   │   ├── internal/           # Private application code
+│   │   └── Makefile            # Service-level build targets
+│   └── {svc-b}/
+│       ├── go.mod
+│       ├── cmd/server/
+│       ├── internal/
+│       └── Makefile
+├── docker-compose.yml
+├── Makefile                    # Root-level orchestration
+├── .gitignore
+└── .env.example
+```
+
+**Principle**: `go.work` declares all modules via `use` directives. Go 1.18+ workspace mode resolves cross-module imports locally without publishing modules.
+
+**Principle**: Each service under `services/` is an independent Go module with its own `go.mod`. Module path follows `github.com/{org}/{project}/services/{svc}`.
+
+**Principle**: The `shared/` module (if needed) contains cross-service types, DTOs, and utility packages. Module path: `github.com/{org}/{project}/shared`. Only create this when 2+ services share domain types.
+
+**Constraint**: Root setup task (priority 100) creates `go.work`, root `Makefile`, `docker-compose.yml`, `.gitignore`, `.env.example`, and `.env`. Service-level setup tasks (priority 101, 102, ...) create `services/{svc}/go.mod` and `services/{svc}/Makefile`. Do NOT create `docker-compose.yml` or `.env.example` in service directories.
+
 ---
 
-## 1. go.mod
+## 1. go.mod (and go.work for MSA)
 
+**Single service:**
 ```
 module github.com/{org}/{project}
+
+go 1.22
+```
+
+**Multi-service — root `go.work`:**
+```
+go 1.22
+
+use (
+    ./shared
+    ./services/{svc-a}
+    ./services/{svc-b}
+)
+```
+
+**Multi-service — each `services/{svc}/go.mod`:**
+```
+module github.com/{org}/{project}/services/{svc}
+
+go 1.22
+
+require (
+    github.com/{org}/{project}/shared v0.0.0
+)
+```
+
+**Multi-service — `shared/go.mod`:**
+```
+module github.com/{org}/{project}/shared
 
 go 1.22
 ```
@@ -58,6 +120,7 @@ go 1.22
 - Module path should match the intended repository path
 - Use the latest stable Go version unless design doc specifies otherwise
 - If the task description requires declaring dependencies, list them in the `require` block
+- In MSA, cross-module dependencies (e.g., service → shared) use `require` with `v0.0.0` — `go.work` resolves them locally
 
 **⛔ Do NOT run any `go` commands (`go mod tidy`, `go mod download`, `go get`, `go get ./...`) during setup.**
 
@@ -76,7 +139,7 @@ Each of these produces a warning or destructive side-effect that triggers unnece
 
 **Principle**: Provide standard development commands at the project root.
 
-**Required targets:**
+**Single service — required targets:**
 
 ```makefile
 .PHONY: build run test lint clean
@@ -103,6 +166,50 @@ clean:
 ```
 
 **Constraint**: `make run` must be the standard way to start the dev server. Adjust the binary path in `build` and `run` targets to match `cmd/` structure.
+
+**Multi-service — root Makefile (orchestration):**
+
+```makefile
+SERVICES := {svc-a} {svc-b}
+
+.PHONY: build run test lint clean $(SERVICES)
+
+# Build all services
+build:
+	@for svc in $(SERVICES); do $(MAKE) -C services/$$svc build; done
+
+# Run a specific service: make run-{svc}
+run-%:
+	$(MAKE) -C services/$* run
+
+# Run tests across all modules
+test:
+	@for svc in $(SERVICES); do $(MAKE) -C services/$$svc test; done
+
+# Clean all
+clean:
+	@for svc in $(SERVICES); do $(MAKE) -C services/$$svc clean; done
+```
+
+**Multi-service — each `services/{svc}/Makefile`:**
+
+```makefile
+.PHONY: build run test clean
+
+build:
+	go build -o bin/server ./cmd/server
+
+run:
+	go run ./cmd/server
+
+test:
+	go test ./...
+
+clean:
+	rm -rf bin/
+```
+
+**Constraint**: In MSA, `make run-{svc}` at the root must start a specific service. Each service Makefile must be self-contained with `build`, `run`, `test`, `clean` targets.
 
 ---
 
@@ -202,5 +309,8 @@ ENV=development
 ❌ Hardcoding ports or connection strings instead of using environment variables
 ❌ Forgetting Makefile targets for infrastructure services
 ❌ Setting `container_name` in docker-compose.yml (breaks platform namespace isolation, causes conflicts)
+❌ MSA: Forgetting `go.work` at the root (services cannot resolve cross-module imports)
+❌ MSA: Creating `docker-compose.yml` or `.env.example` inside service directories (root only)
+❌ MSA: Using a single `go.mod` for all services (each service needs its own module)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

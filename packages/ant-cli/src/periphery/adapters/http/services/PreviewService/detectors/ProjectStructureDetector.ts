@@ -82,7 +82,10 @@ export class ProjectStructureDetector {
       }
     }
     
-    // Go
+    // Go (workspace first, then single module)
+    if (fs.existsSync(path.join(localPath, 'go.work'))) {
+      return { language: 'go', canStart: true, structureType: 'monorepo' };
+    }
     if (fs.existsSync(path.join(localPath, 'go.mod'))) {
       return { language: 'go', canStart: true, structureType: 'backend-only' };
     }
@@ -155,7 +158,7 @@ export class ProjectStructureDetector {
       return detected.language;
     }
     
-    throw new Error('No recognized project files found (no package.json, go.mod, Cargo.toml, requirements.txt, pom.xml, etc.)');
+    throw new Error('No recognized project files found (no package.json, go.mod, go.work, Cargo.toml, requirements.txt, pom.xml, etc.)');
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -242,11 +245,142 @@ export class ProjectStructureDetector {
   
   /**
    * Go detection
-   * Single binary project. Config file: go.mod
+   * Supports: single module (go.mod), multi-module workspace (go.work)
    */
-  private detectGoProject(localPath: string, profile: { language: string; framework?: string }): ProjectStructure {
+  private async detectGoProject(localPath: string, profile: { language: string; framework?: string }): Promise<ProjectStructure> {
+    // 1. go.work → multi-module workspace
+    const goWorkPath = path.join(localPath, 'go.work');
+    if (fs.existsSync(goWorkPath)) {
+      return this.detectGoWorkspace(localPath, goWorkPath, profile);
+    }
+    
+    // 2. services/ directory with multiple go.mod → MSA without go.work
+    const servicesDir = path.join(localPath, 'services');
+    if (fs.existsSync(servicesDir)) {
+      const svcPackages = await this.findGoServiceModules(localPath, servicesDir, profile);
+      if (svcPackages.length >= 2) {
+        logger.debug(`Go MSA detected (${svcPackages.length} services, no go.work)`, { component: 'ProjectStructureDetector' });
+        return { type: 'monorepo', packages: svcPackages, entry: undefined };
+      }
+    }
+    
+    // 3. Single module (default)
     logger.debug(`Go project detected${profile.framework ? ` (${profile.framework})` : ''}`, { component: 'ProjectStructureDetector' });
     return this.singlePackage(localPath, 'backend', profile);
+  }
+  
+  /**
+   * Detect Go workspace structure from go.work file.
+   * Parses `use` directives to discover modules.
+   */
+  private async detectGoWorkspace(
+    localPath: string,
+    goWorkPath: string,
+    profile: { language: string; framework?: string }
+  ): Promise<ProjectStructure> {
+    const packages: PackageInfo[] = [];
+    
+    try {
+      const content = await fs.promises.readFile(goWorkPath, 'utf-8');
+      const modulePaths = this.parseGoWorkUseDirectives(content);
+      
+      for (const modRelPath of modulePaths) {
+        const modAbsPath = path.join(localPath, modRelPath);
+        const goModPath = path.join(modAbsPath, 'go.mod');
+        
+        if (!fs.existsSync(goModPath)) continue;
+        
+        const hasMakefile = fs.existsSync(path.join(modAbsPath, 'Makefile'));
+        const hasCmdDir = fs.existsSync(path.join(modAbsPath, 'cmd'));
+        
+        packages.push({
+          name: modRelPath,
+          path: modAbsPath,
+          type: (hasCmdDir || hasMakefile) ? 'backend' : 'other',
+          projectProfile: profile,
+        });
+      }
+    } catch (error) {
+      logger.debug(`Failed to parse go.work: ${error}`, { component: 'ProjectStructureDetector' });
+    }
+    
+    if (packages.length === 0) {
+      return this.singlePackage(localPath, 'backend', profile);
+    }
+    
+    logger.debug(`Go workspace detected (${packages.length} modules)`, { component: 'ProjectStructureDetector' });
+    return { type: 'monorepo', packages, entry: undefined };
+  }
+  
+  /**
+   * Parse `use` directives from go.work content.
+   * Handles both single-line (`use ./foo`) and block (`use ( ... )`) syntax.
+   */
+  private parseGoWorkUseDirectives(content: string): string[] {
+    const paths: string[] = [];
+    const lines = content.split(/\r?\n/);
+    let inUseBlock = false;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('//')) continue;
+      
+      if (inUseBlock) {
+        if (trimmed === ')') {
+          inUseBlock = false;
+          continue;
+        }
+        const modPath = trimmed.replace(/^\.\//, '');
+        if (modPath) paths.push(modPath);
+        continue;
+      }
+      
+      // Block: use (
+      if (/^use\s*\(/.test(trimmed)) {
+        inUseBlock = true;
+        continue;
+      }
+      
+      // Single line: use ./path
+      const singleMatch = trimmed.match(/^use\s+(.+)$/);
+      if (singleMatch) {
+        paths.push(singleMatch[1].replace(/^\.\//, ''));
+      }
+    }
+    
+    return paths;
+  }
+  
+  /**
+   * Find Go service modules under a services/ directory.
+   */
+  private async findGoServiceModules(
+    localPath: string,
+    servicesDir: string,
+    profile: { language: string; framework?: string }
+  ): Promise<PackageInfo[]> {
+    const packages: PackageInfo[] = [];
+    
+    try {
+      const entries = await fs.promises.readdir(servicesDir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        
+        const svcPath = path.join(servicesDir, entry.name);
+        if (!fs.existsSync(path.join(svcPath, 'go.mod'))) continue;
+        
+        const relPath = path.relative(localPath, svcPath);
+        packages.push({
+          name: relPath,
+          path: svcPath,
+          type: 'backend',
+          projectProfile: profile,
+        });
+      }
+    } catch { /* dir not readable */ }
+    
+    return packages;
   }
   
   /**

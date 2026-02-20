@@ -186,21 +186,29 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       const fs = await import('fs/promises');
       const path = await import('path');
       
-      // Simple check: does src/ or lib/ or any .ts/.js file exist?
       const entries = await fs.readdir(repoRoot, { withFileTypes: true });
       
-      // Check for common source directories
+      // Check for common source directories (Node: src/lib/app, Go: cmd/internal/services, Python: src/app)
       const hasSourceDir = entries.some((e: any) => 
-        e.isDirectory() && (e.name === 'src' || e.name === 'lib' || e.name === 'app')
+        e.isDirectory() && (
+          e.name === 'src' || e.name === 'lib' || e.name === 'app' ||
+          e.name === 'cmd' || e.name === 'internal' || e.name === 'services'
+        )
       );
       
-      // Check for package.json (strong indicator of existing project)
-      const hasPackageJson = entries.some((e: any) => 
-        e.isFile() && e.name === 'package.json'
+      // Check for project config files (Node: package.json, Go: go.mod/go.work, etc.)
+      const hasConfigFile = entries.some((e: any) => 
+        e.isFile() && (
+          e.name === 'package.json' ||
+          e.name === 'go.mod' || e.name === 'go.work' ||
+          e.name === 'Cargo.toml' ||
+          e.name === 'pyproject.toml' || e.name === 'requirements.txt' ||
+          e.name === 'pom.xml' || e.name === 'build.gradle' || e.name === 'build.gradle.kts'
+        )
       );
       
-      hasProjectCode = hasSourceDir || hasPackageJson;
-      console.log(`   ${hasProjectCode ? '✅' : '❌'} Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasPackageJson=${hasPackageJson})`);
+      hasProjectCode = hasSourceDir || hasConfigFile;
+      console.log(`   ${hasProjectCode ? '✅' : '❌'} Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasConfigFile=${hasConfigFile})`);
       
       if (hasProjectCode && (!codebaseFilePaths || codebaseFilePaths.length === 0)) {
         console.log(`⚠️  [Decompose] Project has code but Vector DB is empty`);
