@@ -115,4 +115,5 @@ When user input appears to be:
 ⚠️ **Job mismatch = REDIRECT**: If request belongs to different job than current → MUST `redirect`
 ⚠️ **Agent mismatch = REDIRECT**: If request belongs to different agent (e.g., PRD writing to architect) → MUST `redirect` with `suggestedAgent`. **Exception**: Design ↔ Plan mutual boundary — do NOT cross `architect`↔`planner` boundary unless user names the other job's artifact type.
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
+⚠️ **Redirect prerequisite principle**: Redirect to a different job is only valid when the target job's input materials exist in the workspace. Observe workspace state — if no input materials for the target job are present, the target job cannot execute. Do NOT suggest redirect when the target job has zero input materials. Action verbs and topic keywords in user input do NOT indicate job readiness — only workspace state determines whether a job CAN run.
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags

@@ -46,19 +46,48 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
     if (result.intent === 'work') {
       result.workStatus = parsed.workStatus;
       
-      // Force redirect when LLM signals a different job/agent than current,
-      // BUT only when LLM did NOT explicitly say "proceed".
-      // When workStatus is "proceed", trust the LLM's decision — suggestedJob/redirectReason
-      // may be filled in as template artifacts without indicating an actual redirect.
+      // Force redirect when LLM signals a different job/agent than current.
+      // Safety net: even if LLM said "proceed", if suggestedJob differs from
+      // currentJob AND a redirectReason is provided, treat as redirect.
       const effectiveCurrentJob = currentJob || 'unknown';
+      const effectiveCurrentAgent = currentAgent || 'architect';
+      
+      // Guard: if LLM says redirect but target is the same job AND agent, convert to proceed.
+      // LLM sometimes hallucinates a redirect to the current job (e.g., code→code).
+      const isRedirectToSame = 
+        parsed.workStatus === 'redirect' &&
+        (!parsed.suggestedJob || parsed.suggestedJob === effectiveCurrentJob) &&
+        (!parsed.suggestedAgent || parsed.suggestedAgent === effectiveCurrentAgent);
+      
+      if (isRedirectToSame) {
+        console.log(`[TriageParser] Redirect-to-same detected (${parsed.suggestedJob}→${effectiveCurrentJob}), converting to proceed`);
+        result.workStatus = 'proceed';
+      }
+      
+      // Guarded boundary: plan outbound + design→plan.
+      // Only honor explicit redirect (workStatus === 'redirect') on these boundaries.
+      // Do NOT force-convert proceed→redirect based on suggestedJob/Agent mismatch,
+      // because LLM often leaks a suggestedJob even when it chose proceed.
+      const isPlanOutbound =
+        effectiveCurrentJob === 'plan'
+        && parsed.suggestedJob
+        && parsed.suggestedJob !== 'plan';
+      const isDesignToPlan =
+        effectiveCurrentJob === 'design'
+        && parsed.suggestedJob === 'plan';
+      const isGuardedBoundary = isPlanOutbound || isDesignToPlan;
+
       const shouldRedirect = 
-        parsed.workStatus === 'redirect' ||
-        (parsed.workStatus !== 'proceed' &&
-         parsed.suggestedJob && 
-         parsed.suggestedJob !== effectiveCurrentJob && 
-         parsed.redirectReason) ||
-        (parsed.workStatus !== 'proceed' &&
-         parsed.suggestedAgent && parsed.suggestedAgent !== (currentAgent || 'architect'));
+        !isRedirectToSame && (
+          (isGuardedBoundary && parsed.workStatus === 'redirect') ||
+          (!isGuardedBoundary && (
+            parsed.workStatus === 'redirect' ||
+            (parsed.suggestedJob && 
+             parsed.suggestedJob !== effectiveCurrentJob && 
+             parsed.redirectReason) ||
+            (parsed.suggestedAgent && parsed.suggestedAgent !== effectiveCurrentAgent)
+          ))
+        );
       
       // redirect
       if (shouldRedirect) {
