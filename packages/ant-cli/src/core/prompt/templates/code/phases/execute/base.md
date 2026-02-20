@@ -190,6 +190,7 @@ Follow the framework/language-specific setup instructions from:
 - ❌ DO NOT setup testing infrastructure (excluded)
 - ✅ Install ALL dependencies needed for the project
 - ✅ Use exact versions from design doc if specified
+- ❌ DO NOT set `container_name` for any service in docker-compose.yml. The platform namespaces containers using a project-scoped `-p` flag. An explicit `container_name` bypasses that namespace and causes container name conflicts across runs or projects.
 
 **⚠️ SETUP EFFICIENCY CONSTRAINTS:**
 - ❌ DO NOT `read_file` on a file you just created with `<file>` — you already know its content
