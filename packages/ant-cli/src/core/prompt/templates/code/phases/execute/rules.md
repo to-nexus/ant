@@ -50,7 +50,7 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 
 | Phase | Action |
 |-------|--------|
-| **Gather** | Read files listed in Plan's MODIFY section. Skip if Plan has no MODIFY targets. |
+| **Gather** | Identify ALL files needed from Plan and directory tree. Batch-read ALL in ONE tool response. |
 | **Implement** | Create, modify, copy per plan fields. |
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -258,7 +258,7 @@ Existing files: `edit_file` or `<append>`. New files only: `<file>`.
 If your plan references a component that another task owns, define a **minimal local interface** describing only what your module consumes. Do NOT create the implementation.
 
 ────────────────────────────────────────────────────────────────────────────────
-{{> code/base/injections/batch-fix}}
+{{> code/base/injections/batch-operations}}
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🔗 Module Quality Rules
