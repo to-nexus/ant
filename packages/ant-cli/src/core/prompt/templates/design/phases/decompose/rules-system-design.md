@@ -107,16 +107,23 @@ DO NOT CREATE tasks for:
 
 **Create exactly ONE task for the specific modification requested.**
 
+{{#if existingDesignFiles}}
+**⚠️ CRITICAL: `targetFile` MUST be one of these existing files:**
+{{#each existingDesignFiles}}
+- `{{this}}`
+{{/each}}
+{{/if}}
+
 ```json
 {
   "documentType": "unified",
   "jobMode": "refactor",
-  "targetFiles": ["system-design.md"],
+  "targetFiles": ["{{primaryDesignFile}}"],
   "tasks": [
     {
       "id": "refactor-{section}",
       "name": "Refactor: {brief description}",
-      "targetFile": "system-design.md",
+      "targetFile": "{{primaryDesignFile}}",
       "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 200
     }
@@ -132,6 +139,7 @@ DO NOT CREATE tasks for:
 | ID format | `refactor-{section}` |
 | Name format | `Refactor: {description}` |
 | Description | Must include "Keep all other content unchanged" |
+| targetFile | MUST match an existing design document filename |
 
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)

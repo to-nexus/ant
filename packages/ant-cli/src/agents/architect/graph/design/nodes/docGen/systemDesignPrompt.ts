@@ -427,10 +427,13 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // ✅ 4. Existing Design Document (ONLY for refactor mode)
   // - generate: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
   // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
+  //   Use content matching targetFile from existingDesignDocs (not state.design which may be a different file)
   if (state.detectionReport?.jobMode === 'refactor') {
-    if (state.design) {
+    const targetFileName = task?.targetFile || 'system-design.md';
+    const existingContent = state.existingDesignDocs?.[targetFileName] || state.design;
+    if (existingContent) {
       lines.push(`# Existing Design Document`);
-      lines.push(state.design);
+      lines.push(existingContent);
       lines.push('');
     }
   }

@@ -53,13 +53,88 @@ interface SystemDesignResponse {
 }
 
 // ============================================
+// System Design File Pattern Recognition
+// ============================================
+
+/**
+ * Known system design document patterns:
+ * - system-design.md              (unified)
+ * - api-contract.md               (API contract)
+ * - fe-system-design.md           (single frontend)
+ * - fe-system-design-{pkg}.md     (multi-package frontend)
+ * - be-system-design.md           (single backend)
+ * - be-system-design-{svc}.md     (multi-service/MSA backend)
+ */
+const SYSTEM_DESIGN_FILE_PATTERNS = [
+  /^system-design\.md$/,
+  /^api-contract\.md$/,
+  /^fe-system-design(?:-.+)?\.md$/,
+  /^be-system-design(?:-.+)?\.md$/,
+];
+
+function isSystemDesignFile(fileName: string): boolean {
+  return SYSTEM_DESIGN_FILE_PATTERNS.some(p => p.test(fileName));
+}
+
+/**
+ * Infer document structure from existing file set.
+ * Returns documentType and optional service/package names.
+ */
+function inferDocumentStructure(files: string[]): {
+  documentType: 'unified' | 'contract-first' | 'msa-contract-first';
+  services: string[];
+  fePackages: string[];
+} {
+  const hasApiContract = files.includes('api-contract.md');
+
+  const feMulti = /^fe-system-design-(.+)\.md$/;
+  const beMulti = /^be-system-design-(.+)\.md$/;
+  const fePackages = files.map(f => f.match(feMulti)?.[1]).filter(Boolean) as string[];
+  const services = files.map(f => f.match(beMulti)?.[1]).filter(Boolean) as string[];
+
+  const hasFe = files.some(f => f.startsWith('fe-system-design'));
+  const hasBe = files.some(f => f.startsWith('be-system-design'));
+
+  if (hasApiContract && services.length > 0) {
+    return { documentType: 'msa-contract-first', services, fePackages };
+  }
+  if (hasApiContract || (hasFe && hasBe)) {
+    return { documentType: 'contract-first', services: [], fePackages };
+  }
+  return { documentType: 'unified', services: [], fePackages };
+}
+
+// ============================================
 // Environment-based Response Normalization
 // ============================================
 
 function normalizeResponseForEnvironment(
   response: SystemDesignResponse,
-  detectedEnv: string | undefined
+  detectedEnv: string | undefined,
+  jobMode?: string,
+  existingDesignFiles?: string[]
 ): SystemDesignResponse {
+  // Refactor mode: preserve existing document structure
+  if (jobMode === 'refactor' && existingDesignFiles && existingDesignFiles.length > 0) {
+    const structure = inferDocumentStructure(existingDesignFiles);
+    response.documentType = structure.documentType;
+    if (structure.services.length > 0) {
+      response.services = structure.services;
+    }
+    // Validate each task's targetFile against existing files
+    response.tasks = response.tasks.map(t => {
+      if (!existingDesignFiles.includes(t.targetFile)) {
+        return { ...t, targetFile: existingDesignFiles[0] };
+      }
+      return t;
+    });
+    // targetFiles = only files actually targeted by tasks (not all existing)
+    // This is critical: validateTaskCoverage checks that every targetFile has a task.
+    // Refactor mode has ONE task → only ONE targetFile should be listed.
+    response.targetFiles = [...new Set(response.tasks.map(t => t.targetFile))];
+    return response;
+  }
+
   if (detectedEnv === 'frontend' || detectedEnv === 'backend') {
     response.documentType = 'unified';
     response.targetFiles = ['system-design.md'];
@@ -192,11 +267,19 @@ function validateTaskCoverage(response: SystemDesignResponse): { valid: boolean;
 
 /**
  * Determine expected targetFiles from environment alone (no LLM needed).
+ * For refactor mode, prefer existing file names over defaults.
  */
-function getTargetFilesForEnvironment(env: string | undefined): string[] | null {
+function getTargetFilesForEnvironment(
+  env: string | undefined,
+  jobMode?: string,
+  existingDesignFiles?: string[]
+): string[] | null {
+  if (jobMode === 'refactor' && existingDesignFiles && existingDesignFiles.length > 0) {
+    return existingDesignFiles;
+  }
   if (env === 'frontend' || env === 'backend') return ['system-design.md'];
   if (env === 'fullstack') return ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
-  return null; // unknown — cannot determine
+  return null;
 }
 
 /**
@@ -275,6 +358,12 @@ export async function decomposeSystemDesign(
   const hasExistingDesign = Boolean(state.design && state.design.trim().length > 0);
   const designPreview = state.design ? state.design.split('\n').slice(0, 50).join('\n') + '\n...' : '';
 
+  // Extract existing system design file names (pattern-filtered, not all .md)
+  const existingDesignFiles = state.existingDesignDocs
+    ? Object.keys(state.existingDesignDocs).filter(isSystemDesignFile)
+    : [];
+  const jobMode = state.detectionReport?.jobMode || 'generate';
+
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
@@ -282,7 +371,9 @@ export async function decomposeSystemDesign(
     spec,
     hasExistingDesign,
     designPreview,
-    jobMode: state.detectionReport?.jobMode || 'generate',
+    jobMode,
+    existingDesignFiles: existingDesignFiles.length > 0 ? existingDesignFiles : undefined,
+    primaryDesignFile: existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'system-design.md',
   });
 
   await safeLogPrompt(
@@ -341,7 +432,7 @@ export async function decomposeSystemDesign(
     }
 
     // Normalize
-    response = normalizeResponseForEnvironment(response, detectedEnv);
+    response = normalizeResponseForEnvironment(response, detectedEnv, jobMode, existingDesignFiles);
 
     // Validate: every targetFile must have at least one task
     const { valid, uncovered } = validateTaskCoverage(response);
@@ -370,7 +461,7 @@ export async function decomposeSystemDesign(
 
   // All attempts failed → generate minimum tasks from environment
   if (!response) {
-    const targetFiles = getTargetFilesForEnvironment(detectedEnv);
+    const targetFiles = getTargetFilesForEnvironment(detectedEnv, jobMode, existingDesignFiles);
     if (!targetFiles) {
       // Cannot determine targetFiles → unrecoverable error
       throw new Error(
