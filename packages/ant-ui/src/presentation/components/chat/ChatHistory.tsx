@@ -58,10 +58,22 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
   const lastPinnedRef = useRef<string | null>(null);
   const initialScrollDone = useRef(false);
   
-  // ✅ Auto-scroll: track whether user is at bottom for content-resize scrolling
+  // ✅ Auto-scroll: ON by default, OFF only when user explicitly scrolls up,
+  // re-enabled when user scrolls back to bottom.
   const isAtBottomRef = useRef(true);
+  const autoScrollRef = useRef(true);
   // Track previous state to detect content changes within existing messages
   const prevScrollStateRef = useRef({ msgLen: 0, contentsLen: 0 });
+
+  // Stable wheel handler ref — created once, never changes
+  const wheelHandlerRef = useRef<EventListener | null>(null);
+  if (!wheelHandlerRef.current) {
+    wheelHandlerRef.current = (e: Event) => {
+      if ((e as WheelEvent).deltaY < 0) {
+        autoScrollRef.current = false;
+      }
+    };
+  }
 
   // ✅ Calculate pinned message (stable function, no dependencies)
   const calculatePinnedMessage = useCallback(() => {
@@ -211,7 +223,13 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
   
   // Scroll to bottom when scrollerRef becomes available (initial load)
   const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
+    if (scrollerRef.current instanceof HTMLElement && wheelHandlerRef.current) {
+      scrollerRef.current.removeEventListener('wheel', wheelHandlerRef.current);
+    }
     scrollerRef.current = ref as HTMLElement;
+    if (ref instanceof HTMLElement && wheelHandlerRef.current) {
+      ref.addEventListener('wheel', wheelHandlerRef.current, { passive: true });
+    }
   }, []);
   
   // ✅ Force scroll to bottom on initial mount
@@ -243,15 +261,18 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     }
   }, [messages.length]);
 
-  // ✅ followOutput callback: use 'auto' (instant) for reliable bottom-pinning.
-  // 'smooth' can overshoot/undershoot when items resize during the animation.
-  const handleFollowOutput = useCallback((isAtBottom: boolean) => {
-    return isAtBottom ? 'auto' : false;
+  // ✅ followOutput callback: auto-scroll based on user intent, not position.
+  // autoScrollRef is true by default and only disabled by explicit user scroll-up.
+  const handleFollowOutput = useCallback((_isAtBottom: boolean) => {
+    return autoScrollRef.current ? 'auto' : false;
   }, []);
 
-  // ✅ Track at-bottom state for content-resize scrolling
+  // ✅ Track at-bottom state — re-enable auto-scroll when user reaches bottom
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     isAtBottomRef.current = atBottom;
+    if (atBottom) {
+      autoScrollRef.current = true;
+    }
   }, []);
 
   // ✅ Detect new content blocks within the last message (e.g., choice cards appearing
@@ -269,7 +290,7 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     // Always update tracking state
     prevScrollStateRef.current = { msgLen: messages.length, contentsLen: lastMsgContentsLen };
 
-    if (isNewContentInLastMsg && initialScrollDone.current && isAtBottomRef.current) {
+    if (isNewContentInLastMsg && initialScrollDone.current && autoScrollRef.current) {
       const scrollToEnd = () => {
         virtuosoRef.current?.scrollToIndex({
           index: messages.length - 1,
