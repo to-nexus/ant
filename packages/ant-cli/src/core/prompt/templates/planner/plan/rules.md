@@ -88,31 +88,32 @@ Clarifying questions may span multiple turns. After each round of answers, re-ob
 **Constraint**: Do NOT skip gap observation for detailed directives. A detailed functional description does NOT mean all PRD sections are covered.
 **Constraint**: When the user has provided enough information (directly or through answers), generate the complete PRD without further questions.
 
-⚠️ **Blind Spot**: Detailed directives commonly cover functional requirements well but omit non-functional requirements, constraints, risks, and non-goals. These are high-impact gaps that directly affect implementation quality.
+⚠️ **Blind Spot**: Natural-language directives are structurally partial — they typically describe features and desired behavior but omit scope boundaries, target users, non-functional requirements, and constraints. A long, detailed directive about features is NOT a complete directive. Observe each Core tier section independently.
 
 | Observation after gap check | Action |
 |-----------------------------|--------|
-| High-impact gaps observed (scope, constraints, non-functional) | Ask about observed gaps before generating |
-| Only minor gaps observed | Generate directly, record gaps as open questions |
-| No gaps observed | Generate directly |
+| Any Core tier section unobserved | Ask about unobserved Core sections before generating |
+| All Core observed, Supplementary unobserved | Generate directly, record Supplementary gaps as open questions |
+| All sections observed | Generate directly |
 
 #### Gap Observation Protocol
 
-For each standard PRD section, observe whether the user's input contains sufficient information:
+For each standard PRD section, observe whether the user's input contains sufficient information. Sections are classified by impact tier:
 
-| PRD Section | What to observe in user input |
-|-------------|-------------------------------|
-| Problem / Goal | Is the problem or goal stated? Is non-scope mentioned? |
-| User Scenarios | Are target users or workflows described? |
-| Functional Requirements | Are specific features or behaviors listed? |
-| Non-Functional Requirements | Are performance, security, or accessibility mentioned? |
-| Constraints / Risks | Are technical or business constraints stated? |
-| Technical Considerations | Are stack preferences or integration points mentioned? |
+| Tier | PRD Section | What to observe in user input |
+|------|-------------|-------------------------------|
+| Core | Problem / Goal | Is the problem or goal stated? Is non-scope mentioned? |
+| Core | User Scenarios | Are target users or workflows described? |
+| Core | Functional Requirements | Are specific features or behaviors listed? |
+| Core | Non-Functional Requirements | Are performance, security, or accessibility mentioned? |
+| Supplementary | Constraints / Risks | Are technical or business constraints stated? |
+| Supplementary | Technical Considerations | Are stack preferences or integration points mentioned? |
 
-**Constraint**: If a section's information is not observed in user input, do NOT fabricate it. Ask the user or mark it as an open question in the PRD.
+**Constraint**: If a Core section's information is not observed in user input, it is a high-impact gap — ask the user before generating.
+**Constraint**: If a Supplementary section's information is not observed, record it as an open question in the PRD.
 **Constraint**: If multiple valid approaches exist for an unspecified decision, present them as alternatives for the user to choose.
 
-⚠️ **Blind Spot**: Even when functional requirements are well-specified, observe whether the directive addresses: non-scope boundaries, error/edge cases, accessibility, and deployment constraints. These are commonly assumed rather than stated.
+⚠️ **Blind Spot**: Functional Requirements being well-covered does NOT reduce the impact of other Core sections being absent. Each Core section is independently required — observe each one separately.
 
 #### PRD Output
 
