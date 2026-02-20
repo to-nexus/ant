@@ -178,6 +178,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     prd: state.prd,
     directive: state.directive,
     design: state.design,
+    existingDesignDocs: state.existingDesignDocs,
     uiReferences: (state as any).uiReferences,
     uiAssetsList: (state as any).uiAssetsList,
     _httpJobId: state._httpJobId,
@@ -347,6 +348,7 @@ export function buildDesignGraph() {
       prd: null as any,
       directive: null as any,
       design: null as any,
+      existingDesignDocs: null as any,
       
       // Task Queue (like code graph)
       taskQueue: null as any,

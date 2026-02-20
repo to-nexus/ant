@@ -206,6 +206,38 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
 
+  // 4. Scan existing system design documents (for refactor mode to know exact filenames)
+  //    Pattern: system-design.md, api-contract.md, fe-system-design[-{pkg}].md, be-system-design[-{svc}].md
+  const DESIGN_FILE_PATTERNS = [
+    /^system-design\.md$/,
+    /^api-contract\.md$/,
+    /^fe-system-design(?:-.+)?\.md$/,
+    /^be-system-design(?:-.+)?\.md$/,
+  ];
+  let existingDesignDocs: Record<string, string> | undefined;
+  try {
+    const designDirAbs = path.join(featurePath, "outputs/design");
+    if (fs.existsSync(designDirAbs)) {
+      const designEntries = fs.readdirSync(designDirAbs, { withFileTypes: true });
+      const designFiles = designEntries.filter(
+        (e: any) => !e.isDirectory() && DESIGN_FILE_PATTERNS.some(p => p.test(e.name))
+      );
+      if (designFiles.length > 0) {
+        existingDesignDocs = {};
+        for (const entry of designFiles) {
+          const content = fs.readFileSync(
+            path.join(designDirAbs, entry.name), 'utf-8'
+          );
+          if (content?.trim()) {
+            existingDesignDocs[entry.name] = content;
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-critical: design directory may not exist yet
+  }
+
   // Validation based on mode
   if (jobMode === 'generate' && !prd) {
     throw new Error("Generate mode requires PRD document");
@@ -216,6 +248,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     prd,
     directive,
     design,
+    existingDesignDocs,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     _httpJobId: state._httpJobId,

@@ -11,6 +11,16 @@ You are analyzing requirements to break them into design tasks.
 
 **You are modifying EXISTING system design documents.**
 
+{{#if existingDesignFiles}}
+### 📁 Existing Design Files
+{{#each existingDesignFiles}}
+- `{{this}}`
+{{/each}}
+
+**⚠️ CRITICAL: `targetFiles` and `targetFile` MUST use the EXACT filename from the list above.**
+**Do NOT invent new filenames. Do NOT use `system-design.md` if it does not exist above.**
+{{/if}}
+
 **Philosophy**: Create a SINGLE focused task that modifies the specific section/part requested.
 
 ### Rules for Refactor Mode
@@ -19,6 +29,7 @@ You are analyzing requirements to break them into design tasks.
 2. **Focus on the specific change** - Only modify what was requested
 3. **Preserve existing content** - Do NOT regenerate entire documents
 4. **Use descriptive task ID** - e.g., "modify-api-users", "modify-schema-orders"
+5. **Use EXACT existing filename** - `targetFile` must match an existing document filename
 
 ### Task Output Format (Refactor Mode)
 
@@ -26,12 +37,12 @@ You are analyzing requirements to break them into design tasks.
 {
   "documentType": "unified",
   "jobMode": "refactor",
-  "targetFiles": ["system-design.md"],
+  "targetFiles": ["{{primaryDesignFile}}"],
   "tasks": [
     {
       "id": "refactor-{section}",
       "name": "Refactor: {brief description}",
-      "targetFile": "system-design.md",
+      "targetFile": "{{primaryDesignFile}}",
       "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 200
     }
