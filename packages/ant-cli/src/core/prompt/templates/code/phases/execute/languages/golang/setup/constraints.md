@@ -72,6 +72,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Do NOT omit healthcheck for any service in docker-compose.yml.
 - Do NOT omit volume mounts for stateful services (data must survive container restart).
 - Do NOT run `docker compose up` in setup tasks. Only create the files.
+- Do NOT set `container_name` for any service in docker-compose.yml. The platform namespaces containers using a project-scoped `-p` flag. An explicit `container_name` bypasses that namespace and causes container name conflicts across runs or projects.
 - `.env.example` MUST use `# @connection {category} {name}` annotation for each service connection endpoint (URL or address). Do NOT annotate individual components (host, port, user, password) — only the connection URL variable.
 - Same-project internal connections (e.g., frontend → backend in fullstack) MUST add `self`: `# @connection business {name} self`
 - Cross-project connections (e.g., frontend project referencing a separate backend project) MUST use `ant-project:{projectId}:{feature}`: `# @connection business {name} ant-project:{projectId}:{feature}`

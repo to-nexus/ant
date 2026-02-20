@@ -185,6 +185,7 @@ ENV=development
 - Do NOT omit healthcheck for any service in docker-compose.yml.
 - Do NOT omit volume mounts for stateful services (data must survive container restart).
 - Do NOT run `docker compose up` in setup tasks. Only create the files.
+- Do NOT set `container_name` for any service in docker-compose.yml. The platform namespaces containers using a project-scoped `-p` flag. An explicit `container_name` bypasses that namespace and causes container name conflicts across runs or projects.
 - `.env.example` MUST use `# @connection {category} {name}` annotation for every service connection variable.
 
 **Blind spot reminder — include these when creating files:**
@@ -200,5 +201,6 @@ ENV=development
 ❌ Using `pkg/` for private application code (use `internal/` instead)
 ❌ Hardcoding ports or connection strings instead of using environment variables
 ❌ Forgetting Makefile targets for infrastructure services
+❌ Setting `container_name` in docker-compose.yml (breaks platform namespace isolation, causes conflicts)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
