@@ -67,7 +67,8 @@ export async function analyzeWorkspace(
     featurePath,
     hasPrd: false,
     hasDirective: false,
-    hasReferences: false,
+    hasScreens: false,
+    hasComponents: false,
     hasAssets: false,
     hasSystemDesignDoc: false,
     hasUiDocs: false,
@@ -111,12 +112,20 @@ export async function analyzeWorkspace(
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check references (for ui-design) - recursive scan
+  // Check references (for ui-design) — screens and components separately
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const referencesPath = path.join(featurePath, 'inputs', 'references');
-  state.hasReferences = countFilesInDir(referencesPath, true) > 0;
-  if (state.hasReferences) {
-    state.referenceCount = countFilesInDir(referencesPath, true);
+  const screensPath = path.join(featurePath, 'inputs', 'references', 'screens');
+  const screensCount = countFilesInDir(screensPath, true);
+  state.hasScreens = screensCount > 0;
+  if (state.hasScreens) {
+    state.screenCount = screensCount;
+  }
+
+  const componentsPath = path.join(featurePath, 'inputs', 'references', 'components');
+  const componentsCount = countFilesInDir(componentsPath, true);
+  state.hasComponents = componentsCount > 0;
+  if (state.hasComponents) {
+    state.componentCount = componentsCount;
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -199,7 +208,8 @@ function createEmptyWorkspaceState(): WorkspaceState {
   return {
     hasPrd: false,
     hasDirective: false,
-    hasReferences: false,
+    hasScreens: false,
+    hasComponents: false,
     hasAssets: false,
     hasSystemDesignDoc: false,
     hasUiDocs: false,
@@ -225,9 +235,12 @@ export function formatWorkspaceState(state: WorkspaceState): string {
   
   lines.push('');
   lines.push('### References (ui-design)');
-  lines.push(state.hasReferences 
-    ? `✅ References: ${state.referenceCount || 'multiple'} files` 
-    : '❌ No reference images');
+  lines.push(state.hasScreens 
+    ? `✅ Screens: ${state.screenCount || 'multiple'} files` 
+    : '❌ No screen references');
+  lines.push(state.hasComponents 
+    ? `✅ Components: ${state.componentCount || 'multiple'} files` 
+    : 'ℹ️ No component references');
   lines.push(state.hasAssets 
     ? `✅ Assets: ${state.assetCount || 'multiple'} files` 
     : 'ℹ️ No asset files');

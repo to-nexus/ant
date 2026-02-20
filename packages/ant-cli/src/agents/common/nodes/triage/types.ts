@@ -99,9 +99,6 @@ export interface TriageResult {
   // 선택 필요 여부
   needsChoice?: boolean;
   choiceOptions?: ChoiceOptions;
-  
-  // Programmatic guard message (sent to Chat UI when redirect is blocked by prerequisite check)
-  _guardMessage?: string;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -120,9 +117,11 @@ export interface WorkspaceState {
   featurePath?: string;          // Feature directory path (for debug logging)
   
   // Design job - ui-design mode
-  hasReferences: boolean;        // inputs/references/ (recursive)
+  hasScreens: boolean;           // inputs/references/screens/
+  hasComponents: boolean;        // inputs/references/components/
   hasAssets: boolean;            // inputs/assets/
-  referenceCount?: number;
+  screenCount?: number;
+  componentCount?: number;
   assetCount?: number;
   
   // Design job - system-design mode

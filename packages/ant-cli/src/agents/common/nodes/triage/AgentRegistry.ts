@@ -196,7 +196,7 @@ class AgentRegistryClass {
         
       case 'directory_with_files':
         if (prereq.path === 'inputs/references') {
-          satisfied = ws.hasReferences;
+          satisfied = ws.hasScreens || ws.hasComponents;
         } else if (prereq.path === 'inputs/assets') {
           satisfied = ws.hasAssets;
         } else if (prereq.path === 'outputs/design') {
@@ -277,7 +277,7 @@ class AgentRegistryClass {
     const { path, type } = item;
     
     if (type === 'directory_with_files') {
-      if (path === 'inputs/references') return ws.hasReferences;
+      if (path === 'inputs/references') return ws.hasScreens || ws.hasComponents;
       if (path === 'inputs/assets') return ws.hasAssets;
       if (path === 'outputs/design') return ws.hasDesignDoc;
     }
