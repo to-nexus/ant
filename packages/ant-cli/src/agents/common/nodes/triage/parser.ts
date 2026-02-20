@@ -64,13 +64,23 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
         result.workStatus = 'proceed';
       }
       
+      // plan<->design boundary: only honor explicit redirect (workStatus === 'redirect').
+      // Do NOT force-convert proceed→redirect based on suggestedJob/Agent mismatch,
+      // because LLM often leaks a suggestedJob even when it chose proceed.
+      const isPlanDesignBoundary =
+        (effectiveCurrentJob === 'plan' && parsed.suggestedJob === 'design') ||
+        (effectiveCurrentJob === 'design' && parsed.suggestedJob === 'plan');
+
       const shouldRedirect = 
         !isRedirectToSame && (
-          parsed.workStatus === 'redirect' ||
-          (parsed.suggestedJob && 
-           parsed.suggestedJob !== effectiveCurrentJob && 
-           parsed.redirectReason) ||
-          (parsed.suggestedAgent && parsed.suggestedAgent !== effectiveCurrentAgent)
+          (isPlanDesignBoundary && parsed.workStatus === 'redirect') ||
+          (!isPlanDesignBoundary && (
+            parsed.workStatus === 'redirect' ||
+            (parsed.suggestedJob && 
+             parsed.suggestedJob !== effectiveCurrentJob && 
+             parsed.redirectReason) ||
+            (parsed.suggestedAgent && parsed.suggestedAgent !== effectiveCurrentAgent)
+          ))
         );
       
       // redirect

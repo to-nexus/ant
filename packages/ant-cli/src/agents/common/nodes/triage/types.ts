@@ -99,6 +99,9 @@ export interface TriageResult {
   // 선택 필요 여부
   needsChoice?: boolean;
   choiceOptions?: ChoiceOptions;
+  
+  // Programmatic guard message (sent to Chat UI when redirect is blocked by prerequisite check)
+  _guardMessage?: string;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
