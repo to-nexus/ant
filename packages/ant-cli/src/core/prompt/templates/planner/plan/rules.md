@@ -38,10 +38,10 @@ When information gaps or ambiguity are observed, present questions with suggeste
 Each `<clarify>` block is rendered as a choice card in the chat UI. The user may select an option OR type a custom answer — both are valid.
 
 ```
-<clarify question="What is the target platform?">
-<option>a) Web application (SPA)</option>
-<option>b) Mobile app (React Native)</option>
-<option>c) Desktop app (Electron)</option>
+<clarify question="Question text here">
+<option>a) First option</option>
+<option>b) Second option</option>
+<option>c) Third option</option>
 </clarify>
 ```
 
@@ -81,17 +81,20 @@ Clarifying questions may span multiple turns. After each round of answers, re-ob
 
 ### Generate Mode (no existing document)
 
-#### Input Density Observation
+#### Gap-First Observation
 
-Before generating, observe the information density of the user's directive:
+**Principle**: Always run Gap Observation Protocol before deciding whether to generate or ask. Information density of the directive determines how many gaps to expect, not whether to observe.
 
-| Observation | Action |
-|-------------|--------|
-| Directive covers multiple PRD sections with specific details | Generate directly, ask only about unobserved gaps |
-| Directive describes intent but lacks specifics for most sections | Ask clarifying questions for major gaps before generating |
-| Directive is a single sentence or vague concept | Ask clarifying questions to establish scope before generating |
-
+**Constraint**: Do NOT skip gap observation for detailed directives. A detailed functional description does NOT mean all PRD sections are covered.
 **Constraint**: When the user has provided enough information (directly or through answers), generate the complete PRD without further questions.
+
+⚠️ **Blind Spot**: Detailed directives commonly cover functional requirements well but omit non-functional requirements, constraints, risks, and non-goals. These are high-impact gaps that directly affect implementation quality.
+
+| Observation after gap check | Action |
+|-----------------------------|--------|
+| High-impact gaps observed (scope, constraints, non-functional) | Ask about observed gaps before generating |
+| Only minor gaps observed | Generate directly, record gaps as open questions |
+| No gaps observed | Generate directly |
 
 #### Gap Observation Protocol
 
@@ -109,7 +112,7 @@ For each standard PRD section, observe whether the user's input contains suffici
 **Constraint**: If a section's information is not observed in user input, do NOT fabricate it. Ask the user or mark it as an open question in the PRD.
 **Constraint**: If multiple valid approaches exist for an unspecified decision, present them as alternatives for the user to choose.
 
-⚠️ **Blind Spot**: Users commonly omit non-functional requirements, non-goals, and constraints. These are high-impact gaps — prioritize asking about them.
+⚠️ **Blind Spot**: Even when functional requirements are well-specified, observe whether the directive addresses: non-scope boundaries, error/edge cases, accessibility, and deployment constraints. These are commonly assumed rather than stated.
 
 #### PRD Output
 
