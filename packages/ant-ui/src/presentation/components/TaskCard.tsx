@@ -167,9 +167,9 @@ export function TaskCard({
             
             {/* Package Scope */}
             {task.packages && task.packages.length > 0 && (
-              <span className={cn('flex items-center gap-1 text-xs flex-shrink-0', colors.text.secondary)}>
-                <Package className="w-3.5 h-3.5" />
-                {task.packages.join(', ')}
+              <span className={cn('inline-flex items-start gap-1 text-xs min-w-0', colors.text.secondary)}>
+                <Package className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span className="break-words min-w-0">{task.packages.join(', ')}</span>
               </span>
             )}
             
