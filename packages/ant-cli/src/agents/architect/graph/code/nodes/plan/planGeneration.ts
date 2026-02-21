@@ -12,7 +12,7 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import * as fs from 'fs/promises';
@@ -41,6 +41,48 @@ async function selectLLMForTask(
   );
 }
 
+/**
+ * Build plan prompt (shared by generatePlanText and plan-with-tools path).
+ */
+export async function buildPlanPrompt(
+  state: ArchitectGraphState,
+  task: CodeTask,
+  projectCodeContext: any,
+  violationsText: string | undefined,
+  uiDoc: string | undefined,
+  remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined
+): Promise<string> {
+  const promptEngine = state.deps?.promptEngine;
+  if (!promptEngine) throw new Error('[Plan] PromptEngine not available');
+
+  let designDoc: string;
+  if (state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
+    // Spec-driven mode: use spec as primary, api-contract only as supplementary
+    const parts: string[] = [];
+    parts.push(`# Feature Specification (Primary)\n\n${state.specDocs[state.selectedSpec]}`);
+    if (state.designDocs?.apiContract) {
+      parts.push(`# API Contract (Reference)\n\n${state.designDocs.apiContract}`);
+    }
+    designDoc = parts.join('\n\n────────────────────────────────────────\n\n');
+    console.log(`📋 [Plan] Using spec doc "${state.selectedSpec}" as primary (${designDoc.length} chars)`);
+  } else if (task.packages && task.packages.length > 0 && state.designDocs) {
+    designDoc = buildDesignDocForTask(task.packages, state.designDocs);
+  } else {
+    designDoc = state.design || '';
+  }
+
+  return promptEngine.buildTaskPlanPrompt(
+    task,
+    state.directive || '',
+    designDoc,
+    projectCodeContext,
+    violationsText,
+    uiDoc,
+    state.profile,
+    remainingTasks
+  );
+}
+
 export async function generatePlanText(
   llm: LLMClient,
   task: CodeTask,
@@ -64,47 +106,10 @@ export async function generatePlanText(
     throw new Error('[Plan] LLM not available but plan is required');
   }
   
-  // ✅ Select appropriate LLM based on task type
   const llmToUse = await selectLLMForTask(llm, task, state);
-  
-  const promptEngine = state.deps?.promptEngine;
-  if (!promptEngine) {
-    throw new Error('[Plan] PromptEngine not available');
-  }
-  
-  // ✅ Select design doc based on task.packages (split injection)
-  // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
-  // If missing, fall back to state.design but warn — this indicates a decompose bug.
-  let designDoc: string;
-  
-  if (task.packages && task.packages.length > 0 && state.designDocs) {
-    // Package-based split injection
-    designDoc = buildDesignDocForTask(task.packages, state.designDocs);
-    console.log(`📄 [Plan] Split injection: packages=${task.packages.join(', ')} → ${designDoc.length} chars`);
-  } else {
-    // Fallback: all tasks should have packages set by decompose.
-    // If this fires, it indicates a decompose bug (missing packages) or resolve bug (missing designDocs).
-    console.warn('⚠️ [Plan] Fallback to state.design: task.packages or state.designDocs missing (decompose bug)');
-    console.warn(`   task.id=${task.id}, task.packages=${JSON.stringify(task.packages)}, hasDesignDocs=${!!state.designDocs}`);
-    designDoc = state.design || '';
-  }
-  
-  // Format violations for retry context
-  const violationsText = violations && violations.length > 0 
-    ? formatViolations(violations) 
-    : undefined;
-  
-  const prompt = await promptEngine.buildTaskPlanPrompt(
-    task,
-    state.directive || '',
-    designDoc,
-    projectCodeContext,
-    violationsText,
-    uiDoc,  // ✅ Pass uiDoc for UI-related tasks
-    state.profile,  // ✅ Pass profile for language-specific setup constraint injection
-    remainingTasks  // ✅ Pass remaining tasks for task boundary awareness
-  );
-  
+  const violationsText = violations && violations.length > 0 ? formatViolations(violations) : undefined;
+  const prompt = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks);
+
   // ✅ Log prompt structure (not content)
   const jobId = state._httpJobId || 'unknown';
   if (state.context.featurePath) {
@@ -125,7 +130,7 @@ export async function generatePlanText(
             taskType: task.type,
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            designDoc: designDoc ? `[${designDoc.length} chars]` : undefined,
+            designDoc: state.designDocs ? '[split]' : undefined,
             uiDoc: uiDoc ? `[${uiDoc.length} chars]` : undefined,
             hasProjectCodeContext: !!projectCodeContext,
             isRetry: !!violationsText,
@@ -144,7 +149,7 @@ export async function generatePlanText(
     llmToUse,
     [{ role: 'user', content: prompt }],
     state as any,
-    { temperature: LLM_TEMPERATURE.PLAN_GENERATION, maxTokens: LLM_MAX_TOKENS.PLAN }
+    { temperature: LLM_TEMPERATURE.PLAN_GENERATION, maxTokens: LLM_MAX_TOKENS.PLAN, enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.PLAN }
   );
   updateKanbanTokenUsage(state as any);
 
@@ -170,6 +175,7 @@ export async function generatePlanText(
       estimatedPromptChars: prompt.length,
       taskCumulativeInput: beforeUsage.inputTokens,
       taskCumulativeOutput: beforeUsage.outputTokens,
+      recursionCount: state.recursionCount,
     }
   );
 
@@ -268,4 +274,96 @@ async function savePlanTextForDebug(
   } catch (err) {
     // Non-blocking - plan save failed
   }
+}
+
+/** Max plan↔tool round-trips before falling back to generatePlanText (no tools).
+ * Reduced from 8: most productive exploration completes within 2-3 rounds.
+ * Keeping 4 as a safety margin while preventing runaway token burn. */
+export const PLAN_TOOL_LOOP_MAX = 4;
+
+export type PlanWithToolsResult =
+  | { planText: string }
+  | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; planConversationHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }>; _planExploring: true }
+  | null;
+
+/**
+ * Run plan-phase LLM with tools (stream). Returns planText, or state updates for tool loop, or null to fallback to generatePlanText.
+ */
+export async function runPlanLLMWithTools(
+  state: ArchitectGraphState,
+  messages: Array<{ role: 'user' | 'assistant'; content: string | any[] }>,
+  task: CodeTask
+): Promise<PlanWithToolsResult> {
+  const llm = state.deps?.llm as LLMClient | undefined;
+  if (!llm?.stream) return null;
+
+  const { getPlanTools } = await import('./getPlanTools');
+  const tools = await getPlanTools(state);
+  if (!tools?.length) return null;
+
+  const llmToUse = await selectLLMForTask(llm, task, state);
+  const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
+  let textResponse = '';
+  let thinking = '';
+  let thinkingSignature = '';
+  let tokenUsage: any = undefined;
+
+  for await (const event of llmToUse.stream(messages, {
+    tools,
+    maxTokens: LLM_MAX_TOKENS.PLAN,
+    enableThinking: true,
+    thinkingBudget: LLM_THINKING_BUDGET.PLAN,
+  })) {
+    if (event.type === 'thinking') {
+      thinking += (event as any).thinking ?? '';
+      if (event.signature) {
+        thinkingSignature = event.signature;
+      }
+    }
+    if (event.type === 'tool_use' && (event as any).toolUse) {
+      const { id, name, input } = (event as any).toolUse;
+      toolCalls.push({ id, name, args: input ?? {} });
+    }
+    if (event.type === 'text') {
+      textResponse += (event as any).text ?? '';
+    }
+    if (event.type === 'done' && (event as any).usage) {
+      tokenUsage = (event as any).usage;
+      const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
+      accumulateTokenUsage(state as any, tokenUsage, { taskLevel: true, jobLevel: true });
+      updateKanbanTokenUsage(state as any);
+      // Log per-call token usage for plan-tool loop debugging
+      const planRound = Math.floor((messages.length - 1) / 2);
+      logTokenUsageToFile(
+        state.context?.featurePath,
+        state._httpJobId,
+        tokenUsage,
+        {
+          taskId: state.currentTask?.id || 'unknown',
+          taskName: state.currentTask?.name || 'unknown',
+          node: 'plan-toolLoop',
+          callIndex: planRound,
+          conversationHistoryLength: messages.length,
+          recursionCount: state.recursionCount,
+        }
+      );
+    }
+  }
+
+  if (toolCalls.length > 0) {
+    return {
+      llmResponse: { toolCalls, textResponse, thinking: thinking || undefined, thinkingSignature: thinkingSignature || undefined, done: false, tokenUsage },
+      planConversationHistory: messages,
+      _planExploring: true,
+    };
+  }
+
+  const planMatch = textResponse.match(/<plan>([\s\S]*?)<\/plan>/);
+  if (planMatch) {
+    const planText = planMatch[1].trim();
+    if (planText.length >= 50) {
+      return { planText };
+    }
+  }
+  return null;
 }

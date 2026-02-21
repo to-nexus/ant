@@ -269,6 +269,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     designDocsMeta = lines.join('\n');
   }
   
+  // ✅ Build spec docs metadata for LLM selection
+  let specDocsMeta = '';
+  if (state.specDocs && Object.keys(state.specDocs).length > 0) {
+    const specLines = Object.entries(state.specDocs).map(([filename, content]) => {
+      const firstLine = content.split('\n').find(l => l.startsWith('# '))?.replace('# ', '') || filename;
+      return `- ${filename}: "${firstLine}" (${content.length} chars)`;
+    });
+    specDocsMeta = specLines.join('\n');
+  }
+
   const decomposeVars = {
     directive: state.directive || '',
     designDoc,
@@ -276,6 +286,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     mode: state.detectionReport?.jobMode || 'unknown',
     profile: state.profile,
     designDocsMeta,              // ✅ Design document availability for profile detection
+    specDocsMeta,                // ✅ Spec document list for LLM selection
     codebaseFilePaths,           // ✅ File paths from keyword search (for task planning)
     hasProjectCode,              // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
     uiSectionsSummary,           // ✅ UI sections summary with token estimates (for split injection)
@@ -374,7 +385,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw error;
   }
   
-  const { tasks, referenceRequests, profile: parsedProfile } = parsed;
+  const { tasks, referenceRequests, profile: parsedProfile, selectedSpec } = parsed;
+  
+  // ✅ Store selectedSpec in state (used by plan node for spec injection)
+  if (selectedSpec && state.specDocs?.[selectedSpec]) {
+    state.selectedSpec = selectedSpec;
+    console.log(`📋 [Decompose] Using spec document: ${selectedSpec}`);
+  } else if (selectedSpec) {
+    console.warn(`⚠️  [Decompose] selectedSpec "${selectedSpec}" not found in specDocs, ignoring`);
+    state.selectedSpec = null;
+  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue

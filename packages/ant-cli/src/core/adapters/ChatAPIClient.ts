@@ -222,6 +222,7 @@ export class ChatAPIClient {
     choiceOptions: {
       positive: { label: string; action: string };
       negative: { label: string; action: string };
+      neutral?: { label: string; action: string };
       fallbackGuide?: string;
     },
     triageResult?: any,
@@ -485,6 +486,7 @@ export class ChatAPIClient {
         if (choice.data.evalType) metadata.evalType = choice.data.evalType;
         if (choice.data.response) metadata.evalContent = choice.data.response;
         if (choice.data.featurePath) metadata.featurePath = choice.data.featurePath;
+        if (choice.data.specFile) metadata.specFile = choice.data.specFile;
       }
     }
     await this.showChatStatus('choice_card', metadata);

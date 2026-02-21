@@ -73,6 +73,7 @@ export async function analyzeWorkspace(
     hasSystemDesignDoc: false,
     hasUiDocs: false,
     hasEvals: false,
+    hasSpecDocs: false,
     hasDesignDoc: false,
     hasCodebase: false
   };
@@ -159,6 +160,20 @@ export async function analyzeWorkspace(
   const uiSpecPath = path.join(designPath, 'ui-spec.json');
   state.hasUiDocs = fs.existsSync(uiTokensPath) || fs.existsSync(uiAssetsPath) || fs.existsSync(uiSpecPath);
   
+  // Spec documents (spec-*.md)
+  if (fs.existsSync(designPath)) {
+    const specFiles = fs.readdirSync(designPath).filter(f =>
+      f.startsWith('spec-') && f.endsWith('.md')
+    );
+    state.hasSpecDocs = specFiles.length > 0;
+    if (state.hasSpecDocs) {
+      state.specDocCount = specFiles.length;
+      state.specDocNames = specFiles;
+    }
+  } else {
+    state.hasSpecDocs = false;
+  }
+
   // Any design document
   if (fs.existsSync(designPath)) {
     const designFiles = fs.readdirSync(designPath).filter(f => 
@@ -214,6 +229,7 @@ function createEmptyWorkspaceState(): WorkspaceState {
     hasSystemDesignDoc: false,
     hasUiDocs: false,
     hasEvals: false,
+    hasSpecDocs: false,
     hasDesignDoc: false,
     hasCodebase: false
   };
@@ -260,6 +276,12 @@ export function formatWorkspaceState(state: WorkspaceState): string {
     ? `✅ Eval reports: ${state.evalCount || 'available'} files (outputs/evals/)` 
     : 'ℹ️ No evaluation reports');
   
+  lines.push('');
+  lines.push('### Spec Documents');
+  lines.push(state.hasSpecDocs
+    ? `✅ Spec docs: ${state.specDocCount} files (${state.specDocNames?.join(', ')})`
+    : '❌ No spec documents');
+
   lines.push('');
   lines.push('### Codebase');
   lines.push(state.hasCodebase 

@@ -162,7 +162,8 @@ export async function detectEnvironment(
     { role: 'user', content: prompt }
   ], {
     temperature: LLM_TEMPERATURE.DETECT,
-    maxTokens: LLM_MAX_TOKENS.DETECT
+    maxTokens: LLM_MAX_TOKENS.DETECT,
+    enableThinking: false,
   })) {
     if (event.text) {
       response += event.text;

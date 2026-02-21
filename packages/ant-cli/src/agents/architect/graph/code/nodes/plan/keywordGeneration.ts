@@ -87,7 +87,7 @@ export async function generateTaskKeywords(
       llm,
       [{ role: 'user', content: prompt }],
       state as any,
-      { temperature: LLM_TEMPERATURE.PLAN_KEYWORD, maxTokens: LLM_MAX_TOKENS.KEYWORD }
+      { temperature: LLM_TEMPERATURE.PLAN_KEYWORD, maxTokens: LLM_MAX_TOKENS.KEYWORD, enableThinking: false }
     );
     updateKanbanTokenUsage(state as any);
 
@@ -113,6 +113,7 @@ export async function generateTaskKeywords(
         estimatedPromptChars: prompt.length,
         taskCumulativeInput: beforeUsage.inputTokens,
         taskCumulativeOutput: beforeUsage.outputTokens,
+        recursionCount: state.recursionCount,
       }
     );
 

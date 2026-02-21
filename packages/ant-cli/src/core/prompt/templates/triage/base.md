@@ -26,6 +26,9 @@ You analyze user input to determine intent and execution readiness.
 {{#if hasUiDocs}}✅ UI specification exists{{else}}❌ No UI specification{{/if}}
 {{#if hasSystemDesignDoc}}✅ System design exists{{else}}❌ No system design{{/if}}
 
+### Spec Documents
+{{#if hasSpecDocs}}✅ Spec docs: {{specDocCount}} files ({{specDocNames}}){{else}}❌ No spec documents{{/if}}
+
 ### Codebase
 {{#if hasCodebase}}✅ Indexed ({{indexedFileCount}} files){{else}}❌ Not indexed{{/if}}
 {{#if hasDesignDoc}}✅ Design documents exist{{else}}❌ No design documents{{/if}}

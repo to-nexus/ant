@@ -81,10 +81,23 @@ export class AnthropicLLMClient implements LLMClient {
       }
     }
     
+    const enableThinking = options?.enableThinking === true;
+    const thinkingBudget = options?.thinkingBudget || 10000;
+    const requestedMaxTokens = options?.maxTokens || 16000;
+    const maxTokens = enableThinking
+      ? Math.max(requestedMaxTokens, thinkingBudget + 2000)
+      : requestedMaxTokens;
+    
     const response = await this.client.messages.create({
       model: this.modelName,
-      max_tokens: options?.maxTokens || 16000,
+      max_tokens: maxTokens,
       ...(systemParam && { system: systemParam }),
+      ...(enableThinking ? {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: thinkingBudget,
+        }
+      } : {}),
       messages: userMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,  // API directly accepts CacheableContent[]
@@ -155,7 +168,8 @@ export class AnthropicLLMClient implements LLMClient {
     }
   ): AsyncIterable<LLMStreamEvent> {
     const toolsCount = options?.tools?.length || 0;
-    const enableThinking = options?.enableThinking !== false;
+    const enableThinking = options?.enableThinking === true;
+    const thinkingBudget = options?.thinkingBudget || 10000;
     
     // Count cacheable blocks for logging
     let cacheableBlocks = 0;
@@ -187,14 +201,19 @@ export class AnthropicLLMClient implements LLMClient {
       }
     }
     
+    const requestedMaxTokens = options?.maxTokens || 16000;
+    const maxTokens = enableThinking
+      ? Math.max(requestedMaxTokens, thinkingBudget + 2000)
+      : requestedMaxTokens;
+
     const stream = await this.client.messages.create({
       model: this.modelName,
-      max_tokens: options?.maxTokens || 16000,
+      max_tokens: maxTokens,
       ...(systemParam ? { system: systemParam } : {}),
       ...(enableThinking ? {
         thinking: {
           type: 'enabled',
-          budget_tokens: 10000,
+          budget_tokens: thinkingBudget,
         }
       } : {}),
       messages: userMessages.map(m => ({
@@ -213,7 +232,7 @@ export class AnthropicLLMClient implements LLMClient {
 
     // 🔴 FIX: Accumulate tool_use input across multiple deltas
     const toolUseBuffer: Map<number, { id: string; name: string; input: string }> = new Map();
-    const thinkingBlocks: Map<number, { startTime: number; content: string }> = new Map();
+    const thinkingBlocks: Map<number, { startTime: number; content: string; signature: string }> = new Map();
     
     // ✅ Track token usage (accumulate from message_start and message_delta)
     let tokenUsage: TaskTokenUsage | undefined;
@@ -239,6 +258,14 @@ export class AnthropicLLMClient implements LLMClient {
         // Log cache effectiveness immediately
         if (tokenUsage.cacheReadTokens || tokenUsage.cacheCreationTokens) {
           console.log(`💰 [CACHE] read=${tokenUsage.cacheReadTokens || 0} create=${tokenUsage.cacheCreationTokens || 0}`);
+        }
+        
+        // 200K pricing tier check (actual API-reported tokens)
+        const totalPromptTokens = inputTokens + cacheReadTokens + cacheCreationTokens;
+        if (totalPromptTokens > 200000) {
+          console.error(`💸 [PRICING] OVER 200K! ${totalPromptTokens.toLocaleString()} prompt tokens → 2x pricing tier (input=$6, cache_read=$0.60, cache_write=$7.50 per MTok)`);
+        } else if (totalPromptTokens > 160000) {
+          console.warn(`⚠️  [PRICING] ${totalPromptTokens.toLocaleString()} prompt tokens — approaching 200K tier (${((totalPromptTokens / 200000) * 100).toFixed(0)}%)`);
         }
       }
       
@@ -267,6 +294,7 @@ export class AnthropicLLMClient implements LLMClient {
         thinkingBlocks.set(event.index, {
           startTime: Date.now(),
           content: '',
+          signature: '',
         });
       }
       
@@ -287,6 +315,14 @@ export class AnthropicLLMClient implements LLMClient {
             timestamp: new Date().toISOString(),
           },
         };
+      }
+
+      // Thinking block - SIGNATURE DELTA (required for multi-turn conversation history)
+      if (event.type === 'content_block_delta' && (event.delta as any).type === 'signature_delta') {
+        const block = thinkingBlocks.get(event.index);
+        if (block) {
+          block.signature += (event.delta as any).signature || '';
+        }
       }
 
       // Text block
@@ -330,6 +366,7 @@ export class AnthropicLLMClient implements LLMClient {
           yield {
             type: 'thinking',
             thinking: '',
+            signature: thinkingBlock.signature || undefined,
             index: event.index,
             metadata: {
               provider: 'anthropic',

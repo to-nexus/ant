@@ -15,6 +15,8 @@ import { runtimeValidate } from "./nodes/runtimeValidate";
 import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
 import { routeAfterCodeGen } from "./routers/codeGenRouter";
+import { routeAfterPlan } from "./routers/planRouter";
+import { routeAfterTool } from "./routers/toolRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "./parallel/types";
@@ -416,13 +418,34 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       },
       onTaskFailure: (task, error, workerId) => {
         console.error(`[ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
+        // Log task_fail to debug/logs/ for post-mortem analysis
+        if (state.context?.featurePath && state._httpJobId) {
+          const { getExecutionLogger: getExecLogFail } = require('../../../../core/utils/executionLogger');
+          const failLogger = getExecLogFail({
+            featurePath: state.context.featurePath,
+            jobId: state._httpJobId,
+            jobType: 'code',
+          });
+          const isRecLimit = /recursion limit/i.test(error.message);
+          failLogger.logTaskFail(task.id, {
+            taskName: task.name,
+            reason: isRecLimit ? 'recursion_limit' : 'unknown',
+            errorMessage: error.message.substring(0, 500),
+            elapsedMs: task.timing?.elapsedTime,
+            inputTokens: task.tokenUsage?.inputTokens,
+            outputTokens: task.tokenUsage?.outputTokens,
+            cacheReadTokens: task.tokenUsage?.cacheReadTokens,
+          }).catch(() => {});
+        }
       },
       onWorkerTerminate: (workerId) => {
         // ✅ Immediately clear this worker's stale entry from WorkflowBroadcaster.
         // Without this, the worker's last-active-node badge stays visible in the
         // workflow UI until ALL parallel workers finish (clearWorkers at line 474).
         if (state.deps?.workflowUpdate?.clearWorkers && state._httpJobId) {
-          state.deps.workflowUpdate.clearWorkers(state._httpJobId, [workerId]).catch((err: Error) => {
+          Promise.resolve(
+            state.deps.workflowUpdate.clearWorkers(state._httpJobId, [workerId])
+          ).catch((err: Error) => {
             console.warn(`[ParallelOrchestrator] Failed to clear terminated worker ${workerId}:`, err.message);
           });
         }
@@ -859,6 +882,8 @@ export function buildCodeGraph() {
       toolResults: null as any,     // Tool execution results
       conversationHistory: null as any,  // Multi-turn conversation
       interruption: null as any,         // Interruption details
+      _planExploring: null as any,
+      planConversationHistory: null as any,
     } as any,
   } as any);
   
@@ -989,9 +1014,13 @@ export function buildCodeGraph() {
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   
-  // Plan → CodeGen
-  graph.addEdge("plan" as any, "codeGen" as any);
-  
+  // Plan → Router (tool_calls then tool, else codeGen)
+  graph.addConditionalEdges(
+    "plan" as any,
+    routeAfterPlan as any,
+    { tool: "tool", codeGen: "codeGen" } as any
+  );
+
   // ✅ CodeGen → Router (tool call 체크 & priority 기반 분기)
   graph.addConditionalEdges(
     "codeGen" as any,
@@ -1004,10 +1033,12 @@ export function buildCodeGraph() {
     } as any
   );
   
-  // ✅ Tool → CodeGen (unconditional - LLM handles all tool results including errors)
-  // Tool errors are passed to LLM via conversation history as tool_result with error field
-  // LLM decides whether to retry, try alternative approach, or handle the error
-  graph.addEdge("tool" as any, "codeGen" as any);
+  // Tool → Router (plan exploring then plan, else codeGen)
+  graph.addConditionalEdges(
+    "tool" as any,
+    routeAfterTool as any,
+    { plan: "plan", codeGen: "codeGen" } as any
+  );
 
   // ✅ REMOVED: validate 노드 관련 로직 제거
   // - Static validation (ellipsis, excessive deletion)은 프롬프트로 충분히 제어

@@ -24,10 +24,12 @@ import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrche
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { getToolsByNames, TOOL_SETS } from '../../../../tools/definitions';
+import { LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './systemDesignPrompt';
 import { buildUiDesignMessages } from './uiDesignPrompt';
+import { buildSpecMessages } from './specPrompt';
 
 export async function docGen(
   state: DesignGraphState
@@ -42,17 +44,30 @@ export async function docGen(
   }
   
   // ✅ Build messages based on work type
-  const isUiDesign = state.detectionReport?.workType === 'ui-design';
+  const workType = state.detectionReport?.workType;
   const isExplainMode = state.detectionReport?.jobMode === 'explain';
   
-  const messages = isUiDesign 
+  // ✅ Spec clarify continuation: append user's clarify response to conversation history
+  if (workType === 'spec' && state.awaitingClarify && state.overrideDirective) {
+    console.log(`📋 [DocGen/Spec] Clarify continuation — appending user response to conversation`);
+    if (!state.conversationHistory) state.conversationHistory = [];
+    state.conversationHistory.push({
+      role: 'user',
+      content: state.overrideDirective,
+    });
+    state.awaitingClarify = false;
+  }
+  
+  const messages = workType === 'ui-design'
     ? await buildUiDesignMessages(state)
-    : await buildMessages(state);
+    : workType === 'spec'
+      ? await buildSpecMessages(state)
+      : await buildMessages(state);
   
   // Tool activation: Select appropriate tool set based on work type
   const tools = isExplainMode
     ? undefined
-    : isUiDesign
+    : workType === 'ui-design'
       ? getToolsByNames(TOOL_SETS.uiDesign)
       : getToolsByNames(TOOL_SETS.design);
   
@@ -91,7 +106,7 @@ export async function docGen(
   );
   
   // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
-  const existingFiles = await scanExistingFiles(state, isUiDesign);
+  const existingFiles = await scanExistingFiles(state, workType === 'ui-design');
   
   const orchestrator = new StreamOrchestrator({
     parser,
@@ -101,6 +116,7 @@ export async function docGen(
   
   // ✅ Collect LLM output
   let thinking = '';
+  let thinkingSignature = '';
   let textResponse = '';
   let capturedUsage: any = undefined;
   
@@ -115,15 +131,13 @@ export async function docGen(
   
   try {
     // ✅ Stream with XML parsing + tool calling support
-    // ✅ CRITICAL: Thinking control pattern (same as Code Job)
-    // - First call (no conversation history): thinking=true (LLM needs to plan)
-    // - After tool call (conversation history exists): thinking=false (Anthropic API requirement)
-    // Context: Anthropic requires thinking blocks only on FIRST assistant message in a conversation turn.
-    // After tool_use, the next assistant message should NOT have thinking (API rejects it).
+    // Thinking is always enabled; thinking blocks are preserved in conversation
+    // history by the tool node so the API accepts them on subsequent turns.
     for await (const event of llmClient.stream(messages, {
       tools: tools && tools.length > 0 ? tools : undefined,
       maxTokens,
-      enableThinking: !isAfterToolCall,  // ✅ Disable thinking after tool calls (Anthropic API requirement)
+      enableThinking: true,
+      thinkingBudget: LLM_THINKING_BUDGET.PLAN,
     })) {
       // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
       await orchestrator.processEvent(event);
@@ -131,6 +145,9 @@ export async function docGen(
       // Thinking
       if (event.type === 'thinking') {
         thinking += event.thinking || '';
+        if (event.signature) {
+          thinkingSignature = event.signature;
+        }
       }
       
       // Text
@@ -174,7 +191,7 @@ export async function docGen(
     const explicitDone = finalizeResult.explicitDone || false;
     
     // Build conversation history for resume
-    const conversationHistory = buildConversationHistory(state, messages, thinking, textResponse, hasToolCalls);
+    const conversationHistory = buildConversationHistory(state, messages, thinking, thinkingSignature, textResponse, hasToolCalls);
     
     // Accumulate token usage to state
     if (capturedUsage) {
@@ -184,6 +201,56 @@ export async function docGen(
     
     console.log(`✅ [DocGen] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
     
+    // ✅ Spec clarify detection: if LLM response contains <clarify> tags, pause for user input
+    if (workType === 'spec' && textResponse.includes('<clarify>')) {
+      const clarifyMatch = textResponse.match(/<clarify>([\s\S]*?)<\/clarify>/);
+      if (clarifyMatch) {
+        console.log(`💬 [DocGen/Spec] Clarify block detected, pausing for user input`);
+        
+        const clarifyContent = clarifyMatch[1].trim();
+        
+        // Send clarify content as a chat message
+        await chatAPI.sendLLMEvent({ type: 'text', text: `\n\n**추가 정보가 필요합니다:**\n\n${clarifyContent}\n` });
+        await chatAPI.finalizeMessage();
+        
+        // Save awaitingClarify + conversation history to session for resume
+        if (state.deps?.session && state.context.featureFolder) {
+          try {
+            await state.deps.session.updateArtifacts(
+              state.context.project,
+              state.context.featureFolder,
+              'design',
+              {
+                state: {
+                  awaitingClarify: true,
+                  conversationHistory,
+                  detectionReport: state.detectionReport,
+                  directive: state.directive,
+                  overrideDirective: state.overrideDirective,
+                  chatSource: state.chatSource,
+                }
+              }
+            );
+            console.log(`💾 [DocGen/Spec] Saved awaitingClarify=true to session`);
+          } catch (err) {
+            console.warn(`⚠️  [DocGen/Spec] Failed to save clarify state:`, err);
+          }
+        }
+        
+        // Clear estimating activity
+        if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
+          state.deps.kanbanUpdate.clearEstimatingActivity();
+        }
+        
+        return {
+          files,
+          conversationHistory,
+          awaitingClarify: true,
+          llmResponse: { textResponse, done: true },
+        };
+      }
+    }
+    
     return {
       files,
       conversationHistory,
@@ -192,10 +259,12 @@ export async function docGen(
       llmResponse: hasToolCalls ? {
         toolCalls: pendingToolCalls,
         textResponse,
+        thinking: thinking || undefined,
+        thinkingSignature: thinkingSignature || undefined,
         done: false,
       } : {
         textResponse,
-        done: explicitDone,  // ✅ Only done when LLM explicitly says so
+        done: explicitDone,
       },
     };
   } catch (error) {
@@ -288,6 +357,7 @@ function buildConversationHistory(
   state: DesignGraphState,
   messages: Array<{ role: 'user' | 'assistant'; content: any }>,
   thinkingContent: string,
+  thinkingSig: string,
   textResponse: string,
   hasToolCalls: boolean
 ): Array<{ role: 'user' | 'assistant'; content: string | any[] }> {
@@ -313,10 +383,12 @@ function buildConversationHistory(
     const assistantContent: any[] = [];
     
     // ✅ Add thinking block first (if present)
+    // signature is required by Anthropic API for multi-turn conversations
     if (thinkingContent) {
       assistantContent.push({
         type: 'thinking',
-        thinking: thinkingContent
+        thinking: thinkingContent,
+        signature: thinkingSig || '',
       });
     }
     

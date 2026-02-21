@@ -106,6 +106,26 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.jobTiming = (session.state as any).jobTiming;
         }
         
+      } else if (session?.state && (session.state as any).awaitingClarify) {
+        // ✅ Spec clarify resume: restore conversation and awaitingClarify flag
+        console.log(`🔄 [DesignRunner] Restoring awaitingClarify state from session`);
+        initial.isResume = true;
+        initial.awaitingClarify = true;
+        
+        if (session.state.conversationHistory?.length) {
+          initial.conversationHistory = session.state.conversationHistory;
+        }
+        if ((session.state as any).detectionReport) {
+          initial.detectionReport = (session.state as any).detectionReport;
+        }
+        if ((session.state as any).directive) {
+          initial.directive = (session.state as any).directive;
+        }
+        initial.overrideDirective = session.state.overrideDirective;
+        initial.chatSource = session.state.chatSource;
+        if ((session.state as any).prd) {
+          initial.prd = (session.state as any).prd;
+        }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
         // ✅ FIX: Restore directive from early-interrupted session (triage/detectEnv stage)
         // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)

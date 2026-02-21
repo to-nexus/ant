@@ -1,4 +1,5 @@
 import { LLMClient } from "../../../../../core/ports";
+import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
 import { ArchitectGraphState } from "../state";
 import { CodeTask } from "../../../types/task";
 import { saveCheckpoint } from "./checkpoint";
@@ -127,7 +128,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     if (llm.invokeWithUsage) {
       const result = await llm.invokeWithUsage([
         { role: 'user', content: prompt }
-      ]);
+      ], { enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.REVISE });
       response = result.content;
       // ✅ Track token usage for revise node
       if (result.usage) {

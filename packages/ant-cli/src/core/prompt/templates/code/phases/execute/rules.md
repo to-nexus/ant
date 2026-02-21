@@ -116,6 +116,8 @@ Your modularization:
   [area]/[module]/*.ts    ← Submodules
 ```
 
+{{> code/base/injections/persistence-schema-rule}}
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 🔧 Interaction Methods
 ════════════════════════════════════════════════════════════════════════════════

@@ -62,6 +62,23 @@ export function createUiDesignDetectionReport(params: {
 }
 
 /**
+ * Design Job (Spec)에서 DetectionReport 생성
+ */
+export function createSpecDetectionReport(params: {
+  jobMode: JobMode;
+  jobModeReasoning: string;
+}): DetectionReport {
+  return {
+    sourceJob: 'design',
+    jobMode: params.jobMode,
+    jobModeReasoning: params.jobModeReasoning,
+    workType: 'spec',
+    workTypeReasoning: 'Spec work: generating feature/task specification document',
+    detectedAt: new Date().toISOString(),
+  };
+}
+
+/**
  * Design Job (System Design)에서 DetectionReport 생성
  */
 export function createSystemDesignDetectionReport(params: {
@@ -120,10 +137,13 @@ export function formatDetectionReportForChat(
   
   // ━━━ 2. Work Type (Design Job only) ━━━
   if (report.workType) {
-    const workTypeEmoji = report.workType === 'ui-design' ? '🎨' : '🏗️';
+    const workTypeEmoji = report.workType === 'ui-design' ? '🎨' 
+      : report.workType === 'spec' ? '📋' : '🏗️';
     const workTypeLabel = report.workType === 'ui-design'
       ? (isKorean ? 'UI 디자인' : 'UI Design')
-      : (isKorean ? '시스템 디자인' : 'System Design');
+      : report.workType === 'spec'
+        ? (isKorean ? '기능 스펙' : 'Feature Spec')
+        : (isKorean ? '시스템 디자인' : 'System Design');
     
     formatted += isKorean
       ? `${workTypeEmoji} **작업 유형**: ${workTypeLabel}\n`
@@ -183,6 +203,8 @@ export function formatDetectionReportForChat(
     formatted += `   • \`outputs/design/ui-tokens.json\`\n`;
     formatted += `   • \`outputs/design/ui-assets.json\`\n`;
     formatted += `   • \`outputs/design/ui-spec.json\`\n\n`;
+  } else if (report.workType === 'spec') {
+    // spec doc output hint is dynamic (spec-{slug}.md), shown after decompose determines the slug
   } else if (report.workType === 'system-design' && report.environment) {
     if (report.environment === 'fullstack') {
       formatted += isKorean

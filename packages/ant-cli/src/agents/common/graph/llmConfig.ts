@@ -27,12 +27,19 @@ export const LLM_TEMPERATURE = {
   CODE_EXECUTE: 0.2,
 } as const;
 
+export const LLM_THINKING_BUDGET = {
+  PLAN: 10000,
+  DECOMPOSE: 10000,
+  CODE_EXECUTE: 5000,
+  REVISE: 10000,
+} as const;
+
 export const LLM_MAX_TOKENS = {
   // Short outputs
   KEYWORD: 800,
   
   // Medium outputs
-  PLAN: 8000,
+  PLAN: 16000,
   DECOMPOSE_UI: 8000,
   
   // Long outputs

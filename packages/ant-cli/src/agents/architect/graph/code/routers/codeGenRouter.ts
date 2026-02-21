@@ -98,6 +98,23 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     }
   }
 
+  // ✅ Safety Net E: Feature/general task codeGen call budget
+  // Without this, a feature task can spin until the graph-wide recursion limit (100),
+  // consuming hundreds of thousands of tokens before being killed.
+  if (!isFinalTask && !isVerifyTask && !isErrorTask) {
+    const callIndex = state._codeGenCallIndex || 0;
+    const maxFeatureCalls = 20;
+    const warningThreshold = Math.floor(maxFeatureCalls * 0.8); // 16
+    if (callIndex >= maxFeatureCalls) {
+      console.warn(`⚠️  [Router] Feature task codeGen call limit reached (${callIndex}/${maxFeatureCalls})`);
+      console.warn(`   🚨 Forcing checkTaskStatus to complete the task`);
+      return 'checkTaskStatus';
+    }
+    if (callIndex === warningThreshold) {
+      console.warn(`⚠️  [Router] Feature task approaching codeGen limit (${callIndex}/${maxFeatureCalls}) — ${maxFeatureCalls - callIndex} calls remaining`);
+    }
+  }
+
   // ✅ Safety Net C: Final task without progress (no done, no tools, just looping)
   if (isFinalTask && !response.done && (!response.toolCalls || response.toolCalls.length === 0)) {
     // Count how many times we've been in this state

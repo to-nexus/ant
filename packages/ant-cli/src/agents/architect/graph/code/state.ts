@@ -178,6 +178,10 @@ export interface ArchitectGraphState extends TaskArtifacts {
     };
   };
   
+  // ✅ Spec Documents (loaded in resolve, selected in decompose, injected in plan)
+  specDocs?: Record<string, string>;   // All spec-*.md files (filename → content)
+  selectedSpec?: string | null;        // Spec filename chosen by decompose LLM (e.g., "spec-social-login.md")
+
   // ✅ Reference Requests (registered in decompose, loaded per-task in plan)
   referenceRequests?: Array<{project: string; branch?: string}>;
   
@@ -252,6 +256,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ NEW: LLM Response (tool calling 지원)
   llmResponse?: {
     thinking?: string;
+    thinkingSignature?: string;
     textResponse?: string;
     toolCalls?: Array<{
       id: string;
@@ -280,6 +285,11 @@ export interface ArchitectGraphState extends TaskArtifacts {
 
   /** Per-task LLM call counter (reset on task transition, used for debug logging) */
   _codeGenCallIndex?: number;
+
+  /** Plan↔tool loop: true while plan is exploring codebase with tools (tool routes back to plan) */
+  _planExploring?: boolean;
+  /** Plan-phase conversation only (separate from codeGen conversationHistory) */
+  planConversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열

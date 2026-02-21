@@ -30,6 +30,7 @@ import { getAvailableTools } from './toolDefinitions';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
+import { LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -298,6 +299,7 @@ export async function codeGen(
   
   // Collect LLM output
   let thinking = '';
+  let thinkingSignature = '';
   let textResponse = '';
   let isDone = false;  // ✅ Track done event (don't propagate immediately)
   let newCallIndex = (state._codeGenCallIndex || 0) + 1;
@@ -319,11 +321,15 @@ export async function codeGen(
       tools,
       maxTokens: 32000,
       enableThinking: !isAfterToolCall,
+      thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
     })) {
       await orchestrator.processEvent(event);
       
       if (event.type === 'thinking') {
         thinking += event.thinking || '';
+        if (event.signature) {
+          thinkingSignature = event.signature;
+        }
       }
       
       if (event.type === 'text') {
@@ -362,9 +368,10 @@ export async function codeGen(
               callIndex: callIdx,
               conversationHistoryLength: state.conversationHistory?.length || 0,
               projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
-              estimatedPromptChars: 0, // Captured in prompt logger
+              estimatedPromptChars: 0,
               taskCumulativeInput: (taskUsage?.inputTokens || 0) - (capturedUsage.inputTokens || 0),
               taskCumulativeOutput: (taskUsage?.outputTokens || 0) - (capturedUsage.outputTokens || 0),
+              recursionCount: state.recursionCount,
             }
           );
         }
@@ -516,6 +523,7 @@ export async function codeGen(
       return {
         llmResponse: {
           thinking,
+          thinkingSignature: thinkingSignature || undefined,
           textResponse,
           toolCalls,
           done: false,
@@ -621,6 +629,7 @@ export async function codeGen(
         return {
           llmResponse: {
             thinking,
+            thinkingSignature: thinkingSignature || undefined,
             textResponse,
             toolCalls,
             done: explicitDone,
@@ -640,6 +649,7 @@ export async function codeGen(
     return {
       llmResponse: {
         thinking,
+        thinkingSignature: thinkingSignature || undefined,
         textResponse,
         toolCalls,
         done: explicitDone,

@@ -91,6 +91,12 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       try {
         // Load all design documents from disk (no filtering — decompose handles profile)
         state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, 'unknown');
+        
+        // Load spec documents from disk
+        const resumeSpecDocs = await ArtifactService.loadSpecDocuments(state.context, gitPort, fileSystem);
+        if (Object.keys(resumeSpecDocs).length > 0) {
+          state.specDocs = resumeSpecDocs;
+        }
 
         // Load single design doc as fallback for state.design
         const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem);
@@ -330,6 +336,9 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // Use ArtifactService to ensure FileSystemPort receives workspace-relative paths
   const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
 
+  // ✅ Load spec documents (spec-{slug}.md) for feature-scoped specifications
+  const specDocs = await ArtifactService.loadSpecDocuments(context, gitPort, fileSystem);
+
   // ✅ Fallback: if structured designDocs are missing but a unified design exists, keep it usable
   if (
     (!designDocs.apiContract && !designDocs.feDesign && !designDocs.beDesign && !designDocs.unifiedDesign) &&
@@ -403,6 +412,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     design,
     designDocPath,  // ✅ Add design document file path for environment inference
     designDocs,     // ✅ Add structured design docs for detectEnvironment
+    specDocs: Object.keys(specDocs).length > 0 ? specDocs : undefined,  // ✅ Spec docs for decompose selection
     sessionContext: sessionContextForLLM,  // ✅ Include compressed session context
     profile,  // ✅ ONLY profile!
     referenceContexts,  // Empty array (references loaded per-task)

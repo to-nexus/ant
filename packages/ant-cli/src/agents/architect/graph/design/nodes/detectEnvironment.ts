@@ -22,6 +22,7 @@ import {
   DetectionReport,
   createUiDesignDetectionReport,
   createSystemDesignDetectionReport,
+  createSpecDetectionReport,
   formatDetectionReportForChat,
   JobMode,
   JobEnvironment,
@@ -29,7 +30,7 @@ import {
 } from "../../../../../core/types/detection";
 
 interface ParsedDesignResponse {
-  workType: "ui-design" | "system-design" | "error";
+  workType: "ui-design" | "system-design" | "spec" | "error";
   workTypeReasoning: string;
   jobMode: JobMode;
   jobModeReasoning: string;
@@ -62,8 +63,9 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
     const parsed = JSON.parse(jsonStr);
     
     // Parse workType
-    const workType: "ui-design" | "system-design" | "error" =
+    const workType: "ui-design" | "system-design" | "spec" | "error" =
       parsed.workType === "ui-design" ? "ui-design" : 
+      parsed.workType === "spec" ? "spec" :
       parsed.workType === "error" ? "error" :
       "system-design";
     
@@ -111,6 +113,16 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
         domainReasoning: parsed.domainReasoning || "Defaulted to 'service'.",
         environment,
         environmentReasoning: parsed.environmentReasoning || "Defaulted to 'fullstack'.",
+      };
+    }
+    
+    // For spec
+    if (workType === "spec") {
+      return {
+        workType: "spec",
+        workTypeReasoning: parsed.workTypeReasoning || "Spec document work detected.",
+        jobMode,
+        jobModeReasoning,
       };
     }
     
@@ -362,7 +374,7 @@ export async function detectEnvironment(
     
     for await (const event of llm.stream(
       [{ role: "user", content: prompt }],
-      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DETECT }
+      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DETECT, enableThinking: false }
     )) {
       if (event.text) {
         response += event.text;
@@ -413,6 +425,11 @@ export async function detectEnvironment(
     
     if (parsed.workType === 'ui-design') {
       detectionReport = createUiDesignDetectionReport({
+        jobMode: parsed.jobMode,
+        jobModeReasoning: parsed.jobModeReasoning,
+      });
+    } else if (parsed.workType === 'spec') {
+      detectionReport = createSpecDetectionReport({
         jobMode: parsed.jobMode,
         jobModeReasoning: parsed.jobModeReasoning,
       });

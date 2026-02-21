@@ -19,6 +19,7 @@ import {
 } from "./helpers";
 import { decomposeUiDesign } from "./uiDesignDecompose";
 import { decomposeSystemDesign } from "./systemDesignDecompose";
+import { decomposeSpec } from "./specDecompose";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -192,6 +193,17 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (state.detectionReport?.workType === 'ui-design') {
       return decomposeUiDesign(state, {
+        phaseStart,
+        newJobId: timing.newJobId,
+        newJobTiming: timing.newJobTiming,
+      });
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Spec mode: single task for spec document generation
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (state.detectionReport?.workType === 'spec') {
+      return decomposeSpec(state, {
         phaseStart,
         newJobId: timing.newJobId,
         newJobTiming: timing.newJobTiming,

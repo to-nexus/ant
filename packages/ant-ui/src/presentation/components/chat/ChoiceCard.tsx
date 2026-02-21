@@ -29,7 +29,7 @@ import {
 } from '@/infrastructure/http/api';
 import type { MessageContent } from '@/domain/models/chat';
 
-type ChoiceVariant = 'triage_choice' | 'cancelled' | 'eval_save' | 'prd_apply' | 'clarifying';
+type ChoiceVariant = 'triage_choice' | 'cancelled' | 'eval_save' | 'prd_apply' | 'clarifying' | 'spec_complete';
 
 interface ChoiceCardProps {
   content: MessageContent;
@@ -386,6 +386,8 @@ export function ChoiceCard({ content, variant, messageId }: ChoiceCardProps) {
       return <PrdApplyChoiceVariant content={content} messageId={messageId} />;
     case 'clarifying':
       return <ClarifyingVariant content={content} messageId={messageId} />;
+    case 'spec_complete':
+      return <SpecCompleteVariant content={content} messageId={messageId} />;
     default:
       return null;
   }
@@ -806,6 +808,71 @@ function PrdApplyChoiceVariant({ content, messageId }: { content: MessageContent
         isLoading={state.isLoading}
         onPositive={handleApply}
         onNegative={handleKeepDraft}
+      />
+    </ChoiceCardShell>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Variant: Spec Complete (emerald theme)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function SpecCompleteVariant({ content, messageId }: { content: MessageContent; messageId: string }) {
+  const { runJob } = useJobExecution();
+  const state = useChoiceCardState({
+    content, messageId,
+    contentType: 'choice_card',
+    contentFilter: (c: MessageContent) => c.type === 'choice_card' && c.metadata?.cardType === 'spec_complete',
+    metadataFilter: { cardType: 'spec_complete' },
+  });
+
+  const specFile = content.metadata?.specFile || 'spec.md';
+
+  const handleDevelop = async () => {
+    if (!state.selectedProject || !state.selectedFeature || state.isSelected) return;
+    state.setIsLoading(true);
+    state.setLocalSelectedChoice('develop');
+    const label = `Starting development with ${specFile}`;
+    state.setLocalResolvedLabel(label);
+    state.persistChoice('develop', label);
+    await state.persistToBackend('develop', label);
+
+    try {
+      await runJob('architect', 'code', `Implement ${specFile}`);
+    } catch (error) {
+      console.error('[ChoiceCard:SpecComplete] Failed to start code job:', error);
+    } finally {
+      state.setIsLoading(false);
+    }
+  };
+
+  const handleLater = async () => {
+    if (state.isSelected) return;
+    state.setLocalSelectedChoice('later');
+    state.setLocalResolvedLabel('Dismissed');
+    state.persistChoice('later', 'Dismissed');
+    await state.persistToBackend('later', 'Dismissed');
+  };
+
+  return (
+    <ChoiceCardShell
+      theme="emerald"
+      icon={<Play className="w-4 h-4" />}
+      title={content.content || 'Spec Complete'}
+      subtitle={`outputs/design/${specFile}`}
+      isSelected={state.isSelected}
+      resolvedLabel={state.resolvedLabel}
+      resolvedIcon={state.selectedChoice === 'later' ? 'dismiss' : 'resume'}
+    >
+      <TwoButtonLayout
+        theme="emerald"
+        positiveLabel="Start Development"
+        positiveIcon={<Play className="w-4 h-4" />}
+        positiveLoadingLabel="Starting..."
+        negativeLabel="Later"
+        isLoading={state.isLoading}
+        onPositive={handleDevelop}
+        onNegative={handleLater}
       />
     </ChoiceCardShell>
   );

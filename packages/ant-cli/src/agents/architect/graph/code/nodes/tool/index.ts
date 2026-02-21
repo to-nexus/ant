@@ -240,7 +240,7 @@ export async function tool(
   }
 
   // Build batch conversation history (Anthropic multi-tool format)
-  const taskReminder = buildTaskReminder(state);
+  const taskReminder = state._planExploring ? undefined : buildTaskReminder(state);
 
   // Preserve file creation awareness: when LLM creates files AND uses tools in
   // the same response, the text portion (containing file tags) must be included
@@ -249,17 +249,35 @@ export async function tool(
   const textResponse = state.llmResponse?.textResponse || '';
   const cleanedText = cleanFileContentFromResponse(textResponse);
 
-  const assistantContent = cleanedText
-    ? [{ type: 'text' as const, text: cleanedText }, ...toolUseBlocks]
-    : toolUseBlocks;
+  const assistantContent: any[] = [];
+
+  // Preserve thinking blocks for Anthropic API compatibility in multi-turn conversations.
+  // When thinking is enabled, the assistant message must start with a thinking block.
+  // The signature field is required by the Anthropic API to validate unmodified thinking blocks.
+  if (state._planExploring === true && state.llmResponse?.thinking) {
+    const resp = state.llmResponse as { thinking?: string; thinkingSignature?: string };
+    assistantContent.push({
+      type: 'thinking' as const,
+      thinking: resp.thinking!,
+      signature: resp.thinkingSignature || '',
+    });
+  }
+
+  if (cleanedText) {
+    assistantContent.push({ type: 'text' as const, text: cleanedText });
+  }
+  assistantContent.push(...toolUseBlocks);
+
+  const baseHistory = state._planExploring === true
+    ? (state.planConversationHistory || [])
+    : (state.conversationHistory || []);
 
   const newHistory = [
-    ...(state.conversationHistory || []),
+    ...baseHistory,
     {
       role: 'assistant' as const,
       content: assistantContent,
     },
-    // Single user message with ALL tool_result blocks + task reminder
     {
       role: 'user' as const,
       content: [
@@ -284,12 +302,25 @@ export async function tool(
     // Non-critical: don't fail tool execution if chat flush fails
   }
 
+  const nextLlmResponse = {
+    ...state.llmResponse!,
+    toolCalls: [],
+  };
+
+  if (state._planExploring === true) {
+    return {
+      planConversationHistory: newHistory,
+      llmResponse: nextLlmResponse,
+      toolResults: [...(state.toolResults || []), ...allToolResults],
+      planText: state.planText,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    };
+  }
+
   return {
     conversationHistory: newHistory,
-    llmResponse: {
-      ...state.llmResponse!,
-      toolCalls: [],
-    },
+    llmResponse: nextLlmResponse,
     toolResults: [
       ...(state.toolResults || []),
       ...allToolResults,

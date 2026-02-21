@@ -96,7 +96,7 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
         result.suggestedJob = parsed.suggestedJob;
         result.redirectReason = parsed.redirectReason;
         result.needsChoice = true;
-        result.choiceOptions = buildRedirectChoice(parsed);
+        result.choiceOptions = buildRedirectChoice(parsed, effectiveCurrentJob);
         console.log(`[TriageParser] Forced redirect: suggestedAgent=${parsed.suggestedAgent || 'same'}, suggestedJob=${parsed.suggestedJob}, currentJob=${effectiveCurrentJob}`);
       }
       
@@ -135,18 +135,20 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
  * not "Continue with current job" - since it's already been determined
  * that the current job is incorrect for this task.
  */
-function buildRedirectChoice(parsed: any): ChoiceOptions {
+function buildRedirectChoice(parsed: any, currentJob?: string): ChoiceOptions {
+  const isSpecSuggestion = currentJob === 'code' && parsed.suggestedJob === 'design';
+
   return {
     positive: {
-      label: '전환',
+      label: isSpecSuggestion ? 'spec부터 짜기' : '전환',
       action: 'redirect'
     },
     neutral: {
-      label: '현재 모드로 진행',
+      label: isSpecSuggestion ? '바로 개발' : '현재 모드로 진행',
       action: 'proceed'
     },
     negative: {
-      label: 'Dismiss',
+      label: isSpecSuggestion ? '취소' : 'Dismiss',
       action: 'dismiss'
     }
   };

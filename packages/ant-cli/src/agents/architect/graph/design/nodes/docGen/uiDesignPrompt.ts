@@ -14,6 +14,8 @@
 import { DesignGraphState } from '../../state';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { CacheableContent } from '../../../../../../core/ports/llm';
+import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
+import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -48,22 +50,35 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
       content: freshPrompt
     });
     
-    // 2. Append history (skip initial user messages - replaced by fresh prompt)
+    // 2. Filter out initial user messages (replaced by fresh prompt)
     let skipInitialUserMessages = true;
+    const filteredHistory: typeof conversationHistory = [];
     for (const msg of conversationHistory) {
       if (msg.role === 'assistant') {
         skipInitialUserMessages = false;
       }
-      
       if (skipInitialUserMessages && msg.role === 'user') {
         continue;
       }
-      
-      // ✅ Convert to CacheableContent format
+      filteredHistory.push(msg);
+    }
+    
+    // 3. Universal 3-step compaction: microcompact → auto-compact → prune
+    const tokenManager = new TokenBudgetManager();
+    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(filteredHistory, tokenManager);
+    
+    let isFirstMsg = true;
+    for (const msg of prunedHistory) {
       if (typeof msg.content === 'string') {
+        const shouldCache = wasCompacted && isFirstMsg && msg.role === 'assistant'
+          && msg.content.startsWith('[Auto-compacted:');
         messages.push({
           role: msg.role as 'user' | 'assistant',
-          content: [{ type: 'text', text: msg.content }]
+          content: [{
+            type: 'text',
+            text: msg.content,
+            ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
+          }]
         });
       } else {
         messages.push({
@@ -71,6 +86,15 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
           content: msg.content as CacheableContent[]
         });
       }
+      isFirstMsg = false;
+    }
+    
+    // 4. Budget check
+    const estimation = tokenManager.checkBudget(messages as any);
+    if (estimation.isOverBudget) {
+      throw new Error(
+        `[DocGen/UI] Token budget exceeded after compaction: ${estimation.totalTokens.toLocaleString()} tokens`
+      );
     }
     
     return messages;

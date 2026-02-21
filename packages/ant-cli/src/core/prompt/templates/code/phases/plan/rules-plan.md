@@ -1,3 +1,5 @@
+{{> code/base/injections/plan-tools-batch}}
+
 ## Your Task
 
 Generate a **concrete implementation plan** for this task.
