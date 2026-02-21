@@ -281,11 +281,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
   /** Per-task LLM call counter (reset on task transition, used for debug logging) */
   _codeGenCallIndex?: number;
 
-  /** Plan↔tool loop: true while plan is exploring codebase with tools (tool routes back to plan) */
-  _planExploring?: boolean;
-  /** Plan-phase conversation only (separate from codeGen conversationHistory) */
-  planConversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
-
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열
   violationMessage?: string; // ✅ enforce node에서 생성한 강화된 violation 메시지 (promptBuilder에서 사용)
