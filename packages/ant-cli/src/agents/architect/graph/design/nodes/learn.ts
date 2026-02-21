@@ -176,6 +176,41 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     console.log(`\n🏁 Job ended: ${state._httpJobId}\n`);
   }
   
+  // ✅ Spec completion choice card: offer to start development
+  if (state.detectionReport?.workType === 'spec' && !state.awaitingClarify) {
+    try {
+      const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
+      const chatAPI = getChatAPIClient();
+      
+      const specFile = state.completedTasksDetails?.[0]?.targetFile 
+        || state.files?.[0]?.path?.replace('outputs/design/', '')
+        || 'spec.md';
+      
+      const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';
+      
+      await chatAPI.sendChoiceCard({
+        type: 'spec_complete',
+        title: isKo ? '스펙 작성 완료' : 'Spec Complete',
+        choices: [
+          {
+            id: 'develop',
+            label: isKo ? '바로 개발 시작' : 'Start Development',
+            action: 'redirect',
+            data: { targetJob: 'code', specFile },
+          },
+          {
+            id: 'later',
+            label: isKo ? '나중에' : 'Later',
+            action: 'dismiss',
+          },
+        ],
+      });
+      await chatAPI.finalizeMessage();
+    } catch (error) {
+      console.warn(`⚠️  [Learn] Failed to send spec completion choice card:`, error);
+    }
+  }
+
   return { 
     ...state, 
     lessons

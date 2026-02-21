@@ -149,9 +149,21 @@ export async function tool(
   }
 
   // Build batch conversation history (Anthropic multi-tool format)
+  // Preserve thinking blocks so the API accepts thinking on subsequent turns.
+  // The signature field is required by the Anthropic API to validate unmodified thinking blocks.
+  const assistantContent: any[] = [];
+  if (state.llmResponse?.thinking) {
+    assistantContent.push({
+      type: 'thinking' as const,
+      thinking: state.llmResponse.thinking,
+      signature: state.llmResponse.thinkingSignature || '',
+    });
+  }
+  assistantContent.push(...toolUseBlocks);
+
   const newHistory = [
     ...(state.conversationHistory || []),
-    { role: 'assistant' as const, content: toolUseBlocks },
+    { role: 'assistant' as const, content: assistantContent },
     { role: 'user' as const, content: toolResultBlocks },
   ];
 

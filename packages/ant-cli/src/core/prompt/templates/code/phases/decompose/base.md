@@ -26,6 +26,23 @@ DIRECTIVE:
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
+{{#if hasSpecDocs}}
+════════════════════════════════════════════════════════════════════════════════
+## Spec Documents Available
+
+The following feature-scoped specification documents exist:
+{{specDocsMeta}}
+
+If any spec doc is relevant to the directive, select it as the primary specification.
+Output the selected filename in a `<selectedSpec>` tag:
+`<selectedSpec>spec-social-login.md</selectedSpec>`
+
+If no spec doc is relevant, output:
+`<selectedSpec>null</selectedSpec>`
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
+
 YOUR TASK:
 
 **Step 1: Determine Project Profile**

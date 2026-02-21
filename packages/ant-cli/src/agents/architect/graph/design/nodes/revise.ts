@@ -2,6 +2,7 @@ import { LLMClient } from "../../../../../core/ports";
 import { DesignGraphState } from "../state";
 import { DesignTask } from "../../../types/task";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
+import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
 
 /**
  * Revise Node for Design Job
@@ -122,7 +123,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     if (llm.invokeWithUsage) {
       const result = await llm.invokeWithUsage([
         { role: 'user', content: prompt }
-      ]);
+      ], { enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.REVISE });
       response = result.content;
       // ✅ Track token usage for revise node
       if (result.usage) {

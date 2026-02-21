@@ -288,6 +288,9 @@ export const TOOL_SETS = {
   // Full set for code job (without reference)
   codeBasic: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir', 'run_command'] as ToolName[],
 
+  // Plan node: read-only exploration (verify existing modules, avoid duplication)
+  planExplore: ['read_file', 'list_files', 'search_code'] as ToolName[],
+
   // Full set for design job (no run_command, no reference)
   design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir'] as ToolName[],
   

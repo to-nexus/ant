@@ -253,7 +253,14 @@ export function getInitSessionDirs(featurePath: string): string[] {
  * @returns Array of absolute directory paths to create
  */
 export function getInitFeatureDirs(featurePath: string): string[] {
-  return CANONICAL_FEATURE_DIRS.map(d => path.join(featurePath, d));
+  // 'codebase' is excluded from CANONICAL_FEATURE_DIRS to avoid polluting
+  // FEATURE_SIBLING_PREFIXES (which would break pathNormalizer Rule 3).
+  // It is added here so the directory is always created on feature init.
+  // WorktreeService may later replace it with a git worktree.
+  return [
+    path.join(featurePath, 'codebase'),
+    ...CANONICAL_FEATURE_DIRS.map(d => path.join(featurePath, d)),
+  ];
 }
 
 // ============================================

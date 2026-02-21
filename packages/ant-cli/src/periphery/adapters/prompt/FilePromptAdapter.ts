@@ -57,6 +57,9 @@ Promise.all([
     .catch(() => {}),
   fs.readFile(join(codeBaseInjectionsPath, "batch-gather.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/base/injections/batch-gather", content))
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "plan-tools-batch.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/plan-tools-batch", content))
     .catch(() => {})
 ]).catch(() => {});
 

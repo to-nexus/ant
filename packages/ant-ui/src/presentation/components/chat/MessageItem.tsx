@@ -313,6 +313,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
       if (cardType === 'clarifying') {
         return <ChoiceCard content={content} variant="clarifying" messageId={messageId} />;
       }
+      if (cardType === 'spec_complete') {
+        return <ChoiceCard content={content} variant="spec_complete" messageId={messageId} />;
+      }
       return null;
     }
 

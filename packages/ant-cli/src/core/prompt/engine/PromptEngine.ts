@@ -366,6 +366,7 @@ export class PromptEngine {
     mode: string;
     profile: any;
     designDocsMeta?: string;       // ✅ Design document availability metadata (for profile detection)
+    specDocsMeta?: string;         // ✅ Spec document list (for LLM selection of selectedSpec)
     codebaseFilePaths?: string[];  // File paths from keyword search
     hasProjectCode?: boolean;      // ✅ CRITICAL: Actual project code existence (git-based)
     hasErrorInDirective?: boolean; // ✅ Error detected in directive
@@ -406,6 +407,7 @@ export class PromptEngine {
       fileCount: context.codebaseFilePaths?.length || 0,
       hasErrorInDirective: context.hasErrorInDirective || false,
       hasUiDocs: Boolean(context.uiSectionsSummary),
+      hasSpecDocs: Boolean(context.specDocsMeta),
       uiHint,
       assetsHint,
     };

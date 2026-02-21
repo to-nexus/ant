@@ -12,7 +12,7 @@ export type JobMode = 'generate' | 'refactor' | 'explain';
 export type JobEnvironment = 'frontend' | 'backend' | 'fullstack' | 'unknown';
 
 /** Design work type (Design Job only) */
-export type DesignWorkType = 'ui-design' | 'system-design';
+export type DesignWorkType = 'ui-design' | 'system-design' | 'spec';
 
 /** Domain (System Design only) */
 export type DesignDomain = 'game' | 'service';

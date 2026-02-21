@@ -21,6 +21,8 @@ import { runtimeValidate } from '../nodes/runtimeValidate';
 import { enforce } from '../nodes/enforce';
 import { learn } from '../nodes/learn';
 import { routeAfterCodeGen } from '../routers/codeGenRouter';
+import { routeAfterPlan } from '../routers/planRouter';
+import { routeAfterTool } from '../routers/toolRouter';
 import type { WorkerGraphBuilder } from './types';
 
 /**
@@ -161,6 +163,25 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
     console.log(`✅ [Worker] Task "${completedTask.name}" completed!`);
 
+    // Log task_complete to debug/logs/
+    if (state.context?.featurePath && state._httpJobId) {
+      const { getExecutionLogger } = await import('../../../../../core/utils/executionLogger');
+      const execLogger = getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'code',
+      });
+      execLogger.logTaskComplete(completedTask.id, {
+        taskName: completedTask.name,
+        elapsedMs: completedTask.timing?.elapsedTime || 0,
+        inputTokens: completedTask.tokenUsage?.inputTokens || 0,
+        outputTokens: completedTask.tokenUsage?.outputTokens || 0,
+        cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
+        cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
+        llmCallCount: state._codeGenCallIndex || 0,
+      }).catch(() => {});
+    }
+
     return {
       currentTask: completedTask as any,
       _taskCompleted: true,
@@ -288,6 +309,8 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
       toolResults: null as any,
       conversationHistory: null as any,
       interruption: null as any,
+      _planExploring: null as any,
+      planConversationHistory: null as any,
 
       // Worker-specific
       workerId: null as any,
@@ -312,7 +335,13 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
 
   // Edges
   graph.addEdge('__start__' as any, 'plan' as any);
-  graph.addEdge('plan' as any, 'codeGen' as any);
+
+  // Plan → tool (if tool_calls) or codeGen
+  graph.addConditionalEdges(
+    'plan' as any,
+    routeAfterPlan as any,
+    { tool: 'tool', codeGen: 'codeGen' } as any,
+  );
 
   // CodeGen routing
   if (includeInstallValidate) {
@@ -341,8 +370,12 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
     );
   }
 
-  // Tool → CodeGen loop
-  graph.addEdge('tool' as any, 'codeGen' as any);
+  // Tool → plan (if plan exploring) or codeGen
+  graph.addConditionalEdges(
+    'tool' as any,
+    routeAfterTool as any,
+    { plan: 'plan', codeGen: 'codeGen' } as any,
+  );
 
   // checkTaskStatus routing
   graph.addConditionalEdges(

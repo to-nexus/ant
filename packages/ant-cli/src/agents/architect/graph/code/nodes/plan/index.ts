@@ -28,8 +28,8 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { generateTaskKeywords, displayKeywords, logKeywords, updateKeywordsWithRetrieval } from "./keywordGeneration";
 import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
-import { generatePlanText } from "./planGeneration";
-import { extractFilesFromViolations } from "../shared/violationFormatter";
+import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, PLAN_TOOL_LOOP_MAX } from "./planGeneration";
+import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   
@@ -38,6 +38,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const llm = state.deps?.llm as LLMClient;
 
   const isRetry = state.violations && state.violations.length > 0;
+  /** Set when plan↔tool loop limit hit so STEP 3 skips tools and uses generatePlanText only. */
+  let forceNoTools = false;
   
   let nextTask: CodeTask | undefined;
   
@@ -60,6 +62,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
     
     console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})\n`);
+  } else if (state._planExploring === true && state.currentTask) {
+    nextTask = state.currentTask;
+    console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
   } else {
     // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
     // Sequential context: pop next task from queue
@@ -198,6 +203,61 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       workspaceConfig: state.workspaceConfig,
       // conversationHistory is preserved in state (not cleared)
     };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 0.9: Re-entry from tool (plan↔tool loop)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state._planExploring === true && state.planConversationHistory?.length) {
+    const overLimit = state.planConversationHistory.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
+    if (overLimit) {
+      console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; falling back to plan without tools`);
+      state._planExploring = false;
+      state.planConversationHistory = undefined;
+      forceNoTools = true;
+      // Fall through to STEP 0.8 and continue with normal flow
+    } else {
+      const result = await runPlanLLMWithTools(state, state.planConversationHistory, nextTask);
+      if (result && '_planExploring' in result) {
+        if (state.deps?.workflowUpdate && state._httpJobId) {
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+        }
+        return {
+          ...state,
+          planConversationHistory: result.planConversationHistory,
+          _planExploring: true,
+          llmResponse: result.llmResponse,
+          projectCodeContext: state.projectCodeContext,
+          referenceCodeContexts: state.referenceCodeContexts,
+          lessons: state.lessons,
+        };
+      }
+      if (result && 'planText' in result) {
+        const planText = result.planText;
+        const updatedState = {
+          ...state,
+          currentTask: nextTask,
+          projectCodeContext: state.projectCodeContext,
+          referenceCodeContexts: state.referenceCodeContexts,
+          lessons: state.lessons ?? [],
+          planText,
+          _planExploring: false,
+          planConversationHistory: undefined,
+          retries: isRetry ? state.retries : 0,
+          completedTasksDetails: state.completedTasksDetails || [],
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+          workspaceConfig: state.workspaceConfig,
+        };
+        if (state.deps?.workflowUpdate && state._httpJobId) {
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+        }
+        return updatedState;
+      }
+      // null: fall through to normal flow
+      state._planExploring = false;
+      state.planConversationHistory = undefined;
+    }
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -368,17 +428,48 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const remainingTasks = (state.taskQueue?.getAll() || [])
     .filter(t => t.id !== nextTask.id)
     .map(t => ({ id: t.id, name: t.name, description: t.description, priority: t.priority }));
-  
-  const planText = await generatePlanText(
-    llm,
-    nextTask,
-    state,
-    projectCodeContext,
-    referenceCodeContexts,
-    state.violations,  // ✅ Pass violations for retry context
-    uiDocForPlan,  // ✅ Pass uiDoc for UI-related tasks
-    remainingTasks  // ✅ Pass remaining tasks for task boundary awareness
-  );
+
+  let planText: string | undefined;
+  const planToolRounds = (state.planConversationHistory?.length ?? 0) / 2;
+  const tryToolsFirst = llm && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
+
+  if (tryToolsFirst) {
+    const violationsText = state.violations?.length ? formatViolations(state.violations) : undefined;
+    const prompt = await buildPlanPrompt(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks);
+    const messages = [{ role: 'user' as const, content: prompt }];
+    const result = await runPlanLLMWithTools(state, messages, nextTask);
+    if (result && '_planExploring' in result) {
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+      }
+      return {
+        ...state,
+        currentTask: nextTask,
+        planConversationHistory: result.planConversationHistory,
+        _planExploring: true,
+        llmResponse: result.llmResponse,
+        projectCodeContext,
+        referenceCodeContexts,
+        lessons,
+      };
+    }
+    if (result && 'planText' in result) {
+      planText = result.planText;
+    }
+  }
+
+  if (planText === undefined) {
+    planText = await generatePlanText(
+      llm,
+      nextTask,
+      state,
+      projectCodeContext,
+      referenceCodeContexts,
+      state.violations,
+      uiDocForPlan,
+      remainingTasks
+    );
+  }
   
   // ✅ DO NOT clear violations here! They need to be passed to CodeGen node for retry context
   // Plan node consumes violations to generate retry context, but CodeGen also needs them
@@ -403,6 +494,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,  // ✅ CRITICAL: Explicitly preserve workspaceConfig
+      _planExploring: false,
+      planConversationHistory: undefined,
       // ✅ violations and violationMessage are preserved in state (not cleared)
     };
     

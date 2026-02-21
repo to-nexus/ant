@@ -46,7 +46,24 @@
 - **General/ambiguous commands** ("start planning", "begin", "let's go", "start work") without naming a specific artifact type → ALWAYS belong to the **current job and current agent**. Do NOT set `suggestedJob` or `suggestedAgent`.
 This constraint does NOT apply to `code` or `learn` jobs — those redirect normally.
 
-### Step 2.5: Determine Agent Match (for work intent)
+### Step 2.5: Spec Suggestion (Code Job Only)
+
+**Applies when**: Current job is `code` AND intent is `work` AND request matches `code` job.
+
+**Principle**: Observe the **scope** of the requested change, not the action verb. A request that spans multiple subsystems, introduces a new flow, or restructures existing architecture benefits from upfront specification.
+
+| Observation | Action |
+|-------------|--------|
+| Request describes a substantial feature or architectural change (multiple files, new flow, cross-cutting) AND **no spec documents exist** | Set `redirect` to `design` job with `redirectReason` explaining the benefit of writing a spec first |
+| Request is a localized change (bug fix, single-file edit, style tweak, rename) | Do NOT suggest spec — `proceed` normally |
+| Spec documents already exist in workspace | Do NOT suggest spec — existing specs will be used automatically |
+| Request explicitly references a spec document by name | Do NOT suggest spec — `proceed` normally |
+
+**Constraint**: This step ONLY applies when `currentJob === "code"`. Do NOT apply to other jobs.
+
+**Constraint**: When suggesting spec, set `suggestedJob: "design"` and `suggestedAgent: "architect"`. The design job will detect spec intent from the directive automatically.
+
+### Step 2.7: Determine Agent Match (for work intent)
 
 **Principle**: First check if the request belongs to the **current agent's** scope. If not, identify which agent owns the capability.
 
@@ -116,4 +133,5 @@ When user input appears to be:
 ⚠️ **Agent mismatch = REDIRECT**: If request belongs to different agent (e.g., PRD writing to architect) → MUST `redirect` with `suggestedAgent`. **Exception**: Design ↔ Plan mutual boundary — do NOT cross `architect`↔`planner` boundary unless user names the other job's artifact type.
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
 ⚠️ **Redirect prerequisite principle**: Redirect to a different job is only valid when the target job's input materials exist in the workspace. Observe workspace state — if no input materials for the target job are present, the target job cannot execute. Do NOT suggest redirect when the target job has zero input materials. Action verbs and topic keywords in user input do NOT indicate job readiness — only workspace state determines whether a job CAN run.
+⚠️ **Spec suggestion (code job)**: When current job is `code`, a substantial feature request with NO existing spec docs → suggest `redirect` to `design`. Localized changes (bug fix, single file, rename) → do NOT suggest.
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags

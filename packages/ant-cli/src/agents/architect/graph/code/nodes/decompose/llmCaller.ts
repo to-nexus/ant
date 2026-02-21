@@ -5,7 +5,7 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
+import { LLM_TEMPERATURE, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 
 /**
  * Call LLM for task decomposition (with streaming for Chat UI)
@@ -60,7 +60,9 @@ export async function callLLMForDecompose(
   
   for await (const event of llmToUse.stream(messages, {
     temperature: LLM_TEMPERATURE.DECOMPOSE,
-    maxTokens: 16000
+    maxTokens: 16000,
+    enableThinking: true,
+    thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
   })) {
     await orchestrator.processEvent(event);
     

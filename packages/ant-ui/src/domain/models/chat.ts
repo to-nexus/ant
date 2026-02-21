@@ -108,7 +108,8 @@ export interface MessageContent {
     resolvedLabel?: string;   // Label to display after choice is made
     resolved?: boolean;       // For cancelled: marked true when user resumes/continues (server-set)
     // Generic Choice Card
-    cardType?: string;        // For choice_card: 'eval_save' | 'prd_apply' | 'clarifying'
+    cardType?: string;        // For choice_card: 'eval_save' | 'prd_apply' | 'clarifying' | 'spec_complete'
+    specFile?: string;         // For spec_complete: spec filename (e.g. spec-social-login.md)
     title?: string;           // For choice_card: card title
     evalType?: string;        // For eval_save: type of evaluation
     evalContent?: string;     // For eval_save: evaluation content to save

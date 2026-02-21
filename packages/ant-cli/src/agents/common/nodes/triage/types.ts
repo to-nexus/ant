@@ -135,6 +135,11 @@ export interface WorkspaceState {
   hasEvals: boolean;             // outputs/evals/ has any reports
   evalCount?: number;            // Total eval report files
   
+  // Spec documents
+  hasSpecDocs: boolean;          // Any spec-*.md in outputs/design/
+  specDocCount?: number;
+  specDocNames?: string[];       // e.g. ['spec-social-login.md', 'spec-payment.md']
+
   // Code job
   hasDesignDoc: boolean;         // Any design doc in outputs/design/
   hasCodebase: boolean;          // Indexed in vector DB

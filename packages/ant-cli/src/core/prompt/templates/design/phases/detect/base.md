@@ -1,7 +1,7 @@
 ## 🧭 Design Work Type + Mode + Domain + Environment Detection
 
 You are analyzing a design task to determine:
-1. **work type**: ui-design (generate UI specification documents) OR system-design (generate architecture documents)
+1. **work type**: ui-design (generate UI specification documents) | system-design (generate architecture documents) | spec (generate a feature/task specification document)
 2. **design mode**: generate (create new) | refactor (modify existing) | explain (analyze/describe)
 3. **project domain** (only if system-design): game | service
 4. **target environment** (only if system-design): frontend | backend | fullstack
@@ -23,7 +23,10 @@ You are analyzing a design task to determine:
 ### Fundamental Rule
 
 ```
-IF directive explicitly requests UI design work:
+IF directive requests a SPECIFIC FEATURE or TASK specification (e.g., "plan social login", "spec out payment flow", "기획해줘: 소셜 로그인"):
+    → "spec" (user wants a feature-scoped specification document, NOT whole-system architecture)
+
+ELSE IF directive explicitly requests UI design work:
     → "ui-design" (user wants to work on visual/interface design)
     
 ELSE IF directive explicitly requests system design work:
@@ -108,6 +111,20 @@ No system design documents exist in `outputs/design/`.
 ### Priority 1: Check Directive Explicitness (HIGHEST PRIORITY)
 
 **Analyze the directive to understand the user's intent. Focus on MEANING, not exact keywords.**
+
+**Spec Intent (feature/task-scoped specification — HIGHEST PRIORITY):**
+
+*Core meaning*: User wants to plan, specify, or document a **specific feature, task, or change** — NOT the whole system architecture and NOT visual UI design.
+
+*Semantic indicators* (examples, not exhaustive):
+- A specific feature or task is named: "social login", "payment integration", "search feature", "소셜 로그인", "결제 연동"
+- Planning/spec language combined with a concrete scope: "plan out X", "spec X", "기획해줘: X", "X를 설계해줘"
+- Development request with feature detail (in design job context): "X 개발해줘", "X 만들어줘" — user wants a spec before coding
+- Modification of existing spec: "spec-{slug}.md 수정해줘"
+
+*Key distinction from system-design*: System design covers the ENTIRE system architecture. Spec covers ONE specific feature or unit of work.
+
+**Key principle**: If the directive names a **specific feature, task, or bounded scope of work**, it's spec work.
 
 **UI Design Intent (visual/interface design work):**
 
@@ -306,7 +323,14 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 ## ⚠️ Critical Decision Rules (Apply in Order)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### Rule 1: Explicit Intent Overrides Everything (HIGHEST PRIORITY)
+### Rule 0: Spec Intent — Specific Feature or Task (HIGHEST PRIORITY)
+
+- **If directive names a SPECIFIC feature, task, or bounded scope of work:**
+  → Choose `"spec"` — this is NOT whole-system architecture, but a focused specification.
+  
+  *Examples*: "소셜 로그인 기획해줘", "결제 기능을 설계해줘", "plan the authentication flow", "spec out search feature", "소셜 로그인 개발해줘" (in design job context: create spec first)
+
+### Rule 1: Explicit Intent Overrides Everything
 
 **Creation Requests:**
 
@@ -406,6 +430,19 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 </detect>
 ```
 
+### If workType is "spec":
+
+```xml
+<detect>
+{
+  "workType": "spec",
+  "workTypeReasoning": "1-2 sentences explaining why this is a feature/task spec (name the specific feature/scope)",
+  "jobMode": "generate" | "refactor",
+  "jobModeReasoning": "1-2 sentences: generate = new spec, refactor = modify existing spec-*.md"
+}
+</detect>
+```
+
 ### If workType is "system-design":
 
 ```xml
@@ -473,6 +510,8 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 
 | Priority | Directive Intent | UI Docs | System Docs | References | → workType | → jobMode |
 |----------|-----------------|---------|-------------|------------|-----------|--------------|
+| **0** | **Specific feature/task** named | Any | Any | Any | **spec** | **generate** |
+| **0** | **Modify existing spec** | Any | Any | Any | **spec** | **refactor** |
 | **1** | **UI creation** (semantic) | Any | Any | Any | **ui-design** | **generate** |
 | **1** | **UI modification** (semantic) | ✅ Exist | Any | Any | **ui-design** | **refactor** |
 | **1** | **UI modification** (semantic) | ❌ Missing | Any | Any | **error** | - |
@@ -485,12 +524,16 @@ UI design requires reference screenshots, mockups, or visual materials to extrac
 | 3 | Unclear/none | Any | Any | Any | **system-design** | **generate** |
 
 **Key Points:**
-- **Priority 1**: Semantic intent (UI vs system focus, creation vs modification) **always wins**
+- **Priority 0**: Specific feature/task named → `"spec"` (always wins over system/UI)
+- **Priority 1**: Semantic intent (UI vs system focus, creation vs modification) **wins over ambiguous**
 - **Priority 2**: If intent is ambiguous (general planning terms), check completion status
 - **Priority 3**: When everything is unclear, default to `"system-design"` + `"generate"`
 - **Critical**: Understand MEANING over exact keywords - consider synonyms, typos, different languages
 
 **Work Type:**
+- `"spec"`:
+  - Directive names a SPECIFIC feature, task, or bounded scope of work
+  - Modification of existing spec-*.md document
 - `"ui-design"`: 
   - Directive SEMANTICALLY indicates visual/interface design work, OR
   - Directive ambiguous + UI docs missing + references available

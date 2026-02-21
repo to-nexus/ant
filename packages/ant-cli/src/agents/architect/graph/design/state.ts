@@ -83,6 +83,7 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ NEW: Tool Calling Support (same as code job)
   llmResponse?: {
     thinking?: string;
+    thinkingSignature?: string;
     textResponse?: string;
     toolCalls?: Array<{
       id: string;
@@ -118,6 +119,9 @@ export interface DesignGraphState extends TaskArtifacts {
   
   
   
+  // ✅ Spec clarify: paused waiting for user clarification (session-persisted, used by resume routing)
+  awaitingClarify?: boolean;
+
   // ✅ Structured existing design documents (loaded at resolve, used by decompose)
   // Key = filename (e.g. "api-contract.md", "ui-tokens.json"), Value = content
   // Unified map eliminates fragmented feDesign/feDesigns/beDesign/beDesigns distinction

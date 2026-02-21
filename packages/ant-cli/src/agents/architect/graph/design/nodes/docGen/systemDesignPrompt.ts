@@ -9,7 +9,7 @@
 import { DesignGraphState } from '../../state';
 import { CacheableContent } from '../../../../../../core/ports/llm';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
-import { HistoryManager } from '../../../../../../core/utils/historyManager';
+import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 
 /**
@@ -283,34 +283,38 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     console.log(`📄 [DocGen] Using existing conversation history (${state.conversationHistory.length} messages)`);
     
     const tokenManager = new TokenBudgetManager();
-    const historyManager = new HistoryManager(tokenManager);
     
-    const { prunedHistory } = historyManager.pruneHistory(state.conversationHistory);
+    // Universal 3-step compaction: microcompact → auto-compact → prune
+    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(state.conversationHistory, tokenManager);
     
     // Convert history to CacheableContent format
+    let isFirstMsg = true;
     for (const msg of prunedHistory) {
       if (typeof msg.content === 'string') {
+        const shouldCache = wasCompacted && isFirstMsg && msg.role === 'assistant'
+          && msg.content.startsWith('[Auto-compacted:');
         messages.push({
           role: msg.role as 'user' | 'assistant',
           content: [{
             type: 'text',
-            text: msg.content
+            text: msg.content,
+            ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
           }]
         });
       } else {
-        // Already in array format (tool results)
         messages.push({
           role: msg.role as 'user' | 'assistant',
           content: msg.content
         });
       }
+      isFirstMsg = false;
     }
     
     const estimation = tokenManager.checkBudget(messages as any);
     
     if (estimation.isOverBudget) {
       throw new Error(
-        `[DocGen] Token budget exceeded after pruning! ` +
+        `[DocGen] Token budget exceeded after compaction! ` +
         `${estimation.totalTokens.toLocaleString()} tokens > ` +
         `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
       );

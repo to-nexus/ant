@@ -96,6 +96,7 @@ export interface LLMStreamEvent {
   
   // ---- Content (명확하게 분리) ----
   thinking?: string;          // Reasoning/chain-of-thought delta (type === 'thinking')
+  signature?: string;         // Thinking block signature (Anthropic API requirement for multi-turn)
   text?: string;              // Visible text delta (type === 'text')
   
   // ---- Tool call ----

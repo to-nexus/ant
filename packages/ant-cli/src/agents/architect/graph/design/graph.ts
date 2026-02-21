@@ -421,11 +421,13 @@ export function buildDesignGraph() {
   // docGen: XML streaming + immediate writes to disk (with LAST_SECTION handling)
   (graph as any).addEdge("__start__", "resolve");
   
-  // ✅ 4-way conditional routing after resolve (aligned with code job)
-  // 1. isResume + hasTaskQueue + hasNewDirective → revise (task queue modification)
-  // 2. isResume + hasTaskQueue (no new directive) → plan (continue from where we left off)
-  // 3. isResume + !hasTaskQueue + hasDetectionReport → decompose (interrupted after detect but before decompose)
-  // 4. !isResume (new job) → triage (full flow)
+  // ✅ 6-way conditional routing after resolve
+  // 1. isResume + awaitingClarify + overrideDirective → docGen (clarify direct route — skip triage/detect/decompose)
+  // 2. isResume + spec workType + overrideDirective + !hasTaskQueue → decompose (spec iterative modification)
+  // 3. isResume + hasTaskQueue + hasNewDirective → revise (task queue modification)
+  // 4. isResume + hasTaskQueue (no new directive) → plan (continue from where we left off)
+  // 5. isResume + !hasTaskQueue + hasDetectionReport → decompose (interrupted after detect but before decompose)
+  // 6. !isResume (new job) → triage (full flow)
   graph.addConditionalEdges(
     "resolve" as any,
     ((s: DesignGraphState) => {
@@ -433,6 +435,18 @@ export function buildDesignGraph() {
       const hasTaskQueue = Boolean(s.taskQueue && !s.taskQueue.isEmpty());
       const hasDetectionReport = Boolean(s.detectionReport);
       const hasNewDirective = Boolean(s.overrideDirective);
+      
+      // Path 1: Clarify response — skip straight to docGen with conversation history
+      if (isResume && s.awaitingClarify && hasNewDirective) {
+        console.log(`🔀 [Resolve→Router] isResume + awaitingClarify + newDirective → docGen (clarify direct)`);
+        return "docGen";
+      }
+      
+      // Path 2: Spec iterative modification — simplified decompose for single-task spec update
+      if (isResume && hasNewDirective && !hasTaskQueue && s.detectionReport?.workType === 'spec') {
+        console.log(`🔀 [Resolve→Router] isResume + spec + newDirective (no tasks) → decompose (spec modification)`);
+        return "decompose";
+      }
       
       if (isResume && hasTaskQueue && hasNewDirective) {
         console.log(`🔀 [Resolve→Router] isResume + taskQueue + newDirective → revise`);
@@ -455,7 +469,7 @@ export function buildDesignGraph() {
       console.log(`🔀 [Resolve→Router] New job → triage`);
       return "triage";
     }) as any,
-    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose" } as any
+    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", docGen: "docGen" } as any
   );
   
   // ✅ Triage → Conditional (proceed to detectEnvironment or end)

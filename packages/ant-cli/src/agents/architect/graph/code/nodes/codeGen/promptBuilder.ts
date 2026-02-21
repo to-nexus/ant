@@ -10,7 +10,7 @@
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
-import { HistoryManager, microcompactToolResults, autoCompactHistory } from "../../../../../../core/utils/historyManager";
+import { compactAndPruneHistory } from "../../../../../../core/utils/historyManager";
 import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -352,7 +352,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ✅ Add conversation history (if exists)
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     const tokenManager = new TokenBudgetManager();
-    const historyManager = new HistoryManager(tokenManager);
     
     // Filter out initial user prompts (replaced by fresh prompt)
     let skipInitialUserMessages = true;
@@ -378,19 +377,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       }
     }
     
-    // Step 1: Microcompact old tool results (keeps last 3 turns intact)
-    const { compacted: microcompactedHistory } = microcompactToolResults(
-      filteredHistory, 3, tokenManager
-    );
-
-    // Step 2: Auto-compact if still over 50K tokens
-    // Replaces old turns with a structured summary, keeping last 5 turns in full
-    const { compacted: autoCompactedHistory, wasCompacted } = autoCompactHistory(
-      microcompactedHistory, 50000, 5, tokenManager
-    );
-    
-    // Step 3: Prune to fit final token budget
-    const { prunedHistory } = historyManager.pruneHistory(autoCompactedHistory);
+    // Universal 3-step compaction: microcompact → auto-compact → prune
+    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(filteredHistory, tokenManager);
     
     // Convert history to CacheableContent format
     // If auto-compaction occurred, mark the summary block for prompt caching

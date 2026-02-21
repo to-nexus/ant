@@ -13,6 +13,7 @@ export interface ParsedDecomposeResponse {
   tasks: CodeTask[];
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>;
   profile?: ParsedProfile;
+  selectedSpec?: string | null;
 }
 
 /**
@@ -91,10 +92,22 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
     
+    // ✅ Extract selectedSpec from <selectedSpec> tag (OPTIONAL)
+    let selectedSpec: string | null = null;
+    const selectedSpecMatch = rawResponse.match(/<selectedSpec>\s*([\s\S]*?)\s*<\/selectedSpec>/);
+    if (selectedSpecMatch) {
+      const specValue = selectedSpecMatch[1].trim();
+      if (specValue && specValue !== 'null' && specValue !== 'none') {
+        selectedSpec = specValue;
+        console.log(`📋 [Decompose] Selected spec: ${selectedSpec}`);
+      }
+    }
+
     return {
       tasks,
       referenceRequests,
       profile,
+      selectedSpec,
     };
     
   } catch (error) {

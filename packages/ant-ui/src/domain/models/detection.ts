@@ -50,6 +50,7 @@ export function getWorkTypeEmoji(workType: DesignWorkType): string {
   switch (workType) {
     case 'ui-design': return '🎨';
     case 'system-design': return '🏗️';
+    case 'spec': return '📋';
   }
 }
 

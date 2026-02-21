@@ -20,6 +20,7 @@ export type ExecutionEventType =
   | 'job_complete'
   | 'task_start'
   | 'task_complete'
+  | 'task_fail'
   | 'task_error'
   | 'task_retry'
   | 'parallel_start'
@@ -124,6 +125,20 @@ export class ExecutionLogger {
     llmCallCount: number;
   }): Promise<void> {
     await this.log('task_complete', data, taskId);
+  }
+
+  async logTaskFail(taskId: string, data: {
+    taskName: string;
+    reason: 'recursion_limit' | 'deterministic_error' | 'max_retries' | 'unknown';
+    errorMessage: string;
+    elapsedMs?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    llmCallCount?: number;
+    recursionCount?: number;
+  }): Promise<void> {
+    await this.log('task_fail', data, taskId);
   }
 
   async logTaskError(taskId: string, data: {

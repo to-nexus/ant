@@ -49,6 +49,8 @@ export interface TokenLogEntry {
   taskCumulativeInput: number;
   /** Running total of output tokens for this task */
   taskCumulativeOutput: number;
+  /** Current graph recursion depth (for debugging recursion limit issues) */
+  recursionCount?: number;
 }
 
 /** Context passed from LLM call sites to TokenLogger */
@@ -57,11 +59,13 @@ export interface TokenLogContext {
   taskName: string;
   node: string;
   callIndex: number;
-  conversationHistoryLength: number;
-  projectCodeContextFiles: number;
-  estimatedPromptChars: number;
-  taskCumulativeInput: number;
-  taskCumulativeOutput: number;
+  conversationHistoryLength?: number;
+  projectCodeContextFiles?: number;
+  estimatedPromptChars?: number;
+  taskCumulativeInput?: number;
+  taskCumulativeOutput?: number;
+  /** Current graph recursion depth (for debugging recursion limit issues) */
+  recursionCount?: number;
 }
 
 export interface TokenLoggerOptions {
@@ -112,12 +116,13 @@ export class TokenLogger {
         outputTokens,
         cacheReadTokens,
         cacheCreationTokens,
-        conversationHistoryLength: context.conversationHistoryLength,
-        projectCodeContextFiles: context.projectCodeContextFiles,
-        estimatedPromptChars: context.estimatedPromptChars,
+        conversationHistoryLength: context.conversationHistoryLength ?? 0,
+        projectCodeContextFiles: context.projectCodeContextFiles ?? 0,
+        estimatedPromptChars: context.estimatedPromptChars ?? 0,
         cacheHitRatio,
-        taskCumulativeInput: context.taskCumulativeInput + inputTokens,
-        taskCumulativeOutput: context.taskCumulativeOutput + outputTokens,
+        taskCumulativeInput: (context.taskCumulativeInput ?? 0) + inputTokens,
+        taskCumulativeOutput: (context.taskCumulativeOutput ?? 0) + outputTokens,
+        ...(context.recursionCount !== undefined ? { recursionCount: context.recursionCount } : {}),
       };
 
       // ━━━ Monitoring alerts ━━━

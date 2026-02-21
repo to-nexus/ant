@@ -118,16 +118,18 @@ export async function invokeWithTracking(
     // LLM options
     temperature?: number;
     maxTokens?: number;
+    enableThinking?: boolean;
+    thinkingBudget?: number;
     // Tracking options
     taskLevel?: boolean;
     jobLevel?: boolean;
   } = {}
 ): Promise<string> {
-  const { temperature, maxTokens, taskLevel = true, jobLevel = true } = options;
+  const { temperature, maxTokens, enableThinking, thinkingBudget, taskLevel = true, jobLevel = true } = options;
   
   // Use invokeWithUsage if available, fallback to invoke
   if (llm.invokeWithUsage) {
-    const result = await llm.invokeWithUsage(messages, { temperature, maxTokens });
+    const result = await llm.invokeWithUsage(messages, { temperature, maxTokens, enableThinking, thinkingBudget });
     
     if (result.usage) {
       accumulateTokenUsage(state, result.usage, { taskLevel, jobLevel });

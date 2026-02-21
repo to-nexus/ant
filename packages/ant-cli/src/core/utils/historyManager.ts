@@ -179,6 +179,40 @@ export class HistoryManager {
   }
 }
 
+/**
+ * Universal 3-step history compaction pipeline.
+ * Replaces per-builder copy-paste with a single call.
+ *
+ * Steps:
+ *   1. Microcompact  – shrink old tool_result blobs (hot-tail untouched)
+ *   2. Auto-compact  – if still >50 K tokens, summarise cold turns
+ *   3. Prune         – trim to final token budget via priority-based pruning
+ *
+ * @returns compacted history + wasCompacted flag (for cache-control decisions)
+ */
+export function compactAndPruneHistory(
+  history: ConversationMessage[],
+  tokenManager: TokenBudgetManager,
+  options?: {
+    microcompactHotTail?: number;   // default 3
+    autoCompactThreshold?: number;  // default 50 000
+    autoCompactHotTail?: number;    // default 5
+  }
+): { result: ConversationMessage[]; wasCompacted: boolean } {
+  if (history.length === 0) {
+    return { result: [], wasCompacted: false };
+  }
+  const { microcompactHotTail = 3, autoCompactThreshold = 50000, autoCompactHotTail = 5 } = options || {};
+
+  const { compacted: step1 } = microcompactToolResults(history, microcompactHotTail, tokenManager);
+  const { compacted: step2, wasCompacted } = autoCompactHistory(step1, autoCompactThreshold, autoCompactHotTail, tokenManager);
+
+  const historyManager = new HistoryManager(tokenManager);
+  const { prunedHistory } = historyManager.pruneHistory(step2);
+
+  return { result: prunedHistory, wasCompacted };
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Microcompaction: shrink old tool_result content while preserving
 // Anthropic API format (tool_use / tool_result pairing).
