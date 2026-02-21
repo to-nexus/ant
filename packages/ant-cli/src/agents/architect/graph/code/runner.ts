@@ -54,7 +54,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
-        initial.retries = session.state.retries || 0;
+        initial.retries = 0;  // Resume = user's fresh attempt, reset counter
         initial.maxRetries = session.state.maxRetries || 3;
         initial.previousAttempts = session.state.previousAttempts || [];
         initial.enforcementHistory = session.state.enforcementHistory || [];
@@ -220,7 +220,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             currentTask: session.state.currentTask,  // ✅ CRITICAL: Restore currentTask (will be moved to queue below)
             completedTasks: session.state.completedTasks || [],
             completedTasksDetails: session.state.completedTasksDetails || [], // ✅ NEW: Restore full task details
-            retries: session.state.retries || 0,
+            retries: 0,  // Resume = user's fresh attempt, reset counter
             maxRetries: session.state.maxRetries || 3,
             previousAttempts: session.state.previousAttempts || [],
             enforcementHistory: session.state.enforcementHistory || [],

@@ -290,13 +290,19 @@ export class ProjectStructureDetector {
         
         if (!fs.existsSync(goModPath)) continue;
         
-        const hasMakefile = fs.existsSync(path.join(modAbsPath, 'Makefile'));
+        const hasRunnableMakefile = this.hasRunnableMakefileTarget(modAbsPath);
         const hasCmdDir = fs.existsSync(path.join(modAbsPath, 'cmd'));
+        const hasMainGo = fs.existsSync(path.join(modAbsPath, 'main.go'));
+
+        if (!hasRunnableMakefile && !hasCmdDir && !hasMainGo) {
+          logger.debug(`Skipping non-runnable Go module: ${modRelPath}`, { component: 'ProjectStructureDetector' });
+          continue;
+        }
         
         packages.push({
           name: modRelPath,
           path: modAbsPath,
-          type: (hasCmdDir || hasMakefile) ? 'backend' : 'other',
+          type: 'backend',
           projectProfile: profile,
         });
       }
@@ -312,6 +318,22 @@ export class ProjectStructureDetector {
     return { type: 'monorepo', packages, entry: undefined };
   }
   
+  /**
+   * Check if a Makefile contains a runnable target (dev, run, or serve).
+   */
+  private hasRunnableMakefileTarget(projectPath: string): boolean {
+    try {
+      const makefilePath = path.join(projectPath, 'Makefile');
+      if (!fs.existsSync(makefilePath)) return false;
+      const content = fs.readFileSync(makefilePath, 'utf-8');
+      return ['dev', 'run', 'serve'].some(target =>
+        new RegExp(`^${target}:`, 'm').test(content)
+      );
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Parse `use` directives from go.work content.
    * Handles both single-line (`use ./foo`) and block (`use ( ... )`) syntax.

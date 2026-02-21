@@ -160,7 +160,7 @@ export function LocalSetupGuide() {
                     <br />
                     # Required: Redis for state/queue
                     <br />
-                    ANT_REDIS_URL=redis://localhost:6379
+                    ANT_REDIS_URL=redis://localhost:16379
                     <br />
                     <br />
                     # Required: Preview Worker URL
@@ -207,7 +207,7 @@ export function LocalSetupGuide() {
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
-                      docker run -d -p 6379:6379 redis
+                      docker run -d -p 16379:6379 redis
                     </code>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
@@ -296,7 +296,7 @@ export function LocalSetupGuide() {
                 </div>
                 <div className="mt-4 space-y-1 text-sm text-gray-600 dark:text-gray-400">
                   <div className="font-medium text-gray-900 dark:text-white mb-2">{t('localSetup.localServices')}</div>
-                  <div>• Redis: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">localhost:6379</code></div>
+                  <div>• Redis: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">localhost:16379</code></div>
                   <div>• API Server: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:4000</code></div>
                   <div>• Preview Worker: <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">http://localhost:8080</code></div>
                 </div>

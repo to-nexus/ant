@@ -8,12 +8,12 @@
     "dev:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli dev:server",
     "dev:local:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:local\" \"pnpm dev:ui\"",
     
-    "dev:cloud": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:6379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:cloud",
+    "dev:cloud": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:cloud",
     "dev:cloud:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:cloud\" \"pnpm dev:ui\"",
-    "dev:api-server": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:6379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:server",
-    "dev:realtime-server": "ANT_REDIS_URL=redis://localhost:6379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:realtime-server",
-    "dev:job-worker": "ANT_REDIS_URL=redis://localhost:6379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:job-worker",
-    "dev:preview-worker": "ANT_REDIS_URL=redis://localhost:6379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:preview-worker",
+    "dev:api-server": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:server",
+    "dev:realtime-server": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:realtime-server",
+    "dev:job-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:job-worker",
+    "dev:preview-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:preview-worker",
     
     "dev:infra": "concurrently \"docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d\"",
     "dev:infra:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down",

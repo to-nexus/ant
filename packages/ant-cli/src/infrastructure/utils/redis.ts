@@ -50,8 +50,8 @@ export interface RedisConnectionOptions {
  * @example
  * ```typescript
  * // Standard Redis
- * parseRedisUrl('redis://localhost:6379')
- * // => { host: 'localhost', port: 6379 }
+ * parseRedisUrl('redis://localhost:16379')
+ * // => { host: 'localhost', port: 16379 }
  * 
  * // Redis with password
  * parseRedisUrl('redis://:mypassword@redis.example.com:6379')

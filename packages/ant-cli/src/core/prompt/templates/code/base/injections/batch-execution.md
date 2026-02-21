@@ -1,12 +1,10 @@
 ## Tool Call Batching
 
-**Principle**: The system processes ALL tool calls from a single response as one batch. There is no benefit to issuing tool calls one at a time across separate responses.
+**Principle**: The system processes ALL tool calls from a single response as one batch.
 
-**Constraint**: Before issuing tool calls, identify ALL information you need in this step. Issue ALL tool calls in ONE response.
+**Constraint**: When you have identified multiple independent actions (reads, edits, commands), issue ALL in ONE response.
 
-**Constraint**: NEVER issue a single tool call when you can already identify additional tool calls needed from context (directory tree, plan, task description, prior results).
-
-⚠️ **Blind spot**: Sequential discovery — reading one file, then deciding to read the next based on its content. If the plan or directory tree already reveals which files you need, batch-read ALL of them upfront instead of discovering incrementally.
+**Constraint**: NEVER issue a single tool call when you can already identify additional needed tool calls from prior results.
 
 ---
 

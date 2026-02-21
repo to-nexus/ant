@@ -206,29 +206,32 @@ export class ConnectionDetector {
   }
 
   /**
-   * Resolve `self` markers in ant-project connections.
-   * Replaces placeholder projectId/feature with actual values and computes proxy path.
+   * Resolve ant-project connections (both `self` and cross-project).
+   * Builds the target serverKey using the same tenantId:userId and computes proxy path.
    */
   private enrichInternalConnections(connections: ServiceConnection[], serverKey: string): void {
-    const urlKeyValue = `/${toUrlKey(serverKey)}`;
     const parts = serverKey.split(':');
-    const projectId = parts[2] || '';
-    const feature = parts[3] || '';
+    const tenantId = parts[0] || '';
+    const userId = parts[1] || '';
+    const currentProjectId = parts[2] || '';
+    const currentFeature = parts[3] || '';
 
     for (const conn of connections) {
-      if (
-        conn.resolution.type === 'ant-project' &&
-        conn.resolution.projectId === 'self' &&
-        conn.resolution.feature === 'self'
-      ) {
-        conn.resolution = {
-          type: 'ant-project',
-          projectId,
-          feature,
-          resolvedUrlKey: toUrlKey(serverKey),
-        };
-        conn.value = urlKeyValue;
-      }
+      if (conn.resolution.type !== 'ant-project') continue;
+
+      const resolvedProjectId = conn.resolution.projectId === 'self' ? currentProjectId : conn.resolution.projectId;
+      const resolvedFeature = conn.resolution.feature === 'self' ? currentFeature : conn.resolution.feature;
+
+      if (!resolvedProjectId || !resolvedFeature) continue;
+
+      const targetServerKey = `${tenantId}:${userId}:${resolvedProjectId}:${resolvedFeature}`;
+      conn.resolution = {
+        type: 'ant-project',
+        projectId: resolvedProjectId,
+        feature: resolvedFeature,
+        resolvedUrlKey: toUrlKey(targetServerKey),
+      };
+      conn.value = `/${toUrlKey(targetServerKey)}`;
     }
   }
 
@@ -274,7 +277,7 @@ export class ConnectionDetector {
     // 3. Enrich with docker-compose
     this.enrichWithCompose(allConnections, projectPath);
 
-    // 4. Resolve `self` markers → ant-project with actual project context + proxy path
+    // 4. Resolve ant-project connections (self + cross-project) → proxy path
     this.enrichInternalConnections(allConnections, serverKey);
 
     // 5. Deduplicate by source:envVar (first wins)
