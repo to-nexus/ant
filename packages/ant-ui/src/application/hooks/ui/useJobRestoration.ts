@@ -58,23 +58,21 @@ export function useJobRestoration({
           }
           
           // ✅ CRITICAL: Verify job is actually running on server BEFORE restoring
-          // This prevents restoring a job that completed while client was disconnected
+          // Only restore if the server explicitly confirms the job is running or queued.
+          // Any other status (completed, failed, unknown, interrupted) → clear localStorage.
           try {
             console.log('[useJobRestoration] 🔍 Verifying job status on server before restore...');
             const position = await fetchQueuePosition(jobId);
             console.log('[useJobRestoration] Server response:', position);
             
-            // If server says job is completed/failed, don't restore - clear localStorage instead
-            if (position.status === 'completed' || position.status === 'failed' || position.status === 'not_found') {
-              console.log('[useJobRestoration] 🚫 Job already finished on server, clearing localStorage');
+            if (position.status !== 'running' && position.status !== 'queued') {
+              console.log(`[useJobRestoration] 🚫 Job not active (status: ${position.status}), clearing localStorage`);
               localStorage.removeItem('ant-ui:running-task');
               localStorage.removeItem('ant-ui:task-start-time');
               localStorage.removeItem('ant-ui:task-mode');
               return;
             }
           } catch (error) {
-            // If we can't verify, still clear localStorage to be safe
-            // (job probably doesn't exist anymore)
             console.warn('[useJobRestoration] ⚠️ Failed to verify job status, clearing localStorage for safety');
             localStorage.removeItem('ant-ui:running-task');
             localStorage.removeItem('ant-ui:task-start-time');

@@ -5,7 +5,7 @@
  * Starts a JobWorker process that processes jobs from the BullMQ queue.
  * 
  * Usage:
- *   ANT_REDIS_URL=redis://localhost:6379 npm run dev:job-worker
+ *   ANT_REDIS_URL=redis://localhost:16379 npm run dev:job-worker
  * 
  * Environment Variables:
  *   ANT_REDIS_URL        - Redis connection URL (required)

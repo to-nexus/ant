@@ -158,7 +158,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // ✅ CRITICAL: Clean up Docker infrastructure started by installDeps
   if ((state as any)._infraManager && (state as any)._infraProjectPath) {
     try {
-      const infraManager = (state as any)._infraManager as import('../../../../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager').InfrastructureManager;
+      const infraManager = (state as any)._infraManager as import('../../../../../infrastructure/docker').InfrastructureManager;
       const infraPath = (state as any)._infraProjectPath as string;
       
       console.log(`\n🐳 [Learn] Cleaning up Docker infrastructure...`);

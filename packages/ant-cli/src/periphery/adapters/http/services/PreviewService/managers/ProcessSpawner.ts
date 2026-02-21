@@ -400,7 +400,8 @@ export class ProcessSpawner {
       }
     }
     
-    // Same priority chain as spawnNode
+    this.ensureConfigFiles(pkg.path, options.onLog);
+
     const projectEnv = this.loadProjectEnv(pkg.path);
     const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
@@ -442,6 +443,57 @@ export class ProcessSpawner {
     return childProcess;
   }
   
+  /**
+   * Copy *.example config files to their actual counterparts if missing.
+   * Skips .env.example (handled separately by connection detection).
+   * Searches project root and immediate subdirectories (depth 1).
+   */
+  private ensureConfigFiles(projectPath: string, onLog: LogCallback): void {
+    const dirsToScan = [projectPath];
+
+    try {
+      for (const entry of fs.readdirSync(projectPath, { withFileTypes: true })) {
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'vendor') {
+          const subdir = path.join(projectPath, entry.name);
+          dirsToScan.push(subdir);
+          // depth 2: one more level for patterns like services/api-server/
+          try {
+            for (const sub of fs.readdirSync(subdir, { withFileTypes: true })) {
+              if (sub.isDirectory() && !sub.name.startsWith('.') && sub.name !== 'node_modules' && sub.name !== 'vendor') {
+                dirsToScan.push(path.join(subdir, sub.name));
+              }
+            }
+          } catch { /* permission errors, etc. */ }
+        }
+      }
+    } catch { /* permission errors, etc. */ }
+
+    for (const dir of dirsToScan) {
+      try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          if (!file.endsWith('.example')) continue;
+          if (file === '.env.example') continue;
+
+          const actualName = file.replace(/\.example$/, '');
+          const examplePath = path.join(dir, file);
+          const actualPath = path.join(dir, actualName);
+
+          if (!fs.existsSync(actualPath)) {
+            try {
+              fs.copyFileSync(examplePath, actualPath);
+              const relPath = path.relative(projectPath, actualPath);
+              logger.info(`[Preview] Auto-created ${relPath} from ${file}`, { component: 'ProcessSpawner' });
+              onLog('stdout', `📋 Auto-created ${relPath} from ${file}\n`);
+            } catch (err) {
+              logger.warn(`[Preview] Failed to copy ${examplePath}: ${err}`, { component: 'ProcessSpawner' });
+            }
+          }
+        }
+      } catch { /* skip unreadable dirs */ }
+    }
+  }
+
   /**
    * Detect runnable Makefile target (dev, run, serve)
    */

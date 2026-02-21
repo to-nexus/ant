@@ -6,8 +6,8 @@
  * This runs AFTER validation to ensure we don't install dependencies
  * for invalid code (ellipsis, excessive deletion, etc.)
  * 
- * Note: Infrastructure startup (docker-compose) is handled by the LLM
- * via tool calls during codeGen (final verification / error tasks).
+ * Docker infrastructure (docker-compose) is managed programmatically
+ * by runtimeValidate — not by this node or the LLM.
  */
 
 import * as nodeFs from 'fs';

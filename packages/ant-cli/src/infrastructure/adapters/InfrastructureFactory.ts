@@ -110,7 +110,7 @@ export class InfrastructureFactory {
       throw new Error(
         'ANT_REDIS_URL is required. ' +
         'Redis is required for both local and cloud environments. ' +
-        'Example: ANT_REDIS_URL=redis://localhost:6379'
+        'Example: ANT_REDIS_URL=redis://localhost:16379'
       );
     }
     

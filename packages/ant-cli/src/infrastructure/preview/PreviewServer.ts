@@ -32,6 +32,7 @@ import { parsePreviewKey } from '../state/redisKeyUtils';
 import { toUrlKey, fromUrlKey, isUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
+import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -567,7 +568,26 @@ export class PreviewServer {
           logger.warn(`[PreviewServer] Structure detection failed, clearing connections: ${detectErr.message}`, { component: 'PreviewServer' });
         }
 
-        // Full overwrite of the registry
+        // Enrich docker connections with live infrastructure status
+        const infraManager = new InfrastructureManager();
+        const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        const infraStatus = await infraManager.getInfraStatus(workspacePath, infraProjectName);
+        if (infraStatus.length > 0) {
+          for (const conn of connections) {
+            const isDocker = typeof conn.resolution === 'object' && conn.resolution?.type === 'docker';
+            if (isDocker) {
+              const dockerService = (conn.resolution as { type: 'docker'; service: string }).service || conn.id;
+              const svc = infraStatus.find(s =>
+                s.name === dockerService || conn.id.includes(s.name) || s.name.includes(conn.id)
+              );
+              conn.status = svc?.status === 'running' ? 'active'
+                          : svc?.status === 'stopped' ? 'not-started'
+                          : svc ? 'unreachable' : conn.status;
+            }
+          }
+        }
+
+        // Save to preview-config
         await this.stateStore.savePreviewConfig(
           userContext.organizationId,
           userContext.userId,
@@ -575,6 +595,19 @@ export class PreviewServer {
           feature,
           { connections }
         );
+
+        // Also update PreviewState if preview is currently running
+        try {
+          const currentState = await this.previewService.getPreviewStatus(
+            userContext.organizationId, userContext.userId, projectId, feature
+          );
+          if (currentState.running) {
+            await this.stateStore.updatePreview(
+              userContext.organizationId, userContext.userId, projectId, feature,
+              { connections }
+            );
+          }
+        } catch { /* best-effort */ }
 
         logger.info(`[PreviewServer] Detect-connections: found ${connections.length} for ${projectId}/${feature}`, { component: 'PreviewServer' });
         res.json({ success: true, connections });

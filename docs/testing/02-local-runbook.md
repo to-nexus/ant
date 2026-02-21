@@ -28,7 +28,7 @@ Minimal env you should set explicitly:
 
 ```bash
 export ANT_SERVER_MODE="local"
-export ANT_REDIS_URL="redis://localhost:6379"
+export ANT_REDIS_URL="redis://localhost:16379"
 export ANT_WORKSPACE_BASE_PATH="/Users/probe/dev/ant-workspaces"  # adjust if different
 ```
 

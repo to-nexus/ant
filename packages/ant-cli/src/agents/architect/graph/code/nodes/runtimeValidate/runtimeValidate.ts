@@ -17,6 +17,7 @@
  */
 
 import path from "path";
+import * as fs from "fs";
 import { ArchitectGraphState } from "../../state";
 import { 
   detectProject, 
@@ -32,6 +33,13 @@ import { RuntimeValidationResult } from "./types";
 import { detectRecentToolFailures } from "./utils";
 import { convertDiagnosesToViolations } from "./violations";
 import { getProjectRuntime, type ProjectRuntimeConfig } from "../projectRuntime";
+
+const DOCKER_COMPOSE_FILES = [
+  'docker-compose.yml',
+  'docker-compose.yaml',
+  'compose.yml',
+  'compose.yaml',
+];
 
 /**
  * Runtime validation - run actual build/lint/test
@@ -112,6 +120,17 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   // Router ensures only final task reaches here
   console.log(`\n📋 Running runtime validation in: ${resolvedPath}`);
   console.log(`   🔒 Final Verification: comprehensive build check\n`);
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Docker Infrastructure: Start before validation, stop after (finally)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let infraStarted = false;
+  const composeFilePath = findComposeFile(resolvedPath);
+  if (composeFilePath) {
+    infraStarted = await startDockerInfrastructure(composeFilePath, commandPort);
+  }
+
+  try {
 
   // ✅ Detect project type first
   const projectDetection = await detectProject(resolvedPath, gitPort, fileSystem);
@@ -280,6 +299,79 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     lastViolations: [],  // ← Clear last violations
     runtimeValidationResult: result,
   };
+
+  } finally {
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Docker Infrastructure: Cleanup (best-effort)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (infraStarted && composeFilePath) {
+      await stopDockerInfrastructure(composeFilePath, commandPort);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Docker Infrastructure helpers
+// ─────────────────────────────────────────────────────────────
+
+function findComposeFile(projectPath: string): string | null {
+  for (const fileName of DOCKER_COMPOSE_FILES) {
+    const filePath = path.join(projectPath, fileName);
+    if (fs.existsSync(filePath)) {
+      return filePath;
+    }
+  }
+  return null;
+}
+
+async function startDockerInfrastructure(
+  composeFile: string,
+  commandPort: any,
+): Promise<boolean> {
+  console.log(`\n🐳 [runtimeValidate] Docker infrastructure detected: ${path.basename(composeFile)}`);
+
+  const dockerCheck = await commandPort.execute('docker info', {
+    cwd: path.dirname(composeFile),
+    timeout: 10_000,
+  });
+  if (!dockerCheck.success) {
+    console.warn(`⚠️  Docker not available — skipping infrastructure startup`);
+    return false;
+  }
+
+  console.log(`🐳 Starting infrastructure services (docker compose up -d --wait)...`);
+  const result = await commandPort.execute(
+    `docker compose -f ${composeFile} up -d --wait`,
+    { cwd: path.dirname(composeFile), timeout: 90_000 },
+  );
+
+  if (result.success) {
+    console.log(`✅ Infrastructure services ready\n`);
+    return true;
+  }
+
+  console.warn(`⚠️  docker compose up failed (exit ${result.exitCode}). Continuing with build-only validation.`);
+  if (result.stderr) {
+    const lines = result.stderr.split('\n').filter((l: string) => l.trim()).slice(-5);
+    lines.forEach((l: string) => console.warn(`   ${l}`));
+  }
+  return false;
+}
+
+async function stopDockerInfrastructure(
+  composeFile: string,
+  commandPort: any,
+): Promise<void> {
+  console.log(`\n🐳 [runtimeValidate] Stopping infrastructure services...`);
+  try {
+    await commandPort.execute(
+      `docker compose -f ${composeFile} down`,
+      { cwd: path.dirname(composeFile), timeout: 30_000 },
+    );
+    console.log(`✅ Infrastructure services stopped\n`);
+  } catch (err: any) {
+    console.warn(`⚠️  Infrastructure cleanup failed (best-effort): ${err.message}`);
+  }
 }
 
 /**

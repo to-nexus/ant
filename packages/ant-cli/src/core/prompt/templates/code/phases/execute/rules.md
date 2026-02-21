@@ -258,7 +258,9 @@ Existing files: `edit_file` or `<append>`. New files only: `<file>`.
 If your plan references a component that another task owns, define a **minimal local interface** describing only what your module consumes. Do NOT create the implementation.
 
 ────────────────────────────────────────────────────────────────────────────────
-{{> code/base/injections/batch-operations}}
+{{> code/base/injections/batch-execution}}
+
+{{> code/base/injections/batch-gather}}
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🔗 Module Quality Rules

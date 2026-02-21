@@ -129,14 +129,7 @@ export class DependencyInstaller {
     
     switch (language) {
       case 'go':
-        // Go modules: download dependencies
-        if (!fs.existsSync(path.join(packagePath, 'go.mod'))) {
-          logger.debug(`No go.mod found, skipping Go dep install`, { component: 'DependencyInstaller' });
-          return;
-        }
-        command = 'go';
-        args = ['mod', 'tidy'];
-        break;
+        return this.installGoDeps(packagePath, displayName, onLog);
       case 'python':
         if (fs.existsSync(path.join(packagePath, 'requirements.txt'))) {
           command = 'pip';
@@ -416,6 +409,113 @@ export class DependencyInstaller {
     }
     
     return false;
+  }
+
+  /**
+   * Go dependency install with workspace (go.work) awareness.
+   * When a go.work exists in a parent directory, runs `go work sync` once at
+   * the workspace root so that local module replacements (e.g. ./shared) are
+   * resolved without hitting the network. Subsequent services in the same
+   * workspace are skipped because sync already handled them.
+   */
+  private async installGoDeps(
+    packagePath: string,
+    displayName: string,
+    onLog: LogCallback
+  ): Promise<void> {
+    if (!fs.existsSync(path.join(packagePath, 'go.mod'))) {
+      logger.debug(`No go.mod found, skipping Go dep install`, { component: 'DependencyInstaller' });
+      return;
+    }
+
+    const workspaceRoot = this.findGoWorkspaceRoot(packagePath);
+
+    if (workspaceRoot) {
+      if (this.installedRoots.has(workspaceRoot)) {
+        logger.debug(`Go workspace already synced: ${workspaceRoot}`, { component: 'DependencyInstaller' });
+        return;
+      }
+
+      onLog('stdout', `📦 Go workspace detected — running go work sync...`);
+      logger.info(`Running go work sync in: ${workspaceRoot}`, { component: 'DependencyInstaller' });
+      await this.runGoCommand(['work', 'sync'], workspaceRoot, onLog, '✅ Go workspace synced');
+      this.installedRoots.add(workspaceRoot);
+      return;
+    }
+
+    onLog('stdout', `📦 Installing go dependencies for ${displayName}...`);
+    logger.info(`Running go mod tidy in: ${packagePath}`, { component: 'DependencyInstaller' });
+    await this.runGoCommand(['mod', 'tidy'], packagePath, onLog, `✅ Go dependencies installed for ${displayName}`);
+  }
+
+  private runGoCommand(
+    args: string[],
+    cwd: string,
+    onLog: LogCallback,
+    successMsg: string,
+    env?: Record<string, string>
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const proc = spawn('go', args, {
+        cwd,
+        shell: true,
+        stdio: 'pipe',
+        ...(env ? { env: { ...process.env, ...env } } : {}),
+      });
+
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          const msg = `go ${args[0]} timed out after ${INSTALL_TIMEOUT_MS / 1000}s`;
+          logger.error(msg, { component: 'DependencyInstaller' });
+          onLog('stderr', `❌ ${msg}`);
+          try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+          setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* ignore */ } }, 5000);
+          reject(new Error(msg));
+        }
+      }, INSTALL_TIMEOUT_MS);
+
+      proc.stdout?.on('data', (data) => onLog('stdout', data.toString()));
+      proc.stderr?.on('data', (data) => onLog('stderr', data.toString()));
+
+      proc.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          onLog('stdout', successMsg);
+          resolve();
+        } else {
+          const errMsg = `go ${args.join(' ')} failed with code ${code}`;
+          logger.error(`${errMsg} in ${cwd}`, { component: 'DependencyInstaller' });
+          reject(new Error(errMsg));
+        }
+      });
+
+      proc.on('error', (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        logger.error(`Go process error in ${cwd}`, { component: 'DependencyInstaller' }, err);
+        reject(err);
+      });
+    });
+  }
+
+  /**
+   * Walk up from startPath looking for a go.work file (Go workspace root).
+   */
+  private findGoWorkspaceRoot(startPath: string): string | null {
+    let current = startPath;
+    while (current !== path.dirname(current)) {
+      if (fs.existsSync(path.join(current, 'go.work'))) {
+        return current;
+      }
+      current = path.dirname(current);
+    }
+    return null;
   }
 
   /**

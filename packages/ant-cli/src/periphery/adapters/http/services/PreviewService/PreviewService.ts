@@ -166,6 +166,7 @@ export class PreviewService {
             packages: state.packages || [],
             issues: state.issues || [],
             structureType: state.structureType || undefined,
+            connections: state.connections || [],
           };
         }
       } catch {
@@ -468,6 +469,8 @@ export class PreviewService {
       const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
       await this.infrastructureManager.startInfrastructure(localPath, logCallback, infraProjectName);
       
+      const infraStatus = await this.infrastructureManager.getInfraStatus(localPath, infraProjectName);
+
       // 3. Allocate ports and start all preview servers
       const processes: ChildProcess[] = [];
       let backendPort: number | undefined;
@@ -489,12 +492,42 @@ export class PreviewService {
         }
       }
 
-      // Read connections from Redis registry (single source of truth)
-      // Detection is handled by GET /preview-config and POST /detect-connections
+      // Read connections from Redis registry, auto-detect if empty
       const savedConfig = this.stateStore
         ? await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature)
         : null;
-      const connections: ServiceConnection[] = savedConfig?.connections || [];
+      let connections: ServiceConnection[] = savedConfig?.connections || [];
+
+      if (connections.length === 0) {
+        try {
+          const detected = this.connectionDetector.detect(localPath, structure, serverKey);
+          if (detected.length > 0) {
+            connections = detected;
+            if (this.stateStore) {
+              await this.stateStore.savePreviewConfig(tenantId, userId, projectId, feature, { connections });
+            }
+            logger.info(`[Preview] Auto-detected ${connections.length} connections for ${serverKey}`, { component: 'PreviewService' });
+          }
+        } catch (err: any) {
+          logger.debug(`[Preview] Connection auto-detect failed: ${err.message}`, { component: 'PreviewService' });
+        }
+      }
+
+      // Update connection status based on infrastructure state
+      if (infraStatus.length > 0) {
+        for (const conn of connections) {
+          const isDocker = typeof conn.resolution === 'object' && conn.resolution?.type === 'docker';
+          if (isDocker) {
+            const dockerService = (conn.resolution as { type: 'docker'; service: string }).service || conn.id;
+            const svc = infraStatus.find(s =>
+              s.name === dockerService || conn.id.includes(s.name) || s.name.includes(conn.id)
+            );
+            conn.status = svc?.status === 'running' ? 'active'
+                        : svc?.status === 'stopped' ? 'not-started'
+                        : svc ? 'unreachable' : conn.status;
+          }
+        }
+      }
 
       logger.info(`[Preview] ${connections.length} connections from registry for ${serverKey}`, { component: 'PreviewService' });
 
@@ -525,7 +558,10 @@ export class PreviewService {
         .map(p => ({ name: p.name, type: p.type, port: p.port as number }));
       
       // 4. Update Redis with full port/package info + phase: 'starting'
-      if (structure.entry && this.portRegistry) {
+      //    Use entry port (frontend) if available, otherwise first package port
+      //    (backend-only projects still need a registered port for cross-project proxy routing).
+      const entryPort = structure.entry?.port ?? orderedPackages[0]?.port;
+      if (entryPort && this.portRegistry) {
         const backendPort = packagePorts.find(p => p.type === 'backend')?.port;
         
         const previewState: Omit<PreviewState, 'lastAccessedAt'> = {
@@ -536,7 +572,7 @@ export class PreviewService {
           running: true,
           ready: false,  // Will be updated after health check
           phase: 'starting',
-          port: structure.entry.port!,
+          port: entryPort,
           backendPort,
           structureType: structure.type as any,
           connections,
@@ -548,10 +584,13 @@ export class PreviewService {
         };
         
         await this.portRegistry.registerPreview(previewState);
-        logger.info(`[Preview] Registered: ${serverKey} -> ${host}:${structure.entry.port}`, { component: 'PreviewService' });
+        logger.info(`[Preview] Registered: ${serverKey} -> ${host}:${entryPort}`, { component: 'PreviewService' });
       }
 
-      // Connections already in registry — no need to re-save here
+      // Save connections separately if registerPreview was skipped
+      if (!entryPort && connections.length > 0 && this.portRegistry) {
+        await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, { connections });
+      }
 
       await this.updatePhase(serverKey, 'starting', { running: true });
       
@@ -613,8 +652,7 @@ export class PreviewService {
       
       // 8. Health check (async)
       // If health check fails, kill all processes and clean up — the dev server is unusable.
-      const entryPort = structure.entry?.port || structure.packages[0].port!;
-      this.healthChecker.check(entryPort, logCallback).then(async (ready) => {
+      this.healthChecker.check(entryPort!, logCallback).then(async (ready) => {
         // Release lock after health check completes (success or fail)
         if (this.stateStore && lockAcquired) {
           this.stateStore.releaseLock(lockKey).catch(() => {});
@@ -643,7 +681,7 @@ export class PreviewService {
       return {
         success: true,
         message: `Started ${structure.packages.length} package(s)`,
-        port: structure.entry?.port || structure.packages[0].port!,
+        port: entryPort!,
         serverKey,
         url: proxyUrl,
         setupReasoning: validation.reasoning,
@@ -898,6 +936,17 @@ export class PreviewService {
       this.previewServers.delete(serverKey);
       this.previewServerPaths.delete(serverKey);
       
+      // Reset connection status to not-started
+      if (this.portRegistry) {
+        try {
+          const currentState = await this.getPreviewStatus(t, u, p, f);
+          if (currentState.connections?.length) {
+            const resetConnections = currentState.connections.map((c: ServiceConnection) => ({ ...c, status: 'not-started' as const }));
+            await this.portRegistry.updatePreview(t, u, p, f, { connections: resetConnections });
+          }
+        } catch { /* best-effort */ }
+      }
+
       // Update Redis to error + broadcast
       await this.updatePhase(serverKey, 'error', {
         running: false, ready: false,
@@ -927,18 +976,35 @@ export class PreviewService {
     }
     
     const processes = this.previewServers.get(serverKey);
-    if (!processes || processes.length === 0) {
+    
+    // Check Redis (source of truth) when local memory has no processes.
+    // This handles: service restart (orphan processes), multi-pod (preview on another pod).
+    let redisState: PreviewState | null = null;
+    if ((!processes || processes.length === 0) && this.portRegistry) {
+      try {
+        redisState = await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+      } catch (err: any) {
+        logger.warn(`[Preview] Failed to read Redis state for ${serverKey}: ${err.message}`, { component: 'PreviewService' });
+      }
+    }
+    
+    const hasLocalProcesses = processes && processes.length > 0;
+    const isRunningInRedis = redisState?.running === true;
+    
+    if (!hasLocalProcesses && !isRunningInRedis) {
       return { success: false, error: 'Preview server not running' };
     }
 
     // Mark stopping
     this.stoppingServers.add(serverKey);
-    const pidSet = new Set<number>();
-    for (const p of processes) {
-      if (p?.pid != null) pidSet.add(p.pid);
-    }
-    if (pidSet.size > 0) {
-      this.stoppingPidsByServer.set(serverKey, pidSet);
+    if (hasLocalProcesses) {
+      const pidSet = new Set<number>();
+      for (const p of processes) {
+        if (p?.pid != null) pidSet.add(p.pid);
+      }
+      if (pidSet.size > 0) {
+        this.stoppingPidsByServer.set(serverKey, pidSet);
+      }
     }
     
     // Fallback cleanup timer
@@ -956,21 +1022,25 @@ export class PreviewService {
     // Stop infrastructure services (best-effort, before killing app processes)
     const localPath = this.previewServerPaths.get(serverKey);
     if (localPath) {
-      const { projectId, feature } = this.parseServerKey(serverKey);
-      const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+      const { projectId: pId, feature: feat } = this.parseServerKey(serverKey);
+      const infraProjectName = `ant-${pId}-${feat}`.replace(/[^a-zA-Z0-9_-]/g, '-');
       const logCallback = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
       await this.infrastructureManager.stopInfrastructure(localPath, logCallback, infraProjectName);
     }
     
-    // Kill all processes
-    for (const process of processes) {
-      this.processSpawner.kill(process);
+    // Kill local processes if we own them
+    let stoppedCount = 0;
+    if (hasLocalProcesses) {
+      for (const process of processes) {
+        this.processSpawner.kill(process);
+      }
+      stoppedCount = processes.length;
     }
     
     // Release port (read from Redis before unregister)
     if (this.portRegistry && this.portManager) {
       try {
-        const state = await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+        const state = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
         if (state?.port) {
           this.portManager.release(state.port);
         }
@@ -987,7 +1057,7 @@ export class PreviewService {
     this.previewServerPaths.delete(serverKey);
     this.logManager.clearLogs(serverKey);
     
-    logger.info(`Stopped all servers for ${serverKey}`, { component: 'PreviewService' });
+    logger.info(`Stopped all servers for ${serverKey} (local=${stoppedCount}, redis=${isRunningInRedis})`, { component: 'PreviewService' });
     
     // Broadcast stopped status (Redis already unregistered above)
     this.broadcastStatus(serverKey, {
@@ -1005,7 +1075,9 @@ export class PreviewService {
     
     return { 
       success: true, 
-      message: `Stopped ${processes.length} process(es)` 
+      message: stoppedCount > 0
+        ? `Stopped ${stoppedCount} process(es)`
+        : 'Cleaned up preview state from registry'
     };
   }
   

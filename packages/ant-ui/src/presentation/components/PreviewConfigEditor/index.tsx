@@ -155,10 +155,15 @@ export function PreviewConfigEditor() {
   // Derive display values (must be before any conditional returns for hook stability)
   const structureType = previewStatus?.structureType || config?.structureType || null;
   const projectProfile = previewStatus?.projectProfile || config?.projectProfile || null;
-  const connections: ServiceConnection[] = useMemo(
-    () => config?.connections || [],
-    [config?.connections]
-  );
+  const connections: ServiceConnection[] = useMemo(() => {
+    const base = config?.connections || [];
+    const live = previewStatus?.connections;
+    if (!live?.length) return base;
+    return base.map(conn => {
+      const liveConn = live.find((lc: ServiceConnection) => lc.id === conn.id);
+      return liveConn ? { ...conn, status: liveConn.status } : conn;
+    });
+  }, [config?.connections, previewStatus?.connections]);
   const phase = previewStatus?.phase || 'idle';
   const isRunning = previewStatus?.running || false;
   const isReady = previewStatus?.ready || false;
@@ -274,6 +279,9 @@ export function PreviewConfigEditor() {
       const result = await updatePreviewConfig(selectedProject, selectedFeature || 'main', { connections: localConns });
       if (result.success && result.connections) {
         setLocalConns(result.connections);
+        setConfig(prev => prev
+          ? { ...prev, connections: result.connections }
+          : { connections: result.connections } as any);
       }
       setHasUnsavedChanges(false);
       setEditingConnId(null);

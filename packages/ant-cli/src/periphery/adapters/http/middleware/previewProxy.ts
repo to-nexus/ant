@@ -208,6 +208,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     // Lookup entry (frontend) port and host from registry
     let port: number;
     let previewHost: string;
+    let hasFrontend = false;
     try {
       const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
       
@@ -222,6 +223,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
       port = mapping.port;
       previewHost = mapping.host || 'localhost';
+      hasFrontend = mapping.packages?.some((p: any) => p.type === 'frontend') ?? false;
       logger.warn(`[Preview] Found: ${internalKey} -> ${previewHost}:${port}`, { component: 'PreviewProxy' });
       
       // Update last access time
@@ -236,28 +238,32 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return;
     }
     
-    // All frameworks use native base path — always keep the prefix
-    const targetPath = req.url;
-    
-    // ✅ Fullstack support: check if project has a backend
+    // Frontend frameworks use native base path (basePath / base) — keep urlKey prefix.
+    // Backend-only projects don't use base path — strip urlKey prefix.
+    let targetPath = req.url;
     let targetPort = port;
     
+    // ✅ Fullstack support: check if project has a backend
     if (typeof getBackendPort === 'function') {
       try {
         const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
         if (typeof backendPort === 'number' && backendPort > 0) {
-          // Route /api/* requests to backend port
-          // Strip the urlKey prefix to check for /api/
           const pathForApiCheck = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '');
           const isApiRequest = pathForApiCheck === '/api' || pathForApiCheck.startsWith('/api/');
           if (isApiRequest) {
             targetPort = backendPort;
+            targetPath = pathForApiCheck || '/';
             logger.debug(`Routing API request to backend port: ${backendPort}`, { component: 'PreviewProxy' });
           }
         }
       } catch {
         // best-effort
       }
+    }
+    
+    // Backend-only projects: strip urlKey prefix (no basePath configured)
+    if (!hasFrontend && targetPort === port) {
+      targetPath = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
     }
 
     const effectiveTargetUrl = `http://${previewHost}:${targetPort}${targetPath}`;

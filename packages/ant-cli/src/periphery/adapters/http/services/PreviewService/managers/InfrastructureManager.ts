@@ -98,7 +98,7 @@ export class InfrastructureManager {
         args.push('-p', projectName);
       }
 
-      args.push('up', '-d', '--wait');
+      args.push('up', '-d', '--wait', '--quiet-pull');
 
       const child = spawn('docker', args, {
         cwd: composeDir,
@@ -130,8 +130,10 @@ export class InfrastructureManager {
       child.stderr?.on('data', (data: Buffer) => {
         const chunk = data.toString();
         stderr += chunk;
-        // Docker compose writes progress to stderr, treat as stdout for display
-        onLog('stdout', chunk);
+        const filtered = this.filterDockerProgress(chunk);
+        if (filtered) {
+          onLog('stdout', filtered);
+        }
       });
 
       child.on('close', (code) => {
@@ -220,8 +222,10 @@ export class InfrastructureManager {
       });
 
       child.stderr?.on('data', (data: Buffer) => {
-        // Docker compose writes progress to stderr
-        onLog('stdout', data.toString());
+        const filtered = this.filterDockerProgress(data.toString());
+        if (filtered) {
+          onLog('stdout', filtered);
+        }
       });
 
       child.on('close', (code) => {
@@ -299,6 +303,19 @@ export class InfrastructureManager {
     } catch {
       return [];
     }
+  }
+
+  private static readonly DOCKER_PROGRESS_RE = /^[a-f0-9]{12}\s+(Pulling|Downloading|Extracting|Waiting|Verifying|Already exists|Pull complete|Download complete)/i;
+
+  /**
+   * Filter out Docker image pull/push progress lines from stderr output.
+   * Returns the filtered string, or empty string if nothing meaningful remains.
+   */
+  private filterDockerProgress(chunk: string): string {
+    const filtered = chunk.split('\n')
+      .filter(line => !InfrastructureManager.DOCKER_PROGRESS_RE.test(line.trim()))
+      .join('\n');
+    return filtered.trim() ? filtered : '';
   }
 
   private parseServiceState(state: string): ServiceStatus['status'] {

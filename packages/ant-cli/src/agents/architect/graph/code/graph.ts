@@ -859,6 +859,9 @@ export function buildCodeGraph() {
       toolResults: null as any,     // Tool execution results
       conversationHistory: null as any,  // Multi-turn conversation
       interruption: null as any,         // Interruption details
+      // ✅ Plan↔tool loop (explore codebase before planning)
+      _planExploring: null as any,
+      planConversationHistory: null as any,
     } as any,
   } as any);
   
