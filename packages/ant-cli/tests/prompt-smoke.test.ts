@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import { join, basename } from 'path';
-import { FilePromptAdapter, initPartials } from '../src/periphery/adapters/prompt/FilePromptAdapter';
+import { FilePromptAdapter, initPartials, collectResolvedPartials } from '../src/periphery/adapters/prompt/FilePromptAdapter';
 
 // TemplateComposer registers extra helpers (includes, lower, etc.)
 // Import it to trigger helper registration before tests run.
@@ -178,6 +178,56 @@ describe('Template Smoke Tests', () => {
     if (missing.length > 0) {
       expect.fail(`Injection templates missing from manifest:\n  ${missing.join('\n  ')}`);
     }
+  });
+
+  it('all {{> partial}} references point to registered partials (integrity check)', async () => {
+    await initPartials(TEMPLATES_DIR);
+    const registeredNames = new Set(templateNames);
+    const brokenRefs: Array<{ template: string; missingPartial: string }> = [];
+
+    for (const name of templateNames) {
+      const filePath = join(TEMPLATES_DIR, `${name}.md`);
+      const source = await fs.readFile(filePath, 'utf8');
+      const pattern = /\{\{>\s*([\w/\-]+)\s*\}\}/g;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(source)) !== null) {
+        if (!registeredNames.has(match[1])) {
+          brokenRefs.push({ template: name, missingPartial: match[1] });
+        }
+      }
+    }
+
+    if (brokenRefs.length > 0) {
+      const report = brokenRefs
+        .map(r => `  ${r.template} → {{> ${r.missingPartial}}}`)
+        .join('\n');
+      expect.fail(
+        `${brokenRefs.length} broken partial reference(s) found:\n${report}`
+      );
+    }
+  });
+
+  it('secure-coding partial is resolved inside execute/rules and plan/rules-plan', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const rulesOutput = await adapter.render('code/phases/execute/rules', SAMPLE_VARS);
+    expect(rulesOutput).toContain('untrusted');
+    expect(rulesOutput).toContain('parameterized query');
+
+    const planRulesOutput = await adapter.render('code/phases/plan/rules-plan', SAMPLE_VARS);
+    expect(planRulesOutput).toContain('untrusted');
+    expect(planRulesOutput).toContain('parameterized query');
+  });
+
+  it('collectResolvedPartials tracks nested partials from templates', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const partials = collectResolvedPartials(['code/phases/execute/rules']);
+    expect(partials).toContain('code/base/injections/secure-coding');
+    expect(partials).toContain('code/base/injections/persistence-schema-rule');
+
+    const planPartials = collectResolvedPartials(['code/phases/plan/rules-plan']);
+    expect(planPartials).toContain('code/base/injections/secure-coding');
   });
 
   it('each template renders without throwing and produces non-empty output', async () => {

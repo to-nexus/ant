@@ -33,6 +33,8 @@ export interface PromptLogEntry {
   /** Prompt length for reference */
   promptLength?: number;
   tokenEstimate?: number;
+  /** Handlebars partials resolved inside the rendered templates */
+  resolvedPartials?: string[];
   /** Variables or partials that were missing during render */
   contractViolations?: Array<{ templateName: string; missingVars: string[] }>;
 }
@@ -171,6 +173,13 @@ export class PromptLogger {
       }
     }
     
+    if (entry.resolvedPartials && entry.resolvedPartials.length > 0) {
+      content += `- **Resolved Partials**:\n`;
+      for (const p of entry.resolvedPartials) {
+        content += `  - \`${p}.md\`\n`;
+      }
+    }
+    
     // Prompt stats (not content)
     if (entry.promptLength) {
       content += `- **Prompt Length**: ${entry.promptLength.toLocaleString()} chars\n`;
@@ -306,6 +315,7 @@ export async function logPrompt(
     callIndex?: number;
     templatePath?: string;
     usedTemplates?: string[];
+    resolvedPartials?: string[];
     injectedVariables?: Record<string, any>;
     hardcodedContent?: string;
     contractViolations?: Array<{ templateName: string; missingVars: string[] }>;
@@ -319,6 +329,7 @@ export async function logPrompt(
     callIndex: options?.callIndex,
     templatePath: options?.templatePath,
     usedTemplates: options?.usedTemplates,
+    resolvedPartials: options?.resolvedPartials,
     injectedVariables: options?.injectedVariables,
     hardcodedContent: options?.hardcodedContent,
     contractViolations: options?.contractViolations,

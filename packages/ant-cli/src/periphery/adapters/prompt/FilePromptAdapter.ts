@@ -117,6 +117,37 @@ export interface RenderViolation {
   missingVars: string[];
 }
 
+/**
+ * Recursively collect all Handlebars partial references from a template source.
+ * Scans for {{> partialName}} and follows each partial's own source for nested refs.
+ */
+export function collectResolvedPartials(templateNames: string[]): string[] {
+  const visited = new Set<string>();
+  const result: string[] = [];
+
+  function walk(source: string): void {
+    const pattern = /\{\{>\s*([\w/\-]+)\s*\}\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(source)) !== null) {
+      const name = match[1];
+      if (visited.has(name)) continue;
+      visited.add(name);
+      result.push(name);
+      const partialSrc = Handlebars.partials[name];
+      if (typeof partialSrc === 'string') {
+        walk(partialSrc);
+      }
+    }
+  }
+
+  for (const tmpl of templateNames) {
+    const src = Handlebars.partials[tmpl];
+    if (typeof src === 'string') walk(src);
+  }
+
+  return result;
+}
+
 export class FilePromptAdapter implements PromptPort {
   private baseDir: string;
   private _lastViolations: RenderViolation[] = [];
