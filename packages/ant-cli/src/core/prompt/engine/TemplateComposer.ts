@@ -3,50 +3,8 @@ import { CodebaseProfile } from "../../types";
 import { ProjectContext } from "../../types";
 import { PromptModeConfig } from "./ModeController";
 import { AssembledContext } from "./ContextAssembler";
-import Handlebars from 'handlebars';
 import { formatGitDiffForPrompt } from "../../codebase/GitDiffSummary";
 import { getLanguageInstruction, UserLanguage } from "../../utils/languageDetector";
-
-// Register Handlebars helpers
-Handlebars.registerHelper('add', function(a: number, b: number) {
-  return a + b;
-});
-
-// Basic comparison / boolean helpers (for doc-type specific prompt rules)
-// ✅ Use == for loose equality to handle number/string comparisons in templates
-Handlebars.registerHelper('eq', function(a: any, b: any) {
-  // eslint-disable-next-line eqeqeq
-  return a == b;
-});
-
-Handlebars.registerHelper('and', function(...args: any[]) {
-  // Last arg is Handlebars options object
-  const values = args.slice(0, -1);
-  return values.every(Boolean);
-});
-
-Handlebars.registerHelper('or', function(...args: any[]) {
-  // Last arg is Handlebars options object
-  const values = args.slice(0, -1);
-  return values.some(Boolean);
-});
-
-// Case-insensitive substring match (safe on null/undefined)
-Handlebars.registerHelper('includes', function(haystack: any, needle: any) {
-  if (haystack == null || needle == null) return false;
-  const h = String(haystack).toLowerCase();
-  const n = String(needle).toLowerCase();
-  return h.includes(n);
-});
-
-Handlebars.registerHelper('gte', function(a: any, b: any) {
-  return Number(a) >= Number(b);
-});
-
-Handlebars.registerHelper('lower', function(value: any) {
-  if (value == null) return '';
-  return String(value).toLowerCase();
-});
 
 /**
  * Composed prompt parts
