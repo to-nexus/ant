@@ -22,6 +22,7 @@
     "dev:infra:vector": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d",
     "dev:infra:vector:down": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down",
     
+    "test:cli": "pnpm --filter @ant/cli test",
     "build": "pnpm -r build",
     "build:cli": "pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",

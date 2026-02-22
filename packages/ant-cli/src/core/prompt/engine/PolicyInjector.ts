@@ -141,26 +141,20 @@ export class PolicyInjector {
    */
   buildGuardrailSection(modeConfig: PromptModeConfig): string {
     const guardrails: string[] = [];
-    
+
     guardrails.push('<guardrails>');
     guardrails.push('Before responding, you MUST:');
-    
-    // Job-specific guardrails
-    if (modeConfig.job === 'code') {
-      guardrails.push('1. ✓ Verify all code is complete (no ellipsis or placeholders)');
-      guardrails.push('2. ✓ Check all imports are valid');
-      guardrails.push('3. ✓ Ensure proper error handling');
-      guardrails.push('4. ✓ Validate types and interfaces');
-    } else if (modeConfig.job === 'design') {
-      guardrails.push('1. ✓ Include all required sections');
-      guardrails.push('2. ✓ Define clear interfaces and contracts');
-      guardrails.push('3. ✓ Consider edge cases and error scenarios');
-      guardrails.push('4. ✓ Specify data flow and dependencies');
+
+    const jobGuardrails = (this.ruleset as any)?.guardrails?.[modeConfig.job] as string[] | undefined;
+    if (jobGuardrails && jobGuardrails.length > 0) {
+      jobGuardrails.forEach((rule, i) => {
+        guardrails.push(`${i + 1}. ✓ ${rule}`);
+      });
     }
-    
+
     guardrails.push('\nIf validation fails, revise your output before responding.');
     guardrails.push('</guardrails>');
-    
+
     return guardrails.join('\n');
   }
 }

@@ -152,6 +152,13 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   if (!initial.isResume && process.env.ANT_IS_RESUME === 'true') {
     initial.isResume = true;
   }
+
+  // Write resume marker to token log so run boundaries are visible
+  if (initial.isResume && initial.context?.featurePath && (initial as any).jobId) {
+    const { getTokenLogger } = await import('../../../../core/utils/tokenLogger');
+    const logger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: (initial as any).jobId });
+    logger.logResumeMarker().catch(() => {});
+  }
   
   // ✅ FIX: Save directive to session EARLY (before graph invoke)
   // Ensures directive survives early interruptions (triage/detectEnvironment stage)

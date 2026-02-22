@@ -172,26 +172,25 @@ export class WorkspacePathResolver {
       return process.env.ANT_CLI_ROOT;
     }
     
-    // 2. Calculate from current file location
-    // This file is at: packages/ant-cli/src/infrastructure/workspace/WorkspaceResolver.ts
-    // Or in dist:      packages/ant-cli/dist/infrastructure/workspace/WorkspaceResolver.js
-    // We need to go up to: packages/ant-cli/dist (or src)
+    // 2. Calculate from current file location (or bundled output location)
+    //    esbuild bundles everything into dist/composition/server.js,
+    //    so we cannot count "../.." levels — find /dist/ in the path instead.
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     
-    // Check if we're in dist or src
-    if (currentDir.includes('/dist/')) {
-      // In dist: go up to dist root
-      return path.resolve(currentDir, '../..');
-    } else {
-      // In src: go up to src root, then point to dist (for templates)
-      const srcRoot = path.resolve(currentDir, '../..');
-      const distRoot = path.resolve(srcRoot, '../dist');
-      // If dist exists, use it; otherwise use src
-      if (fs.existsSync(distRoot)) {
-        return distRoot;
-      }
-      return srcRoot;
+    const distMarker = `${path.sep}dist${path.sep}`;
+    const distIdx = currentDir.lastIndexOf(distMarker);
+    if (distIdx !== -1) {
+      return currentDir.substring(0, distIdx + distMarker.length - 1); // include "dist", exclude trailing sep
     }
+    // Also handle path ending with /dist (no trailing separator)
+    if (currentDir.endsWith(`${path.sep}dist`)) {
+      return currentDir;
+    }
+    
+    // 3. Not in dist — dev mode (tsx runs from src/ directly)
+    //    WorkspaceResolver.ts is at src/infrastructure/workspace/
+    //    Go up 2 levels to reach src/
+    return path.resolve(currentDir, '../..');
   }
   
   /**

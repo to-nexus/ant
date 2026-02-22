@@ -142,6 +142,7 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
   if (runtime.validation.typeCheck) console.log(`   ✅ ${runtime.validation.typeCheck.name}`);
   if (runtime.validation.lint) console.log(`   ✅ ${runtime.validation.lint.name}`);
   if (runtime.validation.build) console.log(`   ✅ ${runtime.validation.build.name}`);
+  if (runtime.validation.test) console.log(`   ✅ ${runtime.validation.test.name}`);
   if (!runtime.validation.typeCheck && !runtime.validation.lint && !runtime.validation.build) {
     console.log(`   ⚠️  No validation steps configured for ${projectDetection.language}`);
   }
@@ -223,6 +224,11 @@ export async function runtimeValidate(state: ArchitectGraphState): Promise<Archi
     const missingStaticAssets = isFrontendProject
       ? await findMissingPublicAssetReferences(repoRoot, fileSystem, p)
       : [];
+    // 5. Test (language-specific: go test ./... / npm test / etc.)
+    // Safety net — LLM already runs tests via run_command in verification step.
+    // Only runs if test config indicators exist; skips silently otherwise.
+    await runTest(result, resolvedPath, repoRoot, fileSystem, commandPort, projectDetection, runtime, p);
+
     if (missingStaticAssets.length > 0) {
       const preview = missingStaticAssets.slice(0, 12);
       const lines = preview.map(m => `- ${m.file}: ${m.assetPath} (expected: public/${m.assetPath.replace(/^\//, '')})`);
@@ -832,6 +838,98 @@ async function runBuild(
     }
   } else {
     console.log(`✅ ${buildConfig.name} passed`);
+  }
+}
+
+/**
+ * Run test suite (safety net — LLM already runs tests via run_command in verify step).
+ * Only runs if test config files are detected. Skips silently if no test infrastructure.
+ */
+async function runTest(
+  result: RuntimeValidationResult,
+  resolvedPath: string,
+  repoRoot: string,
+  fileSystem: any,
+  commandPort: any,
+  projectDetection: any,
+  runtime: ProjectRuntimeConfig,
+  p: any
+): Promise<void> {
+  const testConfig = runtime.validation.test;
+  if (!testConfig) {
+    return;
+  }
+
+  const fsRoot = fileSystem.getRootPath();
+  let hasIndicator = false;
+  for (const indicator of testConfig.indicators) {
+    if (await fileSystem.fileExists(p.relative(fsRoot, p.join(resolvedPath, indicator)))) {
+      hasIndicator = true;
+      break;
+    }
+  }
+
+  if (!hasIndicator) {
+    return;
+  }
+
+  // Node.js: check if test script exists in package.json
+  const isNodeProject = projectDetection.language === Language.TYPESCRIPT ||
+                         projectDetection.language === Language.JAVASCRIPT;
+  let testCommand: string;
+
+  if (isNodeProject) {
+    const pkgJsonPath = p.join(resolvedPath, 'package.json');
+    const pkgContent = await fileSystem.readFile(p.relative(fsRoot, pkgJsonPath));
+    if (!pkgContent) return;
+
+    try {
+      const pkg = JSON.parse(pkgContent);
+      if (!pkg.scripts?.test) return;
+    } catch {
+      return;
+    }
+
+    const pm = await commandPort.detectPackageManager(resolvedPath);
+    testCommand = testConfig.getCommand(pm || undefined);
+  } else {
+    testCommand = testConfig.getCommand();
+  }
+
+  console.log(`🧪 Running ${testConfig.name}...`);
+
+  const testResult = await commandPort.execute(testCommand, {
+    cwd: resolvedPath,
+    timeout: 3 * 60 * 1000, // 3 minutes
+  });
+
+  if (!testResult.success) {
+    result.passed = false;
+    const errorOutput = [testResult.stderr, testResult.stdout]
+      .filter((s: string) => s && s.trim().length > 0)
+      .join('\n\n');
+
+    const parserType = testConfig.parserType || 'generic';
+    const testParser = ErrorParserFactory.create(parserType, {
+      projectRoot: resolvedPath,
+      maxErrors: 30
+    });
+    const parsedTestErrors = testParser.parse(errorOutput);
+    result.testErrors = testParser.format(parsedTestErrors);
+
+    if (result.testErrors!.length === 0 && errorOutput && errorOutput.trim().length > 0) {
+      result.testErrors = [errorOutput];
+    }
+
+    console.error(`❌ ${testConfig.name} failed:`);
+    if (result.testErrors && result.testErrors.length > 0) {
+      result.testErrors!.slice(0, 5).forEach(err => console.error(`   ${err}`));
+      if (result.testErrors!.length > 5) {
+        console.error(`   ... and ${result.testErrors!.length - 5} more errors`);
+      }
+    }
+  } else {
+    console.log(`✅ ${testConfig.name} passed`);
   }
 }
 

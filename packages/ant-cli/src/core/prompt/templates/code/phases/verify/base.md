@@ -82,6 +82,21 @@ Run the project's dev/start command to verify the application starts.
 
 **Constraint**: If `docker compose up` fails, still attempt build. Skip runtime.
 
+### Step 4: Test Execution (if test files exist)
+
+**Principle**: If the project contains test files, run them to verify functional correctness beyond build success.
+
+| Checkpoint | Action |
+|-----------|--------|
+| **Detect test files** | Observe: does the project contain test files? (`*_test.go`, `*.test.ts`, `*.spec.ts`, `test_*.py`, etc.) If NONE exist, skip this step entirely. |
+| **Run tests** | Execute the project's test command (observed from config: `go test ./...`, `npm test`, `pytest`, etc.) |
+| **Fix failures** | If tests fail: fix test code first. Modify source code ONLY if the test correctly identifies a genuine bug. |
+
+**Constraint**: Do NOT create new test files. Only run and fix existing tests.
+**Constraint**: If test infrastructure is missing (no test runner configured), skip this step.
+
+⚠️ **Blind spot**: Test failures caused by environment configuration (missing env vars, unavailable services) rather than code bugs. Verify environment is correctly configured before debugging test code.
+
 ## Completion
 
 After completing all applicable steps, output `<done>true</done>`.

@@ -78,6 +78,20 @@
       ]
     }
   },
+  "guardrails": {
+    "code": [
+      "Verify all code is complete (no ellipsis or placeholders)",
+      "Check all imports are valid",
+      "Ensure proper error handling",
+      "Validate types and interfaces"
+    ],
+    "design": [
+      "Include all required sections",
+      "Define clear interfaces and contracts",
+      "Consider edge cases and error scenarios",
+      "Specify data flow and dependencies"
+    ]
+  },
   "strict_mode": {
     "enabled_for": ["code"],
     "rules": [

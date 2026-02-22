@@ -34,6 +34,7 @@ if (envPath) {
 import { ExpressServerAdapter } from "../periphery/adapters/http/express";
 import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
 import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
+import { initPartials } from "../periphery/adapters/prompt/FilePromptAdapter";
 
 /**
  * Server Entry Point
@@ -94,11 +95,16 @@ async function main() {
     console.log(`   Cloud URL: ${cloudUrl}`);
   }
   
+  // Register all Handlebars partials before accepting requests
+  const partialResult = await initPartials();
+  if (partialResult.failed.length > 0) {
+    console.error(`⛔ ${partialResult.failed.length} partial(s) failed to register — server may produce incomplete prompts`);
+  }
+
   // Create server with mode configuration and WorkspaceService
   const server = new ExpressServerAdapter(mode, workspacesPath, cloudUrl, workspaceService);
   
   try {
-    // Start server
     await server.start(port);
     console.log(`\n✅ Server listening on http://localhost:${port}`);
     console.log(`📡 Ready to accept requests\n`);

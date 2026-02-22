@@ -143,7 +143,8 @@ export class TemplateComposer {
         // ✅ Used in {{#if hasUiDoc}} for UI specification existence
         hasUiDoc: (assembled as any).hasUiDoc || false
       },
-      failedTemplates
+      failedTemplates,
+      true // critical: base template failure = job must fail
     );
     
     // 5. Render rules template
@@ -155,7 +156,8 @@ export class TemplateComposer {
         currentTask: assembled.currentTask || null,
         isLastTaskForDocument: assembled.isLastTaskForDocument || false
       },
-      failedTemplates
+      failedTemplates,
+      true // critical: rules template failure = job must fail
     );
     
     // 6. Build injections
@@ -414,18 +416,19 @@ export class TemplateComposer {
   private async renderTemplate(
     templatePath: string,
     vars: Record<string, any>,
-    failedTemplates?: string[]
+    failedTemplates?: string[],
+    critical: boolean = false
   ): Promise<string> {
     try {
       return await this.promptPort.render(templatePath, vars);
     } catch (error) {
-      if (templatePath.includes('phases/plan/')) {
-        return '';
-      }
-      
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`❌ [TemplateComposer] TEMPLATE RENDER FAILED: ${templatePath}`);
-      console.error(`   → ${errorMsg}`);
+
+      if (critical) {
+        throw new Error(`[TemplateComposer] Critical template failed: ${templatePath} → ${errorMsg}`);
+      }
+
+      console.warn(`⚠️ [TemplateComposer] Non-critical template failed: ${templatePath} → ${errorMsg}`);
       if (failedTemplates) {
         failedTemplates.push(templatePath);
       }

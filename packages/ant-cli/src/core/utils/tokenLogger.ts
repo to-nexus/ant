@@ -1,57 +1,63 @@
 /**
- * Token Logger
- * 
+ * Token Logger — JSONL format
+ *
  * Logs per-LLM-call token usage for debugging and cost analysis.
- * - Actual API token usage (inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens)
- * - Context metrics (conversation history length, project code files count)
- * - Derived metrics (cache hit ratio, cumulative totals)
- * 
- * Creates files in sessions/debug/tokens/ directory.
- * 
- * File naming: {jobId}.json
+ * Each line is a self-contained JSON object (JSONL / newline-delimited JSON).
+ *
+ * File location: sessions/debug/tokens/token-{jobId}.jsonl
+ *
+ * Entry types:
+ *   - "call"           Per-LLM-call token usage (default)
+ *   - "resume_marker"  Written on job resume to mark run boundaries
  */
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { getSessionDebugDir } from './sessionPaths';
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Types
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 export interface TokenLogEntry {
-  /** Task identifier */
+  type: 'call';
   taskId: string;
-  /** Task display name */
   taskName: string;
-  /** Graph node that made the LLM call */
   node: string;
-  /** nth LLM call within this task (0-based) */
   callIndex: number;
-  /** ISO timestamp */
   timestamp: string;
 
-  /** Actual API input tokens (non-cache) */
   inputTokens: number;
-  /** Actual API output tokens */
   outputTokens: number;
-  /** Tokens served from prompt cache */
   cacheReadTokens: number;
-  /** Tokens used to create cache entries */
   cacheCreationTokens: number;
 
-  /** Number of messages in conversation history */
+  /** Cost-weighted input: input*1.0 + cacheCreation*1.25 + cacheRead*0.1 */
+  billableInputTokens: number;
+
   conversationHistoryLength: number;
-  /** Number of project code context files loaded */
   projectCodeContextFiles: number;
-  /** Estimated prompt size in characters */
   estimatedPromptChars: number;
 
   /** cacheRead / (cacheRead + input), 0-1 */
   cacheHitRatio: number;
-  /** Running total of input tokens for this task */
+  /** Running total of raw input tokens for this task */
   taskCumulativeInput: number;
   /** Running total of output tokens for this task */
   taskCumulativeOutput: number;
-  /** Current graph recursion depth (for debugging recursion limit issues) */
+  /** Running total of billable input for this task */
+  taskCumulativeBillableInput: number;
   recursionCount?: number;
 }
+
+export interface ResumeMarkerEntry {
+  type: 'resume_marker';
+  timestamp: string;
+  jobId: string;
+  message: string;
+}
+
+export type TokenLogLine = TokenLogEntry | ResumeMarkerEntry;
 
 /** Context passed from LLM call sites to TokenLogger */
 export interface TokenLogContext {
@@ -64,7 +70,6 @@ export interface TokenLogContext {
   estimatedPromptChars?: number;
   taskCumulativeInput?: number;
   taskCumulativeOutput?: number;
-  /** Current graph recursion depth (for debugging recursion limit issues) */
   recursionCount?: number;
 }
 
@@ -73,29 +78,44 @@ export interface TokenLoggerOptions {
   jobId: string;
 }
 
-/**
- * Token Logger class for tracking per-call LLM token usage
- */
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Helpers
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export function computeBillableInput(
+  inputTokens: number,
+  cacheCreationTokens: number,
+  cacheReadTokens: number,
+): number {
+  return Math.round(inputTokens * 1.0 + cacheCreationTokens * 1.25 + cacheReadTokens * 0.1);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TokenLogger
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 export class TokenLogger {
-  private options: TokenLoggerOptions;
   private logDirPath: string;
   private logFilePath: string;
-  private initialized = false;
-  private hasEntries = false;
+  private dirEnsured = false;
   private writeQueue: Promise<void> = Promise.resolve();
+  private jobId: string;
 
-  constructor(options: TokenLoggerOptions) {
-    this.options = options;
+  /** Per-task cumulative billable input (tracked internally so call sites don't need to) */
+  private taskBillableCumulative = new Map<string, number>();
+
+  constructor(private options: TokenLoggerOptions) {
+    this.jobId = options.jobId;
     this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'tokens');
-    this.logFilePath = path.join(this.logDirPath, `token-${options.jobId}.json`);
+    this.logFilePath = path.join(this.logDirPath, `token-${options.jobId}.jsonl`);
   }
 
   /**
-   * Log a token usage entry (non-blocking, fire-and-forget)
+   * Log a per-call token usage entry.
    */
   async log(
     usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number },
-    context: TokenLogContext
+    context: TokenLogContext,
   ): Promise<void> {
     try {
       const inputTokens = usage.inputTokens || 0;
@@ -105,8 +125,14 @@ export class TokenLogger {
       const totalForRatio = cacheReadTokens + inputTokens;
 
       const cacheHitRatio = totalForRatio > 0 ? Math.round((cacheReadTokens / totalForRatio) * 1000) / 1000 : 0;
+      const billable = computeBillableInput(inputTokens, cacheCreationTokens, cacheReadTokens);
+
+      const prevBillable = this.taskBillableCumulative.get(context.taskId) ?? 0;
+      const newBillableCum = prevBillable + billable;
+      this.taskBillableCumulative.set(context.taskId, newBillableCum);
 
       const entry: TokenLogEntry = {
+        type: 'call',
         taskId: context.taskId,
         taskName: context.taskName,
         node: context.node,
@@ -116,12 +142,14 @@ export class TokenLogger {
         outputTokens,
         cacheReadTokens,
         cacheCreationTokens,
+        billableInputTokens: billable,
         conversationHistoryLength: context.conversationHistoryLength ?? 0,
         projectCodeContextFiles: context.projectCodeContextFiles ?? 0,
         estimatedPromptChars: context.estimatedPromptChars ?? 0,
         cacheHitRatio,
         taskCumulativeInput: (context.taskCumulativeInput ?? 0) + inputTokens,
         taskCumulativeOutput: (context.taskCumulativeOutput ?? 0) + outputTokens,
+        taskCumulativeBillableInput: newBillableCum,
         ...(context.recursionCount !== undefined ? { recursionCount: context.recursionCount } : {}),
       };
 
@@ -130,109 +158,69 @@ export class TokenLogger {
         console.warn(
           `⚠️  [TokenMonitor] Low cache hit: ${(cacheHitRatio * 100).toFixed(1)}% ` +
           `(task=${context.taskId}, call=${context.callIndex}). ` +
-          `cacheRead=${cacheReadTokens} input=${inputTokens} creation=${cacheCreationTokens}`
+          `cacheRead=${cacheReadTokens} input=${inputTokens} creation=${cacheCreationTokens}`,
         );
       }
 
       if (context.callIndex > 0 && context.callIndex % 5 === 0 && context.node === 'codeGen') {
-        const cumInput = context.taskCumulativeInput + inputTokens;
-        const cumOutput = context.taskCumulativeOutput + outputTokens;
+        const cumInput = (context.taskCumulativeInput ?? 0) + inputTokens;
+        const cumOutput = (context.taskCumulativeOutput ?? 0) + outputTokens;
         console.log(
           `📊 [TokenMonitor] Task ${context.taskId} iteration ${context.callIndex}: ` +
-          `cumulative ${cumInput + cumOutput} tokens (in=${cumInput} out=${cumOutput})`
+          `cumulative ${cumInput + cumOutput} tokens (in=${cumInput} out=${cumOutput})`,
         );
       }
 
       if (context.callIndex >= 15 && context.node === 'codeGen') {
         console.warn(
           `⚠️  [TokenMonitor] High iteration count: ${context.callIndex} calls ` +
-          `(task=${context.taskId} "${context.taskName}")`
+          `(task=${context.taskId} "${context.taskName}")`,
         );
       }
 
-      await this.appendEntry(entry);
+      await this.appendLine(entry);
     } catch (error) {
-      // Non-blocking: don't let logging failures affect execution
       console.warn(`⚠️  [TokenLogger] Failed to log token usage:`, error);
     }
   }
 
   /**
-   * Serialize all writes through a promise queue to prevent race conditions.
-   * Without this, concurrent appendEntry calls can read the file simultaneously,
-   * both decide no comma is needed, and produce `}{` instead of `},{`.
+   * Write a resume marker to the log.
+   * Called on job resume to clearly separate run boundaries.
+   */
+  async logResumeMarker(): Promise<void> {
+    try {
+      const marker: ResumeMarkerEntry = {
+        type: 'resume_marker',
+        timestamp: new Date().toISOString(),
+        jobId: this.jobId,
+        message: 'Job resumed — entries below are from a new run',
+      };
+      await this.appendLine(marker);
+    } catch (error) {
+      console.warn(`⚠️  [TokenLogger] Failed to write resume marker:`, error);
+    }
+  }
+
+  /**
+   * Serialize writes through a promise queue to prevent interleaving.
    */
   private enqueue(fn: () => Promise<void>): Promise<void> {
     this.writeQueue = this.writeQueue.then(fn, fn);
     return this.writeQueue;
   }
 
-  private async appendEntry(entry: TokenLogEntry): Promise<void> {
+  /**
+   * Append a single JSONL line. Each line is compact JSON + newline.
+   */
+  private async appendLine(data: TokenLogLine): Promise<void> {
     return this.enqueue(async () => {
-      await this.ensureLogDir();
-      const entryJson = JSON.stringify(entry, null, 2);
-
-      if (!this.initialized) {
-        await this.initLogFile();
-      } else {
-        // File always ends with \n]\n (3 bytes) — truncate to reopen the array
-        const stat = await fs.stat(this.logFilePath);
-        if (stat.size > 3) {
-          await fs.truncate(this.logFilePath, stat.size - 3);
-        }
+      if (!this.dirEnsured) {
+        await fs.mkdir(this.logDirPath, { recursive: true }).catch(() => {});
+        this.dirEnsured = true;
       }
-
-      const prefix = this.hasEntries ? ',\n' : '';
-      await fs.appendFile(this.logFilePath, prefix + entryJson + '\n]\n');
-      this.hasEntries = true;
+      await fs.appendFile(this.logFilePath, JSON.stringify(data) + '\n');
     });
-  }
-
-  /**
-   * No-op: file is always valid JSON after each appendEntry.
-   * Kept for API compatibility with clearTokenLogger.
-   */
-  async finalize(): Promise<void> {}
-
-  /**
-   * Read existing log file to determine state, handling both properly closed
-   * files (\n]\n trailer) and crash-recovered files (no closing bracket).
-   */
-  private async initLogFile(): Promise<void> {
-    try {
-      const stat = await fs.stat(this.logFilePath);
-      if (stat.size >= 3) {
-        const fh = await fs.open(this.logFilePath, 'r');
-        try {
-          const buf = Buffer.alloc(3);
-          await fh.read(buf, 0, 3, stat.size - 3);
-
-          if (buf.toString('utf-8') === '\n]\n') {
-            await fs.truncate(this.logFilePath, stat.size - 3);
-            this.hasEntries = stat.size > 5;
-          } else {
-            this.hasEntries = stat.size > 2;
-          }
-        } finally {
-          await fh.close();
-        }
-      } else {
-        await fs.writeFile(this.logFilePath, '[\n');
-        this.hasEntries = false;
-      }
-    } catch {
-      await fs.writeFile(this.logFilePath, '[\n');
-      this.hasEntries = false;
-    }
-    this.initialized = true;
-  }
-
-  private async ensureLogDir(): Promise<void> {
-    try {
-      await fs.mkdir(this.logDirPath, { recursive: true });
-    } catch {
-      // Directory might already exist
-    }
   }
 
   getLogFilePath(): string {
@@ -247,7 +235,7 @@ export class TokenLogger {
 const loggerInstances: Map<string, TokenLogger> = new Map();
 
 /**
- * Get or create a token logger for a job
+ * Get or create a token logger for a job.
  */
 export function getTokenLogger(options: TokenLoggerOptions): TokenLogger {
   const key = options.jobId;
@@ -258,12 +246,8 @@ export function getTokenLogger(options: TokenLoggerOptions): TokenLogger {
 }
 
 /**
- * Clear and finalize token logger instance (call when job completes)
+ * Clear token logger instance (call when job completes).
  */
 export async function clearTokenLogger(jobId: string): Promise<void> {
-  const logger = loggerInstances.get(jobId);
-  if (logger) {
-    await logger.finalize();
-    loggerInstances.delete(jobId);
-  }
+  loggerInstances.delete(jobId);
 }

@@ -52,6 +52,7 @@ export interface ValidationConfig {
   typeCheck: ValidationStep | null;
   lint: ValidationStep | null;
   build: ValidationStep | null;
+  test: ValidationStep | null;
 }
 
 export interface LongRunningConfig {
@@ -111,6 +112,14 @@ const NODE_RUNTIME: ProjectRuntimeConfig = {
         return `${pm || 'npm'} run build`;
       },
       parserType: 'vite',  // Vite parser as default for Node.js build errors
+    },
+    test: {
+      name: 'Test',
+      indicators: ['vitest.config.ts', 'vitest.config.js', 'jest.config.ts', 'jest.config.js', 'jest.config.cjs'],
+      getCommand(pm?: string): string {
+        return `${pm || 'npm'} test -- --run 2>/dev/null || ${pm || 'npm'} test`;
+      },
+      parserType: 'jest',
     },
   },
 
@@ -190,6 +199,14 @@ const GO_RUNTIME: ProjectRuntimeConfig = {
       },
       parserType: 'go',
     },
+    test: {
+      name: 'Go test',
+      indicators: ['go.mod', 'go.work'],
+      getCommand(): string {
+        return 'go test ./...';
+      },
+      parserType: 'go',
+    },
   },
 
   longRunning: {
@@ -224,6 +241,7 @@ const FALLBACK_RUNTIME: ProjectRuntimeConfig = {
     typeCheck: null,
     lint: null,
     build: null,
+    test: null,
   },
 
   longRunning: {

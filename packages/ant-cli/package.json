@@ -8,7 +8,8 @@
     "aidev": "./dist/index.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "prebuild": "vitest run",
     "dev:server": "PORT=4100 NODE_ENV=development NODE_OPTIONS='--max-old-space-size=8192' tsx src/composition/server.ts",
     "dev:realtime-server": "PORT=4101 NODE_ENV=development tsx src/infrastructure/realtime/start-realtime-server.ts",
     "dev:job-worker": "NODE_ENV=development NODE_OPTIONS='--max-old-space-size=8192' tsx src/infrastructure/worker/start-job-worker.ts",
@@ -75,6 +76,7 @@
     "concurrently": "^9.2.1",
     "esbuild": "^0.27.2",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

@@ -90,7 +90,7 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   // ✅ Safety Net D: Verification task codeGen call budget
   if (isVerifyTask) {
     const callIndex = state._codeGenCallIndex || 0;
-    const maxVerificationCalls = 15;
+    const maxVerificationCalls = 22;
     if (callIndex >= maxVerificationCalls) {
       console.warn(`⚠️  [Router] Verification codeGen call limit reached (${callIndex}/${maxVerificationCalls})`);
       console.warn(`   🚨 Forcing validation to prevent runaway loop`);
