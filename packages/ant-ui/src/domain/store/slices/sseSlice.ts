@@ -334,7 +334,17 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           const message = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
           if (message) {
             const updatedContents = [...message.contents];
-            updatedContents[event.contentIndex] = event.content;
+            const existing = updatedContents[event.contentIndex];
+            // Merge metadata instead of replacing — preserves locally-set fields
+            // like choiceSelected that the server event doesn't carry.
+            updatedContents[event.contentIndex] = {
+              ...existing,
+              ...event.content,
+              metadata: {
+                ...existing?.metadata,
+                ...event.content?.metadata,
+              },
+            };
             get().updateChatMessage(event.messageId, { 
               contents: updatedContents,
               isStreaming: true 

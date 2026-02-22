@@ -61,6 +61,26 @@ function isRecursionLimitError(error: Error): boolean {
   return /recursion limit/i.test(msg);
 }
 
+/**
+ * Check if an error is a network/timeout error (e.g. computer sleep, network down).
+ * Consecutive timeouts across tasks indicate infrastructure-level issues.
+ */
+function isTimeoutError(error: Error): boolean {
+  const msg = error.message || '';
+  return (
+    /timed? ?out/i.test(msg) ||
+    /ETIMEDOUT/i.test(msg) ||
+    /ECONNRESET/i.test(msg) ||
+    /ECONNREFUSED/i.test(msg) ||
+    /ENOTFOUND/i.test(msg) ||
+    /network/i.test(msg) ||
+    /socket hang up/i.test(msg) ||
+    /fetch failed/i.test(msg)
+  );
+}
+
+const CONSECUTIVE_TIMEOUT_LIMIT = 3;
+
 export class TaskOrchestrator<T extends BaseTask> {
   // Shared state (protected by lock)
   private taskQueue: TaskQueue<T>;
@@ -89,6 +109,11 @@ export class TaskOrchestrator<T extends BaseTask> {
   // ✅ Tracks whether any task was paused due to recursion limit.
   // Unlike failedTasks (permanent), interrupted tasks remain in the queue for resume.
   private hasInterruptedTasks = false;
+
+  // Consecutive timeout counter across all tasks.
+  // Reset on any non-timeout error or success. When it reaches CONSECUTIVE_TIMEOUT_LIMIT,
+  // the orchestrator pauses (interrupt) — indicates infrastructure-level issues (sleep, network).
+  private consecutiveTimeouts = 0;
 
   // Configuration
   private readonly config: OrchestratorConfig;
@@ -201,6 +226,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.runningTasks.delete(workerId);
       task.completed = true;
       this.completedTasks.push(task);
+      this.consecutiveTimeouts = 0;
 
       if (tokenUsage) {
         this.addTokenUsage(tokenUsage);
@@ -262,6 +288,36 @@ export class TaskOrchestrator<T extends BaseTask> {
 
       this.callbacks.onTaskFailure?.(task, error, workerId);
 
+      // ✅ Consecutive timeout detection: if infrastructure is down (sleep, network),
+      // all LLM calls will timeout. Pause orchestrator instead of burning retries.
+      if (isTimeoutError(error)) {
+        this.consecutiveTimeouts++;
+        if (this.consecutiveTimeouts >= CONSECUTIVE_TIMEOUT_LIMIT) {
+          console.error(
+            `[Orchestrator] ${this.consecutiveTimeouts} consecutive timeout errors detected — infrastructure may be down. Pausing orchestrator.`,
+          );
+          task.interrupted = true;
+          this.hasInterruptedTasks = true;
+          this.failedTasks.push({
+            task,
+            error: new Error(`Task interrupted: ${this.consecutiveTimeouts} consecutive timeouts (${error.message})`),
+            timestamp: new Date().toISOString(),
+          });
+          try {
+            await this.saveCheckpoint({ reason: 'consecutive_timeouts', canResume: true });
+          } catch (err) {
+            console.warn(`[Orchestrator] Post-timeout-interrupt checkpoint failed:`, err);
+          }
+          this.drain();
+          this.signalWorkersToStop();
+          this.broadcastKanban();
+          this.checkAllDone();
+          return;
+        }
+      } else {
+        this.consecutiveTimeouts = 0;
+      }
+
       // ✅ Recursion limit: immediate interrupt — do NOT re-queue.
       // Re-queuing the same task with the same recursion budget causes an
       // infinite loop (task runs → hits limit → re-queued → runs again → …).
@@ -312,6 +368,27 @@ export class TaskOrchestrator<T extends BaseTask> {
           console.error(
             `[Orchestrator] Task "${task.name}" PERMANENTLY FAILED after ${attempts} attempts (worker ${workerId}): ${error.message}`,
           );
+        }
+
+        // If all remaining queue tasks are verification/final, skip them and drain.
+        // Running verification after predecessor failures is pointless — saves time and tokens.
+        const remaining = this.taskQueue.getAll();
+        const allRemainingAreFinal = remaining.length > 0 && remaining.every(
+          t => t.type === 'verification' || t.priority >= 1000
+        );
+        if (allRemainingAreFinal && this.runningTasks.size === 0) {
+          for (const t of remaining) {
+            this.taskQueue.pop();
+            this.failedTasks.push({
+              task: t,
+              error: new Error(`Skipped: predecessor task "${task.name}" failed`),
+              timestamp: new Date().toISOString(),
+            });
+          }
+          console.warn(
+            `[Orchestrator] Draining: ${remaining.length} verification/final task(s) skipped due to predecessor failure`,
+          );
+          this.drain();
         }
       } else {
         // Transient error — re-queue for retry

@@ -20,6 +20,7 @@ import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClie
 import { RunCommandArgs, ServerProcess } from '../types';
 import { checkOrchestratorPortSafeguard } from '../utils/helpers';
 import { terminateProcessTree } from '../../../../../../../periphery/adapters/command/processTree';
+import { normalizeToCodebasePath } from '../../../../../../../core/utils/pathNormalizer';
 import { 
   LONG_RUNNING_PATTERNS, 
   ERROR_PATTERNS, 
@@ -108,16 +109,29 @@ Or use a different approach that doesn't require initialization.`;
                            /\bgo\s+mod\s+(tidy|download)\b/.test(normalizedCommand);
   const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
   
-  // ✅ Resolve working directory - PROJECT ROOT is the base
-  // All paths are relative to project root (e.g., ant-ogf/)
-  // - codebase/... for code
-  // - features/<feature>/inputs/assets/... for assets
+  // ✅ Resolve working directory - CODEBASE is the default base
+  // Default cwd = codebase/ (where 99% of commands run: build, test, install, etc.)
+  // If working_directory is provided, normalizeToCodebasePath decides:
+  //   - inputs/, outputs/, sessions/ → feature root based (Rule 3: sibling dirs)
+  //   - everything else → codebase/ based (Rule 4: prepend codebase/)
+  // This ensures shell file writes (cat >, heredoc) land inside codebase/,
+  // while asset copies from inputs/ remain accessible via explicit working_directory.
   const p = await import('path');
-  const projectPath = fileSystem.getRootPath();  // Feature root (scope root for file operations)
-  
-  const workingDir = working_directory 
-    ? (p.isAbsolute(working_directory) ? working_directory : p.join(projectPath, working_directory))
-    : projectPath;
+  const gitPort = state.deps?.git;
+  const projectPath = fileSystem.getRootPath();
+  const codebasePath = gitPort ? await gitPort.getRepoRoot() : projectPath;
+
+  let workingDir: string;
+  if (working_directory) {
+    if (p.isAbsolute(working_directory)) {
+      workingDir = working_directory;
+    } else {
+      const { normalized } = normalizeToCodebasePath(working_directory);
+      workingDir = p.join(projectPath, normalized);
+    }
+  } else {
+    workingDir = codebasePath;
+  }
   
   console.log(`\n   🔧 Running command: ${normalizedCommand}`);
   console.log(`   📁 Working directory: ${workingDir}`);

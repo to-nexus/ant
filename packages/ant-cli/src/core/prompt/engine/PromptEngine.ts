@@ -89,7 +89,8 @@ export class PromptEngine {
       job,
       context,
       artifacts,
-      mode
+      mode,
+      taskType
     );
     
     // Layer 2: Assemble context
@@ -212,7 +213,8 @@ export class PromptEngine {
       job,
       context,
       artifacts,
-      mode
+      mode,
+      taskType
     );
     
     // Layer 2: Assemble context
