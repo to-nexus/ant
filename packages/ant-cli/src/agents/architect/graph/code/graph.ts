@@ -1047,10 +1047,10 @@ export function buildCodeGraph() {
         return "enforce";
       }
       
-      // Exceeded retries
+      // Exceeded retries — stop looping, complete task with unresolved violations
       console.log(`⚠️  Task "${s.currentTask?.name}" exhausted retries (${s.retries}/${s.maxRetries})`);
-      console.log(`   Plan node will create error task and move to next task\n`);
-      return "enforce";  // ← Let plan handle retry limit logic
+      console.log(`   Unresolved violations remain — moving on to prevent infinite loop.\n`);
+      return "learn";
     }) as any,
     { enforce: "enforce", learn: "learn" } as any
   );

@@ -117,6 +117,21 @@ CRITICAL:
 
 **Constraint**: Description references the implemented features by scope (not by file path). The executor observes actual code to determine test targets.
 
+### Per-Package Test Splitting
+
+**Observation target**: Does the project contain multiple independently buildable packages or services?
+
+| Checkpoint | Strategy |
+|-----------|----------|
+| **Multiple packages/services observed** | Create one test generation task per package (priority 850, 851, 852, ...). Each task targets a single package scope. |
+| **Single package** | Create one test generation task. |
+
+**Principle**: Each test task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
+
+**Constraint**: Each per-package test task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
+
+**Constraint**: Do NOT create a single test task that spans all packages in a multi-package project.
+
 ---
 
 ## Dependencies Management
@@ -310,7 +325,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 | **Application configuration** | Does the specification mention secrets, API keys, or configuration that must be provided via environment variables? |
 
 **Setup task description MUST mention (when applicable):**
-- `docker-compose.yml` with service definitions — if external services are observed in the specification
+- `docker-compose.yml` with **infrastructure** service definitions ONLY (databases, caches, message queues) — if external services are observed in the specification. Do NOT include application/business services (API servers, web servers) in docker-compose — the platform manages application process lifecycle separately.
 - `.env.example` with `# @connection {category} {name}` annotation for each service connection endpoint URL (not individual components like host, port, user, password)
 - `.env` with resolved localhost values matching `.env.example` variable keys
 - Application configuration variables (secrets, API keys) observed in the specification — mention their existence so the setup task provisions them
