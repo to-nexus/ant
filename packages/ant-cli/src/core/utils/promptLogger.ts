@@ -33,6 +33,8 @@ export interface PromptLogEntry {
   /** Prompt length for reference */
   promptLength?: number;
   tokenEstimate?: number;
+  /** Variables or partials that were missing during render */
+  contractViolations?: Array<{ templateName: string; missingVars: string[] }>;
 }
 
 export interface PromptLoggerOptions {
@@ -189,7 +191,14 @@ export class PromptLogger {
       content += '\n```\n';
     }
     
-    // ✅ Only log hardcoded content (not from template files)
+    if (entry.contractViolations && entry.contractViolations.length > 0) {
+      content += `\n### ⚠️ Contract Violations\n\n`;
+      for (const v of entry.contractViolations) {
+        content += `- **${v.templateName}**: missing \`${v.missingVars.join('`, `')}\`\n`;
+      }
+      content += '\n';
+    }
+
     if (entry.hardcodedContent) {
       content += `\n### Hardcoded Content\n\n`;
       content += '```\n';
@@ -299,6 +308,7 @@ export async function logPrompt(
     usedTemplates?: string[];
     injectedVariables?: Record<string, any>;
     hardcodedContent?: string;
+    contractViolations?: Array<{ templateName: string; missingVars: string[] }>;
   }
 ): Promise<void> {
   const logger = getPromptLogger({ featurePath, jobId, jobType });
@@ -311,6 +321,7 @@ export async function logPrompt(
     usedTemplates: options?.usedTemplates,
     injectedVariables: options?.injectedVariables,
     hardcodedContent: options?.hardcodedContent,
+    contractViolations: options?.contractViolations,
     promptLength,
   });
 }

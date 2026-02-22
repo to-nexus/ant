@@ -113,46 +113,13 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   }
 
   if (!hasViolations && state.currentTask) {
-    // ✅ Task succeeded - mark as completed and record timing & token usage
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
+    // Task succeeded — use _currentTaskTokenUsage as single source of truth.
+    // _currentTaskTokenUsage already accumulated ALL plan + codeGen calls via
+    // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
+    // No additional merge or job-level re-accumulation needed here.
+    const { getTaskTokenUsage } = await import('../../../common/graph/llmHelpers');
     const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
-    
-    // Gather token usage from llmResponse (codeGen) and accumulated task tokens (plan)
-    const codeGenTokenUsage = state.llmResponse?.tokenUsage;
-    const planTokenUsage = getTaskTokenUsage(state as any);
-    
-    // Merge all token sources
-    let taskTokenUsage = state.currentTask.tokenUsage;
-    
-    if (codeGenTokenUsage) {
-      if (taskTokenUsage) {
-        accumulateTokenUsage({ tokenUsage: taskTokenUsage } as any, codeGenTokenUsage, { taskLevel: false, jobLevel: false });
-        taskTokenUsage.inputTokens += codeGenTokenUsage.inputTokens;
-        taskTokenUsage.outputTokens += codeGenTokenUsage.outputTokens;
-        taskTokenUsage.totalTokens += codeGenTokenUsage.totalTokens;
-        taskTokenUsage.cacheReadTokens = (taskTokenUsage.cacheReadTokens || 0) + (codeGenTokenUsage.cacheReadTokens || 0);
-        taskTokenUsage.cacheCreationTokens = (taskTokenUsage.cacheCreationTokens || 0) + (codeGenTokenUsage.cacheCreationTokens || 0);
-      } else {
-        taskTokenUsage = codeGenTokenUsage;
-      }
-    }
-    
-    if (planTokenUsage.totalTokens > 0) {
-      if (taskTokenUsage) {
-        taskTokenUsage.inputTokens += planTokenUsage.inputTokens;
-        taskTokenUsage.outputTokens += planTokenUsage.outputTokens;
-        taskTokenUsage.totalTokens += planTokenUsage.totalTokens;
-        taskTokenUsage.cacheReadTokens = (taskTokenUsage.cacheReadTokens || 0) + (planTokenUsage.cacheReadTokens || 0);
-        taskTokenUsage.cacheCreationTokens = (taskTokenUsage.cacheCreationTokens || 0) + (planTokenUsage.cacheCreationTokens || 0);
-      } else {
-        taskTokenUsage = planTokenUsage;
-      }
-    }
-    
-    // Accumulate to job-level
-    if (taskTokenUsage) {
-      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
-    }
+    const taskTokenUsage = getTaskTokenUsage(state as any);
     
     const { TaskTimingHelper } = await import('./state');
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);

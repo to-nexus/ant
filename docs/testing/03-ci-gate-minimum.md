@@ -6,6 +6,7 @@ It is: **prevent merges that break the 3 core flows**.
 ## What the gate must contain (minimum)
 
 - **Build + typecheck** (fast signal)
+- **Prompt safety gate** (`npm test` in ant-cli — runs in ~1s, no infra needed)
 - **Core smoke suite** (`docs/testing/01-core-smoke-suite.md`)
 
 If you only gate on build/typecheck, you will still ship broken Redis/SSE/Preview flows.

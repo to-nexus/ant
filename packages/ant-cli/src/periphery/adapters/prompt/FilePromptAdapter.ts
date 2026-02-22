@@ -4,8 +4,6 @@ import Handlebars from "handlebars";
 import { PromptPort } from "../../../core/ports";
 import { WorkspacePathResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
-// ✅ Register helpers once (top-level, not per render call)
-// ✅ Use == for loose equality to handle number/string comparisons in templates
 // eslint-disable-next-line eqeqeq
 Handlebars.registerHelper("eq", (a, b) => a == b);
 // eslint-disable-next-line eqeqeq
@@ -14,253 +12,140 @@ Handlebars.registerHelper("and", (a, b) => a && b);
 Handlebars.registerHelper("or", (a, b) => a || b);
 Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
 
-// ✅ Register common partials (shared across all jobs)
-const templatesPath = WorkspacePathResolver.getPromptTemplatesPath();
-const commonPartialsPath = join(templatesPath, "common");
-const commonInjectionsPath = join(templatesPath, "common/injections");
-Promise.all([
-  fs.readFile(join(commonPartialsPath, "architect-role.md"), "utf8")
-    .then(content => Handlebars.registerPartial("common/architect-role", content))
-    .catch(() => {}),
-  fs.readFile(join(commonPartialsPath, "rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("common/rules", content))
-    .catch(() => {}),
-]).catch(() => {});
-
-// ✅ Register code-specific base injections (conditionally used by code templates)
-const codeBaseInjectionsPath = join(templatesPath, "code/base/injections");
-Promise.all([
-  fs.readFile(join(codeBaseInjectionsPath, "text-format-compact.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/text-format-compact", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "tool-calling-rules-compact.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/tool-calling-rules-compact", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "system-design-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/system-design-guide", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "ui-design-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/ui-design-guide", content))
-    .catch(() => {}),
-  // ✅ Code job specific injections (RAG results)
-  fs.readFile(join(codeBaseInjectionsPath, "retrieved-code.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/retrieved-code", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "reference-code.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/reference-code", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "git-diff.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/git-diff", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "batch-execution.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/batch-execution", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "batch-gather.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/batch-gather", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "plan-tools-batch.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/plan-tools-batch", content))
-    .catch(() => {}),
-  fs.readFile(join(codeBaseInjectionsPath, "persistence-schema-rule.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/base/injections/persistence-schema-rule", content))
-    .catch(() => {}),
-]).catch(() => {});
-
-// ✅ Register common injections (shared across all jobs)
-Promise.all([
-  fs.readFile(join(commonInjectionsPath, "text-format-compact.md"), "utf8")
-    .then(content => Handlebars.registerPartial("common/injections/text-format-compact", content))
-    .catch(() => {})
-]).catch(() => {});
-
-// ✅ Register phase-specific rules (decompose, detect, plan, etc.)
-const codePhaseRulesBase = join(templatesPath, "code/phases");
-Promise.all([
-  // Decompose rules
-  fs.readFile(join(codePhaseRulesBase, "decompose/rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/decompose/rules", content))
-    .catch(() => {}),
-  // Decompose sub-modules (modularized for clarity)
-  fs.readFile(join(codePhaseRulesBase, "decompose/mode-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/decompose/mode-guide", content))
-    .catch(() => {}),
-  fs.readFile(join(codePhaseRulesBase, "decompose/error-or-general.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/decompose/error-or-general", content))
-    .catch(() => {}),
-  fs.readFile(join(codePhaseRulesBase, "decompose/existing-code-check.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/decompose/existing-code-check", content))
-    .catch(() => {}),
-  fs.readFile(join(codePhaseRulesBase, "decompose/design-doc-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/decompose/design-doc-guide", content))
-    .catch(() => {}),
-  fs.readFile(join(codePhaseRulesBase, "decompose/profile-rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/decompose/profile-rules", content))
-    .catch(() => {}),
-  // Detect rules (detectEnvironment node)
-  fs.readFile(join(codePhaseRulesBase, "detect/rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/detect/rules", content))
-    .catch(() => {}),
-  // Plan rules - keyword generation
-  fs.readFile(join(codePhaseRulesBase, "plan/rules-keyword.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/plan/rules-keyword", content))
-    .catch(() => {}),
-  // Plan rules - plan generation
-  fs.readFile(join(codePhaseRulesBase, "plan/rules-plan.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/plan/rules-plan", content))
-    .catch(() => {}),
-  // Revise rules (task queue revision on resume)
-  fs.readFile(join(codePhaseRulesBase, "revise/rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("code/phases/revise/rules", content))
-    .catch(() => {}),
-]).catch(() => {});
-
-// ✅ Register design/phases/decompose partials (System Design and UI Design)
-const designDecomposePath = join(templatesPath, "design/phases/decompose");
-Promise.all([
-  fs.readFile(join(designDecomposePath, "rules-system-design.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/decompose/rules-system-design", content))
-    .catch(() => {}),
-  fs.readFile(join(designDecomposePath, "rules-ui-design.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/decompose/rules-ui-design", content))
-    .catch(() => {}),
-]).catch(() => {});
-
-// ✅ Register design/phases/revise partials (task queue revision on resume)
-const designRevisePath = join(templatesPath, "design/phases/revise");
-Promise.all([
-  fs.readFile(join(designRevisePath, "rules.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/revise/rules", content))
-    .catch(() => {}),
-]).catch(() => {});
-
-// ✅ Register design/phases/execute partials (UI design and system design)
-const designExecutePath = join(templatesPath, "design/phases/execute");
-Promise.all([
-  // Rules partials
-  fs.readFile(join(designExecutePath, "rules-ui-design.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/execute/rules-ui-design", content))
-    .catch(() => {}),
-  fs.readFile(join(designExecutePath, "rules-system-design.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/execute/rules-system-design", content))
-    .catch(() => {}),
-  // UI design injections
-  fs.readFile(join(designExecutePath, "injections/ui-tokens-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/execute/injections/ui-tokens-guide", content))
-    .catch(() => {}),
-  fs.readFile(join(designExecutePath, "injections/ui-assets-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/execute/injections/ui-assets-guide", content))
-    .catch(() => {}),
-  fs.readFile(join(designExecutePath, "injections/ui-spec-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/execute/injections/ui-spec-guide", content))
-    .catch(() => {}),
-  // System design injections (existing)
-  fs.readFile(join(designExecutePath, "injections/game-domain-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/execute/injections/game-domain-guide", content))
-    .catch(() => {}),
-  fs.readFile(join(designExecutePath, "injections/service-domain-guide.md"), "utf8")
-    .then(content => Handlebars.registerPartial("design/phases/execute/injections/service-domain-guide", content))
-    .catch(() => {}),
-]).catch(() => {});
-
+export interface PartialFailure {
+  name: string;
+  error: Error;
+}
 
 /**
- * FilePromptAdapter - File system implementation of PromptPort
- * Loads template files and renders with Handlebars template engine
- * 
- * Templates are stored relative to this file's location:
- * - Development (src/): ../../../core/prompt/templates
- * - Production (dist/): ../../../core/prompt/templates (same relative path)
- * 
- * Supports:
- * - Variable substitution: {{variableName}}
- * - Conditionals: {{#if variable}}...{{else}}...{{/if}}
- * - Iteration: {{#each array}}...{{/each}}
+ * Recursively discover all .md files under a directory.
+ * Returns paths relative to the root (e.g. "code/base/injections/git-diff.md").
  */
+async function discoverMdFiles(root: string, prefix = ''): Promise<string[]> {
+  const entries = await fs.readdir(join(root, prefix), { withFileTypes: true });
+  const results: string[] = [];
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      results.push(...await discoverMdFiles(root, rel));
+    } else if (entry.name.endsWith('.md')) {
+      results.push(rel);
+    }
+  }
+  return results;
+}
+
+/**
+ * Auto-discover and register ALL .md files under templates/ as Handlebars partials.
+ * Partial name = relative path minus .md extension (e.g. "code/base/injections/git-diff").
+ * No manual list needed — file existence IS the registry.
+ */
+export async function initPartials(basePath?: string): Promise<{ total: number; failed: PartialFailure[] }> {
+  const templatesPath = basePath || WorkspacePathResolver.getPromptTemplatesPath();
+
+  let mdFiles: string[];
+  try {
+    mdFiles = await discoverMdFiles(templatesPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`📄 [PromptAdapter] Templates directory not accessible: ${templatesPath}`);
+    console.error(`   → ${msg}`);
+    return { total: 0, failed: [{ name: '(discovery)', error: err as Error }] };
+  }
+  const failures: PartialFailure[] = [];
+
+  await Promise.all(
+    mdFiles.map(async (relativePath) => {
+      const name = relativePath.replace(/\.md$/, '');
+      try {
+        const content = await fs.readFile(join(templatesPath, relativePath), "utf8");
+        Handlebars.registerPartial(name, content);
+      } catch (err) {
+        failures.push({ name, error: err as Error });
+      }
+    })
+  );
+
+  const total = mdFiles.length;
+
+  if (failures.length > 0) {
+    console.error(`📄 [PromptAdapter] Partial registration: ${total - failures.length}/${total} succeeded`);
+    for (const f of failures) {
+      console.error(`   ❌ ${f.name}: ${f.error.message}`);
+    }
+  } else {
+    console.log(`📄 [PromptAdapter] All ${total} partials registered`);
+  }
+
+  return { total, failed: failures };
+}
+
+/**
+ * File system implementation of PromptPort.
+ * Loads .md templates and renders with Handlebars.
+ */
+export interface RenderViolation {
+  templateName: string;
+  missingVars: string[];
+}
+
 export class FilePromptAdapter implements PromptPort {
   private baseDir: string;
-  
+  private _lastViolations: RenderViolation[] = [];
+
   constructor(baseDir?: string) {
-    // Use centralized WorkspacePathResolver for CLI internal resource paths
     this.baseDir = baseDir || WorkspacePathResolver.getPromptTemplatesPath();
   }
-  
+
+  get lastViolations(): RenderViolation[] {
+    return this._lastViolations;
+  }
+
+  clearViolations(): void {
+    this._lastViolations = [];
+  }
+
   async render(templateName: string, vars: Record<string, any>): Promise<string> {
-    // 1. Load template from file
     const file = join(this.baseDir, `${templateName}.md`);
     const templateSource = await fs.readFile(file, "utf8");
-    
-    // 2. Compile template with Handlebars
+
     const template = Handlebars.compile(templateSource, {
-      noEscape: true,  // Don't HTML-escape (we're generating text/markdown, not HTML)
-      strict: false,   // Allow undefined variables (return empty string)
+      noEscape: true,
+      strict: false,
     });
-    
-    // 3. Extract variables used in template for validation
+
     const usedVarsMatches = templateSource.match(/\{\{[\#\/]?(\w+)[^}]*\}\}/g);
-    const usedVars = usedVarsMatches 
+    const usedVars = usedVarsMatches
       ? [...new Set(usedVarsMatches.map(v => {
-          // ✅ FIX: Extract actual variable name from conditionals
-          // {{#if hasExistingCode}} → extract "hasExistingCode", not "if"
-          // {{hasExistingCode}} → extract "hasExistingCode"
-          
-          // First, check if it's a conditional ({{#if varName}} or {{#unless varName}})
           const conditionalMatch = v.match(/\{\{#(?:if|unless)\s+(\w+)/);
-          if (conditionalMatch) {
-            return conditionalMatch[1];  // Return the condition variable
-          }
-          
-          // Otherwise, extract first word after {{ or {{#
+          if (conditionalMatch) return conditionalMatch[1];
           const match = v.match(/\{\{[\#\/]?(\w+)/);
           return match ? match[1] : null;
         }).filter(Boolean))]
       : [];
-    
-    // 4. Validate variables (filter out Handlebars keywords and helpers)
-    const handlebarsKeywords = ['if', 'unless', 'each', 'with', 'else', 'this'];  // ✅ 'this' is special keyword in {{#each}} blocks
-    const handlebarsHelpers = ['eq', 'ne', 'and', 'or', 'add'];  // ✅ Registered helpers
-    const templateVars = (usedVars as string[]).filter(v => 
+
+    const handlebarsKeywords = ['if', 'unless', 'each', 'with', 'else', 'this'];
+    const handlebarsHelpers = ['eq', 'ne', 'and', 'or', 'add'];
+    const templateVars = (usedVars as string[]).filter(v =>
       !handlebarsKeywords.includes(v) && !handlebarsHelpers.includes(v)
     );
-    
-    // ✅ Only validate variables that would actually be rendered
-    // To avoid false positives from conditional blocks, only warn if:
-    // 1. Variable is used outside conditionals, OR
-    // 2. The condition for that variable is true in provided vars
+
     const shouldValidate = (varName: string): boolean => {
-      // Check if variable is inside a conditional block
       const conditionalPattern = new RegExp(`\\{\\{#if\\s+(\\w+)[^}]*\\}\\}[\\s\\S]*?\\{\\{${varName}[^}]*\\}\\}[\\s\\S]*?\\{\\{\\/if\\}\\}`, 'g');
       const conditionalMatch = templateSource.match(conditionalPattern);
-      
-      if (!conditionalMatch) {
-        // Not in conditional, should validate
-        return true;
-      }
-      
-      // Extract condition variable
+      if (!conditionalMatch) return true;
       const conditionMatch = conditionalMatch[0].match(/\{\{#if\s+(\w+)/);
       if (!conditionMatch) return true;
-      
-      const conditionVar = conditionMatch[1];
-      // Only validate if condition is true in provided vars
-      return !!vars[conditionVar];
+      return !!vars[conditionMatch[1]];
     };
-    
-    const varsToValidate = templateVars.filter(shouldValidate);
-    const missingVars = varsToValidate.filter(v => !(v in vars));
-    const providedVars = Object.keys(vars);
-    const unusedVars = providedVars.filter(v => !templateVars.includes(v));
-    
-    // 5. Log warnings for maintenance (only for actually missing vars)
+
+    const missingVars = templateVars.filter(shouldValidate).filter(v => !(v in vars));
+
     if (missingVars.length > 0) {
-      console.warn(`[PromptAdapter] Template "${templateName}": Missing variables [${missingVars.join(', ')}]`);
+      console.warn(`⚠️ [PromptAdapter] Template "${templateName}": missing variables [${missingVars.join(', ')}]`);
+      this._lastViolations.push({ templateName, missingVars: [...missingVars] as string[] });
     }
-    // ✅ Don't warn about unused vars - they might be for other conditional branches
-    // if (unusedVars.length > 0) {
-    //   console.warn(`[PromptAdapter] Template "${templateName}": Unused variables [${unusedVars.join(', ')}]`);
-    // }
-    
-    // 6. Render template with Handlebars
+
     return template(vars);
   }
 }
-

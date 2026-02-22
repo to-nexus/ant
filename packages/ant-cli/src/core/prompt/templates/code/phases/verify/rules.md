@@ -24,6 +24,7 @@ Do NOT read any source file before attempting a build.
 |-----------|------|
 | **No feature changes** | Fix ONLY what prevents compilation/startup. Do NOT improve logic or add functionality. |
 | **Config over code** | Prefer configuration fixes (go.mod, package.json, tsconfig.json) over source code changes. |
+| **Test code over source code** | When tests fail, prefer fixing test expectations over modifying application logic. Source changes are permitted ONLY for genuine bugs exposed by tests. |
 | **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` the target file to refresh — but ONLY if that file was already identified from build error output. |
 
 ---

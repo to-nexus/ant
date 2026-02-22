@@ -155,6 +155,20 @@ export function convertDiagnosesToViolations(result: RuntimeValidationResult): V
     });
   }
   
+  // Test errors
+  if (result.testErrors && result.testErrors.length > 0) {
+    const uncoveredTestErrors = result.testErrors.filter(e => !diagnosedMessages.has(e));
+    if (uncoveredTestErrors.length > 0) {
+      violations.push({
+        type: 'build_error',
+        severity: 'major',
+        message: `Test failures (${uncoveredTestErrors.length} total):\n\n${uncoveredTestErrors.slice(0, 10).join('\n')}`,
+        suggestedFix: 'Fix failing tests. Prefer fixing test expectations over modifying application source code unless the test exposes a genuine bug.',
+        isRetryable: true
+      });
+    }
+  }
+  
   // Lint errors (lowest priority, only if not already covered)
   if (result.lintErrors && result.lintErrors.length > 0) {
     const uncoveredLintErrors = result.lintErrors.filter(e => !diagnosedMessages.has(e));

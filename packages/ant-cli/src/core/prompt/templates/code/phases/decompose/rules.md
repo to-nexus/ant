@@ -99,6 +99,26 @@ CRITICAL:
 
 ---
 
+## Test Generation Task
+
+**Principle**: A test generation task (`type: "feature"`, priority 850-890, `exclusive: true`) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before verification.
+
+**Observation target**: Does this task set include a setup task, or 3 or more feature tasks?
+
+| Checkpoint | Condition |
+|-----------|-----------|
+| **Setup task exists** | New project or major structural change — test generation needed |
+| **3+ feature tasks** | Substantial functionality addition — test generation needed |
+| **Neither** | Simple fix or minor change — skip test generation |
+
+**Constraint**: Do NOT create a test generation task for error-only jobs or jobs with fewer than 3 feature tasks and no setup task.
+
+**Constraint**: The test generation task writes test files ONLY. It does NOT execute tests — verification handles that.
+
+**Constraint**: Description references the implemented features by scope (not by file path). The executor observes actual code to determine test targets.
+
+---
+
 ## Dependencies Management
 
 **Preferred:** Include all known dependencies in Setup Task (priority 100).
@@ -310,6 +330,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "setup"` -> always exclusive (installs dependencies, modifies lock files)
 - `type: "error"` -> always exclusive (may modify shared configs)
 - `type: "verification"` (priority 1000) -> always exclusive
+- Test generation (priority 850-890) -> always exclusive (must observe all completed feature code)
 - Any task that installs packages or modifies shared build configs
 
 ⚠️ **CONSTRAINT**: `exclusive` is determined ONLY by the `type` field value and `priority` value. Do NOT infer `exclusive` from task name or description content.

@@ -1,0 +1,47 @@
+{
+  "$comment": "Injection template -> expected variable mapping. Source of truth for template contracts.",
+  "common/injections": {
+    "directive": ["directive"],
+    "design-doc": ["designDoc"],
+    "memory": ["content"],
+    "prd-spec": ["prdSpec"],
+    "ui-doc": ["uiDoc"]
+  },
+  "code/base/injections": {
+    "git-diff": ["gitDiff"],
+    "retrieved-code": ["files", "filePaths", "stats"],
+    "reference-code": ["contexts"],
+    "text-format-compact": [],
+    "tool-calling-rules-compact": [],
+    "system-design-guide": [],
+    "ui-design-guide": [],
+    "batch-execution": [],
+    "batch-gather": [],
+    "plan-tools-batch": [],
+    "persistence-schema-rule": [],
+    "preview-setup": [],
+    "preview-env-contract": [],
+    "behavioral-debugging": []
+  },
+  "code/phases/execute/injections": {
+    "lessons": ["lessons"],
+    "session-context": ["sessionContext"],
+    "retry-context": ["retryContext"],
+    "runtime-error-fix": [],
+    "missing-dependency-fix": [],
+    "port-management": []
+  },
+  "design/base/injections": {
+    "api-contract-guide": [],
+    "backend-guide": [],
+    "frontend-guide": []
+  },
+  "design/phases/execute/injections": {
+    "ui-tokens-guide": [],
+    "ui-assets-guide": [],
+    "ui-spec-guide": [],
+    "game-domain-guide": [],
+    "service-domain-guide": [],
+    "ui-continuation": ["targetDoc"]
+  }
+}

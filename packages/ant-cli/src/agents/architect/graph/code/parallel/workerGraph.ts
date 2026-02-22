@@ -126,38 +126,12 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
   }
 
   if (!hasViolations && state.currentTask) {
-    // Task succeeded — gather token usage
-    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
-
-    const codeGenTokenUsage = state.llmResponse?.tokenUsage;
-    const planTokenUsage = getTaskTokenUsage(state as any);
-
-    let taskTokenUsage = state.currentTask.tokenUsage;
-    if (codeGenTokenUsage) {
-      if (taskTokenUsage) {
-        taskTokenUsage.inputTokens += codeGenTokenUsage.inputTokens;
-        taskTokenUsage.outputTokens += codeGenTokenUsage.outputTokens;
-        taskTokenUsage.totalTokens += codeGenTokenUsage.totalTokens;
-        taskTokenUsage.cacheReadTokens = (taskTokenUsage.cacheReadTokens || 0) + (codeGenTokenUsage.cacheReadTokens || 0);
-        taskTokenUsage.cacheCreationTokens = (taskTokenUsage.cacheCreationTokens || 0) + (codeGenTokenUsage.cacheCreationTokens || 0);
-      } else {
-        taskTokenUsage = codeGenTokenUsage;
-      }
-    }
-    if (planTokenUsage.totalTokens > 0) {
-      if (taskTokenUsage) {
-        taskTokenUsage.inputTokens += planTokenUsage.inputTokens;
-        taskTokenUsage.outputTokens += planTokenUsage.outputTokens;
-        taskTokenUsage.totalTokens += planTokenUsage.totalTokens;
-        taskTokenUsage.cacheReadTokens = (taskTokenUsage.cacheReadTokens || 0) + (planTokenUsage.cacheReadTokens || 0);
-        taskTokenUsage.cacheCreationTokens = (taskTokenUsage.cacheCreationTokens || 0) + (planTokenUsage.cacheCreationTokens || 0);
-      } else {
-        taskTokenUsage = planTokenUsage;
-      }
-    }
-    if (taskTokenUsage) {
-      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
-    }
+    // Task succeeded — use _currentTaskTokenUsage as single source of truth.
+    // _currentTaskTokenUsage already accumulated ALL plan + codeGen calls via
+    // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
+    // No additional merge or job-level re-accumulation needed here.
+    const { getTaskTokenUsage } = await import('../../../../common/graph/llmHelpers');
+    const taskTokenUsage = getTaskTokenUsage(state as any);
 
     const { TaskTimingHelper } = await import('../state');
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);

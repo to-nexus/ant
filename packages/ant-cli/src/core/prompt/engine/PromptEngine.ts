@@ -276,10 +276,10 @@ export class PromptEngine {
   /**
    * Build enforcement prompt (for retry after validation failure)
    */
-  buildEnforcementPrompt(
+  async buildEnforcementPrompt(
     originalResult: PromptBuildResult,
     violationMessage: string
-  ): FormattedPrompt {
+  ): Promise<FormattedPrompt> {
     const originalPrompt = this.composer.assembleFinal(originalResult.composed);
     
     return this.formatter.formatEnforcement(

@@ -214,6 +214,29 @@ Follow the framework/language-specific setup instructions from:
 {{#if currentTask}}
 {{#if (eq currentTask.type "feature")}}
 {{#unless (eq currentTask.priority 1000)}}
+{{#if (gte currentTask.priority 850)}}
+## 🧪 TEST GENERATION TASK: Minimum Verification Suite
+
+**Your scope:** Write test files ONLY. Do NOT execute tests.
+
+**Principle**: Generate the minimum set of tests that verify the integrated codebase is functional.
+
+**Observation targets** — observe the actual codebase (config files, entry points, source code) to determine:
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Startup** | Does the application have a main entry point or server? Create a startup/health test. |
+| **Endpoints** | Does the application expose API routes or handlers? Create smoke tests for critical ones. |
+| **Core logic** | Are there business logic modules with clear input/output boundaries? Create unit tests. |
+
+**Constraint**: Do NOT generate exhaustive test coverage. Only verify that the integrated system functions.
+**Constraint**: Do NOT modify application source code. Test files only.
+**Constraint**: Use the project's existing test infrastructure if detected (observe config files). If none exists, create minimal test config.
+**Constraint**: Do NOT run tests. Verification handles test execution.
+
+**Actions:** Observe codebase → Write test files → Output `<done>true</done>`
+
+{{else}}
 ## 💻 FEATURE TASK: Source Code Implementation
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -225,7 +248,7 @@ Follow the framework/language-specific setup instructions from:
 
 **Your scope:** Write/edit source code files ONLY
 
-**DON'T create:** Documentation files, test files
+**DON'T create:** Documentation files, test files (a dedicated task generates tests after all features are integrated)
 **DON'T run:** Build commands, dev servers, any verification scripts
 
 **✅ DO in Feature Tasks:**
@@ -262,6 +285,7 @@ MODIFY: app/page.tsx - Add import and render new component
 - Build/dev verification is NOT your responsibility in feature tasks
 - Output `<done>true</done>` immediately
 
+{{/if}}
 {{/unless}}
 {{/if}}
 {{/if}}

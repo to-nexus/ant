@@ -304,9 +304,8 @@ export class JobWorker {
       const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
       
       // CLI source/dist root for internal resource paths (templates, policies, etc.)
-      // __dirname is dist/infrastructure/worker/ in production
-      // We need dist/ root, not package root
-      const cliRoot = path.resolve(__dirname, '../..');  // dist/infrastructure/worker/ → dist/
+      // Use centralized resolver (handles both bundled and unbundled contexts)
+      const cliRoot = WorkspacePathResolver.getCliRoot();
       
       const env: Record<string, string> = {
         ...process.env as Record<string, string>,

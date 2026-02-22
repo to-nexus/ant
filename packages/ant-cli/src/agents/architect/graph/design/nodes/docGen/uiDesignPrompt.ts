@@ -240,41 +240,12 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   if (isUiTokensTask || isUiSpecTask) {
     const targetDoc = isUiTokensTask ? 'ui-tokens.json' : 'ui-spec.json';
     console.log(`🔔 [FreshPrompt] Adding "Next Steps" instruction for ${task?.id} → ${targetDoc}`);
+    const { FilePromptAdapter } = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
+    const adapter = new FilePromptAdapter();
+    const continuationText = await adapter.render('design/phases/execute/injections/ui-continuation', { targetDoc });
     content.push({
       type: 'text',
-      text: `\n\n# ⚠️ CRITICAL: You MUST Continue!
-
-**This is Turn 2+ of your workflow. DO NOT STOP HERE.**
-
-## Your Current Progress:
-- ✅ Turn 1: You called \`list_reference_images\` or \`list_assets\` - DONE
-- 🔄 Turn 2: NOW you must load the image OR generate the document
-
-## What You MUST Do Now:
-
-### Option A: If you haven't loaded the screenshot yet
-Call \`read_reference_image\` tool:
-\`\`\`
-read_reference_image("inputs/references/homepage-desktop.png")
-\`\`\`
-
-### Option B: If you already have the screenshot loaded
-Generate the document using \`<file>\` XML tag:
-\`\`\`xml
-<file path="outputs/design/${targetDoc}">
-<!-- START_SECTION: 1 -->
-# Document Title
-...content...
-<!-- END_SECTION -->
-</file>
-\`\`\`
-
-## ⚠️ FAILURE CONDITIONS:
-- ❌ Responding with only text explanation → TASK FAILS
-- ❌ Saying "I will do X" without doing it → TASK FAILS
-- ❌ Stopping without generating \`<file>\` → TASK FAILS
-
-**You MUST output either a tool_use block OR a <file> XML tag!**`
+      text: `\n\n${continuationText}`
     });
   }
   
