@@ -100,19 +100,10 @@ export async function handleSearchCode(
   }, { pattern, file_pattern });
 }
 
-/**
- * Match file path against LLM-provided patterns.
- * Handles common patterns: "*.go", ".go", "internal/", "handler.go", etc.
- */
+// Match file path against LLM-provided glob-like patterns.
+// Handles: *.go, dir/*.go, dir/ ** /*.go, .go, dir/, handler.go, etc.
 function matchFilePattern(filePath: string, pattern: string): boolean {
   const p = pattern.replace(/\\/g, '/');
-  
-  // "*.ext" or "**/*.ext" → extension match
-  const extMatch = p.match(/^\*?\*?\/?\.?(\w+)$/);
-  if (p.startsWith('*.') || p.startsWith('**/')) {
-    const ext = p.replace(/^\*+\/?/, '');
-    return filePath.endsWith(ext.startsWith('.') ? ext : `.${ext}`);
-  }
   
   // ".ext" → extension match
   if (p.startsWith('.') && !p.includes('/')) {
@@ -122,6 +113,15 @@ function matchFilePattern(filePath: string, pattern: string): boolean {
   // "dir/" → directory contains
   if (p.endsWith('/')) {
     return filePath.includes(p);
+  }
+  
+  // If pattern contains glob characters (* or **), convert to regex
+  if (p.includes('*')) {
+    const regexStr = p
+      .replace(/\*\*\//g, '(.+/)?')       // **/ → match any nested dirs
+      .replace(/\*/g, '[^/]*');            // * → match within single segment
+    const regex = new RegExp(`(^|/)${regexStr}$`);
+    return regex.test(filePath);
   }
   
   // Fallback: substring match (original behavior)

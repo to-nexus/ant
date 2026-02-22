@@ -466,16 +466,25 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       onCheckpoint: async (checkpoint) => {
         if (state.deps?.session && state.context.featureFolder) {
           try {
+            // Merge failed tasks into taskQueue so full task definitions survive
+            // process termination (user stop, kill, etc.). Without this, only
+            // summary data (taskId/taskName/error) is persisted and the task
+            // cannot be resumed.
+            const failedAsQueue = checkpoint.failedTasks.map(f => ({
+              ...f.task,
+              _failed: true,
+              _failureReason: f.error.message,
+            }));
+
             await state.deps.session.updateArtifacts(
               state.context.project,
               state.context.featureFolder,
               'code',
               {
                 state: {
-                  taskQueue: checkpoint.taskQueue,
+                  taskQueue: [...failedAsQueue, ...checkpoint.taskQueue],
                   completedTasks: checkpoint.completedTasks.map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
-                  // ✅ Persist failed tasks so they survive process termination
                   failedTasks: checkpoint.failedTasks.map(f => ({
                     taskId: f.task.id,
                     taskName: f.task.name,
@@ -609,8 +618,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         {
           state: {
             taskQueue: [...failedAsQueue, ...result.remainingQueue],
-            completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
-            completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+            completedTasks: result.completedTasks.map(t => t.id),
+            completedTasksDetails: result.completedTasks,
             failedTasks: result.failedTasks.map(f => ({
               taskId: f.task.id,
               taskName: f.task.name,
@@ -647,8 +656,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
           'code',
           {
             state: {
-              completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
-              completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+              completedTasks: result.completedTasks.map(t => t.id),
+              completedTasksDetails: result.completedTasks,
               tokenUsage: result.tokenUsage,
               estimatingTokenUsage: (state as any)._estimatingTokenUsage,
               jobId: (state as any).jobId,
@@ -682,8 +691,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         {
           state: {
             taskQueue: [...failedAsQueue, ...result.remainingQueue],
-            completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
-            completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+            completedTasks: result.completedTasks.map(t => t.id),
+            completedTasksDetails: result.completedTasks,
             failedTasks: result.failedTasks.map(f => ({
               taskId: f.task.id,
               taskName: f.task.name,
@@ -717,8 +726,10 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     currentTask: undefined,
     tokenUsage: result.tokenUsage || (state as any).tokenUsage,
     interruption: result.hasInterruptedTasks ? {
-      reason: 'recursion_limit',
-      message: `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
+      reason: result.interruptReason || 'recursion_limit',
+      message: result.interruptReason === 'user_stopped'
+        ? `Task stopped by user (${result.remainingQueue.length} task(s) remaining)`
+        : `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
       timestamp: new Date().toISOString(),
       canResume: result.remainingQueue.length > 0,
       metadata: {
@@ -733,6 +744,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       metadata: {
         failedCount: result.failedTasks.length,
         completedCount: result.completedTasks.length,
+        tasksRemaining: result.failedTasks.length + result.remainingQueue.length,
       },
     } : undefined,
   } as any;

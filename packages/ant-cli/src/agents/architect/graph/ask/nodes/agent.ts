@@ -13,6 +13,7 @@ import * as path from 'path';
 import Handlebars from 'handlebars';
 import { AskGraphState, ConversationMessage, ContentBlock } from '../state.js';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
+import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver.js';
 import { formatWorkspaceState } from '../../../../common/nodes/triage/workspaceAnalyzer.js';
@@ -141,8 +142,9 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   try {
     // Use streaming API
     for await (const event of llm.stream(messages, { 
-      system: systemPrompt,  // Pass system separately
+      system: systemPrompt,
       tools: toolDefinitions,
+      maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: isFirstCall,
     })) {
       // Handle thinking events - show thinking card in UI

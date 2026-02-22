@@ -461,15 +461,18 @@ export async function architectAgent(
         // ✅ Determine status based on execution result (using unified interruption)
         const hasInterruption = !!result.interruption;
         const tasksRemaining = result.interruption?.metadata?.tasksRemaining || 0;
+        const failedCount = result.interruption?.metadata?.failedCount || 0;
         
         let status: 'success' | 'paused' | 'partial';
         let effectiveInterruption = result.interruption;
         
-        if (hasInterruption && tasksRemaining > 0) {
+        if (hasInterruption && failedCount > 0) {
+          status = 'paused';  // Has permanently failed tasks — must pause for user review
+        } else if (hasInterruption && tasksRemaining > 0) {
           status = 'paused';  // Interrupted with tasks remaining
         } else if (hasInterruption && tasksRemaining === 0) {
           status = 'success';  // Interrupted but all tasks completed (retried successfully)
-          // ✅ Clear interruption: all tasks completed despite earlier recursion limit.
+          // Clear interruption: all tasks completed despite earlier recursion limit.
           // Without this, cleanupJobState finds the interruption and creates a
           // spurious "Task cancelled" choice card even though everything succeeded.
           effectiveInterruption = undefined;

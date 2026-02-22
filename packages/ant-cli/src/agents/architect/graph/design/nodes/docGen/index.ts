@@ -24,7 +24,7 @@ import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrche
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { getToolsByNames, TOOL_SETS } from '../../../../tools/definitions';
-import { LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './systemDesignPrompt';
@@ -323,20 +323,14 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
  * Calculate maxTokens based on task line budget
  */
 function calculateMaxTokens(state: DesignGraphState): number {
-  // ✅ Use 16K like Code Job (works even with Sonnet 8K - provider handles capping)
-  let maxTokens = 16000;
+  let maxTokens: number = LLM_MAX_TOKENS.DEFAULT;
 
   if (state.currentTask?.description) {
     const lineMatch = state.currentTask.description.match(/MAX (\d+) lines/i);
     if (lineMatch) {
       const maxLines = parseInt(lineMatch[1]);
-      // Estimate: ~12 tokens per line (average for Markdown with formatting)
-      // Add 3000 tokens buffer for XML tags, metadata, and thinking
       const estimatedTokens = maxLines * 12 + 3000;
-
-      // Smart minimum based on complexity
-      const minTokens = maxLines <= 150 ? 12000 : 16000;
-      maxTokens = Math.max(minTokens, estimatedTokens);
+      maxTokens = Math.max(maxTokens, estimatedTokens);
     }
   }
 

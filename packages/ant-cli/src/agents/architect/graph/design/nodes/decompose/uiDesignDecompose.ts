@@ -71,7 +71,7 @@ export async function decomposeUiDesign(
     
     const result = await llmToUse.invokeWithUsage?.(
       [{ role: 'user', content: uiDecomposePrompt }],
-      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DECOMPOSE_UI }
+      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
     );
     const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: uiDecomposePrompt }]);
 

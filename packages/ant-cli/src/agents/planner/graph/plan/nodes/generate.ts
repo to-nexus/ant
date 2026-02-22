@@ -31,6 +31,7 @@ import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStream
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { logPrompt } from '../../../../../core/utils/promptLogger';
 import { buildPlanContext } from '../utils/PlanContextBuilder';
+import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Clarify Tag Parser
@@ -269,6 +270,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     for await (const event of llm.stream(messages, {
       system: systemPrompt,
       tools: toolDefinitions,
+      maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: isFirstCall,
     })) {
       // Pass ALL events to StreamOrchestrator for real-time rendering:

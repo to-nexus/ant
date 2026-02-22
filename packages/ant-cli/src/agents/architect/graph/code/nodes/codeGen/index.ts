@@ -30,7 +30,7 @@ import { getAvailableTools } from './toolDefinitions';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
-import { LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -319,7 +319,7 @@ export async function codeGen(
     // ✅ Single stream (no loop!)
     for await (const event of llmToUse.stream(messages, {
       tools,
-      maxTokens: 32000,
+      maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: !isAfterToolCall,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
     })) {
