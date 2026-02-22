@@ -374,7 +374,7 @@ export async function detectEnvironment(
     
     for await (const event of llm.stream(
       [{ role: "user", content: prompt }],
-      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DETECT, enableThinking: false }
+      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: false }
     )) {
       if (event.text) {
         response += event.text;

@@ -361,7 +361,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     branch: state.branch!, 
     reportFile: reportMessage,
     filesChanged: filesGenerated,
-    interruption: isRecursionLimit ? state.interruption : undefined,
+    interruption: (state as any).interruption,
     triageResult: state.triageResult,  // ✅ Pass triage result for ask/redirect/blocked handling
   };
 }

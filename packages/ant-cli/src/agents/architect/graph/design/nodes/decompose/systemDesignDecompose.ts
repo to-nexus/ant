@@ -406,7 +406,7 @@ export async function decomposeSystemDesign(
   async function attemptDecompose(): Promise<SystemDesignResponse> {
     const result = await llmToUse.invokeWithUsage?.(
       [{ role: 'user', content: prompt }],
-      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DECOMPOSE_SYSTEM }
+      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
     );
     const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
 

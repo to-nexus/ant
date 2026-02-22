@@ -149,7 +149,7 @@ export async function generatePlanText(
     llmToUse,
     [{ role: 'user', content: prompt }],
     state as any,
-    { temperature: LLM_TEMPERATURE.PLAN_GENERATION, maxTokens: LLM_MAX_TOKENS.PLAN, enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.PLAN }
+    { temperature: LLM_TEMPERATURE.PLAN_GENERATION, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.PLAN }
   );
   updateKanbanTokenUsage(state as any);
 
@@ -183,11 +183,22 @@ export async function generatePlanText(
   const planMatch = response.match(/<plan>([\s\S]*?)<\/plan>/);
   
   if (!planMatch) {
-    console.error(`❌ [Plan] <plan> tag not found in LLM response`);
-    console.error(`   Response preview: "${response.substring(0, 200)}..."`);
+    const hasOpenTag = response.includes('<plan>');
+    const outputDelta = planCallUsage.outputTokens;
+    const isTruncation = hasOpenTag || outputDelta >= LLM_MAX_TOKENS.DEFAULT - 500;
+
+    if (isTruncation) {
+      console.error(`❌ [Plan] OUTPUT TRUNCATED — response hit max_tokens limit (${outputDelta} output tokens, limit: ${LLM_MAX_TOKENS.DEFAULT})`);
+      console.error(`   <plan> open tag found: ${hasOpenTag}, response ends with: "...${response.substring(response.length - 100)}"`);
+    } else {
+      console.error(`❌ [Plan] <plan> tag not found in LLM response`);
+      console.error(`   Response preview: "${response.substring(0, 200)}..."`);
+    }
+
     throw new Error(
       `[Plan] <plan> tag not found. Your ENTIRE response must contain exactly one <plan>{JSON}</plan> block. ` +
-      `Do NOT omit the <plan> tags. Do NOT output JSON without wrapping it in <plan>...</plan>.`
+      `Do NOT omit the <plan> tags. Do NOT output JSON without wrapping it in <plan>...</plan>.` +
+      (isTruncation ? ` [TRUNCATION DETECTED: ${outputDelta} output tokens used, limit ${LLM_MAX_TOKENS.DEFAULT}]` : '')
     );
   }
   
@@ -313,7 +324,7 @@ export async function runPlanLLMWithTools(
 
   for await (const event of llmToUse.stream(messages, {
     tools,
-    maxTokens: LLM_MAX_TOKENS.PLAN,
+    maxTokens: LLM_MAX_TOKENS.DEFAULT,
     enableThinking: true,
     thinkingBudget: LLM_THINKING_BUDGET.PLAN,
   })) {

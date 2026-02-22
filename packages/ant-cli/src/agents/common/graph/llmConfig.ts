@@ -35,15 +35,11 @@ export const LLM_THINKING_BUDGET = {
 } as const;
 
 export const LLM_MAX_TOKENS = {
-  // Short outputs
-  KEYWORD: 800,
+  // Short outputs (no thinking, concise keyword responses)
+  KEYWORD: 3200,
   
-  // Medium outputs
-  PLAN: 16000,
-  DECOMPOSE_UI: 8000,
-  
-  // Long outputs
-  DECOMPOSE_SYSTEM: 16000,
-  DETECT: 16000,
-  CODE_EXECUTE: 16000,
+  // Default for all other outputs — 32K ensures sufficient text space after thinking budget.
+  // Anthropic model defaults: Sonnet 4 = 64K, Opus 4 = 32K.
+  // With thinkingBudget 10K, text space = ~22K. With 5K, text space = ~27K.
+  DEFAULT: 32000,
 } as const;

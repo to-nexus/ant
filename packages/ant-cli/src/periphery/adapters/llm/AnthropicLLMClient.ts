@@ -88,7 +88,10 @@ export class AnthropicLLMClient implements LLMClient {
       ? Math.max(requestedMaxTokens, thinkingBudget + 2000)
       : requestedMaxTokens;
     
-    const response = await this.client.messages.create({
+    // Use streaming internally to avoid Anthropic's 10-minute non-streaming timeout.
+    // .messages.stream() + .finalMessage() gives us the same Message object
+    // as .messages.create() but keeps the HTTP connection alive via SSE.
+    const stream = this.client.messages.stream({
       model: this.modelName,
       max_tokens: maxTokens,
       ...(systemParam && { system: systemParam }),
@@ -100,11 +103,11 @@ export class AnthropicLLMClient implements LLMClient {
       } : {}),
       messages: userMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,  // API directly accepts CacheableContent[]
+        content: m.content as any,
       })),
     });
+    const response = await stream.finalMessage();
 
-    // Extract text content (ignore thinking blocks for non-streaming)
     const textBlocks = response.content.filter((block: any) => block.type === 'text');
     const content = textBlocks.map((block: any) => block.text).join('');
     

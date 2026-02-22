@@ -60,7 +60,10 @@ Promise.all([
     .catch(() => {}),
   fs.readFile(join(codeBaseInjectionsPath, "plan-tools-batch.md"), "utf8")
     .then(content => Handlebars.registerPartial("code/base/injections/plan-tools-batch", content))
-    .catch(() => {})
+    .catch(() => {}),
+  fs.readFile(join(codeBaseInjectionsPath, "persistence-schema-rule.md"), "utf8")
+    .then(content => Handlebars.registerPartial("code/base/injections/persistence-schema-rule", content))
+    .catch(() => {}),
 ]).catch(() => {});
 
 // ✅ Register common injections (shared across all jobs)

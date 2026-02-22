@@ -106,9 +106,10 @@ export class TaskOrchestrator<T extends BaseTask> {
   private allDoneResolve: (() => void) | null = null;
   private isRunning = false;
   
-  // ✅ Tracks whether any task was paused due to recursion limit.
+  // Tracks whether any task was paused due to recursion limit, user stop, etc.
   // Unlike failedTasks (permanent), interrupted tasks remain in the queue for resume.
   private hasInterruptedTasks = false;
+  private interruptReason: string | null = null;
 
   // Consecutive timeout counter across all tasks.
   // Reset on any non-timeout error or success. When it reaches CONSECUTIVE_TIMEOUT_LIMIT,
@@ -183,6 +184,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       tokenUsage: this.accumulatedTokenUsage,
       hasFailures: this.failedTasks.length > 0,
       hasInterruptedTasks: this.hasInterruptedTasks,
+      interruptReason: this.interruptReason,
       ...(this.draining ? { drainReason: this.failedTasks[0]?.error.message || 'unknown' } : {}),
     };
 
@@ -370,8 +372,7 @@ export class TaskOrchestrator<T extends BaseTask> {
           );
         }
 
-        // If all remaining queue tasks are verification/final, skip them and drain.
-        // Running verification after predecessor failures is pointless — saves time and tokens.
+        // Skip remaining verification/final tasks — running them after failure is pointless.
         const remaining = this.taskQueue.getAll();
         const allRemainingAreFinal = remaining.length > 0 && remaining.every(
           t => t.type === 'verification' || t.priority >= 1000
@@ -388,8 +389,11 @@ export class TaskOrchestrator<T extends BaseTask> {
           console.warn(
             `[Orchestrator] Draining: ${remaining.length} verification/final task(s) skipped due to predecessor failure`,
           );
-          this.drain();
         }
+
+        // Always drain on permanent failure — let running tasks finish, but don't start new ones.
+        this.drain();
+        this.broadcastKanban();
       } else {
         // Transient error — re-queue for retry
         task.interrupted = true;
@@ -407,8 +411,10 @@ export class TaskOrchestrator<T extends BaseTask> {
         console.warn(`[Orchestrator] Post-failure checkpoint failed:`, err);
       }
 
-      // Spawn workers for newly available slots
-      this.spawnAvailableWorkers();
+      // Only spawn new workers if not draining (transient error re-queue case)
+      if (!this.draining) {
+        this.spawnAvailableWorkers();
+      }
 
       this.checkAllDone();
     });
@@ -546,9 +552,17 @@ export class TaskOrchestrator<T extends BaseTask> {
 
   private broadcastKanban(): void {
     const currentTasks = Array.from(this.runningTasks.values());
+    const queue = this.taskQueue.getAll();
+
+    // Include failed tasks in queue with _failed marker so UI can display them
+    const failedAsQueue = this.failedTasks.map(f => ({
+      ...f.task,
+      _failed: true,
+    }));
+
     this.callbacks.onKanbanUpdate?.(
       currentTasks,
-      this.taskQueue.getAll(),
+      [...queue, ...failedAsQueue],
       this.completedTasks,
       this.accumulatedTokenUsage,
     );
@@ -665,6 +679,8 @@ export class TaskOrchestrator<T extends BaseTask> {
     console.log(`[TaskOrchestrator] handleInterruption called: ${reason}`);
 
     await this.lock.runExclusive(async () => {
+      this.hasInterruptedTasks = true;
+      this.interruptReason = reason;
       this.drain();
       this.signalWorkersToStop();
       await this.saveCheckpoint({ reason, canResume: true });
