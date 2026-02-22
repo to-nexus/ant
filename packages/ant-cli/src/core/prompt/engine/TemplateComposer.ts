@@ -39,6 +39,10 @@ Handlebars.registerHelper('includes', function(haystack: any, needle: any) {
   return h.includes(n);
 });
 
+Handlebars.registerHelper('gte', function(a: any, b: any) {
+  return Number(a) >= Number(b);
+});
+
 Handlebars.registerHelper('lower', function(value: any) {
   if (value == null) return '';
   return String(value).toLowerCase();
