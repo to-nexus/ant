@@ -55,6 +55,7 @@ const FEATURE_SIBLING_PREFIXES = [
  * 
  * Rules (applied in order, first match wins):
  * 1. Already starts with codebaseRel/ -> no change
+ *    1.5. Double-nested codebaseRel/codebaseRel/... -> collapse to codebaseRel/...
  * 2. features/<name>/<codebaseRel>/... -> codebaseRel/... (fix LLM nesting mistake)
  * 3. Starts with a feature sibling directory (inputs/, outputs/, sessions/) -> no change
  * 4. Everything else -> prepend codebaseRel/ (it's a codebase file missing the prefix)
@@ -72,8 +73,21 @@ export function normalizeToCodebasePath(
   const normalized = normalizeRelPath(rawPath);
   const prefix = codebaseRel.endsWith('/') ? codebaseRel : codebaseRel + '/';
 
-  // Rule 1: Already under codebase directory - no change needed
+  // Rule 1: Already under codebase directory
   if (normalized.startsWith(prefix) || normalized === codebaseRel) {
+    // Rule 1.5: Collapse double-nesting (codebase/codebase/... → codebase/...)
+    // Caused by CWD mismatch: when cwd=codebase/ and command uses codebase/ prefix,
+    // or when LLM reads a double-nested path and propagates it.
+    const doublePrefix = prefix + codebaseRel + '/';
+    if (normalized.startsWith(doublePrefix)) {
+      const collapsed = normalized.slice(prefix.length);
+      console.warn(`⚠️  [PATH FIX] Collapsed double-nested codebase path: ${normalized} → ${collapsed}`);
+      return {
+        normalized: collapsed,
+        wasFixed: true,
+        reason: `collapsed double-nested ${codebaseRel}/ prefix`,
+      };
+    }
     return { normalized, wasFixed: false };
   }
 

@@ -20,7 +20,7 @@ import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClie
 import { RunCommandArgs, ServerProcess } from '../types';
 import { checkOrchestratorPortSafeguard } from '../utils/helpers';
 import { terminateProcessTree } from '../../../../../../../periphery/adapters/command/processTree';
-import { normalizeToCodebasePath } from '../../../../../../../core/utils/pathNormalizer';
+import { normalizeToCodebasePath, normalizeRelPath } from '../../../../../../../core/utils/pathNormalizer';
 import { 
   LONG_RUNNING_PATTERNS, 
   ERROR_PATTERNS, 
@@ -33,6 +33,7 @@ import {
   SERVER_OUTPUT_PATTERNS,
   ORCHESTRATOR_PORT 
 } from '../constants';
+import * as path from 'path';
 
 // 🚨 INTERACTIVE COMMAND DETECTION: Commands that require user input will hang forever
 // These patterns detect commands that typically prompt for input (cross-language)
@@ -43,6 +44,109 @@ const INTERACTIVE_COMMAND_PATTERNS = [
   // Go (go mod init requires module name argument)
   /\bgo\s+mod\s+init\s*$/i,              // go mod init without module name
 ];
+
+/**
+ * Pre-execution write guard for shell commands.
+ *
+ * Extracts file-writing target paths from common shell patterns and validates
+ * each against normalizeToCodebasePath. Returns violations for paths that would
+ * land outside codebase/ (or allowed sibling dirs like inputs/, outputs/, sessions/).
+ *
+ * Coverage: ~90-95% of LLM-generated shell file writes.
+ * Known gaps: variable expansion ($VAR), command substitution (`cmd`), brace expansion.
+ */
+interface WriteViolation {
+  path: string;
+  reason: string;
+}
+
+function extractWriteTargets(command: string): string[] {
+  const targets: string[] = [];
+  // Strip heredoc content: everything from << delimiter to EOF-like marker is content, not paths.
+  // We only analyze the command portion before heredoc.
+  const cmdPart = command.split(/<<-?\s*['"]?\w+['"]?/)[0] || command;
+
+  // Split compound commands to analyze each segment
+  const segments = cmdPart.split(/\s*(?:&&|\|\||;)\s*/g);
+
+  for (const seg of segments) {
+    const trimmed = seg.trim();
+    if (!trimmed) continue;
+
+    // Output redirection: > path or >> path
+    const redirectMatch = trimmed.match(/>{1,2}\s+([^\s;&|><"']+)/);
+    if (redirectMatch) targets.push(redirectMatch[1]);
+
+    // mkdir [-p] path [path2...]
+    const mkdirMatch = trimmed.match(/\bmkdir\s+(?:-p\s+)?(.+)/);
+    if (mkdirMatch) {
+      const paths = mkdirMatch[1].trim().split(/\s+/);
+      for (const p of paths) {
+        if (!p.startsWith('-')) targets.push(p);
+      }
+    }
+
+    // touch path [path2...]
+    const touchMatch = trimmed.match(/\btouch\s+(.+)/);
+    if (touchMatch) {
+      const paths = touchMatch[1].trim().split(/\s+/);
+      for (const p of paths) {
+        if (!p.startsWith('-')) targets.push(p);
+      }
+    }
+
+    // cp [-flags] src dest (last arg is destination)
+    const cpMatch = trimmed.match(/\bcp\s+(?:-[a-zA-Z]+\s+)*(.+)/);
+    if (cpMatch) {
+      const args = cpMatch[1].trim().split(/\s+/).filter(a => !a.startsWith('-'));
+      if (args.length >= 2) targets.push(args[args.length - 1]);
+    }
+
+    // mv [-flags] src dest
+    const mvMatch = trimmed.match(/\bmv\s+(?:-[a-zA-Z]+\s+)*(.+)/);
+    if (mvMatch) {
+      const args = mvMatch[1].trim().split(/\s+/).filter(a => !a.startsWith('-'));
+      if (args.length >= 2) targets.push(args[args.length - 1]);
+    }
+  }
+
+  return targets.filter(t => t && !t.startsWith('$') && !t.includes('`') && !t.startsWith('/dev/'));
+}
+
+function detectWritePathViolations(
+  command: string,
+  workingDir: string,
+  projectPath: string,
+): WriteViolation[] {
+  const targets = extractWriteTargets(command);
+  const violations: WriteViolation[] = [];
+
+  for (const target of targets) {
+    // Resolve target path to absolute, then to project-relative
+    const absTarget = path.isAbsolute(target)
+      ? target
+      : path.resolve(workingDir, target);
+    const relToProject = normalizeRelPath(path.relative(projectPath, absTarget));
+
+    // Escapes project root entirely (../ traversal)
+    if (relToProject.startsWith('..')) {
+      violations.push({ path: target, reason: 'escapes project root via ../ traversal' });
+      continue;
+    }
+
+    // Check if path is under codebase/ or allowed sibling dirs
+    const { normalized, wasFixed } = normalizeToCodebasePath(relToProject);
+    if (wasFixed && normalized !== relToProject) {
+      // normalizeToCodebasePath wanted to fix this path — it's outside codebase
+      violations.push({
+        path: target,
+        reason: `resolves to "${relToProject}" which is outside codebase/ (would be auto-corrected to "${normalized}")`,
+      });
+    }
+  }
+
+  return violations;
+}
 
 export async function handleRunCommand(
   state: ArchitectGraphState,
@@ -109,17 +213,8 @@ Or use a different approach that doesn't require initialization.`;
                            /\bgo\s+mod\s+(tidy|download)\b/.test(normalizedCommand);
   const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
   
-  // ✅ Resolve working directory - CODEBASE is the default base
-  // Default cwd = codebase/ (where 99% of commands run: build, test, install, etc.)
-  // If working_directory is provided, normalizeToCodebasePath decides:
-  //   - inputs/, outputs/, sessions/ → feature root based (Rule 3: sibling dirs)
-  //   - everything else → codebase/ based (Rule 4: prepend codebase/)
-  // This ensures shell file writes (cat >, heredoc) land inside codebase/,
-  // while asset copies from inputs/ remain accessible via explicit working_directory.
   const p = await import('path');
-  const gitPort = state.deps?.git;
   const projectPath = fileSystem.getRootPath();
-  const codebasePath = gitPort ? await gitPort.getRepoRoot() : projectPath;
 
   let workingDir: string;
   if (working_directory) {
@@ -130,7 +225,19 @@ Or use a different approach that doesn't require initialization.`;
       workingDir = p.join(projectPath, normalized);
     }
   } else {
-    workingDir = codebasePath;
+    workingDir = projectPath;
+  }
+
+  // Pre-execution write guard: detect shell file-writing patterns that target
+  // paths outside codebase/ and reject them before the command runs.
+  const writeViolations = detectWritePathViolations(normalizedCommand, workingDir, projectPath);
+  if (writeViolations.length > 0) {
+    const msg = writeViolations.map(v => `  - "${v.path}" → ${v.reason}`).join('\n');
+    console.error(`\n   ❌ [run_command] Write path violation detected:\n${msg}\n`);
+    return `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\n` +
+      `Violations:\n${msg}\n\n` +
+      `All file writes must target paths under codebase/. ` +
+      `Use create_file or edit_file tools instead of shell redirection for file creation.`;
   }
   
   console.log(`\n   🔧 Running command: ${normalizedCommand}`);

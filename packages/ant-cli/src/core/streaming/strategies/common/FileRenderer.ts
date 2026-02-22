@@ -108,31 +108,18 @@ export class FileRenderer {
       }
     }
 
-    // Code jobs: ensure path resolves under the codebase directory.
-    // Uses the shared normalizeToCodebasePath() to ensure consistency with
-    // tool handlers (resolveToolPath). Both read and write paths must agree.
-    //
-    // CRITICAL: normalizeToCodebasePath NEVER strips src/ or other intermediate dirs.
-    // This prevents the read/write path mismatch that caused duplicate directories.
+    // Code jobs: normalize path via the single source of truth (normalizeToCodebasePath).
+    // This ensures consistency with tool handlers (resolveToolPath) — both read and write
+    // paths agree. Handles all cases: bare paths, double-nesting, sibling dirs, etc.
     if (this.jobType === 'code' && this.codebasePath) {
       const rootPath = this.fileSystem.getRootPath?.();
       if (rootPath) {
-        // FIX: When rootPath === codebasePath, path.relative returns ''.
-        // Fall back to 'codebase' to ensure normalization always runs.
         const codebaseRel = path.relative(rootPath, this.codebasePath).replace(/\\/g, '/') || 'codebase';
-
         const { normalized, wasFixed, reason } = normalizeToCodebasePath(originalPath, codebaseRel);
         if (wasFixed) {
           console.warn(`⚠️ [FileRenderer] Path auto-corrected: "${originalPath}" → "${normalized}" (${reason})`);
-          return normalized;
         }
-        // Fallback: if normalizer didn't match (unknown directory), still prepend codebase/
-        // to prevent files being written outside the codebase directory
-        if (!originalPath.startsWith(codebaseRel + '/') && !originalPath.startsWith(codebaseRel + '\\')) {
-          const corrected = path.join(codebaseRel, originalPath);
-          console.warn(`⚠️ [FileRenderer] Auto-prepending codebase prefix: "${originalPath}" → "${corrected}"`);
-          return corrected;
-        }
+        return normalized;
       }
     }
 
@@ -348,28 +335,6 @@ export class FileRenderer {
   private async handleCreateOrAppend(filePath: string, fileInfo: FileStreamInfo): Promise<void> {
     if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
       const fsPath = this.resolveFileSystemPath(filePath);
-
-      // Guard: reject writes outside the canonical codebase directory for code jobs.
-      // This surfaces a clear violation so the LLM can self-correct the path.
-      if (this.jobType === 'code' && this.codebasePath) {
-        const rootPath = this.fileSystem?.getRootPath?.();
-        const codebaseRel = rootPath
-          ? (path.relative(rootPath, this.codebasePath).replace(/\\/g, '/') || 'codebase')
-          : 'codebase';
-        const codebasePrefix = codebaseRel + '/';
-
-        if (!fsPath.startsWith(codebasePrefix) && fsPath !== codebaseRel) {
-          const msg =
-            `File write REJECTED: "${filePath}" resolved to "${fsPath}" which is outside ` +
-            `the codebase directory ("${codebaseRel}/"). ` +
-            `All code files MUST be under "${codebaseRel}/". ` +
-            `Use a path like "${codebaseRel}/services/..." instead of "services/...".`;
-          console.error(`❌ [FileRenderer] ${msg}`);
-          this.fileErrors.push(msg);
-          await this.chatAPI.failFileCreation(filePath, msg);
-          return;
-        }
-      }
 
       if (fileInfo.actionType === 'append' && this.jobType === 'design') {
         await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
