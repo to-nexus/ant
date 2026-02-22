@@ -123,12 +123,14 @@ CRITICAL:
 
 | Checkpoint | Strategy |
 |-----------|----------|
-| **Multiple packages/services observed** | Create one test generation task per package (same priority, shared `parallelGroup`). Each task targets a single package scope. |
+| **Multiple packages/services observed** | Create one test generation task per package (same priority, distinct `parallelGroup` per package). Each task targets a single package scope. |
 | **Single package** | Create one test generation task (`exclusive: true`). |
 
 **Principle**: Each test task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
 
-**Constraint**: Per-package test tasks target independent scopes — assign them the same priority and a shared `parallelGroup` so they run in parallel. Use `exclusive: true` only when a single test task covers the entire project.
+**Constraint**: Per-package test tasks target independent scopes — assign them the same priority and a **distinct `parallelGroup` per package** so they can run in parallel.
+
+⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package test tasks modify independent directories — they MUST have different group IDs.
 
 **Constraint**: Each per-package test task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
 
@@ -347,7 +349,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "setup"` -> always exclusive (installs dependencies, modifies lock files)
 - `type: "error"` -> always exclusive (may modify shared configs)
 - `type: "verification"` (priority 1000) -> always exclusive
-- Test generation (priority 850-890) -> always exclusive (must observe all completed feature code)
+- Test generation (priority 850-890, single package) -> exclusive (must observe all completed feature code)
+- Test generation (priority 850-890, multiple packages) -> distinct `parallelGroup` per package (independent scopes, parallel with each other)
 - Any task that installs packages or modifies shared build configs
 
 ⚠️ **CONSTRAINT**: `exclusive` is determined ONLY by the `type` field value and `priority` value. Do NOT infer `exclusive` from task name or description content.
