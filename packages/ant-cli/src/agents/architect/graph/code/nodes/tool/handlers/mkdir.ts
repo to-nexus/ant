@@ -4,7 +4,7 @@
 
 import { ArchitectGraphState } from '../../../state';
 import { MkdirArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath } from './utils';
 
 export async function handleMkdir(
   state: ArchitectGraphState,
@@ -15,13 +15,14 @@ export async function handleMkdir(
   const fileSystem = getFileSystem(state, 'mkdir');
   
   return withErrorHandling('mkdir', async () => {
-    logFileOperation('mkdir', 'Creating directory', dirPath);
+    const resolved = await resolveToolPath(state, dirPath);
+    logFileOperation('mkdir', 'Creating directory', resolved.fsPath);
     
-    await fileSystem.createDirectory(dirPath);
+    await fileSystem.createDirectory(resolved.fsPath);
     
-    console.log(`[mkdir] ✅ Created directory: ${dirPath}`);
+    console.log(`[mkdir] ✅ Created directory: ${resolved.displayPath}`);
     
-    return `Directory created: ${dirPath}`;
+    return `Directory created: ${resolved.displayPath}`;
   }, { dirPath });
 }
 

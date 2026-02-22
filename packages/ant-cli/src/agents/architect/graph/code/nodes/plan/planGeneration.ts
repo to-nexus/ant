@@ -185,7 +185,10 @@ export async function generatePlanText(
   if (!planMatch) {
     console.error(`❌ [Plan] <plan> tag not found in LLM response`);
     console.error(`   Response preview: "${response.substring(0, 200)}..."`);
-    throw new Error(`[Plan] <plan> tag not found. LLM must output structured plan within <plan>...</plan> tags.`);
+    throw new Error(
+      `[Plan] <plan> tag not found. Your ENTIRE response must contain exactly one <plan>{JSON}</plan> block. ` +
+      `Do NOT omit the <plan> tags. Do NOT output JSON without wrapping it in <plan>...</plan>.`
+    );
   }
   
   const planText = planMatch[1].trim();

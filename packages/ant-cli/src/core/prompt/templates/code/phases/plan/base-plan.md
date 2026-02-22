@@ -65,11 +65,13 @@ will consume your outputs and perform the integration.
 ────────────────────────────────────────────────────────────────────────────────
 {{/if}}
 
+{{#if directive}}
 ## Original Directive (Ground Truth)
 
 ```
 {{directive}}
 ```
+{{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────
 {{#if isRetry}}

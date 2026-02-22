@@ -42,7 +42,8 @@ export class InputNormalizer {
       prdSpec?: string;
       currentCode?: string;
     },
-    mode?: JobMode
+    mode?: JobMode,
+    taskType?: string
   ): NormalizedPromptInput {
     // Extract goal from directive or use default
     const goal = artifacts.directive 
@@ -50,7 +51,7 @@ export class InputNormalizer {
       : this.getDefaultGoal(job, "plan");
     
     // Validate job-specific requirements
-    this.validateInput(job, "plan", artifacts);
+    this.validateInput(job, "plan", artifacts, taskType);
     
     return {
       goal,
@@ -74,13 +75,14 @@ export class InputNormalizer {
       prdSpec?: string;
       currentCode?: string;
     },
-    mode?: JobMode
+    mode?: JobMode,
+    taskType?: string
   ): NormalizedPromptInput {
     const goal = artifacts.directive 
       ? this.extractGoal(artifacts.directive)
       : this.getDefaultGoal(job, "execute");
     
-    this.validateInput(job, "execute", artifacts);
+    this.validateInput(job, "execute", artifacts, taskType);
     
     return {
       goal,
@@ -146,10 +148,12 @@ export class InputNormalizer {
   private validateInput(
     job: AgentJob,
     phase: "plan" | "execute",
-    artifacts: NormalizedPromptInput['artifacts']
+    artifacts: NormalizedPromptInput['artifacts'],
+    taskType?: string
   ): void {
     // Code job requires either design doc or directive
-    if (job === 'code') {
+    // Verification tasks operate on existing codebase — they don't need a directive or design doc
+    if (job === 'code' && taskType !== 'verification') {
       if (!artifacts.designDoc && !artifacts.directive) {
         throw new Error(
           "Code job requires either design document or directive.\n" +
