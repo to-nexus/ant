@@ -142,6 +142,7 @@ export class TaskOrchestrator<T extends BaseTask> {
     this.config = {
       maxWorkers: this.maxWorkers,
       checkpointInterval: config?.checkpointInterval ?? 60_000,
+      testBarrierPriority: config?.testBarrierPriority,
     };
 
     console.log(`[Orchestrator] Initialized with maxWorkers=${this.maxWorkers}, queueSize=${taskQueue.size()}, previouslyCompleted=${this.completedTasks.length}`);
@@ -432,9 +433,23 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
+    // Test generation barrier: pre-compute whether pre-barrier work remains.
+    // When testBarrierPriority is set, tasks at or above that priority must wait
+    // until ALL tasks below it have completed (not running, not queued).
+    const barrier = this.config.testBarrierPriority;
+    const hasPreBarrierWork = barrier != null && (
+      Array.from(this.runningTasks.values()).some(t => t.priority < barrier) ||
+      this.taskQueue.getAll().some(t => t.priority < barrier)
+    );
+
     for (const task of this.taskQueue.getAll()) {
       // Exclusive task acts as a barrier
       if (task.exclusive) break;
+
+      // Test generation barrier: don't assign post-barrier tasks while pre-barrier work exists
+      if (hasPreBarrierWork && barrier != null && task.priority >= barrier) {
+        break;
+      }
 
       // No parallelGroup = conservative solo execution
       if (!task.parallelGroup) {
@@ -486,9 +501,17 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
+    // Test generation barrier (same logic as findAndAssignNonConflictingTask)
+    const barrier = this.config.testBarrierPriority;
+    const hasPreBarrierWork = barrier != null && (
+      Array.from(this.runningTasks.values()).some(t => t.priority < barrier) ||
+      this.taskQueue.getAll().some(t => t.priority < barrier)
+    );
+
     let potentialTasks = 0;
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
+      if (hasPreBarrierWork && barrier != null && task.priority >= barrier) break;
       if (!task.parallelGroup) {
         if (this.runningTasks.size === 0 && potentialTasks === 0) potentialTasks++;
         continue;

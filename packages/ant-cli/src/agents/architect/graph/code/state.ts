@@ -63,11 +63,19 @@ export const TASK_PRIORITIES = {
   // Setup Tasks (100-149) - project initialization
   SETUP_PROJECT: 100,           // Config files, package.json, tsconfig.json (최우선!)
   
-  // Feature Tasks (200-899) - implement all features first
+  // Feature Tasks (200-799) - implement all features first
   FEATURE_CRITICAL: 200,        // 가장 중요한 기능
   FEATURE_IMPORTANT: 220,
   FEATURE_NORMAL: 250,
   FEATURE_NICE_TO_HAVE: 280,    // 가장 덜 중요한 기능
+  
+  // Post-Feature Tasks (800-899) - after all features, before error fixing
+  // These tasks observe completed feature code and must NOT run in parallel with features.
+  // Barrier enforced in TaskOrchestrator via testBarrierPriority config.
+  INTEGRATION: 800,             // Wires parallel feature outputs into shared entry points
+  TEST_GENERATION: 850,         // Creates test suite after all features complete
+  // ⚠️ Sync: execute/base.md uses {{#if (gte currentTask.priority 850)}} (Handlebars can't ref TS constants)
+  // ⚠️ Sync: decompose/rules.md mentions "priority 850-890" in LLM prompt text
   
   // Error Tasks (900-999) - fix errors after all features are implemented
   ERROR_MISSING_ENTRY: 900,     // index.html 같은 entry 파일 (가장 중요)
