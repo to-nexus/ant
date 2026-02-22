@@ -213,16 +213,15 @@ Or use a different approach that doesn't require initialization.`;
                            /\bgo\s+mod\s+(tidy|download)\b/.test(normalizedCommand);
   const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
   
-  const p = await import('path');
   const projectPath = fileSystem.getRootPath();
 
   let workingDir: string;
   if (working_directory) {
-    if (p.isAbsolute(working_directory)) {
+    if (path.isAbsolute(working_directory)) {
       workingDir = working_directory;
     } else {
       const { normalized } = normalizeToCodebasePath(working_directory);
-      workingDir = p.join(projectPath, normalized);
+      workingDir = path.join(projectPath, normalized);
     }
   } else {
     workingDir = projectPath;
