@@ -366,7 +366,9 @@ export class TemplateComposer {
       'game-domain-guide': {},
       'service-domain-guide': {},
       'preview-setup': {},  // ✅ Preview base path setup for frontend routing
-      'preview-env-contract': {}  // ✅ Preview runtime contract (base path, dynamic ports, API base)
+      'preview-env-contract': {},  // ✅ Preview runtime contract (base path, dynamic ports, API base)
+      'hints': {}  // Language-specific verification hints (FPOP principles, no vars)
+
     };
     
     return varMap[filename] || {};

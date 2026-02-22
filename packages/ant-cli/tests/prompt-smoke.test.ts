@@ -153,8 +153,9 @@ describe('Template Smoke Tests', () => {
     expect(result.total).toBeGreaterThan(0);
   });
 
-  it('should discover at least 88 templates', () => {
-    expect(templateNames.length).toBeGreaterThanOrEqual(88);
+  it('discovered templates should match registered partials count', async () => {
+    const result = await initPartials(TEMPLATES_DIR);
+    expect(templateNames.length).toBe(result.total);
   });
 
   it('injection-manifest.json covers all injection templates', async () => {
