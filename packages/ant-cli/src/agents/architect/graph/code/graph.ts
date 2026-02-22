@@ -501,6 +501,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     {
       maxWorkers,
       checkpointInterval: 60000,
+      testBarrierPriority: TASK_PRIORITIES.TEST_GENERATION,
     },
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );
