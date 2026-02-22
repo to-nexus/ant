@@ -470,6 +470,76 @@ async function collectFilesRecursive(dir: string, fileSystem: any): Promise<stri
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Go Workspace helpers
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse module directories from a go.work file's `use ( ... )` block.
+ */
+function parseGoWorkModules(goWorkContent: string): string[] {
+  const useMatch = goWorkContent.match(/use\s*\(([\s\S]*?)\)/);
+  if (!useMatch) return [];
+  return useMatch[1]
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !line.startsWith('//'));
+}
+
+/**
+ * Execute a Go command across all modules in a go.work workspace.
+ * Runs `command` with `cwd` set to each module directory and aggregates results.
+ */
+async function executeGoWorkspaceCommand(
+  command: string,
+  resolvedPath: string,
+  commandPort: any,
+  timeout: number,
+): Promise<{ success: boolean; stdout: string; stderr: string }> {
+  const goWorkPath = path.join(resolvedPath, 'go.work');
+  let goWorkContent: string;
+  try {
+    goWorkContent = fs.readFileSync(goWorkPath, 'utf8');
+  } catch {
+    return commandPort.execute(command, { cwd: resolvedPath, timeout });
+  }
+
+  const modules = parseGoWorkModules(goWorkContent);
+  if (modules.length === 0) {
+    return commandPort.execute(command, { cwd: resolvedPath, timeout });
+  }
+
+  let allSuccess = true;
+  const allStdout: string[] = [];
+  const allStderr: string[] = [];
+
+  for (const mod of modules) {
+    const modPath = path.join(resolvedPath, mod);
+    if (!fs.existsSync(modPath)) {
+      console.warn(`   ⚠️  Module directory ${mod}/ not found — skipping`);
+      continue;
+    }
+
+    console.log(`   📦 ${command} in ${mod}/`);
+    const result = await commandPort.execute(command, { cwd: modPath, timeout });
+
+    if (!result.success) allSuccess = false;
+    if (result.stdout) allStdout.push(`[${mod}] ${result.stdout}`);
+    if (result.stderr) allStderr.push(`[${mod}] ${result.stderr}`);
+  }
+
+  return {
+    success: allSuccess,
+    stdout: allStdout.join('\n'),
+    stderr: allStderr.join('\n'),
+  };
+}
+
+function isGoWorkspaceProject(resolvedPath: string, projectDetection: any): boolean {
+  return projectDetection.language === Language.GO &&
+    fs.existsSync(path.join(resolvedPath, 'go.work'));
+}
+
 /**
  * Run type check (language-specific via ProjectRuntimeConfig)
  * - Node.js/TypeScript: npx tsc --noEmit
@@ -511,10 +581,9 @@ async function runTypeCheck(
   const command = typeCheckConfig.getCommand();
   console.log(`📘 Running ${typeCheckConfig.name}...`);
   
-  const typeCheckResult = await commandPort.execute(command, {
-    cwd: resolvedPath,
-    timeout: 2 * 60 * 1000, // 2 minutes
-  });
+  const typeCheckResult = isGoWorkspaceProject(resolvedPath, projectDetection)
+    ? await executeGoWorkspaceCommand(command, resolvedPath, commandPort, 2 * 60 * 1000)
+    : await commandPort.execute(command, { cwd: resolvedPath, timeout: 2 * 60 * 1000 });
 
   if (!typeCheckResult.success) {
     result.passed = false;
@@ -756,10 +825,9 @@ async function runBuild(
 
   console.log(`🔨 Running ${buildConfig.name}...`);
   
-  const buildResult = await commandPort.execute(buildCommand, {
-    cwd: resolvedPath,
-    timeout: 5 * 60 * 1000, // 5 minutes
-  });
+  const buildResult = isGoWorkspaceProject(resolvedPath, projectDetection)
+    ? await executeGoWorkspaceCommand(buildCommand, resolvedPath, commandPort, 5 * 60 * 1000)
+    : await commandPort.execute(buildCommand, { cwd: resolvedPath, timeout: 5 * 60 * 1000 });
 
   if (!buildResult.success) {
     result.passed = false;
@@ -898,10 +966,9 @@ async function runTest(
 
   console.log(`🧪 Running ${testConfig.name}...`);
 
-  const testResult = await commandPort.execute(testCommand, {
-    cwd: resolvedPath,
-    timeout: 3 * 60 * 1000, // 3 minutes
-  });
+  const testResult = isGoWorkspaceProject(resolvedPath, projectDetection)
+    ? await executeGoWorkspaceCommand(testCommand, resolvedPath, commandPort, 3 * 60 * 1000)
+    : await commandPort.execute(testCommand, { cwd: resolvedPath, timeout: 3 * 60 * 1000 });
 
   if (!testResult.success) {
     result.passed = false;

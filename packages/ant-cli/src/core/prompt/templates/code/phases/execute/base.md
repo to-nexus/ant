@@ -167,7 +167,7 @@ Create config files only. **NO source code, NO tests.**
 - `.env.example` - Environment variable template (connection variables MUST use `@connection` annotation)
 - `.env` - Active environment config with resolved localhost values matching `.env.example` variable keys
 - Entry file (framework-specific, e.g., index.html for SPA)
-- `docker-compose.yml` - Local infrastructure services (only if: root-level setup AND design specifies external services requiring a runtime process)
+- `docker-compose.yml` - Infrastructure services ONLY: databases, caches, message queues (only if: root-level setup AND design specifies external services requiring a runtime process). Do NOT include application/business services — the platform manages application process lifecycle separately.
 
 **Blind spot**: `.env` is EASILY FORGOTTEN when `.env.example` is created. Both files MUST be created together with identical variable keys. Variable names defined here become the contract for all subsequent tasks.
 

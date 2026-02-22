@@ -63,6 +63,8 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 3. Next task will create ALL application code - don't do it now
 4. Include ALL infrastructure services in docker-compose.yml if design doc specifies them
 
+**Constraint**: `docker-compose.yml` MUST contain ONLY infrastructure services (databases, caches, message queues). Do NOT add application services (API servers, web servers, redirect services) — even if the design document describes them as Docker containers. The platform manages application process lifecycle separately.
+
 ## Infrastructure Services (Observe Design Document)
 
 | Checkpoint | Observation Target |

@@ -88,12 +88,13 @@ Run the project's dev/start command to verify the application starts.
 
 | Checkpoint | Action |
 |-----------|--------|
-| **Detect test files** | Observe: does the project contain test files? (`*_test.go`, `*.test.ts`, `*.spec.ts`, `test_*.py`, etc.) If NONE exist, skip this step entirely. |
-| **Run tests** | Execute the project's test command (observed from config: `go test ./...`, `npm test`, `pytest`, etc.) |
+| **Detect test files** | Observe the directory tree (already in context) for test file naming conventions (`*_test.go`, `*.test.ts`, `*.spec.ts`, `test_*.py`). Use `list_files` on source directories if the tree is truncated. If NONE exist, skip this step entirely. |
+| **Run tests** | Execute the project's test command (observed from config: `go test ./...`, `npm test`, `pytest`, etc.). For multi-package projects, run tests per package. |
 | **Fix failures** | If tests fail: fix test code first. Modify source code ONLY if the test correctly identifies a genuine bug. |
 
 **Constraint**: Do NOT create new test files. Only run and fix existing tests.
 **Constraint**: If test infrastructure is missing (no test runner configured), skip this step.
+**Constraint**: Do NOT use `search_code` for finding test files by name — it searches file **content**, not filenames.
 
 ⚠️ **Blind spot**: Test failures caused by environment configuration (missing env vars, unavailable services) rather than code bugs. Verify environment is correctly configured before debugging test code.
 
