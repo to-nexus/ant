@@ -101,7 +101,7 @@ CRITICAL:
 
 ## Test Generation Task
 
-**Principle**: A test generation task (`type: "feature"`, priority 850-890, `exclusive: true`) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before verification.
+**Principle**: A test generation task (`type: "feature"`, priority 850-890) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before verification.
 
 **Observation target**: Does this task set include a setup task, or 3 or more feature tasks?
 
@@ -123,10 +123,12 @@ CRITICAL:
 
 | Checkpoint | Strategy |
 |-----------|----------|
-| **Multiple packages/services observed** | Create one test generation task per package (priority 850, 851, 852, ...). Each task targets a single package scope. |
-| **Single package** | Create one test generation task. |
+| **Multiple packages/services observed** | Create one test generation task per package (same priority, shared `parallelGroup`). Each task targets a single package scope. |
+| **Single package** | Create one test generation task (`exclusive: true`). |
 
 **Principle**: Each test task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
+
+**Constraint**: Per-package test tasks target independent scopes — assign them the same priority and a shared `parallelGroup` so they run in parallel. Use `exclusive: true` only when a single test task covers the entire project.
 
 **Constraint**: Each per-package test task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
 
