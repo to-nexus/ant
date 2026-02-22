@@ -336,6 +336,29 @@ export class FileRenderer {
     if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
       const fsPath = this.resolveFileSystemPath(filePath);
 
+      // Guard: code jobs must write only under codebase/. Reject sibling dirs
+      // (inputs/, outputs/, sessions/) which are legitimate for design jobs but not code.
+      // resolveFileSystemPath already normalized the path, so if it still doesn't
+      // start with codebase/, it means the normalizer intentionally left it unchanged
+      // (Rule 3: sibling dir) — which is wrong for code jobs.
+      if (this.jobType === 'code' && this.codebasePath) {
+        const rootPath = this.fileSystem?.getRootPath?.();
+        const codebaseRel = rootPath
+          ? (path.relative(rootPath, this.codebasePath).replace(/\\/g, '/') || 'codebase')
+          : 'codebase';
+        const codebasePrefix = codebaseRel + '/';
+
+        if (!fsPath.startsWith(codebasePrefix) && fsPath !== codebaseRel) {
+          const msg =
+            `File write REJECTED: "${filePath}" resolved to "${fsPath}" which is outside ` +
+            `the codebase directory ("${codebaseRel}/"). Code files must be under "${codebaseRel}/".`;
+          console.error(`❌ [FileRenderer] ${msg}`);
+          this.fileErrors.push(msg);
+          await this.chatAPI.failFileCreation(filePath, msg);
+          return;
+        }
+      }
+
       if (fileInfo.actionType === 'append' && this.jobType === 'design') {
         await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
       } else {
