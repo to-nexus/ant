@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { ProfilePort } from "../../../core/ports";
+import { WorkspacePathResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
 /**
  * FileProfileAdapter - File system implementation of ProfilePort
@@ -13,17 +13,7 @@ export class FileProfileAdapter implements ProfilePort {
   private baseDir: string;
   
   constructor(baseDir?: string) {
-    if (baseDir) {
-      this.baseDir = baseDir;
-    } else {
-      // ✅ Resolve path relative to THIS file
-      // From adapters/profile/ go up to periphery/profiles/
-      // Works in both src/ (development) and dist/ (production)
-      // ES modules: derive __dirname from import.meta.url
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = dirname(__filename);
-      this.baseDir = join(__dirname, "..", "..", "profiles");
-    }
+    this.baseDir = baseDir || WorkspacePathResolver.getProfilesPath();
   }
   
   /**
