@@ -118,6 +118,8 @@ Your modularization:
 
 {{> code/base/injections/persistence-schema-rule}}
 
+{{> code/base/injections/secure-coding}}
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 🔧 Interaction Methods
 ════════════════════════════════════════════════════════════════════════════════

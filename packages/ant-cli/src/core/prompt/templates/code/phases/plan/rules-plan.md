@@ -155,6 +155,8 @@ If two tasks independently create the same type, struct, class, or function in a
 shared namespace scope, the build fails with duplicate symbol errors. Define ONLY
 what YOU own; depend on interfaces for what others own.
 
+{{> code/base/injections/secure-coding}}
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 📝 ANALYSIS SECTION GUIDE
 ────────────────────────────────────────────────────────────────────────────────
@@ -205,6 +207,7 @@ Before outputting, verify:
 - [ ] Shared utilities in dedicated files, not inlined in multiple modules
 - [ ] For UI: assets are listed if needed
 - [ ] For UI: design tokens are specified
+- [ ] Security: input validation boundaries, secrets management, error exposure considered
 
 ────────────────────────────────────────────────────────────────────────────────
 ## ⚠️ OUTPUT CONSTRAINTS
