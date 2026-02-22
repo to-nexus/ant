@@ -468,6 +468,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             messageCount: messages.length,
             conversationHistoryLength: state.conversationHistory?.length || 0,
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
+            profileLanguage: state.profile?.language || null,
+            profileFramework: state.profile?.framework || null,
+            profilesLoaded: !!composed.profiles,
             failedTemplates: composed.failedTemplates.length > 0 ? composed.failedTemplates : undefined,
           },
         }

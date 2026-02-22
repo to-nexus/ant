@@ -251,12 +251,7 @@ export class ContextAssembler {
     assembled.memory = context.memory || undefined;
     
     // 4. Generate statistics
-    const hasMissingDependency = Boolean(
-      assembled.currentTask?.name?.toLowerCase().includes('missing') ||
-      assembled.currentTask?.name?.toLowerCase().includes('dependency') ||
-      assembled.currentTask?.description?.toLowerCase().includes('missing') ||
-      assembled.currentTask?.description?.toLowerCase().includes('dependency')
-    );
+    const hasMissingDependency = this.detectMissingDependency(assembled);
     
     const stats = {
       hasDirective: Boolean(assembled.directive),
@@ -278,6 +273,43 @@ export class ContextAssembler {
       ...assembled,
       stats
     } as AssembledContext;
+  }
+
+  /**
+   * Detect if the current task involves missing dependency resolution.
+   * 
+   * Priority order:
+   * 1. Explicit flag from task metadata (needsDependencyFix)
+   * 2. Setup task with existing project code (likely adding deps to existing project)
+   * 3. Keyword heuristic in task name/description (fallback)
+   */
+  private detectMissingDependency(assembled: Partial<AssembledContext>): boolean {
+    const task = assembled.currentTask;
+    if (!task) return false;
+
+    // 1. Explicit flag from LLM decompose output (highest priority)
+    if ((task as any).needsDependencyFix === true) return true;
+    if ((task as any).needsDependencyFix === false) return false;
+
+    // 2. Setup task targeting an existing project = likely dependency installation
+    const hasExistingCode = Boolean(
+      assembled.projectCodeContext?.files && assembled.projectCodeContext.files.length > 0
+    );
+    if (task.type === 'setup' && hasExistingCode) return true;
+
+    // 3. Keyword heuristic (fallback for backward compatibility)
+    const text = `${task.name} ${task.description}`.toLowerCase();
+    const depPatterns = [
+      /missing\s+(module|package|dep)/,
+      /install\s+(dep|package|module)/,
+      /add\s+(dep|package|module)/,
+      /dependency\s+(install|setup|missing|fix|resolution)/,
+      /package\.json.*dep/,
+      /go\s+mod\s+(tidy|download)/,
+      /pip\s+install/,
+      /cargo\s+add/,
+    ];
+    return depPatterns.some(p => p.test(text));
   }
 }
 

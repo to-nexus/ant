@@ -218,6 +218,14 @@ export class ModeController {
         }
       }
       
+      // Verification: inject language-specific hints (build/module/strict-mode guidance)
+      // These are lightweight FPOP-style principles, NOT full environment rules
+      if (isVerification && language && job === 'code') {
+        const hintsPath = `${job}/phases/verify/languages/${language}/hints`;
+        injections.push(hintsPath);
+        console.log(`[ModeController] Adding verification language hints: ${hintsPath}`);
+      }
+      
       // preview-env-contract (@connection annotations) and port-management
       // are needed for ALL code tasks including verification
       if (job === 'code') {
