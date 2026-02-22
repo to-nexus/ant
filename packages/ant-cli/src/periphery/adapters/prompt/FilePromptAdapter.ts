@@ -4,13 +4,41 @@ import Handlebars from "handlebars";
 import { PromptPort } from "../../../core/ports";
 import { WorkspacePathResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Handlebars helpers — single source of truth
+// TemplateComposer.ts imports Handlebars but does NOT register helpers.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 // eslint-disable-next-line eqeqeq
-Handlebars.registerHelper("eq", (a, b) => a == b);
+Handlebars.registerHelper("eq", (a: any, b: any) => a == b);
 // eslint-disable-next-line eqeqeq
-Handlebars.registerHelper("ne", (a, b) => a != b);
-Handlebars.registerHelper("and", (a, b) => a && b);
-Handlebars.registerHelper("or", (a, b) => a || b);
-Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
+Handlebars.registerHelper("ne", (a: any, b: any) => a != b);
+
+Handlebars.registerHelper("and", function (...args: any[]) {
+  const values = args.slice(0, -1);
+  return values.every(Boolean);
+});
+
+Handlebars.registerHelper("or", function (...args: any[]) {
+  const values = args.slice(0, -1);
+  return values.some(Boolean);
+});
+
+Handlebars.registerHelper("add", (a: any, b: any) => Number(a) + Number(b));
+
+Handlebars.registerHelper("includes", function (haystack: any, needle: any) {
+  if (haystack == null || needle == null) return false;
+  const h = String(haystack).toLowerCase();
+  const n = String(needle).toLowerCase();
+  return h.includes(n);
+});
+
+Handlebars.registerHelper("gte", (a: any, b: any) => Number(a) >= Number(b));
+
+Handlebars.registerHelper("lower", function (value: any) {
+  if (value == null) return '';
+  return String(value).toLowerCase();
+});
 
 export interface PartialFailure {
   name: string;
@@ -125,7 +153,7 @@ export class FilePromptAdapter implements PromptPort {
       : [];
 
     const handlebarsKeywords = ['if', 'unless', 'each', 'with', 'else', 'this'];
-    const handlebarsHelpers = ['eq', 'ne', 'and', 'or', 'add'];
+    const handlebarsHelpers = ['eq', 'ne', 'and', 'or', 'add', 'includes', 'gte', 'lower'];
     const templateVars = (usedVars as string[]).filter(v =>
       !handlebarsKeywords.includes(v) && !handlebarsHelpers.includes(v)
     );

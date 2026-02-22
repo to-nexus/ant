@@ -34,6 +34,7 @@ import 'dotenv/config';
 import * as path from 'path';
 import { orchestrator } from './orchestrator';
 import { UnifiedWorkspaceResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { initPartials } from '../periphery/adapters/prompt/FilePromptAdapter';
 import { logger } from '../utils/logger';
 import { handleGracefulShutdown } from './gracefulShutdown';
 
@@ -165,6 +166,11 @@ async function runJob(params: JobParams): Promise<void> {
 
 async function main(): Promise<void> {
   const params = getJobParams();
+  
+  const partialResult = await initPartials();
+  if (partialResult.failed.length > 0) {
+    console.error(`⛔ ${partialResult.failed.length} partial(s) failed to register`);
+  }
   
   try {
     await runJob(params);
