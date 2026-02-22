@@ -12,6 +12,7 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
@@ -125,6 +126,7 @@ export async function generatePlanText(
           taskName: task.name,
           templatePath: 'code/phases/plan/base-plan',
           usedTemplates: ['code/phases/plan/rules-plan'],
+          resolvedPartials: collectResolvedPartials(['code/phases/plan/base-plan', 'code/phases/plan/rules-plan']),
           injectedVariables: {
             taskName: task.name,
             taskType: task.type,

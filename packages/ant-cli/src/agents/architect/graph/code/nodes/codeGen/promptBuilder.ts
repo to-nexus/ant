@@ -14,6 +14,7 @@ import { compactAndPruneHistory } from "../../../../../../core/utils/historyMana
 import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
@@ -450,6 +451,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             promptResult.modeConfig.templates.rules,
             ...(promptResult.modeConfig.templates.injections || []),
           ].filter(Boolean),
+          resolvedPartials: collectResolvedPartials([
+            promptResult.modeConfig.templates.base,
+            promptResult.modeConfig.templates.rules,
+          ].filter(Boolean)),
           injectedVariables: {
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             designDoc: designDocForTask ? `[${designDocForTask.length} chars]` : undefined,
