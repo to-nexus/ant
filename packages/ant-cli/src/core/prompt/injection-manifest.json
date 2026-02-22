@@ -21,7 +21,8 @@
     "persistence-schema-rule": [],
     "preview-setup": [],
     "preview-env-contract": [],
-    "behavioral-debugging": []
+    "behavioral-debugging": [],
+    "secure-coding": []
   },
   "code/phases/execute/injections": {
     "lessons": ["lessons"],

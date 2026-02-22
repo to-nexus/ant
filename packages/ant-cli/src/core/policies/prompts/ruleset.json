@@ -34,7 +34,8 @@
         "Break down tasks into clear, atomic steps",
         "Identify dependencies between files",
         "Consider edge cases and error handling",
-        "Estimate complexity and risks"
+        "Estimate complexity and risks",
+        "Consider security boundaries: input validation, secrets management, error exposure, access control"
       ]
     },
     "execute": {
@@ -50,7 +51,9 @@
         "Check: Types are correct (TypeScript)",
         "Check: No hardcoded values that should be configurable",
         "Check: JSON files have NO comments",
-        "Check: All peer dependencies are included in package.json"
+        "Check: All peer dependencies are included in package.json",
+        "Check: No hardcoded secrets, credentials, or API keys in source code",
+        "Check: External input is validated before use in queries, file paths, or rendered output"
       ],
       "missing_files": [
         "If build error mentions missing file (e.g., index.html): CREATE the file",
@@ -83,7 +86,8 @@
       "Verify all code is complete (no ellipsis or placeholders)",
       "Check all imports are valid",
       "Ensure proper error handling",
-      "Validate types and interfaces"
+      "Validate types and interfaces",
+      "Verify no hardcoded secrets or credentials in generated code"
     ],
     "design": [
       "Include all required sections",
