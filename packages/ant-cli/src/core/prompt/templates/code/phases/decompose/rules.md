@@ -140,7 +140,7 @@ CRITICAL:
 
 ## Documentation Task
 
-**Principle**: A documentation task (`type: "doc"`, priority 800-801) generates or updates project documentation after all feature and test generation tasks complete, observing the complete codebase.
+**Principle**: A documentation task (`type: "doc"`, priority 800) generates or updates project documentation after all feature and test generation tasks complete, observing the complete codebase.
 
 **Observation target**: Does this task set require documentation?
 
@@ -156,14 +156,14 @@ CRITICAL:
 
 | Checkpoint | Strategy |
 |-----------|----------|
-| **Multiple packages/services observed** | Create one root doc task (priority 800, `exclusive: true`) for project-level documentation + one doc task per package (priority 801, distinct `parallelGroup` per package) for package-scoped documentation |
-| **Single package** | Create one doc task (`exclusive: true`, priority 800) covering all documentation |
+| **Multiple packages/services observed** | Create one root doc task (priority 800, `parallelGroup: "doc-root"`) for project-level documentation + one doc task per package (priority 800, distinct `parallelGroup` per package) for package-scoped documentation |
+| **Single package** | Create one doc task (priority 800, `parallelGroup: "doc-root"`) covering all documentation |
 
 **Principle**: Root documentation task covers project-wide scope (root operational docs + architecture documentation). Each package documentation task covers only that package's operational docs. This separation keeps context scoped per task and prevents token growth proportional to total project size.
 
-**Constraint**: Root doc (priority 800, exclusive) runs before package docs. Package-level doc tasks operate on independent directory scopes — assign distinct `parallelGroup` per package so they can run in parallel.
+**Principle**: All doc tasks are non-exclusive and use distinct `parallelGroup` values. They write to independent directory scopes, so they can run fully in parallel after the doc barrier clears.
 
-⚠️ **Blind spot**: Package-level doc tasks with the SAME `parallelGroup` are serialized. Each package MUST have a DIFFERENT `parallelGroup`.
+⚠️ **Blind spot**: Doc tasks with the SAME `parallelGroup` are serialized. Each doc task (root and every package) MUST have a DIFFERENT `parallelGroup`.
 
 **Constraint**: Description MUST state whether this is "new project documentation" or "update existing documentation for [scope of changes]". Package-level descriptions MUST identify the target package scope.
 
@@ -385,8 +385,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "verification"` -> always exclusive
 - `type: "testgen"` (single package) -> exclusive
 - `type: "testgen"` (multiple packages) -> distinct `parallelGroup` per package
-- `type: "doc"` (root, priority 800) -> `exclusive: true`
-- `type: "doc"` (package-level, priority 801) -> `exclusive: false`, distinct `parallelGroup` per package
+- `type: "doc"` -> always `exclusive: false`, distinct `parallelGroup` per task (root and each package)
 
 **Constraint**: Root setup (priority 100) establishes workspace configuration that subsequent tasks depend on — it MUST be exclusive. Package-level setup tasks (priority 101+) operate on independent directory scopes — assign `exclusive: false` with a distinct `parallelGroup` per package.
 
