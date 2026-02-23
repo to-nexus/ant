@@ -58,6 +58,9 @@ export class PreviewService {
   // Spawn timestamps for early-exit detection (RuntimeDiagnostics)
   private spawnTimestamps: Map<string, number> = new Map();
   
+  // Health check abort controllers (cancel on process exit or stop)
+  private healthCheckAbortControllers: Map<string, AbortController> = new Map();
+  
   // Idle check
   private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private idleTimeoutMs: number = DEFAULT_IDLE_TIMEOUT_MS;
@@ -416,12 +419,13 @@ export class PreviewService {
         await this.portRegistry.registerPreview({
           tenantId, userId, projectId, feature,
           running: false, ready: false,
-          port: 0,  // Not yet allocated
+          port: 0,
           host,
           podId: os.hostname(),
           phase: 'installing',
           packages: [],
           issues: [],
+          connections: [],
           startedAt: new Date()
         });
       }
@@ -652,7 +656,10 @@ export class PreviewService {
       
       // 8. Health check (async)
       // If health check fails, kill all processes and clean up — the dev server is unusable.
-      this.healthChecker.check(entryPort!, logCallback).then(async (ready) => {
+      const healthAbort = new AbortController();
+      this.healthCheckAbortControllers.set(serverKey, healthAbort);
+      this.healthChecker.check(entryPort!, logCallback, undefined, undefined, healthAbort.signal).then(async (ready) => {
+        this.healthCheckAbortControllers.delete(serverKey);
         // Release lock after health check completes (success or fail)
         if (this.stateStore && lockAcquired) {
           this.stateStore.releaseLock(lockKey).catch(() => {});
@@ -920,6 +927,13 @@ export class PreviewService {
     // All processes dead — full cleanup
     logger.warn(`[Preview] All processes exited for ${serverKey}, cleaning up`, { component: 'PreviewService' });
     
+    // Abort any running health check to prevent stale error messages
+    const healthAbort = this.healthCheckAbortControllers.get(serverKey);
+    if (healthAbort) {
+      healthAbort.abort();
+      this.healthCheckAbortControllers.delete(serverKey);
+    }
+    
     try {
       // Release port (read from Redis)
       const { tenantId: t, userId: u, projectId: p, feature: f } = this.parseServerKey(serverKey);
@@ -993,6 +1007,13 @@ export class PreviewService {
     
     if (!hasLocalProcesses && !isRunningInRedis) {
       return { success: false, error: 'Preview server not running' };
+    }
+
+    // Abort any running health check
+    const healthAbort = this.healthCheckAbortControllers.get(serverKey);
+    if (healthAbort) {
+      healthAbort.abort();
+      this.healthCheckAbortControllers.delete(serverKey);
     }
 
     // Mark stopping
@@ -1125,6 +1146,15 @@ export class PreviewService {
           const processes = this.previewServers.get(serverKey);
           const aliveProcesses = processes?.filter(p => !p.killed && p.exitCode === null) || [];
           
+          // Merge projectProfile from PREVIEW_CONFIG if runtime state lacks it
+          let projectProfile = redisState.projectProfile;
+          if (!projectProfile && this.stateStore) {
+            try {
+              const config = await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature);
+              projectProfile = config?.projectProfile ?? undefined;
+            } catch { /* best-effort */ }
+          }
+          
           return {
             running: redisState.running,
             ready: redisState.ready,
@@ -1137,7 +1167,7 @@ export class PreviewService {
             packages: redisState.packages || [],
             issues: (redisState.issues || []) as any,
             structureType: redisState.structureType,
-            projectProfile: redisState.projectProfile,
+            projectProfile,
             connections: redisState.connections,
             setupReasoning: redisState.setupReasoning,
             setupReason: redisState.setupReason,

@@ -346,12 +346,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
   subtaskIndex: number;               // Current subtask index (for display)
   totalSubtasks: number;              // Total number of subtasks
   
-  // Runtime Validation
-  runtimeValidationResult?: {
-    passed: boolean;
-    errors: string[];
-  };
-  
   // Evaluation
   evaluationReport?: any;
   

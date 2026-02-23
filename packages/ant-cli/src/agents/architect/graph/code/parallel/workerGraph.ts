@@ -5,10 +5,7 @@
  * a TaskWorker. This is a lighter version of the main code graph that
  * only handles the task execution lifecycle (plan → codeGen → tool loop).
  *
- * Two variants:
- * - Standard: plan → codeGen ↔ tool → checkTaskStatus → (enforce/workerLearn)
- * - With install/validate: adds installDeps → runtimeValidate before checkTaskStatus
- *   (used for exclusive tasks like final verification and error tasks)
+ * Flow: plan → codeGen ↔ tool → checkTaskStatus → (enforce/workerLearn)
  */
 
 import { StateGraph, END } from '@langchain/langgraph';
@@ -16,8 +13,6 @@ import type { ArchitectGraphState, ViolationType } from '../state';
 import { plan } from '../nodes/plan';
 import { codeGen } from '../nodes/codeGen/index';
 import { tool } from '../nodes/tool';
-import { installDeps } from '../nodes/installDeps';
-import { runtimeValidate } from '../nodes/runtimeValidate';
 import { enforce } from '../nodes/enforce';
 import { learn } from '../nodes/learn';
 import { routeAfterCodeGen } from '../routers/codeGenRouter';
@@ -189,12 +184,8 @@ async function workerLearn(state: ArchitectGraphState): Promise<Partial<Architec
 
 /**
  * Build a worker subgraph for code job tasks.
- *
- * @param includeInstallValidate - If true, add installDeps → runtimeValidate path
- *   (used for exclusive tasks that may modify dependencies or need build validation)
- * @returns Compiled graph with invoke() method
  */
-function buildWorkerSubgraph(includeInstallValidate: boolean) {
+function buildWorkerSubgraph() {
   const graph = new StateGraph<ArchitectGraphState>({
     channels: {
       // Shared context (injected by worker)
@@ -239,7 +230,6 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
       fileErrors: null as any,
       retries: null as any,
       maxRetries: null as any,
-      runtimeValidationResult: null as any,
       lastViolations: null as any,
       previousFileCount: null as any,
       previousAttempts: null as any,
@@ -302,11 +292,6 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
   graph.addNode('enforce', enforce as any);
   graph.addNode('learn', workerLearn as any);
 
-  if (includeInstallValidate) {
-    graph.addNode('installDeps', installDeps as any);
-    graph.addNode('runtimeValidate', runtimeValidate as any);
-  }
-
   // Edges
   graph.addEdge('__start__' as any, 'plan' as any);
 
@@ -317,32 +302,16 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
     { tool: 'tool', codeGen: 'codeGen' } as any,
   );
 
-  // CodeGen routing
-  if (includeInstallValidate) {
-    graph.addConditionalEdges(
-      'codeGen' as any,
-      routeAfterCodeGen as any,
-      {
-        tool: 'tool',
-        checkTaskStatus: 'checkTaskStatus',
-        installDeps: 'installDeps',
-        codeGen: 'codeGen',
-      } as any,
-    );
-    graph.addEdge('installDeps' as any, 'runtimeValidate' as any);
-    graph.addEdge('runtimeValidate' as any, 'checkTaskStatus' as any);
-  } else {
-    graph.addConditionalEdges(
-      'codeGen' as any,
-      routeAfterCodeGen as any,
-      {
-        tool: 'tool',
-        checkTaskStatus: 'checkTaskStatus',
-        installDeps: 'checkTaskStatus', // Redirect installDeps → checkTaskStatus for non-exclusive
-        codeGen: 'codeGen',
-      } as any,
-    );
-  }
+  // CodeGen → Router (tool / checkTaskStatus / codeGen)
+  graph.addConditionalEdges(
+    'codeGen' as any,
+    routeAfterCodeGen as any,
+    {
+      tool: 'tool',
+      checkTaskStatus: 'checkTaskStatus',
+      codeGen: 'codeGen',
+    } as any,
+  );
 
   // Tool → plan (if plan exploring) or codeGen
   graph.addConditionalEdges(
@@ -359,18 +328,17 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
       const hasViolations = s.violations && s.violations.length > 0;
 
       if (taskCompleted) {
-        return 'learn'; // Task succeeded → learn → END
+        return 'learn';
       }
 
       if (hasViolations) {
         if ((s.retries || 0) < (s.maxRetries || 3)) {
-          return 'enforce'; // Retry with enforcement feedback
+          return 'enforce';
         }
-        // Exceeded retries but still has violations
-        return 'enforce'; // Let enforce/plan handle giving up
+        return 'enforce';
       }
 
-      return 'learn'; // Default: done
+      return 'learn';
     }) as any,
     { enforce: 'enforce', learn: 'learn' } as any,
   );
@@ -378,7 +346,7 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
   // Enforce → Plan (retry loop)
   graph.addEdge('enforce' as any, 'plan' as any);
 
-  // Learn → END (worker finishes after learning from one task)
+  // Learn → END
   graph.addEdge('learn' as any, '__end__' as any);
 
   return (graph as any).compile();
@@ -389,7 +357,7 @@ function buildWorkerSubgraph(includeInstallValidate: boolean) {
  * This function is passed to TaskOrchestrator as the graphBuilder callback.
  */
 export function createCodeWorkerGraphBuilder(): WorkerGraphBuilder {
-  return (includeInstallValidate: boolean) => {
-    return buildWorkerSubgraph(includeInstallValidate);
+  return (_includeInstallValidate: boolean) => {
+    return buildWorkerSubgraph();
   };
 }

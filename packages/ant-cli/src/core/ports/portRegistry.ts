@@ -5,6 +5,8 @@
  * All state is stored in Redis for multi-pod consistency.
  */
 
+import type { PreviewStructureType } from './preview';
+
 // ============================================
 // Preview Types
 // ============================================
@@ -22,8 +24,6 @@ export interface PreviewRuntimeIssue {
 }
 
 export type PreviewPhase = 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';
-
-export type PreviewStructureType = 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo';
 
 // === External Service Contract ===
 

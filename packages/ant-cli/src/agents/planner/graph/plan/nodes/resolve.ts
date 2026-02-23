@@ -144,7 +144,7 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     if (shouldContinueConversation) {
       conversation.push({
         role: 'user',
-        content: state.overrideDirective,
+        content: state.overrideDirective!,
         timestamp: new Date().toISOString(),
       });
       isConversationContinuation = true;

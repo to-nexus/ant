@@ -34,11 +34,11 @@ import {
   PortRegistryPort, 
   PreviewState, 
   ServiceConnection,
-  PreviewStructureType,
   IDEState,
   PreviewPackage,
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
+import type { PreviewStructureType } from '../../core/ports/preview';
 import { createIDEKey, createPreviewKey } from './redisKeyUtils';
 import { APP_PREFIX, REDIS_KEYS, REDIS_TTL, getRealtimeWorkflowChannel } from './redisConstants';
 import { logger } from '../../utils/logger';
