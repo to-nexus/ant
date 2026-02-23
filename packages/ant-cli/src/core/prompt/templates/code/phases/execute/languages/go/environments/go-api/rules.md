@@ -93,6 +93,9 @@ tree. Follow established structure.
 |---------|-----------------|
 | Import errors | Module path in `go.mod`, package naming, circular imports |
 | Type errors | Visibility (exported vs unexported), interface satisfaction |
+| Cross-module imports | Does importing a sibling module require a `replace` directive in `go.mod`? |
+
+⚠️ **Blind spot**: In workspace projects, adding a `require` for a sibling module without a corresponding `replace` directive compiles locally (workspace mode resolves it) but fails in standalone builds. Every cross-module `require` must be paired with a `replace` pointing to the relative local path.
 
 ---
 
