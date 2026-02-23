@@ -109,14 +109,6 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.tool.id],
     description: 'Check code quality'
   },
-  'architect:code:installDeps': {
-    actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.tool.id],
-    description: 'Install dependencies'
-  },
-  'architect:code:runtimeValidate': {
-    actors: [COMMON_ACTORS.codeRepo.id, COMMON_ACTORS.tool.id],
-    description: 'Run tests and build'
-  },
   'architect:code:enforce': {
     actors: [COMMON_ACTORS.llm.id],
     description: 'Fix violations'

@@ -155,7 +155,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`   ✅ Server cleanup complete\n`);
   }
   
-  // ✅ CRITICAL: Clean up Docker infrastructure started by installDeps
+  // Clean up Docker infrastructure if started during task execution
   if ((state as any)._infraManager && (state as any)._infraProjectPath) {
     try {
       const infraManager = (state as any)._infraManager as import('../../../../../infrastructure/docker').InfrastructureManager;

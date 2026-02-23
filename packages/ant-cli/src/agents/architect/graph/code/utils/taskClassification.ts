@@ -2,14 +2,12 @@
  * Task Classification Utilities
  * 
  * Shared logic for determining task types across graph nodes and routers.
- * Eliminates inconsistent detection between codeGenRouter (priority-based)
- * and installDeps (name-based).
  */
 
 import { TASK_PRIORITIES } from '../state';
 
 /**
- * Determine whether a task requires verification (installDeps → runtimeValidate flow).
+ * Determine whether a task is a verification-class task.
  * 
  * Covers:
  * - Verification tasks (type = 'verification')

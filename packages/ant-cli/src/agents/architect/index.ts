@@ -38,6 +38,7 @@ export async function architectAgent(
     chatSource?: boolean;  // ✅ Flag for Chat SSE
     feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
     featurePath?: string;  // ✅ Pre-calculated feature path (avoids re-calculation mismatch)
+    skipTriage?: boolean;
   },
   jobMode?: JobMode,
   enableEvaluation?: boolean,

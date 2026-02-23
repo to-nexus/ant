@@ -32,7 +32,7 @@ export interface JobStatusData {
   status: JobStatusValue;
   projectId: string;
   featureName: string;
-  type: DecomposableJobType;
+  type: DecomposableJobType | 'inline-ask';
   mode?: 'generate' | 'refactor' | 'explain';
   timestamp?: string;
   userContext?: UserContext;
@@ -147,7 +147,8 @@ export interface PendingChoiceData {
 
 // Re-export from portRegistry
 export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, ServiceCategory, ConnectionResolution, ServiceConnection } from './portRegistry';
-import { PreviewState, IDEState, PortMapping, ServiceConnection, PreviewStructureType } from './portRegistry';
+import { PreviewState, IDEState, PortMapping, ServiceConnection } from './portRegistry';
+import type { PreviewStructureType } from './preview';
 
 // ============================================
 // StateStorePort Interface

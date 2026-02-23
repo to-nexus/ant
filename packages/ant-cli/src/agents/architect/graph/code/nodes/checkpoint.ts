@@ -13,7 +13,6 @@ import { ArchitectGraphState } from "../state";
  * Called from:
  * - plan node (after planning)
  * - execute node (after code generation)
- * - runtimeValidate node (after validation)
  */
 export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> {
   if (!state.deps?.session) {

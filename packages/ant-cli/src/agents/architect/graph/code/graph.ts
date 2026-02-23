@@ -10,8 +10,6 @@ import { plan } from "./nodes/plan";
 import { codeGen } from "./nodes/codeGen/index";
 import { tool } from "./nodes/tool";
 // import { validate } from "./nodes/validate";  // ✅ REMOVED: Static validation no longer needed (prompts handle it)
-import { installDeps } from "./nodes/installDeps";
-import { runtimeValidate } from "./nodes/runtimeValidate";
 import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
 import { routeAfterCodeGen } from "./routers/codeGenRouter";
@@ -777,10 +775,9 @@ export function buildCodeGraph() {
       // Integrations & Validation
       requiredIntegrations: null as any,
       violations: null as any,
-      fileErrors: null as any,  // ✅ CRITICAL: File operation errors for self-healing
+      fileErrors: null as any,
       retries: null as any,
       maxRetries: null as any,
-      runtimeValidationResult: null as any,
       
       // Progress tracking
       lastViolations: null as any,
@@ -878,8 +875,6 @@ export function buildCodeGraph() {
   graph.addNode("plan", plan as any);
   graph.addNode("codeGen", codeGen as any);
   graph.addNode("tool", tool as any);
-  graph.addNode("installDeps", installDeps as any);
-  graph.addNode("runtimeValidate", runtimeValidate as any);
   graph.addNode("checkTaskStatus", checkTaskStatus as any);
   graph.addNode("enforce", enforce as any);
   graph.addNode("learn", learn as any);
@@ -1001,15 +996,14 @@ export function buildCodeGraph() {
     { tool: "tool", codeGen: "codeGen" } as any
   );
 
-  // ✅ CodeGen → Router (tool call 체크 & priority 기반 분기)
+  // CodeGen → Router (tool / checkTaskStatus / codeGen)
   graph.addConditionalEdges(
     "codeGen" as any,
     routeAfterCodeGen as any,
     {
-      tool: "tool",                     // Tool call 있으면 → tool 노드
-      checkTaskStatus: "checkTaskStatus",  // Done (non-final) → checkTaskStatus
-      installDeps: "installDeps",       // Done (final task) → installDeps
-      codeGen: "codeGen",               // 재추론 (드물음)
+      tool: "tool",
+      checkTaskStatus: "checkTaskStatus",
+      codeGen: "codeGen",
     } as any
   );
   
@@ -1020,19 +1014,8 @@ export function buildCodeGraph() {
     { plan: "plan", codeGen: "codeGen" } as any
   );
 
-  // ✅ REMOVED: validate 노드 관련 로직 제거
-  // - Static validation (ellipsis, excessive deletion)은 프롬프트로 충분히 제어
-  // - Runtime validation (build)만 final task에서 실행
-
-  // ✅ Final task: installDeps → runtimeValidate
-  graph.addEdge("installDeps" as any, "runtimeValidate" as any);
-
-  // ✅ Final task: runtimeValidate → checkTaskStatus
-  graph.addEdge("runtimeValidate" as any, "checkTaskStatus" as any);
-
-  // ✅ checkTaskStatus: 태스크 완료 상태 확인 및 라우팅
-  // - Non-final tasks: codeGen → checkTaskStatus (직접)
-  // - Final task: codeGen → installDeps → runtimeValidate → checkTaskStatus
+  // checkTaskStatus: 태스크 완료 상태 확인 및 라우팅
+  // All task types: codeGen(done) → checkTaskStatus
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
     ((s: ArchitectGraphState) => {

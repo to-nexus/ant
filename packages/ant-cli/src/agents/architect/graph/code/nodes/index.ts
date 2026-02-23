@@ -5,7 +5,5 @@ export { plan } from "./plan/index";
 export { codeGen } from "./codeGen/index";
 export { tool } from "./tool";
 export { validate } from "./validate";
-export { installDeps } from "./installDeps";
-export { runtimeValidate } from "./runtimeValidate";
 export { enforce } from "./enforce";
 export { learn } from "./learn";

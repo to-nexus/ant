@@ -7,7 +7,7 @@
  *
  * Flow: plan → docGen ↔ tool → workerCheckTaskStatus → workerLearn → END
  *
- * Design tasks don't have installDeps/runtimeValidate or enforce nodes.
+ * Design tasks don't have enforce nodes.
  * The includeInstallValidate parameter is accepted for API compatibility
  * with WorkerGraphBuilder but has no effect for design tasks.
  */

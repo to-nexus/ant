@@ -81,7 +81,7 @@ export async function validate(state: ArchitectGraphState): Promise<ArchitectGra
         
         if (hasExistingSourceFiles) {
           // Files already exist, LLM determined no changes needed
-          // Continue to runtimeValidate to check if there are actual errors
+          // Continue to checkTaskStatus to check if there are actual errors
           console.log('ℹ️  No files generated, but source files already exist - proceeding to validation');
           
           // ✅ Workflow instrumentation: Exit node (existing files path)
