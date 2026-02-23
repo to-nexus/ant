@@ -42,4 +42,21 @@
 
 ---
 
+### Dependency Boundaries for Testability
+
+**Principle**: CLI modules that perform I/O (filesystem, network, subprocess execution) should accept those capabilities as parameters or import them from dedicated modules, not call them directly inline.
+
+**Observation target**: Does a command handler directly call `fs`, `child_process`, or `fetch` inline?
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Filesystem access** | Does a command handler directly call `fs.readFile` / `fs.writeFile` inline? Isolate into a dedicated I/O module that can be substituted in tests. |
+| **Subprocess execution** | Does a module directly call `child_process.exec` / `spawn`? Accept as a parameter or isolate into a runner module. |
+
+**Constraint**: Do NOT over-architect simple scripts. A CLI with a single file operation does not need an I/O abstraction layer. Apply when the CLI has multiple commands with distinct I/O patterns.
+
+⚠️ **Blind spot**: CLI tools often embed filesystem calls throughout command handlers because "it works." A test task running after features cannot verify command behavior without touching the real filesystem unless I/O is isolatable.
+
+---
+
 **Remember:** You already know how to build CLI tools. Analyze the specific requirements and existing patterns.

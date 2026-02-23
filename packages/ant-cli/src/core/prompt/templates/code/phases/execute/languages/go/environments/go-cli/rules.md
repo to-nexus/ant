@@ -42,4 +42,21 @@
 
 ---
 
+### Dependency Boundaries for Testability
+
+**Principle**: CLI command handlers that perform I/O (filesystem, network, subprocess) should accept those capabilities as interfaces or function parameters, not call them directly inline.
+
+**Observation target**: Does a command handler directly call `os.ReadFile`, `exec.Command`, or `http.Get` inline?
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Filesystem access** | Does a command handler directly call `os` or `io` package functions inline? Accept an interface or isolate into a dedicated I/O module. |
+| **Subprocess execution** | Does a module directly call `os/exec` functions? Accept as a parameter or isolate into a runner interface. |
+
+**Constraint**: Do NOT over-architect simple scripts. A CLI with a single file operation does not need an I/O abstraction layer. Apply when the CLI has multiple commands with distinct I/O patterns.
+
+⚠️ **Blind spot**: CLI tools often embed filesystem and exec calls throughout command handlers because "it compiles and works." A test task running after features cannot verify command behavior without touching the real filesystem unless I/O is behind an interface.
+
+---
+
 **Remember:** You already know how to build CLI tools in Go. Analyze the specific requirements and existing patterns.

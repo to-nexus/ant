@@ -122,3 +122,20 @@ tree. Follow established structure.
 **Constraint**: When atomic coordination across persistence boundaries is needed, the mechanism MUST be exposed through the persistence layer's interface. The business logic layer orchestrates WHAT participates in the atomic operation; the persistence layer owns HOW it executes.
 
 ⚠️ **Blind spot**: When a service needs to update 2+ persistence interfaces atomically, it is tempting to bypass those interfaces and write persistence statements directly in the service layer. This creates a parallel data access path that breaks layer separation and is invisible to the persistence interface's contract. Verify that ALL persistence statements — including those inside atomic coordination — go through the designated persistence layer.
+
+---
+
+### Dependency Boundaries for Testability
+
+**Principle**: Service and handler constructors should accept interfaces, not concrete implementations. This allows test doubles to be substituted without modifying source code.
+
+**Observation target**: Does a constructor or factory function directly instantiate its dependencies?
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Constructor parameters** | Does `NewXxxService(...)` accept interface types for its dependencies (repository, client, etc.)? |
+| **Direct instantiation** | Does a service create its own `*sql.DB`, HTTP client, or repository struct internally? |
+
+**Constraint**: If the architecture defines layer boundaries (handler → service → repository), each boundary should be an interface. The concrete type is wired at the composition root (e.g., `main()` or `cmd/`), not inside the consuming layer.
+
+⚠️ **Blind spot**: It is easy to pass concrete struct pointers between layers because "it works." A dedicated test task runs after features — it cannot substitute dependencies unless interfaces exist at layer boundaries.

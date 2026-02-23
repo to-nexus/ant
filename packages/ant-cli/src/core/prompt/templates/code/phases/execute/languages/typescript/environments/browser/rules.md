@@ -80,6 +80,24 @@ SSR frameworks run code in TWO contexts:
 
 ---
 
+### Dependency Boundaries for Testability
+
+**Principle**: Side effects and external I/O (API calls, storage access, third-party SDK interactions) should be isolated in dedicated service modules or custom hooks, not embedded directly in component render logic.
+
+**Observation target**: Does a component directly perform external I/O inline?
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **API calls** | Does a component call `fetch` or an HTTP client directly in its body or event handlers? Isolate into a service module or custom hook. |
+| **Storage access** | Does a component directly read/write `localStorage`, `sessionStorage`, or `IndexedDB` inline? Isolate into a dedicated hook or utility. |
+| **Provider boundaries** | Are shared dependencies (API clients, auth state, feature flags) accessible through context providers that can be replaced in tests? |
+
+**Constraint**: Do NOT over-architect. A component with a single, simple `fetch` call does not need a service layer. Apply when the component has multiple external dependencies or non-trivial data transformations before rendering.
+
+⚠️ **Blind spot**: When API calls are embedded in component render functions, a test task must either mock the global `fetch` (fragile, leaks across tests) or restructure the component (violates source modification constraint). Isolating I/O into importable modules enables clean module-level mocking.
+
+---
+
 ### When Solving Problems
 
 **Analyze first:**

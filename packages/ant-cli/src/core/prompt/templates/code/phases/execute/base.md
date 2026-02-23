@@ -227,10 +227,12 @@ Follow the framework/language-specific setup instructions from:
 |-----------|----------------|
 | **Startup** | Does the application have a main entry point or server? Create a startup/health test. |
 | **Endpoints** | Does the application expose API routes or handlers? Create smoke tests for critical ones. |
-| **Core logic** | Are there business logic modules with clear input/output boundaries? Create unit tests. |
+| **Core logic** | Are there business logic modules? If dependencies are injectable (accepted as parameters or interfaces), create unit tests with test doubles. If dependencies are directly instantiated (tightly coupled), create integration-level tests instead — do NOT force mock-based unit tests. |
 
 **Constraint**: Do NOT generate exhaustive test coverage. Only verify that the integrated system functions.
 **Constraint**: Do NOT modify application source code. Test files only.
+
+⚠️ **Blind spot**: When no abstraction boundary exists, attempting to unit-test a module leads to either modifying source code (violates constraint) or writing brittle tests coupled to implementation. Choose the test level based on the code's actual coupling, not on an ideal architecture.
 **Constraint**: Use the project's existing test infrastructure if detected (observe config files). If none exists, create minimal test config.
 **Constraint**: Do NOT run tests. Verification handles test execution.
 
@@ -256,6 +258,15 @@ Follow the framework/language-specific setup instructions from:
 - Ensure imports and syntax are correct
 - Copy assets if needed
 - If your feature requires new environment variables, update both `.env.example` and `.env`
+
+### Testability Principle
+
+**Principle**: External dependencies (persistence, network, third-party services) should be accessed through abstraction boundaries, not direct instantiation within business logic. Language-specific rules below define concrete checkpoints.
+
+**Constraint**: Do NOT over-engineer. Only apply where the module has external I/O dependencies. Pure logic modules (validation, calculation, transformation) need no abstraction.
+**Constraint**: Do NOT add DI frameworks or containers unless the project already uses one. Constructor parameters or function arguments suffice.
+
+⚠️ **Blind spot**: A dedicated test generation task runs after all features. If your module cannot be tested without its real dependencies, the test task is forced to either modify your code or write shallow tests. Design boundaries now to prevent this.
 
 **⚠️ Env File Sync — EASILY BROKEN in feature tasks:**
 - ⛔ Adding a variable to only ONE of `.env.example` / `.env` = PROTOCOL VIOLATION

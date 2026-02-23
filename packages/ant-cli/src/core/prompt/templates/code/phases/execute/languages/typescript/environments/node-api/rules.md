@@ -35,6 +35,23 @@
 
 ---
 
+### Dependency Boundaries for Testability
+
+**Principle**: Modules that depend on external I/O (database clients, HTTP clients, third-party SDKs) should accept those dependencies as constructor or function parameters, not import and call them directly at module scope.
+
+**Observation target**: Does a service or handler module directly import and use a database client or external service at module level?
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Constructor/factory parameters** | Does the class constructor or factory function accept its dependencies (repository, client) as parameters? |
+| **Module-level side effects** | Does the module import a database client and call it directly in exported functions without any indirection? |
+
+**Constraint**: Do NOT introduce a DI framework or container unless the project already uses one. Constructor injection or function parameters are sufficient.
+
+⚠️ **Blind spot**: Importing a database client at the top of a service file and calling it directly in every function "works" but makes the module impossible to test without a live database. A dedicated test task runs after features — it cannot substitute dependencies unless they are injected.
+
+---
+
 ### When Solving Problems
 
 **Analyze first:**
