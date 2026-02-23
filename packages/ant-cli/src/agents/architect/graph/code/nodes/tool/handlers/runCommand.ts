@@ -34,6 +34,7 @@ import {
   ORCHESTRATOR_PORT 
 } from '../constants';
 import * as path from 'path';
+import { AsyncMutex } from '../../../parallel/AsyncMutex';
 
 // 🚨 INTERACTIVE COMMAND DETECTION: Commands that require user input will hang forever
 // These patterns detect commands that typically prompt for input (cross-language)
@@ -43,6 +44,25 @@ const INTERACTIVE_COMMAND_PATTERNS = [
   /\byarn\s+init\b(?!\s+(-y|--yes))/i,   // yarn init without -y
   // Go (go mod init requires module name argument)
   /\bgo\s+mod\s+init\s*$/i,              // go mod init without module name
+];
+
+/**
+ * Module-level mutex for package manager install/add commands.
+ * Prevents concurrent installs from corrupting lock files and node_modules
+ * when parallel workers run setup tasks simultaneously.
+ */
+const packageManagerMutex = new AsyncMutex();
+
+const PACKAGE_MANAGER_INSTALL_PATTERNS = [
+  /\bnpm\s+(install|i|ci|add)\b/i,
+  /\bpnpm\s+(install|i|add)\b/i,
+  /\byarn\s+(install|add)\b/i,
+  /\byarn\s*$/i,
+  /\bgo\s+mod\s+(download|tidy)\b/i,
+  /\bpip\s+install\b/i,
+  /\bpoetry\s+install\b/i,
+  /\bbundle\s+install\b/i,
+  /\bcargo\s+build\b/i,
 ];
 
 /**
@@ -149,6 +169,18 @@ function detectWritePathViolations(
 }
 
 export async function handleRunCommand(
+  state: ArchitectGraphState,
+  args: RunCommandArgs
+): Promise<string> {
+  const isInstall = PACKAGE_MANAGER_INSTALL_PATTERNS.some(p => p.test(args.command));
+  if (isInstall) {
+    console.log(`🔒 [RunCommand] Package manager command detected — acquiring mutex: ${args.command}`);
+    return packageManagerMutex.runExclusive(() => executeCommandLogic(state, args));
+  }
+  return executeCommandLogic(state, args);
+}
+
+async function executeCommandLogic(
   state: ArchitectGraphState,
   args: RunCommandArgs
 ): Promise<string> {

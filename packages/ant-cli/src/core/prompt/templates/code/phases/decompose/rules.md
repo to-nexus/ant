@@ -30,7 +30,7 @@ Each task object MUST follow this schema:
   {
     "id": "kebab-case-id",
     "name": "Human-readable task name",
-    "type": "setup" | "feature" | "testgen" | "error",
+    "type": "setup" | "feature" | "testgen" | "doc" | "error",
     "priority": 100,
     "packages": ["fe", "be-auth"],
     "exclusive": true,
@@ -41,7 +41,7 @@ Each task object MUST follow this schema:
     "id": "another-task",
     "name": "Another Task",
     "type": "feature",
-    "priority": 200,
+    "priority": 300,
     "packages": ["be"],
     "parallelGroup": "scope-id",
     "ui": false,
@@ -56,10 +56,10 @@ Each task object MUST follow this schema:
 |-------|----------|-------------|
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
-| `type` | Yes | `"setup"` (project config), `"feature"` (new capability), `"testgen"` (test code generation), `"error"` (broken behavior fix), or `"verification"` (build & runtime check) |
-| `priority` | Yes | 100: setup, 200-280: feature, 850: testgen, 900-980: error, 1000: verification |
+| `type` | Yes | `"setup"`, `"feature"`, `"testgen"`, `"doc"`, `"error"`, or `"verification"` |
+| `priority` | Yes | 100: setup, 200: shared foundation, 300-500: feature, 600: integration, 700: testgen, 800: doc, 900-980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
-| `exclusive` | Conditional | `true` if task must run alone. Determined ONLY by the task's `type` field — never by task name |
+| `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `ui` | Yes | `true` if task involves the visual presentation layer |
 | `uiSections` | When ui=true | Array of UI doc section IDs to inject (see specification for available sections) |
@@ -101,7 +101,7 @@ CRITICAL:
 
 ## Test Generation Task
 
-**Principle**: A test generation task (`type: "testgen"`, priority 850) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before verification.
+**Principle**: A test generation task (`type: "testgen"`, priority 700) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before documentation and verification.
 
 **Observation target**: Does this task set include a setup task, or 3 or more feature tasks?
 
@@ -135,6 +135,39 @@ CRITICAL:
 **Constraint**: Each per-package testgen task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
 
 **Constraint**: Do NOT create a single testgen task that spans all packages in a multi-package project.
+
+---
+
+## Documentation Task
+
+**Principle**: A documentation task (`type: "doc"`, priority 800-801) generates or updates project documentation after all feature and test generation tasks complete, observing the complete codebase.
+
+**Observation target**: Does this task set require documentation?
+
+| Checkpoint | Condition |
+|-----------|-----------|
+| **Setup task exists** | New project — documentation needed |
+| **3+ feature tasks with structural changes** | Substantial additions — documentation needed |
+| **Neither** | Simple fix or minor change — skip documentation |
+
+### Per-Package Doc Splitting
+
+**Observation target**: Does the project contain multiple independently buildable packages or services?
+
+| Checkpoint | Strategy |
+|-----------|----------|
+| **Multiple packages/services observed** | Create one root doc task (priority 800, `exclusive: true`) for project-level documentation + one doc task per package (priority 801, distinct `parallelGroup` per package) for package-scoped documentation |
+| **Single package** | Create one doc task (`exclusive: true`, priority 800) covering all documentation |
+
+**Principle**: Root documentation task covers project-wide scope (root operational docs + architecture documentation). Each package documentation task covers only that package's operational docs. This separation keeps context scoped per task and prevents token growth proportional to total project size.
+
+**Constraint**: Root doc (priority 800, exclusive) runs before package docs. Package-level doc tasks operate on independent directory scopes — assign distinct `parallelGroup` per package so they can run in parallel.
+
+⚠️ **Blind spot**: Package-level doc tasks with the SAME `parallelGroup` are serialized. Each package MUST have a DIFFERENT `parallelGroup`.
+
+**Constraint**: Description MUST state whether this is "new project documentation" or "update existing documentation for [scope of changes]". Package-level descriptions MUST identify the target package scope.
+
+**Constraint**: `packages` field of each doc task should cover the tier(s) that task documents. Root doc uses all relevant tiers. Package doc uses only its package's tier tag.
 
 ---
 
@@ -238,7 +271,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 |-----------|----------------|
 | **Shared code files** | Will two entities be implemented in the same handler/service/repository files? |
 | **Architecture grouping** | Does the project group by layer (handler/, service/, repository/) rather than by domain? |
-| **Shared foundation coverage** | Does a shared foundation task (priority 150-199) define the cross-boundary types and interfaces? If yes, does file overlap persist even with shared definitions in place? |
+| **Shared foundation coverage** | Does a shared foundation task (priority 200-299) define the cross-boundary types and interfaces? If yes, does file overlap persist even with shared definitions in place? |
 
 **Constraint**: In layer-grouped architectures, entities in the same domain section share the same files per layer. Merge them into one task.
 
@@ -289,7 +322,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 | **Shared schema types** | Are there domain types (models, entities, response DTOs, input structs) referenced by 2+ feature tasks? |
 | **Cross-boundary coordination** | Will 2+ feature tasks need atomic operations spanning multiple persistence boundaries? |
 
-**Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create a dedicated exclusive task (priority 150-199, after setup, before features) that defines ALL shared symbols for that scope.
+**Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create a dedicated exclusive task (priority 200-299, after setup, before features) that defines ALL shared symbols for that scope.
 
 **Constraint**: This task defines types, interfaces, response DTOs, and shared utility functions ONLY. It does NOT implement business logic, API handlers, or data access queries.
 
@@ -308,7 +341,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 - Create setup task(s) ONLY for NEW projects (no existing codebase)
 - Do NOT create setup task if fileList shows ANY files
 - Do NOT create setup task to fix missing entry points (that is a feature task)
-- Monorepo -> multiple setup tasks (root + each package), sequential priorities (100, 101, 102, ...)
+- Monorepo -> multiple setup tasks (root + each package), ascending priorities (100, 101, 102, ...)
 - Monolithic -> single setup task
 - Setup = infrastructure and configuration ONLY (dependency files, configs). Setup MUST NOT create application source code
 - Features = user-facing functionality (source code)
@@ -345,15 +378,21 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-id>"`.
 
-**`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` field:
-- `type: "setup"` -> always exclusive (installs dependencies, modifies lock files)
-- `type: "error"` -> always exclusive (may modify shared configs)
+**`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` and structural role:
+- `type: "setup"` (root, priority 100) -> `exclusive: true`
+- `type: "setup"` (package-level, priority 101+) -> `exclusive: false`, distinct `parallelGroup` per package
+- `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
-- `type: "testgen"` (single package) -> exclusive (must observe all completed feature code)
-- `type: "testgen"` (multiple packages) -> distinct `parallelGroup` per package (independent scopes, parallel with each other)
-- Any task that installs packages or modifies shared build configs
+- `type: "testgen"` (single package) -> exclusive
+- `type: "testgen"` (multiple packages) -> distinct `parallelGroup` per package
+- `type: "doc"` (root, priority 800) -> `exclusive: true`
+- `type: "doc"` (package-level, priority 801) -> `exclusive: false`, distinct `parallelGroup` per package
 
-⚠️ **CONSTRAINT**: `exclusive` is determined ONLY by the `type` field value. Do NOT infer `exclusive` from task name or description content.
+**Constraint**: Root setup (priority 100) establishes workspace configuration that subsequent tasks depend on — it MUST be exclusive. Package-level setup tasks (priority 101+) operate on independent directory scopes — assign `exclusive: false` with a distinct `parallelGroup` per package.
+
+⚠️ **Blind spot**: Package-level setup tasks with the SAME `parallelGroup` are serialized. Each package-level setup MUST have a DIFFERENT `parallelGroup`.
+
+⚠️ **CONSTRAINT**: Do NOT infer `exclusive` from task name or description content.
 
 **`parallelGroup: "<group-id>"`** -- Tasks with the SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
 
@@ -390,7 +429,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 | **Parallel conflict risk** | Are feature tasks in different `parallelGroup` IDs, meaning they run concurrently and cannot see each other's outputs? |
 
 **Constraint**: If multiple parallel feature tasks produce components for a shared entry point, create a dedicated integration task:
-- `type: "feature"`, `exclusive: true`, priority 800-899 (after all feature tasks, before verification)
+- `type: "feature"`, `exclusive: true`, priority 600 (after all feature tasks, before testgen/doc/verification)
 - Description: wire all feature outputs into the application entry point
 - Feature tasks MUST NOT create or modify the entry point file themselves
 

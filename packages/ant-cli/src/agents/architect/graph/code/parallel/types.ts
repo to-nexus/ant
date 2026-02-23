@@ -51,6 +51,12 @@ export interface OrchestratorConfig {
    * Only relevant for code jobs (design jobs don't have testgen tasks).
    */
   testgenBarrier?: boolean;
+  /**
+   * When true, doc-type tasks will NOT be assigned while any
+   * feature, setup, or testgen task is still running or queued.
+   * Ensures documentation observes the complete codebase including tests.
+   */
+  docBarrier?: boolean;
 }
 
 /**

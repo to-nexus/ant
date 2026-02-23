@@ -41,7 +41,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   } else {
     const taskType = state.currentTask?.type || 'unknown';
     const priority = state.currentTask?.priority;
-    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'testgen' || taskType === 'explain';
+    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'testgen' || taskType === 'doc' || taskType === 'explain';
     if (!isExpected) {
       console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
     }
@@ -69,7 +69,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const uiDocForTask = (() => {
     if (!state.parsedUiDocs) return undefined;
     if (!state.currentTask) return undefined;
-    if (state.currentTask.type === 'verification' || state.currentTask.type === 'testgen') return undefined;
+    if (state.currentTask.type === 'verification' || state.currentTask.type === 'testgen' || state.currentTask.type === 'doc') return undefined;
     
     // Only skip if explicitly disabled by decompose
     if (state.currentTask.ui === false) return undefined;
@@ -594,7 +594,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   }
 
   const dirTree = state.projectCodeContext?.directoryTree;
-  if (dirTree && state.currentTask?.type === 'verification') {
+  if (dirTree && (state.currentTask?.type === 'verification' || state.currentTask?.type === 'doc')) {
     lines.push('════════════════════════════════════════════════════════════════════════════════');
     lines.push('🗂️ Codebase Directory Structure (pre-loaded — do NOT list_files)');
     lines.push('════════════════════════════════════════════════════════════════════════════════');

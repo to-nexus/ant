@@ -20,7 +20,7 @@ import type { InterruptionDetails } from './interruption';
  * - error: Error fixing (Code Job)
  * - verification: Build & runtime verification (Code Job)
  * - explain: Explanation task (Code Job)
- * - doc: Document generation (Design Job)
+ * - doc: Document generation (Design Job, Code Job)
  */
 export type TaskType = 'setup' | 'feature' | 'testgen' | 'error' | 'verification' | 'explain' | 'doc';
 

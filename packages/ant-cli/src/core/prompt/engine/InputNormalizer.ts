@@ -152,8 +152,8 @@ export class InputNormalizer {
     taskType?: string
   ): void {
     // Code job requires either design doc or directive
-    // Verification and testgen tasks operate on existing codebase — they don't need a directive or design doc
-    if (job === 'code' && taskType !== 'verification' && taskType !== 'testgen') {
+    // Verification, testgen, and doc tasks operate on existing codebase — they don't need a directive or design doc
+    if (job === 'code' && taskType !== 'verification' && taskType !== 'testgen' && taskType !== 'doc') {
       if (!artifacts.designDoc && !artifacts.directive) {
         throw new Error(
           "Code job requires either design document or directive.\n" +

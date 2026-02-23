@@ -55,39 +55,42 @@ export type ViolationType =
   | 'other';                // 기타
 
 /**
- * Task Priority Mapping - 우선순위 상수
- * Lower number = higher priority (executed first)
- * NEW POLICY: Features first, then errors (defer error fixing until all features are implemented)
+ * Task Priority Mapping
+ * Lower number = higher priority (executed first).
+ * Each phase occupies a 100-boundary for clean separation.
  */
 export const TASK_PRIORITIES = {
-  // Setup Tasks (100-149) - project initialization
-  SETUP_PROJECT: 100,           // Config files, package.json, tsconfig.json (최우선!)
-  
-  // Feature Tasks (200-799) - implement all features first
-  FEATURE_CRITICAL: 200,        // 가장 중요한 기능
-  FEATURE_IMPORTANT: 220,
-  FEATURE_NORMAL: 250,
-  FEATURE_NICE_TO_HAVE: 280,    // 가장 덜 중요한 기능
-  
-  // Post-Feature Tasks (800-899) - after all features, before error fixing
-  // These tasks observe completed feature code and must NOT run in parallel with features.
-  // Barrier enforced in TaskOrchestrator via testgenBarrier config (type-based).
-  INTEGRATION: 800,             // Wires parallel feature outputs into shared entry points
-  TEST_GENERATION: 850,         // Creates test suite after all features complete (type: 'testgen')
-  
-  // Error Tasks (900-999) - fix errors after all features are implemented
-  ERROR_MISSING_ENTRY: 900,     // index.html 같은 entry 파일 (가장 중요)
-  ERROR_MISSING_DEPS: 905,      // package 의존성
-  ERROR_CONFIG: 910,            // tsconfig.json 등
-  ERROR_TYPE: 920,              // TypeScript 타입 에러
-  ERROR_IMPORT: 925,            // Import 에러
-  ERROR_BUILD: 930,             // 빌드 에러
-  ERROR_SYNTAX: 940,            // 문법 에러
-  ERROR_LINT: 960,              // Lint 에러
-  ERROR_OTHER: 980,             // 기타
-  
-  // Final Verification (1000) - after everything is complete
-  FINAL_VERIFICATION: 1000,     // 최종 검증
+  // Setup (100-199)
+  SETUP_PROJECT: 100,
+
+  // Shared Foundation (200-299) — shared types/interfaces before parallel features
+  SHARED_FOUNDATION: 200,
+
+  // Feature (300-599)
+  FEATURE_CRITICAL: 300,
+  FEATURE_IMPORTANT: 350,
+  FEATURE_NORMAL: 400,
+  FEATURE_NICE_TO_HAVE: 500,
+
+  // Post-Feature (600-899) — observe completed feature code, barrier-enforced
+  INTEGRATION: 600,
+  TEST_GENERATION: 700,
+  DOCUMENTATION: 800,
+  DOCUMENTATION_PACKAGE: 801,
+
+  // Error (900-999)
+  ERROR_MISSING_ENTRY: 900,
+  ERROR_MISSING_DEPS: 905,
+  ERROR_CONFIG: 910,
+  ERROR_TYPE: 920,
+  ERROR_IMPORT: 925,
+  ERROR_BUILD: 930,
+  ERROR_SYNTAX: 940,
+  ERROR_LINT: 960,
+  ERROR_OTHER: 980,
+
+  // Final Verification (1000)
+  FINAL_VERIFICATION: 1000,
 } as const;
 
 export type ErrorCategory = 
@@ -328,7 +331,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   failedTasks?: Array<{
     taskId: string;
     taskName: string;
-    taskType: 'setup' | 'feature' | 'testgen' | 'verification';
+    taskType: 'setup' | 'feature' | 'testgen' | 'verification' | 'doc';
     priority: number;
     violations: Violation[];
     timestamp: string;
