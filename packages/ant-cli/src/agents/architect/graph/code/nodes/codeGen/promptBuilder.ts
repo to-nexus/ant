@@ -41,7 +41,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   } else {
     const taskType = state.currentTask?.type || 'unknown';
     const priority = state.currentTask?.priority;
-    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'explain';
+    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'testgen' || taskType === 'explain';
     if (!isExpected) {
       console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
     }
@@ -69,7 +69,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const uiDocForTask = (() => {
     if (!state.parsedUiDocs) return undefined;
     if (!state.currentTask) return undefined;
-    if (state.currentTask.type === 'verification') return undefined;
+    if (state.currentTask.type === 'verification' || state.currentTask.type === 'testgen') return undefined;
     
     // Only skip if explicitly disabled by decompose
     if (state.currentTask.ui === false) return undefined;

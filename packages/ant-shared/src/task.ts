@@ -16,12 +16,13 @@ import type { InterruptionDetails } from './interruption';
  * Task types used in decomposition
  * - setup: Environment/config setup (Code Job)
  * - feature: Feature implementation (Code Job)
+ * - testgen: Test code generation after features complete (Code Job)
  * - error: Error fixing (Code Job)
  * - verification: Build & runtime verification (Code Job)
  * - explain: Explanation task (Code Job)
  * - doc: Document generation (Design Job)
  */
-export type TaskType = 'setup' | 'feature' | 'error' | 'verification' | 'explain' | 'doc';
+export type TaskType = 'setup' | 'feature' | 'testgen' | 'error' | 'verification' | 'explain' | 'doc';
 
 /** Task status in Kanban flow */
 export type TaskStatus = 'todo' | 'in-progress' | 'completed';

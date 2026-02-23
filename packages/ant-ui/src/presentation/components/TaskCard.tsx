@@ -62,6 +62,7 @@ export function TaskCard({
   const typeBadgeMap: Record<string, {color: string, label: string}> = {
     'feature': { color: badgeColors.feature, label: 'FEATURE' },
     'setup': { color: badgeColors.setup, label: '⚙️ SETUP' },
+    'testgen': { color: 'bg-yellow-500 dark:bg-yellow-600 text-white', label: '🧪 TESTGEN' },
     'error': { color: badgeColors.error, label: '🔧 ERROR' },
     'verification': { color: badgeColors.final, label: '🎯 VERIFY' },
     'implementation': { color: 'bg-indigo-500 dark:bg-indigo-600 text-white', label: 'IMPL' },

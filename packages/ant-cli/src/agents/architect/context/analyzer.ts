@@ -80,6 +80,24 @@ export function analyzeContextNeeds(
     return strategy;
   }
   
+  // ===== TESTGEN TASK: Load existing source code for test target observation =====
+  if (task.type === 'testgen') {
+    console.log(`   🔍 [Context] Testgen task → loading source code for test targets`);
+    
+    strategy.needsGrep = true;
+    strategy.needsRead = true;
+    strategy.maxFilesToRead = 10;
+    
+    const taskKeywords = extractKeywords(
+      `${task.name} ${task.description || ''}`
+    );
+    strategy.keywords = taskKeywords.slice(0, 5);
+    
+    console.log(`      Keywords: ${strategy.keywords.join(', ')}`);
+    
+    return strategy;
+  }
+  
   // ===== FEATURE TASK: Search for similar patterns =====
   if (task.type === 'feature') {
     console.log(`   🔍 [Context] Feature task → searching for similar patterns`);

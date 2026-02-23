@@ -52,7 +52,7 @@ export class ModeController {
     phase: "plan" | "execute",
     context: AssembledContext,
     explicitMode?: JobMode,
-    taskType?: string  // 'setup' | 'feature' | 'error'
+    taskType?: string  // 'setup' | 'feature' | 'testgen' | 'error'
   ): PromptModeConfig {
     // ✅ Use explicit mode only - LLM will infer in detectEnvironment if needed
     const mode: JobMode | undefined = explicitMode;
@@ -78,14 +78,30 @@ export class ModeController {
     // Base templates
     // ✅ design job uses explicit base-system-design.md and rules-system-design.md
     // ui-design has separate loading logic in docGen.ts (base-ui-design.md, rules-ui-design.md)
-    // ✅ verification tasks use dedicated verify/ templates (lean, no design doc bloat)
+    // ✅ verification and testgen tasks use dedicated templates (lean, focused)
     const isVerification = taskType === 'verification';
+    const isTestgen = taskType === 'testgen';
     const verifyPhasePrefix = `${job}/phases/verify`;
+    const testgenPhasePrefix = `${job}/phases/testgen`;
     const baseTemplateName = job === 'design' ? 'base-system-design' : 'base';
     const rulesTemplateName = job === 'design' ? 'rules-system-design' : 'rules';
+    
+    let templateBase: string;
+    let templateRules: string;
+    if (isVerification) {
+      templateBase = `${verifyPhasePrefix}/base`;
+      templateRules = `${verifyPhasePrefix}/rules`;
+    } else if (isTestgen) {
+      templateBase = `${testgenPhasePrefix}/base`;
+      templateRules = `${testgenPhasePrefix}/rules`;
+    } else {
+      templateBase = `${phasePrefix}/${baseTemplateName}`;
+      templateRules = `${phasePrefix}/${rulesTemplateName}`;
+    }
+    
     const templates = {
-      base: isVerification ? `${verifyPhasePrefix}/base` : `${phasePrefix}/${baseTemplateName}`,
-      rules: isVerification ? `${verifyPhasePrefix}/rules` : `${phasePrefix}/${rulesTemplateName}`,
+      base: templateBase,
+      rules: templateRules,
       injections: this.selectInjections(job, phase, context, taskType, mode)
     };
     
@@ -93,16 +109,10 @@ export class ModeController {
     const llmParams = this.getLLMParams(job, phase, mode);
     
     // Feature flags
+    const skipHeavyContext = isVerification || isTestgen;
     const flags = {
-      // Examples are helpful for feature/error tasks but counterproductive for setup/verification:
-      // setup: scaffolds extra files despite setup constraints
-      // verification: irrelevant code examples waste tokens
-      includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !isVerification,
-      // ✅ CRITICAL: Include profiles for BOTH new and existing projects
-      // Profile is detected by detectEnvironment node from design doc (new) or existing code (existing)
-      // Without this, new projects have no TypeScript/React guidance and generate vanilla JS!
-      // Verification tasks skip profiles - they just need to fix build errors, not follow language patterns
-      includeProfiles: phase === 'execute' && job === 'code' && !isVerification,
+      includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !skipHeavyContext,
+      includeProfiles: phase === 'execute' && job === 'code' && !skipHeavyContext,
       includeMemory: context.stats.hasMemory,
       strictValidation: job === 'code'
     };
@@ -140,9 +150,11 @@ export class ModeController {
       }
     }
     
-    // ✅ Verification tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
-    // These are irrelevant to build/runtime verification and waste ~40K tokens per call
+    // ✅ Verification and testgen tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
     const isVerification = taskType === 'verification';
+    const isTestgen = taskType === 'testgen';
+    const skipDesignContext = isVerification || isTestgen;
+    const detectedEnv = (context as any).detectedEnvironment as string | undefined;
 
     // ✅ Common injections (used by ALL jobs - code, design, learn)
     if (context.stats.hasDirective) {
@@ -153,17 +165,17 @@ export class ModeController {
       injections.push(`${commonPrefix}/memory`);
     }
     
-    if (context.designDoc && !isVerification) {
+    if (context.designDoc && !skipDesignContext) {
       injections.push(`${commonPrefix}/design-doc`);
     }
     
     // ✅ PRD for both design and code jobs (prevents information loss in design transformation)
-    if (context.prdSpec && !isVerification) {
+    if (context.prdSpec && !skipDesignContext) {
       injections.push(`${commonPrefix}/prd-spec`);
     }
     
-    // ✅ Optional UI doc (Figma-derived) - pass only when caller decides it's UI-relevant
-    if (context.uiDoc && !isVerification) {
+    // ✅ Optional UI doc (Figma-derived) - skip for backend-only environments (no visual layer)
+    if (context.uiDoc && !skipDesignContext && detectedEnv !== 'backend') {
       injections.push(`${commonPrefix}/ui-doc`);
     }
     
@@ -196,11 +208,11 @@ export class ModeController {
       const language = this.detectLanguage(context);
       const environment = this.detectEnvironment(context, language);
       
-      // Verification tasks use dedicated verify/ templates (base + rules).
+      // Verification and testgen tasks use dedicated templates (base + rules).
       // Environment-specific rules (e.g. go-api/rules.md) contain "Do NOT run build commands"
-      // which directly contradicts verification's purpose. tool-calling-rules-compact is
+      // which contradicts verification's purpose. tool-calling-rules-compact is
       // already included via Handlebars partial in verify/rules.md.
-      if (!isVerification) {
+      if (!isVerification && !isTestgen) {
         if (language && job === 'code') {
           const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
           injections.push(envPath);
@@ -219,16 +231,30 @@ export class ModeController {
       }
       
       // Verification: inject language-specific hints (build/module/strict-mode guidance)
-      // These are lightweight FPOP-style principles, NOT full environment rules
       if (isVerification && language && job === 'code') {
         const hintsPath = `${job}/phases/verify/languages/${language}/hints`;
         injections.push(hintsPath);
         console.log(`[ModeController] Adding verification language hints: ${hintsPath}`);
       }
       
-      // preview-env-contract (@connection annotations) and port-management
-      // are needed for ALL code tasks including verification
-      if (job === 'code') {
+      // Testgen: inject language-specific hints (test frameworks, mock patterns)
+      if (isTestgen && language && job === 'code') {
+        const hintsPath = `${job}/phases/testgen/languages/${language}/hints`;
+        injections.push(hintsPath);
+        console.log(`[ModeController] Adding testgen language hints: ${hintsPath}`);
+      }
+      
+      // Backend safety: common safety principles for backend/fullstack environments
+      if (job === 'code' && !isVerification && !isTestgen) {
+        if (detectedEnv === 'backend' || detectedEnv === 'fullstack') {
+          injections.push(`code/phases/execute/injections/backend-safety`);
+          console.log(`[ModeController] Adding backend-safety for env: ${detectedEnv}`);
+        }
+      }
+      
+      // preview-env-contract and port-management: needed for code tasks that produce
+      // application code (setup, feature, error, verification). Testgen only writes test files.
+      if (job === 'code' && !isTestgen) {
         injections.push(`${jobPrefix}/preview-env-contract`);
         console.log(`[ModeController] Adding preview-env-contract`);
         
@@ -240,7 +266,6 @@ export class ModeController {
       if (job === 'design') {
         // ✅ Document type-specific guides (api-contract, frontend, backend)
         const targetFile = context.currentTask?.targetFile;
-        const detectedEnv = (context as any).detectedEnvironment; // 'frontend' | 'backend' | 'fullstack'
         
         if (targetFile) {
           if (targetFile.includes('api-contract')) {

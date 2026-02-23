@@ -71,11 +71,9 @@ export const TASK_PRIORITIES = {
   
   // Post-Feature Tasks (800-899) - after all features, before error fixing
   // These tasks observe completed feature code and must NOT run in parallel with features.
-  // Barrier enforced in TaskOrchestrator via testBarrierPriority config.
+  // Barrier enforced in TaskOrchestrator via testgenBarrier config (type-based).
   INTEGRATION: 800,             // Wires parallel feature outputs into shared entry points
-  TEST_GENERATION: 850,         // Creates test suite after all features complete
-  // ⚠️ Sync: execute/base.md uses {{#if (gte currentTask.priority 850)}} (Handlebars can't ref TS constants)
-  // ⚠️ Sync: decompose/rules.md mentions "priority 850-890" in LLM prompt text
+  TEST_GENERATION: 850,         // Creates test suite after all features complete (type: 'testgen')
   
   // Error Tasks (900-999) - fix errors after all features are implemented
   ERROR_MISSING_ENTRY: 900,     // index.html 같은 entry 파일 (가장 중요)
@@ -330,7 +328,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   failedTasks?: Array<{
     taskId: string;
     taskName: string;
-    taskType: 'setup' | 'feature' | 'verification';
+    taskType: 'setup' | 'feature' | 'testgen' | 'verification';
     priority: number;
     violations: Violation[];
     timestamp: string;

@@ -214,31 +214,6 @@ Follow the framework/language-specific setup instructions from:
 {{#if currentTask}}
 {{#if (eq currentTask.type "feature")}}
 {{#unless (eq currentTask.priority 1000)}}
-{{#if (gte currentTask.priority 850)}}
-## 🧪 TEST GENERATION TASK: Minimum Verification Suite
-
-**Your scope:** Write test files ONLY. Do NOT execute tests.
-
-**Principle**: Generate the minimum set of tests that verify the integrated codebase is functional.
-
-**Observation targets** — observe the actual codebase (config files, entry points, source code) to determine:
-
-| Checkpoint | What to observe |
-|-----------|----------------|
-| **Startup** | Does the application have a main entry point or server? Create a startup/health test. |
-| **Endpoints** | Does the application expose API routes or handlers? Create smoke tests for critical ones. |
-| **Core logic** | Are there business logic modules? If dependencies are injectable (accepted as parameters or interfaces), create unit tests with test doubles. If dependencies are directly instantiated (tightly coupled), create integration-level tests instead — do NOT force mock-based unit tests. |
-
-**Constraint**: Do NOT generate exhaustive test coverage. Only verify that the integrated system functions.
-**Constraint**: Do NOT modify application source code. Test files only.
-
-⚠️ **Blind spot**: When no abstraction boundary exists, attempting to unit-test a module leads to either modifying source code (violates constraint) or writing brittle tests coupled to implementation. Choose the test level based on the code's actual coupling, not on an ideal architecture.
-**Constraint**: Use the project's existing test infrastructure if detected (observe config files). If none exists, create minimal test config.
-**Constraint**: Do NOT run tests. Verification handles test execution.
-
-**Actions:** Observe codebase → Write test files → Output `<done>true</done>`
-
-{{else}}
 ## 💻 FEATURE TASK: Source Code Implementation
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -296,7 +271,6 @@ MODIFY: app/page.tsx - Add import and render new component
 - Build/dev verification is NOT your responsibility in feature tasks
 - Output `<done>true</done>` immediately
 
-{{/if}}
 {{/unless}}
 {{/if}}
 {{/if}}

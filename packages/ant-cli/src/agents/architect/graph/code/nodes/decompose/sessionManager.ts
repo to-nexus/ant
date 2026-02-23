@@ -130,13 +130,16 @@ export function restoreFromSession(
   const tasksByType = {
     setup: 0,
     feature: 0,
+    testgen: 0,
     error: 0,
     verification: 0
   };
   
-  taskQueue.getAll().forEach(task => {
+  const classifyTask = (task: { type: string; priority: number }) => {
     if (task.type === 'verification' || task.priority === 1000) {
       tasksByType.verification++;
+    } else if (task.type === 'testgen') {
+      tasksByType.testgen++;
     } else if (task.type === 'error') {
       tasksByType.error++;
     } else if (task.type === 'setup') {
@@ -144,19 +147,12 @@ export function restoreFromSession(
     } else if (task.type === 'feature') {
       tasksByType.feature++;
     }
-  });
+  };
+  
+  taskQueue.getAll().forEach(classifyTask);
   
   if (session.state.currentTask) {
-    const currentTask = session.state.currentTask;
-    if (currentTask.type === 'verification' || currentTask.priority === 1000) {
-      tasksByType.verification++;
-    } else if (currentTask.type === 'error') {
-      tasksByType.error++;
-    } else if (currentTask.type === 'setup') {
-      tasksByType.setup++;
-    } else if (currentTask.type === 'feature') {
-      tasksByType.feature++;
-    }
+    classifyTask(session.state.currentTask);
   }
   
   const completedCount = session.state.completedTasks?.length || 0;
@@ -168,6 +164,7 @@ export function restoreFromSession(
   console.log(`   `);
   console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} remaining`);
   console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} remaining`);
+  console.log(`   Testgen: ${tasksByType.testgen === 0 ? '✅' : '⬜'} ${tasksByType.testgen} remaining`);
   console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
   console.log(`   Verify:  ${tasksByType.verification === 0 ? '✅' : '⬜'} ${tasksByType.verification} remaining`);
   console.log(``);

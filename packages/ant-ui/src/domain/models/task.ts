@@ -5,7 +5,7 @@
  * into a single interface for UI consumption.
  * 
  * Task types match backend TaskType from core/types/task.ts:
- * setup, feature, error, explain, doc
+ * setup, feature, testgen, error, verification, explain, doc
  */
 
 import type { TaskTokenUsage, TaskTiming, TaskType } from '@ant/shared';
