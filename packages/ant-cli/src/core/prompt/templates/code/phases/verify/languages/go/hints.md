@@ -41,3 +41,18 @@
 | **Build failure cascade** | If a shared module fails to compile, all dependent service builds will also fail. Fix the root module first. |
 
 **Constraint**: Do NOT attempt to build dependent services until their shared dependencies compile successfully.
+
+---
+
+### Workspace Replace Directives
+
+**Principle**: In workspace mode, cross-module dependencies require explicit `replace` directives in each consuming module's `go.mod` to resolve local paths.
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Replace directives** | Does each service module's `go.mod` have `replace` directives pointing to sibling modules? |
+| **Version consistency** | Does the `go` directive version in `go.work` match each module's `go.mod`? (e.g., `go 1.22.0` vs `go 1.22`) |
+
+**Constraint**: If `go build` fails with "module not found" for a sibling module, add a `replace` directive in the consuming `go.mod` before attempting other fixes.
+
+⚠️ **Blind spot**: `go.work` declares `go 1.22` but individual `go.mod` files might declare `go 1.22.0` (or vice versa). Mismatched minor versions cause subtle toolchain resolution failures. Verify they are identical.

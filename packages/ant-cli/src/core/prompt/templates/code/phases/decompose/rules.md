@@ -30,7 +30,7 @@ Each task object MUST follow this schema:
   {
     "id": "kebab-case-id",
     "name": "Human-readable task name",
-    "type": "setup" | "feature" | "error",
+    "type": "setup" | "feature" | "testgen" | "error",
     "priority": 100,
     "packages": ["fe", "be-auth"],
     "exclusive": true,
@@ -56,10 +56,10 @@ Each task object MUST follow this schema:
 |-------|----------|-------------|
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
-| `type` | Yes | `"setup"` (project config), `"feature"` (new capability), `"error"` (broken behavior fix), or `"verification"` (build & runtime check) |
-| `priority` | Yes | 100: setup, 200-219: critical, 220-249: important, 250-899: nice-to-have, 1000: verification |
+| `type` | Yes | `"setup"` (project config), `"feature"` (new capability), `"testgen"` (test code generation), `"error"` (broken behavior fix), or `"verification"` (build & runtime check) |
+| `priority` | Yes | 100: setup, 200-280: feature, 850: testgen, 900-980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
-| `exclusive` | Conditional | `true` if task must run alone. Determined ONLY by the task's `type` field and `priority` value — never by task name |
+| `exclusive` | Conditional | `true` if task must run alone. Determined ONLY by the task's `type` field — never by task name |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `ui` | Yes | `true` if task involves the visual presentation layer |
 | `uiSections` | When ui=true | Array of UI doc section IDs to inject (see specification for available sections) |
@@ -101,7 +101,7 @@ CRITICAL:
 
 ## Test Generation Task
 
-**Principle**: A test generation task (`type: "feature"`, priority 850-890) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before verification.
+**Principle**: A test generation task (`type: "testgen"`, priority 850) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before verification.
 
 **Observation target**: Does this task set include a setup task, or 3 or more feature tasks?
 
@@ -111,9 +111,9 @@ CRITICAL:
 | **3+ feature tasks** | Substantial functionality addition — test generation needed |
 | **Neither** | Simple fix or minor change — skip test generation |
 
-**Constraint**: Do NOT create a test generation task for error-only jobs or jobs with fewer than 3 feature tasks and no setup task.
+**Constraint**: Do NOT create a testgen task for error-only jobs or jobs with fewer than 3 feature tasks and no setup task.
 
-**Constraint**: The test generation task writes test files ONLY. It does NOT execute tests — verification handles that.
+**Constraint**: The testgen task writes test files ONLY. It does NOT execute tests — verification handles that.
 
 **Constraint**: Description references the implemented features by scope (not by file path). The executor observes actual code to determine test targets.
 
@@ -123,18 +123,18 @@ CRITICAL:
 
 | Checkpoint | Strategy |
 |-----------|----------|
-| **Multiple packages/services observed** | Create one test generation task per package (same priority, distinct `parallelGroup` per package). Each task targets a single package scope. |
-| **Single package** | Create one test generation task (`exclusive: true`). |
+| **Multiple packages/services observed** | Create one testgen task per package (same priority, distinct `parallelGroup` per package). Each task targets a single package scope. |
+| **Single package** | Create one testgen task (`exclusive: true`). |
 
-**Principle**: Each test task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
+**Principle**: Each testgen task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
 
-**Constraint**: Per-package test tasks target independent scopes — assign them the same priority and a **distinct `parallelGroup` per package** so they can run in parallel.
+**Constraint**: Per-package testgen tasks target independent scopes — assign them the same priority and a **distinct `parallelGroup` per package** so they can run in parallel.
 
-⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package test tasks modify independent directories — they MUST have different group IDs.
+⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package testgen tasks modify independent directories — they MUST have different group IDs.
 
-**Constraint**: Each per-package test task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
+**Constraint**: Each per-package testgen task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
 
-**Constraint**: Do NOT create a single test task that spans all packages in a multi-package project.
+**Constraint**: Do NOT create a single testgen task that spans all packages in a multi-package project.
 
 ---
 
@@ -345,15 +345,15 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-id>"`.
 
-**`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` field and `priority` value:
+**`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` field:
 - `type: "setup"` -> always exclusive (installs dependencies, modifies lock files)
 - `type: "error"` -> always exclusive (may modify shared configs)
-- `type: "verification"` (priority 1000) -> always exclusive
-- Test generation (priority 850-890, single package) -> exclusive (must observe all completed feature code)
-- Test generation (priority 850-890, multiple packages) -> distinct `parallelGroup` per package (independent scopes, parallel with each other)
+- `type: "verification"` -> always exclusive
+- `type: "testgen"` (single package) -> exclusive (must observe all completed feature code)
+- `type: "testgen"` (multiple packages) -> distinct `parallelGroup` per package (independent scopes, parallel with each other)
 - Any task that installs packages or modifies shared build configs
 
-⚠️ **CONSTRAINT**: `exclusive` is determined ONLY by the `type` field value and `priority` value. Do NOT infer `exclusive` from task name or description content.
+⚠️ **CONSTRAINT**: `exclusive` is determined ONLY by the `type` field value. Do NOT infer `exclusive` from task name or description content.
 
 **`parallelGroup: "<group-id>"`** -- Tasks with the SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
 

@@ -154,7 +154,9 @@ export function PreviewConfigEditor() {
 
   // Derive display values (must be before any conditional returns for hook stability)
   const structureType = previewStatus?.structureType || config?.structureType || null;
-  const projectProfile = previewStatus?.projectProfile || config?.projectProfile || null;
+  const projectProfile = (previewStatus?.projectProfile || config?.projectProfile)
+    ? { ...(config?.projectProfile || {}), ...(previewStatus?.projectProfile || {}) }
+    : null;
   const connections: ServiceConnection[] = useMemo(() => {
     const base = config?.connections || [];
     const live = previewStatus?.connections;

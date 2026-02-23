@@ -46,15 +46,11 @@ export interface OrchestratorConfig {
   /** Periodic checkpoint interval in ms (default 60000) */
   checkpointInterval: number;
   /**
-   * Priority threshold for test generation barrier.
-   * When set, tasks with priority >= this value will NOT be assigned
-   * while any task with priority < this value is still running or queued.
-   * This prevents test tasks from starting before all feature tasks complete.
-   * 
-   * Only relevant for code jobs (design jobs don't have test tasks).
-   * Set to TASK_PRIORITIES.TEST_GENERATION (850) in code job orchestrator.
+   * When true, testgen-type tasks will NOT be assigned while any
+   * feature or setup task is still running or queued.
+   * Only relevant for code jobs (design jobs don't have testgen tasks).
    */
-  testBarrierPriority?: number;
+  testgenBarrier?: boolean;
 }
 
 /**

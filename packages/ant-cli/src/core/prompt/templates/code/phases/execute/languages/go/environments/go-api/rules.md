@@ -135,6 +135,7 @@ tree. Follow established structure.
 |-----------|-------------------|
 | **Constructor parameters** | Does `NewXxxService(...)` accept interface types for its dependencies (repository, client, etc.)? |
 | **Direct instantiation** | Does a service create its own `*sql.DB`, HTTP client, or repository struct internally? |
+| **Handler-layer boundary** | Does the handler (HTTP/gRPC) depend on a service interface, not the concrete service struct? |
 
 **Constraint**: If the architecture defines layer boundaries (handler → service → repository), each boundary should be an interface. The concrete type is wired at the composition root (e.g., `main()` or `cmd/`), not inside the consuming layer.
 

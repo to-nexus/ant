@@ -220,6 +220,7 @@ export function logTaskSummary(
   const tasksByType = {
     setup: tasks.filter(t => t.type === 'setup').length,
     feature: tasks.filter(t => t.type === 'feature' && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION).length,
+    testgen: tasks.filter(t => t.type === 'testgen').length,
     error: tasks.filter(t => t.type === 'error').length,
     verification: tasks.filter(t => t.type === 'verification' || t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length,
   };
@@ -227,6 +228,7 @@ export function logTaskSummary(
   console.log(`   Total tasks: ${tasks.length}`);
   console.log(`   Setup: ${tasksByType.setup}`);
   console.log(`   Feature: ${tasksByType.feature}`);
+  console.log(`   Testgen: ${tasksByType.testgen}`);
   console.log(`   Error: ${tasksByType.error}`);
   console.log(`   Verification: ${tasksByType.verification}`);
   

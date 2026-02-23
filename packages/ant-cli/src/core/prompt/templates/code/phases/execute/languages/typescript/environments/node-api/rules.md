@@ -45,6 +45,7 @@
 |-----------|-------------------|
 | **Constructor/factory parameters** | Does the class constructor or factory function accept its dependencies (repository, client) as parameters? |
 | **Module-level side effects** | Does the module import a database client and call it directly in exported functions without any indirection? |
+| **Handler-layer boundary** | Does the route handler/controller depend on a service interface or abstract type, not the concrete service class? |
 
 **Constraint**: Do NOT introduce a DI framework or container unless the project already uses one. Constructor injection or function parameters are sufficient.
 

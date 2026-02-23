@@ -30,7 +30,8 @@
     "retry-context": ["retryContext"],
     "runtime-error-fix": [],
     "missing-dependency-fix": [],
-    "port-management": []
+    "port-management": [],
+    "backend-safety": []
   },
   "design/base/injections": {
     "api-contract-guide": [],
