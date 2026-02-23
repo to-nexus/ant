@@ -107,6 +107,10 @@ go 1.22
 require (
     github.com/{org}/{project}/shared v0.0.0
 )
+
+replace (
+    github.com/{org}/{project}/shared => ../../shared
+)
 ```
 
 **Multi-service — `shared/go.mod`:**
@@ -121,6 +125,8 @@ go 1.22
 - Use the latest stable Go version unless design doc specifies otherwise
 - If the task description requires declaring dependencies, list them in the `require` block
 - In MSA, cross-module dependencies (e.g., service → shared) use `require` with `v0.0.0` — `go.work` resolves them locally
+- In MSA, every cross-module `require` MUST have a corresponding `replace` directive pointing to the relative local path. Without `replace`, standalone builds outside workspace mode fail with "module not found"
+- The `go` version directive in `go.work` and every `go.mod` MUST be identical. A mismatch causes toolchain resolution failures that are invisible until build time
 
 **⛔ Do NOT run any `go` commands (`go mod tidy`, `go mod download`, `go get`, `go get ./...`) during setup.**
 
@@ -312,5 +318,7 @@ ENV=development
 ❌ MSA: Forgetting `go.work` at the root (services cannot resolve cross-module imports)
 ❌ MSA: Creating `docker-compose.yml` or `.env.example` inside service directories (root only)
 ❌ MSA: Using a single `go.mod` for all services (each service needs its own module)
+❌ MSA: Adding `require` for a sibling module without a `replace` directive (build fails with "module not found")
+❌ MSA: Mismatched `go` version between `go.work` and `go.mod` files (causes toolchain resolution failure)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

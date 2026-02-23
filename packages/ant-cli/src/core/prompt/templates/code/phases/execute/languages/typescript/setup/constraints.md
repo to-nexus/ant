@@ -58,6 +58,19 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 ⚠️ **Blind spot — `content` path mismatch**:
 If `content` paths don't cover the directories where source files exist, zero utility classes will be generated. The CSS file still loads normally — it just contains only the base reset, making this invisible in network/console. Ensure `content` paths match the directories where source files will be created.
 
+### Workspace Version Consistency (Multi-Package Projects)
+
+**Principle**: In multi-package workspaces, all module definition files must declare the same language/runtime version. A mismatch between the workspace root and individual modules causes silent toolchain resolution failures.
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Version alignment** | Does the workspace-level version declaration match every module's version declaration? |
+| **Dependency floor** | Do declared versions satisfy the minimum required by all transitive dependencies? |
+
+**Constraint**: Do NOT assume a default version is safe. Observe the highest minimum version required by any dependency, and declare that version consistently across all module files.
+
+⚠️ **Blind spot**: Version mismatches between workspace root and module files are invisible until build or toolchain resolution fails. Verify alignment at creation time.
+
 ## Infrastructure Services (Observe Design Document)
 
 | Checkpoint | Observation Target |
