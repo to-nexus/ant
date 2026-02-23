@@ -324,7 +324,7 @@ export class ModeController {
     if (preDetected) {
       // ✅ Language-aware backend environment mapping
       // Go projects use 'go-api' instead of 'node-api' for correct template path resolution
-      const backendEnv = language === 'golang' ? 'go-api' : 'node-api';
+      const backendEnv = language === 'go' ? 'go-api' : 'node-api';
       const envMap: Record<string, string> = {
         'frontend': 'browser',
         'backend': backendEnv,
@@ -354,7 +354,7 @@ export class ModeController {
           fileName.includes('backend-design') ||
           fileName.includes('be-design') ||
           fileName.includes('api-design')) {
-        const backendEnv = language === 'golang' ? 'go-api' : 'node-api';
+        const backendEnv = language === 'go' ? 'go-api' : 'node-api';
         console.log(`[ModeController] Detected environment from file name (${context.designDocPath}): ${backendEnv}`);
         return backendEnv;
       }
@@ -426,7 +426,7 @@ export class ModeController {
         doc.includes('microservice');
       
       if (isBackendAPI) {
-        const backendEnv = language === 'golang' ? 'go-api' : 'node-api';
+        const backendEnv = language === 'go' ? 'go-api' : 'node-api';
         console.log(`[ModeController] Inferred environment from design doc: ${backendEnv}`);
         return backendEnv;
       }
@@ -461,7 +461,7 @@ export class ModeController {
         doc.includes('urfave/cli');  // Go: urfave/cli framework
       
       if (isCLI) {
-        const cliEnv = language === 'golang' ? 'go-cli' : 'node-cli';
+        const cliEnv = language === 'go' ? 'go-cli' : 'node-cli';
         console.log(`[ModeController] Inferred environment from design doc: ${cliEnv}`);
         return cliEnv;
       }
@@ -477,7 +477,7 @@ export class ModeController {
     }
     
     // For backend languages, default to language-specific API environment
-    if (resolvedLanguage === 'golang') {
+    if (resolvedLanguage === 'go') {
       console.log(`[ModeController] Backend language (${resolvedLanguage}), defaulting to: go-api`);
       return 'go-api';
     }
@@ -511,7 +511,7 @@ export class ModeController {
         return 'typescript';
       }
       if (lang.includes('go') || lang.includes('golang')) {
-        return 'golang';
+        return 'go';
       }
       if (lang.includes('python')) {
         return 'python';

@@ -8,7 +8,7 @@ import { EnvironmentDetector } from "./EnvironmentDetector";
  * CodebaseAnalyzer - Detects language, framework, and environment from source code
  * 
  * Analyzes file extensions, imports, and configuration files to determine:
- * - Primary language (typescript, javascript, golang)
+ * - Primary language (typescript, javascript, go)
  * - Framework (react, nextjs, react-native, gin)
  * - Execution environment (browser, node-api, fullstack)
  * - Additional metadata (version, package manager, conventions)
@@ -71,7 +71,7 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
     
     // Go check
     if (goCount > 0) {
-      return 'golang';
+      return 'go';
     }
     
     // JavaScript (fallback)
@@ -91,7 +91,7 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
     workingDir: string,
     language: string
   ): Promise<string | undefined> {
-    if (language === 'golang') {
+    if (language === 'go') {
       return this.detectGoFramework(filesBlock);
     }
     
@@ -211,7 +211,7 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
     workingDir: string,
     language: string
   ): Promise<string | undefined> {
-    if (language === 'golang') {
+    if (language === 'go') {
       return 'go';
     }
     
@@ -244,7 +244,7 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
     filesBlock: string, 
     language: string
   ): CodebaseProfile['conventions'] {
-    if (language === 'golang') {
+    if (language === 'go') {
       return {
         naming: 'PascalCase',  // Go uses PascalCase for exports
         imports: 'esm',  // Not applicable for Go, but keep interface consistent

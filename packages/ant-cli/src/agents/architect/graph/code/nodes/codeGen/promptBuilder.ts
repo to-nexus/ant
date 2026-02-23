@@ -753,7 +753,7 @@ function extractExportedSymbols(content: string, language?: string): string[] {
   const lines = content.split('\n');
   const symbols: string[] = [];
 
-  if (language === 'golang' || language === 'go') {
+  if (language === 'go') {
     for (const line of lines) {
       const trimmed = line.trim();
       if (/^type\s+[A-Z]/.test(trimmed)) {

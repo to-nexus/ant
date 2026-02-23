@@ -8,7 +8,7 @@ export interface ProfilePort {
    * Load language-specific guidelines and best practices
    * Returns empty string if profile not found (graceful degradation)
    * 
-   * @param language - Language identifier ('typescript', 'javascript', 'golang')
+   * @param language - Language identifier ('typescript', 'javascript', 'go')
    * @returns Language profile as markdown text for prompt injection
    * 
    * @example

@@ -410,7 +410,7 @@ Output in this exact order:
 {
   "environment": "backend",
   "environmentReasoning": "Only be-system-design documents present, no fe- documents",
-  "language": "golang",
+  "language": "go",
   "framework": "gin"
 }
 </profile>
