@@ -8,6 +8,8 @@ import { logger } from '../../../../../../utils/logger';
 
 export interface SpawnOptions {
   serverKey: string;
+  /** Project root path for loading root-level .env (monorepo support). */
+  projectRoot?: string;
   extraEnv?: Record<string, string | undefined>;
   connections?: ServiceConnection[];
   /** Package subdirectory relative to project root (e.g. 'packages/frontend'). Used to filter connections by source. */
@@ -155,35 +157,48 @@ export class ProcessSpawner {
     }
   }
   /**
-   * Load environment variables from project .env files.
-   * Parses .env and .env.local (local overrides .env).
+   * Load environment variables from .env files.
+   *
+   * Two-level loading (like Nx / Docker Compose):
+   *   1. projectRoot .env / .env.local  (workspace-level defaults)
+   *   2. packagePath .env / .env.local  (package-level overrides)
+   *
+   * Package-level values take precedence over project-root values.
    */
-  loadProjectEnv(projectPath: string): Record<string, string> {
+  loadProjectEnv(packagePath: string, projectRoot?: string): Record<string, string> {
     const result: Record<string, string> = {};
-    
-    for (const fileName of ['.env', '.env.local']) {
-      const filePath = path.join(projectPath, fileName);
-      if (!fs.existsSync(filePath)) continue;
-      
-      try {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        for (const line of content.split('\n')) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) continue;
-          const eqIndex = trimmed.indexOf('=');
-          if (eqIndex === -1) continue;
-          const key = trimmed.substring(0, eqIndex).trim();
-          let value = trimmed.substring(eqIndex + 1).trim();
-          if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-            value = value.slice(1, -1);
+
+    const dirsToLoad: string[] = [];
+    if (projectRoot && path.resolve(projectRoot) !== path.resolve(packagePath)) {
+      dirsToLoad.push(projectRoot);
+    }
+    dirsToLoad.push(packagePath);
+
+    for (const dir of dirsToLoad) {
+      for (const fileName of ['.env', '.env.local']) {
+        const filePath = path.join(dir, fileName);
+        if (!fs.existsSync(filePath)) continue;
+
+        try {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          for (const line of content.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const eqIndex = trimmed.indexOf('=');
+            if (eqIndex === -1) continue;
+            const key = trimmed.substring(0, eqIndex).trim();
+            let value = trimmed.substring(eqIndex + 1).trim();
+            if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+              value = value.slice(1, -1);
+            }
+            result[key] = value;
           }
-          result[key] = value;
+        } catch (err) {
+          logger.warn(`[ProcessSpawner] Failed to parse ${filePath}: ${err}`, { component: 'ProcessSpawner' });
         }
-      } catch (err) {
-        logger.warn(`[ProcessSpawner] Failed to parse ${filePath}: ${err}`, { component: 'ProcessSpawner' });
       }
     }
-    
+
     return result;
   }
 
@@ -284,11 +299,12 @@ export class ProcessSpawner {
     
     // Environment variable priority (low to high):
     //   1. process.env (system)
-    //   2. project .env / .env.local
-    //   3. connections[].envVar=value
-    //   4. platform injected (PORT, base path, polling)
-    //   5. extraEnv (caller override)
-    const projectEnv = this.loadProjectEnv(pkg.path);
+    //   2. project root .env / .env.local (workspace-level)
+    //   3. package .env / .env.local (package-level override)
+    //   4. connections[].envVar=value
+    //   5. platform injected (PORT, base path, polling)
+    //   6. extraEnv (caller override)
+    const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
     const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
     const env = {
@@ -402,7 +418,7 @@ export class ProcessSpawner {
     
     this.ensureConfigFiles(pkg.path, options.onLog);
 
-    const projectEnv = this.loadProjectEnv(pkg.path);
+    const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
     const connectionsEnv = this.connectionsToEnv(options.connections, options.packageSource);
 
     const env = {

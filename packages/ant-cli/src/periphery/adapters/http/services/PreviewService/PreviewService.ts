@@ -542,6 +542,7 @@ export class PreviewService {
         
         const childProcess = this.processSpawner.spawn(pkg, pkgPort, {
           serverKey,
+          projectRoot: localPath,
           connections,
           packageSource,
           onLog: (type, msg) => this.appendLog(serverKey, type, msg),
@@ -744,6 +745,14 @@ export class PreviewService {
       this.processSpawner.kill(process);
     }
     
+    // Stop infrastructure services before clearing paths
+    const localPath = this.previewServerPaths.get(serverKey);
+    if (localPath) {
+      const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+      const logCb = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
+      await this.infrastructureManager.stopInfrastructure(localPath, logCb, infraProjectName);
+    }
+    
     // Clean up local state (process handles, paths, logs)
     this.previewServers.delete(serverKey);
     this.previewServerPaths.delete(serverKey);
@@ -935,8 +944,17 @@ export class PreviewService {
     }
     
     try {
-      // Release port (read from Redis)
       const { tenantId: t, userId: u, projectId: p, feature: f } = this.parseServerKey(serverKey);
+
+      // Stop infrastructure services before clearing paths
+      const localPath = this.previewServerPaths.get(serverKey);
+      if (localPath) {
+        const infraProjectName = `ant-${p}-${f}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        const logCb = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
+        await this.infrastructureManager.stopInfrastructure(localPath, logCb, infraProjectName);
+      }
+
+      // Release port (read from Redis)
       if (this.portRegistry && this.portManager) {
         try {
           const state = await this.portRegistry.getPreview(t, u, p, f);
