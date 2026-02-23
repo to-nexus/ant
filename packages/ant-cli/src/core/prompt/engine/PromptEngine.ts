@@ -543,7 +543,7 @@ export class PromptEngine {
    */
   private mapLanguageToTemplatePath(language: string): string {
     const lang = language.toLowerCase();
-    if (lang.includes('go')) return 'golang';
+    if (lang.includes('go')) return 'go';
     if (lang.includes('typescript') || lang.includes('javascript')) return 'typescript';
     if (lang.includes('python')) return 'python';
     if (lang.includes('rust')) return 'rust';

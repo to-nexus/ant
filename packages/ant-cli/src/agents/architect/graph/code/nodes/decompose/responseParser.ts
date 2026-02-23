@@ -1,6 +1,7 @@
 import { TaskQueue, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
+import { normalizeLanguage } from "../../../../../../utils/languageUtils";
 
 export interface ParsedProfile {
   environment: string;
@@ -51,7 +52,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
         profile = {
           environment: parsedProfile.environment || 'unknown',
           environmentReasoning: parsedProfile.environmentReasoning || '',
-          language: parsedProfile.language || 'typescript',
+          language: normalizeLanguage(parsedProfile.language || 'typescript'),
           framework: parsedProfile.framework || null,
         };
       } catch (error) {

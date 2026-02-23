@@ -20,12 +20,18 @@ export class HealthChecker {
     port: number, 
     onLog: LogCallback,
     maxAttempts = DEFAULT_MAX_ATTEMPTS, 
-    delayMs = DEFAULT_DELAY_MS
+    delayMs = DEFAULT_DELAY_MS,
+    signal?: AbortSignal
   ): Promise<boolean> {
     const totalTimeoutSec = Math.round(maxAttempts * delayMs / 1000);
     logger.debug(`Health check starting for port ${port} (max ${totalTimeoutSec}s)`, { component: 'HealthChecker' });
     
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (signal?.aborted) {
+        logger.debug(`Health check aborted for port ${port} at attempt ${attempt}`, { component: 'HealthChecker' });
+        return false;
+      }
+
       try {
         // Use 127.0.0.1 explicitly to avoid IPv6 resolution issues
         const response = await fetch(`http://127.0.0.1:${port}/`, {
@@ -38,8 +44,12 @@ export class HealthChecker {
         onLog('stdout', `✅ Dev server is ready on port ${port}`);
         return true;
       } catch (error: any) {
+        if (signal?.aborted) {
+          logger.debug(`Health check aborted for port ${port} at attempt ${attempt}`, { component: 'HealthChecker' });
+          return false;
+        }
+
         if (attempt % 10 === 0) {
-          // Log progress every 10 attempts to avoid log spam
           logger.debug(`Health check in progress (${attempt}/${maxAttempts}): ${error.message}`, { component: 'HealthChecker' });
           onLog('stdout', `⏳ Waiting for dev server... (${attempt}/${maxAttempts})`);
         }

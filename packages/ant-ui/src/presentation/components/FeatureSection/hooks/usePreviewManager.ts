@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { 
@@ -37,7 +37,7 @@ export function usePreviewManager(
   const setPreviewLoading = useStore((state) => state.setPreviewLoading);
   const isPreviewLoading = useStore((state) => state.isPreviewLoading);
   
-  const [error, setError] = useState<PreviewError | undefined>();
+  const [localError, setLocalError] = useState<PreviewError | undefined>();
   const [progress, setProgress] = useState<PreviewProgress | undefined>();
   const [isDismissed, setIsDismissed] = useState(false);
   const stopGuardUntilRef = useRef<number>(0);
@@ -66,23 +66,18 @@ export function usePreviewManager(
     }
   }, [previewStatus?.logs]);
 
-  // Extract error from backend error field or logs
-  useEffect(() => {
+  // Derive error synchronously from state + previewStatus + localError
+  const error = useMemo<PreviewError | undefined>(() => {
     if (state === 'error') {
-      // Prefer backend-provided error message over log parsing
       const backendError = previewStatus?.error;
-      if (backendError && backendError !== error?.message) {
-        setError({ message: backendError });
-      } else if (!backendError && previewStatus?.logs) {
+      if (backendError) return { message: backendError };
+      if (previewStatus?.logs) {
         const errorMessage = extractErrorFromLogs(previewStatus.logs);
-        if (errorMessage && errorMessage !== error?.message) {
-          setError({ message: errorMessage });
-        }
+        if (errorMessage) return { message: errorMessage };
       }
-    } else if (error) {
-      setError(undefined);
     }
-  }, [state, previewStatus?.error, previewStatus?.logs, error]);
+    return localError;
+  }, [state, previewStatus?.error, previewStatus?.logs, localError]);
 
   // Initial status check + periodic sync (recovers from SSE drops)
   useEffect(() => {
@@ -191,7 +186,7 @@ export function usePreviewManager(
   // Start preview server
   const startServer = useCallback(async () => {
     if (!selectedProject || !selectedFeature) {
-      setError({ 
+      setLocalError({ 
         message: PREVIEW_MESSAGES.ERROR_NO_PROJECT_FEATURE 
       });
       return;
@@ -202,7 +197,7 @@ export function usePreviewManager(
     setIsDismissed(false);
     
     setPreviewLoading(true);
-    setError(undefined);
+    setLocalError(undefined);
     setProgress(undefined);
     
     try {
@@ -242,7 +237,7 @@ export function usePreviewManager(
         } catch { /* ignore — next poll will catch up */ }
       }
       
-      setError({
+      setLocalError({
         message: err.message || PREVIEW_MESSAGES.ERROR_UNKNOWN,
         details: err.setupReason || err.response?.data?.error
       });
@@ -260,13 +255,13 @@ export function usePreviewManager(
     setPreviewStatus(undefined);
     setPreviewLoading(false);
 
-    setError(undefined);
+    setLocalError(undefined);
     setProgress(undefined);
     
     try {
       await stopPreview(selectedProject, selectedFeature);
     } catch (err: any) {
-      setError({
+      setLocalError({
         message: PREVIEW_MESSAGES.ERROR_STOP_FAILED(err.message || PREVIEW_MESSAGES.ERROR_UNKNOWN)
       });
       // Re-sync status if stop failed

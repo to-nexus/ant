@@ -60,7 +60,7 @@ Output the profile in `<profile>` tags before `<tasks>`:
 {
   "environment": "frontend" | "backend" | "fullstack" | "unknown",
   "environmentReasoning": "Why this environment? (1 sentence)",
-  "language": "typescript" | "javascript" | "python" | "golang" | "rust" | "java",
+  "language": "typescript" | "javascript" | "python" | "go" | "rust" | "java",
   "framework": "react" | "vue" | "next" | "express" | "fastapi" | "gin" | ... (or null)
 }
 </profile>
