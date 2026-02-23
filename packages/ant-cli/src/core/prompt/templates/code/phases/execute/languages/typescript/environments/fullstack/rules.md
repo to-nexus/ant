@@ -61,4 +61,21 @@ project/
 
 ---
 
+### Testability Across Package Boundaries
+
+**Principle**: Each package (backend, frontend, shared) follows the testability rules of its own environment. Backend follows Node.js API rules, frontend follows Browser rules. Shared code must be testable from both contexts.
+
+**Observation target**: Does shared code depend on environment-specific APIs?
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Shared code purity** | Does the common package import Node.js-only or browser-only modules? If so, it cannot be tested in the other context. |
+| **Cross-package interfaces** | Are API contracts between backend and frontend defined as types in the shared package? This allows both sides to be tested independently against the contract. |
+
+**Constraint**: Shared packages MUST remain environment-agnostic. If a shared utility needs environment-specific behavior, accept it as a parameter — do NOT branch on runtime detection.
+
+⚠️ **Blind spot**: When a shared validation schema imports a Node.js module (e.g., `crypto`), frontend tests that import the same schema will fail. Verify shared code has zero environment-specific imports.
+
+---
+
 **Remember:** You're working in a monorepo. Identify which package you're editing before proceeding.
