@@ -171,7 +171,9 @@ clean:
 	rm -rf bin/
 ```
 
-**Constraint**: `make run` must be the standard way to start the dev server. Adjust the binary path in `build` and `run` targets to match `cmd/` structure.
+**Constraint**: `run` target MUST use `go run ./cmd/...` — NOT a pre-built binary path. The `build` target produces binaries for deployment; the `run` target compiles and executes in one step for development.
+
+**Constraint**: `make run` must be the standard way to start the dev server. Adjust the entry point path in `build` and `run` targets to match `cmd/` structure.
 
 **Multi-service — root Makefile (orchestration):**
 
@@ -216,6 +218,8 @@ clean:
 ```
 
 **Constraint**: In MSA, `make run-{svc}` at the root must start a specific service. Each service Makefile must be self-contained with `build`, `run`, `test`, `clean` targets.
+
+**Constraint**: Each service `run` target MUST use `go run ./cmd/...` — NOT a pre-built binary path. Parallel setup tasks generate Makefiles independently; `go run` ensures consistent behavior without requiring a prior `build` step.
 
 ---
 
