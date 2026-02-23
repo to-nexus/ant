@@ -165,7 +165,7 @@ export function createTaskQueue(tasks: CodeTask[]): {
     // - Explicit from LLM takes precedence
     // - Fallback: setup, error, and final (priority 1000) are always exclusive
     const isExplicitExclusive = typeof (task as any).exclusive === 'boolean' ? (task as any).exclusive : undefined;
-    const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.type === 'verification' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+    const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.type === 'verification' || task.type === 'doc' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
     const exclusive = isExplicitExclusive ?? isTypeExclusive;
     
     // parallelGroup only applies when not exclusive
@@ -221,6 +221,7 @@ export function logTaskSummary(
     setup: tasks.filter(t => t.type === 'setup').length,
     feature: tasks.filter(t => t.type === 'feature' && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION).length,
     testgen: tasks.filter(t => t.type === 'testgen').length,
+    doc: tasks.filter(t => t.type === 'doc').length,
     error: tasks.filter(t => t.type === 'error').length,
     verification: tasks.filter(t => t.type === 'verification' || t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length,
   };

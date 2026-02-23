@@ -47,11 +47,11 @@ Analyze project characteristics to determine structure:
 
 **If MONOREPO:**
 - Create MULTIPLE setup tasks (one per package/app + root)
-- Example structure:
-  1. Root workspace setup (priority 100): workspace config, shared dependencies
-  2. Package A setup (priority 101): app-specific config and dependencies
-  3. Package B setup (priority 102): app-specific config and dependencies
-  4. ...as many as needed
+- Root setup (priority 100): `exclusive: true` — workspace config, shared dependencies
+- Package-level setups (priority 101+): `exclusive: false`, distinct `parallelGroup` per package
+- Structure:
+  1. Root workspace setup (priority 100, exclusive: true)
+  2. Per-package setup (priority 101+, exclusive: false, parallelGroup: unique per package)
 
 **If MONOLITHIC:**
 - Create SINGLE setup task (priority 100)
@@ -66,7 +66,8 @@ Analyze project characteristics to determine structure:
 **Critical Rules:**
 - ✅ Decide structure based on project needs, not rigid rules
 - ✅ Create as many setup tasks as needed for chosen structure
-- ✅ Assign sequential priorities (100, 101, 102, ...)
+- ✅ Assign ascending priorities (100, 101, 102, ...)
+- ✅ Root setup: exclusive: true. Package-level setups: exclusive: false with distinct parallelGroup
 - ❌ Don't mention specific file names (package.json, etc.)
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -95,12 +96,12 @@ Analyze project characteristics to determine structure:
 
 ### MSA Setup Task Generation
 
-| Task | Priority | Scope |
-|------|----------|-------|
-| Root workspace | 100 | pnpm-workspace.yaml, root config |
-| Shared package | 101 | Types/DTOs from api-contract.md |
-| Service packages | 102+ | One per `be-system-design-{service}.md` |
-| Frontend package | Last | Depends on shared |
+| Task | Priority | Parallel | Scope |
+|------|----------|----------|-------|
+| Root workspace | 100 | exclusive: true | pnpm-workspace.yaml, root config |
+| Shared package | 101 | exclusive: false, parallelGroup: unique | Types/DTOs from api-contract.md |
+| Service packages | 102+ | exclusive: false, parallelGroup: unique each | One per `be-system-design-{service}.md` |
+| Frontend package | Last | exclusive: false, parallelGroup: unique | Depends on shared |
 
 ### MSA Feature Task Generation
 

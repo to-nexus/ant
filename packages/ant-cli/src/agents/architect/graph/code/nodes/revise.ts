@@ -152,7 +152,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
       tasksToAdd: Array<{
         name: string;
         description: string;
-        type: 'setup' | 'feature' | 'testgen';
+        type: 'setup' | 'feature' | 'testgen' | 'doc';
         priority: number;
         insertAfter?: string;
         ui?: boolean;
@@ -291,7 +291,7 @@ function applyTaskModifications(
     tasksToAdd: Array<{
       name: string;
       description: string;
-      type: 'setup' | 'feature' | 'testgen';
+      type: 'setup' | 'feature' | 'testgen' | 'doc';
       priority: number;
       insertAfter?: string;
       ui?: boolean;

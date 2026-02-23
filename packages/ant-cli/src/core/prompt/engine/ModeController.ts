@@ -52,7 +52,7 @@ export class ModeController {
     phase: "plan" | "execute",
     context: AssembledContext,
     explicitMode?: JobMode,
-    taskType?: string  // 'setup' | 'feature' | 'testgen' | 'error'
+    taskType?: string  // 'setup' | 'feature' | 'testgen' | 'doc' | 'error'
   ): PromptModeConfig {
     // ✅ Use explicit mode only - LLM will infer in detectEnvironment if needed
     const mode: JobMode | undefined = explicitMode;
@@ -81,8 +81,10 @@ export class ModeController {
     // ✅ verification and testgen tasks use dedicated templates (lean, focused)
     const isVerification = taskType === 'verification';
     const isTestgen = taskType === 'testgen';
+    const isDoc = taskType === 'doc';
     const verifyPhasePrefix = `${job}/phases/verify`;
     const testgenPhasePrefix = `${job}/phases/testgen`;
+    const docgenPhasePrefix = `${job}/phases/docgen`;
     const baseTemplateName = job === 'design' ? 'base-system-design' : 'base';
     const rulesTemplateName = job === 'design' ? 'rules-system-design' : 'rules';
     
@@ -94,6 +96,9 @@ export class ModeController {
     } else if (isTestgen) {
       templateBase = `${testgenPhasePrefix}/base`;
       templateRules = `${testgenPhasePrefix}/rules`;
+    } else if (isDoc) {
+      templateBase = `${docgenPhasePrefix}/base`;
+      templateRules = `${docgenPhasePrefix}/rules`;
     } else {
       templateBase = `${phasePrefix}/${baseTemplateName}`;
       templateRules = `${phasePrefix}/${rulesTemplateName}`;
@@ -109,7 +114,7 @@ export class ModeController {
     const llmParams = this.getLLMParams(job, phase, mode);
     
     // Feature flags
-    const skipHeavyContext = isVerification || isTestgen;
+    const skipHeavyContext = isVerification || isTestgen || isDoc;
     const flags = {
       includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !skipHeavyContext,
       includeProfiles: phase === 'execute' && job === 'code' && !skipHeavyContext,
@@ -150,10 +155,11 @@ export class ModeController {
       }
     }
     
-    // ✅ Verification and testgen tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
+    // ✅ Verification, testgen, and doc tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
     const isVerification = taskType === 'verification';
     const isTestgen = taskType === 'testgen';
-    const skipDesignContext = isVerification || isTestgen;
+    const isDoc = taskType === 'doc';
+    const skipDesignContext = isVerification || isTestgen || isDoc;
     const detectedEnv = (context as any).detectedEnvironment as string | undefined;
 
     // ✅ Common injections (used by ALL jobs - code, design, learn)
@@ -212,7 +218,7 @@ export class ModeController {
       // Environment-specific rules (e.g. go-api/rules.md) contain "Do NOT run build commands"
       // which contradicts verification's purpose. tool-calling-rules-compact is
       // already included via Handlebars partial in verify/rules.md.
-      if (!isVerification && !isTestgen) {
+      if (!isVerification && !isTestgen && !isDoc) {
         if (language && job === 'code') {
           const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
           injections.push(envPath);
@@ -245,7 +251,7 @@ export class ModeController {
       }
       
       // Backend safety: common safety principles for backend/fullstack environments
-      if (job === 'code' && !isVerification && !isTestgen) {
+      if (job === 'code' && !isVerification && !isTestgen && !isDoc) {
         if (detectedEnv === 'backend' || detectedEnv === 'fullstack') {
           injections.push(`code/phases/execute/injections/backend-safety`);
           console.log(`[ModeController] Adding backend-safety for env: ${detectedEnv}`);
@@ -253,8 +259,8 @@ export class ModeController {
       }
       
       // preview-env-contract and port-management: needed for code tasks that produce
-      // application code (setup, feature, error, verification). Testgen only writes test files.
-      if (job === 'code' && !isTestgen) {
+      // application code (setup, feature, error, verification). Testgen/doc only write non-app files.
+      if (job === 'code' && !isTestgen && !isDoc) {
         injections.push(`${jobPrefix}/preview-env-contract`);
         console.log(`[ModeController] Adding preview-env-contract`);
         

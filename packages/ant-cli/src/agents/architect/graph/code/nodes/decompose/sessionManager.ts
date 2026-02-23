@@ -131,6 +131,7 @@ export function restoreFromSession(
     setup: 0,
     feature: 0,
     testgen: 0,
+    doc: 0,
     error: 0,
     verification: 0
   };
@@ -140,6 +141,8 @@ export function restoreFromSession(
       tasksByType.verification++;
     } else if (task.type === 'testgen') {
       tasksByType.testgen++;
+    } else if (task.type === 'doc') {
+      tasksByType.doc++;
     } else if (task.type === 'error') {
       tasksByType.error++;
     } else if (task.type === 'setup') {
@@ -165,6 +168,7 @@ export function restoreFromSession(
   console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} remaining`);
   console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} remaining`);
   console.log(`   Testgen: ${tasksByType.testgen === 0 ? '✅' : '⬜'} ${tasksByType.testgen} remaining`);
+  console.log(`   Doc:     ${tasksByType.doc === 0 ? '✅' : '⬜'} ${tasksByType.doc} remaining`);
   console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
   console.log(`   Verify:  ${tasksByType.verification === 0 ? '✅' : '⬜'} ${tasksByType.verification} remaining`);
   console.log(``);

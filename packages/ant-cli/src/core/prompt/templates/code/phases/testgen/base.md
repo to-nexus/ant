@@ -12,9 +12,9 @@ Configuration files, entry points, source code, and the directory tree are alrea
 
 | Context | Use for |
 |---------|---------|
-| **Config files** (go.mod, package.json, Makefile, etc.) | Test runner, dependencies |
+| **Config files** | Test runner, dependencies |
 | **Source files** | Test targets — observe actual coupling and abstraction boundaries |
-| **Entry point** (main.go, index.ts, etc.) | Startup/health test target |
+| **Entry point** | Startup/health test target |
 | **Directory tree** | Project structure — do NOT call `list_files` |
 
 ## Observation Targets
@@ -26,6 +26,21 @@ Observe the actual codebase (config files, entry points, source code) to determi
 | **Startup** | Does the application have a main entry point or server? Create a startup/health test. |
 | **Endpoints** | Does the application expose API routes or handlers? Create smoke tests for critical ones. |
 | **Core logic** | Are there business logic modules? Observe how dependencies are accessed (see Test Level Selection below). |
+| **Test script** | Does the project config have a test run script? If not, add one (see Test Script below). |
+
+## Test Script
+
+**Principle**: The project must have a way to run tests from a single command.
+
+**Observation target**: Does the project's build/dependency config file already contain a test execution script or target?
+
+| Observation | Action |
+|-------------|--------|
+| **Config file exists but no test script/target** | Add a test execution entry that runs the detected test framework |
+| **Language/ecosystem has a built-in test command** | No action needed |
+| **Test script/target already exists** | No action needed |
+
+**Constraint**: Only add the test script to the project's existing build config file. Do NOT create new config files solely for test execution.
 
 ## Test Level Selection
 
@@ -49,7 +64,7 @@ After writing all test files, output `<done>true</done>`.
 ## PATH CONVENTION
 
 All paths are relative to the feature root.
-- Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
+- Code files: `codebase/...` (e.g., `codebase/src/...`)
 - Wrong paths: `app/page.tsx` (missing prefix), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
 
 {{#if referenceRequests}}

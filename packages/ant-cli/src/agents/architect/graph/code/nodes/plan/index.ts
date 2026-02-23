@@ -397,7 +397,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ✅ Split injection: Extract only needed UI sections for this task
   const uiDocForPlan = (() => {
     if (!state.parsedUiDocs) return undefined;
-    if (nextTask.type === 'setup') return undefined;  // Setup tasks don't need UI spec
+    if (nextTask.type === 'setup' || nextTask.type === 'doc') return undefined;
     
     // Check if UI injection is needed
     const needsUi = (() => {

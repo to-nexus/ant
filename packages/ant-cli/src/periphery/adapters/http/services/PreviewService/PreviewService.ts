@@ -843,6 +843,16 @@ export class PreviewService {
       this.appendLog(serverKey, 'stdout', `⚠️  ${pkgName} exited with code ${code}`);
     }
     
+    // Abort health check immediately if a process crashed — waiting is futile
+    if (code !== 0 && code !== null) {
+      const healthAbort = this.healthCheckAbortControllers.get(serverKey);
+      if (healthAbort) {
+        logger.info(`[Preview] Aborting health check for ${serverKey} — ${pkgName} crashed (code ${code})`, { component: 'PreviewService' });
+        healthAbort.abort();
+        this.healthCheckAbortControllers.delete(serverKey);
+      }
+    }
+
     // Early-exit diagnostics: if process died within 10 seconds, likely a config issue
     const spawnTime = this.spawnTimestamps.get(serverKey);
     if (spawnTime && (Date.now() - spawnTime < 10_000) && code !== 0) {

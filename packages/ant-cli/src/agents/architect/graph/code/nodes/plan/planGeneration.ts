@@ -98,6 +98,7 @@ export async function generatePlanText(
     task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&
     task.type !== 'verification' &&
     task.type !== 'testgen' &&
+    task.type !== 'doc' &&
     task.type !== 'explain';
   
   if (!requiresPlan) {

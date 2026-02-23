@@ -80,6 +80,18 @@ export function analyzeContextNeeds(
     return strategy;
   }
   
+  // ===== DOC TASK: Load existing documentation and config for doc generation =====
+  if (task.type === 'doc') {
+    console.log(`   🔍 [Context] Doc task → loading docs and configs for documentation`);
+    
+    strategy.needsGrep = true;
+    strategy.needsRead = true;
+    strategy.maxFilesToRead = 10;
+    strategy.filePatterns = ['README.md', 'docs/**/*.md', 'package.json', 'go.mod', 'Cargo.toml', 'Makefile'];
+    
+    return strategy;
+  }
+  
   // ===== TESTGEN TASK: Load existing source code for test target observation =====
   if (task.type === 'testgen') {
     console.log(`   🔍 [Context] Testgen task → loading source code for test targets`);

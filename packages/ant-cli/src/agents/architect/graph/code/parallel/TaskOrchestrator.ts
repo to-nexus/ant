@@ -439,12 +439,23 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.taskQueue.getAll().some(t => t.type === 'feature' || t.type === 'setup')
     );
 
+    // Doc barrier: doc tasks wait until all feature/setup/testgen tasks complete.
+    const hasPreDocWork = this.config.docBarrier && (
+      Array.from(this.runningTasks.values()).some(t => t.type === 'feature' || t.type === 'setup' || t.type === 'testgen') ||
+      this.taskQueue.getAll().some(t => t.type === 'feature' || t.type === 'setup' || t.type === 'testgen')
+    );
+
     for (const task of this.taskQueue.getAll()) {
       // Exclusive task acts as a barrier
       if (task.exclusive) break;
 
       // Testgen barrier: don't assign testgen tasks while feature/setup work exists
       if (hasPreTestgenWork && task.type === 'testgen') {
+        break;
+      }
+
+      // Doc barrier: don't assign doc tasks while feature/setup/testgen work exists
+      if (hasPreDocWork && task.type === 'doc') {
         break;
       }
 
@@ -504,10 +515,17 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.taskQueue.getAll().some(t => t.type === 'feature' || t.type === 'setup')
     );
 
+    // Doc barrier (same logic as findAndAssignNonConflictingTask)
+    const hasPreDocWork = this.config.docBarrier && (
+      Array.from(this.runningTasks.values()).some(t => t.type === 'feature' || t.type === 'setup' || t.type === 'testgen') ||
+      this.taskQueue.getAll().some(t => t.type === 'feature' || t.type === 'setup' || t.type === 'testgen')
+    );
+
     let potentialTasks = 0;
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
       if (hasPreTestgenWork && task.type === 'testgen') break;
+      if (hasPreDocWork && task.type === 'doc') break;
       if (!task.parallelGroup) {
         if (this.runningTasks.size === 0 && potentialTasks === 0) potentialTasks++;
         continue;
