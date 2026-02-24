@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
+import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { Button } from '@/presentation/components/common/button';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
@@ -10,15 +11,18 @@ import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
 import { isCanonicalDir } from '@/shared/utils/canonical-dirs';
+import { useDropZone } from '@/application/hooks/ui/useDropZone';
 
 interface DirectoryViewProps {
   title: string;
+  rootDirName: string;
   nodes: FileNode[];
   onFileSelect: (path: string) => void;
   selectedFile: string | undefined;
   onCreateFile?: (dirPath: string, fileName: string) => void;
   onCreateDirectory?: (dirPath: string, dirName: string) => void;
   onUploadFiles?: (dirPath: string, files: FileList) => void;
+  onDropFiles?: (dirPath: string, entries: UploadFileEntry[]) => void;
   onDelete?: (filePath: string) => void;
   onSend?: (path: string, type: 'file' | 'directory') => void;
   onDownload?: (path: string) => void;
@@ -27,7 +31,7 @@ interface DirectoryViewProps {
   onMarkSeen?: (paths: string[]) => void;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDelete, onSend, onDownload, isSessionSection, unseenArtifacts = [], onMarkSeen }: DirectoryViewProps) {
+function DirectoryView({ title, rootDirName, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onDelete, onSend, onDownload, isSessionSection, unseenArtifacts = [], onMarkSeen }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
@@ -35,6 +39,13 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   const [newFileName, setNewFileName] = useState('');
   const [activeMenuPath, setActiveMenuPath] = useState<string | null>(null);
   const { showConfirm } = useAlertModalContext();
+
+  const { isDragOver, dropProps } = useDropZone({
+    onDrop: (entries) => {
+      if (onDropFiles) onDropFiles(rootDirName, entries);
+    },
+    disabled: !onDropFiles,
+  });
 
   // Keep a ref to unseenArtifacts so cleanup can read the latest value
   const unseenRef = useRef(unseenArtifacts);
@@ -305,7 +316,23 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
   return (
     <div>
       <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300 text-center">{title}</h4>
-      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide">
+      <div
+        {...dropProps}
+        className={cn(
+          'border rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide relative transition-colors',
+          isDragOver
+            ? 'border-blue-400 dark:border-blue-500 border-dashed border-2 bg-blue-50/50 dark:bg-blue-900/20'
+            : 'border-gray-200 dark:border-gray-700',
+        )}
+      >
+        {isDragOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-blue-50/80 dark:bg-blue-900/40 rounded-lg z-10 pointer-events-none">
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-300 text-sm font-medium">
+              <Upload className="w-4 h-4" />
+              {t('upload.dropHint')}
+            </div>
+          </div>
+        )}
         {nodes.length === 0 ? (
           <div className={cn('text-sm p-2 text-center', textColors.tertiary)}>
             No files in {title.toLowerCase()}
@@ -440,17 +467,57 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     window.open(url, '_blank');
   };
 
-  const handleUploadFiles = async (dirPath: string, files: FileList) => {
+  // ── Upload state (progress + cancel) ─────────────────────────────
+  const [uploadState, setUploadState] = useState<{
+    active: boolean;
+    loaded: number;
+    total: number;
+    fileCount: number;
+    targetDir: string;
+  } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const doUpload = useCallback(async (
+    dirPath: string,
+    files: FileList | UploadFileEntry[],
+  ) => {
     if (!selectedProject || !selectedFeature) return;
-    
+
+    const count = Array.isArray(files) ? files.length : files.length;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setUploadState({ active: true, loaded: 0, total: 0, fileCount: count, targetDir: dirPath });
+
     try {
-      await uploadFiles(selectedProject, selectedFeature, dirPath, files);
+      await uploadFiles(selectedProject, selectedFeature, dirPath, files, {
+        onProgress: (loaded, total) => setUploadState(prev => prev ? { ...prev, loaded, total } : prev),
+        signal: controller.signal,
+      });
       await refreshFileTree();
     } catch (error) {
-      console.error('Failed to upload files:', error);
-      showError(t('error.uploadFailed'), { title: t('common:error.title') });
+      if ((error as DOMException)?.name === 'AbortError') {
+        console.log('[Upload] Cancelled by user');
+      } else {
+        console.error('Failed to upload files:', error);
+        showError(t('error.uploadFailed'), { title: t('common:error.title') });
+      }
+    } finally {
+      setUploadState(null);
+      abortRef.current = null;
     }
-  };
+  }, [selectedProject, selectedFeature, refreshFileTree, showError, t]);
+
+  const handleUploadFiles = useCallback(async (dirPath: string, files: FileList) => {
+    await doUpload(dirPath, files);
+  }, [doUpload]);
+
+  const handleDropFiles = useCallback(async (dirPath: string, entries: UploadFileEntry[]) => {
+    await doUpload(dirPath, entries);
+  }, [doUpload]);
+
+  const handleCancelUpload = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   // Don't show if no feature is selected
   if (!selectedProject || !selectedFeature) {
@@ -507,12 +574,14 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       <div className="space-y-3">
         <DirectoryView
           title={t('panel.inputs')}
+          rootDirName="inputs"
           nodes={inputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
           onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
           onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
+          onDropFiles={policy.canUploadFiles ? handleDropFiles : undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
@@ -521,12 +590,14 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         />
         <DirectoryView
           title={t('panel.outputs')}
+          rootDirName="outputs"
           nodes={outputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
           onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
           onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
+          onDropFiles={policy.canUploadFiles ? handleDropFiles : undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
@@ -535,6 +606,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         />
         <DirectoryView
           title={t('panel.sessions')}
+          rootDirName="sessions"
           nodes={sessionsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
@@ -545,6 +617,35 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDownload={handleDownload}
           isSessionSection={true}
         />
+
+        {/* Upload progress bar */}
+        {uploadState && (
+          <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-blue-700 dark:text-blue-300 truncate">
+                {t('upload.uploading', { count: uploadState.fileCount, dir: uploadState.targetDir })}
+              </span>
+              <button
+                onClick={handleCancelUpload}
+                className="flex-shrink-0 ml-2 p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-500 dark:text-blue-400 transition-colors"
+                title={t('upload.cancel')}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="w-full h-1.5 bg-blue-100 dark:bg-blue-900 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-[width] duration-200"
+                style={{ width: uploadState.total > 0 ? `${Math.round((uploadState.loaded / uploadState.total) * 100)}%` : '0%' }}
+              />
+            </div>
+            {uploadState.total > 0 && (
+              <div className="text-[10px] text-blue-500 dark:text-blue-400 text-right">
+                {Math.round((uploadState.loaded / uploadState.total) * 100)}%
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

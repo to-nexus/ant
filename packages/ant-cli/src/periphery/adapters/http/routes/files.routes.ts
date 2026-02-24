@@ -210,15 +210,26 @@ export function createFilesRoutes(deps: {
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const baseDir = path.join(featurePath, dirPath);
       
-      // Ensure directory exists
+      // Ensure base directory exists
       await fs.promises.mkdir(baseDir, { recursive: true });
+      
+      // relativePaths[] preserves folder structure from drag-and-drop uploads
+      const rawRelPaths = req.body.relativePaths;
+      const relativePaths: string[] = Array.isArray(rawRelPaths)
+        ? rawRelPaths
+        : typeof rawRelPaths === 'string'
+          ? [rawRelPaths]
+          : [];
       
       // Write all uploaded files
       const uploadedFiles: string[] = [];
-      for (const file of files) {
-        const filePath = path.join(baseDir, file.originalname);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const relPath = relativePaths[i] || file.originalname;
+        const filePath = resolveSafePath(baseDir, relPath);
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
         await fs.promises.writeFile(filePath, file.buffer);
-        uploadedFiles.push(file.originalname);
+        uploadedFiles.push(relPath);
       }
       
       // Add unseen artifact notifications for uploaded files

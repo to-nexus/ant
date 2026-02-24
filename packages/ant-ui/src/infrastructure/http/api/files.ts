@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiDelete } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiDelete, getAuthHeaders } from './client';
 
 export interface FileNode {
   name: string;
@@ -10,6 +10,16 @@ export interface FileNode {
 export interface FileContent {
   path: string;
   content: string;
+}
+
+export interface UploadFileEntry {
+  file: File;
+  relativePath: string;
+}
+
+export interface UploadOptions {
+  onProgress?: (loaded: number, total: number) => void;
+  signal?: AbortSignal;
 }
 
 // ── Binary file helpers ─────────────────────────────────────────────
@@ -85,25 +95,88 @@ export function createFile(
   return saveFileContent(projectId, featureName, filePath, content);
 }
 
-/** Upload files (using FormData for binary). */
+/** Upload files with progress tracking and cancel support. */
 export async function uploadFiles(
   projectId: string,
   featureName: string,
   dirPath: string,
-  files: FileList,
+  files: FileList | UploadFileEntry[],
+  options?: UploadOptions,
 ): Promise<{ uploadedFiles: string[]; count: number }> {
   const formData = new FormData();
-  Array.from(files).forEach((file) => formData.append('files', file));
   formData.append('dirPath', dirPath);
 
-  const response = await authFetch(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/upload`,
-    { method: 'POST', body: formData },
-  );
+  const isEntryArray = Array.isArray(files) && files.length > 0 && 'relativePath' in files[0];
 
+  if (isEntryArray) {
+    const entries = files as UploadFileEntry[];
+    entries.forEach((entry) => {
+      formData.append('files', entry.file);
+      formData.append('relativePaths', entry.relativePath);
+    });
+  } else {
+    Array.from(files as FileList).forEach((file) => formData.append('files', file));
+  }
+
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/upload`;
+
+  if (options?.onProgress || options?.signal) {
+    return xhrUpload(url, formData, options);
+  }
+
+  const response = await authFetch(url, { method: 'POST', body: formData });
   if (!response.ok) throw new Error(`Failed to upload files: ${response.statusText}`);
   const data = await response.json();
   return { uploadedFiles: data?.uploadedFiles || [], count: data?.count || 0 };
+}
+
+function xhrUpload(
+  url: string,
+  formData: FormData,
+  options: UploadOptions,
+): Promise<{ uploadedFiles: string[]; count: number }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    if (options.signal) {
+      if (options.signal.aborted) {
+        reject(new DOMException('Upload cancelled', 'AbortError'));
+        return;
+      }
+      options.signal.addEventListener('abort', () => {
+        xhr.abort();
+        reject(new DOMException('Upload cancelled', 'AbortError'));
+      });
+    }
+
+    if (options.onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) options.onProgress!(e.loaded, e.total);
+      });
+    }
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve({ uploadedFiles: data?.uploadedFiles || [], count: data?.count || 0 });
+        } catch {
+          resolve({ uploadedFiles: [], count: 0 });
+        }
+      } else {
+        reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Upload network error')));
+
+    xhr.open('POST', url);
+    const authHeaders = getAuthHeaders();
+    Object.entries(authHeaders).forEach(([key, value]) => {
+      xhr.setRequestHeader(key, value as string);
+    });
+    xhr.send(formData);
+  });
 }
 
 export function deleteFileOrDirectory(

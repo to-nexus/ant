@@ -23,6 +23,12 @@
     "clearContents": "Clear all contents in \"{{name}}\"?",
     "clearContentsDetail": "Clear all contents in \"{{name}}\"? This will delete all files and subdirectories."
   },
+  "upload": {
+    "dropHint": "Drop files here",
+    "uploading": "Uploading {{count}} file(s) to {{dir}}",
+    "cancel": "Cancel",
+    "cancelled": "Upload cancelled"
+  },
   "error": {
     "fileCreateFailed": "Failed to create file.",
     "dirCreateFailed": "Failed to create directory.",
