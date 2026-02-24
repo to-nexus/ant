@@ -246,6 +246,8 @@ Follow the framework/language-specific setup instructions from:
 **⚠️ Env File Sync — EASILY BROKEN in feature tasks:**
 - ⛔ Adding a variable to only ONE of `.env.example` / `.env` = PROTOCOL VIOLATION
 - ⛔ Renaming variables that setup defined = PROTOCOL VIOLATION (read `.env.example` to observe current names first)
+- ⛔ Adding a `@connection` with a name that ALREADY EXISTS in the same `.env.example` = PROTOCOL VIOLATION (read existing annotations first, use a distinct name)
+- ⛔ Adding decomposed variables (HOST, PORT, PASSWORD) when a URL-format connection variable ALREADY EXISTS for that service = PROTOCOL VIOLATION (one connection URL per service)
 - ✅ New variable → update BOTH files. Connection variables need `@connection` annotation in `.env.example`
 
 **🚨 CRITICAL: If Plan specifies MODIFY, you MUST do it**

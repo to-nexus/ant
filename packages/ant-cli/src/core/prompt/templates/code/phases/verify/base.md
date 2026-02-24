@@ -37,6 +37,7 @@ An application cannot start without its environment configuration and dependent 
 | Checkpoint | Action |
 |-----------|--------|
 | **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. Are same-project internal connections marked with `self`? |
+| **Connection consolidation** | Is each service represented by exactly ONE annotated connection URL variable? If decomposed variables (HOST, PORT, PASSWORD) coexist with a URL variable for the same service, remove the decomposed ones. Are there duplicate `@connection` names within any single `.env.example`? If yes, consolidate or rename. |
 | **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. If both exist, verify variable keys match. Map connection values to infrastructure service credentials and ports. |
 | **Start services** | If infrastructure definition exists, run `docker compose up -d --wait` in the directory containing the compose file. |
 | **Verify readiness** | Services must be healthy before proceeding. |
