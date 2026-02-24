@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiDelete, getAuthHeaders } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, getAuthHeaders } from './client';
 
 export interface FileNode {
   name: string;
@@ -177,6 +177,18 @@ function xhrUpload(
     });
     xhr.send(formData);
   });
+}
+
+export function renameFileOrDirectory(
+  projectId: string,
+  featureName: string,
+  oldPath: string,
+  newPath: string,
+): Promise<{ success: boolean; oldPath: string; newPath: string }> {
+  return apiPatch(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/rename`,
+    { oldPath, newPath },
+  );
 }
 
 export function deleteFileOrDirectory(

@@ -367,8 +367,10 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 - `docker-compose.yml` with **infrastructure** service definitions ONLY (databases, caches, message queues) — if external services are observed in the specification. Do NOT include application/business services (API servers, web servers) in docker-compose — the platform manages application process lifecycle separately.
 - `.env.example` with `# @connection {category} {name}` annotation for each service connection endpoint URL (not individual components like host, port, user, password)
 - `.env` with resolved localhost values matching `.env.example` variable keys
-- Application configuration variables (secrets, API keys) observed in the specification — mention their existence so the setup task provisions them
+- Application configuration variables (secrets, API keys) observed in the specification — mention their purpose so the setup task provisions them
 - Cross-project connections with `# @connection {category} {name} ant-project:{projectId}:{feature}` — if the specification names a specific external Ant project as a dependency (e.g., "uses sketch-be as backend")
+
+**Constraint**: Task descriptions describe INTENT and SCOPE, not implementation-specific variable names or default values. Port binding, environment variable naming, and configuration structure are governed by the platform runtime contract (see Dev Server Runtime Contract) and language-specific setup templates. Do NOT invent variable names in task descriptions — describe the purpose instead (e.g., "application configuration for API key and base URL" NOT "API_KEY=, BASE_URL=http://..., API_PORT=8080").
 
 **Constraint**: Do NOT omit infrastructure provisioning (`docker-compose.yml`) from setup task when the specification mentions external services. Do NOT omit `@connection` annotations — they are required for the platform to detect and manage service connections. Do NOT omit `ant-project:{projectId}:{feature}` modifier when the specification explicitly names a target project — without it, the platform cannot auto-resolve the cross-project proxy path.
 

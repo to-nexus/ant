@@ -122,6 +122,9 @@ export interface DesignGraphState extends TaskArtifacts {
   // ✅ Spec clarify: paused waiting for user clarification (session-persisted, used by resume routing)
   awaitingClarify?: boolean;
 
+  // ✅ Detect clarify: paused waiting for user to choose between spec and system-design
+  awaitingDetectClarify?: boolean;
+
   // ✅ Structured existing design documents (loaded at resolve, used by decompose)
   // Key = filename (e.g. "api-contract.md", "ui-tokens.json"), Value = content
   // Unified map eliminates fragmented feDesign/feDesigns/beDesign/beDesigns distinction

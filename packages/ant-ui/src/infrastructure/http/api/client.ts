@@ -178,6 +178,18 @@ export async function apiPut<T = void>(url: string, body: unknown): Promise<T> {
   return response.json().catch(() => undefined as T);
 }
 
+export async function apiPatch<T = void>(url: string, body: unknown): Promise<T> {
+  const response = await authFetch(url, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || (err as any).message || `HTTP ${response.status}`);
+  }
+  return response.json().catch(() => undefined as T);
+}
+
 export async function apiDelete<T = void>(url: string, body?: unknown): Promise<T> {
   const response = await authFetch(url, {
     method: 'DELETE',

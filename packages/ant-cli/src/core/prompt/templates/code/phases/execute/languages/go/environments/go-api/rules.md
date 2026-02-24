@@ -143,3 +143,18 @@ tree. Follow established structure.
 **Constraint**: If the architecture defines layer boundaries (handler → service → repository), each boundary should be an interface. The concrete type is wired at the composition root (e.g., `main()` or `cmd/`), not inside the consuming layer.
 
 ⚠️ **Blind spot**: It is easy to pass concrete struct pointers between layers because "it works." A dedicated test task runs after features — it cannot substitute dependencies unless interfaces exist at layer boundaries.
+
+---
+
+### Security Considerations
+
+**Observation target**: Does the code protect against common API security vulnerabilities?
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Secret comparison** | Are API keys or tokens compared using `crypto/subtle.ConstantTimeCompare`? A plain `==` or `!=` on secrets is a timing-attack vulnerability. |
+| **Input bounds** | Are request body sizes limited via the framework or `http.Server.MaxHeaderBytes` / `http.MaxBytesReader`? |
+
+**Constraint**: Do NOT compare authentication secrets with `==` or `!=`. Use `crypto/subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1` for all secret comparisons in middleware or handlers.
+
+⚠️ **Blind spot**: `key != expectedKey` compiles, passes tests, and looks correct — but leaks timing information. This is the most commonly missed security pattern in Go API authentication middleware.
