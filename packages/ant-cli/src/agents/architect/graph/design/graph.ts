@@ -442,6 +442,10 @@ export function buildDesignGraph() {
       
       // ✅ Parallel orchestrator failure signal (propagated to learn for failure-aware handling)
       interruption: null as any,
+
+      // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
+      awaitingDetectClarify: null as any,
+      awaitingClarify: null as any,
     } as any,
   } as any);
 
