@@ -3,8 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   getPreviewConfig,
-  startPreview,
-  stopPreview,
   updatePreviewConfig,
   detectConnections,
   fetchProjects,
@@ -15,6 +13,7 @@ import {
   type PreviewConfig,
   type Feature,
 } from '@/infrastructure/http/api';
+import { usePreviewManager } from '../FeatureSection/hooks/usePreviewManager';
 import {
   Monitor,
   Play,
@@ -64,11 +63,19 @@ export function PreviewConfigEditor() {
 
   // Read preview status from shared store (updated via SSE by usePreviewManager)
   const previewStatus = useStore((s) => s.previewStatus);
+  const isJobRunning = useStore((s) => s.isRunning);
+
+  // Shared preview lifecycle (single source of truth with FeatureDropdown)
+  const {
+    startServer,
+    stopServer,
+    isLoading: isPreviewLoading,
+    state: previewState,
+  } = usePreviewManager(selectedProject, selectedFeature);
 
   // Local state
   const [config, setConfig] = useState<PreviewConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isPreviewLoading, setPreviewLoading] = useState(false);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const [connectionsExpanded, setConnectionsExpanded] = useState(true);
 
@@ -89,51 +96,6 @@ export function PreviewConfigEditor() {
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
-
-  // Preview controls
-  const handleStart = async () => {
-    if (!selectedProject) return;
-    setPreviewLoading(true);
-    clearDismissed();
-    // Immediately set phase to installing in the store for instant UI feedback
-    const store = useStore.getState();
-    if (store.setPreviewStatus) {
-      store.setPreviewStatus({ ...store.previewStatus, phase: 'installing' } as any);
-    }
-    try {
-      await startPreview(selectedProject, selectedFeature || 'main');
-    } catch (error) {
-      console.error('[PreviewConfig] Start failed:', error);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const handleStop = async () => {
-    if (!selectedProject) return;
-    setPreviewLoading(true);
-    try {
-      await stopPreview(selectedProject, selectedFeature || 'main');
-    } catch (error) {
-      console.error('[PreviewConfig] Stop failed:', error);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const handleRestart = async () => {
-    if (!selectedProject) return;
-    setPreviewLoading(true);
-    try {
-      await stopPreview(selectedProject, selectedFeature || 'main');
-      await new Promise((r) => setTimeout(r, 1000));
-      await startPreview(selectedProject, selectedFeature || 'main');
-    } catch (error) {
-      console.error('[PreviewConfig] Restart failed:', error);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
 
   const handleOpenPreview = () => {
     if (previewStatus?.url) {
@@ -167,7 +129,7 @@ export function PreviewConfigEditor() {
     });
   }, [config?.connections, previewStatus?.connections]);
   const phase = previewStatus?.phase || 'idle';
-  const isRunning = previewStatus?.running || false;
+  const isRunning = previewState === 'running';
   const isReady = previewStatus?.ready || false;
   const issues = previewStatus?.issues || [];
   const logs = previewStatus?.logs || [];
@@ -199,6 +161,22 @@ export function PreviewConfigEditor() {
     setDismissedSet(new Set());
     try { localStorage.removeItem(dismissedKey); } catch {}
   }, [dismissedKey]);
+
+  // Preview controls — delegate to shared usePreviewManager
+  const handleStart = useCallback(async () => {
+    clearDismissed();
+    await startServer();
+  }, [startServer, clearDismissed]);
+
+  const handleStop = useCallback(async () => {
+    await stopServer();
+  }, [stopServer]);
+
+  const handleRestart = useCallback(async () => {
+    await stopServer();
+    await new Promise((r) => setTimeout(r, 1000));
+    await startServer();
+  }, [stopServer, startServer]);
 
   // Local connections state for editing
   const [localConns, setLocalConns] = useState<ServiceConnection[]>([]);
@@ -479,26 +457,26 @@ export function PreviewConfigEditor() {
             {phase === 'running' && isReady ? (
               <div className="flex items-center gap-1.5">
                 <CheckCircle className="w-4 h-4 text-green-500" />
-                <span className="text-sm font-medium text-green-700 dark:text-green-300">{t('preview.statusRunning', 'Running')}</span>
+                <span className="text-sm font-medium text-green-700 dark:text-green-300">{t('preview.running')}</span>
               </div>
             ) : phase === 'running' || phase === 'starting' || phase === 'installing' ? (
               <div className="flex items-center gap-1.5">
                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                 <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                  {phase === 'starting' ? t('preview.phaseStarting', 'Starting')
-                    : phase === 'installing' ? t('preview.phaseInstalling', 'Installing')
+                  {phase === 'starting' ? t('preview.starting')
+                    : phase === 'installing' ? t('preview.installing')
                     : phase}
                 </span>
               </div>
             ) : phase === 'error' && previewStatus?.error ? (
               <div className="flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 text-red-500" />
-                <span className="text-sm font-medium text-red-700 dark:text-red-300">{t('preview.statusError', 'Error')}</span>
+                <span className="text-sm font-medium text-red-700 dark:text-red-300">{t('preview.startFailed')}</span>
               </div>
             ) : (
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-gray-400" />
-                <span className="text-sm text-gray-500 dark:text-gray-400">{t('preview.statusStopped', 'Stopped')}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{t('preview.notRunning')}</span>
               </div>
             )}
           </div>
@@ -508,8 +486,8 @@ export function PreviewConfigEditor() {
             {!isRunning ? (
               <button
                 onClick={handleStart}
-                disabled={isPreviewLoading || !(previewStatus?.canStart ?? false)}
-                title={!(previewStatus?.canStart ?? false) ? t('preview.cannotStart', 'No runnable project detected') : undefined}
+                disabled={isPreviewLoading || isJobRunning || !(previewStatus?.canStart ?? false)}
+                title={isJobRunning ? t('preview.jobRunning', 'Cannot start while a task is running') : !(previewStatus?.canStart ?? false) ? t('preview.cannotStart', 'No runnable project detected') : undefined}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                          bg-green-600 text-white hover:bg-green-700
                          disabled:opacity-50 disabled:cursor-not-allowed
@@ -537,7 +515,8 @@ export function PreviewConfigEditor() {
                 </button>
                 <button
                   onClick={handleRestart}
-                  disabled={isPreviewLoading}
+                  disabled={isPreviewLoading || isJobRunning}
+                  title={isJobRunning ? t('preview.jobRunning', 'Cannot start while a task is running') : undefined}
                   className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                            bg-gray-600 text-white hover:bg-gray-700
                            disabled:opacity-50 disabled:cursor-not-allowed

@@ -4,11 +4,13 @@ import type { PreviewStatus } from '@/infrastructure/http/api';
 export interface PreviewSliceState {
   previewStatus: PreviewStatus | undefined;
   isPreviewLoading: boolean;
+  previewStopGuardUntil: number;
 }
 
 export interface PreviewActions {
   setPreviewStatus: (status: PreviewStatus | undefined) => void;
   setPreviewLoading: (loading: boolean) => void;
+  setPreviewStopGuardUntil: (until: number) => void;
   refreshPreviewStatus: () => Promise<void>;
 }
 
@@ -18,6 +20,7 @@ export const createPreviewSlice: StateCreator<any, [], [], PreviewSlice> = (set,
   // State
   previewStatus: undefined,
   isPreviewLoading: false,
+  previewStopGuardUntil: 0,
 
   // Actions
   setPreviewStatus: (status) => {
@@ -26,6 +29,10 @@ export const createPreviewSlice: StateCreator<any, [], [], PreviewSlice> = (set,
 
   setPreviewLoading: (loading) => {
     set({ isPreviewLoading: loading });
+  },
+
+  setPreviewStopGuardUntil: (until) => {
+    set({ previewStopGuardUntil: until });
   },
 
   refreshPreviewStatus: async () => {
