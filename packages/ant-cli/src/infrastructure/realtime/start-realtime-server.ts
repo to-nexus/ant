@@ -53,8 +53,11 @@ async function main(): Promise<void> {
     logger.warn(`✅ Realtime Server listening on http://localhost:${PORT}`, { component: 'RealtimeServerProcess' });
     logger.warn(`📡 Ready for SSE connections`, { component: 'RealtimeServerProcess' });
     
-    // Graceful shutdown handlers
+    // Graceful shutdown handlers (once guard prevents re-entrant shutdown)
+    let isShuttingDown = false;
     const shutdown = async (signal: string) => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
       logger.warn(`${signal} received, shutting down gracefully...`, { component: 'RealtimeServerProcess' });
       await server.stop();
       process.exit(0);

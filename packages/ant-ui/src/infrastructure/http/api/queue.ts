@@ -23,6 +23,8 @@ export interface QueuePositionInfo {
   position: number | null;
   totalWaiting: number;
   estimatedWaitMs?: number;
+  /** Redis job status — set when the job exists in Redis (survives BullMQ cleanup) */
+  redisStatus?: string;
 }
 
 export function fetchQueueStatus(jobId: string): Promise<QueueStatus> {

@@ -481,4 +481,31 @@ export class SSEService {
       logger.debug(`Closed all workflow clients for ${jobId}`, { component: 'SSEService', jobId });
     }
   }
+
+  /**
+   * Close ALL SSE connections (used during server shutdown).
+   * Ends every Response in both clients and workflowClients maps
+   * so that http.Server.close() can complete without waiting.
+   */
+  closeAll(): void {
+    let closed = 0;
+
+    for (const [key, clients] of this.clients.entries()) {
+      clients.forEach(res => {
+        try { res.end(); } catch { /* ignore */ }
+        closed++;
+      });
+      this.clients.delete(key);
+    }
+
+    for (const [jobId, clients] of this.workflowClients.entries()) {
+      clients.forEach(res => {
+        try { res.end(); } catch { /* ignore */ }
+        closed++;
+      });
+      this.workflowClients.delete(jobId);
+    }
+
+    logger.info(`Closed all SSE connections (${closed} total)`, { component: 'SSEService' });
+  }
 }

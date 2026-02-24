@@ -202,6 +202,32 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       .map((r: string) => JSON.parse(r));
   }
 
+  async findJobsByStatus(status: string): Promise<JobStatusData[]> {
+    const pattern = `${REDIS_KEYS.JOB.STATUS}*`;
+    const results: JobStatusData[] = [];
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = nextCursor;
+
+      if (keys.length > 0) {
+        const values = await this.redis.mget(...keys);
+        for (const val of values) {
+          if (!val) continue;
+          try {
+            const data: JobStatusData = JSON.parse(val);
+            if (data.status === status) {
+              results.push(data);
+            }
+          } catch { /* skip malformed entries */ }
+        }
+      }
+    } while (cursor !== '0');
+
+    return results;
+  }
+
   // ============================================
   // Job Logs Management
   // ============================================

@@ -11,6 +11,7 @@ import { useHealthCheck } from '@/application/hooks/ui/useHealthCheck';
 import { useSessionLoader } from '@/application/hooks/ui/useSessionLoader';
 import { useJobRestoration } from '@/application/hooks/ui/useJobRestoration';
 import { useConfigLoader } from '@/application/hooks/ui/useConfigLoader';
+import { ServerDownDetector } from '@/application/hooks/ui/useServerDownDetector';
 import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
@@ -464,6 +465,7 @@ function App() {
   return (
     <ToastProvider>
     <AlertModalProvider>
+      <ServerDownDetector />
       <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
         {/* ✅ GNB uses hooks directly - no props needed */}
         <GlobalNavBar />

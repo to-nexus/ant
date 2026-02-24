@@ -267,6 +267,23 @@ export class KanbanService {
     if (sessionJobId && this.stateStore) {
       const jobStatus = await this.stateStore.getJobStatus(sessionJobId);
       isActuallyRunning = !!jobStatus && jobStatus.status === 'running';
+
+      // Defensive staleness check: if Redis says 'running' but the job
+      // started more than STALE_THRESHOLD ago, treat it as stale.
+      // This guards against race conditions where StaleJobRecovery hasn't
+      // finished yet (e.g. Realtime server started before API server).
+      if (isActuallyRunning && jobStatus) {
+        const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 min (lockDuration 30s + stalledInterval 30s + buffer)
+        const refTime = jobStatus.startedAt || jobStatus.timestamp;
+        if (refTime) {
+          const elapsed = Date.now() - new Date(refTime).getTime();
+          if (elapsed > STALE_THRESHOLD_MS) {
+            dlog(`   ⚠️ Job ${sessionJobId} looks stale (running for ${Math.round(elapsed / 60000)}min), treating as not running`);
+            isActuallyRunning = false;
+          }
+        }
+      }
+
       dlog(`   Job status from Redis: ${jobStatus?.status || 'not found'}, isActuallyRunning: ${isActuallyRunning}`);
     } else {
       // Fallback to local jobs Map (local mode)

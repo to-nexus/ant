@@ -33,6 +33,7 @@ import { WorkflowBridge } from './bridges/WorkflowBridge';
 
 // Lifecycle Modules
 import { ServerLifecycleManager } from './lifecycle/ServerLifecycleManager';
+import { recoverStaleJobs } from './lifecycle/StaleJobRecovery';
 
 // Service Initialization
 import { initializeServices } from './services/ServiceInitializer';
@@ -234,7 +235,17 @@ export class ExpressServerAdapter implements
   // =====================================
   
   async start(port: number): Promise<void> {
-    return new Promise((resolve, reject) => {
+    // Run stale job recovery BEFORE accepting connections so that Redis
+    // state is clean by the time the Realtime server (or any client) reads it.
+    try {
+      await recoverStaleJobs(
+        this.cleanupManager.cleanupJobState.bind(this.cleanupManager),
+      );
+    } catch (err) {
+      logger.warn('Stale job recovery error (non-fatal)', { component: 'ExpressServerAdapter' }, err);
+    }
+
+    await new Promise<void>((resolve, reject) => {
       try {
         this.server = this.app.listen(port, () => {
           this.running = true;

@@ -82,14 +82,9 @@ export class JobWorker {
         concurrency: this.options.concurrency || DEFAULT_CONCURRENCY,
         removeOnComplete: { count: 1000 },
         removeOnFail: { count: 5000 },
-        // ✅ Lock-based stuck job detection
-        // - lockDuration: 10 min
-        // - Extension interval: 5 min (lockDuration / 2, BullMQ convention)
-        // - stalledInterval: 5 min
-        // - Dead Worker detected within: 10 min (expire) + 5 min (check) = ~15 min
-        lockDuration: 600000,    // 10 minutes
-        stalledInterval: 300000, // 5 minutes
-        maxStalledCount: 1,      // Move to failed after 1 stall detection
+        lockDuration: 30000,     // 30s — worker extends every 15s (lockDuration/2)
+        stalledInterval: 30000,  // 30s — dead worker detected within ~60s
+        maxStalledCount: 1,
       }
     );
 
@@ -104,6 +99,67 @@ export class JobWorker {
 
     this.worker.on('error', (err: Error) => {
       logger.error('Worker error', { component: 'JobWorker' }, err);
+    });
+
+    this.worker.on('stalled', async (jobId: string) => {
+      logger.warn(`Job stalled (worker crash detected): ${jobId}`, { component: 'JobWorker', jobId });
+
+      // Multi-pod idempotency: multiple Worker pods may detect the same stalled job.
+      // Shares lock key with BullMQJobQueue's stalled handler on API Server pods.
+      const acquired = await this.stateStore.acquireLock(`ant:job-stalled:${jobId}`, 120);
+      if (!acquired) {
+        logger.debug(`Duplicate stalled event blocked: ${jobId}`, { component: 'JobWorker', jobId });
+        return;
+      }
+
+      // Skip if already handled (e.g. by StaleJobRecovery on startup)
+      const currentStatus = await this.stateStore.getJobStatus(jobId);
+      if (currentStatus && currentStatus.status !== 'running' && currentStatus.status !== 'queued') {
+        logger.debug(`Job ${jobId} already resolved (status=${currentStatus.status}), skipping stalled handler`, { component: 'JobWorker', jobId });
+        return;
+      }
+
+      try {
+        await this.stateStore.updateJobStatus(jobId, {
+          status: 'paused',
+          completedAt: new Date().toISOString(),
+          error: 'Worker crashed — job interrupted',
+        });
+
+        // Resolve projectId/featureName from Redis mapping so the RouteConfigurator
+        // handler on the API Server pod can run cleanupJobState.
+        let projectId: string | undefined;
+        let featureName: string | undefined;
+        let userEmail: string | undefined;
+        try {
+          const mapping = await this.stateStore.getJobMapping(jobId);
+          if (mapping) {
+            projectId = mapping.projectId;
+            featureName = mapping.featureName;
+            if (mapping.userContext) {
+              userEmail = `${mapping.userContext.userId}@${mapping.userContext.organizationId}`;
+            }
+          }
+        } catch { /* best-effort */ }
+
+        await this.stateStore.publish(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, {
+          type: 'failed',
+          jobId,
+          status: 'paused',
+          projectId,
+          featureName,
+          userEmail,
+          interruption: {
+            reason: 'server_crash',
+            message: 'Worker process crashed. You can resume this job.',
+            canResume: true,
+            timestamp: new Date().toISOString(),
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        logger.error(`Failed to handle stalled job: ${jobId}`, { component: 'JobWorker', jobId }, err);
+      }
     });
 
     // ✅ Subscribe to stop signals from API server via Redis Pub/Sub
@@ -268,18 +324,17 @@ export class JobWorker {
    * Spawn a child process to execute the job
    * 
    * Lock Strategy (BullMQ convention: extend at lockDuration/2):
-   * - lockDuration: 10 min
-   * - Extension interval: 5 min (lockDuration / 2)
-   * - stalledInterval: 5 min
-   * - Dead Worker: 10 min (expire) + 5 min (check) = ~15 min to detect
+   * - lockDuration: 30s
+   * - Extension interval: 15s (lockDuration / 2)
+   * - stalledInterval: 30s
+   * - Dead Worker: 30s (expire) + 30s (check) = ~60s to detect
    */
   private spawnJobProcess(job: Job<JobPayload>, payload: JobPayload): Promise<{ success: boolean; error?: string; output?: any }> {
     return new Promise((resolve, reject) => {
       const jobId = payload.jobId;
       
-      // ✅ Extend lock at lockDuration/2 interval (BullMQ convention)
-      const LOCK_DURATION = 600000;           // 10 minutes (must match Worker config)
-      const LOCK_EXTENSION_INTERVAL = 300000; // 5 minutes (lockDuration / 2)
+      const LOCK_DURATION = 30000;            // 30s (must match Worker config)
+      const LOCK_EXTENSION_INTERVAL = 15000;  // 15s (lockDuration / 2)
       
       const lockExtensionTimer = setInterval(async () => {
         try {
