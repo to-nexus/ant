@@ -23,6 +23,12 @@
     "clearContents": "\"{{name}}\"의 내용을 모두 비울까요?",
     "clearContentsDetail": "\"{{name}}\"의 내용을 모두 비울까요? 모든 파일과 하위 디렉토리가 삭제됩니다."
   },
+  "upload": {
+    "dropHint": "여기에 파일을 놓으세요",
+    "uploading": "{{dir}}에 {{count}}개 파일 업로드 중",
+    "cancel": "취소",
+    "cancelled": "업로드가 취소되었습니다"
+  },
   "error": {
     "fileCreateFailed": "파일 생성에 실패했습니다.",
     "dirCreateFailed": "폴더 생성에 실패했습니다.",
