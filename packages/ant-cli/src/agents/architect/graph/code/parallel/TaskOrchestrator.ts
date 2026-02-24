@@ -143,6 +143,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       maxWorkers: this.maxWorkers,
       checkpointInterval: config?.checkpointInterval ?? 60_000,
       testgenBarrier: config?.testgenBarrier,
+      docBarrier: config?.docBarrier,
     };
 
     console.log(`[Orchestrator] Initialized with maxWorkers=${this.maxWorkers}, queueSize=${taskQueue.size()}, previouslyCompleted=${this.completedTasks.length}`);

@@ -165,6 +165,8 @@ CRITICAL:
 
 ⚠️ **Blind spot**: Doc tasks with the SAME `parallelGroup` are serialized. Each doc task (root and every package) MUST have a DIFFERENT `parallelGroup`.
 
+**Constraint**: Description defines the SCOPE of documentation (which packages/files to document and whether new or update), NOT content placement. Do NOT instruct where specific content types should be written — content placement is governed by the docgen template rules.
+
 **Constraint**: Description MUST state whether this is "new project documentation" or "update existing documentation for [scope of changes]". Package-level descriptions MUST identify the target package scope.
 
 **Constraint**: `packages` field of each doc task should cover the tier(s) that task documents. Root doc uses all relevant tiers. Package doc uses only its package's tier tag.

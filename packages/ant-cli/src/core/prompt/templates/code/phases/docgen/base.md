@@ -44,7 +44,22 @@ Observe the actual codebase to determine what documentation is needed:
 
 **Constraint**: If existing documentation exists within the task's scope, observe its structure and update incrementally — do NOT rewrite from scratch.
 
-## README Convention
+## Content Placement
+
+**Principle**: Every documentation content belongs to exactly ONE of two mutually exclusive domains. Observe the content's nature to determine its destination.
+
+| Domain | Destination | Content scope |
+|--------|-------------|---------------|
+| **Operational** | `README.md` | Install, run, build, test, prerequisites, environment setup |
+| **Design** | `docs/architecture/overview.md` | System structure, component relationships, data flow, design decisions |
+
+**Constraint**: These domains are mutually exclusive. Do NOT place design content in README. Do NOT place operational commands in architecture docs.
+
+**Constraint**: README links to `docs/architecture/` for design context. This is the ONLY cross-reference between domains.
+
+⚠️ **Blind spot**: Task description may reference architecture or design content without specifying destination. The placement rule above ALWAYS determines destination, regardless of task description wording.
+
+### README (Operational Domain)
 
 **Principle**: README is dry and operational — how to install, run, build, test. It is NOT a design document.
 
@@ -57,11 +72,9 @@ Each README MUST contain (when applicable):
 - Test command
 - Link to `docs/architecture/` for system design
 
-**Constraint**: Do NOT include system architecture, data flow diagrams, or design rationale in README. Link to `docs/architecture/` instead.
-
 **Constraint**: Do NOT fabricate commands. Observe actual build/dependency config files to determine correct commands.
 
-## Architecture Documentation Convention
+### Architecture Documentation (Design Domain)
 
 **Principle**: `docs/architecture/overview.md` describes the system's structure for developers who need to understand the codebase.
 
