@@ -375,6 +375,10 @@ export class ProcessSpawner {
       // Language-specific fallback
       switch (language) {
         case 'go':
+          if (!this.isCommandAvailable('go')) {
+            options.onLog('stderr', '❌ Go toolchain is not installed in this environment. Install Go (https://go.dev/dl/) or use a runtime image that includes it.');
+            throw new Error('Go toolchain not found in PATH. Cannot start Go dev server.');
+          }
           command = 'go';
           args = ['run', '.'];
           break;
@@ -543,6 +547,15 @@ export class ProcessSpawner {
       return false;
     } catch (error) {
       logger.warn(`Failed to kill process`, { component: 'ProcessSpawner' }, error);
+      return false;
+    }
+  }
+
+  private isCommandAvailable(cmd: string): boolean {
+    try {
+      execSync(`which ${cmd}`, { stdio: 'ignore' });
+      return true;
+    } catch {
       return false;
     }
   }
