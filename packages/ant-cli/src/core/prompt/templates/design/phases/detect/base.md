@@ -74,9 +74,14 @@ Observe the **intent** of the directive with respect to existing documents:
 |-------------|---------|
 | Directive asks to **analyze, explain, or describe** existing content | `explain` |
 | Directive asks to **modify, update, or improve** a specific part of existing documents | `refactor` |
-| Directive asks to **create new** or existing documents are absent | `generate` |
+| Directive asks to **create new** content | `generate` |
 
-**Constraint**: `explain` and `refactor` require that target documents exist. If they do not exist, fall back to `generate`.
+**Constraint**: `explain` and `refactor` require that **documents for the same tier** exist. If they do not exist, fall back to `generate`.
+
+⚠️ **Blind Spot**: Existing documents from a **different tier** do NOT make this `refactor`. Observe which tier the directive targets:
+- Frontend directive + only `api-contract.md`/`be-system-design.md` exist → `generate` (no frontend docs to refactor)
+- Backend directive + only `fe-system-design.md` exists → `generate` (no backend docs to refactor)
+- Directive explicitly asks to modify an existing document by name → `refactor`
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## STEP 3: Ambiguous Directive Fallback (workType only)

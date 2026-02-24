@@ -146,17 +146,17 @@ edit_file(
 
 **API Contract Document:**
 - Path: `outputs/design/api-contract.md`
-- Usage: Contract-First AND MSA-Contract-First projects
-- Timing: Written FIRST (before FE and BE design documents)
+- Usage: Any project that exposes external API (fullstack, backend-only, MSA)
+- Timing: Written FIRST (before implementation design documents)
 
 **Frontend Design Document:**
 - Path: `outputs/design/fe-system-design.md`
-- Usage: Contract-First AND MSA-Contract-First projects
-- Timing: Written AFTER api-contract.md
+- Usage: Frontend-only projects, fullstack, and MSA projects
+- Timing: Written AFTER api-contract.md (if api-contract exists), otherwise first
 
 **Backend Design Document (single backend):**
 - Path: `outputs/design/be-system-design.md`
-- Usage: Contract-First projects (single backend)
+- Usage: Fullstack and backend-only contract-first projects (implements api-contract.md)
 - Timing: Written AFTER api-contract.md
 
 **Backend Design Document (MSA - per service):**
@@ -167,16 +167,16 @@ edit_file(
 
 **Unified Design Document:**
 - Path: `outputs/design/system-design.md`
-- Usage: Single-tier projects (frontend-only, backend-only, or tightly coupled)
+- Usage: Rare fallback only (CLI tools, libraries, or projects where environment is unknown)
 
-### MSA Path Examples
+### Path Pattern Reference
 
-| documentType | targetFile | Valid Path |
+| documentType | targetFile Pattern | Valid Path Pattern |
 |--------------|------------|------------|
-| `unified` | `system-design.md` | `outputs/design/system-design.md` |
+| `unified` (frontend) | `fe-system-design.md` | `outputs/design/fe-system-design.md` |
+| `unified` (fallback) | `system-design.md` | `outputs/design/system-design.md` |
 | `contract-first` | `be-system-design.md` | `outputs/design/be-system-design.md` |
-| `msa-contract-first` | `be-system-design-auth.md` | `outputs/design/be-system-design-auth.md` |
-| `msa-contract-first` | `be-system-design-order.md` | `outputs/design/be-system-design-order.md` |
+| `msa-contract-first` | `be-system-design-{service}.md` | `outputs/design/be-system-design-{service}.md` |
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Tag Selection Decision Tree

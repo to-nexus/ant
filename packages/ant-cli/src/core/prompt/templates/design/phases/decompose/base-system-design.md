@@ -156,22 +156,25 @@ Previous design:
 
 ## 🔀 CONTRACT-FIRST DETECTION
 
-**When project has BOTH Frontend AND Backend, use CONTRACT-FIRST approach.**
+### Principle
 
-### Detection Criteria
+Separate API interface specification from implementation architecture when the project exposes APIs consumed by external clients.
 
-Use contract-first if **BOTH** conditions are true:
+### Observation Target
 
-1. Project requires:
-   - Frontend UI (components, pages, routing)
-   - Backend API (server, database, endpoints)
+Observe whether the project defines API boundaries consumed by external parties:
 
-2. The project will implement both tiers in this iteration
+| Observation | Document Structure |
+|-------------|-------------------|
+| Project has **both frontend and backend** | `contract-first` (api-contract + fe + be) |
+| Project is **backend-only** and exposes external API | `contract-first` without FE (api-contract + be) |
+| Project is **frontend-only** | `unified` (`fe-system-design.md`) |
 
 ### Decision
 
-**IF dual detected → Use CONTRACT-FIRST**
-**ELSE → Use unified system-design.md**
+**IF fullstack → CONTRACT-FIRST** (`api-contract.md` + `fe-system-design.md` + `be-system-design.md`)
+**IF backend with external API → CONTRACT-FIRST without FE** (`api-contract.md` + `be-system-design.md`)
+**IF frontend-only → UNIFIED** (`fe-system-design.md`)
 
 ---
 
