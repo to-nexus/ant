@@ -81,11 +81,7 @@
     "githubRepo": "GitHub 리포지토리",
     "githubRepoDesc": "GitHub 리포지토리 URL (github 리포지토리 유형용)",
     "baseBranch": "기본 브랜치",
-    "baseBranchDesc": "기본 브랜치 이름 (예: main, master)",
-    "autoLearn": "자동 학습",
-    "autoLearnDesc": "코드 변경에서 자동 학습 활성화",
-    "strictValidation": "엄격한 검증",
-    "strictValidationDesc": "엄격한 검증 모드 활성화"
+    "baseBranchDesc": "기본 브랜치 이름 (예: main, master)"
   },
   "llmModels": {
     "title": "작업 및 Node별 LLM 모델",

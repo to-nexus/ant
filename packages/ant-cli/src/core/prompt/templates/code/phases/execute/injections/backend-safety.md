@@ -60,3 +60,39 @@
 **Constraint**: Do NOT hold store connections across request boundaries. Acquire per-request, release on completion.
 
 ⚠️ **Blind spot**: Opened connections (store clients, database pools, file handles) that are NOT registered for deferred cleanup at creation time will leak on shutdown or panic. Observe whether every connection acquisition has a corresponding cleanup registration.
+
+---
+
+### Request Rate Control
+
+**Principle**: Public-facing endpoints must limit the rate of incoming requests to prevent resource exhaustion and abuse.
+
+**Observation target**: Can a single client send unlimited requests to any endpoint without throttling?
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Unauthenticated endpoints** | Do endpoints that require no authentication (health, redirect, public reads) have any rate constraint? These are the easiest abuse targets. |
+| **Authenticated endpoints** | Do authenticated endpoints enforce per-key or per-client rate boundaries? Authentication alone does not prevent a valid client from exhausting resources. |
+| **Write operations** | Are create/update/delete endpoints rate-constrained independently of read endpoints? Write operations are typically more expensive. |
+
+**Constraint**: Do NOT deploy an API server that accepts unlimited requests per client. Apply rate control as middleware at the router level — not inside individual handlers.
+
+⚠️ **Blind spot**: Developers often assume authentication is sufficient protection. A compromised or malicious API key can still exhaust database connections, fill storage, or inflate costs without rate control.
+
+---
+
+### Response Hardening
+
+**Principle**: HTTP responses must include security-relevant headers that instruct clients to apply protective behaviors.
+
+**Observation target**: Does the server set security headers on every response?
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Content-type enforcement** | Does the server prevent clients from guessing response content types? (MIME sniffing protection) |
+| **Framing protection** | Does the server prevent its responses from being embedded in frames on other origins? |
+| **Transport security** | For production deployments, does the server instruct clients to use encrypted connections only? |
+
+**Constraint**: Security headers MUST be applied as middleware at the router level so they cover ALL responses — including error responses. Do NOT set headers inside individual handlers.
+
+⚠️ **Blind spot**: Error responses (4xx, 5xx) are commonly returned without security headers because they bypass normal handler logic. Router-level middleware ensures headers are present on every response path.
