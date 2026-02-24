@@ -80,16 +80,25 @@ codebase/
 
 ## 1. go.mod (and go.work for MSA)
 
+### Version Selection Protocol
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **Workspace root file** | Does `go.work` already exist? If so, observe its declared `go` version. |
+| **Version selection** | Use the observed workspace version for ALL `go.mod` files. If no workspace file exists, use the latest stable Go version. |
+
+⚠️ **Constraint**: Do NOT assume or hardcode a specific Go version. Observe the existing workspace version first.
+
 **Single service:**
 ```
 module github.com/{org}/{project}
 
-go 1.22
+go {observed-version}
 ```
 
 **Multi-service — root `go.work`:**
 ```
-go 1.22
+go {version}
 
 use (
     ./shared
@@ -102,7 +111,7 @@ use (
 ```
 module github.com/{org}/{project}/services/{svc}
 
-go 1.22
+go {same-version-as-go.work}
 
 require (
     github.com/{org}/{project}/shared v0.0.0
@@ -117,12 +126,11 @@ replace (
 ```
 module github.com/{org}/{project}/shared
 
-go 1.22
+go {same-version-as-go.work}
 ```
 
 **Key points:**
 - Module path should match the intended repository path
-- Use the latest stable Go version unless design doc specifies otherwise
 - If the task description requires declaring dependencies, list them in the `require` block
 - In MSA, cross-module dependencies (e.g., service → shared) use `require` with `v0.0.0` — `go.work` resolves them locally
 - In MSA, every cross-module `require` MUST have a corresponding `replace` directive pointing to the relative local path. Without `replace`, standalone builds outside workspace mode fail with "module not found"
