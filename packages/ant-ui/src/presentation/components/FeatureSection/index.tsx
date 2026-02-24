@@ -40,7 +40,7 @@ export function FeatureSection() {
     isLoading,
     isDismissed,     // ✅ NEW: Dismissal state from hook
     dismissMessage   // ✅ NEW: Dismiss handler from hook
-  } = usePreviewManager(selectedProject, selectedFeature);
+  } = usePreviewManager(selectedProject, selectedFeature, { primary: true });
   
   const {
     handleCreateFeature,
