@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { 
@@ -30,8 +30,10 @@ import type {
  */
 export function usePreviewManager(
   selectedProject: string | undefined,
-  selectedFeature: string | undefined
+  selectedFeature: string | undefined,
+  options?: { primary?: boolean }
 ): UsePreviewManagerResult {
+  const isPrimary = options?.primary ?? false;
   const previewStatus = useStore((state) => state.previewStatus);
   const setPreviewStatus = useStore((state) => state.setPreviewStatus);
   const setPreviewLoading = useStore((state) => state.setPreviewLoading);
@@ -40,7 +42,7 @@ export function usePreviewManager(
   const [localError, setLocalError] = useState<PreviewError | undefined>();
   const [progress, setProgress] = useState<PreviewProgress | undefined>();
   const [isDismissed, setIsDismissed] = useState(false);
-  const stopGuardUntilRef = useRef<number>(0);
+  const setPreviewStopGuardUntil = useStore((state) => state.setPreviewStopGuardUntil);
 
   // Generate stable server key
   const serverKey = selectedProject && selectedFeature 
@@ -84,7 +86,7 @@ export function usePreviewManager(
     if (!selectedProject || !selectedFeature) return;
     getPreviewStatus(selectedProject, selectedFeature)
       .then(status => {
-        if (Date.now() < stopGuardUntilRef.current && status?.running) {
+        if (Date.now() < useStore.getState().previewStopGuardUntil && status?.running) {
           return;
         }
         // Preserve accumulated SSE logs — getPreviewStatus doesn't return them
@@ -99,22 +101,24 @@ export function usePreviewManager(
       });
   }, [selectedProject, selectedFeature, setPreviewStatus]);
 
-  // Initial status check on mount / feature change
+  // Initial status check on mount / feature change (primary only to avoid duplicate HTTP calls)
   useEffect(() => {
+    if (!isPrimary) return;
     if (!selectedProject || !selectedFeature) {
       setPreviewStatus(undefined);
       return;
     }
     syncPreviewStatus();
-  }, [selectedProject, selectedFeature, syncPreviewStatus, setPreviewStatus]);
+  }, [isPrimary, selectedProject, selectedFeature, syncPreviewStatus, setPreviewStatus]);
 
-  // Re-sync on SSE reconnection (recovers from missed events)
+  // Re-sync on SSE reconnection (primary only)
   const connectionStatus = useStore((state) => state.connectionStatus);
   useEffect(() => {
+    if (!isPrimary) return;
     if (connectionStatus === 'connected' && selectedProject && selectedFeature) {
       syncPreviewStatus();
     }
-  }, [connectionStatus, syncPreviewStatus, selectedProject, selectedFeature]);
+  }, [isPrimary, connectionStatus, syncPreviewStatus, selectedProject, selectedFeature]);
 
   // Check dismissal state when status changes
   useEffect(() => {
@@ -138,11 +142,11 @@ export function usePreviewManager(
     }
   }, [previewStatus?.setupReasoning, previewStatus?.error, serverKey, selectedProject, selectedFeature]);
 
-  // Subscribe to preview events via existing unified SSEManager
+  // Subscribe to preview events via existing unified SSEManager (primary only —
+  // multiple instances would each append the same log entry to the store, doubling output)
   useEffect(() => {
-    if (!selectedProject || !selectedFeature) {
-      return;
-    }
+    if (!isPrimary) return;
+    if (!selectedProject || !selectedFeature) return;
 
     const handler = (payload: any) => {
       try {
@@ -150,12 +154,10 @@ export function usePreviewManager(
         const messageData = payload?.data;
 
         if (messageType === 'status') {
-          // If user just pressed Stop, ignore any transient running:true status that may arrive late.
-          if (Date.now() < stopGuardUntilRef.current && messageData?.running === true) {
+          if (Date.now() < useStore.getState().previewStopGuardUntil && messageData?.running === true) {
             return;
           }
 
-          // Preserve logs on status updates
           const currentStatus = useStore.getState().previewStatus;
           const mergedStatus = {
             ...(currentStatus || {}),
@@ -164,7 +166,6 @@ export function usePreviewManager(
           };
           setPreviewStatus(mergedStatus);
 
-          // Stop loading when we have a steady/terminal signal.
           if (mergedStatus.ready || mergedStatus.running || mergedStatus.setupReasoning || mergedStatus.error || mergedStatus.phase === 'error') {
             setPreviewLoading(false);
           }
@@ -188,7 +189,7 @@ export function usePreviewManager(
     return () => {
       sseManager.unregisterHandler('preview', handler);
     };
-  }, [selectedProject, selectedFeature, setPreviewStatus, setPreviewLoading]);
+  }, [isPrimary, selectedProject, selectedFeature, setPreviewStatus, setPreviewLoading]);
 
   // Start preview server
   const startServer = useCallback(async () => {
@@ -258,7 +259,8 @@ export function usePreviewManager(
 
     // Optimistically mark as stopped while preserving logs for review.
     // Guard against late SSE status updates re-marking it as running.
-    stopGuardUntilRef.current = Date.now() + 5000;
+    // Guard is in the store so all usePreviewManager instances share it.
+    setPreviewStopGuardUntil(Date.now() + 5000);
     const currentLogs = useStore.getState().previewStatus?.logs;
     setPreviewStatus(currentLogs?.length
       ? { running: false, ready: false, logs: currentLogs } as any
@@ -285,7 +287,7 @@ export function usePreviewManager(
     } finally {
       setPreviewLoading(false);
     }
-  }, [selectedProject, selectedFeature, setPreviewLoading, setPreviewStatus]);
+  }, [selectedProject, selectedFeature, setPreviewLoading, setPreviewStatus, setPreviewStopGuardUntil]);
 
   // Dismiss message
   const dismissMessage = useCallback(() => {
