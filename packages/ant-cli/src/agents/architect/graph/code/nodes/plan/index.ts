@@ -28,7 +28,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { generateTaskKeywords, displayKeywords, logKeywords, updateKeywordsWithRetrieval } from "./keywordGeneration";
 import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
-import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, PLAN_TOOL_LOOP_MAX } from "./planGeneration";
+import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, PLAN_TOOL_LOOP_MAX, taskRequiresPlan } from "./planGeneration";
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
@@ -430,8 +430,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     .map(t => ({ id: t.id, name: t.name, description: t.description, priority: t.priority }));
 
   let planText: string | undefined;
+  const requiresPlan = taskRequiresPlan(nextTask);
   const planToolRounds = (state.planConversationHistory?.length ?? 0) / 2;
-  const tryToolsFirst = llm && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
+  const tryToolsFirst = llm && requiresPlan && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
   if (tryToolsFirst) {
     const violationsText = state.violations?.length ? formatViolations(state.violations) : undefined;

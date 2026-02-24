@@ -84,6 +84,20 @@ export async function buildPlanPrompt(
   );
 }
 
+/**
+ * Determine whether a task requires plan text generation.
+ * Tasks that skip planning: verification, testgen, doc, explain, and final verification.
+ */
+export function taskRequiresPlan(task: CodeTask): boolean {
+  return (
+    task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&
+    task.type !== 'verification' &&
+    task.type !== 'testgen' &&
+    task.type !== 'doc' &&
+    task.type !== 'explain'
+  );
+}
+
 export async function generatePlanText(
   llm: LLMClient,
   task: CodeTask,
@@ -94,14 +108,7 @@ export async function generatePlanText(
   uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
   remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>  // ✅ Remaining tasks for cross-task awareness
 ): Promise<string> {
-  const requiresPlan = 
-    task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&
-    task.type !== 'verification' &&
-    task.type !== 'testgen' &&
-    task.type !== 'doc' &&
-    task.type !== 'explain';
-  
-  if (!requiresPlan) {
+  if (!taskRequiresPlan(task)) {
     return '';
   }
   

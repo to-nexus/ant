@@ -53,7 +53,10 @@
 | Checkpoint | What to observe |
 |-----------|----------------|
 | **Connection lifecycle** | Are store connections returned to the pool after use? |
+| **Cleanup registration** | Is every opened connection/client paired with a deferred cleanup at the point of creation? |
 | **Timeout propagation** | Do long-running operations respect request context/timeout? |
 | **Graceful shutdown** | Does the server drain in-flight requests before closing connections? |
 
 **Constraint**: Do NOT hold store connections across request boundaries. Acquire per-request, release on completion.
+
+⚠️ **Blind spot**: Opened connections (store clients, database pools, file handles) that are NOT registered for deferred cleanup at creation time will leak on shutdown or panic. Observe whether every connection acquisition has a corresponding cleanup registration.
