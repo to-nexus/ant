@@ -292,9 +292,53 @@ export class ConnectionDetector {
       }
     }
 
-    logger.info(`[ConnectionDetector] Detected ${deduplicated.length} connections (${deduplicated.filter(c => c.missingAnnotation).length} via fallback)`, { component: 'ConnectionDetector' });
+    // 6. Prefer annotated over fallback for same id
+    // When both annotated and fallback connections share the same id,
+    // keep only the annotated ones (missingAnnotation !== true).
+    const byId = new Map<string, ServiceConnection[]>();
+    for (const conn of deduplicated) {
+      const group = byId.get(conn.id) || [];
+      group.push(conn);
+      byId.set(conn.id, group);
+    }
+    const filtered: ServiceConnection[] = [];
+    for (const [, group] of byId) {
+      const annotated = group.filter(c => !c.missingAnnotation);
+      filtered.push(...(annotated.length > 0 ? annotated : group));
+    }
 
-    return deduplicated;
+    // 7. Ensure unique ids (append suffix for duplicates)
+    const idCounts = new Map<string, number>();
+    for (const conn of filtered) {
+      idCounts.set(conn.id, (idCounts.get(conn.id) || 0) + 1);
+    }
+    const usedIds = new Set<string>();
+    for (const conn of filtered) {
+      if ((idCounts.get(conn.id) || 0) > 1) {
+        const source = conn.source === '*' ? 'root' : (conn.source || 'root');
+        let candidateId = `${conn.id}-${source}`;
+        if (usedIds.has(candidateId)) {
+          candidateId = `${conn.id}-${conn.envVar.toLowerCase().replace(/_/g, '-')}`;
+        }
+        if (usedIds.has(candidateId)) {
+          let n = 2;
+          while (usedIds.has(`${conn.id}-${n}`)) n++;
+          candidateId = `${conn.id}-${n}`;
+        }
+        conn.id = candidateId;
+        conn.name = this.formatDisplayName(candidateId);
+      }
+      usedIds.add(conn.id);
+    }
+
+    logger.info(
+      `[ConnectionDetector] Detected ${filtered.length} connections ` +
+      `(${filtered.filter(c => c.missingAnnotation).length} via fallback, ` +
+      `${deduplicated.length - filtered.length} filtered by annotation priority)`,
+      { component: 'ConnectionDetector' },
+    );
+
+    return filtered;
   }
 
   // ========================================

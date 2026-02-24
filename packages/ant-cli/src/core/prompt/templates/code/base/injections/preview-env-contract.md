@@ -171,6 +171,16 @@ VITE_API_BASE_URL=
   - `business` connections resolve via `url` or `ant-project` only
 - For `ant-project:{projectId}:{feature}`, the `projectId` and `feature` MUST match existing Ant project identifiers
 
+### One Connection, One Variable
+
+**Principle**: Each external service MUST be represented by exactly ONE annotated connection variable using a URL-format connection string. Do NOT split a single service connection into multiple environment variables.
+
+**Constraint**: If a service accepts a connection URL (e.g., `redis://host:port/db`, `postgresql://user:pass@host:port/db`, `amqp://user:pass@host:port/vhost`), use ONE URL variable with `@connection` annotation. Do NOT additionally create decomposed variables (HOST, PORT, PASSWORD, DB) for the same service — they cause the platform to detect phantom duplicate connections.
+
+**Constraint**: Non-connection configuration for a service (timeout, pool size, retry count) does NOT need `@connection` annotation — it is plain configuration, not a connection endpoint.
+
+**Constraint**: Each `@connection` name MUST be unique within a single `.env.example` file. In monorepos, if a connection is already declared in root `.env.example` (shared infrastructure), do NOT redeclare it in per-service `.env.example`.
+
 ### Why
 The platform uses annotations to:
 - Register connections and inject environment variables at runtime
@@ -186,6 +196,9 @@ Before completing any task that creates or modifies `.env.example`, verify:
 - Every environment variable with a connection URL has `# @connection` above it
 - Same-project internal connections use the `self` keyword
 - Cross-project connections use `ant-project:{projectId}:{feature}` when the specification names a specific target project
+
+**Decomposed variables are EASILY ADDED alongside a connection URL.**
+If `DATABASE_URL` already has `@connection`, do NOT also add `DB_HOST`, `DB_PORT`, `DB_PASSWORD`, `DB_NAME` for the same service. The URL variable is the single source of truth. Decomposed variables cause the platform to detect duplicate connections for the same service.
 
 **`.env.example` / `.env` sync is EASILY BROKEN.**
 Any task that adds or modifies environment variables MUST update BOTH files:
