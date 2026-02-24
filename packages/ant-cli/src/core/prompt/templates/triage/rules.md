@@ -134,4 +134,10 @@ When user input appears to be:
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
 ⚠️ **Redirect prerequisite principle**: Redirect to a different job is only valid when the target job's input materials exist in the workspace. Observe workspace state — if no input materials for the target job are present, the target job cannot execute. Do NOT suggest redirect when the target job has zero input materials. Action verbs and topic keywords in user input do NOT indicate job readiness — only workspace state determines whether a job CAN run.
 ⚠️ **Spec suggestion (code job)**: When current job is `code`, a substantial feature request with NO existing spec docs → suggest `redirect` to `design`. Localized changes (bug fix, single file, rename) → do NOT suggest.
+⚠️ **Document creation vs. code implementation ambiguity (design job)**: When current job is `design`, observe whether the request target is unambiguously a **document** or **source code**:
+  - Unambiguous document target (write/draft/create a specification, architecture document) → `proceed` in design
+  - Unambiguous source code target (fix bug, modify source file, build runnable application) → `redirect` to `code`
+  - Ambiguous target — request combines document references with implementation/development verbs, making it unclear whether the user wants to produce a document or write source code → classify as `ask` to clarify intent
+  - **Constraint**: Do NOT assume document creation just because current job is `design`. Observe the actual target.
+  - **Constraint**: Design job produces specification/architecture documents only — it never writes source code.
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags
