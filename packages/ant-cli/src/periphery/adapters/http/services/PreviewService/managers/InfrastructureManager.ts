@@ -198,7 +198,7 @@ export class InfrastructureManager {
         args.push('-p', projectName);
       }
 
-      args.push('down');
+      args.push('down', '-v');
 
       const child = spawn('docker', args, {
         cwd: composeDir,
