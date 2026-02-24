@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
@@ -417,6 +417,9 @@ export class DependencyInstaller {
    * the workspace root so that local module replacements (e.g. ./shared) are
    * resolved without hitting the network. Subsequent services in the same
    * workspace are skipped because sync already handled them.
+   *
+   * Dependency install is best-effort: if `go` is not found (exit 127),
+   * we log a warning and continue so the preview can still attempt to start.
    */
   private async installGoDeps(
     packagePath: string,
@@ -425,6 +428,13 @@ export class DependencyInstaller {
   ): Promise<void> {
     if (!fs.existsSync(path.join(packagePath, 'go.mod'))) {
       logger.debug(`No go.mod found, skipping Go dep install`, { component: 'DependencyInstaller' });
+      return;
+    }
+
+    if (!this.isCommandAvailable('go')) {
+      const msg = 'Go toolchain not found in PATH — skipping dependency install. The dev server may fail to start.';
+      logger.warn(msg, { component: 'DependencyInstaller' });
+      onLog('stderr', `⚠️  ${msg}`);
       return;
     }
 
@@ -557,5 +567,17 @@ export class DependencyInstaller {
     }
     
     return false;
+  }
+
+  /**
+   * Check if a CLI command is available in the current PATH.
+   */
+  private isCommandAvailable(cmd: string): boolean {
+    try {
+      execSync(`which ${cmd}`, { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
