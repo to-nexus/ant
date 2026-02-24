@@ -87,6 +87,31 @@ See `preview-setup.md` for framework-specific base path configuration.
 
 ---
 
+## 3.5) Monorepo: Environment File Placement
+
+### Principle
+**In monorepos with multiple services, environment files follow a layered placement.**
+
+### Contract
+
+| Level | Contains | Example Location |
+|-------|----------|-----------------|
+| Root | Shared infrastructure connections used by 2+ services | `codebase/.env.example` |
+| Per-service | Service-specific configuration and connections used by that service only | `codebase/services/{svc}/.env.example` |
+
+- Root `.env.example` holds variables shared across services (e.g., infrastructure URLs consumed by multiple services)
+- Per-service `.env.example` holds service-scoped variables (e.g., API keys, service-specific settings, PORT default)
+- Both levels use `@connection` annotation for connection variables
+- ALWAYS create `.env` alongside each `.env.example` with resolved localhost values
+- Single-service projects: root-level only (no per-service split needed)
+
+### Why
+- The platform loads environment from BOTH levels (root first, then per-service override)
+- Per-service files make each service's dependencies self-documenting
+- Shared infrastructure at root avoids URL duplication
+
+---
+
 ## 4) Service Connection Annotation
 
 ### Principle

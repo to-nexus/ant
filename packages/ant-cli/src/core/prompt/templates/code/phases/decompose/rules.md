@@ -101,17 +101,21 @@ CRITICAL:
 
 ## Test Generation Task
 
-**Principle**: A test generation task (`type: "testgen"`, priority 700) creates the minimum set of tests that verify the integrated codebase is functional. It runs after all feature and integration tasks, before documentation and verification.
+**Principle**: A test generation task (`type: "testgen"`, priority 700) creates or updates tests that verify implemented functionality. It runs after all feature and integration tasks, before documentation and verification.
 
-**Observation target**: Does this task set include a setup task, or 3 or more feature tasks?
+**Observation target**: Does the task set require test generation?
 
 | Checkpoint | Condition |
 |-----------|-----------|
-| **Setup task exists** | New project or major structural change — test generation needed |
-| **3+ feature tasks** | Substantial functionality addition — test generation needed |
-| **Neither** | Simple fix or minor change — skip test generation |
+| **Existing test files observed in codebase** | Project maintains test coverage — testgen needed to cover new features |
+| **Setup task exists** | New project — testgen needed for initial coverage |
+| **No existing tests, no setup** | No established testing pattern — skip testgen |
 
-**Constraint**: Do NOT create a testgen task for error-only jobs or jobs with fewer than 3 feature tasks and no setup task.
+**Constraint**: Do NOT skip testgen solely based on feature task count. When the codebase already maintains tests, any feature addition warrants test updates to maintain coverage.
+
+**Constraint**: Do NOT create a testgen task when no feature tasks exist (error-only jobs).
+
+⚠️ **Blind spot**: An existing codebase with test files indicates a testing practice that must be maintained. Adding functionality without updating tests breaks coverage consistency — easily missed when the feature count is small.
 
 **Constraint**: The testgen task writes test files ONLY. It does NOT execute tests — verification handles that.
 
@@ -365,12 +369,11 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Setup task description MUST mention (when applicable):**
 - `docker-compose.yml` with **infrastructure** service definitions ONLY (databases, caches, message queues) — if external services are observed in the specification. Do NOT include application/business services (API servers, web servers) in docker-compose — the platform manages application process lifecycle separately.
-- `.env.example` with `# @connection {category} {name}` annotation for each service connection endpoint URL (not individual components like host, port, user, password)
-- `.env` with resolved localhost values matching `.env.example` variable keys
+- `.env.example` / `.env` with `# @connection {category} {name}` annotation for connection endpoint URLs — the platform runtime contract defines placement (root for shared infrastructure, per-service for service-specific configuration)
 - Application configuration variables (secrets, API keys) observed in the specification — mention their purpose so the setup task provisions them
 - Cross-project connections with `# @connection {category} {name} ant-project:{projectId}:{feature}` — if the specification names a specific external Ant project as a dependency (e.g., "uses sketch-be as backend")
 
-**Constraint**: Task descriptions describe INTENT and SCOPE, not implementation-specific variable names or default values. Port binding, environment variable naming, and configuration structure are governed by the platform runtime contract (see Dev Server Runtime Contract) and language-specific setup templates. Do NOT invent variable names in task descriptions — describe the purpose instead (e.g., "application configuration for API key and base URL" NOT "API_KEY=, BASE_URL=http://..., API_PORT=8080").
+**Constraint**: Task descriptions describe INTENT and SCOPE, not implementation-specific variable names or default values. Port binding, environment variable naming, and configuration structure are governed by the platform runtime contract and language-specific setup templates. Do NOT invent or prescribe specific variable names in task descriptions.
 
 **Constraint**: Do NOT omit infrastructure provisioning (`docker-compose.yml`) from setup task when the specification mentions external services. Do NOT omit `@connection` annotations — they are required for the platform to detect and manage service connections. Do NOT omit `ant-project:{projectId}:{feature}` modifier when the specification explicitly names a target project — without it, the platform cannot auto-resolve the cross-project proxy path.
 

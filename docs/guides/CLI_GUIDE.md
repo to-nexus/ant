@@ -231,9 +231,6 @@ Generated code written to repository root (`src/`, `lib/`), not `workspace/outpu
 {
   "projectName": "my-app",
   "branchBase": "main",
-  "autoLearn": true,
-  "strictValidation": true,
-  "runTests": false,
   "llmProvider": "anthropic",
   "llmModel": "claude-sonnet-4-6"
 }

@@ -61,12 +61,22 @@ export function selectDesignDocuments(state: ArchitectGraphState): string {
 }
 
 /**
- * Prepare design document for LLM prompt
+ * Prepare design document for LLM prompt.
+ * 
+ * When spec documents exist, designDoc is suppressed so that
+ * design-doc-guide.md (which triggers full-project task generation)
+ * does not render. The spec content is injected separately via specDoc.
  */
 export function prepareDesignDocument(state: ArchitectGraphState): {
   designDoc: string;
   hasDesignDoc: boolean;
 } {
+  const hasSpec = state.specDocs && Object.keys(state.specDocs).length > 0;
+  if (hasSpec) {
+    console.log(`   📋 [DesignSelector] Spec docs detected — suppressing designDoc (spec-driven mode)`);
+    return { designDoc: '', hasDesignDoc: false };
+  }
+
   const designDoc = selectDesignDocuments(state);
   const hasDesignDoc = Boolean(designDoc && designDoc.trim().length > 0);
   

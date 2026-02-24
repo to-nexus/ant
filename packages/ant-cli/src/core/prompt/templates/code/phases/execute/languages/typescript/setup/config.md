@@ -139,6 +139,8 @@ Configure as needed for project (Tailwind, ESLint, etc).
 
 **Constraint**: `.env.example` MUST use `@connection` annotations for service connection variables (see preview-env-contract). `.env` MUST contain the same variables with localhost/docker-compose default values.
 
+**Constraint**: In monorepos with multiple packages, follow the layered placement from the platform runtime contract (Section 3.5) — shared infrastructure connections at root, service-specific config per package.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **COMMON MISTAKES:**

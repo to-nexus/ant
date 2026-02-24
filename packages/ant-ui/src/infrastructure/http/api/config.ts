@@ -18,8 +18,6 @@ export interface ProjectConfig {
   localPath?: string;
   githubRepo?: string;
   branchBase: string;
-  autoLearn: boolean;
-  strictValidation?: boolean;
   llmModels?: {
     design?: JobLLMConfig;
     code?: JobLLMConfig;
@@ -54,7 +52,6 @@ export async function createProjectConfig(projectId: string): Promise<ProjectCon
     repoType: 'local',
     localPath: `~/dev/${sanitizedName}`,
     branchBase: 'main',
-    autoLearn: true,
   };
   await apiPut(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/config`,

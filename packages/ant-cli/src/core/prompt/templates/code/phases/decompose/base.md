@@ -17,6 +17,24 @@ DIRECTIVE:
 
 {{> code/phases/decompose/design-doc-guide}}
 
+{{#if specDoc}}
+════════════════════════════════════════════════════════════════════════════════
+## Feature Specification
+
+{{{specDoc}}}
+
+{{#if specApiContract}}
+
+────────────────────────────────────────
+
+## API Contract (Reference)
+
+{{{specApiContract}}}
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
+
 {{#if designDocsMeta}}
 ════════════════════════════════════════════════════════════════════════════════
 ## Design Document Availability

@@ -365,6 +365,8 @@ export class PromptEngine {
     directive: string;
     designDoc: string;
     hasDesignDoc: boolean;
+    specDoc?: string;              // Full content of auto-selected spec document
+    specApiContract?: string;      // API contract content (reference for spec-driven mode)
     mode: string;
     profile: any;
     designDocsMeta?: string;       // ✅ Design document availability metadata (for profile detection)

@@ -41,8 +41,6 @@ Static errors → static tools. Behavioral errors → runtime observation.
 {{#if (eq mode "generate")}}
 **GENERATE MODE - New Implementation**
 
-**CREATION MODE: Build from scratch**
-
 You are implementing new features based on the specification.
 
 {{/if}}

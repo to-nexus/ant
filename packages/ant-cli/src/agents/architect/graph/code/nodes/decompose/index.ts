@@ -211,8 +211,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       console.log(`   ${hasProjectCode ? '✅' : '❌'} Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasConfigFile=${hasConfigFile})`);
       
       if (hasProjectCode && (!codebaseFilePaths || codebaseFilePaths.length === 0)) {
-        console.log(`⚠️  [Decompose] Project has code but Vector DB is empty`);
-        console.log(`   Tip: Run 'ant index ${state.context.project}' to enable semantic search\n`);
+        console.log(`⚠️  [Decompose] Project has code but codebaseFilePaths is empty — using git.listFiles() fallback`);
+        try {
+          const allFiles = await state.deps.git.listFiles('', [
+            'node_modules', '.git', 'vendor', '__pycache__', 'dist', 'build',
+            '.next', '.nuxt', '.output', 'coverage', '.turbo',
+            '*.sum', '*.lock',
+          ]);
+          if (allFiles.length > 0) {
+            codebaseFilePaths = allFiles;
+            console.log(`   ✅ Fallback: loaded ${allFiles.length} files via git.listFiles()`);
+          }
+        } catch (fallbackErr) {
+          console.warn(`   ⚠️  git.listFiles() fallback failed:`, fallbackErr);
+        }
       }
     } catch (error) {
       console.warn(`⚠️  [Decompose] Failed to check project code existence:`, error);
@@ -279,14 +291,41 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     specDocsMeta = specLines.join('\n');
   }
 
+  // ✅ Auto-select spec and prepare full content for prompt injection
+  let specDoc = '';
+  let specApiContract = '';
+  if (state.specDocs && Object.keys(state.specDocs).length > 0) {
+    const specEntries = Object.entries(state.specDocs);
+    let selectedKey: string | null = null;
+
+    if (specEntries.length === 1) {
+      selectedKey = specEntries[0][0];
+    } else {
+      selectedKey = specEntries.find(([k]) =>
+        state.directive?.includes(k)
+      )?.[0] || specEntries[0][0];
+    }
+
+    if (selectedKey) {
+      specDoc = state.specDocs[selectedKey];
+      state.selectedSpec = selectedKey;
+      if (state.designDocs?.apiContract) {
+        specApiContract = state.designDocs.apiContract;
+      }
+      console.log(`📋 [Decompose] Auto-selected spec: ${selectedKey} (${specDoc.length} chars)`);
+    }
+  }
+
   const decomposeVars = {
     directive: state.directive || '',
     designDoc,
     hasDesignDoc,
+    specDoc,
+    specApiContract,
     mode: state.detectionReport?.jobMode || 'unknown',
     profile: state.profile,
     designDocsMeta,              // ✅ Design document availability for profile detection
-    specDocsMeta,                // ✅ Spec document list for LLM selection
+    specDocsMeta,                // ✅ Spec document list (kept for multi-spec fallback)
     codebaseFilePaths,           // ✅ File paths from keyword search (for task planning)
     hasProjectCode,              // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
     uiSectionsSummary,           // ✅ UI sections summary with token estimates (for split injection)
@@ -388,7 +427,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const { tasks, referenceRequests, profile: parsedProfile, selectedSpec } = parsed;
   
   // ✅ Store selectedSpec in state (used by plan node for spec injection)
+  // LLM response can override auto-selected spec if it picks a different valid one
   if (selectedSpec && state.specDocs?.[selectedSpec]) {
+    if (state.selectedSpec && state.selectedSpec !== selectedSpec) {
+      console.log(`📋 [Decompose] LLM overrode auto-selected spec: ${state.selectedSpec} → ${selectedSpec}`);
+    }
     state.selectedSpec = selectedSpec;
     console.log(`📋 [Decompose] Using spec document: ${selectedSpec}`);
   } else if (selectedSpec) {

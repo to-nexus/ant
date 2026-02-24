@@ -56,16 +56,21 @@ codebase/
 │   │   ├── go.mod              # Independent module
 │   │   ├── cmd/server/         # Entry point (main.go)
 │   │   ├── internal/           # Private application code
-│   │   └── Makefile            # Service-level build targets
+│   │   ├── Makefile            # Service-level build targets
+│   │   ├── .env.example        # Service-specific config (PORT, API keys)
+│   │   └── .env
 │   └── {svc-b}/
 │       ├── go.mod
 │       ├── cmd/server/
 │       ├── internal/
-│       └── Makefile
+│       ├── Makefile
+│       ├── .env.example
+│       └── .env
 ├── docker-compose.yml
 ├── Makefile                    # Root-level orchestration
 ├── .gitignore
-└── .env.example
+├── .env.example                # Shared infrastructure connections
+└── .env
 ```
 
 **Principle**: `go.work` declares all modules via `use` directives. Go 1.18+ workspace mode resolves cross-module imports locally without publishing modules.
@@ -74,7 +79,7 @@ codebase/
 
 **Principle**: The `shared/` module (if needed) contains cross-service types, DTOs, and utility packages. Module path: `github.com/{org}/{project}/shared`. Only create this when 2+ services share domain types.
 
-**Constraint**: Root setup task (priority 100) creates `go.work`, root `Makefile`, `docker-compose.yml`, `.gitignore`, `.env.example`, and `.env`. Service-level setup tasks (priority 101, 102, ...) create `services/{svc}/go.mod` and `services/{svc}/Makefile`. Do NOT create `docker-compose.yml` or `.env.example` in service directories.
+**Constraint**: Root setup task (priority 100) creates `go.work`, root `Makefile`, `docker-compose.yml`, `.gitignore`, and root `.env.example` / `.env` with shared infrastructure connections. Service-level setup tasks (priority 101, 102, ...) create `services/{svc}/go.mod`, `services/{svc}/Makefile`, and `services/{svc}/.env.example` / `.env` with service-specific configuration (PORT default, API keys, connections used by that service only). See the platform runtime contract (Section 3.5) for the layered placement principle.
 
 ---
 
@@ -328,7 +333,8 @@ ENV=development
 ❌ Forgetting Makefile targets for infrastructure services
 ❌ Setting `container_name` in docker-compose.yml (breaks platform namespace isolation, causes conflicts)
 ❌ MSA: Forgetting `go.work` at the root (services cannot resolve cross-module imports)
-❌ MSA: Creating `docker-compose.yml` or `.env.example` inside service directories (root only)
+❌ MSA: Creating `docker-compose.yml` inside service directories (root only)
+❌ MSA: Putting shared infrastructure connections in per-service `.env.example` instead of root (causes duplication)
 ❌ MSA: Using a single `go.mod` for all services (each service needs its own module)
 ❌ MSA: Adding `require` for a sibling module without a `replace` directive (build fails with "module not found")
 ❌ MSA: Mismatched `go` version between `go.work` and `go.mod` files (causes toolchain resolution failure)
