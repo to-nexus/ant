@@ -818,6 +818,7 @@ function PrdApplyChoiceVariant({ content, messageId }: { content: MessageContent
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function SpecCompleteVariant({ content, messageId }: { content: MessageContent; messageId: string }) {
+  const setSelectedJobType = useStore(state => state.setSelectedJobType);
   const { runJob } = useJobExecution();
   const state = useChoiceCardState({
     content, messageId,
@@ -838,12 +839,17 @@ function SpecCompleteVariant({ content, messageId }: { content: MessageContent; 
     await state.persistToBackend('develop', label);
 
     try {
-      await runJob('architect', 'code', `Implement ${specFile}`);
+      await runJob('architect', 'code', `Implement ${specFile}`, { skipTriage: true });
     } catch (error) {
       console.error('[ChoiceCard:SpecComplete] Failed to start code job:', error);
     } finally {
       state.setIsLoading(false);
     }
+
+    // Switch job type AFTER persist + runJob so SSE reconnect reads fully-persisted metadata.
+    // setSelectedJobType triggers reconnectSSE → initial_state full replace of chatMessages.
+    // If called before persist settles, the replacement can overwrite the local choice state.
+    setSelectedJobType('code');
   };
 
   const handleLater = async () => {
