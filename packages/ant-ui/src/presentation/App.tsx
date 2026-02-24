@@ -466,7 +466,11 @@ function App() {
     <ToastProvider>
     <AlertModalProvider>
       <ServerDownDetector />
-      <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
+      <div
+        className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => e.preventDefault()}
+      >
         {/* ✅ GNB uses hooks directly - no props needed */}
         <GlobalNavBar />
         

@@ -30,7 +30,7 @@ import {
 } from "../../../../../core/types/detection";
 
 interface ParsedDesignResponse {
-  workType: "ui-design" | "system-design" | "spec" | "error";
+  workType: "ui-design" | "system-design" | "spec" | "clarify" | "error";
   workTypeReasoning: string;
   jobMode: JobMode;
   jobModeReasoning: string;
@@ -63,9 +63,10 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
     const parsed = JSON.parse(jsonStr);
     
     // Parse workType
-    const workType: "ui-design" | "system-design" | "spec" | "error" =
+    const workType: "ui-design" | "system-design" | "spec" | "clarify" | "error" =
       parsed.workType === "ui-design" ? "ui-design" : 
       parsed.workType === "spec" ? "spec" :
+      parsed.workType === "clarify" ? "clarify" :
       parsed.workType === "error" ? "error" :
       "system-design";
     
@@ -94,6 +95,16 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
         : jobMode === "explain"
           ? "Analysis or explanation of existing documents requested."
           : "New document creation or full regeneration requested.");
+    
+    // Clarify: LLM could not confidently determine spec vs system-design
+    if (workType === "clarify") {
+      return {
+        workType: "clarify",
+        workTypeReasoning: parsed.workTypeReasoning || "Ambiguous between spec and system-design.",
+        jobMode: "generate",
+        jobModeReasoning: "",
+      };
+    }
     
     // For system-design, parse domain and environment
     if (workType === "system-design") {
@@ -137,16 +148,12 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
     console.error("❌ [DesignDetectEnvironment] Failed to parse LLM response:", error);
     console.error("Raw response (truncated):", raw.substring(0, 500));
 
-    // Safe defaults
+    // Parse failure → clarify instead of silent fallback
     return {
-      workType: "system-design",
-      workTypeReasoning: "Failed to parse LLM response; defaulting to system design.",
+      workType: "clarify",
+      workTypeReasoning: "Failed to parse LLM response. Asking user to clarify.",
       jobMode: "generate",
-      jobModeReasoning: "Failed to parse LLM response; defaulting to generate.",
-      domain: "service",
-      domainReasoning: "Failed to parse; defaulting to 'service'.",
-      environment: "fullstack",
-      environmentReasoning: "Failed to parse; defaulting to 'fullstack'.",
+      jobModeReasoning: "",
     };
   }
 }
@@ -193,12 +200,122 @@ async function dirHasFiles(dirPath: string): Promise<boolean> {
 }
 
 /**
+ * Parse user's choice from the clarify card directive.
+ * ClarifyingVariant formats answers as: "- question: answer"
+ */
+function parseDetectClarifyChoice(
+  directive: string,
+  hasSystemDocs: boolean
+): { workType: 'spec' | 'system-design'; jobMode: JobMode } {
+  const lower = directive.toLowerCase();
+  if (lower.includes('spec') || lower.includes('스펙 문서')) {
+    return { workType: 'spec', jobMode: 'generate' };
+  }
+  if (lower.includes('시스템 기획서 수정') || lower.includes('system-design')) {
+    return { workType: 'system-design', jobMode: hasSystemDocs ? 'refactor' : 'generate' };
+  }
+  // Best-effort: if contains "수정" / "modify" lean toward system-design refactor
+  if (lower.includes('수정') || lower.includes('modify') || lower.includes('refactor')) {
+    return { workType: 'system-design', jobMode: hasSystemDocs ? 'refactor' : 'generate' };
+  }
+  // Default to spec (safer — avoids destructive modification of existing docs)
+  return { workType: 'spec', jobMode: 'generate' };
+}
+
+/**
+ * Send a clarify card asking the user to choose between spec and system-design.
+ */
+async function sendDetectClarifyCard(state: DesignGraphState): Promise<void> {
+  const { getChatAPIClient } = await import("../../../../../core/adapters/ChatAPIClient");
+  const chatAPI = getChatAPIClient();
+  await chatAPI.sendClarifyCards([{
+    question: '어떤 작업을 수행할까요?',
+    options: [
+      '새로운 스펙 문서 생성 (spec-*.md)',
+      '기존 시스템 기획서 수정',
+    ],
+  }]);
+  await chatAPI.finalizeMessage();
+}
+
+/**
+ * Save awaitingDetectClarify state to session for resume.
+ */
+async function saveDetectClarifyToSession(state: DesignGraphState): Promise<void> {
+  if (!state.deps?.session || !state.context.featureFolder) return;
+  try {
+    await state.deps.session.updateArtifacts(
+      state.context.project,
+      state.context.featureFolder,
+      'design',
+      {
+        state: {
+          awaitingDetectClarify: true,
+          directive: state.directive,
+          overrideDirective: state.overrideDirective,
+          chatSource: state.chatSource,
+          prd: state.prd,
+        }
+      }
+    );
+    console.log(`💾 [detectEnvironment] Saved awaitingDetectClarify=true to session`);
+  } catch (err) {
+    console.warn(`⚠️  [detectEnvironment] Failed to save clarify state:`, err);
+  }
+}
+
+/**
  * Design Job detectEnvironment node
  */
 export async function detectEnvironment(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
   const phaseStart = Date.now();
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Detect clarify resume: user chose spec vs system-design
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.awaitingDetectClarify && state.overrideDirective) {
+    console.log(`🔄 [detectEnvironment] Detect clarify resume — parsing user choice`);
+    
+    const featurePath = state.context.featurePath || '';
+    const outputsDir = path.join(featurePath, 'outputs/design');
+    const hasSystemDocs = await fs.access(path.join(outputsDir, 'system-design.md')).then(() => true).catch(() => false)
+      || await fs.access(path.join(outputsDir, 'api-contract.md')).then(() => true).catch(() => false)
+      || await fs.access(path.join(outputsDir, 'be-system-design.md')).then(() => true).catch(() => false);
+    
+    const choice = parseDetectClarifyChoice(state.overrideDirective, hasSystemDocs);
+    console.log(`✅ [detectEnvironment] User chose: workType=${choice.workType}, jobMode=${choice.jobMode}`);
+    
+    let detectionReport: DetectionReport;
+    if (choice.workType === 'spec') {
+      detectionReport = createSpecDetectionReport({
+        jobMode: choice.jobMode,
+        jobModeReasoning: 'User explicitly chose spec document creation.',
+      });
+    } else {
+      detectionReport = createSystemDesignDetectionReport({
+        jobMode: choice.jobMode,
+        jobModeReasoning: 'User explicitly chose system design modification.',
+        environment: 'fullstack',
+        environmentReasoning: 'Defaulting to fullstack (will be refined by decompose).',
+        domain: 'service',
+        domainReasoning: 'Defaulting to service.',
+      });
+    }
+    
+    const { getChatAPIClient } = await import("../../../../../core/adapters/ChatAPIClient");
+    const chatAPI = getChatAPIClient();
+    const formattedReport = formatDetectionReportForChat(detectionReport, 'ko');
+    await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
+    await chatAPI.finalizeMessage();
+    
+    return {
+      detectionReport,
+      awaitingDetectClarify: false,
+      _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
+    };
+  }
   
   // ✅ Node activity banner
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
@@ -416,6 +533,24 @@ export async function detectEnvironment(
           message: parsed.errorMessage || 'An error occurred',
           suggestedAction: parsed.suggestedAction,
         },
+        _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
+      };
+    }
+
+    // Handle clarify case (ambiguous between spec and system-design, or parse failure)
+    if (parsed.workType === 'clarify') {
+      console.log(`\n💬 Clarify needed: ${parsed.workTypeReasoning}`);
+      
+      await sendDetectClarifyCard(state);
+      await saveDetectClarifyToSession(state);
+      
+      if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
+        state.deps.kanbanUpdate.clearEstimatingActivity();
+      }
+      
+      return {
+        awaitingDetectClarify: true,
+        tokenUsage: (state as any).tokenUsage,
         _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
       };
     }

@@ -5,7 +5,8 @@
     "outputs": "Outputs",
     "sessions": "Sessions",
     "send": "Send",
-    "receive": "Receive"
+    "receive": "Receive",
+    "emptyDir": "Empty directory"
   },
   "actions": {
     "createFile": "Create file",
@@ -15,6 +16,7 @@
     "send": "Send",
     "clearContents": "Clear all contents",
     "markAllSeen": "Mark all as seen",
+    "rename": "Rename",
     "delete": "Delete",
     "openInNewTab": "Open in new tab"
   },
@@ -27,12 +29,17 @@
     "dropHint": "Drop files here",
     "uploading": "Uploading {{count}} file(s) to {{dir}}",
     "cancel": "Cancel",
-    "cancelled": "Upload cancelled"
+    "cancelled": "Upload cancelled",
+    "complete": "{{count}} file(s) uploaded",
+    "dismiss": "Dismiss"
   },
   "error": {
     "fileCreateFailed": "Failed to create file.",
     "dirCreateFailed": "Failed to create directory.",
     "deleteFailed": "Failed to delete.",
+    "renameFailed": "Failed to rename. Please check the name and try again.",
+    "dropBlockedCanonical": "Cannot upload here. This directory only holds system subdirectories.",
+    "dropBlockedSection": "This section does not support file uploads.",
     "uploadFailed": "Upload failed. Please try again later.",
     "createFailed": "Failed to create. Please check the name and try again.",
     "saveFailed": "Failed to save.",

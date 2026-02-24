@@ -117,7 +117,7 @@ export class ModeController {
     const skipHeavyContext = isVerification || isTestgen || isDoc;
     const flags = {
       includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !skipHeavyContext,
-      includeProfiles: phase === 'execute' && job === 'code' && !skipHeavyContext,
+      includeProfiles: phase === 'execute' && job === 'code',
       includeMemory: context.stats.hasMemory,
       strictValidation: job === 'code'
     };
@@ -250,8 +250,9 @@ export class ModeController {
         console.log(`[ModeController] Adding testgen language hints: ${hintsPath}`);
       }
       
-      // Backend safety: common safety principles for backend/fullstack environments
-      if (job === 'code' && !isVerification && !isTestgen && !isDoc) {
+      // Backend safety: common safety principles for backend/fullstack environments.
+      // Included for execute AND testgen phases — testgen needs safety context to generate security test cases.
+      if (job === 'code' && !isVerification && !isDoc) {
         if (detectedEnv === 'backend' || detectedEnv === 'fullstack') {
           injections.push(`code/phases/execute/injections/backend-safety`);
           console.log(`[ModeController] Adding backend-safety for env: ${detectedEnv}`);

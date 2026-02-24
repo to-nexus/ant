@@ -201,6 +201,22 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       },
       onTaskFailure: (task, error, workerId) => {
         console.error(`[Design ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
+        if (state.context?.featurePath && state._httpJobId) {
+          try {
+            const { getExecutionLogger } = require('../../../../core/utils/executionLogger');
+            const failLogger = getExecutionLogger({
+              featurePath: state.context.featurePath,
+              jobId: state._httpJobId,
+              jobType: 'design',
+            });
+            failLogger.logTaskFail(task.id, {
+              taskName: task.name,
+              errorMessage: error.message,
+              errorStack: error.stack,
+              workerId,
+            });
+          } catch (_) { /* non-critical */ }
+        }
       },
       onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
         if (state.deps?.kanbanUpdate && state._httpJobId) {
@@ -324,6 +340,28 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
     currentTask: undefined,
     tokenUsage: result.tokenUsage || (state as any).tokenUsage,
+    interruption: result.hasInterruptedTasks ? {
+      reason: result.interruptReason || 'recursion_limit',
+      message: result.interruptReason === 'user_stopped'
+        ? `Task stopped by user (${result.remainingQueue.length} task(s) remaining)`
+        : `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
+      timestamp: new Date().toISOString(),
+      canResume: result.remainingQueue.length > 0,
+      metadata: {
+        tasksRemaining: result.remainingQueue.length,
+        completedCount: result.completedTasks.length,
+      },
+    } : result.hasFailures ? {
+      reason: 'tasks_failed',
+      message: `${result.failedTasks.length} task(s) failed during parallel execution`,
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: {
+        failedCount: result.failedTasks.length,
+        completedCount: result.completedTasks.length,
+        tasksRemaining: result.failedTasks.length + result.remainingQueue.length,
+      },
+    } : undefined,
   } as any;
 }
 
@@ -401,6 +439,9 @@ export function buildDesignGraph() {
       // ✅ Recursion tracking (for UI gauge display)
       recursionCount: null as any,
       recursionLimit: null as any,
+      
+      // ✅ Parallel orchestrator failure signal (propagated to learn for failure-aware handling)
+      interruption: null as any,
     } as any,
   } as any);
 
@@ -436,6 +477,12 @@ export function buildDesignGraph() {
       const hasDetectionReport = Boolean(s.detectionReport);
       const hasNewDirective = Boolean(s.overrideDirective);
       
+      // Path 0: Detect clarify resume — user chose spec vs system-design
+      if (isResume && s.awaitingDetectClarify && hasNewDirective) {
+        console.log(`🔀 [Resolve→Router] isResume + awaitingDetectClarify + newDirective → detectEnvironment (clarify resume)`);
+        return "detectEnvironment";
+      }
+      
       // Path 1: Clarify response — skip straight to docGen with conversation history
       if (isResume && s.awaitingClarify && hasNewDirective) {
         console.log(`🔀 [Resolve→Router] isResume + awaitingClarify + newDirective → docGen (clarify direct)`);
@@ -469,7 +516,7 @@ export function buildDesignGraph() {
       console.log(`🔀 [Resolve→Router] New job → triage`);
       return "triage";
     }) as any,
-    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", docGen: "docGen" } as any
+    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", docGen: "docGen", detectEnvironment: "detectEnvironment" } as any
   );
   
   // ✅ Triage → Conditional (proceed to detectEnvironment or end)
@@ -483,16 +530,21 @@ export function buildDesignGraph() {
   );
   
   // ✅ Conditional routing from detectEnvironment
-  // If error occurred (e.g., modification without documents), go to END
-  // Otherwise, proceed to decompose
+  // - designError → END (e.g., modification without documents)
+  // - awaitingDetectClarify → END (paused for user choice between spec/system-design)
+  // - otherwise → decompose (normal flow)
   graph.addConditionalEdges(
     "detectEnvironment" as any,
     ((s: DesignGraphState) => {
       if (s.designError) {
         console.log(`❌ [Graph] Design error detected, terminating job`);
-        return "__end__";  // Terminate graph
+        return "__end__";
       }
-      return "decompose";  // Normal flow
+      if (s.awaitingDetectClarify) {
+        console.log(`⏸️  [Graph] Detect clarify — paused for user choice`);
+        return "__end__";
+      }
+      return "decompose";
     }) as any,
     { __end__: "__end__", decompose: "decompose" } as any
   );

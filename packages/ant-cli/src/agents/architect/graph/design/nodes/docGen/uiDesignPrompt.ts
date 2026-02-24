@@ -89,6 +89,15 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
       isFirstMsg = false;
     }
     
+    // Anthropic API requires conversation to end with a user message.
+    // If history ends with assistant (e.g., retry after no <done>), append continuation.
+    if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+      messages.push({
+        role: 'user',
+        content: [{ type: 'text', text: 'Continue.' }]
+      });
+    }
+
     // 4. Budget check
     const estimation = tokenManager.checkBudget(messages as any);
     if (estimation.isOverBudget) {

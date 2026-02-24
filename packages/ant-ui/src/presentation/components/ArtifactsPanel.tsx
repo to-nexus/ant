@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X } from 'lucide-react';
+import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X, Check, AlertCircle } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
+import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, renameFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { Button } from '@/presentation/components/common/button';
 import { textColors, cn } from '@/shared/utils/design-system';
@@ -10,12 +11,13 @@ import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
-import { isCanonicalDir } from '@/shared/utils/canonical-dirs';
-import { useDropZone } from '@/application/hooks/ui/useDropZone';
+import { isCanonicalDir, isStructuralCanonicalDir } from '@/shared/utils/canonical-dirs';
+import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
+
+const DRAG_EXPAND_DELAY_MS = 600;
 
 interface DirectoryViewProps {
   title: string;
-  rootDirName: string;
   nodes: FileNode[];
   onFileSelect: (path: string) => void;
   selectedFile: string | undefined;
@@ -23,29 +25,71 @@ interface DirectoryViewProps {
   onCreateDirectory?: (dirPath: string, dirName: string) => void;
   onUploadFiles?: (dirPath: string, files: FileList) => void;
   onDropFiles?: (dirPath: string, entries: UploadFileEntry[]) => void;
+  onRename?: (oldPath: string, newName: string) => void;
   onDelete?: (filePath: string) => void;
   onSend?: (path: string, type: 'file' | 'directory') => void;
   onDownload?: (path: string) => void;
+  onDropError?: (message: string) => void;
   isSessionSection?: boolean;
   unseenArtifacts?: string[];
   onMarkSeen?: (paths: string[]) => void;
 }
 
-function DirectoryView({ title, rootDirName, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onDelete, onSend, onDownload, isSessionSection, unseenArtifacts = [], onMarkSeen }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
   const [newFileName, setNewFileName] = useState('');
   const [activeMenuPath, setActiveMenuPath] = useState<string | null>(null);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const { showConfirm } = useAlertModalContext();
 
-  const { isDragOver, dropProps } = useDropZone({
-    onDrop: (entries) => {
-      if (onDropFiles) onDropFiles(rootDirName, entries);
-    },
-    disabled: !onDropFiles,
-  });
+  // Per-folder drag state — container-level approach using data-drop-dir attribute
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
+  const dragOverPathRef = useRef<string | null>(null);
+  const dragExpandTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoExpandedRef = useRef<Set<string>>(new Set());
+
+  const updateDragTarget = useCallback((dirPath: string | null) => {
+    if (dirPath === dragOverPathRef.current) return;
+    dragOverPathRef.current = dirPath;
+    setDragOverPath(dirPath);
+
+    if (dragExpandTimerRef.current) {
+      clearTimeout(dragExpandTimerRef.current);
+      dragExpandTimerRef.current = null;
+    }
+    if (dirPath) {
+      dragExpandTimerRef.current = setTimeout(() => {
+        setExpandedDirs(prev => {
+          if (prev.has(dirPath)) return prev;
+          const next = new Set(prev);
+          next.add(dirPath);
+          autoExpandedRef.current.add(dirPath);
+          return next;
+        });
+      }, DRAG_EXPAND_DELAY_MS);
+    }
+  }, []);
+
+  const clearDragState = useCallback(() => {
+    dragOverPathRef.current = null;
+    setDragOverPath(null);
+    if (dragExpandTimerRef.current) {
+      clearTimeout(dragExpandTimerRef.current);
+      dragExpandTimerRef.current = null;
+    }
+    if (autoExpandedRef.current.size > 0) {
+      setExpandedDirs(prev => {
+        const next = new Set(prev);
+        autoExpandedRef.current.forEach(p => next.delete(p));
+        return next;
+      });
+      autoExpandedRef.current.clear();
+    }
+  }, []);
 
   // Keep a ref to unseenArtifacts so cleanup can read the latest value
   const unseenRef = useRef(unseenArtifacts);
@@ -111,20 +155,25 @@ function DirectoryView({ title, rootDirName, nodes, onFileSelect, selectedFile, 
     const isMenuActive = activeMenuPath === node.path;
     const isUnseen = node.type === 'file' && unseenArtifacts.includes(node.path);
     const unseenCount = isDirectory ? getUnseenCount(node.path) : 0;
+    const isStructural = isDirectory && isStructuralCanonicalDir(node.path);
+    const isDragTarget = isDirectory && dragOverPath === node.path;
+    const isRenaming = renamingPath === node.path;
 
     return (
       <div key={node.path}>
         <div
+          data-drop-dir={isDirectory && onDropFiles ? node.path : undefined}
+          data-drop-blocked={isDirectory && onDropFiles && isStructural ? '' : undefined}
           className={cn(
             'flex items-center justify-between group py-1.5 px-2 rounded transition-colors',
-            // Base state: selected > expanded dir > default
             isSelected 
               ? 'bg-blue-100 dark:bg-blue-900 border-l-2 border-blue-500 dark:border-blue-400 font-medium text-blue-900 dark:text-blue-100' 
-              : isDirectory && isExpanded
-                ? 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-800',
-            // Menu active overlay: ring + subtle bg (additive, works with any base state)
-            isMenuActive && (isSelected
+              : isDragTarget && !isStructural
+                ? 'bg-blue-50 dark:bg-blue-900/30 outline-2 outline-dashed outline-blue-400 dark:outline-blue-500'
+                : isDirectory && isExpanded
+                  ? 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-800',
+            isMenuActive && !isDragTarget && (isSelected
               ? 'ring-1 ring-blue-400 dark:ring-blue-500'
               : 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300 dark:ring-amber-600')
           )}
@@ -154,16 +203,42 @@ function DirectoryView({ title, rootDirName, nodes, onFileSelect, selectedFile, 
             ) : (
               <FileIcon filePath={node.name} size={16} />
             )}
-            <span className={cn('text-sm truncate', textColors.primary, isUnseen && 'font-semibold')}>{node.name}</span>
-            {/* Unseen badge for directories */}
-            {isDirectory && unseenCount > 0 && (
-              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
-                {unseenCount > 99 ? '99+' : unseenCount}
-              </span>
-            )}
-            {/* Unseen dot for files */}
-            {isUnseen && (
-              <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+            {isRenaming ? (
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && renameValue.trim() && renameValue.trim() !== node.name) {
+                    onRename?.(node.path, renameValue.trim());
+                    setRenamingPath(null);
+                  } else if (e.key === 'Enter') {
+                    setRenamingPath(null);
+                  }
+                  if (e.key === 'Escape') setRenamingPath(null);
+                }}
+                onBlur={() => {
+                  if (renameValue.trim() && renameValue.trim() !== node.name) {
+                    onRename?.(node.path, renameValue.trim());
+                  }
+                  setRenamingPath(null);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 min-w-0 px-1 py-0 text-sm border border-blue-400 dark:border-blue-500 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none"
+                autoFocus
+              />
+            ) : (
+              <>
+                <span className={cn('text-sm truncate', textColors.primary, isUnseen && 'font-semibold')}>{node.name}</span>
+                {isDirectory && unseenCount > 0 && (
+                  <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
+                    {unseenCount > 99 ? '99+' : unseenCount}
+                  </span>
+                )}
+                {isUnseen && (
+                  <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                )}
+              </>
             )}
           </div>
           
@@ -204,18 +279,22 @@ function DirectoryView({ title, rootDirName, nodes, onFileSelect, selectedFile, 
                       onMarkSeen(allUnseen);
                     }
                   } : undefined}
-                  onCreateFile={node.type === 'directory' && onCreateFile ? () => {
+                  onCreateFile={node.type === 'directory' && onCreateFile && !isStructural ? () => {
                     setCreateType('file');
                     setShowCreateForm(isCreatingInThisDir ? null : node.path);
                     setNewFileName('');
                   } : undefined}
-                  onCreateDirectory={node.type === 'directory' && onCreateDirectory ? () => {
+                  onCreateDirectory={node.type === 'directory' && onCreateDirectory && !isStructural ? () => {
                     setCreateType('directory');
                     setShowCreateForm(isCreatingInThisDir ? null : node.path);
                     setNewFileName('');
                   } : undefined}
-                  onUpload={node.type === 'directory' && onUploadFiles ? () => {
+                  onUpload={node.type === 'directory' && onUploadFiles && !isStructural ? () => {
                     document.getElementById(`upload-${node.path}`)?.click();
+                  } : undefined}
+                  onRename={onRename && !isClearable ? () => {
+                    setRenamingPath(node.path);
+                    setRenameValue(node.name);
                   } : undefined}
                   onDelete={onDelete && !isClearable ? () => {
                     showConfirm(t('confirm.deleteItem', { type: node.type, name: node.name }), {
@@ -306,7 +385,17 @@ function DirectoryView({ title, rootDirName, nodes, onFileSelect, selectedFile, 
         
         {node.type === 'directory' && isExpanded && node.children && (
           <div>
-            {node.children.map((child) => renderNode(child, currentLevel + 1))}
+            {node.children.length > 0
+              ? node.children.map((child) => renderNode(child, currentLevel + 1))
+              : (
+                <div
+                  className={cn('py-1 text-[11px] italic', textColors.tertiary)}
+                  style={{ paddingLeft: `${(currentLevel + 1) * 12 + 8}px` }}
+                >
+                  {t('panel.emptyDir')}
+                </div>
+              )
+            }
           </div>
         )}
       </div>
@@ -317,22 +406,41 @@ function DirectoryView({ title, rootDirName, nodes, onFileSelect, selectedFile, 
     <div>
       <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300 text-center">{title}</h4>
       <div
-        {...dropProps}
-        className={cn(
-          'border rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide relative transition-colors',
-          isDragOver
-            ? 'border-blue-400 dark:border-blue-500 border-dashed border-2 bg-blue-50/50 dark:bg-blue-900/20'
-            : 'border-gray-200 dark:border-gray-700',
-        )}
+        className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide"
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+          if (onDropFiles) {
+            const target = (e.target as HTMLElement).closest('[data-drop-dir]');
+            updateDragTarget(target?.getAttribute('data-drop-dir') ?? null);
+          }
+        }}
+        onDragLeave={onDropFiles ? (e) => {
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const { clientX, clientY } = e;
+          if (clientX <= rect.left || clientX >= rect.right || clientY <= rect.top || clientY >= rect.bottom) {
+            clearDragState();
+          }
+        } : undefined}
+        onDrop={async (e) => {
+          e.preventDefault();
+          clearDragState();
+          if (!onDropFiles) {
+            onDropError?.(t('error.dropBlockedSection'));
+            return;
+          }
+          const target = (e.target as HTMLElement).closest('[data-drop-dir]');
+          if (target?.hasAttribute('data-drop-blocked')) {
+            onDropError?.(t('error.dropBlockedCanonical'));
+            return;
+          }
+          const dirPath = target?.getAttribute('data-drop-dir');
+          if (dirPath) {
+            const entries = await extractDroppedFiles(e.dataTransfer);
+            if (entries.length > 0) onDropFiles(dirPath, entries);
+          }
+        }}
       >
-        {isDragOver && (
-          <div className="absolute inset-0 flex items-center justify-center bg-blue-50/80 dark:bg-blue-900/40 rounded-lg z-10 pointer-events-none">
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-300 text-sm font-medium">
-              <Upload className="w-4 h-4" />
-              {t('upload.dropHint')}
-            </div>
-          </div>
-        )}
         {nodes.length === 0 ? (
           <div className={cn('text-sm p-2 text-center', textColors.tertiary)}>
             No files in {title.toLowerCase()}
@@ -368,6 +476,16 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
 
   // Hide button labels when explorer is narrow
   const isNarrow = explorerWidth < 260;
+
+  // Drop error notification (shown in the same bottom-center area as upload progress)
+  const [dropError, setDropError] = useState<string | null>(null);
+  const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showDropError = useCallback((message: string) => {
+    if (dropErrorTimerRef.current) clearTimeout(dropErrorTimerRef.current);
+    setDropError(message);
+    dropErrorTimerRef.current = setTimeout(() => setDropError(null), 3000);
+  }, []);
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
@@ -436,6 +554,26 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     }
   };
 
+  const handleRename = async (oldPath: string, newName: string) => {
+    if (!selectedProject || !selectedFeature) return;
+
+    const parentDir = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
+    const newPath = parentDir ? `${parentDir}/${newName}` : newName;
+
+    if (oldPath === newPath) return;
+
+    try {
+      await renameFileOrDirectory(selectedProject, selectedFeature, oldPath, newPath);
+      await refreshFileTree();
+      if (selectedFile === oldPath) {
+        selectFile(newPath);
+      }
+    } catch (error) {
+      console.error('Failed to rename:', error);
+      showError(t('error.renameFailed'), { title: t('common:error.title') });
+    }
+  };
+
   const handleFileSelect = (path: string) => {
     // DirectoryView uses '' to mean deselect
     selectFile(path);
@@ -469,13 +607,19 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
 
   // ── Upload state (progress + cancel) ─────────────────────────────
   const [uploadState, setUploadState] = useState<{
-    active: boolean;
     loaded: number;
     total: number;
     fileCount: number;
     targetDir: string;
+    completed?: boolean;
   } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dismissUpload = useCallback(() => {
+    if (lingerTimerRef.current) { clearTimeout(lingerTimerRef.current); lingerTimerRef.current = null; }
+    setUploadState(null);
+  }, []);
 
   const doUpload = useCallback(async (
     dirPath: string,
@@ -486,7 +630,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     const count = Array.isArray(files) ? files.length : files.length;
     const controller = new AbortController();
     abortRef.current = controller;
-    setUploadState({ active: true, loaded: 0, total: 0, fileCount: count, targetDir: dirPath });
+    dismissUpload();
+    setUploadState({ loaded: 0, total: 0, fileCount: count, targetDir: dirPath });
 
     try {
       await uploadFiles(selectedProject, selectedFeature, dirPath, files, {
@@ -494,6 +639,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         signal: controller.signal,
       });
       await refreshFileTree();
+      setUploadState(prev => prev ? { ...prev, loaded: prev.total, completed: true } : prev);
+      lingerTimerRef.current = setTimeout(dismissUpload, 3000);
     } catch (error) {
       if ((error as DOMException)?.name === 'AbortError') {
         console.log('[Upload] Cancelled by user');
@@ -501,11 +648,11 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         console.error('Failed to upload files:', error);
         showError(t('error.uploadFailed'), { title: t('common:error.title') });
       }
-    } finally {
       setUploadState(null);
+    } finally {
       abortRef.current = null;
     }
-  }, [selectedProject, selectedFeature, refreshFileTree, showError, t]);
+  }, [selectedProject, selectedFeature, refreshFileTree, showError, t, dismissUpload]);
 
   const handleUploadFiles = useCallback(async (dirPath: string, files: FileList) => {
     await doUpload(dirPath, files);
@@ -516,8 +663,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   }, [doUpload]);
 
   const handleCancelUpload = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
+    if (uploadState?.completed) {
+      dismissUpload();
+    } else {
+      abortRef.current?.abort();
+    }
+  }, [uploadState?.completed, dismissUpload]);
 
   // Don't show if no feature is selected
   if (!selectedProject || !selectedFeature) {
@@ -541,7 +692,11 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
 
   return (
-    <div className="space-y-3">
+    <div
+      className="space-y-3"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => e.preventDefault()}
+    >
       <h3 className="flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-white">
         <span className="flex items-center gap-2 min-w-0">
           <Package className="h-4 w-4 shrink-0" />
@@ -574,7 +729,6 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       <div className="space-y-3">
         <DirectoryView
           title={t('panel.inputs')}
-          rootDirName="inputs"
           nodes={inputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
@@ -582,15 +736,16 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
           onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
           onDropFiles={policy.canUploadFiles ? handleDropFiles : undefined}
+          onRename={policy.canCreateFile ? handleRename : undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
+          onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
         />
         <DirectoryView
           title={t('panel.outputs')}
-          rootDirName="outputs"
           nodes={outputsNodes}
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
@@ -598,15 +753,16 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
           onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
           onDropFiles={policy.canUploadFiles ? handleDropFiles : undefined}
+          onRename={policy.canCreateFile ? handleRename : undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
+          onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
         />
         <DirectoryView
           title={t('panel.sessions')}
-          rootDirName="sessions"
           nodes={sessionsNodes}
           onFileSelect={selectFile}
           selectedFile={selectedFile}
@@ -615,38 +771,90 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onUploadFiles={undefined}
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onDownload={handleDownload}
+          onDropError={showDropError}
           isSessionSection={true}
         />
 
-        {/* Upload progress bar */}
-        {uploadState && (
-          <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 p-2.5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-blue-700 dark:text-blue-300 truncate">
-                {t('upload.uploading', { count: uploadState.fileCount, dir: uploadState.targetDir })}
-              </span>
-              <button
-                onClick={handleCancelUpload}
-                className="flex-shrink-0 ml-2 p-0.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-500 dark:text-blue-400 transition-colors"
-                title={t('upload.cancel')}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="w-full h-1.5 bg-blue-100 dark:bg-blue-900 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-[width] duration-200"
-                style={{ width: uploadState.total > 0 ? `${Math.round((uploadState.loaded / uploadState.total) * 100)}%` : '0%' }}
-              />
-            </div>
-            {uploadState.total > 0 && (
-              <div className="text-[10px] text-blue-500 dark:text-blue-400 text-right">
-                {Math.round((uploadState.loaded / uploadState.total) * 100)}%
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* Upload progress toast – fixed bottom-center via portal */}
+      {/* Bottom-center portal: upload progress OR drop error */}
+      {(uploadState || dropError) && createPortal(
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-80 flex flex-col gap-2">
+          {uploadState && (
+            <div
+              className={cn(
+                'rounded-xl border shadow-lg p-3 space-y-2 cursor-pointer transition-colors',
+                uploadState.completed
+                  ? 'border-green-200 dark:border-green-700 bg-white dark:bg-gray-900'
+                  : 'border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-900',
+              )}
+              onClick={uploadState.completed ? dismissUpload : undefined}
+            >
+              <div className="flex items-center justify-between">
+                <span className={cn(
+                  'flex items-center gap-2 text-xs font-medium truncate',
+                  uploadState.completed
+                    ? 'text-green-700 dark:text-green-300'
+                    : 'text-blue-700 dark:text-blue-300',
+                )}>
+                  {uploadState.completed
+                    ? <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                    : <Upload className="w-3.5 h-3.5 flex-shrink-0" />
+                  }
+                  {uploadState.completed
+                    ? t('upload.complete', { count: uploadState.fileCount })
+                    : t('upload.uploading', { count: uploadState.fileCount, dir: uploadState.targetDir })
+                  }
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCancelUpload(); }}
+                  className="flex-shrink-0 ml-2 p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  title={uploadState.completed ? t('upload.dismiss') : t('upload.cancel')}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className={cn(
+                'w-full h-2 rounded-full overflow-hidden',
+                uploadState.completed ? 'bg-green-100 dark:bg-green-900' : 'bg-blue-100 dark:bg-blue-900',
+              )}>
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-[width] duration-200',
+                    uploadState.completed ? 'bg-green-500 dark:bg-green-400' : 'bg-blue-500 dark:bg-blue-400',
+                  )}
+                  style={{ width: uploadState.total > 0 ? `${Math.round((uploadState.loaded / uploadState.total) * 100)}%` : '0%' }}
+                />
+              </div>
+              {uploadState.total > 0 && !uploadState.completed && (
+                <div className="text-[10px] text-blue-500 dark:text-blue-400 text-right font-medium">
+                  {Math.round((uploadState.loaded / uploadState.total) * 100)}%
+                </div>
+              )}
+            </div>
+          )}
+          {dropError && (
+            <div
+              className="relative rounded-xl border border-red-200 dark:border-red-700 bg-white dark:bg-gray-900 shadow-lg p-3 cursor-pointer transition-colors overflow-hidden"
+              onClick={() => setDropError(null)}
+            >
+              <span className="flex items-center gap-2 text-xs font-medium text-red-700 dark:text-red-300">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                {dropError}
+              </span>
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-100 dark:bg-red-900/50">
+                <div
+                  className="h-full bg-red-500 dark:bg-red-400"
+                  style={{ animation: 'shrink-progress 3000ms linear forwards' }}
+                />
+              </div>
+              <style>{`@keyframes shrink-progress{from{width:100%}to{width:0%}}`}</style>
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

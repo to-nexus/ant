@@ -41,7 +41,14 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // (worker's learn would overwrite multi-task kanban with only this worker's completed tasks)
   const _workerId = (state as any).workerId;
   const _isWorkerContext = _workerId !== undefined && _workerId !== null;
-  if (!_isWorkerContext && state._httpJobId && state.deps?.kanbanUpdate) {
+  
+  // ✅ Skip session write / Kanban / spec_complete card when parallelOrchestrator
+  // already saved failure/interruption state. If learn overwrites it, failedTasks
+  // and interruption details are lost (session.state = full replace).
+  const hasOrchestratorFailure = (state as any).interruption?.reason === 'tasks_failed'
+    || (state as any).interruption?.reason === 'recursion_limit';
+  
+  if (!_isWorkerContext && !hasOrchestratorFailure && state._httpJobId && state.deps?.kanbanUpdate) {
     const completedTasksDetails = state.completedTasksDetails || [];
     
     console.log(`\n🔥 [Learn] Final Kanban update`);
@@ -126,7 +133,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     }
   }
   
-  if (loadedFiles.length === 0) {
+  if (loadedFiles.length === 0 && !hasOrchestratorFailure) {
     throw new Error(`No design files found in outputs/design/ - docGen nodes must have run`);
   }
   
@@ -137,10 +144,11 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   const lessons = extractDesignLessons(state);
   
   // 2. Save turn to session file
+  // Skip when orchestrator already saved failure state — overwriting would lose failedTasks/interruption
   let sessionId: string | undefined;
   let turnId: number | undefined;
   
-  if (state.deps?.session) {
+  if (state.deps?.session && !_isWorkerContext && !hasOrchestratorFailure) {
     await saveSessionTurn(state);
     
     // Get session IDs for memory linking
@@ -156,7 +164,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // 3. Store lessons to vector memory + Index documents
-  if (state.deps?.memory && state.deps?.chunk) {
+  if (state.deps?.memory && state.deps?.chunk && !hasOrchestratorFailure) {
     await storeLessonsToMemory(state, lessons, sessionId, turnId);
     
     // ✅ Request GC if available (helps with memory pressure before document indexing)
@@ -177,7 +185,8 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ Spec completion choice card: offer to start development
-  if (state.detectionReport?.workType === 'spec' && !state.awaitingClarify) {
+  // Skip in worker context (main graph's learn handles it) and when orchestrator had failures
+  if (!_isWorkerContext && !hasOrchestratorFailure && state.detectionReport?.workType === 'spec' && !state.awaitingClarify) {
     try {
       const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
       const chatAPI = getChatAPIClient();
