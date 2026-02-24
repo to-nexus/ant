@@ -810,6 +810,10 @@ export function buildCodeGraph() {
       evaluationReport: null as any,
       lessons: null as any,
       
+      // Spec Documents (feature-scoped specifications)
+      specDocs: null as any,
+      selectedSpec: null as any,
+      
       // Reference Projects (for cross-project tool calling)
       referenceRequests: null as any,
       

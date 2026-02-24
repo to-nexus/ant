@@ -70,7 +70,7 @@ export function parseDetectResponse(response: string): DetectEnvironmentResponse
     return {
       mode: 'generate',
       modeReasoning: 'Failed to parse LLM response',
-      requireRagForDecompose: false,
+      requireRagForDecompose: true,
       decomposeKeywords: {
         errorFiles: [],
         keywords: [],

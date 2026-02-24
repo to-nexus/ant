@@ -81,11 +81,7 @@
     "githubRepo": "GitHub Repository",
     "githubRepoDesc": "GitHub repository URL (for github repo type)",
     "baseBranch": "Base Branch",
-    "baseBranchDesc": "Base branch name (e.g., main, master)",
-    "autoLearn": "Auto Learn",
-    "autoLearnDesc": "Enable automatic learning from code changes",
-    "strictValidation": "Strict Validation",
-    "strictValidationDesc": "Enable strict validation mode"
+    "baseBranchDesc": "Base branch name (e.g., main, master)"
   },
   "llmModels": {
     "title": "LLM Models by Job and Node",

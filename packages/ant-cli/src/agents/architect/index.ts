@@ -127,7 +127,6 @@ export async function architectAgent(
     projectPath: config.localPath,         // ✅ Used by TemplateComposer (primitive string)
     repoType: config.repoType,             // ✅ For mode detection (primitive string)
     branchBase: config.branchBase,         // ✅ For learn node branch creation (primitive string)
-    strictValidation: config.strictValidation ?? true, // ✅ For runtime validation (boolean)
     memory: vectorMemory,                  // Long-term knowledge (string)
     userLanguage,                          // ✅ User's language for this job (string)
     enableEvaluation,                      // Evaluation flag (boolean)

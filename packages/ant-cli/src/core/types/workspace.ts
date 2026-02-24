@@ -75,13 +75,6 @@ export interface WorkspaceConfig {
   owner?: string;                   // GitHub owner (for repoType='github')
   repo?: string;                    // GitHub repo name (for repoType='github')
   
-  // Agent settings
-  autoLearn?: boolean;              // Auto-save learnings after generation (default: true)
-  
-  // Validation settings
-  strictValidation?: boolean;       // Enable dynamic validation (build/lint/test) (default: false)
-  runTests?: boolean;               // Run tests during validation (default: false)
-  
   // LLM settings
   // Priority: workspaceConfig.llmModels[job][node] > llmModels[job].default > env vars > hardcoded defaults
   // Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai)
@@ -126,7 +119,6 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
     branchBase: config.branchBase,
     owner: config.owner,
     repo: config.repo,
-    autoLearn: config.autoLearn ?? true,
     llmModels: config.llmModels,
   };
 }
@@ -143,7 +135,6 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
     projectName,
     repoType: 'local',
     branchBase: 'main',
-    autoLearn: true,
     llmModels: defaultModel ? {
       design: {
         default: defaultModel,

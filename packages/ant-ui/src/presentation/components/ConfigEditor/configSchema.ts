@@ -46,18 +46,4 @@ export const CONFIG_SCHEMA: ConfigField[] = [
     required: true,
     description: 'schema.baseBranchDesc'
   },
-  {
-    key: 'autoLearn',
-    label: 'schema.autoLearn',
-    type: 'boolean',
-    required: true,
-    description: 'schema.autoLearnDesc'
-  },
-  {
-    key: 'strictValidation',
-    label: 'schema.strictValidation',
-    type: 'boolean',
-    required: false,
-    description: 'schema.strictValidationDesc'
-  }
 ];

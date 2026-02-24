@@ -20,7 +20,6 @@ export interface ProjectContext extends CoreProjectContext {
   projectPath?: string;     // ✅ Extracted from config.localPath
   repoType?: string;        // ✅ Extracted from config.repoType
   branchBase?: string;      // ✅ Extracted from config.branchBase (for learn node)
-  strictValidation?: boolean; // ✅ Extracted from config.strictValidation (for runtime validation)
   
   // ✅ UserContext information for path resolution
   userId?: string;

@@ -124,7 +124,6 @@ export class ProjectCrudService {
       // ✅ Auto-set githubRepo from org config (if GitHub owner is configured)
       ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
       branchBase: 'main',
-      autoLearn: true,
       llmModels: {
         design: {
           default: defaultModel,
@@ -236,7 +235,6 @@ export class ProjectCrudService {
       return {
         repositoryName: this.sanitizeProjectName(id),
         branchBase: 'main',
-        autoLearn: true,
         llmModels: {
           design: {
             default: defaultLLMModel,
