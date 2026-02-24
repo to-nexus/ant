@@ -53,15 +53,26 @@ DO NOT CREATE tasks for:
 {{#unless (eq jobMode "refactor")}}
 ## 📋 CONTRACT-FIRST STRATEGY (if applicable)
 
-**When dual design is detected:**
+### Principle
+
+API contract is written first as the single source of truth. Implementation documents reference the contract.
+
+### Fullstack (frontend + backend)
 
 | Phase | Priority | Target File | Content |
 |-------|----------|-------------|---------|
-| 1 | 200-209 | api-contract.md | REST endpoints, DTOs, auth scheme, error format |
+| 1 | 200-209 | api-contract.md | Endpoints, DTOs, auth scheme, error format |
 | 2 | 210-229 | fe-system-design.md | Component architecture, routing, state, API integration |
 | 3 | 230-249 | be-system-design.md | Service layers, database schema, endpoint implementations |
 
-**Execution order ensures FE and BE are ALWAYS aligned!**
+### Backend-only (no frontend)
+
+| Phase | Priority | Target File | Content |
+|-------|----------|-------------|---------|
+| 1 | 200-209 | api-contract.md | Endpoints, DTOs, auth scheme, error format |
+| 2 | 210-229 | be-system-design.md | Service layers, database schema, endpoint implementations |
+
+**Constraint**: api-contract.md is ALWAYS written first (exclusive). Implementation documents follow.
 
 ---
 
@@ -156,13 +167,15 @@ DO NOT CREATE tasks for:
 ### Document Type Rules
 
 **"unified"**:
-- Use for: Frontend-only, Backend-only, or tightly coupled fullstack
-- targetFiles: `["system-design.md"]`
+- Use for: Frontend-only projects, CLI tools, or projects without externally-consumed API
+- targetFiles (frontend-only): `["fe-system-design.md"]`
+- targetFiles (other): `["system-design.md"]`
 - services: `[]` (empty)
 
 **"contract-first"**:
-- Use for: Frontend AND Backend with single backend
-- targetFiles: `["api-contract.md", "fe-system-design.md", "be-system-design.md"]`
+- Use for: Projects that expose external API (fullstack or backend-only)
+- targetFiles (fullstack): `["api-contract.md", "fe-system-design.md", "be-system-design.md"]`
+- targetFiles (backend-only): `["api-contract.md", "be-system-design.md"]`
 - services: `[]` (empty)
 
 **"msa-contract-first"**:
@@ -194,7 +207,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **`parallelGroup: "<group-id>"`** — Tasks with SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
 
 - **"unified"** mode: All tasks target the SAME file → same group ID (e.g., `"system-design"`)
-- **"contract-first"** mode: FE and BE tasks target DIFFERENT files → different group IDs (e.g., `"frontend"`, `"backend"`)
+- **"contract-first"** mode: Implementation tasks target DIFFERENT files → different group IDs (e.g., `"frontend"`, `"backend"`)
 - **"msa-contract-first"** mode: Each service targets a DIFFERENT file → each service gets its own group ID (e.g., `"be-auth"`, `"be-order"`)
 
 **⚠️ Constraint:** If tasks write to the same file, they MUST share the same `parallelGroup`.
@@ -209,21 +222,21 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 {
   "documentType": "unified",
   "services": [],
-  "targetFiles": ["system-design.md"],
+  "targetFiles": ["fe-system-design.md"],
   "tasks": [
     {
       "id": "design-arch",
       "name": "Design Document: Architecture & Data",
-      "targetFile": "system-design.md",
-      "parallelGroup": "system-design",
+      "targetFile": "fe-system-design.md",
+      "parallelGroup": "fe-system-design",
       "description": "Design system architecture, API integration strategy, and data models. MAX 100 lines! (Total: 200 lines)",
       "priority": 220
     },
     {
       "id": "design-ui",
       "name": "Design Document: UI Components",
-      "targetFile": "system-design.md",
-      "parallelGroup": "system-design",
+      "targetFile": "fe-system-design.md",
+      "parallelGroup": "fe-system-design",
       "description": "Design component structure, routing, and interaction patterns. MAX 100 lines! (Total: 200 lines, ~100 after task 1)",
       "priority": 240
     }
@@ -231,7 +244,35 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 }
 ```
 
-### Example 2: Frontend + Backend (Contract-First)
+### Example 2: Backend-only with API (Contract-First without FE)
+
+```json
+{
+  "documentType": "contract-first",
+  "services": [],
+  "targetFiles": ["api-contract.md", "be-system-design.md"],
+  "tasks": [
+    {
+      "id": "design-contract",
+      "name": "API Contract Definition",
+      "targetFile": "api-contract.md",
+      "exclusive": true,
+      "description": "Define API contract (endpoints, DTOs, auth scheme, error format). MAX 120 lines!",
+      "priority": 200
+    },
+    {
+      "id": "design-backend",
+      "name": "Backend System Design",
+      "targetFile": "be-system-design.md",
+      "parallelGroup": "backend",
+      "description": "Design backend architecture implementing API contract: services, database, endpoints. MAX 200 lines!",
+      "priority": 220
+    }
+  ]
+}
+```
+
+### Example 3: Frontend + Backend (Contract-First)
 
 ```json
 {
@@ -267,7 +308,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 }
 ```
 
-### Example 3: MSA with Multiple Services (MSA-Contract-First)
+### Example 4: MSA with Multiple Services (MSA-Contract-First)
 
 ```json
 {
