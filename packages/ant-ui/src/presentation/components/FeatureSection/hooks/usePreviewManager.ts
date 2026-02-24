@@ -79,35 +79,42 @@ export function usePreviewManager(
     return localError;
   }, [state, previewStatus?.error, previewStatus?.logs, localError]);
 
-  // Initial status check + periodic sync (recovers from SSE drops)
+  // Sync preview status from server (mount, feature change, SSE reconnect)
+  const syncPreviewStatus = useCallback(() => {
+    if (!selectedProject || !selectedFeature) return;
+    getPreviewStatus(selectedProject, selectedFeature)
+      .then(status => {
+        if (Date.now() < stopGuardUntilRef.current && status?.running) {
+          return;
+        }
+        // Preserve accumulated SSE logs — getPreviewStatus doesn't return them
+        const currentLogs = useStore.getState().previewStatus?.logs;
+        setPreviewStatus({
+          ...status,
+          logs: status?.logs || currentLogs || []
+        });
+      })
+      .catch(err => {
+        console.error('[usePreviewManager] Status sync failed:', err);
+      });
+  }, [selectedProject, selectedFeature, setPreviewStatus]);
+
+  // Initial status check on mount / feature change
   useEffect(() => {
     if (!selectedProject || !selectedFeature) {
       setPreviewStatus(undefined);
       return;
     }
+    syncPreviewStatus();
+  }, [selectedProject, selectedFeature, syncPreviewStatus, setPreviewStatus]);
 
-    const syncStatus = () => {
-      getPreviewStatus(selectedProject, selectedFeature)
-        .then(status => {
-          // Don't override if user just pressed stop (guard window)
-          if (Date.now() < stopGuardUntilRef.current && status?.running) {
-            return;
-          }
-          setPreviewStatus(status);
-        })
-        .catch(err => {
-          console.error('[usePreviewManager] Status check failed:', err);
-        });
-    };
-
-    // Initial sync
-    syncStatus();
-    
-    // Periodic sync every 5s — recovers from missed SSE events
-    const intervalId = setInterval(syncStatus, 5_000);
-    
-    return () => clearInterval(intervalId);
-  }, [selectedProject, selectedFeature, setPreviewStatus]);
+  // Re-sync on SSE reconnection (recovers from missed events)
+  const connectionStatus = useStore((state) => state.connectionStatus);
+  useEffect(() => {
+    if (connectionStatus === 'connected' && selectedProject && selectedFeature) {
+      syncPreviewStatus();
+    }
+  }, [connectionStatus, syncPreviewStatus, selectedProject, selectedFeature]);
 
   // Check dismissal state when status changes
   useEffect(() => {
@@ -249,10 +256,14 @@ export function usePreviewManager(
   const stopServer = useCallback(async () => {
     if (!selectedProject || !selectedFeature) return;
 
-    // Optimistically drop status immediately so the UI stops showing "Running".
-    // Also guard against late SSE status updates re-marking it as running.
+    // Optimistically mark as stopped while preserving logs for review.
+    // Guard against late SSE status updates re-marking it as running.
     stopGuardUntilRef.current = Date.now() + 5000;
-    setPreviewStatus(undefined);
+    const currentLogs = useStore.getState().previewStatus?.logs;
+    setPreviewStatus(currentLogs?.length
+      ? { running: false, ready: false, logs: currentLogs } as any
+      : undefined
+    );
     setPreviewLoading(false);
 
     setLocalError(undefined);

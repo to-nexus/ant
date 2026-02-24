@@ -331,6 +331,9 @@ export class PreviewService {
     const urlKey = toUrlKey(serverKey);
     const proxyUrl = `/${urlKey}`;
     
+    // Clear previous session logs on new start
+    this.logManager.clearLogs(serverKey);
+    
     // ── Distributed lock: prevent multi-pod race ──
     // Only one pod should handle start for a given serverKey at a time.
     // Without this, ALB round-robin can send multiple start requests to different pods,
@@ -753,10 +756,9 @@ export class PreviewService {
       await this.infrastructureManager.stopInfrastructure(localPath, logCb, infraProjectName);
     }
     
-    // Clean up local state (process handles, paths, logs)
+    // Clean up local state (process handles, paths)
     this.previewServers.delete(serverKey);
     this.previewServerPaths.delete(serverKey);
-    this.logManager.clearLogs(serverKey);
     
     // Build issues stack
     const issues: PreviewIssue[] = [];
@@ -1101,10 +1103,9 @@ export class PreviewService {
       await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature);
     }
     
-    // Cleanup local state (process handles, paths, logs)
+    // Cleanup local state (process handles, paths — logs preserved until next start)
     this.previewServers.delete(serverKey);
     this.previewServerPaths.delete(serverKey);
-    this.logManager.clearLogs(serverKey);
     
     logger.info(`Stopped all servers for ${serverKey} (local=${stoppedCount}, redis=${isRunningInRedis})`, { component: 'PreviewService' });
     

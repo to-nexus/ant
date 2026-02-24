@@ -37,8 +37,8 @@ export function analyzePreviewState(
       case 'installing': return 'installing';
       case 'starting': return 'starting';
       case 'running': return 'running';
-      case 'error':
-      case 'stopped': return 'error';
+      case 'error': return 'error';
+      case 'stopped': return 'idle';
       case 'idle': return isLoading ? 'starting' : 'idle';
     }
   }
