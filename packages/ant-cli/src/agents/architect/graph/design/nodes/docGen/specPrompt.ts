@@ -4,6 +4,9 @@
  * Builds LLM messages for spec document generation.
  * Unlike system-design (chapter-based, multi-file) or ui-design (JSON, multi-doc),
  * spec produces a single spec-{slug}.md with a fixed structure.
+ * 
+ * Uses template files (base-spec.md + rules-spec.md) via FilePromptAdapter,
+ * following the same WHAT/HOW separation as system-design and ui-design.
  */
 
 import { DesignGraphState } from '../../state';
@@ -12,80 +15,33 @@ import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 
-const SPEC_SYSTEM_PROMPT = `You are an expert software architect and technical writer.
-Your task is to create a detailed, actionable specification document (spec doc) for a specific feature or task.
+const TEMPLATE_PATH = 'design/phases/execute/base-spec';
 
-The spec doc will be consumed by a Code Job that implements the feature.
-Write clearly and precisely so an LLM or developer can implement the feature without ambiguity.
-
-## Output Format
-
-Write the spec document as a Markdown file wrapped in XML file tags:
-
-<file path="outputs/design/{{targetFile}}">
-# Spec: {{title}}
-
-## Overview
-Brief description of the feature/change.
-
-## Requirements
-- Functional requirements (what it should do)
-- Non-functional requirements (performance, security, etc.)
-
-## Scope
-- What is included in this work
-- What is explicitly excluded
-
-## Technical Approach
-- Architecture changes needed
-- Data model changes
-- API changes (new endpoints, modified contracts)
-- Dependencies on existing code/systems
-
-## Implementation Tasks
-1. Task 1: Description
-2. Task 2: Description
-...
-
-## Acceptance Criteria
-- Criterion 1
-- Criterion 2
-</file>
-
-## Codebase Exploration Protocol
-
-**Principle**: You have read-only tools available (read_file, list_files, search_code) to inspect the existing codebase. A spec grounded in actual code produces actionable implementation tasks. A spec written without codebase knowledge produces generic placeholders.
-
-**Observation targets** (use tools to investigate):
-
-| Target | What to observe |
-|--------|----------------|
-| **Architecture boundary** | Where does the requested feature touch existing modules? |
-| **Data flow** | How does data currently move through the relevant area? |
-| **Naming conventions** | What patterns do existing modules follow? |
-| **Integration points** | Which existing files need modification vs new files needed? |
-
-**Constraint**: Do NOT assume code structure. When the directive describes changes to an existing system, use search_code and read_file to verify actual structure before specifying Technical Approach and Implementation Tasks.
-
-**Constraint**: When you need to inspect multiple files, issue ALL needed tool calls in ONE response. Do NOT discover incrementally when the context already reveals the needed set.
-
-**Constraint**: Do NOT explore the entire codebase. Focus only on the area directly relevant to the directive.
-
-⚠️ **Blind spot**: LLMs tend to write specs from imagination rather than observation. If the directive references existing functionality, ALWAYS verify with tools before writing the spec.
-
-## Rules
-
-1. Be specific and concrete. Use your tools to discover actual file paths, function names, and data structures. Reference them in the spec.
-2. Break down the implementation into ordered, atomic tasks that can each be executed independently.
-3. If you need more information from the user to write a complete spec, wrap your questions in a <clarify> tag:
-   <clarify>
-   - Question 1?
-   - Question 2?
-   </clarify>
-   When using <clarify>, do NOT output the spec file. Only ask questions.
-4. Do NOT include generic placeholder content. If a section requires codebase knowledge, use tools to gather it first. Every section must contain actionable, project-specific information.
-5. The spec should be self-contained: a reader should understand the full scope without needing other documents.
-`;
+/**
+ * Render the spec system prompt from template files.
+ * Accesses promptPort through PromptEngine deps (same pattern as uiDesignPrompt).
+ */
+async function renderSpecSystemPrompt(
+  state: DesignGraphState,
+  vars: Record<string, any>
+): Promise<string> {
+  const promptEngine = state.deps?.promptEngine;
+  if (!promptEngine) {
+    throw new Error('[DocGen/Spec] PromptEngine is required but not available in state.deps');
+  }
+  
+  const promptPort = (promptEngine as any).deps?.promptPort;
+  if (!promptPort) {
+    throw new Error('[DocGen/Spec] PromptPort is required but not available in PromptEngine.deps');
+  }
+  
+  const rendered = await promptPort.render(TEMPLATE_PATH, vars);
+  if (!rendered) {
+    throw new Error(`[DocGen/Spec] Failed to render template: ${TEMPLATE_PATH}`);
+  }
+  
+  return rendered;
+}
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -100,10 +56,12 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   if (!state.conversationHistory || state.conversationHistory.length === 0) {
     console.log(`📋 [DocGen/Spec] Building fresh prompt for ${targetFile}`);
 
-    // Resolve system prompt with target file name
-    const systemPrompt = SPEC_SYSTEM_PROMPT
-      .replace('{{targetFile}}', targetFile)
-      .replace('{{title}}', task?.name?.replace('Spec: ', '') || 'Feature');
+    const title = task?.name?.replace('Spec: ', '') || 'Feature';
+    const systemPrompt = await renderSpecSystemPrompt(state, {
+      targetFile,
+      title,
+      jobMode,
+    });
 
     const systemBlock: CacheableContent = {
       type: 'text',
@@ -111,14 +69,12 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       cache_control: { type: 'ephemeral' },
     };
 
-    // Context block: PRD, existing design docs, codebase info
     const contextParts: string[] = [];
 
     if (state.prd) {
       contextParts.push(`# Requirements Document (PRD)\n\n${state.prd}`);
     }
 
-    // Load existing spec content for refactor mode
     if (jobMode === 'refactor') {
       try {
         const pathModule = await import('path');
@@ -141,7 +97,6 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       }
     }
 
-    // Supplementary design docs (api-contract only, for context)
     if (state.existingDesignDocs) {
       const apiContract = state.existingDesignDocs['api-contract.md'];
       if (apiContract) {
@@ -153,7 +108,6 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       ? { type: 'text', text: contextParts.join('\n\n---\n\n'), cache_control: { type: 'ephemeral' } }
       : { type: 'text', text: '(No additional context documents available)' };
 
-    // Runtime block: directive and task info
     const runtimeParts: string[] = [];
 
     runtimeParts.push(`# Target Document`);
@@ -172,18 +126,11 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     runtimeParts.push(directive);
     runtimeParts.push('');
 
-    if (jobMode === 'refactor') {
-      runtimeParts.push(`# Mode: Refactor`);
-      runtimeParts.push(`You are MODIFYING an existing spec document. Apply the user's requested changes while preserving the overall structure.`);
-      runtimeParts.push('');
-    }
-
     const runtimeBlock: CacheableContent = {
       type: 'text',
       text: runtimeParts.join('\n'),
     };
 
-    // Log prompt
     const jobId = state.jobId || state._httpJobId || 'unknown';
     if (state.context.featurePath) {
       try {
@@ -196,6 +143,10 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
           {
             taskId: task?.id,
             taskName: task?.name,
+            templatePath: TEMPLATE_PATH,
+            usedTemplates: [
+              'design/phases/execute/rules-spec',
+            ],
             injectedVariables: {
               targetFile,
               jobMode,
@@ -216,13 +167,11 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     });
   }
 
-  // Append conversation history (for clarify continuation)
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     console.log(`📋 [DocGen/Spec] Appending conversation history (${state.conversationHistory.length} messages)`);
 
     const tokenManager = new TokenBudgetManager();
     
-    // Universal 3-step compaction: microcompact → auto-compact → prune
     const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(state.conversationHistory, tokenManager);
 
     let isFirstMsg = true;
@@ -245,6 +194,15 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
         });
       }
       isFirstMsg = false;
+    }
+
+    // Anthropic API requires conversation to end with a user message.
+    // If history ends with assistant (e.g., retry after no <done>), append continuation.
+    if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+      messages.push({
+        role: 'user',
+        content: [{ type: 'text', text: 'Continue.' }],
+      });
     }
 
     const estimation = tokenManager.checkBudget(messages as any);

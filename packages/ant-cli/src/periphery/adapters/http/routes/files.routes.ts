@@ -297,6 +297,41 @@ export function createFilesRoutes(deps: {
     }
   });
 
+  // Rename file or directory in a feature
+  router.patch('/projects/:id/features/:feature/rename', async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const { oldPath, newPath } = req.body;
+
+      if (!oldPath || !newPath) {
+        return res.status(400).json({ error: 'oldPath and newPath are required' });
+      }
+
+      const userContext = extractUserContext(req);
+      const workspaceResolver = (deps.projectService as any).workspaceResolver;
+      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+
+      const fullOldPath = resolveSafePath(featurePath, oldPath);
+      const fullNewPath = resolveSafePath(featurePath, newPath);
+
+      try {
+        await fs.promises.access(fullOldPath);
+      } catch {
+        return res.status(404).json({ error: 'Source file or directory not found' });
+      }
+
+      // Ensure parent directory of new path exists
+      await fs.promises.mkdir(path.dirname(fullNewPath), { recursive: true });
+      await fs.promises.rename(fullOldPath, fullNewPath);
+
+      res.json({ success: true, oldPath, newPath });
+    } catch (error: any) {
+      console.error('[files.routes] Rename error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Delete file or directory in a feature
   router.delete('/projects/:id/features/:feature/item', async (req: Request, res: Response) => {
     try {

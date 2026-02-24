@@ -5,7 +5,8 @@
     "outputs": "출력",
     "sessions": "세션",
     "send": "보내기",
-    "receive": "받기"
+    "receive": "받기",
+    "emptyDir": "비어있는 디렉토리"
   },
   "actions": {
     "createFile": "파일 생성",
@@ -15,6 +16,7 @@
     "send": "보내기",
     "clearContents": "내용 비우기",
     "markAllSeen": "모두 읽음 처리",
+    "rename": "이름 변경",
     "delete": "삭제",
     "openInNewTab": "새 탭에서 열기"
   },
@@ -27,12 +29,17 @@
     "dropHint": "여기에 파일을 놓으세요",
     "uploading": "{{dir}}에 {{count}}개 파일 업로드 중",
     "cancel": "취소",
-    "cancelled": "업로드가 취소되었습니다"
+    "cancelled": "업로드가 취소되었습니다",
+    "complete": "{{count}}개 파일 업로드 완료",
+    "dismiss": "닫기"
   },
   "error": {
     "fileCreateFailed": "파일 생성에 실패했습니다.",
     "dirCreateFailed": "폴더 생성에 실패했습니다.",
     "deleteFailed": "삭제에 실패했습니다.",
+    "renameFailed": "이름 변경에 실패했습니다. 이름을 확인하고 다시 시도해주세요.",
+    "dropBlockedCanonical": "이 위치에는 업로드할 수 없습니다. 시스템 하위 디렉토리만 존재하는 영역입니다.",
+    "dropBlockedSection": "이 섹션에는 파일을 업로드할 수 없습니다.",
     "uploadFailed": "업로드에 실패했습니다. 잠시 후 다시 시도해주세요.",
     "createFailed": "생성에 실패했습니다. 이름을 확인하고 다시 시도해주세요.",
     "saveFailed": "저장에 실패했습니다.",

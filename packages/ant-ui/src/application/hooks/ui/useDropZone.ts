@@ -1,21 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
-import type { DragEvent } from 'react';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
-
-export interface UseDropZoneOptions {
-  onDrop: (entries: UploadFileEntry[]) => void;
-  disabled?: boolean;
-}
-
-export interface UseDropZoneReturn {
-  isDragOver: boolean;
-  dropProps: {
-    onDragOver: (e: DragEvent) => void;
-    onDragEnter: (e: DragEvent) => void;
-    onDragLeave: (e: DragEvent) => void;
-    onDrop: (e: DragEvent) => void;
-  };
-}
 
 async function readFileEntry(entry: FileSystemFileEntry): Promise<File> {
   return new Promise((resolve, reject) => {
@@ -32,7 +15,6 @@ async function readDirectoryEntries(
   const readBatch = (): Promise<FileSystemEntry[]> =>
     new Promise((resolve, reject) => reader.readEntries(resolve, reject));
 
-  // readEntries may return partial results; keep calling until empty
   let batch = await readBatch();
   while (batch.length > 0) {
     allEntries.push(...batch);
@@ -61,7 +43,7 @@ async function collectEntries(
   }
 }
 
-async function extractDroppedFiles(dataTransfer: DataTransfer): Promise<UploadFileEntry[]> {
+export async function extractDroppedFiles(dataTransfer: DataTransfer): Promise<UploadFileEntry[]> {
   const items = dataTransfer.items;
   const entries: FileSystemEntry[] = [];
 
@@ -80,68 +62,4 @@ async function extractDroppedFiles(dataTransfer: DataTransfer): Promise<UploadFi
     await collectEntries(entry, '', result);
   }
   return result;
-}
-
-export function useDropZone({ onDrop, disabled }: UseDropZoneOptions): UseDropZoneReturn {
-  const [isDragOver, setIsDragOver] = useState(false);
-  const dragCounterRef = useRef(0);
-
-  const handleDragOver = useCallback(
-    (e: DragEvent) => {
-      if (disabled) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'copy';
-    },
-    [disabled],
-  );
-
-  const handleDragEnter = useCallback(
-    (e: DragEvent) => {
-      if (disabled) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounterRef.current += 1;
-      if (dragCounterRef.current === 1) setIsDragOver(true);
-    },
-    [disabled],
-  );
-
-  const handleDragLeave = useCallback(
-    (e: DragEvent) => {
-      if (disabled) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounterRef.current -= 1;
-      if (dragCounterRef.current <= 0) {
-        dragCounterRef.current = 0;
-        setIsDragOver(false);
-      }
-    },
-    [disabled],
-  );
-
-  const handleDrop = useCallback(
-    async (e: DragEvent) => {
-      if (disabled) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dragCounterRef.current = 0;
-      setIsDragOver(false);
-
-      const entries = await extractDroppedFiles(e.dataTransfer);
-      if (entries.length > 0) onDrop(entries);
-    },
-    [disabled, onDrop],
-  );
-
-  return {
-    isDragOver,
-    dropProps: {
-      onDragOver: handleDragOver,
-      onDragEnter: handleDragEnter,
-      onDragLeave: handleDragLeave,
-      onDrop: handleDrop,
-    },
-  };
 }

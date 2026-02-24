@@ -415,9 +415,22 @@ export class PromptEngine {
     };
     
     const system = await this.deps.promptPort.render('code/phases/decompose/rules', enrichedContext);
+
+    let envContract = '';
+    try {
+      envContract = await this.deps.promptPort.render('code/base/injections/preview-env-contract', {});
+      console.log(`📋 [PromptEngine] Injected preview-env-contract into decompose prompt`);
+    } catch {
+      // Template not found — skip injection
+    }
+
+    const fullSystem = envContract
+      ? `${system}\n\n---\n\n${envContract}`
+      : system;
+
     const user = await this.deps.promptPort.render('code/phases/decompose/base', enrichedContext);
     
-    return { system, user };
+    return { system: fullSystem, user };
   }
 
   /**

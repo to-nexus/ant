@@ -106,6 +106,20 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.jobTiming = (session.state as any).jobTiming;
         }
         
+      } else if (session?.state && (session.state as any).awaitingDetectClarify) {
+        // ✅ Detect clarify resume: user chose between spec and system-design
+        console.log(`🔄 [DesignRunner] Restoring awaitingDetectClarify state from session`);
+        initial.isResume = true;
+        initial.awaitingDetectClarify = true;
+        
+        if ((session.state as any).directive) {
+          initial.directive = (session.state as any).directive;
+        }
+        initial.overrideDirective = session.state.overrideDirective;
+        initial.chatSource = session.state.chatSource;
+        if ((session.state as any).prd) {
+          initial.prd = (session.state as any).prd;
+        }
       } else if (session?.state && (session.state as any).awaitingClarify) {
         // ✅ Spec clarify resume: restore conversation and awaitingClarify flag
         console.log(`🔄 [DesignRunner] Restoring awaitingClarify state from session`);

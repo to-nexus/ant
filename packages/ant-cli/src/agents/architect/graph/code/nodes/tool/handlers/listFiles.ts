@@ -41,14 +41,20 @@ export async function handleListFiles(
     
     console.log(`[listFiles] Listed ${filtered.length} items in ${directory}`);
     
-    // UI notification: listed_files complete
-    await chatAPI.showChatStatus('listed_files', { 
-      filesCount: filtered.length,
-      totalFiles: items.length,
-      pattern,
-      filesList: filtered.slice(0, 20),
-      _mergeIndex: listingIndex
-    });
+    // UI notification: listed_files complete (0 results → remove card entirely)
+    if (filtered.length === 0) {
+      if (listingIndex !== undefined) {
+        await chatAPI.removeChatStatus(listingIndex, 'listing_files');
+      }
+    } else {
+      await chatAPI.showChatStatus('listed_files', { 
+        filesCount: filtered.length,
+        totalFiles: items.length,
+        pattern,
+        filesList: filtered.slice(0, 20),
+        _mergeIndex: listingIndex
+      });
+    }
     
     return filtered;
   }, { directory: resolvedDir.displayPath, pattern });
