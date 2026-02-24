@@ -343,7 +343,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 - Do NOT create setup task to fix missing entry points (that is a feature task)
 - Monorepo -> multiple setup tasks (root + each package), ascending priorities (100, 101, 102, ...)
 - Monolithic -> single setup task
-- Setup = infrastructure and configuration ONLY (dependency files, configs). Setup MUST NOT create application source code
+- Setup = infrastructure and configuration (dependency manifests, build tool config, environment files). Setup MUST NOT create application source code (handlers, services, business logic)
 - Features = user-facing functionality (source code)
 - Each task must have a unique id (kebab-case)
 
