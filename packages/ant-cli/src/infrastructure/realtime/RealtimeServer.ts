@@ -222,9 +222,19 @@ export class RealtimeServer {
    * Stop the server
    */
   async stop(): Promise<void> {
+    // End all SSE connections first so server.close() doesn't block
+    this.sseService.closeAll();
+
     if (this.server) {
-      return new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
+        const SHUTDOWN_TIMEOUT_MS = 5000;
+        const timeout = setTimeout(() => {
+          logger.warn(`Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit`, { component: 'RealtimeServer' });
+          resolve();
+        }, SHUTDOWN_TIMEOUT_MS);
+
         this.server!.close(() => {
+          clearTimeout(timeout);
           logger.info('Realtime Server stopped', { component: 'RealtimeServer' });
           resolve();
         });

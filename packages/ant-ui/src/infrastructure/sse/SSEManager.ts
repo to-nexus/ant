@@ -78,6 +78,11 @@ class SSEManager {
   
   // Connection status callback - notifies Store when SSE connection status changes
   private statusCallback: ConnectionStatusCallback | null = null;
+
+  // Early error callback -- fires on the FIRST SSE error without changing
+  // connectionStatus.  ServerDownDetector uses this to trigger a health check
+  // before the 5-attempt retry cycle completes.
+  private onErrorCallback: (() => void) | null = null;
   
   /**
    * Register a callback to be notified when unified SSE connection status changes.
@@ -85,6 +90,14 @@ class SSEManager {
    */
   setStatusCallback(callback: ConnectionStatusCallback): void {
     this.statusCallback = callback;
+  }
+
+  /**
+   * Register a callback that fires on the first SSE error of each disconnect cycle.
+   * Does NOT change connectionStatus -- the conservative retry logic is untouched.
+   */
+  setOnErrorCallback(callback: (() => void) | null): void {
+    this.onErrorCallback = callback;
   }
   
   /**
@@ -231,6 +244,12 @@ class SSEManager {
           this.unifiedConnection.isConnected = false;
           this.unifiedConnection.reconnectAttempts++;
           console.warn(`[SSE] unified: error (attempt ${this.unifiedConnection.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+          // Notify early error listener on the first failure so it can run
+          // a health check immediately (without waiting for 5 retries).
+          if (this.unifiedConnection.reconnectAttempts === 1) {
+            this.onErrorCallback?.();
+          }
           
           if (this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts) {
             // Exponential backoff retry after max attempts

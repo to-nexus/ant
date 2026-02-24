@@ -57,16 +57,25 @@ export function useJobRestoration({
             return;
           }
           
-          // ✅ CRITICAL: Verify job is actually running on server BEFORE restoring
-          // Only restore if the server explicitly confirms the job is running or queued.
-          // Any other status (completed, failed, unknown, interrupted) → clear localStorage.
+          // Verify job is actually running on server BEFORE restoring.
+          // Also checks Redis status to detect jobs interrupted by a server crash
+          // (BullMQ may say "unknown" while Redis says "paused").
           try {
             console.log('[useJobRestoration] 🔍 Verifying job status on server before restore...');
             const position = await fetchQueuePosition(jobId);
             console.log('[useJobRestoration] Server response:', position);
-            
-            if (position.status !== 'running' && position.status !== 'queued') {
-              console.log(`[useJobRestoration] 🚫 Job not active (status: ${position.status}), clearing localStorage`);
+
+            const bullmqActive = position.status === 'running' || position.status === 'queued';
+            const crashInterrupted = position.redisStatus === 'paused' || position.redisStatus === 'failed';
+
+            if (!bullmqActive) {
+              if (crashInterrupted) {
+                // Job was interrupted by a crash — clear running state so the
+                // session-based interruption UI (resume button) takes over.
+                console.log(`[useJobRestoration] 🔄 Job was interrupted (redis=${position.redisStatus}), clearing running state`);
+              } else {
+                console.log(`[useJobRestoration] 🚫 Job not active (bullmq=${position.status}, redis=${position.redisStatus ?? 'n/a'}), clearing localStorage`);
+              }
               localStorage.removeItem('ant-ui:running-task');
               localStorage.removeItem('ant-ui:task-start-time');
               localStorage.removeItem('ant-ui:task-mode');

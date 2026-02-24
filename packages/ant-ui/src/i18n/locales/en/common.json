@@ -58,5 +58,11 @@
     "daysAgo": "{{count}}d ago",
     "hours": "{{count}}h",
     "days": "{{count}}d"
+  },
+  "serverDown": {
+    "connecting": "Trying to reconnect to server...",
+    "title": "Server Disconnected",
+    "message": "The server connection was lost. Your in-progress work can be resumed after the server restarts.",
+    "confirm": "OK"
   }
 }

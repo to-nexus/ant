@@ -36,11 +36,10 @@ import { REDIS_CHANNELS } from '../state/redisConstants';
 // Queue configuration
 const QUEUE_NAME = 'ant-jobs';
 const JOB_OPTIONS = {
-  attempts: 3,
-  backoff: {
-    type: 'exponential' as const,
-    delay: 1000
-  },
+  // No automatic retry — stalled/crashed jobs should be resumed explicitly
+  // by the user via the UI. Automatic retry would start from scratch because
+  // BullMQ replays the original payload without isResume=true.
+  attempts: 1,
   removeOnComplete: {
     age: 24 * 3600,     // Keep completed jobs for 24 hours
     count: 1000         // Keep last 1000 completed jobs
@@ -242,6 +241,65 @@ export class BullMQJobQueue implements JobQueuePort {
       this.progressCallbacks.delete(jobId);
       this.completionCallbacks.delete(jobId);
     });
+
+    this.queueEvents.on('stalled', async (args: { jobId: string }) => {
+      const { jobId } = args;
+      logger.warn(`Job stalled (crash detected): ${jobId}`, { component: 'BullMQJobQueue' });
+
+      // Multi-pod idempotency: multiple API Server pods receive this event.
+      // Only one should process it (same pattern as the 'completed' handler).
+      const acquired = await this.stateStore.acquireLock(`ant:job-stalled:${jobId}`, 120);
+      if (!acquired) {
+        logger.debug(`Duplicate stalled event blocked: ${jobId}`, { component: 'BullMQJobQueue' });
+        return;
+      }
+
+      // Skip if already handled (e.g. by StaleJobRecovery on startup)
+      const currentStatus = await this.stateStore.getJobStatus(jobId);
+      if (currentStatus && currentStatus.status !== 'running' && currentStatus.status !== 'queued') {
+        logger.debug(`Job ${jobId} already resolved (status=${currentStatus.status}), skipping stalled handler`, { component: 'BullMQJobQueue' });
+        return;
+      }
+
+      try {
+        await this.stateStore.updateJobStatus(jobId, {
+          status: 'paused',
+          completedAt: new Date().toISOString(),
+          error: 'Worker crashed — job interrupted',
+        });
+
+        const bullJob = await this.queue.getJob(jobId);
+        let projectId: string | undefined;
+        let featureName: string | undefined;
+        let userEmail: string | undefined;
+
+        if (bullJob?.data) {
+          const payload = bullJob.data as JobPayload;
+          projectId = payload.projectId;
+          featureName = payload.feature;
+          const uc = payload.userContext;
+          if (uc) userEmail = `${uc.userId}@${uc.organizationId}`;
+        }
+
+        await this.stateStore.publish(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, {
+          type: 'failed',
+          jobId,
+          status: 'paused',
+          projectId,
+          featureName,
+          userEmail,
+          interruption: {
+            reason: 'server_crash',
+            message: 'Worker process crashed. You can resume this job.',
+            canResume: true,
+            timestamp: new Date().toISOString(),
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        logger.error(`Failed to handle stalled job: ${jobId}`, { component: 'BullMQJobQueue' }, err);
+      }
+    });
   }
 
   // ============================================
@@ -251,12 +309,41 @@ export class BullMQJobQueue implements JobQueuePort {
   async enqueue(payload: JobPayload): Promise<string> {
     const jobId = payload.jobId || this.generateJobId();
 
-    // ✅ Resume support: Remove existing job and clear userStopped flag
-    // This allows re-queuing a job with the same ID for resume/retry scenarios
+    // Resume support: remove existing BullMQ job so the same ID can be re-queued.
+    // After a crash the stale lock (TTL = lockDuration) may still exist in Redis.
     const existingJob = await this.queue.getJob(jobId);
     if (existingJob) {
       logger.info(`Removing existing job for resume: ${jobId}`, { component: 'BullMQJobQueue' });
-      await existingJob.remove();
+      try {
+        await existingJob.remove();
+      } catch (removeErr: any) {
+        const LOCK_DURATION = 30000;
+        const client = await this.queue.client;
+        const lockKey = `bull:${this.queue.name}:${jobId}:lock`;
+        const ttl = await client.pttl(lockKey);
+
+        if (ttl > LOCK_DURATION) {
+          // TTL exceeds current lockDuration — impossible for a live worker.
+          // This is a stale lock from an older config (e.g. 10-min lockDuration).
+          // Safe to delete because extendLock() always sets TTL = lockDuration.
+          logger.info(`Clearing stale lock (ttl=${ttl}ms > lockDuration=${LOCK_DURATION}ms): ${jobId}`, { component: 'BullMQJobQueue' });
+          await client.del(lockKey);
+          await existingJob.remove();
+        } else if (ttl > LOCK_DURATION / 2) {
+          // Lock was recently extended — a live worker is processing this job
+          throw new Error(`Job ${jobId} is still being processed by an active worker`);
+        } else if (ttl > 0) {
+          // Stale lock expiring soon — wait for natural expiry then retry
+          logger.info(`Waiting ${ttl + 500}ms for stale lock to expire: ${jobId}`, { component: 'BullMQJobQueue' });
+          await new Promise(r => setTimeout(r, ttl + 500));
+          await existingJob.remove();
+        } else {
+          // Lock already expired (pttl returns -2 for missing key, -1 for no TTL)
+          await existingJob.remove();
+        }
+
+        logger.info(`Removed job ${jobId} after handling stale lock`, { component: 'BullMQJobQueue' });
+      }
     }
     
     // ✅ CRITICAL: Clear userStopped flag for resume

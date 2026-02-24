@@ -792,17 +792,33 @@ export class PreviewServer {
     logger.info('[PreviewServer] Stopping...', { component: 'PreviewServer' });
 
     // Cleanup preview service
-    await this.previewService.cleanup();
-
-    // Close Redis connection
-    if (this.stateStore && typeof (this.stateStore as any).close === 'function') {
-      await (this.stateStore as any).close();
+    try {
+      await this.previewService.cleanup();
+    } catch (err) {
+      logger.warn('[PreviewServer] Error during preview cleanup', { component: 'PreviewServer' }, err);
     }
 
-    // Close HTTP server
+    // Close Redis connection (may already be closed if another service shut down first)
+    try {
+      if (this.stateStore && typeof (this.stateStore as any).close === 'function') {
+        await (this.stateStore as any).close();
+      }
+    } catch (err) {
+      logger.warn('[PreviewServer] Error closing Redis', { component: 'PreviewServer' }, err);
+    }
+
+    // Close HTTP server with timeout
     if (this.server) {
       await new Promise<void>((resolve) => {
-        this.server.close(() => resolve());
+        const timeout = setTimeout(() => {
+          logger.warn('[PreviewServer] Shutdown timed out, forcing', { component: 'PreviewServer' });
+          resolve();
+        }, 5000);
+
+        this.server.close(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
       });
     }
 
@@ -826,17 +842,20 @@ export async function createPreviewServer(): Promise<PreviewServer> {
     mode: process.env.ANT_SERVER_MODE === 'cloud' ? 'cloud' : 'local'
   });
 
-  // Handle shutdown signals
-  const shutdown = async () => {
-    logger.warn('[PreviewServer] SIGTERM received, shutting down...', {
+  // Handle shutdown signals (once guard prevents re-entrant shutdown)
+  let isShuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    logger.warn(`[PreviewServer] ${signal} received, shutting down...`, {
       component: 'PreviewServer'
     });
     await server.stop();
     process.exit(0);
   };
 
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   await server.start();
   return server;

@@ -11,6 +11,7 @@ export type InterruptionReason =
   | 'user_stopped'         // User clicked Stop button
   | 'api_error'            // LLM API error (overloaded, rate limit, etc.)
   | 'process_crash'        // Child process crashed unexpectedly
+  | 'server_crash'         // Server/worker killed unexpectedly (SIGKILL, OOM, etc.)
   | 'timeout'              // Job timeout
   | 'server_shutdown'      // Server graceful shutdown
   | 'unknown';             // Unknown reason

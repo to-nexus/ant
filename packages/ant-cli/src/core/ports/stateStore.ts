@@ -507,6 +507,16 @@ export interface StateStorePort {
   clearUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<void>;
 
   // ============================================
+  // Job Recovery (Crash Recovery)
+  // ============================================
+
+  /**
+   * Find all jobs with a given status (e.g. 'running') by scanning Redis keys.
+   * Used on startup to detect orphaned jobs from a previous crash.
+   */
+  findJobsByStatus(status: JobStatusValue): Promise<JobStatusData[]>;
+
+  // ============================================
   // Pub/Sub (for Cloud Mode real-time updates)
   // ============================================
   

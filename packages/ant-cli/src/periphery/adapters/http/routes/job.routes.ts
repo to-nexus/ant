@@ -116,16 +116,27 @@ export function createJobRoutes(deps: {
     res.json(logs);
   });
   
-  // Get queue position for a job
+  // Get queue position for a job (enriched with Redis job status for crash recovery)
   router.get('/jobs/:jobId/queue-position', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
     
     try {
       const { getInfrastructureFactory } = await import('../../../../infrastructure/adapters/InfrastructureFactory');
-      const jobQueue = getInfrastructureFactory().getJobQueue();
+      const factory = getInfrastructureFactory();
+      const jobQueue = factory.getJobQueue();
+      const stateStore = factory.getStateStore();
       
       const position = await jobQueue.getQueuePosition(jobId);
-      res.json(position);
+
+      // Enrich with Redis job status so the UI can detect interrupted/paused jobs
+      // even when BullMQ no longer has the job (e.g. after crash + stalled -> failed).
+      const redisStatus = await stateStore.getJobStatus(jobId);
+      const result: Record<string, any> = { ...position };
+      if (redisStatus) {
+        result.redisStatus = redisStatus.status;
+      }
+
+      res.json(result);
     } catch (error: any) {
       console.error(`Error getting queue position for job ${jobId}:`, error);
       res.status(500).json({ error: error.message });
