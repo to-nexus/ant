@@ -256,8 +256,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
             
             <h1 className="text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight">ANT Works</h1>
             
-            {/* Deployment Mode Selector */}
-            <div className="deployment-mode-selector flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+            {/* Deployment Mode Selector (hidden: only cloud mode active for now) */}
+            <div className="deployment-mode-selector hidden items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
               {/* Local Button */}
               <button
                 onClick={() => handleModeChange('local')}
