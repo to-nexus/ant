@@ -210,6 +210,14 @@ export function formatDetectionReportForChat(
       formatted += isKorean
         ? `📄 **생성 문서**: \`api-contract.md\`, \`fe-system-design.md\`, \`be-system-design.md\`\n\n`
         : `📄 **Output**: \`api-contract.md\`, \`fe-system-design.md\`, \`be-system-design.md\`\n\n`;
+    } else if (report.environment === 'backend') {
+      formatted += isKorean
+        ? `📄 **생성 문서**: \`api-contract.md\`, \`be-system-design.md\`\n\n`
+        : `📄 **Output**: \`api-contract.md\`, \`be-system-design.md\`\n\n`;
+    } else if (report.environment === 'frontend') {
+      formatted += isKorean
+        ? `📄 **생성 문서**: \`fe-system-design.md\`\n\n`
+        : `📄 **Output**: \`fe-system-design.md\`\n\n`;
     } else {
       formatted += isKorean
         ? `📄 **생성 문서**: \`system-design.md\`\n\n`

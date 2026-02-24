@@ -353,9 +353,9 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 
 **Your document type is determined by task.targetFile:**
 - `api-contract.md` - Binding API specification (WHAT interfaces exist)
-- `fe-system-design.md` - Frontend architecture (HOW to consume APIs)
+- `fe-system-design.md` - Frontend architecture (standalone or consuming APIs)
 - `be-system-design.md` - Backend architecture (HOW to implement APIs)
-- `system-design.md` - Unified design (single-tier or full-stack in one doc)
+- `system-design.md` - Unified design (rare fallback for unclassified projects)
 
 **A document type-specific guide has been automatically injected above** with:
 - Required sections tailored to this document type
@@ -368,8 +368,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 ### Unified System Design Structure
 
 **Use this for:**
-- Single-tier projects (frontend-only, backend-only, CLI tool)
-- Full-stack projects that prefer one unified document
+- Projects where environment is unknown (CLI tools, libraries)
 - Projects without separate FE/BE split
 
 **Adapt sections based on project type** (skip non-applicable sections):
