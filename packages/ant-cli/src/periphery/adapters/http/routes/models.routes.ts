@@ -17,7 +17,6 @@ export interface LLMModelInfo {
 
 // Available models registry
 const AVAILABLE_MODELS: LLMModelInfo[] = [
-  // Anthropic Models
   {
     id: 'claude-sonnet-4-6',
     displayName: 'Sonnet 4.6',
@@ -25,43 +24,6 @@ const AVAILABLE_MODELS: LLMModelInfo[] = [
     description: 'Latest Claude Sonnet model, best for coding',
     recommended: true,
     capabilities: ['coding', 'reasoning', 'large-context']
-  },
-  {
-    id: 'claude-haiku-4-5-20251001',
-    displayName: 'Haiku 4.5',
-    provider: 'anthropic',
-    description: 'Fast and efficient Claude model',
-    capabilities: ['coding', 'fast']
-  },
-  
-  // OpenAI Models
-  {
-    id: 'gpt-4o',
-    displayName: 'GPT 4o',
-    provider: 'openai',
-    description: 'Optimized GPT-4 model',
-    capabilities: ['coding', 'reasoning']
-  },
-  {
-    id: 'gpt-4o-mini',
-    displayName: 'GPT 4o Mini',
-    provider: 'openai',
-    description: 'Fast and efficient GPT-4 variant',
-    capabilities: ['coding', 'fast']
-  },
-  {
-    id: 'o1-preview',
-    displayName: 'O1 Preview',
-    provider: 'openai',
-    description: 'Advanced reasoning model',
-    capabilities: ['reasoning', 'complex-problems']
-  },
-  {
-    id: 'o1-mini',
-    displayName: 'O1 Mini',
-    provider: 'openai',
-    description: 'Efficient reasoning model',
-    capabilities: ['reasoning', 'fast']
   },
 ];
 
