@@ -244,9 +244,9 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 - Task touches backend code -> `be` (or `be-{svc}` for MSA)
 - Task touches shared/common code -> `shared`
 - Task touches both tiers -> combine (e.g., `["fe", "be"]`)
-- Root workspace setup -> `["shared"]`
+- Root workspace setup -> all tier tags in the project (e.g., `["shared", "be-api", "be-redirect"]`)
 
-⚠️ **Blind spot**: `shared` alone injects ONLY api-contract.md — no system design documents. If a task needs to observe infrastructure patterns from system design (e.g., shared foundation task), it MUST combine tier tags (e.g., `["shared", "be"]`).
+⚠️ **Blind spot**: `shared` alone injects ONLY api-contract.md — no system design documents. Root setup and shared foundation tasks MUST combine all relevant tier tags. Without tier-specific system design documents, the plan phase cannot observe tech stack versions or infrastructure requirements.
 
 ---
 
