@@ -76,7 +76,9 @@ RUN apk add --no-cache \
     bash \
     gcc \
     musl-dev \
-    build-base
+    build-base \
+    docker-cli \
+    docker-cli-compose
 
 # -------- Go (official binary + GOTOOLCHAIN=auto) --------
 # Installs base toolchain; per-project go.mod/go.work `toolchain` directive
@@ -184,10 +186,25 @@ CMD ["tsx", "src/composition/server.ts"]
 # ============================================
 FROM node:20-alpine AS production
 
+# Language version ARG (empty = skip install)
+ARG GO_VERSION="1.23.6"
+
 # Install runtime dependencies
 RUN apk add --no-cache \
     git \
-    ca-certificates
+    ca-certificates \
+    wget
+
+# Go toolchain (official binary + GOTOOLCHAIN=auto for per-project version switching)
+RUN if [ -n "${GO_VERSION}" ]; then \
+      wget -qO /tmp/go.tar.gz \
+        "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" && \
+      tar -C /usr/local -xzf /tmp/go.tar.gz && \
+      rm /tmp/go.tar.gz; \
+    fi
+ENV PATH="${PATH}:/usr/local/go/bin"
+ENV GOPATH="/home/ant/go"
+ENV GOTOOLCHAIN=auto
 
 # Install pnpm and tsx for production
 RUN npm install -g pnpm tsx
@@ -226,6 +243,7 @@ COPY docs ./docs
 RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces
 
 # Set ownership
+RUN mkdir -p /home/ant/go && chown -R ant:ant /home/ant/go
 RUN chown -R ant:ant /app
 
 # Switch to non-root user
