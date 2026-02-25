@@ -542,6 +542,22 @@ export class PreviewService {
         }
       }
 
+      // Enrich ant-project connections with target preview status
+      if (this.portRegistry) {
+        for (const conn of connections) {
+          const isAntProject = typeof conn.resolution === 'object' && conn.resolution?.type === 'ant-project';
+          if (isAntProject) {
+            const res = conn.resolution as { type: 'ant-project'; projectId: string; feature: string };
+            try {
+              const targetState = await this.portRegistry.getPreview(tenantId, userId, res.projectId, res.feature);
+              conn.status = targetState?.running && targetState?.ready ? 'active'
+                          : targetState?.running ? 'unreachable'
+                          : 'not-started';
+            } catch { conn.status = 'not-started'; }
+          }
+        }
+      }
+
       logger.info(`[Preview] ${connections.length} connections from registry for ${serverKey}`, { component: 'PreviewService' });
 
       // Spawn processes with connections (filtered by source in ProcessSpawner)
