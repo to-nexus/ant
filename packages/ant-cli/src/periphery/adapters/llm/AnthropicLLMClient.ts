@@ -9,7 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
-import { withRetryStream } from '../../../core/utils/retry';
+import { withRetryStream, withRetry } from '../../../core/utils/retry';
 
 export class AnthropicLLMClient implements LLMClient {
   private client: Anthropic;
@@ -91,22 +91,34 @@ export class AnthropicLLMClient implements LLMClient {
     // Use streaming internally to avoid Anthropic's 10-minute non-streaming timeout.
     // .messages.stream() + .finalMessage() gives us the same Message object
     // as .messages.create() but keeps the HTTP connection alive via SSE.
-    const stream = this.client.messages.stream({
-      model: this.modelName,
-      max_tokens: maxTokens,
-      ...(systemParam && { system: systemParam }),
-      ...(enableThinking ? {
-        thinking: {
-          type: 'enabled',
-          budget_tokens: thinkingBudget,
-        }
-      } : {}),
-      messages: userMessages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content as any,
-      })),
-    });
-    const response = await stream.finalMessage();
+    // Wrapped with withRetry to handle overloaded_error delivered inside SSE stream
+    // (HTTP 200 + error event), which bypasses the SDK's built-in HTTP-status retry.
+    const response = await withRetry(
+      async () => {
+        const stream = this.client.messages.stream({
+          model: this.modelName,
+          max_tokens: maxTokens,
+          ...(systemParam && { system: systemParam }),
+          ...(enableThinking ? {
+            thinking: {
+              type: 'enabled',
+              budget_tokens: thinkingBudget,
+            }
+          } : {}),
+          messages: userMessages.map(m => ({
+            role: m.role as 'user' | 'assistant',
+            content: m.content as any,
+          })),
+        });
+        return await stream.finalMessage();
+      },
+      {
+        maxAttempts: 4,
+        initialDelayMs: 2000,
+        backoffMultiplier: 2,
+        retryableErrors: ['overloaded_error', 'api_error'],
+      }
+    );
 
     const textBlocks = response.content.filter((block: any) => block.type === 'text');
     const content = textBlocks.map((block: any) => block.text).join('');
