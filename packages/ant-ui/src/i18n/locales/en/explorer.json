@@ -143,6 +143,7 @@
     "closeError": "Close error",
     "installing": "Installing dependencies...",
     "starting": "Starting preview...",
+    "stopping": "Stopping preview...",
     "running": "Preview is Running",
     "notRunning": "Preview is not Running",
     "open": "Open",

@@ -33,8 +33,8 @@ export function ConfigField({
   projectName,
 }: ConfigFieldProps) {
   const { t } = useTranslation('config');
-  // Cloud 모드에서 localPath 필드 숨김
-  if (!showLocalPath && field.key === 'localPath') {
+  // Cloud 모드에서 localPath, repoType 필드 숨김
+  if (!showLocalPath && (field.key === 'localPath' || field.key === 'repoType')) {
     return null;
   }
 

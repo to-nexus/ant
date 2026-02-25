@@ -5,7 +5,7 @@
  * Single source of truth for preview server state management
  */
 
-export type PreviewState = 'idle' | 'installing' | 'starting' | 'running' | 'error';
+export type PreviewState = 'idle' | 'installing' | 'starting' | 'stopping' | 'running' | 'error';
 
 /**
  * Preview server setup failure reasoning codes

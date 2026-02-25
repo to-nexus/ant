@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus } from '@/infrastructure/http/api';
+import { Pencil } from 'lucide-react';
+import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus, renameProject } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useStore } from '@/domain/store';
+import { STORAGE_KEYS, loadFromStorage, saveToStorage } from '@/domain/store/storage';
 import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
 import { CONFIG_SCHEMA } from './configSchema';
@@ -31,6 +34,14 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   
   const [isSaving, setIsSaving] = useState(false);
   const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
+
+  // Project rename state
+  const selectedProject = useStore((state) => state.selectedProject);
+  const setSelectedProject = useStore((state) => state.setSelectedProject);
+  const fetchProjects = useStore((state) => state.fetchProjects);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newProjectName, setNewProjectName] = useState(selectedProject || '');
+  const [isRenaming, setIsRenaming] = useState(false);
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
   // Load GitHub owner info (user override > org > personal) for quick-fill
@@ -150,6 +161,50 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     return backendMode === 'cloud' && fieldKey === 'repoType';
   };
 
+  const handleRename = async () => {
+    const trimmed = newProjectName.trim();
+    if (!trimmed || trimmed === selectedProject) {
+      setIsEditingName(false);
+      setNewProjectName(selectedProject || '');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+      showError(t('projectEditor.renameInvalidName'));
+      return;
+    }
+
+    showConfirm(t('projectEditor.renameConfirm', { oldName: selectedProject, newName: trimmed }), {
+      type: 'warning',
+      title: t('projectEditor.renameProject'),
+      confirmText: t('common:button.confirm'),
+      cancelText: t('common:button.cancel'),
+      onConfirm: async () => {
+        setIsRenaming(true);
+        try {
+          await renameProject(selectedProject!, trimmed);
+
+          // Migrate PROJECT_LAST_FEATURES mapping key
+          const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
+          if (projectFeatures[selectedProject!] !== undefined) {
+            projectFeatures[trimmed] = projectFeatures[selectedProject!];
+            delete projectFeatures[selectedProject!];
+            saveToStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES, projectFeatures);
+          }
+
+          await fetchProjects();
+          setSelectedProject(trimmed);
+          setIsEditingName(false);
+          showSuccess(t('projectEditor.renameSuccess'));
+        } catch (error: any) {
+          showError(error.message || t('projectEditor.renameFailed'));
+        } finally {
+          setIsRenaming(false);
+        }
+      }
+    });
+  };
+
   return (
     <div className="h-full overflow-hidden flex flex-col bg-white dark:bg-gray-800">
       <ConfigEditorHeader
@@ -161,6 +216,77 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       
       <div className="flex-1 overflow-y-auto p-6">
         <div className="space-y-6">
+          {/* Project Name (rename) Section */}
+          {selectedProject && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {t('projectEditor.projectName')}
+                </label>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t('projectEditor.projectNameDesc')}
+              </p>
+              {isEditingName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRename();
+                      if (e.key === 'Escape') {
+                        setIsEditingName(false);
+                        setNewProjectName(selectedProject || '');
+                      }
+                    }}
+                    autoFocus
+                    disabled={isRenaming}
+                    className="flex-1 px-3 py-2 border rounded-md text-sm 
+                      bg-white dark:bg-gray-800 
+                      text-gray-900 dark:text-white
+                      border-gray-300 dark:border-gray-600
+                      focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+                      disabled:opacity-50"
+                  />
+                  <button
+                    onClick={handleRename}
+                    disabled={isRenaming || !newProjectName.trim() || newProjectName.trim() === selectedProject}
+                    className="px-3 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isRenaming ? '...' : t('common:button.save')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditingName(false);
+                      setNewProjectName(selectedProject || '');
+                    }}
+                    disabled={isRenaming}
+                    className="px-3 py-2 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+                  >
+                    {t('common:button.cancel')}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 px-3 py-2 border rounded-md text-sm bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white border-gray-300 dark:border-gray-600">
+                    {selectedProject}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setNewProjectName(selectedProject || '');
+                      setIsEditingName(true);
+                    }}
+                    className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                    title={t('projectEditor.renameProject')}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {CONFIG_SCHEMA.map(field => (
             <ConfigField
               key={field.key}

@@ -330,6 +330,7 @@ export class ProcessSpawner {
     const childProcess = spawn(command, args, {
       cwd: pkg.path,
       shell: true,
+      detached: true,
       env,
       stdio: 'pipe'
     });
@@ -441,6 +442,7 @@ export class ProcessSpawner {
     const childProcess = spawn(command, args, {
       cwd: pkg.path,
       shell: true,
+      detached: true,
       env,
       stdio: 'pipe'
     });
@@ -536,15 +538,28 @@ export class ProcessSpawner {
   }
   
   /**
-   * Kill a process
+   * Kill a process and its entire process group.
+   * Processes are spawned with detached:true (new process group), so killing
+   * with -pid sends the signal to the shell, make/npm, and the actual binary.
    */
-  kill(process: ChildProcess): boolean {
+  kill(childProcess: ChildProcess): boolean {
     try {
-      if (!process.killed) {
-        process.kill();
-        return true;
+      if (childProcess.killed) return false;
+      const pid = childProcess.pid;
+      if (pid != null) {
+        try {
+          // Kill the entire process group (negative PID = group signal)
+          process.kill(-pid, 'SIGTERM');
+        } catch (groupErr: any) {
+          if (groupErr.code !== 'ESRCH') {
+            // Fallback: kill just the direct process
+            childProcess.kill('SIGTERM');
+          }
+        }
+      } else {
+        childProcess.kill('SIGTERM');
       }
-      return false;
+      return true;
     } catch (error) {
       logger.warn(`Failed to kill process`, { component: 'ProcessSpawner' }, error);
       return false;
