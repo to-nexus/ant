@@ -100,4 +100,5 @@ export interface ServerKeyComponents {
   userId: string;
   projectId: string;
   feature: string;
+  serviceName?: string;
 }

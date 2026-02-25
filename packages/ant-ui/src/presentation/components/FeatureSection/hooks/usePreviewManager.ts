@@ -262,8 +262,9 @@ export function usePreviewManager(
     // Guard is in the store so all usePreviewManager instances share it.
     setPreviewStopGuardUntil(Date.now() + 5000);
     const currentLogs = useStore.getState().previewStatus?.logs;
+    const currentCanStart = useStore.getState().previewStatus?.canStart ?? true;
     setPreviewStatus(currentLogs?.length
-      ? { running: false, ready: false, logs: currentLogs } as any
+      ? { running: false, ready: false, phase: 'stopped', canStart: currentCanStart, logs: currentLogs } as any
       : undefined
     );
     setPreviewLoading(false);
