@@ -181,6 +181,11 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         isRunning: true,
         jobStartPending: false  // ✅ Clear pending flag when job is actually running
       });
+      // Connect workflow SSE so this tab receives workflow updates
+      // (connectWorkflow is a no-op if already connected for this jobId)
+      if (kanbanJobId) {
+        sseManager.connectWorkflow(kanbanJobId);
+      }
     }
     else {
       const newState: any = { 

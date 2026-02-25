@@ -133,6 +133,23 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
         store.setLastJobFailed(true);
         return;
       }
+
+      // 409 Conflict: recover state by syncing with the already-running job
+      if (response.existingJobId) {
+        console.log('[cli.ts] Job already running, recovering state:', response.existingJobId);
+        try {
+          store.addChatMessage({
+            id: `msg-conflict-${Date.now()}`,
+            role: 'assistant',
+            contents: [{ type: 'text', content: `이미 진행 중인 작업이 있습니다. (Job ID: ${response.existingJobId})` }],
+            timestamp: new Date().toISOString()
+          });
+        } catch (e) {
+          console.warn('[cli.ts] Failed to add chat message for conflict:', e);
+        }
+        store.setRunning(true, response.existingJobId);
+        return;
+      }
       
       jobId = response.jobId;
       jobExecution.jobId = jobId;

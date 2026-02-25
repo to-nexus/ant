@@ -25,7 +25,7 @@ export interface JobStatus {
  */
 export async function executeJob(
   params: ExecuteJobParams,
-): Promise<{ jobId: string; error?: string; missingMaterials?: any[] }> {
+): Promise<{ jobId: string; error?: string; missingMaterials?: any[]; existingJobId?: string }> {
   const {
     projectId,
     featureName,
@@ -55,6 +55,11 @@ export async function executeJob(
   // Prerequisites validation failure
   if (!data.success && data.error && data.missingMaterials) {
     return { jobId: data.jobId, error: data.error, missingMaterials: data.missingMaterials };
+  }
+
+  // 409 Conflict: another job is already running for this feature
+  if (response.status === 409 && data.existingJobId) {
+    return { jobId: '', error: data.error, existingJobId: data.existingJobId };
   }
 
   if (!response.ok) {
