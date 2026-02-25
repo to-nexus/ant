@@ -116,14 +116,14 @@ export function createSSERoutes(deps: {
       deps.gitWatcherService.watchGitChanges(projectId, featureName, userContext, sseClientChecker);
     }
     
-    // Keep connection alive
+    // Keep connection alive (15s to survive cloud proxy idle timeouts)
     const keepAliveInterval = setInterval(() => {
       try {
         res.write(':ping\n\n');
       } catch (error) {
         clearInterval(keepAliveInterval);
       }
-    }, 30000);
+    }, 15000);
     
     // Handle disconnect
     res.on('close', () => {
@@ -164,14 +164,14 @@ export function createSSERoutes(deps: {
     }
     logger.debug(`Workflow client registered`, { component: 'SSE', jobId });
     
-    // Keep connection alive
+    // Keep connection alive (15s to survive cloud proxy idle timeouts)
     const keepAliveInterval = setInterval(() => {
       try {
         res.write(':ping\n\n');
       } catch (error) {
         clearInterval(keepAliveInterval);
       }
-    }, 30000);
+    }, 15000);
     
     // Handle disconnect
     res.on('close', () => {

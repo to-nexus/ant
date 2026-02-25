@@ -83,6 +83,10 @@ class SSEManager {
   // connectionStatus.  ServerDownDetector uses this to trigger a health check
   // before the 5-attempt retry cycle completes.
   private onErrorCallback: (() => void) | null = null;
+
+  // Visibility change handler for multi-tab sync
+  private visibilityHandler: (() => void) | null = null;
+  private lastForceReconnectTime = 0;
   
   /**
    * Register a callback to be notified when unified SSE connection status changes.
@@ -279,12 +283,55 @@ class SSEManager {
         isConnected: false,
         reconnectAttempts: 0
       };
+
+      this.setupVisibilityHandler();
       
     } catch (error) {
       console.error('[SSE] unified: failed to create EventSource', error);
     }
   }
   
+  /**
+   * Force-reconnect unified SSE without triggering statusCallback('disconnected').
+   * Used by visibility change handler to sync state when tab becomes active.
+   * Debounced to 3 seconds to prevent rapid tab-switching floods.
+   */
+  forceReconnect(): void {
+    if (!this.unifiedConnection) return;
+
+    const now = Date.now();
+    if (now - this.lastForceReconnectTime < 3000) return;
+    this.lastForceReconnectTime = now;
+
+    const { projectId, featureName, url } = this.unifiedConnection;
+    const job = new URL(url).searchParams.get('job') || 'code';
+
+    console.log(`[SSE] forceReconnect: ${projectId}/${featureName}`);
+
+    // Close old EventSource silently (no statusCallback to avoid UI flicker)
+    try { this.unifiedConnection.eventSource.close(); } catch {}
+    this.unifiedConnection = null;
+
+    // New connect() will proceed since unifiedConnection is now null
+    this.connect(projectId, featureName, job);
+  }
+
+  /**
+   * Register visibility change listener (once) so that when the browser tab
+   * becomes visible, we force-reconnect to get fresh initial state from the server.
+   * This fixes multi-tab desync caused by background tab throttling/freezing.
+   */
+  private setupVisibilityHandler(): void {
+    if (this.visibilityHandler) return;
+
+    this.visibilityHandler = () => {
+      if (document.visibilityState === 'visible') {
+        this.forceReconnect();
+      }
+    };
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+  }
+
   /**
    * Connect to workflow SSE endpoint (per job)
    */
@@ -453,6 +500,11 @@ class SSEManager {
     
     this.handlers.clear();
     this.statusCallback = null;
+
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
   }
   
   /**
