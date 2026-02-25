@@ -69,6 +69,10 @@ export class ProjectService {
     return this.projectCrud.createProject(id, userContext);
   }
   
+  async renameProject(oldId: string, newId: string, userContext: UserContext): Promise<void> {
+    return this.projectCrud.renameProject(oldId, newId, userContext);
+  }
+  
   async deleteProject(id: string, userContext: UserContext): Promise<void> {
     // ✅ Cleanup IDE resources first (stop+remove containers, delete IDE home) to avoid dangling resources
     if (this.ideService) {

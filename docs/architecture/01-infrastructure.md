@@ -38,7 +38,8 @@ ANT의 모든 프로세스 간 통신과 상태 관리는 Redis를 통해 이루
 
 | 키 | 타입 | 용도 |
 |----|------|------|
-| `ant:infra:preview:{portKey}` | String (JSON) | PreviewState |
+| `ant:infra:preview:{portKey}` | String (JSON) | PreviewState (런타임 — stop 시 삭제) |
+| `ant:infra:preview:config:{portKey}` | String (JSON) | Preview 설정 (영속 — connections, structureType, projectProfile) |
 | `ant:infra:preview:list` | Set | Preview 목록 |
 | `ant:infra:preview:byPod:{podId}` | Set | Pod별 Preview 인덱스 |
 | `ant:infra:ide:{portKey}` | String (JSON) | IDEState |

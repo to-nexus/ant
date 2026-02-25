@@ -143,6 +143,7 @@
     "closeError": "오류 닫기",
     "installing": "의존성 설치 중...",
     "starting": "프리뷰 시작 중...",
+    "stopping": "프리뷰 종료 중...",
     "running": "프리뷰 실행 중",
     "notRunning": "프리뷰 실행되지 않음",
     "open": "열기",

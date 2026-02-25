@@ -174,6 +174,45 @@ export class ProjectCrudService {
   }
 
   /**
+   * Rename a project (rename the project directory)
+   */
+  async renameProject(oldId: string, newId: string, userContext: UserContext): Promise<void> {
+    if (oldId === newId) {
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(newId)) {
+      throw new Error('Project ID can only contain letters, numbers, hyphens, and underscores');
+    }
+
+    const oldPath = this.workspaceResolver.getProjectPath(userContext, oldId);
+    const newPath = this.workspaceResolver.getProjectPath(userContext, newId);
+
+    try {
+      await fs.promises.access(oldPath);
+    } catch {
+      throw new Error('Project not found');
+    }
+
+    try {
+      await fs.promises.access(newPath);
+      throw new Error('A project with the new name already exists');
+    } catch (error: any) {
+      if (error.message === 'A project with the new name already exists') {
+        throw error;
+      }
+    }
+
+    await fs.promises.rename(oldPath, newPath);
+
+    logger.info(`Project renamed: ${oldId} → ${newId}`, {
+      component: 'ProjectCrudService',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId,
+    });
+  }
+
+  /**
    * Delete a project
    */
   async deleteProject(id: string, userContext: UserContext): Promise<void> {

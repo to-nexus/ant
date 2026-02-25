@@ -387,6 +387,12 @@ export class PreviewService {
       const registeredPort = await this.portRegistry.getPreviewPort(tenantId, userId, projectId, feature);
       if (registeredPort) {
         logger.info(`Found stale registry entry for ${serverKey} (port ${registeredPort}), cleaning up`, { component: 'PreviewService' });
+        // Stop stale Docker infrastructure (may be orphaned from a crashed Pod or different Pod's stop)
+        try {
+          const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+          const logCb = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
+          await this.infrastructureManager.stopInfrastructure(localPath, logCb, infraProjectName);
+        } catch { /* best-effort */ }
         // Unregister from portRegistry since we'll re-register after starting
         await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature);
       }
@@ -966,12 +972,20 @@ export class PreviewService {
         await this.infrastructureManager.stopInfrastructure(localPath, logCb, infraProjectName);
       }
 
-      // Release port (read from Redis)
+      // Release ALL ports (entry + every package port)
       if (this.portRegistry && this.portManager) {
         try {
           const state = await this.portRegistry.getPreview(t, u, p, f);
-          if (state?.port) {
-            this.portManager.release(state.port);
+          if (state) {
+            const portsToRelease = new Set<number>();
+            if (state.port) portsToRelease.add(state.port);
+            if (state.backendPort) portsToRelease.add(state.backendPort);
+            for (const pkg of state.packages || []) {
+              if (pkg.port) portsToRelease.add(pkg.port);
+            }
+            for (const p of portsToRelease) {
+              this.portManager.release(p);
+            }
           }
         } catch { /* best-effort */ }
       }
@@ -1046,6 +1060,13 @@ export class PreviewService {
       this.healthCheckAbortControllers.delete(serverKey);
     }
 
+    // Broadcast 'stopping' phase so the UI shows a loading indicator
+    this.broadcastStatus(serverKey, {
+      running: true,
+      ready: false,
+      phase: 'stopping',
+    });
+    
     // Mark stopping
     this.stoppingServers.add(serverKey);
     if (hasLocalProcesses) {
@@ -1079,21 +1100,69 @@ export class PreviewService {
       await this.infrastructureManager.stopInfrastructure(localPath, logCallback, infraProjectName);
     }
     
-    // Kill local processes if we own them
+    // Kill local processes (process group kill via detached + -pid) and wait for exit
     let stoppedCount = 0;
+    const portsToKill: number[] = [];
     if (hasLocalProcesses) {
-      for (const process of processes) {
-        this.processSpawner.kill(process);
+      // Collect package ports before killing (for safety-net cleanup)
+      if (this.portRegistry) {
+        try {
+          const state = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+          for (const pkg of state?.packages || []) {
+            if (pkg.port) portsToKill.push(pkg.port);
+          }
+        } catch { /* best-effort */ }
+      }
+      
+      // Send SIGTERM to process groups and wait for exit
+      const exitPromises: Promise<void>[] = [];
+      for (const proc of processes) {
+        if (!proc.killed && proc.exitCode === null) {
+          exitPromises.push(new Promise<void>((resolve) => {
+            const timeout = setTimeout(() => {
+              // SIGKILL the entire process group as fallback
+              try { process.kill(-proc.pid!, 'SIGKILL'); } catch { /* ignore */ }
+              try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+              resolve();
+            }, 3_000);
+            proc.once('exit', () => { clearTimeout(timeout); resolve(); });
+          }));
+        }
+        this.processSpawner.kill(proc);
+      }
+      if (exitPromises.length > 0) {
+        await Promise.all(exitPromises);
       }
       stoppedCount = processes.length;
     }
     
-    // Release port (read from Redis before unregister)
-    if (this.portRegistry && this.portManager) {
+    // Safety net: kill anything still on the allocated ports (defense-in-depth)
+    for (const port of portsToKill) {
+      this.processSpawner.killProcessOnPort(port);
+    }
+    if (portsToKill.length > 0) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    
+    // Read connections from Redis BEFORE unregister (so we can include them in broadcast)
+    let resetConnections: ServiceConnection[] = [];
+    if (this.portRegistry) {
       try {
-        const state = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
-        if (state?.port) {
-          this.portManager.release(state.port);
+        const currentState = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
+        if (currentState?.connections?.length) {
+          resetConnections = currentState.connections.map(c => ({ ...c, status: 'not-started' as const }));
+        }
+        // Release ALL ports (entry + every package port)
+        if (this.portManager) {
+          const portsToRelease = new Set<number>();
+          if (currentState?.port) portsToRelease.add(currentState.port);
+          if (currentState?.backendPort) portsToRelease.add(currentState.backendPort);
+          for (const pkg of currentState?.packages || []) {
+            if (pkg.port) portsToRelease.add(pkg.port);
+          }
+          for (const p of portsToRelease) {
+            this.portManager.release(p);
+          }
         }
       } catch { /* best-effort */ }
     }
@@ -1109,7 +1178,7 @@ export class PreviewService {
     
     logger.info(`Stopped all servers for ${serverKey} (local=${stoppedCount}, redis=${isRunningInRedis})`, { component: 'PreviewService' });
     
-    // Broadcast stopped status (Redis already unregistered above)
+    // Broadcast stopped status with reset connections (Redis already unregistered above)
     this.broadcastStatus(serverKey, {
       running: false,
       ready: false,
@@ -1117,6 +1186,7 @@ export class PreviewService {
       port: null,
       packages: [],
       issues: [],
+      connections: resetConnections,
     });
     
     if (this.onStatusChange) {
