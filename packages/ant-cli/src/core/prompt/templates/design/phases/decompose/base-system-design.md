@@ -178,46 +178,69 @@ Observe whether the project defines API boundaries consumed by external parties:
 
 ---
 
-## 🏗️ MSA / SERVICE-ORIENTED DETECTION
+## 🏗️ MSA / MULTI-UNIT DETECTION
 
-**After CONTRACT-FIRST detection, check if backend requires service separation.**
+**After CONTRACT-FIRST detection, check if either tier requires splitting into multiple units.**
+
+MSA applies to BOTH tiers independently:
+- **Backend**: multiple services → `be-system-design-{service}.md`
+- **Frontend**: multiple packages/micro-frontends → `fe-system-design-{package}.md`
 
 ### Observation Checklist
 
-| Checkpoint | Observation Target |
-|------------|-------------------|
-| **Domain Boundaries** | Multiple independent business domains with separate data ownership? |
-| **Deployment Independence** | PRD indicates services need independent deployment or scaling? |
-| **Team Boundaries** | Different domains owned by different teams? |
-| **Service Communication** | PRD specifies inter-service communication (sync API or async events)? |
+| Tier | Checkpoint | Observation Target |
+|------|------------|-------------------|
+| BE | **Domain Boundaries** | Multiple independent business domains with separate data ownership? |
+| BE | **Deployment Independence** | Services need independent deployment or scaling? |
+| BE | **Service Communication** | Inter-service communication (sync API or async events)? |
+| FE | **App Boundaries** | Multiple independent frontend applications (user-facing + admin, etc.)? |
+| FE | **Package Boundaries** | Separate deployable packages with different concerns? |
 
 ### Decision Principle
 
-| Observation Result | Document Structure |
-|-------------------|-------------------|
-| Single backend domain | `contract-first` |
-| **Multiple independent service boundaries** | `msa-contract-first` |
+| Observation Result | Action |
+|-------------------|--------|
+| Single backend domain | Keep `be-system-design.md` |
+| **Multiple backend service boundaries** | Split to `be-system-design-{service}.md`, set `services` |
+| Single frontend app | Keep `fe-system-design.md` |
+| **Multiple frontend app/package boundaries** | Split to `fe-system-design-{package}.md`, set `fePackages` |
 
-**Constraint**: Do NOT assume MSA. Only choose `msa-contract-first` if PRD explicitly indicates service boundaries.
+**Constraint**: Do NOT assume MSA. Only split if PRD explicitly indicates boundaries.
 
 ### If MSA Detected
 
 **⚠️ MUST extract from PRD:**
 
-1. **Service names** - exact names as PRD specifies (do NOT invent)
-2. **Service responsibilities** - what each service owns
+1. **Names** - exact service/package names as PRD specifies (do NOT invent)
+2. **Responsibilities** - what each unit owns
 3. **Communication patterns** - sync (HTTP/gRPC) vs async (events/messages)
 
-**Output structure for MSA:**
+**Output structure for Backend MSA:**
 ```json
 {
   "documentType": "msa-contract-first",
-  "services": ["<service1>", "<service2>", ...],
+  "services": ["<service1>", "<service2>"],
+  "fePackages": [],
   "targetFiles": [
     "api-contract.md",
     "fe-system-design.md",
     "be-system-design-<service1>.md",
     "be-system-design-<service2>.md"
+  ]
+}
+```
+
+**Output structure for Frontend MSA:**
+```json
+{
+  "documentType": "msa-contract-first",
+  "services": [],
+  "fePackages": ["<package1>", "<package2>"],
+  "targetFiles": [
+    "api-contract.md",
+    "fe-system-design-<package1>.md",
+    "fe-system-design-<package2>.md",
+    "be-system-design.md"
   ]
 }
 ```

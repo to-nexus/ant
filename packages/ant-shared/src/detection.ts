@@ -39,6 +39,7 @@ export interface DetectionReport {
   workTypeReasoning?: string;
   domain?: DesignDomain;
   domainReasoning?: string;
+  targetFiles?: string[];
 
   // Code Job only
   profile?: ProjectProfile;
