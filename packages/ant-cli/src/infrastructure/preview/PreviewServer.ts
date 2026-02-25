@@ -29,7 +29,7 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { parsePreviewKey } from '../state/redisKeyUtils';
-import { toUrlKey, fromUrlKey, isUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
+import { toUrlKey, toUrlKeyWithService, fromUrlKey, isUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
@@ -510,13 +510,14 @@ export class PreviewServer {
             const resolvedProjectId = conn.resolution.projectId === 'self' ? projectId : conn.resolution.projectId;
             const resolvedFeature = conn.resolution.feature === 'self' ? feature : conn.resolution.feature;
             const backendServerKey = `${userContext.organizationId}:${userContext.userId}:${resolvedProjectId}:${resolvedFeature}`;
+            const resolvedUrlKey = toUrlKeyWithService(backendServerKey, conn.resolution.serviceName);
             return {
               ...conn,
               resolution: {
                 ...conn.resolution,
-                resolvedUrlKey: toUrlKey(backendServerKey),
+                resolvedUrlKey,
               },
-              value: `/${toUrlKey(backendServerKey)}`,
+              value: `/${resolvedUrlKey}`,
             };
           }
           return conn;

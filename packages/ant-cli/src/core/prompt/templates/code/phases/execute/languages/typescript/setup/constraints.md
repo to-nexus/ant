@@ -104,12 +104,12 @@ Reference environment variables for service connections.
 - Do NOT set `container_name` for any service in docker-compose.yml. The platform namespaces containers using a project-scoped `-p` flag. An explicit `container_name` bypasses that namespace and causes container name conflicts across runs or projects.
 - `.env.example` MUST use `# @connection {category} {name}` annotation for each service connection endpoint (URL or address). Do NOT annotate individual components (host, port, user, password) — only the connection URL variable.
 - Same-project internal connections (e.g., frontend → backend in fullstack) MUST add `self`: `# @connection business {name} self`
-- Cross-project connections (e.g., frontend project referencing a separate backend project) MUST use `ant-project:{projectId}:{feature}`: `# @connection business {name} ant-project:{projectId}:{feature}`
+- Cross-project connections (e.g., frontend project referencing a separate backend project) MUST use `ant-project:{projectId}:{feature}[:{serviceName}]`: `# @connection business {name} ant-project:{projectId}:{feature}`. Optionally append `:{serviceName}` to target a specific service in a multi-package project
 
 ⚠️ **Blind spot reminder — include these when creating files:**
 - `dev:infra` / `dev:infra:down` scripts are EASILY FORGOTTEN. Include them in root package.json when infrastructure services are observed.
 - `@connection` annotations in `.env.example` are EASILY FORGOTTEN. Include annotation for every connection endpoint URL (but not individual components like host, port, user, password).
 - The `self` keyword for internal connections is EASILY FORGOTTEN in fullstack/monorepo projects.
-- The `ant-project:{projectId}:{feature}` modifier for cross-project connections is EASILY FORGOTTEN when the specification names a specific external project as a dependency.
+- The `ant-project:{projectId}:{feature}[:{serviceName}]` modifier for cross-project connections is EASILY FORGOTTEN when the specification names a specific external project as a dependency.
 - Package-level setup must NOT duplicate infrastructure provisioning.
 

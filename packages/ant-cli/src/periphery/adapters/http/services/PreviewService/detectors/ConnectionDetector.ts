@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ServiceConnection, ServiceCategory, ConnectionResolution } from '../../../../../../core/ports/portRegistry';
 import { ProjectStructure } from '../types';
-import { toUrlKey } from '../utils/serverKeyUtils';
+import { toUrlKey, toUrlKeyWithService } from '../utils/serverKeyUtils';
 import { logger } from '../../../../../../utils/logger';
 
 /**
@@ -224,14 +224,17 @@ export class ConnectionDetector {
 
       if (!resolvedProjectId || !resolvedFeature) continue;
 
+      const serviceName = conn.resolution.serviceName;
       const targetServerKey = `${tenantId}:${userId}:${resolvedProjectId}:${resolvedFeature}`;
+      const resolvedUrlKey = toUrlKeyWithService(targetServerKey, serviceName);
       conn.resolution = {
         type: 'ant-project',
         projectId: resolvedProjectId,
         feature: resolvedFeature,
-        resolvedUrlKey: toUrlKey(targetServerKey),
+        serviceName,
+        resolvedUrlKey,
       };
-      conn.value = `/${toUrlKey(targetServerKey)}`;
+      conn.value = `/${resolvedUrlKey}`;
     }
   }
 
@@ -360,12 +363,14 @@ export class ConnectionDetector {
       return { type: 'ant-project', projectId: 'self', feature: 'self' };
     }
 
-    const antProjectMatch = modifier.match(/^ant-project:([^:]+):(.+)$/);
+    // ant-project:{projectId}:{feature} or ant-project:{projectId}:{feature}:{serviceName}
+    const antProjectMatch = modifier.match(/^ant-project:([^:]+):([^:]+)(?::(.+))?$/);
     if (antProjectMatch) {
       return {
         type: 'ant-project',
         projectId: antProjectMatch[1],
         feature: antProjectMatch[2],
+        ...(antProjectMatch[3] ? { serviceName: antProjectMatch[3] } : {}),
       };
     }
 

@@ -288,7 +288,7 @@ ENV=development
 # Do NOT annotate individual components (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD)
 # @connection {category} {name}                                -- external / infrastructure
 # @connection {category} {name} self                           -- same-project internal
-# @connection {category} {name} ant-project:{projectId}:{feature} -- cross-project
+# @connection {category} {name} ant-project:{projectId}:{feature}[:{serviceName}] -- cross-project (serviceName optional)
 # {CONNECTION_URL}={url_pointing_to_localhost_with_compose_port}
 ```
 
