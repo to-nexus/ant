@@ -125,10 +125,8 @@ UI Design Documents: not found
 
 {{#if hasSystemDocs}}
 System Design Documents: exist
-{{#if hasSystemDesign}}- system-design.md{{/if}}
-{{#if hasApiContract}}- api-contract.md{{/if}}
-{{#if hasFeSystemDesign}}- fe-system-design.md{{/if}}
-{{#if hasBeSystemDesign}}- be-system-design.md{{/if}}
+{{#each systemDesignFiles}}- {{this}}
+{{/each}}
 {{else}}
 System Design Documents: not found
 {{/if}}

@@ -337,6 +337,7 @@ export class PromptEngine {
     hasApiContract?: boolean;
     hasFeSystemDesign?: boolean;
     hasBeSystemDesign?: boolean;
+    systemDesignFiles?: string[];
   }): Promise<string> {
     return await this.deps.promptPort.render('design/phases/detect/base', {
       directive: args.directive,
@@ -355,6 +356,7 @@ export class PromptEngine {
       hasApiContract: args.hasApiContract || false,
       hasFeSystemDesign: args.hasFeSystemDesign || false,
       hasBeSystemDesign: args.hasBeSystemDesign || false,
+      systemDesignFiles: args.systemDesignFiles || [],
     });
   }
 
