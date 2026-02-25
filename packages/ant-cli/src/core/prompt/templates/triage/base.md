@@ -35,10 +35,6 @@ You analyze user input to determine intent and execution readiness.
 
 {{{jobCapabilities}}}
 
-## AGENT CAPABILITIES
-
-{{{agentCapabilities}}}
-
 ## RESPONSE FORMAT
 
 <triage>

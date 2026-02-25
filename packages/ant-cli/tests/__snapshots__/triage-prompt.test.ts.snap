@@ -1,240 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = `
-"# TRIAGE
-
-You analyze user input to determine intent and execution readiness.
-
-## SESSION
-| Field | Value |
-|-------|-------|
-| Agent | architect |
-| Job | code |
-
-## USER INPUT
-Build an API
-
-## WORKSPACE STATE
-
-### Inputs
-❌ No PRD
-✅ Directive
-
-### References
-❌ No screen references
-ℹ️ No component references
-ℹ️ No assets
-
-### Design Documents
-❌ No UI specification
-❌ No system design
-
-### Spec Documents
-❌ No spec documents
-
-### Codebase
-❌ Not indexed
-❌ No design documents
-
-## AVAILABLE JOBS
-
-### design job
-Creates UI specifications and system architecture documents.
-Two modes: UI Design (from reference images) and System Design (from PRD).
-Output documents guide Code Job for accurate implementation.
-
-
-#### Mode: ui-design
-Generates UI specification documents from reference images.
-Analyzes visual design to extract tokens, components, and layouts.
-Works with any design tool output (Figma, Sketch, screenshots, etc.)
-
-
-**Prerequisites:**
-- Required:
-  - Reference images (inputs/references/)
-- Recommended:
-  - Asset files like icons and images (inputs/assets/)
-
-**Scope:**
-- Design tokens (colors, typography, spacing, shadows)
-- Asset mappings and icon system
-- UI component specifications with props and variants
-- Layout structure and responsive breakpoints
-
-#### Mode: system-design
-Creates system architecture from PRD or instructions.
-Generates API specifications, data models, and technical architecture.
-Suitable for backend, fullstack, or complex system design.
-
-
-**Prerequisites:**
-- Required:
-  - undefined
-- Recommended:
-  - Existing codebase (recommended for refactor mode)
-
-**Scope:**
-- System architecture design
-- API interface design (REST, GraphQL, etc.)
-- Data model and schema design
-- Service boundaries and interactions
-
-**Redirect signals:**
-- → to_code: Request target is source code (implementation, bug fix, runnable application)
-- → to_learn: Request target is codebase analysis or indexing output
-- → to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
-
-### code job
-Generates and modifies code for any project type.
-Works with frontend, backend, fullstack, mobile, or any language/framework.
-Adapts to your existing codebase patterns when Learn Job has been run.
-
-
-#### Mode: new-development
-Creates new code from design documents.
-Generates components, services, APIs, tests based on specifications.
-
-
-**Prerequisites:**
-- Required:
-  - undefined
-- Recommended:
-  - Indexed codebase for consistent code style and patterns
-
-**Scope:**
-- Code implementation (any language/framework)
-- File generation with proper structure
-- Import management
-- Test file generation
-
-#### Mode: modification
-Modifies or improves existing code.
-Handles refactoring, bug fixes, feature additions, optimizations.
-
-
-**Prerequisites:**
-- Required:
-  - Change description entered via chat
-- Recommended:
-  - Indexed codebase for accurate modifications
-
-**Scope:**
-- Code modification and refactoring
-- Bug fixes
-- Feature additions
-- Performance optimizations
-
-**Redirect signals:**
-- → to_design: Request target is a design artifact (specification, architecture document, UI spec)
-- → to_learn: Request target is codebase analysis or indexing output
-
-### learn job
-Analyzes and indexes your codebase for better AI understanding.
-Essential for existing projects - enables Ant to match your code style,
-understand your architecture, and make contextually appropriate changes.
-
-
-#### Mode: codebase-analysis
-Scans your repository and creates vector embeddings.
-Analyzes code patterns, architecture, dependencies, and conventions.
-Results in more accurate and consistent code generation.
-
-
-**Prerequisites:**
-- Required:
-  - Git repository
-
-**Scope:**
-- Codebase indexing into vector database
-- Code pattern analysis
-- Architecture understanding
-- Dependency mapping
-- Convention detection
-
-**Redirect signals:**
-- → to_design: Request target is a design artifact (specification, architecture document, UI spec)
-- → to_code: Request target is source code (implementation, bug fix, runnable application)
-
-### plan job
-Creates and refines PRD (Product Requirements Document).
-Works with non-developers (PMs, business teams) to produce PRD artifacts.
-Uses PRD-as-State pattern: the PRD file is the persistent state across jobs.
-
-
-#### Mode: generate
-Creates new PRD from user directive.
-Generates comprehensive product requirements document from scratch.
-
-
-**Prerequisites:**
-- Required:
-  - Product description or requirements entered via chat
-
-**Scope:**
-- PRD creation from product description
-- PRD requirement structuring and scoping
-- PRD feature specification
-
-#### Mode: refine
-Refines existing PRD based on user feedback or evaluation results.
-Improves quality, adds missing sections, clarifies requirements.
-
-
-**Prerequisites:**
-- Required:
-  - Existing PRD document
-  - Refinement instructions entered via chat
-
-**Scope:**
-- PRD improvement and refinement
-- Requirement clarification
-- Section expansion and detail addition
-
-**Redirect signals:**
-- → to_design: Request target is a design artifact — user EXPLICITLY names a design artifact (UI spec, system design doc) as the output to produce. Redirect is only valid when workspace has input materials for the target job.
-
-- → to_code: Request target is source code — user EXPLICITLY requests to write, implement, or fix source code files. Redirect is only valid when workspace has input materials for the target job.
-
-- → to_learn: Request target is codebase analysis or indexing output. Redirect is only valid when workspace has input materials for the target job.
-
-
-
-## AGENT CAPABILITIES
-
-Current agent: **architect**
-
-### architect (current)
-Scope: UI design specification (ui-tokens, ui-assets, ui-spec), System architecture and API design, Source code implementation (any language/framework), Codebase analysis and indexing
-
-### planner
-Scope: PRD (Product Requirements Document) creation, PRD refinement and improvement, PRD scoping and requirement structuring
-
-
-## RESPONSE FORMAT
-
-<triage>
 {
-  "intent": "ask" | "work",
-  
-  "inScope": true | false,       // true = the ask system will handle this with its own tools
-  "askResponse": "Brief description of what will be looked up (when inScope=true) OR direct answer (when inScope=false)",
-  
-  "workStatus": "proceed" | "redirect" | "blocked",
-  "suggestedAgent": "architect | planner",
-  "suggestedJob": "design | code | learn | plan",
-  "redirectReason": "Why redirect is needed",
-  "missingPrerequisites": { "required": [], "recommended": [] },
-  "canProceed": true | false,
-  "blockedMessage": "What is missing",
-  "proceedAnywayOption": "Option to proceed anyway"
-}
-</triage>
-
-
----
-
-# TRIAGE RULES
+  "system": "# TRIAGE RULES
 
 ## CLASSIFICATION PROTOCOL
 
@@ -265,7 +33,7 @@ Scope: PRD (Product Requirements Document) creation, PRD refinement and improvem
 |-------------------|------------|
 | UI specification documents (ui-spec, ui-tokens, ui-assets) | \`design\` |
 | UI planning, design, visual specification | \`design\` |
-| System architecture, API design | \`design\` |
+| System architecture, API design, system planning | \`design\` |
 | Source code files (.ts, .tsx, .js, .py, etc.) | \`code\` |
 | Code implementation, bug fixes | \`code\` |
 | Codebase analysis, indexing | \`learn\` |
@@ -294,9 +62,9 @@ This constraint does NOT apply to \`code\` or \`learn\` jobs — those redirect 
 
 | Observation | Action |
 |-------------|--------|
-| Request describes a substantial feature or architectural change (multiple files, new flow, cross-cutting) AND **no spec documents exist** | Set \`redirect\` to \`design\` job with \`redirectReason\` explaining the benefit of writing a spec first |
+| Request describes a substantial feature or architectural change (multiple files, new flow, cross-cutting) AND **no spec documents exist** AND **no design documents exist** | Set \`redirect\` to \`design\` job with \`redirectReason\` explaining the benefit of writing a spec first |
 | Request is a localized change (bug fix, single-file edit, style tweak, rename) | Do NOT suggest spec — \`proceed\` normally |
-| Spec documents already exist in workspace | Do NOT suggest spec — existing specs will be used automatically |
+| Spec documents OR design documents already exist in workspace | Do NOT suggest spec — existing design documentation will guide development |
 | Request explicitly references a spec document by name | Do NOT suggest spec — \`proceed\` normally |
 
 **Constraint**: This step ONLY applies when \`currentJob === "code"\`. Do NOT apply to other jobs.
@@ -307,14 +75,12 @@ This constraint does NOT apply to \`code\` or \`learn\` jobs — those redirect 
 
 ### Step 2.7: Determine Agent Match (for work intent)
 
-**Principle**: First check if the request belongs to the **current agent's** scope. If not, identify which agent owns the capability.
+**Principle**: Each job definition in AVAILABLE JOBS includes its \`agent\`. Compare the target job's agent with the current agent (shown in SESSION).
 
 | Observation | Action |
 |-------------|--------|
-| Request matches current agent's job capabilities | Continue to Step 3 |
-| Request belongs to a DIFFERENT agent's scope | Set \`redirect\` with \`suggestedAgent\` + \`suggestedJob\` |
-
-**Constraint**: PRD creation/refinement belongs to \`planner\` agent. Design, code, and learn belong to \`architect\` agent. If the current agent cannot handle the request, MUST set \`suggestedAgent\`.
+| Target job's agent matches current agent | Continue to Step 3 |
+| Target job's agent differs from current agent | Set \`redirect\` with \`suggestedAgent\` + \`suggestedJob\` |
 
 **Constraint**: The Design ↔ Plan mutual boundary (Step 2) also applies here. When that boundary applies, do NOT set \`suggestedAgent\`.
 
@@ -371,8 +137,8 @@ When user input appears to be:
 ⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → \`design\` job. But if the output is a quality score → still \`ask\`
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → \`ask\` + \`inScope: false\`, ask for clarification
 ⚠️ **Workspace state ≠ User intent**: Workspace document presence indicates past work output, NOT current user intent. Observe the REQUEST TARGET (what the user wants to produce now), not the WORKSPACE STATE (what already exists). Existing documents do NOT change the classification of a request whose target is a different job's activity.
-⚠️ **Redirect prerequisite principle**: Redirect to a different job is only valid when the target job's input materials exist in the workspace. Observe workspace state — if no input materials for the target job are present, the target job cannot execute. Do NOT suggest redirect when the target job has zero input materials. Action verbs and topic keywords in user input do NOT indicate job readiness — only workspace state determines whether a job CAN run.
-⚠️ **Spec suggestion (code job)**: When current job is \`code\`, a substantial feature request with NO existing spec docs → suggest \`redirect\` to \`design\`. Localized changes (bug fix, single file, rename) → do NOT suggest.
+⚠️ **Redirect prerequisite principle**: Redirect validity depends on whether the target job's PREREQUISITES (defined in its capabilities section) exist — not on whether its OUTPUT documents already exist. Absent outputs indicate the target job hasn't run yet, which is a reason to redirect, not to block it.
+⚠️ **Spec suggestion (code job)**: When current job is \`code\`, a substantial feature request with NO existing spec docs AND NO existing design docs → suggest \`redirect\` to \`design\`. If design documents already exist (system design, API contract, etc.), they are sufficient for development — do NOT suggest spec. Localized changes (bug fix, single file, rename) → do NOT suggest.
 ⚠️ **Document creation vs. code implementation ambiguity (design job)**: When current job is \`design\`, observe whether the request target is unambiguously a **document** or **source code**:
   - Unambiguous document target (write/draft/create a specification, architecture document) → \`proceed\` in design
   - Unambiguous source code target (fix bug, modify source file, build runnable application) → \`redirect\` to \`code\`
@@ -380,5 +146,219 @@ When user input appears to be:
   - **Constraint**: Do NOT assume document creation just because current job is \`design\`. Observe the actual target.
   - **Constraint**: Design job produces specification/architecture documents only — it never writes source code.
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags
-"
+",
+  "user": "# TRIAGE
+
+You analyze user input to determine intent and execution readiness.
+
+## SESSION
+| Field | Value |
+|-------|-------|
+| Agent | architect |
+| Job | code |
+
+## USER INPUT
+Build an API
+
+## WORKSPACE STATE
+
+### Inputs
+❌ No PRD
+✅ Directive
+
+### References
+❌ No screen references
+ℹ️ No component references
+ℹ️ No assets
+
+### Design Documents
+❌ No UI specification
+❌ No system design
+
+### Spec Documents
+❌ No spec documents
+
+### Codebase
+❌ Not indexed
+❌ No design documents
+
+## AVAILABLE JOBS
+
+### design job (agent: architect)
+Creates UI specifications and system architecture documents.
+Two modes: UI Design (from reference images) and System Design (from PRD).
+Output documents guide Code Job for accurate implementation.
+
+
+#### Mode: ui-design
+Generates UI specification documents from reference images.
+Analyzes visual design to extract tokens, components, and layouts.
+Works with any design tool output (Figma, Sketch, screenshots, etc.)
+
+
+**Prerequisites:**
+- Required:
+  - Reference images (inputs/references/)
+- Recommended:
+  - Asset files like icons and images (inputs/assets/)
+
+**Scope:**
+- Design tokens (colors, typography, spacing, shadows)
+- Asset mappings and icon system
+- UI component specifications with props and variants
+- Layout structure and responsive breakpoints
+
+#### Mode: system-design
+Creates system architecture from PRD or instructions.
+Generates API specifications, data models, and technical architecture.
+Suitable for backend, fullstack, or complex system design.
+
+
+**Prerequisites:**
+- Required:
+  - PRD document (inputs/prd.md)
+- Recommended:
+  - Existing codebase (recommended for refactor mode)
+
+**Scope:**
+- System architecture design
+- API interface design (REST, GraphQL, etc.)
+- Data model and schema design
+- Service boundaries and interactions
+
+**Redirect signals:**
+- → to_code: Request target is source code (implementation, bug fix, runnable application)
+- → to_learn: Request target is codebase analysis or indexing output
+- → to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
+
+### code job (agent: architect)
+Generates and modifies code for any project type.
+Works with frontend, backend, fullstack, mobile, or any language/framework.
+Adapts to your existing codebase patterns when Learn Job has been run.
+
+
+#### Mode: new-development
+Creates new code from design documents.
+Generates components, services, APIs, tests based on specifications.
+
+
+**Prerequisites:**
+- Required:
+  - Design documents (outputs/design/)
+- Recommended:
+  - Indexed codebase for consistent code style and patterns
+
+**Scope:**
+- Code implementation (any language/framework)
+- File generation with proper structure
+- Import management
+- Test file generation
+
+#### Mode: modification
+Modifies or improves existing code.
+Handles refactoring, bug fixes, feature additions, optimizations.
+
+
+**Prerequisites:**
+- Recommended:
+  - Indexed codebase for accurate modifications
+
+**Scope:**
+- Code modification and refactoring
+- Bug fixes
+- Feature additions
+- Performance optimizations
+
+**Redirect signals:**
+- → to_design: Request target is a design artifact (specification, architecture document, UI spec)
+- → to_learn: Request target is codebase analysis or indexing output
+
+### learn job (agent: architect)
+Analyzes and indexes your codebase for better AI understanding.
+Essential for existing projects - enables Ant to match your code style,
+understand your architecture, and make contextually appropriate changes.
+
+
+#### Mode: codebase-analysis
+Scans your repository and creates vector embeddings.
+Analyzes code patterns, architecture, dependencies, and conventions.
+Results in more accurate and consistent code generation.
+
+
+**Prerequisites:**
+- Required:
+  - Git repository
+
+**Scope:**
+- Codebase indexing into vector database
+- Code pattern analysis
+- Architecture understanding
+- Dependency mapping
+- Convention detection
+
+**Redirect signals:**
+- → to_design: Request target is a design artifact (specification, architecture document, UI spec)
+- → to_code: Request target is source code (implementation, bug fix, runnable application)
+
+### plan job (agent: planner)
+Creates and refines PRD (Product Requirements Document).
+Works with non-developers (PMs, business teams) to produce PRD artifacts.
+Uses PRD-as-State pattern: the PRD file is the persistent state across jobs.
+
+
+#### Mode: generate
+Creates new PRD from user directive.
+Generates comprehensive product requirements document from scratch.
+
+
+
+**Scope:**
+- PRD creation from product description
+- PRD requirement structuring and scoping
+- PRD feature specification
+
+#### Mode: refine
+Refines existing PRD based on user feedback or evaluation results.
+Improves quality, adds missing sections, clarifies requirements.
+
+
+**Prerequisites:**
+- Required:
+  - Existing PRD document
+
+**Scope:**
+- PRD improvement and refinement
+- Requirement clarification
+- Section expansion and detail addition
+
+**Redirect signals:**
+- → to_design: Request target is a design artifact — user EXPLICITLY names a design artifact (UI spec, system design doc) as the output to produce. Redirect is only valid when workspace has input materials for the target job.
+
+- → to_code: Request target is source code — user EXPLICITLY requests to write, implement, or fix source code files. Redirect is only valid when workspace has input materials for the target job.
+
+- → to_learn: Request target is codebase analysis or indexing output. Redirect is only valid when workspace has input materials for the target job.
+
+
+
+## RESPONSE FORMAT
+
+<triage>
+{
+  "intent": "ask" | "work",
+  
+  "inScope": true | false,       // true = the ask system will handle this with its own tools
+  "askResponse": "Brief description of what will be looked up (when inScope=true) OR direct answer (when inScope=false)",
+  
+  "workStatus": "proceed" | "redirect" | "blocked",
+  "suggestedAgent": "architect | planner",
+  "suggestedJob": "design | code | learn | plan",
+  "redirectReason": "Why redirect is needed",
+  "missingPrerequisites": { "required": [], "recommended": [] },
+  "canProceed": true | false,
+  "blockedMessage": "What is missing",
+  "proceedAnywayOption": "Option to proceed anyway"
+}
+</triage>
+",
+}
 `;

@@ -472,38 +472,74 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           console.log(`[Store] 💬 Inline ask complete: intent=${intent}, jobId=${event.jobId}`);
           
           if (intent === 'work' && inlineAskContext) {
-            // ✅ Work intent: Auto-continue the interrupted job
-            console.log('[Store] 🔧 Work intent → auto-continuing interrupted job:', inlineAskContext.interruptedJobId);
+            const noSession = event.noSession === true;
             
-            // Dismiss interruption before continuing
-            const kanbanData = get().kanban;
-            if (kanbanData?.interruption?.timestamp) {
-              get().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-            }
-            
-            // Keep isRunning true, update jobId to the interrupted one
-            get().setRunning(true, inlineAskContext.interruptedJobId);
-            
-            // Clear inline ask context
-            get().setInlineAskContext(null);
-            
-            // Trigger continueJob
-            import('@/infrastructure/http/api').then(({ continueJob }) => {
-              continueJob(
-                inlineAskContext.interruptedJobId,
-                inlineAskContext.projectId,
-                inlineAskContext.featureName,
-                inlineAskContext.message,
-                true
-              ).then((result) => {
-                console.log('[Store] ✅ Auto-continue succeeded:', result.jobId);
-                get().setRunning(true, result.jobId);
-                get().setLastJobFailed(false);
-              }).catch((error) => {
-                console.error('[Store] ❌ Auto-continue failed:', error);
-                get().setRunning(false);
+            if (noSession) {
+              // ✅ Work intent but no interrupted session exists — start a fresh job
+              console.log('[Store] ⚠️ Work intent + noSession → starting fresh job instead of continue');
+              
+              const kanbanData = get().kanban;
+              if (kanbanData?.interruption?.timestamp) {
+                get().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+              }
+              
+              get().setInlineAskContext(null);
+              
+              const state = get() as any;
+              const jobType = state.selectedJobType || 'design';
+              const agent = state.selectedAgent || 'architect';
+              
+              import('@/infrastructure/http/api').then(({ executeJob }) => {
+                executeJob({
+                  projectId: inlineAskContext.projectId,
+                  featureName: inlineAskContext.featureName,
+                  jobType,
+                  agent,
+                  overrideDirective: inlineAskContext.message,
+                  chatSource: true,
+                }).then((result) => {
+                  console.log('[Store] ✅ Fresh job started:', result.jobId);
+                  get().setRunning(true, result.jobId);
+                  get().setLastJobFailed(false);
+                }).catch((error) => {
+                  console.error('[Store] ❌ Fresh job start failed:', error);
+                  get().setRunning(false);
+                });
               });
-            });
+            } else {
+              // ✅ Work intent: Auto-continue the interrupted job
+              console.log('[Store] 🔧 Work intent → auto-continuing interrupted job:', inlineAskContext.interruptedJobId);
+              
+              // Dismiss interruption before continuing
+              const kanbanData = get().kanban;
+              if (kanbanData?.interruption?.timestamp) {
+                get().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+              }
+              
+              // Keep isRunning true, update jobId to the interrupted one
+              get().setRunning(true, inlineAskContext.interruptedJobId);
+              
+              // Clear inline ask context
+              get().setInlineAskContext(null);
+              
+              // Trigger continueJob
+              import('@/infrastructure/http/api').then(({ continueJob }) => {
+                continueJob(
+                  inlineAskContext.interruptedJobId,
+                  inlineAskContext.projectId,
+                  inlineAskContext.featureName,
+                  inlineAskContext.message,
+                  true
+                ).then((result) => {
+                  console.log('[Store] ✅ Auto-continue succeeded:', result.jobId);
+                  get().setRunning(true, result.jobId);
+                  get().setLastJobFailed(false);
+                }).catch((error) => {
+                  console.error('[Store] ❌ Auto-continue failed:', error);
+                  get().setRunning(false);
+                });
+              });
+            }
           } else {
             // ✅ Ask intent: Response already streamed to chat. Restore interrupted state.
             console.log('[Store] 💬 Ask intent → keeping interruption state, isRunning=false');

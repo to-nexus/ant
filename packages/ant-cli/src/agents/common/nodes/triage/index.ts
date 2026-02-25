@@ -10,6 +10,7 @@
  */
 
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 import Handlebars from 'handlebars';
 import { TriageableState, TriageResult, WorkspaceState } from './types.js';
@@ -21,6 +22,7 @@ import { runAskGraph } from '../../../architect/graph/ask/runner.js';
 import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
 import { getEstimatingLabel } from '../../graph/timing/estimatingLabels.js';
+import { getSessionDebugDir } from '../../../../core/utils/sessionPaths.js';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -137,7 +139,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // Get job capabilities from YAML data
   const jobCapabilities = AgentRegistry.generatePromptContext();
   
-  const prompt = buildTriagePrompt({
+  const { system: systemPrompt, user: userPrompt } = buildTriagePrompt({
     userInput,
     currentJob,
     currentAgent,
@@ -146,31 +148,43 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   });
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 3: Call LLM
+  // Step 3: Call LLM (system = classification rules, user = data to analyze)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   console.log('🤖 Calling LLM for triage...');
   
   let responseText: string;
   
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+  
   if (llm.invokeWithUsage) {
-    const response = await llm.invokeWithUsage([
-      { role: 'user', content: prompt }
-    ]);
+    const response = await llm.invokeWithUsage(messages);
     responseText = response.content;
     
     if (response.usage) {
       accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
-      // ✅ Push live token update to Kanban UI during estimating phase
       if ((state as any).deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
         (state as any).deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
       }
     }
   } else {
-    responseText = await llm.invoke([
-      { role: 'user', content: prompt }
-    ]);
+    responseText = await llm.invoke(messages);
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 3.5: Log triage prompt/response for debugging
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  logTriagePromptAndResponse({
+    featurePath,
+    currentAgent,
+    jobId: state._httpJobId || 'unknown',
+    systemPromptLength: systemPrompt.length,
+    userPromptLength: userPrompt.length,
+    responseText,
+  });
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Step 4: Parse Response
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -316,69 +330,23 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   } as unknown as Partial<T>;
 }
 
-/**
- * Build triage prompt with job capabilities
- * Uses template files from core/prompt/templates/triage/
- */
-/**
- * Generate agent capabilities context for triage prompt.
- * Describes each agent's scope so the LLM can detect agent mismatch.
- */
-function generateAgentCapabilities(currentAgent: string): string {
-  const agents: Record<string, { name: string; scope: string[] }> = {
-    architect: {
-      name: 'architect',
-      scope: [
-        'UI design specification (ui-tokens, ui-assets, ui-spec)',
-        'System architecture and API design',
-        'Source code implementation (any language/framework)',
-        'Codebase analysis and indexing',
-      ],
-    },
-    planner: {
-      name: 'planner',
-      scope: [
-        'PRD (Product Requirements Document) creation',
-        'PRD refinement and improvement',
-        'PRD scoping and requirement structuring',
-      ],
-    },
-  };
-  
-  const lines: string[] = [];
-  lines.push(`Current agent: **${currentAgent}**\n`);
-  
-  for (const [id, agent] of Object.entries(agents)) {
-    const isCurrent = id === currentAgent;
-    lines.push(`### ${agent.name}${isCurrent ? ' (current)' : ''}`);
-    lines.push(`Scope: ${agent.scope.join(', ')}`);
-    lines.push('');
-  }
-  
-  return lines.join('\n');
-}
-
 export function buildTriagePrompt(params: {
   userInput: string;
   currentJob: string;
   currentAgent: string;
   workspaceState: WorkspaceState;
   jobCapabilities: string;
-}): string {
+}): { system: string; user: string } {
   const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities } = params;
   
   const { base, rules } = loadTriageTemplates();
   
-  // Generate agent capabilities for cross-agent detection
-  const agentCapabilities = generateAgentCapabilities(currentAgent);
-  
-  // Render base template with variables
-  const basePrompt = base({
+  // Render base template with variables (data for LLM to analyze)
+  const user = base({
     currentAgent,
     currentJob,
     userInput,
     jobCapabilities,
-    agentCapabilities,
     // Workspace state
     hasPrd: workspaceState.hasPrd,
     prdPath: workspaceState.prdPath || 'available',
@@ -399,8 +367,7 @@ export function buildTriagePrompt(params: {
     hasDesignDoc: workspaceState.hasDesignDoc,
   });
   
-  // Combine base + rules
-  return `${basePrompt}\n\n---\n\n${rules}`;
+  return { system: rules, user };
 }
 
 /**
@@ -470,6 +437,59 @@ export function routeAfterTriage<T extends TriageableState>(state: T): string {
   
   console.log('[TriageRouter] default → detectEnvironment');
   return 'detectEnvironment';
+}
+
+/**
+ * Log triage prompt structure and LLM raw response to debug file.
+ * Appends a triage section to the existing prompt log file.
+ */
+function logTriagePromptAndResponse(params: {
+  featurePath: string;
+  currentAgent: string;
+  jobId: string;
+  systemPromptLength: number;
+  userPromptLength: number;
+  responseText: string;
+}): void {
+  const { featurePath, currentAgent, jobId, systemPromptLength, userPromptLength, responseText } = params;
+  if (!featurePath) return;
+  
+  const agent = currentAgent === 'planner' ? 'planner' : 'architect';
+  const logDir = getSessionDebugDir(featurePath, agent, 'prompts');
+  const logFile = path.join(logDir, `prompt-${jobId}.md`);
+  
+  const tokenEst = Math.ceil((systemPromptLength + userPromptLength) / 3.5);
+  const content = `## Node: triage
+
+- **Timestamp**: ${new Date().toISOString()}
+- **System Prompt**: \`triage/rules.md\` (${systemPromptLength.toLocaleString()} chars)
+- **User Prompt**: \`triage/base.md\` rendered (${userPromptLength.toLocaleString()} chars)
+- **Total**: ${(systemPromptLength + userPromptLength).toLocaleString()} chars (~${tokenEst.toLocaleString()} tokens)
+
+### LLM Raw Response
+
+\`\`\`
+${responseText}
+\`\`\`
+
+---
+
+`;
+
+  try {
+    fs.mkdirSync(logDir, { recursive: true });
+    
+    if (fs.existsSync(logFile)) {
+      const existing = fs.readFileSync(logFile, 'utf-8');
+      fs.writeFileSync(logFile, content + existing);
+    } else {
+      const header = `# Prompt Log: Triage\n\n- **Job ID**: ${jobId}\n- **Created**: ${new Date().toISOString()}\n\n---\n\n`;
+      fs.writeFileSync(logFile, header + content);
+    }
+    console.log(`📋 [TriageLogger] Logged triage prompt/response for ${jobId}`);
+  } catch (error) {
+    console.error('❌ [TriageLogger] Failed to write log:', error);
+  }
 }
 
 // Re-export

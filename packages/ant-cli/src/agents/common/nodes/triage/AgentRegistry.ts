@@ -135,22 +135,33 @@ class AgentRegistryClass {
     lines.push('## AVAILABLE JOBS\n');
     
     for (const job of jobs) {
-      lines.push(`### ${job.id} job`);
+      lines.push(`### ${job.id} job (agent: ${job.agent})`);
       lines.push(`${job.description}\n`);
       
       for (const mode of job.modes) {
         lines.push(`#### Mode: ${mode.id}`);
         lines.push(`${mode.description}\n`);
         
-        lines.push('**Prerequisites:**');
-        lines.push('- Required:');
-        for (const prereq of mode.prerequisites.required) {
-          lines.push(`  - ${prereq.description}`);
-        }
-        if (mode.prerequisites.recommended.length > 0) {
-          lines.push('- Recommended:');
-          for (const prereq of mode.prerequisites.recommended) {
-            lines.push(`  - ${prereq.description}`);
+        const requiredDescs = mode.prerequisites.required
+          .map(p => this.formatPrereqDescription(p))
+          .filter(Boolean);
+        const recommendedDescs = mode.prerequisites.recommended
+          .map(p => this.formatPrereqDescription(p))
+          .filter(Boolean);
+        
+        if (requiredDescs.length > 0 || recommendedDescs.length > 0) {
+          lines.push('**Prerequisites:**');
+          if (requiredDescs.length > 0) {
+            lines.push('- Required:');
+            for (const desc of requiredDescs) {
+              lines.push(`  - ${desc}`);
+            }
+          }
+          if (recommendedDescs.length > 0) {
+            lines.push('- Recommended:');
+            for (const desc of recommendedDescs) {
+              lines.push(`  - ${desc}`);
+            }
           }
         }
         
@@ -180,6 +191,24 @@ class AgentRegistryClass {
   }
   
   // Private methods
+
+  /**
+   * Resolve prerequisite description, handling `any_of` composites.
+   * Filters out `has_directive` entirely — it's always true when a user
+   * types anything, so it provides zero discriminative signal for triage.
+   * Returns empty string when the prerequisite should be omitted.
+   */
+  private formatPrereqDescription(prereq: PrerequisiteCondition): string {
+    if (prereq.type === 'has_directive') {
+      return '';
+    }
+    if (prereq.type === 'any_of' && prereq.items) {
+      const meaningful = prereq.items.filter(item => item.type !== 'has_directive');
+      if (meaningful.length === 0) return '';
+      return meaningful.map(item => item.description).join(' OR ');
+    }
+    return prereq.description;
+  }
   
   private checkCondition(
     prereq: PrerequisiteCondition,

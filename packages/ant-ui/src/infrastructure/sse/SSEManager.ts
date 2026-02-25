@@ -308,9 +308,10 @@ class SSEManager {
 
     console.log(`[SSE] forceReconnect: ${projectId}/${featureName}`);
 
-    // Close old EventSource silently (no statusCallback to avoid UI flicker)
-    try { this.unifiedConnection.eventSource.close(); } catch {}
+    // Nullify reference BEFORE closing so any late onerror is a no-op
+    const oldES = this.unifiedConnection.eventSource;
     this.unifiedConnection = null;
+    try { oldES.close(); } catch {}
 
     // New connect() will proceed since unifiedConnection is now null
     this.connect(projectId, featureName, job);

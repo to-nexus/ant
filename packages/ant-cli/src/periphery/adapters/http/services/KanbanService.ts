@@ -268,17 +268,29 @@ export class KanbanService {
       const jobStatus = await this.stateStore.getJobStatus(sessionJobId);
       isActuallyRunning = !!jobStatus && jobStatus.status === 'running';
 
-      // Defensive staleness check: if Redis says 'running' but the job
-      // started more than STALE_THRESHOLD ago, treat it as stale.
-      // This guards against race conditions where StaleJobRecovery hasn't
-      // finished yet (e.g. Realtime server started before API server).
-      if (isActuallyRunning && jobStatus) {
+      // Fetch live snapshot BEFORE stale check — a live snapshot in Redis
+      // proves the worker is actively writing, regardless of how long ago
+      // the job started.
+      if (isActuallyRunning && !isJobCompleted) {
+        liveSnapshot = await this.stateStore.getTaskQueue(sessionJobId);
+        if (liveSnapshot) {
+          dlog(`   Found live snapshot from Redis for ${sessionJobId} (${liveSnapshot.queue?.length || 0} tasks)`);
+        } else {
+          dlog(`   ⏳ No live snapshot in Redis yet for jobId: ${sessionJobId}`);
+        }
+      }
+
+      // Defensive staleness check: only when NO live snapshot exists.
+      // If there's a live snapshot, the worker is clearly active.
+      // Without a snapshot, a job that started > STALE_THRESHOLD ago is likely
+      // a crashed process that StaleJobRecovery hasn't cleaned up yet.
+      if (isActuallyRunning && !liveSnapshot && jobStatus) {
         const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 min (lockDuration 30s + stalledInterval 30s + buffer)
         const refTime = jobStatus.startedAt || jobStatus.timestamp;
         if (refTime) {
           const elapsed = Date.now() - new Date(refTime).getTime();
           if (elapsed > STALE_THRESHOLD_MS) {
-            dlog(`   ⚠️ Job ${sessionJobId} looks stale (running for ${Math.round(elapsed / 60000)}min), treating as not running`);
+            dlog(`   ⚠️ Job ${sessionJobId} looks stale (running for ${Math.round(elapsed / 60000)}min, no live snapshot), treating as not running`);
             isActuallyRunning = false;
           }
         }
@@ -291,14 +303,7 @@ export class KanbanService {
       isActuallyRunning = !!runningStatus && runningStatus.status === 'running';
     }
     
-    if (sessionJobId && !isJobCompleted && isActuallyRunning && this.stateStore) {
-      liveSnapshot = await this.stateStore.getTaskQueue(sessionJobId);
-      if (liveSnapshot) {
-        dlog(`   Found live snapshot from Redis for ${sessionJobId} (${liveSnapshot.queue?.length || 0} tasks)`);
-      } else {
-        dlog(`   ⏳ No live snapshot in Redis yet for jobId: ${sessionJobId}`);
-      }
-    }
+    // (liveSnapshot already fetched above when stateStore is available)
     
     const MIN_RECURSION_LIMIT = 5;
     const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);

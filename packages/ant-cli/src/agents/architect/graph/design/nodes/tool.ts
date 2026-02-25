@@ -10,7 +10,9 @@ import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 
 const tokenManager = new TokenBudgetManager();
-const toolResultManager = new ToolResultManager(tokenManager);
+const toolResultManager = new ToolResultManager(tokenManager, {
+  maxReadFileTokens: 15000,
+});
 
 /**
  * Execute a single design tool and return its result content (Anthropic format)
@@ -285,14 +287,16 @@ async function handleListFiles(
   
   console.log(`   📂 Listed: ${filteredFiles.length} files in ${directory || '.'}`);
   
-  // ✅ UI notification: grepping complete (local file list)
-  const chatAPI = getChatAPIClient();
-  const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
-  await chatAPI.showChatStatus('grepped', { 
-    filesCount: filteredFiles.length,
-    filesList: filteredFiles,
-    _mergeIndex: mergeIndex
-  });
+  // ✅ UI notification: grepping complete (local file list) — skip if 0 results
+  if (filteredFiles.length > 0) {
+    const chatAPI = getChatAPIClient();
+    const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
+    await chatAPI.showChatStatus('grepped', { 
+      filesCount: filteredFiles.length,
+      filesList: filteredFiles,
+      _mergeIndex: mergeIndex
+    });
+  }
   
   return JSON.stringify({
     directory: directory || '.',
@@ -359,15 +363,17 @@ async function handleSearchCode(
   
   console.log(`   🔍 Search: "${pattern}" found ${results.length} results`);
   
-  // ✅ UI notification: search complete
-  const chatAPI = getChatAPIClient();
+  // ✅ UI notification: search complete — skip if 0 results
   const matchedFiles = [...new Set(results.map(r => r.file))];
-  const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
-  await chatAPI.showChatStatus('grepped', { 
-    filesCount: matchedFiles.length,
-    filesList: matchedFiles,
-    _mergeIndex: mergeIndex
-  });
+  if (matchedFiles.length > 0) {
+    const chatAPI = getChatAPIClient();
+    const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
+    await chatAPI.showChatStatus('grepped', { 
+      filesCount: matchedFiles.length,
+      filesList: matchedFiles,
+      _mergeIndex: mergeIndex
+    });
+  }
   
   return JSON.stringify({
     pattern,
@@ -756,14 +762,16 @@ async function handleListReferenceImages(
     console.log(`   📂 First few: ${imageFiles.slice(0, 3).map(f => path.basename(f)).join(', ')}`);
   }
   
-  // ✅ UI notification
-  const chatAPI = getChatAPIClient();
-  const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
-  await chatAPI.showChatStatus('grepped', { 
-    filesCount: imageFiles.length,
-    filesList: imageFiles,
-    _mergeIndex: mergeIndex
-  });
+  // ✅ UI notification — skip if 0 results
+  if (imageFiles.length > 0) {
+    const chatAPI = getChatAPIClient();
+    const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
+    await chatAPI.showChatStatus('grepped', { 
+      filesCount: imageFiles.length,
+      filesList: imageFiles,
+      _mergeIndex: mergeIndex
+    });
+  }
   
   return JSON.stringify({
     category: category || 'all',
@@ -858,14 +866,16 @@ async function handleListAssets(
   const groupSummary = Object.entries(grouped).map(([k, v]) => `${k}: ${v.length}`).join(', ');
   console.log(`   📦 Found ${totalCount} assets (${groupSummary})`);
   
-  // ✅ UI notification
-  const chatAPI = getChatAPIClient();
-  const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
-  await chatAPI.showChatStatus('grepped', { 
-    filesCount: totalCount,
-    filesList: allFiles,
-    _mergeIndex: mergeIndex
-  });
+  // ✅ UI notification — skip if 0 results
+  if (totalCount > 0) {
+    const chatAPI = getChatAPIClient();
+    const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
+    await chatAPI.showChatStatus('grepped', { 
+      filesCount: totalCount,
+      filesList: allFiles,
+      _mergeIndex: mergeIndex
+    });
+  }
   
   return JSON.stringify({
     category: category || 'all',

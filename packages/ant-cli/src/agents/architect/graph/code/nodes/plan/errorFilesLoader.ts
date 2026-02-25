@@ -84,19 +84,21 @@ export async function loadErrorFiles(
   }
   
   // Display in UI (Grepped - all error files are local)
-  console.log(`\n📤 [errorFilesLoader] Sending 'grepped' status (${loadedFiles.length} files)...`);
-  try {
-    await chatAPI.showChatStatus('grepped', {
-      filesCount: loadedFiles.length,
-      keywords: errorFilePaths.slice(0, fileLimit),
-      filesList: loadedFiles.map(f => f.path),
-      content: loadedFiles.length > 0
-        ? `Grepped: ${loadedFiles.length} error files from local`
-        : `Grepped: 0 error files found`
-    });
-    console.log(`   ✅ 'grepped' status sent successfully\n`);
-  } catch (error: any) {
-    console.error(`   ❌ 'grepped' status FAILED:`, error.message);
+  if (loadedFiles.length > 0) {
+    console.log(`\n📤 [errorFilesLoader] Sending 'grepped' status (${loadedFiles.length} files)...`);
+    try {
+      await chatAPI.showChatStatus('grepped', {
+        filesCount: loadedFiles.length,
+        keywords: errorFilePaths.slice(0, fileLimit),
+        filesList: loadedFiles.map(f => f.path),
+        content: `Grepped: ${loadedFiles.length} error files from local`
+      });
+      console.log(`   ✅ 'grepped' status sent successfully\n`);
+    } catch (error: any) {
+      console.error(`   ❌ 'grepped' status FAILED:`, error.message);
+    }
+  } else {
+    console.log(`   ℹ️  Grepped: 0 error files (skipping UI)`);
   }
   
   console.log(`   Error files loader: ${loadedFiles.length} files loaded\n`);
