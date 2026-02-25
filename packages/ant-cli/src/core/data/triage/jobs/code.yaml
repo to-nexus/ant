@@ -61,5 +61,5 @@ modes:
       - Performance optimizations
 
 redirect_signals:
-  to_design: User mentions planning, design, architecture, or UI design
-  to_learn: User mentions analysis, indexing, or understanding codebase
+  to_design: Request target is a design artifact (specification, architecture document, UI spec)
+  to_learn: Request target is codebase analysis or indexing output

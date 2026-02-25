@@ -29,5 +29,5 @@ modes:
       - Convention detection
 
 redirect_signals:
-  to_design: User mentions planning, design, or creating specifications
-  to_code: User mentions implementation, coding, or building
+  to_design: Request target is a design artifact (specification, architecture document, UI spec)
+  to_code: Request target is source code (implementation, bug fix, runnable application)
