@@ -20,7 +20,7 @@ on:
         options:
           - ant-ui
           - ant-cli
-          - ant-cli-preview
+          - ant-preview
       git_ref:
         description: 'Git reference (commit SHA, branch, or tag) to deploy'
         required: false
@@ -137,10 +137,10 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Dev environment - ant-cli-preview deployment (main, dev, ci/* branches)
-  # ant-cli-preview 이미지: preview 워커 전용 (멀티 언어 런타임 포함)
+  # Dev environment - ant-preview deployment (main, dev, ci/* branches)
+  # ant-preview 이미지: preview 워커 전용 (멀티 언어 런타임 포함)
   # ===========================================
-  auto-ant-cli-preview-dev-deploy:
+  auto-ant-preview-dev-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
@@ -148,7 +148,7 @@ jobs:
       environment: dev
       env: dev
       git_sha: ${{ github.sha }}
-      service_name: ant-cli-preview
+      service_name: ant-preview
       dockerfile: ./packages/ant-cli/Dockerfile
       target: preview
       build_args: |
@@ -185,7 +185,7 @@ jobs:
       dockerfile: ./packages/ant-cli/Dockerfile
     secrets: inherit
 
-  auto-all-ant-cli-preview-dev-deploy:
+  auto-all-ant-preview-dev-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
@@ -193,7 +193,7 @@ jobs:
       environment: dev
       env: dev
       git_sha: ${{ github.sha }}
-      service_name: ant-cli-preview
+      service_name: ant-preview
       dockerfile: ./packages/ant-cli/Dockerfile
       target: preview
       build_args: |
@@ -234,9 +234,9 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Stage branch - ant-cli-preview deployment
+  # Stage branch - ant-preview deployment
   # ===========================================
-  auto-ant-cli-preview-stage-deploy:
+  auto-ant-preview-stage-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
@@ -244,7 +244,7 @@ jobs:
       environment: stage
       env: stage
       git_sha: ${{ github.sha }}
-      service_name: ant-cli-preview
+      service_name: ant-preview
       dockerfile: ./packages/ant-cli/Dockerfile
       target: preview
       build_args: |
@@ -281,7 +281,7 @@ jobs:
       dockerfile: ./packages/ant-cli/Dockerfile
     secrets: inherit
 
-  auto-all-ant-cli-preview-stage-deploy:
+  auto-all-ant-preview-stage-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
@@ -289,7 +289,7 @@ jobs:
       environment: stage
       env: stage
       git_sha: ${{ github.sha }}
-      service_name: ant-cli-preview
+      service_name: ant-preview
       dockerfile: ./packages/ant-cli/Dockerfile
       target: preview
       build_args: |
@@ -332,16 +332,16 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Manual deployment workflow - ant-cli-preview (dev, stage only)
+  # Manual deployment workflow - ant-preview (dev, stage only)
   # ===========================================
-  manual-ant-cli-preview-deploy:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-cli-preview' && github.event.inputs.environment != 'prod'
+  manual-ant-preview-deploy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-preview' && github.event.inputs.environment != 'prod'
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: ${{ github.event.inputs.environment }}
       env: ${{ github.event.inputs.environment }}
       git_sha: ${{ github.sha }}
-      service_name: ant-cli-preview
+      service_name: ant-preview
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
       git_ref: ${{ github.event.inputs.git_ref || '' }}
       dockerfile: ./packages/ant-cli/Dockerfile
@@ -386,16 +386,16 @@ jobs:
       dockerfile: ./packages/ant-cli/Dockerfile
     secrets: inherit
 
-  release-deploy-ant-cli-preview:
+  release-deploy-ant-preview:
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-cli-preview')
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-preview')
     uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
     with:
       environment: prod
       env: prod
       git_sha: ${{ github.sha }}
-      service_name: ant-cli-preview
+      service_name: ant-preview
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
       git_ref: ${{ github.event.inputs.git_ref || '' }}
       dockerfile: ./packages/ant-cli/Dockerfile
