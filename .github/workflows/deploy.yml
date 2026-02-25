@@ -20,6 +20,7 @@ on:
         options:
           - ant-ui
           - ant-cli
+          - ant-cli-preview
       git_ref:
         description: 'Git reference (commit SHA, branch, or tag) to deploy'
         required: false
@@ -121,7 +122,7 @@ jobs:
 
   # ===========================================
   # Dev environment - ant-cli deployment (main, dev, ci/* branches)
-  # ant-cli 이미지 하나로 ant-api, ant-job, ant-preview 모두 배포
+  # ant-cli 이미지: ant-api, ant-job 워커용 (언어 런타임 없는 경량 이미지)
   # ===========================================
   auto-ant-cli-dev-deploy:
     needs: detect-changes
@@ -133,6 +134,28 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
+    secrets: inherit
+
+  # ===========================================
+  # Dev environment - ant-cli-preview deployment (main, dev, ci/* branches)
+  # ant-cli-preview 이미지: preview 워커 전용 (멀티 언어 런타임 포함)
+  # ===========================================
+  auto-ant-cli-preview-dev-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: dev
+      env: dev
+      git_sha: ${{ github.sha }}
+      service_name: ant-cli-preview
+      dockerfile: ./packages/ant-cli/Dockerfile
+      target: preview
+      build_args: |
+        GO_VERSION=${{ vars.PREVIEW_GO_VERSION }}
+        PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
+        RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
+        JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
     secrets: inherit
 
   # ===========================================
@@ -160,6 +183,24 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
+    secrets: inherit
+
+  auto-all-ant-cli-preview-dev-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: dev
+      env: dev
+      git_sha: ${{ github.sha }}
+      service_name: ant-cli-preview
+      dockerfile: ./packages/ant-cli/Dockerfile
+      target: preview
+      build_args: |
+        GO_VERSION=${{ vars.PREVIEW_GO_VERSION }}
+        PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
+        RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
+        JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
     secrets: inherit
 
   # ===========================================
@@ -193,6 +234,27 @@ jobs:
     secrets: inherit
 
   # ===========================================
+  # Stage branch - ant-cli-preview deployment
+  # ===========================================
+  auto-ant-cli-preview-stage-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ant-cli-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: stage
+      env: stage
+      git_sha: ${{ github.sha }}
+      service_name: ant-cli-preview
+      dockerfile: ./packages/ant-cli/Dockerfile
+      target: preview
+      build_args: |
+        GO_VERSION=${{ vars.PREVIEW_GO_VERSION }}
+        PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
+        RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
+        JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
+    secrets: inherit
+
+  # ===========================================
   # Stage branch - Deploy all when root package.json changes
   # ===========================================
   auto-all-ant-ui-stage-deploy:
@@ -217,6 +279,24 @@ jobs:
       git_sha: ${{ github.sha }}
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
+    secrets: inherit
+
+  auto-all-ant-cli-preview-stage-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: stage
+      env: stage
+      git_sha: ${{ github.sha }}
+      service_name: ant-cli-preview
+      dockerfile: ./packages/ant-cli/Dockerfile
+      target: preview
+      build_args: |
+        GO_VERSION=${{ vars.PREVIEW_GO_VERSION }}
+        PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
+        RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
+        JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
     secrets: inherit
 
   # ===========================================
@@ -252,6 +332,28 @@ jobs:
     secrets: inherit
 
   # ===========================================
+  # Manual deployment workflow - ant-cli-preview (dev, stage only)
+  # ===========================================
+  manual-ant-cli-preview-deploy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-cli-preview' && github.event.inputs.environment != 'prod'
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: ${{ github.event.inputs.environment }}
+      env: ${{ github.event.inputs.environment }}
+      git_sha: ${{ github.sha }}
+      service_name: ant-cli-preview
+      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
+      git_ref: ${{ github.event.inputs.git_ref || '' }}
+      dockerfile: ./packages/ant-cli/Dockerfile
+      target: preview
+      build_args: |
+        GO_VERSION=${{ vars.PREVIEW_GO_VERSION }}
+        PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
+        RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
+        JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
+    secrets: inherit
+
+  # ===========================================
   # Release (prod) deployment via repository_dispatch or workflow_dispatch
   # ===========================================
   release-deploy-ant-ui:
@@ -282,4 +384,25 @@ jobs:
       ticket_id: ${{ github.event.inputs.ticket_id || '' }}
       git_ref: ${{ github.event.inputs.git_ref || '' }}
       dockerfile: ./packages/ant-cli/Dockerfile
+    secrets: inherit
+
+  release-deploy-ant-cli-preview:
+    if: >
+      (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-cli-preview')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: prod
+      env: prod
+      git_sha: ${{ github.sha }}
+      service_name: ant-cli-preview
+      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
+      git_ref: ${{ github.event.inputs.git_ref || '' }}
+      dockerfile: ./packages/ant-cli/Dockerfile
+      target: preview
+      build_args: |
+        GO_VERSION=${{ vars.PREVIEW_GO_VERSION }}
+        PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
+        RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
+        JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
     secrets: inherit
