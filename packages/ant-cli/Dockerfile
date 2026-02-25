@@ -262,4 +262,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 
 # Start server using tsx (avoids ESM module resolution issues)
 CMD ["tsx", "src/composition/server.ts"]
-
