@@ -590,6 +590,22 @@ export class PreviewServer {
           }
         }
 
+        // Enrich ant-project connections with target preview status
+        for (const conn of connections) {
+          const isAntProject = typeof conn.resolution === 'object' && conn.resolution?.type === 'ant-project';
+          if (isAntProject) {
+            const res = conn.resolution as { type: 'ant-project'; projectId: string; feature: string };
+            try {
+              const targetState = await this.stateStore.getPreview(
+                userContext.organizationId, userContext.userId, res.projectId, res.feature
+              );
+              conn.status = targetState?.running && targetState?.ready ? 'active'
+                          : targetState?.running ? 'unreachable'
+                          : 'not-started';
+            } catch { conn.status = 'not-started'; }
+          }
+        }
+
         // Save to preview-config (strip runtime status — it belongs in PREVIEW state only)
         const configConnections = connections.map(({ status, ...rest }: any) => rest);
         await this.stateStore.savePreviewConfig(
