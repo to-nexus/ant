@@ -21,7 +21,7 @@ export interface ServiceConnection {
   value: string;
   resolution: ConnectionResolution;
   source?: string;
-  status?: 'active' | 'unreachable' | 'not-started';
+  status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;
   userModified?: boolean;
 }

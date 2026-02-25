@@ -65,7 +65,7 @@ export interface ServiceConnection {
   value: string;                      // Resolved value ("postgres://user:pw@localhost:5432/db")
   resolution: ConnectionResolution;   // How the connection is resolved
   source?: string;                    // Package requiring this ("backend", "frontend", "*")
-  status?: 'active' | 'unreachable' | 'not-started';
+  status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;        // Detected via fallback = .env.example lacks @connection
 }
 

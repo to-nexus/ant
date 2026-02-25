@@ -536,8 +536,8 @@ export class PreviewService {
               s.name === dockerService || conn.id.includes(s.name) || s.name.includes(conn.id)
             );
             conn.status = svc?.status === 'running' ? 'active'
-                        : svc?.status === 'stopped' ? 'not-started'
-                        : svc ? 'unreachable' : conn.status;
+                        : svc?.status === 'stopped' ? 'stopped'
+                        : svc ? 'error' : conn.status;
           }
         }
       }
@@ -551,9 +551,9 @@ export class PreviewService {
             try {
               const targetState = await this.portRegistry.getPreview(tenantId, userId, res.projectId, res.feature);
               conn.status = targetState?.running && targetState?.ready ? 'active'
-                          : targetState?.running ? 'unreachable'
-                          : 'not-started';
-            } catch { conn.status = 'not-started'; }
+                          : targetState?.running ? 'starting'
+                          : 'stopped';
+            } catch { conn.status = 'error'; }
           }
         }
       }
@@ -1010,12 +1010,12 @@ export class PreviewService {
       this.previewServers.delete(serverKey);
       this.previewServerPaths.delete(serverKey);
       
-      // Reset connection status to not-started
+      // Reset connection status to stopped
       if (this.portRegistry) {
         try {
           const currentState = await this.getPreviewStatus(t, u, p, f);
           if (currentState.connections?.length) {
-            const resetConnections = currentState.connections.map((c: ServiceConnection) => ({ ...c, status: 'not-started' as const }));
+            const resetConnections = currentState.connections.map((c: ServiceConnection) => ({ ...c, status: 'stopped' as const }));
             await this.portRegistry.updatePreview(t, u, p, f, { connections: resetConnections });
           }
         } catch { /* best-effort */ }
@@ -1166,7 +1166,7 @@ export class PreviewService {
       try {
         const currentState = redisState || await this.portRegistry.getPreview(tenantId, userId, projectId, feature);
         if (currentState?.connections?.length) {
-          resetConnections = currentState.connections.map(c => ({ ...c, status: 'not-started' as const }));
+          resetConnections = currentState.connections.map(c => ({ ...c, status: 'stopped' as const }));
         }
         // Release ALL ports (entry + every package port)
         if (this.portManager) {
