@@ -1128,9 +1128,11 @@ function ConnectionRow({
           <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${resClass}`}>
             {conn.resolution.type}
           </span>
-          <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${statusClass}`}>
-            {conn.status || 'not-started'}
-          </span>
+          {conn.resolution.type !== 'url' && (
+            <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${statusClass}`}>
+              {conn.status || 'not-started'}
+            </span>
+          )}
           {(conn.missingAnnotation || conn.userModified) && (
             <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300"
               title={conn.userModified ? 'Changes not yet applied to project files' : 'Missing @connection annotation in .env.example'}
