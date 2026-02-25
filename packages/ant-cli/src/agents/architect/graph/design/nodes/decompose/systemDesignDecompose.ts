@@ -19,6 +19,8 @@ import {
   showChatPlaceholder,
   trackTokenUsage,
 } from "./helpers";
+import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
+import type { JobEnvironment, JobMode } from "../../../../../../core/types/detection";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -34,6 +36,7 @@ interface DecomposeContext {
 interface SystemDesignResponse {
   documentType: 'unified' | 'contract-first' | 'msa-contract-first';
   services?: string[];
+  fePackages?: string[];
   targetFiles: string[];
   tasks: Array<{
     id: string;
@@ -76,251 +79,76 @@ function isSystemDesignFile(fileName: string): boolean {
   return SYSTEM_DESIGN_FILE_PATTERNS.some(p => p.test(fileName));
 }
 
-/**
- * Infer document structure from existing file set.
- * Returns documentType and optional service/package names.
- */
-function inferDocumentStructure(files: string[]): {
-  documentType: 'unified' | 'contract-first' | 'msa-contract-first';
-  services: string[];
-  fePackages: string[];
-} {
-  const hasApiContract = files.includes('api-contract.md');
-
-  const feMulti = /^fe-system-design-(.+)\.md$/;
-  const beMulti = /^be-system-design-(.+)\.md$/;
-  const fePackages = files.map(f => f.match(feMulti)?.[1]).filter(Boolean) as string[];
-  const services = files.map(f => f.match(beMulti)?.[1]).filter(Boolean) as string[];
-
-  const hasFe = files.some(f => f.startsWith('fe-system-design'));
-  const hasBe = files.some(f => f.startsWith('be-system-design'));
-
-  if (hasApiContract && services.length > 0) {
-    return { documentType: 'msa-contract-first', services, fePackages };
-  }
-  if (hasApiContract || (hasFe && hasBe)) {
-    return { documentType: 'contract-first', services: [], fePackages };
-  }
-  return { documentType: 'unified', services: [], fePackages };
-}
-
 // ============================================
-// Environment-based Response Normalization
+// Resolved TargetFiles Validation (Single Source of Truth)
 // ============================================
 
 /**
- * Filter existing design files to only those relevant to the detected environment.
- * Prevents cross-tier contamination (e.g., FE directive targeting api-contract.md).
+ * Validate and fix LLM response against resolvedTargetFiles.
+ * Single normalization path for ALL environments and architectures.
+ *
+ * Flow: MSA expansion → task remap → documentType inference → coverage check.
+ *
+ * MSA expansion (both FE and BE):
+ *   be-system-design.md → be-system-design-{service}.md  (when response.services exists)
+ *   fe-system-design.md → fe-system-design-{package}.md  (when response.fePackages exists)
  */
-function filterExistingFilesByEnvironment(
-  files: string[],
-  env: string | undefined
-): string[] {
-  if (!env || env === 'fullstack') return files;
-  if (env === 'frontend') {
-    return files.filter(f => f.startsWith('fe-system-design') || f === 'system-design.md');
-  }
-  if (env === 'backend') {
-    return files.filter(f =>
-      f.startsWith('be-system-design') || f === 'api-contract.md' || f === 'system-design.md'
+function validateAndFixTargetFiles(
+  response: SystemDesignResponse,
+  resolvedTargetFiles: string[],
+  _detectedEnv: string | undefined
+): SystemDesignResponse {
+  // Step 1: MSA expansion FIRST (before any task validation)
+  let effectiveTargetFiles = [...resolvedTargetFiles];
+
+  if (response.services?.length) {
+    effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
+      f === 'be-system-design.md'
+        ? response.services!.map(s => `be-system-design-${s}.md`)
+        : [f]
     );
   }
-  return files;
-}
 
-function normalizeResponseForEnvironment(
-  response: SystemDesignResponse,
-  detectedEnv: string | undefined,
-  jobMode?: string,
-  existingDesignFiles?: string[]
-): SystemDesignResponse {
-  // Refactor mode: preserve existing document structure, but only for files relevant to the detected environment
-  if (jobMode === 'refactor' && existingDesignFiles && existingDesignFiles.length > 0) {
-    const relevantFiles = filterExistingFilesByEnvironment(existingDesignFiles, detectedEnv);
-
-    if (relevantFiles.length === 0) {
-      // No existing files match the detected environment → fall through to generate-mode normalization
-      console.log(`ℹ️  [SystemDecompose] Refactor mode but no files match env="${detectedEnv}". Falling through to generate.`);
-    } else {
-      const structure = inferDocumentStructure(relevantFiles);
-      response.documentType = structure.documentType;
-      if (structure.services.length > 0) {
-        response.services = structure.services;
-      }
-      response.tasks = response.tasks.map(t => {
-        if (!relevantFiles.includes(t.targetFile)) {
-          return { ...t, targetFile: relevantFiles[0] };
-        }
-        return t;
-      });
-      response.targetFiles = [...new Set(response.tasks.map(t => t.targetFile))];
-      return response;
-    }
+  if (response.fePackages?.length) {
+    effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
+      f === 'fe-system-design.md'
+        ? response.fePackages!.map(p => `fe-system-design-${p}.md`)
+        : [f]
+    );
   }
 
-  if (detectedEnv === 'frontend') {
-    response.documentType = 'unified';
-    response.targetFiles = ['fe-system-design.md'];
-    response.tasks = response.tasks.map(t => ({ ...t, targetFile: 'fe-system-design.md' }));
-    return response;
-  }
+  response.targetFiles = effectiveTargetFiles;
 
-  if (detectedEnv === 'backend') {
-    return normalizeBackendContractFirst(response);
-  }
-  
-  if (detectedEnv !== 'fullstack') return response;
-  
-  // Fullstack: MSA or contract-first
-  if (response.documentType === 'msa-contract-first' && response.services?.length) {
-    return normalizeMSA(response);
-  }
-  
-  return normalizeContractFirst(response);
-}
-
-function normalizeMSA(response: SystemDesignResponse): SystemDesignResponse {
-  const services = response.services!;
-  const expectedTargetFiles = [
-    'api-contract.md',
-    'fe-system-design.md',
-    ...services.map(s => `be-system-design-${s}.md`)
-  ];
-  response.targetFiles = expectedTargetFiles;
-  
-  const validTargetFiles = new Set(response.targetFiles);
+  // Step 2: Validate/remap tasks against effective targets
+  const validFiles = new Set(effectiveTargetFiles);
   response.tasks = response.tasks.map(t => {
-    if (!validTargetFiles.has(t.targetFile)) {
-      return { ...t, targetFile: 'api-contract.md' };
+    if (validFiles.has(t.targetFile)) return t;
+    if (t.targetService) {
+      const beFile = `be-system-design-${t.targetService}.md`;
+      if (validFiles.has(beFile)) return { ...t, targetFile: beFile };
+      const feFile = `fe-system-design-${t.targetService}.md`;
+      if (validFiles.has(feFile)) return { ...t, targetFile: feFile };
     }
-    return t;
+    return { ...t, targetFile: effectiveTargetFiles[0] };
   });
-  
-  const hasApiContract = response.tasks.some(t => t.targetFile === 'api-contract.md');
-  const hasFrontend = response.tasks.some(t => t.targetFile === 'fe-system-design.md');
-  
-  if (!hasApiContract || !hasFrontend || response.tasks.length < services.length + 2) {
-    response.tasks = [
-      {
-        id: 'design-api-contract',
-        name: 'Design Document: API Contract (MSA)',
-        targetFile: 'api-contract.md',
-        exclusive: true,
-        priority: 200,
-        description: 'Define all endpoints (public, internal, inter-service) with Provider/Consumer metadata. Define async events. MAX 200 lines!'
-      },
-      {
-        id: 'design-fe',
-        name: 'Design Document: Frontend System Design',
-        targetFile: 'fe-system-design.md',
-        parallelGroup: 'frontend',
-        priority: 210,
-        description: 'Design frontend consuming public API from api-contract.md. MAX 150 lines!'
-      },
-      ...services.map((service, idx) => ({
-        id: `design-be-${service}`,
-        name: `Design Document: ${service} Service`,
-        targetFile: `be-system-design-${service}.md`,
-        targetService: service,
-        parallelGroup: `be-${service}`,
-        priority: 220 + idx * 10,
-        description: `Design ${service} service architecture implementing endpoints from api-contract.md. MAX 120 lines!`
-      }))
-    ];
-  }
-  
-  return response;
-}
 
-/**
- * Backend-only contract-first: api-contract.md + be-system-design.md
- * Separates API interface specification from backend implementation architecture.
- */
-function normalizeBackendContractFirst(response: SystemDesignResponse): SystemDesignResponse {
-  response.documentType = 'contract-first';
-  response.targetFiles = ['api-contract.md', 'be-system-design.md'];
-  
-  const taskTargets = response.tasks.map(t => t.targetFile);
-  const hasRequired = 
-    taskTargets.includes('api-contract.md') &&
-    taskTargets.includes('be-system-design.md');
-  
-  if (!hasRequired || response.tasks.length < 2) {
-    response.tasks = [
-      {
-        id: 'design-api-contract',
-        name: 'Design Document: API Contract',
-        targetFile: 'api-contract.md',
-        exclusive: true,
-        priority: 200,
-        description: 'Define API contract (endpoints, DTOs, error format, auth if any). MAX 120 lines total!'
-      },
-      {
-        id: 'design-be',
-        name: 'Design Document: Backend System Design',
-        targetFile: 'be-system-design.md',
-        parallelGroup: 'backend',
-        priority: 220,
-        description: 'Design backend architecture implementing api-contract.md (layers, storage, validation, error handling). MAX 200 lines total!'
-      }
-    ];
-  } else {
-    // Remove FE tasks and remap invalid targets
-    response.tasks = response.tasks
-      .filter(t => t.targetFile !== 'fe-system-design.md')
-      .map(t => ({
-        ...t,
-        targetFile: response.targetFiles.includes(t.targetFile) ? t.targetFile : 'api-contract.md'
-      }));
+  // Step 3: documentType inference
+  const hasMSA = (response.services?.length ?? 0) > 0 || (response.fePackages?.length ?? 0) > 0;
+  if (hasMSA) {
+    response.documentType = 'msa-contract-first';
+  } else if (effectiveTargetFiles.length === 1 && !effectiveTargetFiles.includes('api-contract.md')) {
+    response.documentType = 'unified';
+  } else if (effectiveTargetFiles.includes('api-contract.md')) {
+    response.documentType = 'contract-first';
   }
-  
-  return response;
-}
 
-function normalizeContractFirst(response: SystemDesignResponse): SystemDesignResponse {
-  response.documentType = 'contract-first';
-  response.targetFiles = ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
-  
-  const taskTargets = response.tasks.map(t => t.targetFile);
-  const hasRequired = 
-    taskTargets.includes('api-contract.md') &&
-    taskTargets.includes('fe-system-design.md') &&
-    taskTargets.includes('be-system-design.md');
-  
-  if (!hasRequired || response.tasks.length < 3) {
-    response.tasks = [
-      {
-        id: 'design-api-contract',
-        name: 'Design Document: API Contract',
-        targetFile: 'api-contract.md',
-        exclusive: true,
-        priority: 200,
-        description: 'Define FE↔BE API contract (endpoints/events, DTOs, error format, auth if any). MAX 120 lines total!'
-      },
-      {
-        id: 'design-fe',
-        name: 'Design Document: Frontend System Design',
-        targetFile: 'fe-system-design.md',
-        parallelGroup: 'frontend',
-        priority: 220,
-        description: 'Design frontend architecture consuming api-contract.md (components, routing, state, loading/error UX, API integration). MAX 180 lines total!'
-      },
-      {
-        id: 'design-be',
-        name: 'Design Document: Backend System Design',
-        targetFile: 'be-system-design.md',
-        parallelGroup: 'backend',
-        priority: 240,
-        description: 'Design backend architecture implementing api-contract.md (layers, endpoints, storage, validation, error handling). MAX 180 lines total!'
-      }
-    ];
-  } else {
-    response.tasks = response.tasks.map(t => ({
-      ...t,
-      targetFile: response.targetFiles.includes(t.targetFile) ? t.targetFile : 'api-contract.md'
-    }));
+  // Step 4: Coverage check (unified for all cases)
+  const coveredFiles = new Set(response.tasks.map(t => t.targetFile));
+  const uncovered = effectiveTargetFiles.filter(f => !coveredFiles.has(f));
+  if (uncovered.length > 0) {
+    response.tasks.push(...generateMinimumTasks(uncovered));
   }
-  
+
   return response;
 }
 
@@ -335,25 +163,6 @@ function validateTaskCoverage(response: SystemDesignResponse): { valid: boolean;
   const coveredFiles = new Set(response.tasks.map(t => t.targetFile));
   const uncovered = response.targetFiles.filter(f => !coveredFiles.has(f));
   return { valid: uncovered.length === 0, uncovered };
-}
-
-/**
- * Determine expected targetFiles from environment alone (no LLM needed).
- * For refactor mode, prefer existing file names over defaults.
- */
-function getTargetFilesForEnvironment(
-  env: string | undefined,
-  jobMode?: string,
-  existingDesignFiles?: string[]
-): string[] | null {
-  if (jobMode === 'refactor' && existingDesignFiles && existingDesignFiles.length > 0) {
-    const relevantFiles = filterExistingFilesByEnvironment(existingDesignFiles, env);
-    if (relevantFiles.length > 0) return relevantFiles;
-  }
-  if (env === 'frontend') return ['fe-system-design.md'];
-  if (env === 'backend') return ['api-contract.md', 'be-system-design.md'];
-  if (env === 'fullstack') return ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
-  return null;
 }
 
 /**
@@ -437,6 +246,14 @@ export async function decomposeSystemDesign(
     ? Object.keys(state.existingDesignDocs).filter(isSystemDesignFile)
     : [];
   const jobMode = state.detectionReport?.jobMode || 'generate';
+  const resolvedTargetFiles = state.detectionReport?.targetFiles;
+
+  // For prompt: use resolvedTargetFiles as the authority for file constraints
+  const promptExistingFiles = jobMode === 'refactor'
+    ? (resolvedTargetFiles || (existingDesignFiles.length > 0 ? existingDesignFiles : undefined))
+    : (existingDesignFiles.length > 0 ? existingDesignFiles : undefined);
+  const promptPrimaryFile = resolvedTargetFiles?.[0]
+    || (existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'system-design.md');
 
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
@@ -446,8 +263,8 @@ export async function decomposeSystemDesign(
     hasExistingDesign,
     designPreview,
     jobMode,
-    existingDesignFiles: existingDesignFiles.length > 0 ? existingDesignFiles : undefined,
-    primaryDesignFile: existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'system-design.md',
+    existingDesignFiles: promptExistingFiles,
+    primaryDesignFile: promptPrimaryFile,
   });
 
   await safeLogPrompt(
@@ -505,8 +322,10 @@ export async function decomposeSystemDesign(
       throw new Error('Invalid task breakdown format from LLM');
     }
 
-    // Normalize
-    response = normalizeResponseForEnvironment(response, detectedEnv, jobMode, existingDesignFiles);
+    // Normalize: validate against resolved targets (single path for all environments)
+    const effectiveResolvedFiles = resolvedTargetFiles
+      || resolveDesignTargetFiles(detectedEnv as JobEnvironment, jobMode as JobMode, existingDesignFiles).targetFiles;
+    response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv);
 
     // Validate: every targetFile must have at least one task
     const { valid, uncovered } = validateTaskCoverage(response);
@@ -533,11 +352,11 @@ export async function decomposeSystemDesign(
     }
   }
 
-  // All attempts failed → generate minimum tasks from environment
+  // All attempts failed → generate minimum tasks from resolvedTargetFiles or environment
   if (!response) {
-    const targetFiles = getTargetFilesForEnvironment(detectedEnv, jobMode, existingDesignFiles);
-    if (!targetFiles) {
-      // Cannot determine targetFiles → unrecoverable error
+    const fallbackFiles = resolvedTargetFiles
+      || resolveDesignTargetFiles(detectedEnv as JobEnvironment, jobMode as JobMode, existingDesignFiles).targetFiles;
+    if (!fallbackFiles) {
       throw new Error(
         `System design decompose failed after ${MAX_ATTEMPTS} attempts and environment is unknown.\n` +
         `Last error: ${lastError?.message}`
@@ -546,12 +365,12 @@ export async function decomposeSystemDesign(
 
     console.warn(
       `⚠️  [SystemDecompose] All ${MAX_ATTEMPTS} attempts failed. ` +
-      `Generating minimum tasks for env="${detectedEnv}" → [${targetFiles.join(', ')}]`
+      `Generating minimum tasks for env="${detectedEnv}" → [${fallbackFiles.join(', ')}]`
     );
     response = {
       documentType: (detectedEnv === 'fullstack' || detectedEnv === 'backend') ? 'contract-first' : 'unified',
-      targetFiles,
-      tasks: generateMinimumTasks(targetFiles),
+      targetFiles: fallbackFiles,
+      tasks: generateMinimumTasks(fallbackFiles),
     };
   }
 
