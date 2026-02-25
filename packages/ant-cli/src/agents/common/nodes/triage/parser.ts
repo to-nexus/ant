@@ -46,13 +46,10 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
     if (result.intent === 'work') {
       result.workStatus = parsed.workStatus;
       
-      // Force redirect when LLM signals a different job/agent than current.
-      // Safety net: even if LLM said "proceed", if suggestedJob differs from
-      // currentJob AND a redirectReason is provided, treat as redirect.
       const effectiveCurrentJob = currentJob || 'unknown';
       const effectiveCurrentAgent = currentAgent || 'architect';
       
-      // Guard: if LLM says redirect but target is the same job AND agent, convert to proceed.
+      // M1: redirect-to-same hallucination guard.
       // LLM sometimes hallucinates a redirect to the current job (e.g., code→code).
       const isRedirectToSame = 
         parsed.workStatus === 'redirect' &&
@@ -64,40 +61,30 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
         result.workStatus = 'proceed';
       }
       
-      // Guarded boundary: plan outbound + design→plan.
-      // Only honor explicit redirect (workStatus === 'redirect') on these boundaries.
-      // Do NOT force-convert proceed→redirect based on suggestedJob/Agent mismatch,
-      // because LLM often leaks a suggestedJob even when it chose proceed.
-      const isPlanOutbound =
-        effectiveCurrentJob === 'plan'
-        && parsed.suggestedJob
-        && parsed.suggestedJob !== 'plan';
-      const isDesignToPlan =
-        effectiveCurrentJob === 'design'
-        && parsed.suggestedJob === 'plan';
-      const isGuardedBoundary = isPlanOutbound || isDesignToPlan;
-
+      // Redirect detection — uniform across ALL boundaries.
+      // Three triggers (applied symmetrically, no guarded boundary exceptions):
+      //   1. LLM explicitly set workStatus='redirect'
+      //   2. LLM set proceed but leaked suggestedJob mismatch + redirectReason (confusion state)
+      //   3. LLM set proceed but leaked suggestedAgent mismatch (cross-agent confusion)
+      // For design↔plan, the prompt instructs LLM to omit suggestedJob/suggestedAgent
+      // entirely when the boundary applies, so triggers 2/3 should not fire on that boundary.
       const shouldRedirect = 
         !isRedirectToSame && (
-          (isGuardedBoundary && parsed.workStatus === 'redirect') ||
-          (!isGuardedBoundary && (
-            parsed.workStatus === 'redirect' ||
-            (parsed.suggestedJob && 
-             parsed.suggestedJob !== effectiveCurrentJob && 
-             parsed.redirectReason) ||
-            (parsed.suggestedAgent && parsed.suggestedAgent !== effectiveCurrentAgent)
-          ))
+          parsed.workStatus === 'redirect' ||
+          (parsed.suggestedJob && 
+           parsed.suggestedJob !== effectiveCurrentJob && 
+           parsed.redirectReason) ||
+          (parsed.suggestedAgent && parsed.suggestedAgent !== effectiveCurrentAgent)
         );
       
-      // redirect
       if (shouldRedirect) {
-        result.workStatus = 'redirect'; // Force redirect
+        result.workStatus = 'redirect';
         result.suggestedAgent = parsed.suggestedAgent;
         result.suggestedJob = parsed.suggestedJob;
         result.redirectReason = parsed.redirectReason;
         result.needsChoice = true;
         result.choiceOptions = buildRedirectChoice(parsed, effectiveCurrentJob);
-        console.log(`[TriageParser] Forced redirect: suggestedAgent=${parsed.suggestedAgent || 'same'}, suggestedJob=${parsed.suggestedJob}, currentJob=${effectiveCurrentJob}`);
+        console.log(`[TriageParser] Redirect: suggestedAgent=${parsed.suggestedAgent || 'same'}, suggestedJob=${parsed.suggestedJob}, currentJob=${effectiveCurrentJob}`);
       }
       
       // blocked

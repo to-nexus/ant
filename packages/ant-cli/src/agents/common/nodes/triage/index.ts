@@ -50,7 +50,7 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
  * Check whether the workspace has input materials for the target job.
  * Directive is excluded — it is always present when the user types anything.
  */
-function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState): boolean {
+export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState): boolean {
   switch (targetJob) {
     case 'design':
       return ws.hasPrd || ws.hasScreens || ws.hasComponents || ws.hasAssets;
