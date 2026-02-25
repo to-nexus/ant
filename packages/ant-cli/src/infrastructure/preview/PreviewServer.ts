@@ -584,8 +584,8 @@ export class PreviewServer {
                 s.name === dockerService || conn.id.includes(s.name) || s.name.includes(conn.id)
               );
               conn.status = svc?.status === 'running' ? 'active'
-                          : svc?.status === 'stopped' ? 'not-started'
-                          : svc ? 'unreachable' : conn.status;
+                          : svc?.status === 'stopped' ? 'stopped'
+                          : svc ? 'error' : conn.status;
             }
           }
         }
@@ -600,9 +600,9 @@ export class PreviewServer {
                 userContext.organizationId, userContext.userId, res.projectId, res.feature
               );
               conn.status = targetState?.running && targetState?.ready ? 'active'
-                          : targetState?.running ? 'unreachable'
-                          : 'not-started';
-            } catch { conn.status = 'not-started'; }
+                          : targetState?.running ? 'starting'
+                          : 'stopped';
+            } catch { conn.status = 'error'; }
           }
         }
 

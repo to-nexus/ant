@@ -42,8 +42,9 @@ import {
 // Status badge color mappings
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
-  'not-started': 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400',
-  unreachable: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+  starting: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
+  stopped: 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400',
+  error: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
 };
 
 /**
@@ -63,6 +64,7 @@ export function PreviewConfigEditor() {
 
   // Read preview status from shared store (updated via SSE by usePreviewManager)
   const previewStatus = useStore((s) => s.previewStatus);
+  const setPreviewStatus = useStore((s) => s.setPreviewStatus);
   const isJobRunning = useStore((s) => s.isRunning);
 
   // Shared preview lifecycle (single source of truth with FeatureDropdown)
@@ -122,12 +124,12 @@ export function PreviewConfigEditor() {
   const connections: ServiceConnection[] = useMemo(() => {
     const base = config?.connections || [];
     const live = previewStatus?.connections;
-    if (!live?.length) return base;
+    if (!live?.length || !previewStatus?.running) return base;
     return base.map(conn => {
       const liveConn = live.find((lc: ServiceConnection) => lc.id === conn.id);
       return liveConn ? { ...conn, status: liveConn.status } : conn;
     });
-  }, [config?.connections, previewStatus?.connections]);
+  }, [config?.connections, previewStatus?.connections, previewStatus?.running]);
   const phase = previewStatus?.phase || 'idle';
   const isRunning = previewState === 'running';
   const isReady = previewStatus?.ready || false;
@@ -240,6 +242,14 @@ export function PreviewConfigEditor() {
         setConfig(prev => prev
           ? { ...prev, connections: result.connections }
           : { connections: result.connections } as any);
+        // Sync enriched connection status into previewStatus so the merge
+        // logic doesn't override fresh results with stale live data
+        if (previewStatus?.running && previewStatus?.connections) {
+          setPreviewStatus({
+            ...previewStatus,
+            connections: result.connections,
+          });
+        }
         setHasUnsavedChanges(false);
       }
     } catch (err) {
@@ -783,7 +793,7 @@ function ConnectionRow({
   onDelete: () => void;
   onFix: (msg: string) => void;
 }) {
-  const statusClass = STATUS_COLORS[conn.status || 'not-started'] || STATUS_COLORS['not-started'];
+  const statusClass = STATUS_COLORS[conn.status || 'stopped'] || STATUS_COLORS['stopped'];
   const catBadge = CATEGORY_BADGE[conn.category] || CATEGORY_BADGE.business;
   const CatIcon = catBadge.icon;
   const resClass = RESOLUTION_COLORS[conn.resolution.type] || RESOLUTION_COLORS.url;
@@ -1130,7 +1140,7 @@ function ConnectionRow({
           </span>
           {conn.resolution.type !== 'url' && (
             <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded-full ${statusClass}`}>
-              {conn.status || 'not-started'}
+              {conn.status || 'stopped'}
             </span>
           )}
           {(conn.missingAnnotation || conn.userModified) && (
