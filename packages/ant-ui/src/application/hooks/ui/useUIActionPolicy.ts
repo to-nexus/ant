@@ -165,12 +165,10 @@ export function useUIActionPolicy(): UIActionPolicy {
 
   /**
    * Rule 7: Feature 생성 조건
-   * - 작업 중이 아니고(파일/브랜치 변화),
    * - project 선택됨
-   * - Git 없이도 피처 생성 허용 (나중에 Publish to Git으로 연동 가능)
+   * - Git worktree가 feature별 분리되므로 작업 중에도 생성 허용
    */
   const canCreateFeature =
-    !isWorkInProgress &&
     canPerformAnyAction &&
     !!selectedProject;
   
@@ -191,16 +189,12 @@ export function useUIActionPolicy(): UIActionPolicy {
     disabledReason = 'Select project and feature first';
   }
 
-  // Feature 생성 전용 사유 (더 구체적으로)
+  // Feature 생성 전용 사유 (worktree 분리로 isRunning/isStopping 무관)
   let createFeatureDisabledReason: string | null = null;
   if (!isAuthenticated) {
     createFeatureDisabledReason = 'Please sign in to continue';
   } else if (isDisconnected) {
     createFeatureDisabledReason = 'Server disconnected';
-  } else if (isStopping) {
-    createFeatureDisabledReason = 'Stopping in progress...';
-  } else if (isRunning) {
-    createFeatureDisabledReason = 'Task is running';
   } else if (!selectedProject) {
     createFeatureDisabledReason = 'Select workspace first';
   }

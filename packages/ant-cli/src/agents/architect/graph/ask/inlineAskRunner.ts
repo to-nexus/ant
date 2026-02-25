@@ -73,7 +73,7 @@ export async function runInlineAsk(params: InlineAskParams): Promise<InlineAskRe
 
   const jobCapabilities = AgentRegistry.generatePromptContext();
 
-  const prompt = buildTriagePrompt({
+  const { system: systemPrompt, user: userPrompt } = buildTriagePrompt({
     userInput: message,
     currentJob,
     currentAgent,
@@ -86,17 +86,18 @@ export async function runInlineAsk(params: InlineAskParams): Promise<InlineAskRe
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   console.log('🤖 [InlineAsk] Calling LLM for intent classification...');
 
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+
   let responseText: string;
 
   if (llm.invokeWithUsage) {
-    const response = await llm.invokeWithUsage([
-      { role: 'user', content: prompt }
-    ]);
+    const response = await llm.invokeWithUsage(messages);
     responseText = response.content;
   } else {
-    responseText = await llm.invoke([
-      { role: 'user', content: prompt }
-    ]);
+    responseText = await llm.invoke(messages);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

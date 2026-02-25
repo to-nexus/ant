@@ -25,8 +25,8 @@ describe('buildTriagePrompt', () => {
     await AgentRegistry.initialize();
   });
 
-  it('contains required structural sections', () => {
-    const prompt = buildTriagePrompt({
+  it('returns system and user messages separately', () => {
+    const { system, user } = buildTriagePrompt({
       userInput: 'Build an API',
       currentJob: 'code',
       currentAgent: 'architect',
@@ -34,19 +34,26 @@ describe('buildTriagePrompt', () => {
       jobCapabilities: AgentRegistry.generatePromptContext(),
     });
 
-    expect(prompt).toContain('# TRIAGE');
-    expect(prompt).toContain('## USER INPUT');
-    expect(prompt).toContain('## WORKSPACE STATE');
-    expect(prompt).toContain('## AVAILABLE JOBS');
-    expect(prompt).toContain('## AGENT CAPABILITIES');
-    expect(prompt).toContain('## RESPONSE FORMAT');
-    expect(prompt).toContain('# TRIAGE RULES');
-    expect(prompt).toContain('## CLASSIFICATION PROTOCOL');
-    expect(prompt).toContain('## CRITICAL REMINDERS');
+    // system = rules.md content (classification protocol)
+    expect(system).toContain('# TRIAGE RULES');
+    expect(system).toContain('## CLASSIFICATION PROTOCOL');
+    expect(system).toContain('## CRITICAL REMINDERS');
+
+    // user = base.md rendered (data to analyze)
+    expect(user).toContain('# TRIAGE');
+    expect(user).toContain('## USER INPUT');
+    expect(user).toContain('## WORKSPACE STATE');
+    expect(user).toContain('## AVAILABLE JOBS');
+    expect(user).toContain('## RESPONSE FORMAT');
+
+    // AGENT CAPABILITIES section removed — agent info now in job headers
+    expect(user).not.toContain('## AGENT CAPABILITIES');
+    expect(user).toContain('(agent: architect)');
+    expect(user).toContain('(agent: planner)');
   });
 
   it('injects user input and session info correctly', () => {
-    const prompt = buildTriagePrompt({
+    const { user } = buildTriagePrompt({
       userInput: 'Create a system design',
       currentJob: 'design',
       currentAgent: 'architect',
@@ -54,14 +61,14 @@ describe('buildTriagePrompt', () => {
       jobCapabilities: AgentRegistry.generatePromptContext(),
     });
 
-    expect(prompt).toContain('Create a system design');
-    expect(prompt).toContain('design');
-    expect(prompt).toContain('architect');
-    expect(prompt).toContain('PRD');
+    expect(user).toContain('Create a system design');
+    expect(user).toContain('design');
+    expect(user).toContain('architect');
+    expect(user).toContain('PRD');
   });
 
   it('snapshot: full prompt structure for code job', () => {
-    const prompt = buildTriagePrompt({
+    const result = buildTriagePrompt({
       userInput: 'Build an API',
       currentJob: 'code',
       currentAgent: 'architect',
@@ -69,6 +76,6 @@ describe('buildTriagePrompt', () => {
       jobCapabilities: AgentRegistry.generatePromptContext(),
     });
 
-    expect(prompt).toMatchSnapshot();
+    expect(result).toMatchSnapshot();
   });
 });
