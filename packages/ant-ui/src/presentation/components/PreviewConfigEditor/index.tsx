@@ -459,6 +459,11 @@ export function PreviewConfigEditor() {
                 <CheckCircle className="w-4 h-4 text-green-500" />
                 <span className="text-sm font-medium text-green-700 dark:text-green-300">{t('preview.running')}</span>
               </div>
+            ) : phase === 'stopping' ? (
+              <div className="flex items-center gap-1.5">
+                <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />
+                <span className="text-sm font-medium text-orange-700 dark:text-orange-300">{t('preview.stopping')}</span>
+              </div>
             ) : phase === 'running' || phase === 'starting' || phase === 'installing' ? (
               <div className="flex items-center gap-1.5">
                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
@@ -510,8 +515,12 @@ export function PreviewConfigEditor() {
                            disabled:opacity-50 disabled:cursor-not-allowed
                            transition-colors"
                 >
-                  <Square className="w-3.5 h-3.5" />
-                  {t('preview.stop', 'Stop')}
+                  {isPreviewLoading && phase === 'stopping' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Square className="w-3.5 h-3.5" />
+                  )}
+                  {isPreviewLoading && phase === 'stopping' ? t('preview.stopping') : t('preview.stop', 'Stop')}
                 </button>
                 <button
                   onClick={handleRestart}

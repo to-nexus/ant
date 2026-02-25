@@ -523,12 +523,14 @@ export class PreviewServer {
           return conn;
         });
 
+        // Strip runtime status before persisting (status is transient, belongs in PREVIEW state only)
+        const configConnections = resolvedConnections.map(({ status, ...rest }: any) => rest);
         await this.stateStore.savePreviewConfig(
           userContext.organizationId,
           userContext.userId,
           projectId,
           feature,
-          { connections: resolvedConnections }
+          { connections: configConnections }
         );
 
         logger.info(`[PreviewServer] Preview config saved: ${projectId}/${feature} (${resolvedConnections.length} connections)`, { component: 'PreviewServer' });
@@ -588,13 +590,14 @@ export class PreviewServer {
           }
         }
 
-        // Save to preview-config
+        // Save to preview-config (strip runtime status — it belongs in PREVIEW state only)
+        const configConnections = connections.map(({ status, ...rest }: any) => rest);
         await this.stateStore.savePreviewConfig(
           userContext.organizationId,
           userContext.userId,
           projectId,
           feature,
-          { connections }
+          { connections: configConnections }
         );
 
         // Also update PreviewState if preview is currently running

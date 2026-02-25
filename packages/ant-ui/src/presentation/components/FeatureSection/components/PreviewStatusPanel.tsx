@@ -116,6 +116,20 @@ export function PreviewStatusPanel({
     );
   }
   
+  // Stopping — show spinner while backend cleans up processes/Docker/ports
+  if (state === 'stopping') {
+    return (
+      <div className="p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
+        <div className="flex items-center gap-2">
+          <Loader2 className="w-4 h-4 text-orange-600 dark:text-orange-400 animate-spin flex-shrink-0" />
+          <span className="text-sm font-medium text-orange-900 dark:text-orange-100">
+            {t('preview.stopping')}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (state === 'starting') {
     const progressMsg = startingWithCounts;
     

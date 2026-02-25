@@ -257,23 +257,28 @@ export function usePreviewManager(
   const stopServer = useCallback(async () => {
     if (!selectedProject || !selectedFeature) return;
 
-    // Optimistically mark as stopped while preserving logs for review.
-    // Guard against late SSE status updates re-marking it as running.
-    // Guard is in the store so all usePreviewManager instances share it.
-    setPreviewStopGuardUntil(Date.now() + 5000);
+    // Show 'stopping' phase with loading indicator while backend cleans up
+    // (docker compose down, process group kill, port release can take several seconds)
+    setPreviewStopGuardUntil(Date.now() + 15000);
     const currentLogs = useStore.getState().previewStatus?.logs;
     const currentCanStart = useStore.getState().previewStatus?.canStart ?? true;
     setPreviewStatus(currentLogs?.length
-      ? { running: false, ready: false, phase: 'stopped', canStart: currentCanStart, logs: currentLogs } as any
-      : undefined
+      ? { running: false, ready: false, phase: 'stopping', canStart: currentCanStart, logs: currentLogs } as any
+      : { running: false, ready: false, phase: 'stopping' } as any
     );
-    setPreviewLoading(false);
+    setPreviewLoading(true);
 
     setLocalError(undefined);
     setProgress(undefined);
     
     try {
       await stopPreview(selectedProject, selectedFeature);
+      // Stop succeeded — now mark as fully stopped
+      const finalLogs = useStore.getState().previewStatus?.logs;
+      setPreviewStatus(finalLogs?.length
+        ? { running: false, ready: false, phase: 'stopped', canStart: true, logs: finalLogs } as any
+        : undefined
+      );
     } catch (err: any) {
       setLocalError({
         message: PREVIEW_MESSAGES.ERROR_STOP_FAILED(err.message || PREVIEW_MESSAGES.ERROR_UNKNOWN)

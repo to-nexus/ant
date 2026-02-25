@@ -84,6 +84,9 @@ export class InfrastructureManager {
       return false;
     }
 
+    // Pre-cleanup: remove stale containers/volumes from crashed previous runs
+    await this.preCleanup(composeFile, projectName, onLog);
+
     const composeDir = path.dirname(composeFile);
     const composeName = path.basename(composeFile);
 
@@ -98,7 +101,7 @@ export class InfrastructureManager {
         args.push('-p', projectName);
       }
 
-      args.push('up', '-d', '--wait', '--quiet-pull');
+      args.push('up', '-d', '--wait', '--quiet-pull', '--force-recreate', '--remove-orphans');
 
       const child = spawn('docker', args, {
         cwd: composeDir,
@@ -249,6 +252,58 @@ export class InfrastructureManager {
 
         logger.warn(`Failed to stop infrastructure: ${error.message}`, { component: 'InfrastructureManager' });
         resolve(); // Best-effort: don't block cleanup
+      });
+    });
+  }
+
+  /**
+   * Best-effort pre-cleanup: tear down stale containers and volumes from previous runs.
+   * Handles the case where a prior `docker compose down -v` timed out, the Pod crashed,
+   * or the stop request was routed to a different Pod that couldn't reach these containers.
+   */
+  private async preCleanup(composeFile: string, projectName: string | undefined, onLog: LogCallback): Promise<void> {
+    const PRE_CLEANUP_TIMEOUT = 15_000;
+    return new Promise((resolve) => {
+      const args = ['compose', '-f', composeFile];
+      if (projectName) args.push('-p', projectName);
+      args.push('down', '-v', '--remove-orphans');
+
+      const child = spawn('docker', args, {
+        cwd: path.dirname(composeFile),
+        shell: false,
+        stdio: 'pipe',
+      });
+
+      let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          logger.warn('Pre-cleanup timed out, proceeding with startup', { component: 'InfrastructureManager' });
+          try { child.kill('SIGTERM'); } catch { /* ignore */ }
+          resolve();
+        }
+      }, PRE_CLEANUP_TIMEOUT);
+
+      child.stderr?.on('data', () => {}); // drain
+      child.stdout?.on('data', () => {}); // drain
+
+      child.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        if (code === 0) {
+          logger.debug('Pre-cleanup completed (stale containers/volumes removed)', { component: 'InfrastructureManager' });
+        } else {
+          logger.debug(`Pre-cleanup exited with code ${code} (no stale containers or already clean)`, { component: 'InfrastructureManager' });
+        }
+        resolve();
+      });
+
+      child.on('error', () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        resolve();
       });
     });
   }

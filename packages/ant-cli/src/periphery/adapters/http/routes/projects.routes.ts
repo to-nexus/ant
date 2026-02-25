@@ -70,6 +70,35 @@ export function createProjectsRoutes(deps: {
     }
   });
   
+  // Rename a project
+  router.put('/projects/:id/rename', async (req: Request, res: Response) => {
+    try {
+      const oldId = req.params.id;
+      const { newId } = req.body;
+      
+      if (!newId || typeof newId !== 'string') {
+        return res.status(400).json({ error: 'newId is required and must be a string' });
+      }
+      
+      const userContext = extractUserContext(req);
+      
+      if (req.user) {
+        logger.info(`Renaming project '${oldId}' to '${newId}'`, { component: 'Projects', organizationId: req.organization?.id, userId: req.user.id, projectId: oldId });
+      }
+      
+      await deps.projectService.renameProject(oldId, newId, userContext);
+      res.json({ success: true, oldId, newId });
+    } catch (error: any) {
+      if (error.message === 'Project not found') {
+        res.status(404).json({ error: error.message });
+      } else if (error.message === 'A project with the new name already exists') {
+        res.status(409).json({ error: error.message });
+      } else {
+        res.status(400).json({ error: error.message });
+      }
+    }
+  });
+  
   // Get project config
   router.get('/projects/:id/config', async (req: Request, res: Response) => {
     try {

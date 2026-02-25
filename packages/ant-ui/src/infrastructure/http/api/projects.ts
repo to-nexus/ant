@@ -1,5 +1,5 @@
 import type { Session } from '@/domain/models/session';
-import { API_BASE, authFetch, apiGet, apiPost, apiDelete } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiDelete } from './client';
 
 export function fetchProjects(): Promise<string[]> {
   return apiGet(`${API_BASE()}/projects`);
@@ -7,6 +7,10 @@ export function fetchProjects(): Promise<string[]> {
 
 export function createProject(projectId: string): Promise<void> {
   return apiPost(`${API_BASE()}/projects`, { id: projectId });
+}
+
+export function renameProject(oldId: string, newId: string): Promise<{ success: boolean; oldId: string; newId: string }> {
+  return apiPut(`${API_BASE()}/projects/${encodeURIComponent(oldId)}/rename`, { newId });
 }
 
 export function deleteProject(projectId: string): Promise<void> {

@@ -726,15 +726,15 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             {renderGitHubSection()}
           </div>
           
-          {/* Local Backend Section */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+          {/* Local Backend Section - Hidden: planned feature, not yet supported */}
+          {/* <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
             {renderLocalBackendSection()}
-          </div>
+          </div> */}
           
-          {/* Figma Integration Section */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+          {/* Figma Integration Section - Hidden: planned feature, not yet supported */}
+          {/* <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
             {renderFigmaSection()}
-          </div>
+          </div> */}
 
           {/* Reset Account Section (Danger Zone) */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
