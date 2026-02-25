@@ -51,17 +51,12 @@ modes:
 
 redirect_signals:
   to_design: >
-    User EXPLICITLY names a design artifact (UI spec, system design doc) as the artifact to create
-    AND workspace has input materials for the target job.
-    Observe workspace state to verify target job prerequisites exist.
-    General commands or mentioning technology/architecture as part of PRD work are NOT redirect signals.
-    Redirect without target job prerequisites is invalid.
+    Request target is a design artifact — user EXPLICITLY names a design artifact
+    (UI spec, system design doc) as the output to produce.
+    Redirect is only valid when workspace has input materials for the target job.
   to_code: >
-    User EXPLICITLY requests to write, implement, or fix source code files
-    AND workspace has input materials for the target job.
-    Describing implementation requirements in a PRD context is NOT a redirect signal.
-    Redirect without target job prerequisites is invalid.
+    Request target is source code — user EXPLICITLY requests to write, implement, or fix source code files.
+    Redirect is only valid when workspace has input materials for the target job.
   to_learn: >
-    User mentions codebase analysis, indexing, or understanding existing code
-    AND workspace has input materials for the target job.
-    Redirect without target job prerequisites is invalid.
+    Request target is codebase analysis or indexing output.
+    Redirect is only valid when workspace has input materials for the target job.

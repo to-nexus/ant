@@ -40,15 +40,19 @@
 - "Update component code" → `code` (target is source code)
 - If user explicitly mentions "design" or "planning" → `design`
 
+**Priority**: Step 2 classification by request target is authoritative. Subsequent steps (2.5, 2.7) refine routing WITHIN the classified job — they do NOT reclassify the target job.
+
 ⚠️ **Blind Spot — Design ↔ Plan mutual boundary (design or plan job)**: Design and Plan jobs share overlapping context (requirements, architecture, scope). When EITHER is the current job, do NOT redirect to the other — **neither job NOR agent** — UNLESS the user names the other job's artifact type explicitly:
 - Current=`plan`: only redirect to `design`/`architect` when user explicitly names a design artifact (UI spec, system design doc). PRD content about technology/architecture is NOT a signal.
 - Current=`design`: only redirect to `plan`/`planner` when user explicitly names a plan artifact (PRD, product requirements document). Design spec content about requirements/scope is NOT a signal.
-- **General/ambiguous commands** ("start planning", "begin", "let's go", "start work") without naming a specific artifact type → ALWAYS belong to the **current job and current agent**. Do NOT set `suggestedJob` or `suggestedAgent`.
+- **General/ambiguous commands** ("start planning", "begin", "let's go", "start work") without naming a specific artifact type → ALWAYS belong to the **current job and current agent**.
 This constraint does NOT apply to `code` or `learn` jobs — those redirect normally.
+
+**Constraint**: When this boundary applies, the response JSON MUST NOT contain `suggestedJob` or `suggestedAgent` fields. Omit these fields entirely — do NOT set them to the current or any other value.
 
 ### Step 2.5: Spec Suggestion (Code Job Only)
 
-**Applies when**: Current job is `code` AND intent is `work` AND request matches `code` job.
+**Applies when**: Current job is `code` AND intent is `work` AND **Step 2 classified the request target as `code`**.
 
 **Principle**: Observe the **scope** of the requested change, not the action verb. A request that spans multiple subsystems, introduces a new flow, or restructures existing architecture benefits from upfront specification.
 
@@ -60,6 +64,8 @@ This constraint does NOT apply to `code` or `learn` jobs — those redirect norm
 | Request explicitly references a spec document by name | Do NOT suggest spec — `proceed` normally |
 
 **Constraint**: This step ONLY applies when `currentJob === "code"`. Do NOT apply to other jobs.
+
+**Constraint**: This step does NOT override Step 2 classification. If Step 2 classified the request target as belonging to a different job (e.g., `design`), that classification stands — do NOT suppress the redirect.
 
 **Constraint**: When suggesting spec, set `suggestedJob: "design"` and `suggestedAgent: "architect"`. The design job will detect spec intent from the directive automatically.
 
@@ -74,7 +80,7 @@ This constraint does NOT apply to `code` or `learn` jobs — those redirect norm
 
 **Constraint**: PRD creation/refinement belongs to `planner` agent. Design, code, and learn belong to `architect` agent. If the current agent cannot handle the request, MUST set `suggestedAgent`.
 
-**Exception**: When the Design ↔ Plan mutual boundary applies (current job is `design` or `plan` and user did NOT name the other job's artifact type), do NOT set `suggestedAgent` to cross the `architect`↔`planner` boundary. The request belongs to the current agent.
+**Constraint**: The Design ↔ Plan mutual boundary (Step 2) also applies here. When that boundary applies, do NOT set `suggestedAgent`.
 
 ### Step 3: Determine Status
 
@@ -127,11 +133,8 @@ When user input appears to be:
 ⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → `ask`
 ⚠️ **Reference source ≠ Requested output**: When evaluation, assessment, or scoring is mentioned as a BASIS or REFERENCE for the request (not as the requested output itself), the intent is determined by the actual expected output — not by the referenced source. Only classify as `ask` when the PRIMARY expected output is a new quality score.
 ⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → `design` job. But if the output is a quality score → still `ask`
-⚠️ **Design ↔ Plan mutual boundary**: When current job is `plan` or `design`, do NOT redirect to the other unless the user names the other job's artifact type by name (PRD / product requirements document / design spec / UI spec / system design). General commands like "start planning", "begin work", "let's design" without naming a specific artifact type are NOT redirect signals — they belong to the current job.
-⚠️ **Target determines job**: Modifying UI SPEC = design, Modifying SOURCE CODE = code, Producing PRD = plan
-⚠️ **Job mismatch = REDIRECT**: If request belongs to different job than current → MUST `redirect`
-⚠️ **Agent mismatch = REDIRECT**: If request belongs to different agent (e.g., PRD writing to architect) → MUST `redirect` with `suggestedAgent`. **Exception**: Design ↔ Plan mutual boundary — do NOT cross `architect`↔`planner` boundary unless user names the other job's artifact type.
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
+⚠️ **Workspace state ≠ User intent**: Workspace document presence indicates past work output, NOT current user intent. Observe the REQUEST TARGET (what the user wants to produce now), not the WORKSPACE STATE (what already exists). Existing documents do NOT change the classification of a request whose target is a different job's activity.
 ⚠️ **Redirect prerequisite principle**: Redirect to a different job is only valid when the target job's input materials exist in the workspace. Observe workspace state — if no input materials for the target job are present, the target job cannot execute. Do NOT suggest redirect when the target job has zero input materials. Action verbs and topic keywords in user input do NOT indicate job readiness — only workspace state determines whether a job CAN run.
 ⚠️ **Spec suggestion (code job)**: When current job is `code`, a substantial feature request with NO existing spec docs → suggest `redirect` to `design`. Localized changes (bug fix, single file, rename) → do NOT suggest.
 ⚠️ **Document creation vs. code implementation ambiguity (design job)**: When current job is `design`, observe whether the request target is unambiguously a **document** or **source code**:

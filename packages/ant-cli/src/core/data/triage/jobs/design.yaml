@@ -72,6 +72,6 @@ modes:
       - Service boundaries and interactions
 
 redirect_signals:
-  to_code: User mentions code implementation, development, or building
-  to_learn: User mentions analysis, indexing, or understanding codebase
-  to_plan: User EXPLICITLY names "PRD" or "product requirements document" as the artifact to create. General planning commands (e.g. "start planning", "begin") or mentioning requirements/scope as part of design work are NOT redirect signals.
+  to_code: Request target is source code (implementation, bug fix, runnable application)
+  to_learn: Request target is codebase analysis or indexing output
+  to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
