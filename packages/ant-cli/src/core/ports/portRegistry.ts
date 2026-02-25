@@ -49,7 +49,7 @@ export type ServiceCategory = 'business' | 'infrastructure';
  */
 export type ConnectionResolution =
   | { type: 'docker'; service: string; port?: number }
-  | { type: 'ant-project'; projectId: string; feature: string; resolvedUrlKey?: string }
+  | { type: 'ant-project'; projectId: string; feature: string; serviceName?: string; resolvedUrlKey?: string }
   | { type: 'url'; url: string };
 
 /**

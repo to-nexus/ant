@@ -704,7 +704,8 @@ function getResolutionLabel(conn: ServiceConnection): string {
   if (conn.resolution.type === 'ant-project') {
     const pid = conn.resolution.projectId === 'self' ? 'self' : conn.resolution.projectId;
     const feat = conn.resolution.feature === 'self' ? 'self' : conn.resolution.feature;
-    return `ant://${pid}/${feat}`;
+    const svc = conn.resolution.serviceName;
+    return svc ? `ant://${pid}/${feat}/${svc}` : `ant://${pid}/${feat}`;
   }
   return conn.value || (conn.resolution as any).url || '';
 }
@@ -1058,10 +1059,26 @@ function ConnectionRow({
                   </div>
                 </div>
               )}
+              {draftProjectId && draftProjectId !== 'self' && (draft.resolution as any).feature && (
+                <div>
+                  <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-0.5">Service <span className="text-gray-400 dark:text-gray-600">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={(draft.resolution as any).serviceName || ''}
+                    onChange={(e) => setDraft(d => ({
+                      ...d,
+                      resolution: { ...d.resolution, serviceName: e.target.value || undefined } as any,
+                    }))}
+                    placeholder="e.g. api, redirect"
+                    className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600
+                             bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+                  />
+                </div>
+              )}
               <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
                 <span>Proxy</span>
                 <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-                  {draftProjectId === 'self' ? '(auto)' : `/${draftProjectId}--${(draft.resolution as any).feature || '...'}`}
+                  {draftProjectId === 'self' ? '(auto)' : `/${draftProjectId}--${(draft.resolution as any).feature || '...'}${(draft.resolution as any).serviceName ? '--' + (draft.resolution as any).serviceName : ''}`}
                 </code>
               </div>
             </div>
@@ -1147,9 +1164,10 @@ function ConnectionRow({
                 if (conn.resolution.type === 'ant-project') {
                   const pid = conn.resolution.projectId;
                   const feat = conn.resolution.feature;
+                  const svc = conn.resolution.serviceName;
                   annotationSuffix = (pid === 'self' && feat === 'self')
                     ? ' self'
-                    : ` ant-project:${pid}:${feat}`;
+                    : ` ant-project:${pid}:${feat}${svc ? ':' + svc : ''}`;
                 }
                 lines.push(
                   `${step}. ${source}.env.example 파일에서 ${conn.envVar} 위에 어노테이션을 추가해주세요:`,
@@ -1197,10 +1215,11 @@ function ConnectionRow({
                 } else if (conn.resolution.type === 'ant-project') {
                   const targetProject = conn.resolution.projectId;
                   const targetFeature = conn.resolution.feature;
+                  const targetService = conn.resolution.serviceName;
                   const isSelf = targetProject === 'self' && targetFeature === 'self';
                   const annotationSuffix = isSelf
                     ? ' self'
-                    : ` ant-project:${targetProject}:${targetFeature}`;
+                    : ` ant-project:${targetProject}:${targetFeature}${targetService ? ':' + targetService : ''}`;
                   lines.push(
                     `${step}. ${source}.env.example 파일에서 ${conn.envVar} 위에 어노테이션을 확인/추가해주세요:`,
                     `   # @connection ${conn.category} ${conn.id}${annotationSuffix}`,

@@ -200,15 +200,16 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       return;
     }
     
-    const { tenantId, userId, projectId, feature } = parsed;
+    const { tenantId, userId, projectId, feature, serviceName } = parsed;
     const internalKey = fromUrlKey(urlKey);
     
-    logger.debug(`Parsed urlKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}`, { component: 'PreviewProxy' });
+    logger.debug(`Parsed urlKey: tenant=${tenantId}, user=${userId}, project=${projectId}, feature=${feature}${serviceName ? ', service=' + serviceName : ''}`, { component: 'PreviewProxy' });
     
     // Lookup entry (frontend) port and host from registry
     let port: number;
     let previewHost: string;
     let hasFrontend = false;
+    let previewPackages: Array<{ name: string; type: string; port: number }> = [];
     try {
       const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
       
@@ -223,7 +224,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       }
       port = mapping.port;
       previewHost = mapping.host || 'localhost';
-      hasFrontend = mapping.packages?.some((p: any) => p.type === 'frontend') ?? false;
+      previewPackages = (mapping.packages as any) || [];
+      hasFrontend = previewPackages.some((p: any) => p.type === 'frontend');
       logger.warn(`[Preview] Found: ${internalKey} -> ${previewHost}:${port}`, { component: 'PreviewProxy' });
       
       // Update last access time
@@ -242,9 +244,28 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     // Backend-only projects don't use base path — strip urlKey prefix.
     let targetPath = req.url;
     let targetPort = port;
+    let serviceRouted = false;
+    
+    // ✅ Service-specific routing for multi-package projects
+    // When serviceName is present in the URL key (5th segment), find the matching
+    // package and route directly to its port. The target service has no basePath,
+    // so the urlKey prefix is always stripped.
+    if (serviceName && previewPackages.length) {
+      const targetPkg = previewPackages.find((p: any) =>
+        p.name === serviceName || p.name.endsWith('/' + serviceName)
+      );
+      if (targetPkg) {
+        targetPort = targetPkg.port;
+        targetPath = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
+        serviceRouted = true;
+        logger.debug(`Routing to service '${serviceName}' -> port ${targetPkg.port}`, { component: 'PreviewProxy' });
+      } else {
+        logger.warn(`Service '${serviceName}' not found in packages, falling back to default`, { component: 'PreviewProxy' });
+      }
+    }
     
     // ✅ Fullstack support: check if project has a backend
-    if (typeof getBackendPort === 'function') {
+    if (!serviceRouted && typeof getBackendPort === 'function') {
       try {
         const backendPort = await getBackendPort({ tenantId, userId, projectId, feature, serverKey: internalKey });
         if (typeof backendPort === 'number' && backendPort > 0) {
