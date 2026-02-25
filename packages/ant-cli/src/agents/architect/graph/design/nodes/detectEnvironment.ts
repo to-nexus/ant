@@ -24,6 +24,7 @@ import {
   createSystemDesignDetectionReport,
   createSpecDetectionReport,
   formatDetectionReportForChat,
+  resolveDesignTargetFiles,
   JobMode,
   JobEnvironment,
   DesignDomain,
@@ -579,6 +580,29 @@ export async function detectEnvironment(
       });
     }
 
+    // Resolve targetFiles (single source of truth for chat + decompose)
+    if (detectionReport.workType === 'system-design') {
+      const existingFiles = [
+        hasSystemDesign && 'system-design.md',
+        hasApiContract && 'api-contract.md',
+        hasFeSystemDesign && 'fe-system-design.md',
+        hasBeSystemDesign && 'be-system-design.md',
+      ].filter(Boolean) as string[];
+
+      const { targetFiles, effectiveJobMode } = resolveDesignTargetFiles(
+        detectionReport.environment,
+        detectionReport.jobMode,
+        existingFiles
+      );
+
+      detectionReport.targetFiles = targetFiles;
+      if (effectiveJobMode !== detectionReport.jobMode) {
+        console.log(`ℹ️  [Detect] jobMode corrected: ${detectionReport.jobMode} → ${effectiveJobMode} (no same-tier docs for ${detectionReport.environment})`);
+        detectionReport.jobMode = effectiveJobMode;
+        detectionReport.jobModeReasoning += ` (corrected: no same-tier docs for ${detectionReport.environment})`;
+      }
+    }
+
     // Display in Chat UI
     const formattedReport = formatDetectionReportForChat(detectionReport, 'ko');
     await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
@@ -592,6 +616,9 @@ export async function detectEnvironment(
     if (detectionReport.workType === 'system-design') {
       console.log(`✅ Domain: ${detectionReport.domain}`);
       console.log(`✅ Environment: ${detectionReport.environment}`);
+      if (detectionReport.targetFiles) {
+        console.log(`✅ Target Files: [${detectionReport.targetFiles.join(', ')}]`);
+      }
     }
     console.log();
 

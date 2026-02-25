@@ -76,25 +76,31 @@ API contract is written first as the single source of truth. Implementation docu
 
 ---
 
-## 📋 MSA-CONTRACT-FIRST STRATEGY (if service boundaries detected)
+## 📋 MSA-CONTRACT-FIRST STRATEGY (if service/package boundaries detected)
 
-**When PRD explicitly indicates multiple service boundaries:**
+**When PRD explicitly indicates multiple backend service boundaries OR multiple frontend package boundaries.**
+
+MSA applies to BOTH tiers independently:
+- **Backend MSA**: Multiple backend services → `be-system-design-{service}.md` per service
+- **Frontend MSA**: Multiple frontend packages/micro-frontends → `fe-system-design-{package}.md` per package
+- Both can coexist in a fullstack project
 
 ### Priority Assignment
 
 | Phase | Priority | Target File | Content |
 |-------|----------|-------------|---------|
 | 1 | 200-209 | api-contract.md | **Unified** - All endpoints (public + internal + events) with Provider/Consumer metadata |
-| 2 | 210-219 | fe-system-design.md | Frontend architecture consuming public API |
-| 3 | 220-249 | be-system-design-{service}.md | **Per service** - Each service gets its own document |
+| 2 | 210-219 | fe-system-design-{package}.md | **Per package** (if FE MSA) or fe-system-design.md (if single FE) |
+| 3 | 220-249 | be-system-design-{service}.md | **Per service** (if BE MSA) or be-system-design.md (if single BE) |
 
-### Service Document Naming
+### Document Naming
 
-| Constraint | Rule |
-|------------|------|
-| Filename pattern | `be-system-design-{service}.md` where `{service}` is PRD-specified name |
-| Case | Use exact case from PRD (lowercase recommended) |
-| No invention | Do NOT create service names not in PRD |
+| Tier | Constraint | Rule |
+|------|------------|------|
+| Backend | Filename pattern | `be-system-design-{service}.md` where `{service}` is PRD-specified name |
+| Frontend | Filename pattern | `fe-system-design-{package}.md` where `{package}` is PRD-specified name |
+| Both | Case | Use exact case from PRD (lowercase recommended) |
+| Both | No invention | Do NOT create names not in PRD |
 
 ### api-contract.md Structure for MSA
 
@@ -159,6 +165,7 @@ API contract is written first as the single source of truth. Implementation docu
 {
   "documentType": "unified" | "contract-first" | "msa-contract-first",
   "services": [],
+  "fePackages": [],
   "targetFiles": ["..."],
   "tasks": [...]
 }
@@ -170,20 +177,21 @@ API contract is written first as the single source of truth. Implementation docu
 - Use for: Frontend-only projects, CLI tools, or projects without externally-consumed API
 - targetFiles (frontend-only): `["fe-system-design.md"]`
 - targetFiles (other): `["system-design.md"]`
-- services: `[]` (empty)
+- services: `[]`, fePackages: `[]`
 
 **"contract-first"**:
 - Use for: Projects that expose external API (fullstack or backend-only)
 - targetFiles (fullstack): `["api-contract.md", "fe-system-design.md", "be-system-design.md"]`
 - targetFiles (backend-only): `["api-contract.md", "be-system-design.md"]`
-- services: `[]` (empty)
+- services: `[]`, fePackages: `[]`
 
 **"msa-contract-first"**:
-- Use for: Frontend AND Backend with **multiple service boundaries**
-- services: `["<service1>", "<service2>", ...]` (from PRD)
-- targetFiles: `["api-contract.md", "fe-system-design.md", "be-system-design-<service1>.md", "be-system-design-<service2>.md", ...]`
+- Use for: Projects with **multiple backend service boundaries** and/or **multiple frontend package boundaries**
+- services: `["<service1>", "<service2>", ...]` (backend services from PRD, empty if single backend)
+- fePackages: `["<package1>", "<package2>", ...]` (frontend packages from PRD, empty if single frontend)
+- targetFiles: computed from services and fePackages
 
-**⚠️ Constraint**: Only use `msa-contract-first` if PRD explicitly defines service boundaries.
+**⚠️ Constraint**: Only use `msa-contract-first` if PRD explicitly defines service or package boundaries.
 
 ### Task Properties
 
@@ -308,12 +316,13 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 }
 ```
 
-### Example 4: MSA with Multiple Services (MSA-Contract-First)
+### Example 4: Backend MSA with Multiple Services (MSA-Contract-First)
 
 ```json
 {
   "documentType": "msa-contract-first",
   "services": ["auth", "order", "payment"],
+  "fePackages": [],
   "targetFiles": [
     "api-contract.md",
     "fe-system-design.md",
@@ -371,6 +380,60 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 **⚠️ Note**: Service names (`auth`, `order`, `payment`) MUST come from PRD. Do NOT invent.
 
+### Example 5: Frontend MSA with Multiple Packages
+
+```json
+{
+  "documentType": "msa-contract-first",
+  "services": [],
+  "fePackages": ["web", "admin"],
+  "targetFiles": [
+    "api-contract.md",
+    "fe-system-design-web.md",
+    "fe-system-design-admin.md",
+    "be-system-design.md"
+  ],
+  "tasks": [
+    {
+      "id": "design-contract",
+      "name": "API Contract Definition",
+      "targetFile": "api-contract.md",
+      "exclusive": true,
+      "description": "Define API contract for both client apps (public user + admin). MAX 150 lines!",
+      "priority": 200
+    },
+    {
+      "id": "design-fe-web",
+      "name": "Frontend: Web App",
+      "targetFile": "fe-system-design-web.md",
+      "targetService": "web",
+      "parallelGroup": "fe-web",
+      "description": "Design public-facing web application consuming API contract. MAX 150 lines!",
+      "priority": 210
+    },
+    {
+      "id": "design-fe-admin",
+      "name": "Frontend: Admin Dashboard",
+      "targetFile": "fe-system-design-admin.md",
+      "targetService": "admin",
+      "parallelGroup": "fe-admin",
+      "description": "Design admin dashboard consuming API contract. MAX 120 lines!",
+      "priority": 220
+    },
+    {
+      "id": "design-backend",
+      "name": "Backend System Design",
+      "targetFile": "be-system-design.md",
+      "parallelGroup": "backend",
+      "description": "Design backend architecture implementing API contract. MAX 200 lines!",
+      "priority": 230
+    }
+  ]
+}
+```
+
+**⚠️ Note**: Package names (`web`, `admin`) MUST come from PRD. Do NOT invent.
+
 ---
 
 ## 📚 REFERENCE PROJECTS (Optional)
@@ -419,8 +482,9 @@ Before outputting, verify:
 - ✅ Tasks targeting the same file share the same `parallelGroup`
 
 **MSA-specific validation:**
-- ✅ If `msa-contract-first` → `services` array is NOT empty
-- ✅ If `msa-contract-first` → service names match PRD exactly
-- ✅ If `msa-contract-first` → each service has `be-system-design-{service}.md` in targetFiles
-- ✅ If `msa-contract-first` → each service task has `targetService` field
+- ✅ If `msa-contract-first` → at least one of `services` or `fePackages` is NOT empty
+- ✅ If `msa-contract-first` → names match PRD exactly (do NOT invent)
+- ✅ If `services` present → each service has `be-system-design-{service}.md` in targetFiles
+- ✅ If `fePackages` present → each package has `fe-system-design-{package}.md` in targetFiles
+- ✅ Each MSA task has `targetService` field matching its service/package name
 {{/if}}

@@ -104,6 +104,46 @@ export function createSystemDesignDetectionReport(params: {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Target Files Resolution (Single Source of Truth)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function filterByTier(files: string[], env: JobEnvironment | undefined): string[] {
+  if (env === 'frontend') return files.filter(f => f.startsWith('fe-system-design') || f === 'system-design.md');
+  if (env === 'backend') return files.filter(f => f.startsWith('be-system-design') || f === 'api-contract.md' || f === 'system-design.md');
+  return files;
+}
+
+function getDefaultTargetFiles(env: JobEnvironment | undefined): string[] {
+  if (env === 'frontend') return ['fe-system-design.md'];
+  if (env === 'backend') return ['api-contract.md', 'be-system-design.md'];
+  if (env === 'fullstack') return ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
+  return ['system-design.md'];
+}
+
+/**
+ * Resolve targetFiles and effective jobMode for system-design work.
+ * Called once after detect LLM response — both chat and decompose consume the result.
+ *
+ * - refactor requires same-tier docs; falls back to generate otherwise.
+ * - api-contract.md is backend/fullstack own-tier, NOT frontend own-tier.
+ */
+export function resolveDesignTargetFiles(
+  environment: JobEnvironment | undefined,
+  jobMode: JobMode,
+  existingDesignFiles: string[]
+): { targetFiles: string[]; effectiveJobMode: JobMode } {
+  if (jobMode === 'refactor' && existingDesignFiles.length > 0) {
+    const ownTierFiles = filterByTier(existingDesignFiles, environment);
+    if (ownTierFiles.length > 0) {
+      return { targetFiles: ownTierFiles, effectiveJobMode: 'refactor' };
+    }
+  }
+
+  const targetFiles = getDefaultTargetFiles(environment);
+  return { targetFiles, effectiveJobMode: jobMode === 'refactor' ? 'generate' : jobMode };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Chat UI Formatter
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -205,23 +245,21 @@ export function formatDetectionReportForChat(
     formatted += `   • \`outputs/design/ui-spec.json\`\n\n`;
   } else if (report.workType === 'spec') {
     // spec doc output hint is dynamic (spec-{slug}.md), shown after decompose determines the slug
-  } else if (report.workType === 'system-design' && report.environment) {
-    if (report.environment === 'fullstack') {
+  } else if (report.workType === 'system-design') {
+    if (report.targetFiles?.length) {
+      const filesList = report.targetFiles.map(f => `\`${f}\``).join(', ');
       formatted += isKorean
-        ? `📄 **생성 문서**: \`api-contract.md\`, \`fe-system-design.md\`, \`be-system-design.md\`\n\n`
-        : `📄 **Output**: \`api-contract.md\`, \`fe-system-design.md\`, \`be-system-design.md\`\n\n`;
-    } else if (report.environment === 'backend') {
+        ? `📄 **생성 문서**: ${filesList}\n\n`
+        : `📄 **Output**: ${filesList}\n\n`;
+    } else if (report.environment) {
+      const fallbackFiles =
+        report.environment === 'fullstack' ? '`api-contract.md`, `fe-system-design.md`, `be-system-design.md`' :
+        report.environment === 'backend' ? '`api-contract.md`, `be-system-design.md`' :
+        report.environment === 'frontend' ? '`fe-system-design.md`' :
+        '`system-design.md`';
       formatted += isKorean
-        ? `📄 **생성 문서**: \`api-contract.md\`, \`be-system-design.md\`\n\n`
-        : `📄 **Output**: \`api-contract.md\`, \`be-system-design.md\`\n\n`;
-    } else if (report.environment === 'frontend') {
-      formatted += isKorean
-        ? `📄 **생성 문서**: \`fe-system-design.md\`\n\n`
-        : `📄 **Output**: \`fe-system-design.md\`\n\n`;
-    } else {
-      formatted += isKorean
-        ? `📄 **생성 문서**: \`system-design.md\`\n\n`
-        : `📄 **Output**: \`system-design.md\`\n\n`;
+        ? `📄 **생성 문서**: ${fallbackFiles}\n\n`
+        : `📄 **Output**: ${fallbackFiles}\n\n`;
     }
   }
   
