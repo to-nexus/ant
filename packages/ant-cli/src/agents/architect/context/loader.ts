@@ -89,12 +89,16 @@ export async function loadContext(
           strategy.filePatterns
         );
         
-        await chatAPI.showChatStatus('grepped', { 
-          strategy: 'keyword search',
-          filesCount: searchResults.filesMatched,
-          filesList: searchResults.files,
-          _mergeIndex: mergeIndex
-        });
+        if (searchResults.filesMatched > 0) {
+          await chatAPI.showChatStatus('grepped', { 
+            strategy: 'keyword search',
+            filesCount: searchResults.filesMatched,
+            filesList: searchResults.files,
+            _mergeIndex: mergeIndex
+          });
+        } else {
+          await chatAPI.removeChatStatus(mergeIndex, 'grepping');
+        }
         
         context.grepResults = formatGrepResults(searchResults);
         console.log(`   Found ${searchResults.totalMatches} matches in ${searchResults.filesMatched} files`);

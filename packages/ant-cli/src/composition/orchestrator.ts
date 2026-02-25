@@ -96,6 +96,7 @@ export async function orchestrator(params: {
         const fsSync = await import("fs");
         let interruptedJob = 'design';
         let interruptedAgent = 'architect';
+        let foundInterruptedSession = false;
 
         for (const entry of getAllSessionPaths(featurePath)) {
           if (fsSync.existsSync(entry.path)) {
@@ -104,6 +105,7 @@ export async function orchestrator(params: {
               if (data.state?.interruption) {
                 interruptedJob = entry.job;
                 interruptedAgent = entry.agent;
+                foundInterruptedSession = true;
                 console.log(`🔧 [Orchestrator:InlineAsk] Detected interrupted job: ${interruptedAgent}/${interruptedJob}`);
                 break;
               }
@@ -111,6 +113,10 @@ export async function orchestrator(params: {
               // Skip unreadable session files
             }
           }
+        }
+
+        if (!foundInterruptedSession) {
+          console.warn('⚠️ [Orchestrator:InlineAsk] No interrupted session found — session files may have been cleared');
         }
 
         const result = await runInlineAsk({
@@ -127,6 +133,7 @@ export async function orchestrator(params: {
           status: result.status,
           intent: result.intent,
           response: result.response,
+          noSession: !foundInterruptedSession,
         };
       }
 

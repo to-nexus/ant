@@ -266,7 +266,8 @@ export class RouteConfigurator {
           const isInlineAsk = data.result?.output?.intent !== undefined;
           if (isInlineAsk) {
             const intent = data.result?.output?.intent;
-            logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent})`, {
+            const noSession = data.result?.output?.noSession === true;
+            logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent}, noSession=${noSession})`, {
               component: 'RouteConfigurator'
             });
             
@@ -291,11 +292,12 @@ export class RouteConfigurator {
                       featureName,
                       jobId,
                       intent,
+                      noSession,
                       timestamp: new Date().toISOString(),
                     },
                     userContext,
                   });
-                  logger.info(`Broadcast inline-ask completion: ${jobId} (intent=${intent})`, {
+                  logger.info(`Broadcast inline-ask completion: ${jobId} (intent=${intent}, noSession=${noSession})`, {
                     component: 'RouteConfigurator'
                   });
                 }

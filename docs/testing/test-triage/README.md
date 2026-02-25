@@ -50,8 +50,8 @@ triage가 확인하는 핵심 상태와 감지 조건:
 
 | 조합 | 셋업 방법 | 사용 시나리오 |
 |------|----------|-------------|
-| **풀 셋업** | PRD + system-design + spec | 1-1~1-3, 2-5~2-7 |
-| **PRD만** | PRD만 복사 | 2-3~2-4, 3-1, 3-3 |
+| **풀 셋업** | PRD + system-design + spec | 1-3, 2-5~2-7 |
+| **PRD만** | PRD만 복사 | 1-1, 1-2, 2-3~2-4, 3-1, 3-3 |
 | **PRD + spec** | PRD + spec 복사 | 1-5, 3-2 |
 | **빈 상태** | 아무것도 없음 (새 feature 생성) | 1-4, 2-1~2-2 |
 
@@ -65,8 +65,8 @@ triage가 확인하는 핵심 상태와 감지 조건:
 
 | # | Job | 워크스페이스 | 입력 | 기대 결과 | 검증 포인트 |
 |---|-----|------------|------|----------|-----------|
-| 1-1 | code | 풀 셋업 | "시스템기획을 시작해라" | redirect → design | 모드 전환 clarify 표시 |
-| 1-2 | code | 풀 셋업 | "API 설계 문서를 작성해줘" | redirect → design | 설계 artifact 감지 |
+| 1-1 | code | PRD만 | "시스템기획을 시작해라" | redirect → design | 모드 전환 clarify 표시 |
+| 1-2 | code | PRD만 | "API 설계 문서를 작성해줘" | redirect → design | 설계 artifact 감지 |
 | 1-3 | code | 풀 셋업 | "로그인 버그를 고쳐줘" | proceed (code) | 코드 작업으로 유지 |
 | 1-4 | code | 빈 상태 | "시스템 아키텍처를 설계해줘" | redirect → design | 빈 워크스페이스에서도 감지 |
 | 1-5 | code | PRD+spec | "인증 시스템을 구현해줘" | proceed (code) | spec 있으면 바로 진행 |
@@ -136,13 +136,13 @@ design job에서 문서 vs 코드 구분을 올바르게 하는지 확인.
 ```bash
 FIXTURES="docs/testing/test-triage/workspace-fixtures"
 
-# === 풀 셋업 (Phase 1: 1-1~1-3, Phase 2: 2-5~2-7) ===
+# === 풀 셋업 (Phase 1: 1-3, Phase 2: 2-5~2-7) ===
 mkdir -p "$FEATURE/inputs/sources" "$FEATURE/outputs/design"
 cp "$FIXTURES/sample-prd.md" "$FEATURE/inputs/sources/prd.md"
 cp "$FIXTURES/sample-system-design.md" "$FEATURE/outputs/design/system-design.md"
 cp "$FIXTURES/sample-spec.md" "$FEATURE/outputs/design/spec-auth.md"
 
-# === PRD만 (Phase 2: 2-3~2-4, Phase 3: 3-1, 3-3) ===
+# === PRD만 (Phase 1: 1-1~1-2, Phase 2: 2-3~2-4, Phase 3: 3-1, 3-3) ===
 mkdir -p "$FEATURE/inputs/sources"
 cp "$FIXTURES/sample-prd.md" "$FEATURE/inputs/sources/prd.md"
 # outputs/design/ 에 아무것도 없어야 함

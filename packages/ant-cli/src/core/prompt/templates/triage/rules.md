@@ -29,7 +29,7 @@
 |-------------------|------------|
 | UI specification documents (ui-spec, ui-tokens, ui-assets) | `design` |
 | UI planning, design, visual specification | `design` |
-| System architecture, API design | `design` |
+| System architecture, API design, system planning | `design` |
 | Source code files (.ts, .tsx, .js, .py, etc.) | `code` |
 | Code implementation, bug fixes | `code` |
 | Codebase analysis, indexing | `learn` |
@@ -58,9 +58,9 @@ This constraint does NOT apply to `code` or `learn` jobs — those redirect norm
 
 | Observation | Action |
 |-------------|--------|
-| Request describes a substantial feature or architectural change (multiple files, new flow, cross-cutting) AND **no spec documents exist** | Set `redirect` to `design` job with `redirectReason` explaining the benefit of writing a spec first |
+| Request describes a substantial feature or architectural change (multiple files, new flow, cross-cutting) AND **no spec documents exist** AND **no design documents exist** | Set `redirect` to `design` job with `redirectReason` explaining the benefit of writing a spec first |
 | Request is a localized change (bug fix, single-file edit, style tweak, rename) | Do NOT suggest spec — `proceed` normally |
-| Spec documents already exist in workspace | Do NOT suggest spec — existing specs will be used automatically |
+| Spec documents OR design documents already exist in workspace | Do NOT suggest spec — existing design documentation will guide development |
 | Request explicitly references a spec document by name | Do NOT suggest spec — `proceed` normally |
 
 **Constraint**: This step ONLY applies when `currentJob === "code"`. Do NOT apply to other jobs.
@@ -71,14 +71,12 @@ This constraint does NOT apply to `code` or `learn` jobs — those redirect norm
 
 ### Step 2.7: Determine Agent Match (for work intent)
 
-**Principle**: First check if the request belongs to the **current agent's** scope. If not, identify which agent owns the capability.
+**Principle**: Each job definition in AVAILABLE JOBS includes its `agent`. Compare the target job's agent with the current agent (shown in SESSION).
 
 | Observation | Action |
 |-------------|--------|
-| Request matches current agent's job capabilities | Continue to Step 3 |
-| Request belongs to a DIFFERENT agent's scope | Set `redirect` with `suggestedAgent` + `suggestedJob` |
-
-**Constraint**: PRD creation/refinement belongs to `planner` agent. Design, code, and learn belong to `architect` agent. If the current agent cannot handle the request, MUST set `suggestedAgent`.
+| Target job's agent matches current agent | Continue to Step 3 |
+| Target job's agent differs from current agent | Set `redirect` with `suggestedAgent` + `suggestedJob` |
 
 **Constraint**: The Design ↔ Plan mutual boundary (Step 2) also applies here. When that boundary applies, do NOT set `suggestedAgent`.
 
@@ -135,8 +133,8 @@ When user input appears to be:
 ⚠️ **Explicit keyword + generation**: If user mentions "planning" or "design" AND the output is a new/modified artifact → `design` job. But if the output is a quality score → still `ask`
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
 ⚠️ **Workspace state ≠ User intent**: Workspace document presence indicates past work output, NOT current user intent. Observe the REQUEST TARGET (what the user wants to produce now), not the WORKSPACE STATE (what already exists). Existing documents do NOT change the classification of a request whose target is a different job's activity.
-⚠️ **Redirect prerequisite principle**: Redirect to a different job is only valid when the target job's input materials exist in the workspace. Observe workspace state — if no input materials for the target job are present, the target job cannot execute. Do NOT suggest redirect when the target job has zero input materials. Action verbs and topic keywords in user input do NOT indicate job readiness — only workspace state determines whether a job CAN run.
-⚠️ **Spec suggestion (code job)**: When current job is `code`, a substantial feature request with NO existing spec docs → suggest `redirect` to `design`. Localized changes (bug fix, single file, rename) → do NOT suggest.
+⚠️ **Redirect prerequisite principle**: Redirect validity depends on whether the target job's PREREQUISITES (defined in its capabilities section) exist — not on whether its OUTPUT documents already exist. Absent outputs indicate the target job hasn't run yet, which is a reason to redirect, not to block it.
+⚠️ **Spec suggestion (code job)**: When current job is `code`, a substantial feature request with NO existing spec docs AND NO existing design docs → suggest `redirect` to `design`. If design documents already exist (system design, API contract, etc.), they are sufficient for development — do NOT suggest spec. Localized changes (bug fix, single file, rename) → do NOT suggest.
 ⚠️ **Document creation vs. code implementation ambiguity (design job)**: When current job is `design`, observe whether the request target is unambiguously a **document** or **source code**:
   - Unambiguous document target (write/draft/create a specification, architecture document) → `proceed` in design
   - Unambiguous source code target (fix bug, modify source file, build runnable application) → `redirect` to `code`
