@@ -29,6 +29,17 @@ export type { SSEMessageType, SSEMessage, SSEBroadcastMessage, SSEWorkflowMessag
  * - realtime:workflow:{orgId}:{userId}   - Workflow state updates
  */
 export class SSEService {
+  /**
+   * Flush response buffer to ensure SSE data is sent immediately through proxies.
+   * The flush() method exists when Express compression middleware is active;
+   * it's also useful for some reverse proxies (ALB, nginx) that buffer small chunks.
+   */
+  private static flushResponse(res: Response): void {
+    if (typeof (res as any).flush === 'function') {
+      (res as any).flush();
+    }
+  }
+
   // SSE clients per session key
   // key: "{orgId}:{userId}:{projectId}/{featureName}"
   private clients: Map<string, Set<Response>> = new Map();
@@ -255,6 +266,7 @@ export class SSEService {
     clients.forEach(res => {
       try {
         res.write(`data: ${dataString}\n\n`);
+        SSEService.flushResponse(res);
       } catch (error) {
         logger.warn(`Failed to send to client`, { component: 'SSEService', projectId, featureName }, error);
         clients.delete(res);
@@ -352,6 +364,7 @@ export class SSEService {
     clients.forEach(res => {
       try {
         res.write(`data: ${dataString}\n\n`);
+        SSEService.flushResponse(res);
       } catch (error) {
         logger.warn(`Failed to send workflow to client`, { component: 'SSEService', jobId }, error);
         clients.delete(res);
@@ -401,6 +414,7 @@ export class SSEService {
     clients.forEach(res => {
       try {
         res.write(`event: end\ndata: ${JSON.stringify({ jobId })}\n\n`);
+        SSEService.flushResponse(res);
       } catch (error) {
         logger.warn(`Failed to send end event to client`, { component: 'SSEService', jobId }, error);
         clients.delete(res);
@@ -420,6 +434,7 @@ export class SSEService {
     
     try {
       res.write(`data: ${JSON.stringify(message)}\n\n`);
+      SSEService.flushResponse(res);
       logger.debug(`Sent initial ${type} state to client`, { component: 'SSEService' });
     } catch (error) {
       logger.warn(`Failed to send initial ${type} state`, { component: 'SSEService' }, error);
