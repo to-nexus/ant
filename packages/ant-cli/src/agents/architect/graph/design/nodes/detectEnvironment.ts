@@ -279,11 +279,8 @@ export async function detectEnvironment(
   if (state.awaitingDetectClarify && state.overrideDirective) {
     console.log(`🔄 [detectEnvironment] Detect clarify resume — parsing user choice`);
     
-    const featurePath = state.context.featurePath || '';
-    const outputsDir = path.join(featurePath, 'outputs/design');
-    const hasSystemDocs = await fs.access(path.join(outputsDir, 'system-design.md')).then(() => true).catch(() => false)
-      || await fs.access(path.join(outputsDir, 'api-contract.md')).then(() => true).catch(() => false)
-      || await fs.access(path.join(outputsDir, 'be-system-design.md')).then(() => true).catch(() => false);
+    const clarifyDocNames = state.existingDesignDocs ? Object.keys(state.existingDesignDocs) : [];
+    const hasSystemDocs = clarifyDocNames.length > 0;
     
     const choice = parseDetectClarifyChoice(state.overrideDirective, hasSystemDocs);
     console.log(`✅ [detectEnvironment] User chose: workType=${choice.workType}, jobMode=${choice.jobMode}`);
@@ -427,11 +424,14 @@ export async function detectEnvironment(
     const hasUiSpec = await fs.access(path.join(outputsDir, 'ui-spec.json')).then(() => true).catch(() => false);
     const hasUiDocs = hasUiTokens && hasUiAssets && hasUiSpec;
     
-    const hasSystemDesign = await fs.access(path.join(outputsDir, 'system-design.md')).then(() => true).catch(() => false);
-    const hasApiContract = await fs.access(path.join(outputsDir, 'api-contract.md')).then(() => true).catch(() => false);
-    const hasFeSystemDesign = await fs.access(path.join(outputsDir, 'fe-system-design.md')).then(() => true).catch(() => false);
-    const hasBeSystemDesign = await fs.access(path.join(outputsDir, 'be-system-design.md')).then(() => true).catch(() => false);
-    const hasSystemDocs = hasSystemDesign || hasApiContract || hasFeSystemDesign || hasBeSystemDesign;
+    // Derive from state.existingDesignDocs (populated by resolve node with pattern scan)
+    // This correctly discovers MSA files (be-system-design-api.md, fe-system-design-web.md, etc.)
+    const existingDocNames = state.existingDesignDocs ? Object.keys(state.existingDesignDocs) : [];
+    const hasSystemDesign = existingDocNames.includes('system-design.md');
+    const hasApiContract = existingDocNames.includes('api-contract.md');
+    const hasFeSystemDesign = existingDocNames.some(f => f.startsWith('fe-system-design'));
+    const hasBeSystemDesign = existingDocNames.some(f => f.startsWith('be-system-design'));
+    const hasSystemDocs = existingDocNames.length > 0;
     
     if (hasUiDocs) {
       console.log(`✅ UI design documents completed`);
@@ -464,6 +464,7 @@ export async function detectEnvironment(
       hasApiContract,
       hasFeSystemDesign,
       hasBeSystemDesign,
+      systemDesignFiles: existingDocNames,
     };
     
     const prompt = await engine.buildDesignDomainPrompt(detectVars);
@@ -582,12 +583,7 @@ export async function detectEnvironment(
 
     // Resolve targetFiles (single source of truth for chat + decompose)
     if (detectionReport.workType === 'system-design') {
-      const existingFiles = [
-        hasSystemDesign && 'system-design.md',
-        hasApiContract && 'api-contract.md',
-        hasFeSystemDesign && 'fe-system-design.md',
-        hasBeSystemDesign && 'be-system-design.md',
-      ].filter(Boolean) as string[];
+      const existingFiles = existingDocNames;
 
       const { targetFiles, effectiveJobMode } = resolveDesignTargetFiles(
         detectionReport.environment,
