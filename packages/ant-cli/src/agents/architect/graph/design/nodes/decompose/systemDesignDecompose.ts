@@ -119,18 +119,25 @@ function validateAndFixTargetFiles(
 
   response.targetFiles = effectiveTargetFiles;
 
-  // Step 2: Validate/remap tasks against effective targets
+  // Step 2: Filter tasks outside resolved targets (drop instead of remap)
   const validFiles = new Set(effectiveTargetFiles);
-  response.tasks = response.tasks.map(t => {
-    if (validFiles.has(t.targetFile)) return t;
+  const originalTaskCount = response.tasks.length;
+  response.tasks = response.tasks.filter(t => {
+    if (validFiles.has(t.targetFile)) return true;
     if (t.targetService) {
       const beFile = `be-system-${t.targetService}.md`;
-      if (validFiles.has(beFile)) return { ...t, targetFile: beFile };
+      if (validFiles.has(beFile)) { t.targetFile = beFile; return true; }
       const feFile = `fe-system-${t.targetService}.md`;
-      if (validFiles.has(feFile)) return { ...t, targetFile: feFile };
+      if (validFiles.has(feFile)) { t.targetFile = feFile; return true; }
     }
-    return { ...t, targetFile: effectiveTargetFiles[0] };
+    return false;
   });
+  if (response.tasks.length < originalTaskCount) {
+    console.warn(
+      `⚠️  [validateAndFixTargetFiles] Filtered ${originalTaskCount - response.tasks.length} task(s) ` +
+      `targeting files outside resolved targets [${effectiveTargetFiles.join(', ')}]`
+    );
+  }
 
   // Step 3: documentType inference
   const hasMSA = (response.services?.length ?? 0) > 0 || (response.fePackages?.length ?? 0) > 0;
@@ -248,6 +255,7 @@ export async function decomposeSystemDesign(
     : [];
   const jobMode = state.detectionReport?.jobMode || 'generate';
   const resolvedTargetFiles = state.detectionReport?.targetFiles;
+  const detectedEnv = state.detectionReport?.environment;
 
   // For prompt: use resolvedTargetFiles as the authority for file constraints
   const promptExistingFiles = jobMode === 'refactor'
@@ -266,6 +274,8 @@ export async function decomposeSystemDesign(
     jobMode,
     existingDesignFiles: promptExistingFiles,
     primaryDesignFile: promptPrimaryFile,
+    environment: detectedEnv,
+    resolvedTargetFiles,
   });
 
   await safeLogPrompt(
@@ -279,6 +289,8 @@ export async function decomposeSystemDesign(
       injectedVariables: {
         spec: spec ? `[${spec.length} chars]` : undefined,
         hasExistingDesign,
+        environment: detectedEnv,
+        resolvedTargetFiles,
       },
     }
   );
@@ -288,7 +300,6 @@ export async function decomposeSystemDesign(
   if (!maybeLlm) throw new Error('LLM client not available');
   const llmToUse = maybeLlm;
 
-  const detectedEnv = state.detectionReport?.environment;
   const MAX_ATTEMPTS = 2;
 
   /**
