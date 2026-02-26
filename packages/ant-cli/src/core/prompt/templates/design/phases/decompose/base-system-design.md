@@ -58,6 +58,36 @@ You are analyzing requirements to break them into design tasks.
 **You are creating NEW system design documents from scratch.**
 {{/if}}
 
+{{#if environment}}
+---
+
+## ⚠️ ENVIRONMENT SCOPE (Pre-resolved — DO NOT override)
+
+**Environment**: `{{environment}}`
+**Target Files**: {{#each resolvedTargetFiles}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}}
+
+The environment has been determined by the detection phase. You MUST respect this constraint.
+
+{{#if (eq environment "frontend")}}
+**FRONTEND-ONLY project.**
+- `documentType`: `"unified"`
+- All tasks MUST target `fe-system-main.md` (or `fe-system-{package}.md` if FE MSA detected below)
+- Do NOT create `api-contract-*.md` or `be-system-*.md` tasks
+- Design from the CONSUMER perspective (how frontend consumes APIs), NOT the PROVIDER perspective
+- **SKIP** the CONTRACT-FIRST DETECTION section below — it does not apply
+- MSA DETECTION below applies ONLY to frontend package boundaries (multiple FE apps)
+{{/if}}
+{{#if (eq environment "backend")}}
+**BACKEND-ONLY project.**
+- Do NOT create `fe-system-*.md` tasks
+- CONTRACT-FIRST DETECTION and MSA DETECTION below apply normally for backend services
+{{/if}}
+{{#if (eq environment "fullstack")}}
+**FULLSTACK project.**
+- All sections below (CONTRACT-FIRST, MSA) apply normally
+{{/if}}
+{{/if}}
+
 ---
 
 ## 📥 INPUT CONTEXT
