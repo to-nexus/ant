@@ -243,41 +243,37 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   if (state.designDocs) {
     const docs = state.designDocs;
     const lines: string[] = [];
-    
-    // Frontend: monolith (single)
-    if (docs.feDesign) {
-      lines.push(`- fe-system-design: present`);
-    }
-    // Frontend: monorepo (multi-package)
-    if (docs.feDesigns) {
-      for (const pkg of Object.keys(docs.feDesigns)) {
-        lines.push(`- fe-system-design-${pkg}: present`);
+
+    // API Contracts
+    const apiKeys = Object.keys(docs.apiContracts);
+    if (apiKeys.length > 0) {
+      for (const name of apiKeys) {
+        lines.push(`- api-contract-${name}: present`);
       }
+    } else {
+      lines.push(`- api-contract: absent`);
     }
-    // Frontend: absent
-    if (!docs.feDesign && (!docs.feDesigns || Object.keys(docs.feDesigns).length === 0)) {
+
+    // Frontend
+    const feKeys = Object.keys(docs.feDesigns);
+    if (feKeys.length > 0) {
+      for (const name of feKeys) {
+        lines.push(`- fe-system-design-${name}: present`);
+      }
+    } else {
       lines.push(`- fe-system-design: absent`);
     }
-    
-    // Backend: monolith (single)
-    if (docs.beDesign) {
-      lines.push(`- be-system-design: present`);
-    }
-    // Backend: MSA (multi-service)
-    if (docs.beDesigns) {
-      for (const svc of Object.keys(docs.beDesigns)) {
-        lines.push(`- be-system-design-${svc}: present`);
+
+    // Backend
+    const beKeys = Object.keys(docs.beDesigns);
+    if (beKeys.length > 0) {
+      for (const name of beKeys) {
+        lines.push(`- be-system-design-${name}: present`);
       }
-    }
-    // Backend: absent
-    if (!docs.beDesign && (!docs.beDesigns || Object.keys(docs.beDesigns).length === 0)) {
+    } else {
       lines.push(`- be-system-design: absent`);
     }
-    
-    // Tier-neutral documents
-    lines.push(`- api-contract: ${docs.apiContract ? 'present' : 'absent'}`);
-    lines.push(`- system-design (unified): ${docs.unifiedDesign ? 'present' : 'absent'}`);
-    
+
     designDocsMeta = lines.join('\n');
   }
   
@@ -309,8 +305,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     if (selectedKey) {
       specDoc = state.specDocs[selectedKey];
       state.selectedSpec = selectedKey;
-      if (state.designDocs?.apiContract) {
-        specApiContract = state.designDocs.apiContract;
+      const allContracts = Object.values(state.designDocs?.apiContracts || {});
+      if (allContracts.length > 0) {
+        specApiContract = allContracts.join('\n\n---\n\n');
       }
       console.log(`📋 [Decompose] Auto-selected spec: ${selectedKey} (${specDoc.length} chars)`);
     }

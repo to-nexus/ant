@@ -18,13 +18,13 @@ Observe the **scope of work** described in the directive. Every directive falls 
 |----------|----------------|--------|
 | **spec** | Directive scopes to **one feature, task, or bounded change unit** | `spec-{slug}.md` |
 | **ui-design** | Directive scopes to **visual appearance, interface layout, or design tokens** | `ui-*.json` |
-| **system-design** | Directive scopes to **whole-system architecture or multi-component structure** | `system-design.md`, `api-contract.md`, `*-system-design.md` |
+| **system-design** | Directive scopes to **whole-system architecture or multi-component structure** | `be-system-design-main.md`, `api-contract-main.md`, `*-system-design.md` |
 | **clarify** | Scope is **genuinely ambiguous** between spec and system-design | Asks user to choose |
 | **error** | Modification requested but **target documents do not exist** | Error message |
 
 ### Constraint: Scope Determines workType, NOT Document Existence
 
-⚠️ **CRITICAL**: The presence or absence of existing documents (system-design.md, api-contract.md, be-system-design.md, etc.) MUST NOT influence your workType decision. Document existence only affects `jobMode` (Step 2).
+⚠️ **CRITICAL**: The presence or absence of existing documents (be-system-design-main.md, api-contract-main.md, be-system-design-main.md, etc.) MUST NOT influence your workType decision. Document existence only affects `jobMode` (Step 2).
 
 - Existing system docs present + feature-scoped directive → **still spec** (NOT system-design refactor)
 - Existing system docs absent + architecture-scoped directive → **still system-design**
@@ -79,8 +79,8 @@ Observe the **intent** of the directive with respect to existing documents:
 **Constraint**: `explain` and `refactor` require that **documents for the same tier** exist. If they do not exist, fall back to `generate`.
 
 ⚠️ **Blind Spot**: Existing documents from a **different tier** do NOT make this `refactor`. Observe which tier the directive targets:
-- Frontend directive + only `api-contract.md`/`be-system-design.md` exist → `generate` (no frontend docs to refactor)
-- Backend directive + only `fe-system-design.md` exists → `generate` (no backend docs to refactor)
+- Frontend directive + only `api-contract-main.md`/`be-system-design-main.md` exist → `generate` (no frontend docs to refactor)
+- Backend directive + only `fe-system-design-main.md` exists → `generate` (no backend docs to refactor)
 - Directive explicitly asks to modify an existing document by name → `refactor`
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

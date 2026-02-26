@@ -233,9 +233,15 @@ export interface StateStorePort {
   // ============================================
   
   /**
-   * Set workflow state
+   * Set workflow state (saves to Redis AND publishes via Pub/Sub)
    */
   setWorkflowState(jobId: string, state: WorkflowRealtimeState): Promise<void>;
+  
+  /**
+   * Set workflow state silently (saves to Redis WITHOUT Pub/Sub publish).
+   * Used by cleanup/finalization where an explicit end event is sent separately.
+   */
+  setWorkflowStateSilent(jobId: string, state: WorkflowRealtimeState): Promise<void>;
   
   /**
    * Get workflow state
