@@ -169,21 +169,12 @@ export interface ArchitectGraphState extends TaskArtifacts {
   projectCodeContext?: ProjectCodeContext;      // Main project code
   referenceCodeContexts: ReferenceCodeContext[]; // Reference projects
   
-  // ✅ Design Documents (loaded in contextLoader)
-  // Supports both single docs and multi-package (monorepo/MSA) patterns
+  // ✅ Design Documents — unified map-only structure
+  // All docs use {type}-{name}.md pattern (single="main", MSA=service name)
   designDocs?: {
-    apiContract?: string;
-    // Single docs (non-monorepo)
-    feDesign?: string;           // fe-system-design.md (single frontend)
-    beDesign?: string;           // be-system-design.md (single backend)
-    unifiedDesign?: string;      // system-design.md (unified)
-    // Multi-package docs (monorepo/MSA)
-    feDesigns?: {                // fe-system-design-{package}.md (multi frontend)
-      [packageName: string]: string; // e.g., { web: '...', admin: '...', 'shared-ui': '...' }
-    };
-    beDesigns?: {                // be-system-design-{service}.md (MSA)
-      [service: string]: string; // e.g., { auth: '...', order: '...', payment: '...' }
-    };
+    apiContracts: { [name: string]: string };
+    feDesigns: { [name: string]: string };
+    beDesigns: { [name: string]: string };
   };
   
   // ✅ Spec Documents (loaded in resolve, selected in decompose, injected in plan)

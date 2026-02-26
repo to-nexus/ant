@@ -24,10 +24,9 @@ export interface AssembledContext {
   previousDesign?: string;
   
   designDocs?: {
-    apiContract?: string;
-    feDesign?: string;
-    beDesign?: string;
-    unifiedDesign?: string;
+    apiContracts: { [name: string]: string };
+    feDesigns: { [name: string]: string };
+    beDesigns: { [name: string]: string };
   };
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -47,7 +46,7 @@ export interface AssembledContext {
     type: string;
     priority: number;
     description: string;
-    targetFile?: string;      // ✅ Target file for design job (api-contract.md, fe-system-design.md, etc.)
+    targetFile?: string;      // ✅ Target file for design job (api-contract-main.md, fe-system-design-main.md, etc.)
   };
   
   // ✅ NEW: Retry and Plan Context
@@ -155,10 +154,9 @@ export class ContextAssembler {
       retryContext?: AssembledContext['retryContext'];
       referenceRequests?: Array<{project: string; branch?: string}>;
       designDocs?: {
-        apiContract?: string;
-        feDesign?: string;
-        beDesign?: string;
-        unifiedDesign?: string;
+        apiContracts: { [name: string]: string };
+        feDesigns: { [name: string]: string };
+        beDesigns: { [name: string]: string };
       };
       designDomain?: 'game' | 'service';
     }

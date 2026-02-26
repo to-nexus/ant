@@ -129,8 +129,8 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 - ❌ **LLM-chosen identifiers**: Route paths, storage keys, component names, function names YOU invent (unless PRD defines them)
 
 **Important exception (Document Types)**:
-- For `api-contract.md`, **exact URL paths/methods/status codes/field names are REQUIRED** because they *are the contract*, not "implementation wiring".
-- For `fe-system-design.md` / `be-system-design.md` / `system-design.md`, avoid hard-coded paths/keys unless the PRD explicitly requires them.
+- For `api-contract-main.md`, **exact URL paths/methods/status codes/field names are REQUIRED** because they *are the contract*, not "implementation wiring".
+- For `fe-system-design-main.md` / `be-system-design-main.md`, avoid hard-coded paths/keys unless the PRD explicitly requires them.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## ✍️ UNIVERSAL WRITING RULES (Apply to ALL design documents)

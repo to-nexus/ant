@@ -186,7 +186,7 @@ No elaboration. Move on.
 | Evaluation Target | Rubric Path (source: docs) | Workspace Target |
 |-------------------|---------------------------|-----------------|
 | PRD | `rubric/PRD-RUBRIC.md` | `inputs/sources/prd.md` |
-| System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `outputs/design/system-design.md` |
+| System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `outputs/design/be-system-design-main.md` |
 | UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `outputs/design/ui-spec.json`, `ui-tokens.json`, `ui-assets.json` |
 | Code | `rubric/CODE-RUBRIC.md` | generated codebase |
 

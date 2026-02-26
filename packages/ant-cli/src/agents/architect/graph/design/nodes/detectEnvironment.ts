@@ -427,8 +427,8 @@ export async function detectEnvironment(
     // Derive from state.existingDesignDocs (populated by resolve node with pattern scan)
     // This correctly discovers MSA files (be-system-design-api.md, fe-system-design-web.md, etc.)
     const existingDocNames = state.existingDesignDocs ? Object.keys(state.existingDesignDocs) : [];
-    const hasSystemDesign = existingDocNames.includes('system-design.md');
-    const hasApiContract = existingDocNames.includes('api-contract.md');
+    const hasSystemDesign = existingDocNames.some(f => f.startsWith('be-system-design-') || f.startsWith('fe-system-design-'));
+    const hasApiContract = existingDocNames.some(f => f.startsWith('api-contract-'));
     const hasFeSystemDesign = existingDocNames.some(f => f.startsWith('fe-system-design'));
     const hasBeSystemDesign = existingDocNames.some(f => f.startsWith('be-system-design'));
     const hasSystemDocs = existingDocNames.length > 0;

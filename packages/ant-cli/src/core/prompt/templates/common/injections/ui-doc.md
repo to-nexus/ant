@@ -5,9 +5,9 @@
 
 ### ⚠️ PRIORITY: UI-SPEC > SYSTEM-DESIGN > PRD (for UI implementation)
 
-**When system-design.md and ui-spec.json describe the same component:**
+**When system design documents and ui-spec.json describe the same component:**
 - **ui-spec wins** for: layout, colors, spacing, animation, typography, responsive
-- **system-design wins** for: component responsibility (WHAT it does, not HOW)
+- **system design wins** for: component responsibility (WHAT it does, not HOW)
 
 **Format**: ui-tokens.json, ui-assets.json, ui-spec.json (all JSON)
 

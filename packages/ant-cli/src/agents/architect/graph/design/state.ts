@@ -126,7 +126,7 @@ export interface DesignGraphState extends TaskArtifacts {
   awaitingDetectClarify?: boolean;
 
   // ✅ Structured existing design documents (loaded at resolve, used by decompose)
-  // Key = filename (e.g. "api-contract.md", "ui-tokens.json"), Value = content
+  // Key = filename (e.g. "api-contract-main.md", "ui-tokens.json"), Value = content
   // Unified map eliminates fragmented feDesign/feDesigns/beDesign/beDesigns distinction
   // NOT stored in session — always reloaded from disk (including on resume)
   existingDesignDocs?: Record<string, string>;

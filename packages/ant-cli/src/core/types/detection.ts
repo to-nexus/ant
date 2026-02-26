@@ -108,16 +108,16 @@ export function createSystemDesignDetectionReport(params: {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function filterByTier(files: string[], env: JobEnvironment | undefined): string[] {
-  if (env === 'frontend') return files.filter(f => f.startsWith('fe-system-design') || f === 'system-design.md');
-  if (env === 'backend') return files.filter(f => f.startsWith('be-system-design') || f === 'api-contract.md' || f === 'system-design.md');
+  if (env === 'frontend') return files.filter(f => f.startsWith('fe-system-design-'));
+  if (env === 'backend') return files.filter(f => f.startsWith('be-system-design-') || f.startsWith('api-contract-'));
   return files;
 }
 
 function getDefaultTargetFiles(env: JobEnvironment | undefined): string[] {
-  if (env === 'frontend') return ['fe-system-design.md'];
-  if (env === 'backend') return ['api-contract.md', 'be-system-design.md'];
-  if (env === 'fullstack') return ['api-contract.md', 'fe-system-design.md', 'be-system-design.md'];
-  return ['system-design.md'];
+  if (env === 'frontend') return ['fe-system-design-main.md'];
+  if (env === 'backend') return ['api-contract-main.md', 'be-system-design-main.md'];
+  if (env === 'fullstack') return ['api-contract-main.md', 'fe-system-design-main.md', 'be-system-design-main.md'];
+  return ['be-system-design-main.md'];
 }
 
 /**
@@ -125,7 +125,7 @@ function getDefaultTargetFiles(env: JobEnvironment | undefined): string[] {
  * Called once after detect LLM response — both chat and decompose consume the result.
  *
  * - refactor requires same-tier docs; falls back to generate otherwise.
- * - api-contract.md is backend/fullstack own-tier, NOT frontend own-tier.
+ * - api-contract-*.md is backend/fullstack own-tier, NOT frontend own-tier.
  */
 export function resolveDesignTargetFiles(
   environment: JobEnvironment | undefined,
@@ -253,10 +253,10 @@ export function formatDetectionReportForChat(
         : `📄 **Output**: ${filesList}\n\n`;
     } else if (report.environment) {
       const fallbackFiles =
-        report.environment === 'fullstack' ? '`api-contract.md`, `fe-system-design.md`, `be-system-design.md`' :
-        report.environment === 'backend' ? '`api-contract.md`, `be-system-design.md`' :
-        report.environment === 'frontend' ? '`fe-system-design.md`' :
-        '`system-design.md`';
+        report.environment === 'fullstack' ? '`api-contract-main.md`, `fe-system-design-main.md`, `be-system-design-main.md`' :
+        report.environment === 'backend' ? '`api-contract-main.md`, `be-system-design-main.md`' :
+        report.environment === 'frontend' ? '`fe-system-design-main.md`' :
+        '`be-system-design-main.md`';
       formatted += isKorean
         ? `📄 **생성 문서**: ${fallbackFiles}\n\n`
         : `📄 **Output**: ${fallbackFiles}\n\n`;
