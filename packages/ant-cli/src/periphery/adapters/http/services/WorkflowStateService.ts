@@ -41,29 +41,37 @@ export class WorkflowStateService {
    */
   async endJob(jobId: string): Promise<void> {
     const state = await this.getStateInternal(jobId);
-    if (state) {
-      // 마지막 활성 노드들의 히스토리 종료 처리
-      if (state.activeNodes && state.activeNodes.length > 0 && state.nodeHistory.length > 0) {
-        const exitTime = new Date().toISOString();
-        // Close all unclosed history entries
-        for (const entry of state.nodeHistory) {
-          if (typeof entry === 'object' && !entry.exitedAt) {
-            entry.exitedAt = exitTime;
-            entry.duration = new Date(exitTime).getTime() - new Date(entry.enteredAt).getTime();
-          }
-        }
-      }
-      
-      // 종료 상태로 마킹
-      state.isCompleted = true;
-      state.endedAt = new Date().toISOString();
-      state.activeNodes = [];
-      state.activeActors = [];
-      
-      await this.saveState(jobId, state);
+    
+    // Child process (WorkflowBroadcaster) already completed and sent end event
+    if (!state || state.isCompleted) {
+      logger.debug(`Workflow already completed, skipping duplicate endJob`, {
+        component: 'WorkflowStateService', jobId
+      });
+      return;
     }
     
-    // Send 'end' event to user-scoped SSE channel via Redis Pub/Sub
+    // Close all unclosed history entries
+    if (state.activeNodes && state.activeNodes.length > 0 && state.nodeHistory.length > 0) {
+      const exitTime = new Date().toISOString();
+      for (const entry of state.nodeHistory) {
+        if (typeof entry === 'object' && !entry.exitedAt) {
+          entry.exitedAt = exitTime;
+          entry.duration = new Date(exitTime).getTime() - new Date(entry.enteredAt).getTime();
+        }
+      }
+    }
+    
+    state.isCompleted = true;
+    state.endedAt = new Date().toISOString();
+    state.activeNodes = [];
+    state.activeActors = [];
+    
+    // Save to Redis without Pub/Sub — the explicit end event below is the only broadcast
+    if (this.stateStore) {
+      await this.stateStore.setWorkflowStateSilent(jobId, state);
+    }
+    
+    // Fallback end event (only reaches here if child process didn't send one)
     if (this.stateStore) {
       const mapping = await this.stateStore.getJobMapping(jobId);
       if (mapping?.userContext?.organizationId && mapping?.userContext?.userId) {
@@ -102,12 +110,4 @@ export class WorkflowStateService {
     return null;
   }
   
-  /**
-   * Internal: Save state to Redis (and broadcast via StateStore)
-   */
-  private async saveState(jobId: string, state: WorkflowRealtimeState): Promise<void> {
-    if (this.stateStore) {
-      await this.stateStore.setWorkflowState(jobId, state);
-    }
-  }
 }

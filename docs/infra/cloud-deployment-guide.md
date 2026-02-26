@@ -563,6 +563,11 @@ metadata:
     kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
+    # SSE optimizations — prevent ALB from dropping long-lived connections
+    alb.ingress.kubernetes.io/idle-timeout: '3600'
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
     # No Sticky Session needed - Redis Pub/Sub handles broadcast
 spec:
   rules:
@@ -579,6 +584,11 @@ spec:
 ```
 
 > **Note**: No Sticky Session needed. Redis Pub/Sub broadcasts messages to all pods. Reconnections to different pods work correctly.
+
+> **SSE-specific annotations**:
+> - `idle-timeout: 3600` — ALB default is 60s, far too short for SSE. 1 hour keeps connections alive between heartbeats (10s interval).
+> - `backend-protocol: HTTP` — Forces HTTP/1.1. HTTP/2 GOAWAY frames can prematurely close SSE streams.
+> - `deregistration_delay: 30` — During rolling deploys, existing connections are drained for 30s. SSE clients auto-reconnect, so a short delay is sufficient.
 
 ### 8.3 Preview 리소스 경로 처리 (Path Rewrite)
 
