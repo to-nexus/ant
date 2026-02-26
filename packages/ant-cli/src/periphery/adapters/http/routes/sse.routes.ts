@@ -116,14 +116,16 @@ export function createSSERoutes(deps: {
       deps.gitWatcherService.watchGitChanges(projectId, featureName, userContext, sseClientChecker);
     }
     
-    // Keep connection alive (15s to survive cloud proxy idle timeouts)
+    // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic.
+    // 10s interval is well within typical ALB idle-timeout defaults.
     const keepAliveInterval = setInterval(() => {
       try {
-        res.write(':ping\n\n');
+        res.write(`data: ${JSON.stringify({ type: 'heartbeat', ts: Date.now() })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
       } catch (error) {
         clearInterval(keepAliveInterval);
       }
-    }, 15000);
+    }, 10000);
     
     // Handle disconnect
     res.on('close', () => {
@@ -164,14 +166,15 @@ export function createSSERoutes(deps: {
     }
     logger.debug(`Workflow client registered`, { component: 'SSE', jobId });
     
-    // Keep connection alive (15s to survive cloud proxy idle timeouts)
+    // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic
     const keepAliveInterval = setInterval(() => {
       try {
-        res.write(':ping\n\n');
+        res.write(`data: ${JSON.stringify({ type: 'heartbeat', ts: Date.now() })}\n\n`);
+        if (typeof (res as any).flush === 'function') (res as any).flush();
       } catch (error) {
         clearInterval(keepAliveInterval);
       }
-    }, 15000);
+    }, 10000);
     
     // Handle disconnect
     res.on('close', () => {

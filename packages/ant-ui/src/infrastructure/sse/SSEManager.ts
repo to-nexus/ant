@@ -84,6 +84,10 @@ class SSEManager {
   // before the 5-attempt retry cycle completes.
   private onErrorCallback: (() => void) | null = null;
 
+  // Reconnect callback -- fires when unified SSE reconnects (not on initial connect).
+  // Used by Store to enable grace period that protects isRunning from stale initial data.
+  private onReconnectCallback: (() => void) | null = null;
+
   // Visibility change handler for multi-tab sync
   private visibilityHandler: (() => void) | null = null;
   private lastForceReconnectTime = 0;
@@ -102,6 +106,14 @@ class SSEManager {
    */
   setOnErrorCallback(callback: (() => void) | null): void {
     this.onErrorCallback = callback;
+  }
+
+  /**
+   * Register a callback that fires when the unified SSE reconnects (not on initial connect).
+   * Store uses this to enable a grace period protecting isRunning from stale initial data.
+   */
+  setOnReconnectCallback(callback: (() => void) | null): void {
+    this.onReconnectCallback = callback;
   }
   
   /**
@@ -220,13 +232,16 @@ class SSEManager {
       });
       
       eventSource.onopen = () => {
+        const wasReconnect = (this.unifiedConnection?.reconnectAttempts ?? 0) > 0;
         if (this.unifiedConnection) {
           this.unifiedConnection.isConnected = true;
           this.unifiedConnection.reconnectAttempts = 0;
         }
-        console.log('[SSE] unified: open');
-        // Notify Store that SSE is actually connected (not optimistic)
+        console.log(`[SSE] unified: open${wasReconnect ? ' (reconnect)' : ''}`);
         this.statusCallback?.('connected');
+        if (wasReconnect) {
+          this.onReconnectCallback?.();
+        }
       };
       
       eventSource.onmessage = (event) => {
@@ -307,6 +322,9 @@ class SSEManager {
     const job = new URL(url).searchParams.get('job') || 'code';
 
     console.log(`[SSE] forceReconnect: ${projectId}/${featureName}`);
+
+    // Notify reconnect BEFORE disconnect so grace period is active when new initial data arrives
+    this.onReconnectCallback?.();
 
     // Nullify reference BEFORE closing so any late onerror is a no-op
     const oldES = this.unifiedConnection.eventSource;
@@ -501,6 +519,7 @@ class SSEManager {
     
     this.handlers.clear();
     this.statusCallback = null;
+    this.onReconnectCallback = null;
 
     if (this.visibilityHandler) {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
