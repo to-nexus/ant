@@ -281,12 +281,18 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     
     const jobType = state.selectedJobType;
     
+    const connectedProject = state.selectedProject;
+    const connectedFeature = state.selectedFeature;
+    
     sseManager.clearHandlers('kanban');
     sseManager.clearHandlers('chat');
     sseManager.clearHandlers('fileTree');
     sseManager.clearHandlers('unseenArtifacts');
     
     sseManager.registerHandler('kanban', (data: KanbanData) => {
+      const currentState = get();
+      if (currentState.selectedProject !== connectedProject ||
+          currentState.selectedFeature !== connectedFeature) return;
       get().updateKanban(data);
     });
     
