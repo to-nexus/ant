@@ -59,6 +59,8 @@ export interface JobState {
   currentMode: 'generate' | 'refactor' | 'explain' | undefined;
   // ✅ Cloud multi-pod: Protects isRunning from SSE overwrite until actual job starts
   jobStartPending: boolean;
+  // ✅ Cloud multi-pod: Protects isRunning from stale initial data after SSE reconnect
+  sseReconnectGrace: boolean;
   // ✅ Inline Ask: Context for handling ask during interrupted jobs
   inlineAskContext: InlineAskContext | null;
 }

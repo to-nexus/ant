@@ -1,245 +1,149 @@
 /**
  * Design File Selection for DetectEnvironment Node
  * 
- * Supports both legacy single docs and multi-package (monorepo/MSA) patterns:
- * - fe-system-design.md (legacy single frontend)
- * - fe-system-design-{pkg}.md (multi-frontend)
- * - be-system-design.md (legacy single backend)
- * - be-system-design-{svc}.md (MSA)
+ * Unified naming: all design docs use `{type}-{name}.md` pattern.
+ *   - api-contract-{name}.md
+ *   - fe-system-design-{name}.md
+ *   - be-system-design-{name}.md
+ * Single-service uses suffix "main"; MSA uses service/package names.
  */
 
 /**
- * Design Documents Type (extended for multi-package support)
+ * Design Documents — unified map-only type.
+ * Empty map `{}` means no documents for that tier.
  */
 export interface DesignDocs {
-  apiContract?: string;
-  // Legacy single docs
-  feDesign?: string;
-  beDesign?: string;
-  unifiedDesign?: string;
-  // Multi-package docs (monorepo/MSA)
-  feDesigns?: { [pkg: string]: string };
-  beDesigns?: { [svc: string]: string };
+  apiContracts: { [name: string]: string };
+  feDesigns: { [name: string]: string };
+  beDesigns: { [name: string]: string };
+}
+
+export function emptyDesignDocs(): DesignDocs {
+  return { apiContracts: {}, feDesigns: {}, beDesigns: {} };
 }
 
 /**
  * Select design files based on environment (for decompose phase - loads all relevant)
- * This is called ONCE in detectEnvironment to determine which docs to include in state
  */
 export function selectDesignFiles(
   environment: string,
   designDocs?: DesignDocs
 ): string[] {
+  if (!designDocs) return [];
+
   const selectedFiles: string[] = [];
-  
-  if (!designDocs) {
-    return selectedFiles;
+
+  for (const name of Object.keys(designDocs.apiContracts)) {
+    selectedFiles.push(`api-contract-${name}.md`);
   }
-  
-  // Always include API contract if available
-  if (designDocs.apiContract) {
-    selectedFiles.push('api-contract.md');
-  }
-  
+
   const shouldIncludeFe = environment === 'frontend' || environment === 'fullstack' || environment === 'unknown';
   const shouldIncludeBe = environment === 'backend' || environment === 'fullstack' || environment === 'unknown';
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Frontend docs (legacy + multi-package)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
   if (shouldIncludeFe) {
-    // Multi-package frontend (takes precedence)
-    if (designDocs.feDesigns) {
-      for (const pkg of Object.keys(designDocs.feDesigns)) {
-        selectedFiles.push(`fe-system-design-${pkg}.md`);
-      }
-    }
-    // Legacy single frontend (only if no multi-package)
-    else if (designDocs.feDesign) {
-      selectedFiles.push('fe-system-design.md');
+    for (const name of Object.keys(designDocs.feDesigns)) {
+      selectedFiles.push(`fe-system-design-${name}.md`);
     }
   }
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Backend docs (legacy + MSA)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
   if (shouldIncludeBe) {
-    // MSA multi-service (takes precedence)
-    if (designDocs.beDesigns) {
-      for (const svc of Object.keys(designDocs.beDesigns)) {
-        selectedFiles.push(`be-system-design-${svc}.md`);
-      }
-    }
-    // Legacy single backend (only if no MSA)
-    else if (designDocs.beDesign) {
-      selectedFiles.push('be-system-design.md');
+    for (const name of Object.keys(designDocs.beDesigns)) {
+      selectedFiles.push(`be-system-design-${name}.md`);
     }
   }
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Fallback to unified design
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const hasAnyTierDoc = selectedFiles.some(f => 
-    f.startsWith('fe-') || f.startsWith('be-')
-  );
-  
-  if (!hasAnyTierDoc && designDocs.unifiedDesign) {
-    selectedFiles.push('system-design.md');
-  } else if (selectedFiles.length === 1 && selectedFiles[0] === 'api-contract.md' && designDocs.unifiedDesign) {
-    // If only api-contract, add unified design
-    selectedFiles.push('system-design.md');
-  }
-  
+
   return selectedFiles;
 }
 
 /**
- * Select design files based on task.packages (for split injection)
- * Called per-task to inject only the required design docs
- * 
- * @param packages - Task's packages array (e.g., ['fe', 'be-auth'])
- * @param designDocs - All loaded design docs
- * @returns Array of file names to inject
+ * Select design files based on task.packages (for split injection).
+ * All api-contracts are always injected (Strategy A: full injection).
  */
 export function selectDesignFilesByPackages(
   packages: string[] | undefined,
   designDocs?: DesignDocs
 ): string[] {
   if (!designDocs) return [];
-  
-  // If no packages specified, return empty (caller should use environment-based fallback)
-  if (!packages || packages.length === 0) {
-    return [];
-  }
-  
+  if (!packages || packages.length === 0) return [];
+
   const selectedFiles: string[] = [];
-  
-  // Always include API contract when packages are specified
-  if (designDocs.apiContract) {
-    selectedFiles.push('api-contract.md');
+
+  // Always inject ALL api-contracts
+  for (const name of Object.keys(designDocs.apiContracts)) {
+    selectedFiles.push(`api-contract-${name}.md`);
   }
-  
+
   for (const pkg of packages) {
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Frontend packages: fe, fe-{pkg}
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (pkg === 'fe') {
-      // Legacy single frontend
-      if (designDocs.feDesign) {
-        selectedFiles.push('fe-system-design.md');
-      }
-    } else if (pkg.startsWith('fe-')) {
-      // Multi-package frontend: fe-{pkg} → fe-system-design-{pkg}.md
-      const pkgName = pkg.slice(3); // Remove 'fe-' prefix
-      if (designDocs.feDesigns?.[pkgName]) {
-        selectedFiles.push(`fe-system-design-${pkgName}.md`);
-      }
-    }
-    
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Backend packages: be, be-{svc}
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (pkg === 'be') {
-      // Legacy single backend
-      if (designDocs.beDesign) {
-        selectedFiles.push('be-system-design.md');
+    if (pkg.startsWith('fe-')) {
+      const name = pkg.slice(3);
+      if (designDocs.feDesigns[name]) {
+        selectedFiles.push(`fe-system-design-${name}.md`);
       }
     } else if (pkg.startsWith('be-')) {
-      // MSA backend: be-{svc} → be-system-design-{svc}.md
-      const svcName = pkg.slice(3); // Remove 'be-' prefix
-      if (designDocs.beDesigns?.[svcName]) {
-        selectedFiles.push(`be-system-design-${svcName}.md`);
+      const name = pkg.slice(3);
+      if (designDocs.beDesigns[name]) {
+        selectedFiles.push(`be-system-design-${name}.md`);
       }
     }
   }
-  
-  return [...new Set(selectedFiles)]; // Deduplicate
+
+  return [...new Set(selectedFiles)];
 }
 
 /**
- * Get design document content by package tag
- * Used in plan/codeGen for split injection
- * 
- * @param pkg - Package tag (e.g., 'fe', 'be-auth')
- * @param designDocs - All loaded design docs
- * @returns Document content or undefined
+ * Get design document content by package tag.
+ * Package tag format: "fe-{name}" or "be-{name}"
  */
 export function getDesignDocByPackage(
   pkg: string,
   designDocs?: DesignDocs
 ): string | undefined {
   if (!designDocs) return undefined;
-  
-  if (pkg === 'fe') {
-    return designDocs.feDesign;
-  } else if (pkg.startsWith('fe-')) {
-    const pkgName = pkg.slice(3);
-    return designDocs.feDesigns?.[pkgName];
-  } else if (pkg === 'be') {
-    return designDocs.beDesign;
+
+  if (pkg.startsWith('fe-')) {
+    return designDocs.feDesigns[pkg.slice(3)];
   } else if (pkg.startsWith('be-')) {
-    const svcName = pkg.slice(3);
-    return designDocs.beDesigns?.[svcName];
+    return designDocs.beDesigns[pkg.slice(3)];
   }
-  
+
   return undefined;
 }
 
 /**
- * Build combined design document for task based on packages
- * 
- * @param packages - Task's packages array
- * @param designDocs - All loaded design docs
- * @returns Combined design document string
+ * Build combined design document for task based on packages.
  */
 export function buildDesignDocForTask(
   packages: string[] | undefined,
   designDocs?: DesignDocs
 ): string {
   if (!designDocs) return '';
-  
+
   const parts: string[] = [];
-  
-  // Always include API contract
-  if (designDocs.apiContract) {
-    parts.push('# API Contract\n\n' + designDocs.apiContract);
+
+  // Always include all API contracts
+  for (const [name, content] of Object.entries(designDocs.apiContracts)) {
+    parts.push(`# API Contract: ${name}\n\n${content}`);
   }
-  
-  // If no packages specified, use legacy combined approach
+
   if (!packages || packages.length === 0) {
-    if (designDocs.feDesign) {
-      parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
+    // No packages: include everything
+    for (const [name, content] of Object.entries(designDocs.feDesigns)) {
+      parts.push(`# Frontend: ${name}\n\n${content}`);
     }
-    if (designDocs.beDesign) {
-      parts.push('# Backend System Design\n\n' + designDocs.beDesign);
-    }
-    if (designDocs.unifiedDesign && parts.length <= 1) {
-      parts.push('# System Design\n\n' + designDocs.unifiedDesign);
-    }
-    
-    // Include all multi-package docs if no specific packages requested
-    if (designDocs.feDesigns) {
-      for (const [pkg, content] of Object.entries(designDocs.feDesigns)) {
-        parts.push(`# Frontend: ${pkg}\n\n${content}`);
-      }
-    }
-    if (designDocs.beDesigns) {
-      for (const [svc, content] of Object.entries(designDocs.beDesigns)) {
-        parts.push(`# Backend: ${svc} Service\n\n${content}`);
-      }
+    for (const [name, content] of Object.entries(designDocs.beDesigns)) {
+      parts.push(`# Backend: ${name}\n\n${content}`);
     }
   } else {
-    // Build based on specific packages
     for (const pkg of packages) {
       const content = getDesignDocByPackage(pkg, designDocs);
       if (content) {
-        const header = pkg.startsWith('fe') 
-          ? `# Frontend: ${pkg === 'fe' ? 'Main' : pkg.slice(3)}`
-          : `# Backend: ${pkg === 'be' ? 'Main' : pkg.slice(3)} Service`;
+        const header = pkg.startsWith('fe')
+          ? `# Frontend: ${pkg.slice(3)}`
+          : `# Backend: ${pkg.slice(3)}`;
         parts.push(`${header}\n\n${content}`);
       }
     }
   }
-  
+
   return parts.join('\n\n────────────────────────────────────────\n\n');
 }

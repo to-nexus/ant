@@ -60,19 +60,15 @@ interface SystemDesignResponse {
 // ============================================
 
 /**
- * Known system design document patterns:
- * - system-design.md              (unified)
- * - api-contract.md               (API contract)
- * - fe-system-design.md           (single frontend)
- * - fe-system-design-{pkg}.md     (multi-package frontend)
- * - be-system-design.md           (single backend)
- * - be-system-design-{svc}.md     (multi-service/MSA backend)
+ * Known system design document patterns (unified naming):
+ * - api-contract-{name}.md
+ * - fe-system-design-{name}.md
+ * - be-system-design-{name}.md
  */
 const SYSTEM_DESIGN_FILE_PATTERNS = [
-  /^system-design\.md$/,
-  /^api-contract\.md$/,
-  /^fe-system-design(?:-.+)?\.md$/,
-  /^be-system-design(?:-.+)?\.md$/,
+  /^api-contract-.+\.md$/,
+  /^fe-system-design-.+\.md$/,
+  /^be-system-design-.+\.md$/,
 ];
 
 function isSystemDesignFile(fileName: string): boolean {
@@ -90,8 +86,9 @@ function isSystemDesignFile(fileName: string): boolean {
  * Flow: MSA expansion → task remap → documentType inference → coverage check.
  *
  * MSA expansion (both FE and BE):
- *   be-system-design.md → be-system-design-{service}.md  (when response.services exists)
- *   fe-system-design.md → fe-system-design-{package}.md  (when response.fePackages exists)
+ *   be-system-design-main.md → be-system-design-{service}.md  (when response.services exists)
+ *   fe-system-design-main.md → fe-system-design-{package}.md  (when response.fePackages exists)
+ *   api-contract-main.md → api-contract-{service}.md  (when response.services exists)
  */
 function validateAndFixTargetFiles(
   response: SystemDesignResponse,
@@ -99,19 +96,22 @@ function validateAndFixTargetFiles(
   _detectedEnv: string | undefined
 ): SystemDesignResponse {
   // Step 1: MSA expansion FIRST (before any task validation)
+  // Replaces -main.md with per-service/package files when MSA is detected
   let effectiveTargetFiles = [...resolvedTargetFiles];
 
   if (response.services?.length) {
     effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
-      f === 'be-system-design.md'
+      f === 'be-system-design-main.md'
         ? response.services!.map(s => `be-system-design-${s}.md`)
-        : [f]
+        : f === 'api-contract-main.md'
+          ? response.services!.map(s => `api-contract-${s}.md`)
+          : [f]
     );
   }
 
   if (response.fePackages?.length) {
     effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
-      f === 'fe-system-design.md'
+      f === 'fe-system-design-main.md'
         ? response.fePackages!.map(p => `fe-system-design-${p}.md`)
         : [f]
     );
@@ -134,11 +134,12 @@ function validateAndFixTargetFiles(
 
   // Step 3: documentType inference
   const hasMSA = (response.services?.length ?? 0) > 0 || (response.fePackages?.length ?? 0) > 0;
+  const hasApiContract = effectiveTargetFiles.some(f => f.startsWith('api-contract-'));
   if (hasMSA) {
     response.documentType = 'msa-contract-first';
-  } else if (effectiveTargetFiles.length === 1 && !effectiveTargetFiles.includes('api-contract.md')) {
+  } else if (effectiveTargetFiles.length === 1 && !hasApiContract) {
     response.documentType = 'unified';
-  } else if (effectiveTargetFiles.includes('api-contract.md')) {
+  } else if (hasApiContract) {
     response.documentType = 'contract-first';
   }
 
@@ -172,7 +173,7 @@ function validateTaskCoverage(response: SystemDesignResponse): { valid: boolean;
 function generateMinimumTasks(targetFiles: string[]): SystemDesignResponse['tasks'] {
   return targetFiles.map((file, idx) => {
     const baseName = file.replace('.md', '');
-    const isApiContract = file === 'api-contract.md';
+    const isApiContract = file.startsWith('api-contract-');
     return {
       id: `design-${baseName}`,
       name: `Design Document: ${baseName}`,
@@ -197,7 +198,7 @@ function buildTaskQueue(response: SystemDesignResponse): TaskQueue<DesignTask> {
       taskData.targetFile = response.targetFiles[0];
     }
     
-    const isApiContract = taskData.targetFile === 'api-contract.md';
+    const isApiContract = taskData.targetFile.startsWith('api-contract-');
     const exclusive = typeof taskData.exclusive === 'boolean' ? taskData.exclusive : (isApiContract || undefined);
     const parallelGroup = !exclusive && typeof taskData.parallelGroup === 'string'
       ? taskData.parallelGroup
@@ -253,7 +254,7 @@ export async function decomposeSystemDesign(
     ? (resolvedTargetFiles || (existingDesignFiles.length > 0 ? existingDesignFiles : undefined))
     : (existingDesignFiles.length > 0 ? existingDesignFiles : undefined);
   const promptPrimaryFile = resolvedTargetFiles?.[0]
-    || (existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'system-design.md');
+    || (existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'be-system-design-main.md');
 
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
@@ -312,10 +313,10 @@ export async function decomposeSystemDesign(
     } else if (parsedResponse.tasks) {
       response = {
         documentType: 'unified',
-        targetFiles: ['system-design.md'],
+        targetFiles: ['be-system-design-main.md'],
         tasks: parsedResponse.tasks.map((task: any) => ({
           ...task,
-          targetFile: task.targetFile || 'system-design.md'
+          targetFile: task.targetFile || 'be-system-design-main.md'
         }))
       };
     } else {
