@@ -207,11 +207,11 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   const design = designResult?.content || undefined;
 
   // 4. Scan existing system design documents (for refactor mode to know exact filenames)
-  //    Pattern: api-contract-{name}.md, fe-system-design-{name}.md, be-system-design-{name}.md
+  //    Pattern: api-contract-{name}.md, fe-system-{name}.md, be-system-{name}.md
   const DESIGN_FILE_PATTERNS = [
     /^api-contract-.+\.md$/,
-    /^fe-system-design-.+\.md$/,
-    /^be-system-design-.+\.md$/,
+    /^fe-system-.+\.md$/,
+    /^be-system-.+\.md$/,
   ];
   let existingDesignDocs: Record<string, string> | undefined;
   try {

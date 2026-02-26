@@ -133,7 +133,7 @@ export function createExplainTask(state: DesignGraphState): DesignTask {
     name: 'Explain: Design documents',
     type: 'doc',
     priority: 200,
-    targetFile: state.detectionReport?.workType === 'ui-design' ? 'ui-spec.json' : 'be-system-design-main.md',
+    targetFile: state.detectionReport?.workType === 'ui-design' ? 'ui-spec.json' : 'be-system-main.md',
     description: state.directive || 'Analyze and explain the design documents'
   };
 }

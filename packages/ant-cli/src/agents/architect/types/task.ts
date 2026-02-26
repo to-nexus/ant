@@ -75,25 +75,25 @@ export interface CodeTask extends BaseTask {
    * 
    * | Tag Pattern | Maps To | Description |
    * |-------------|---------|-------------|
-   * | `fe-main` | `fe-system-design-main.md` | Single frontend |
-   * | `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi frontend (monorepo) |
-   * | `be-main` | `be-system-design-main.md` | Single backend |
-   * | `be-{svc}` | `be-system-design-{svc}.md` | MSA service |
+   * | `fe-main` | `fe-system-main.md` | Single frontend |
+   * | `fe-{pkg}` | `fe-system-{pkg}.md` | Multi frontend (monorepo) |
+   * | `be-main` | `be-system-main.md` | Single backend |
+   * | `be-{svc}` | `be-system-{svc}.md` | MSA service |
    * | `shared` | all api-contract-*.md | Shared/utility package (types, DTOs, configs) |
    * 
    * ## Examples
    * 
    * ### Single Package Projects
-   * - `['fe-main']` → fe-system-design-main.md
-   * - `['be-main']` → be-system-design-main.md
+   * - `['fe-main']` → fe-system-main.md
+   * - `['be-main']` → be-system-main.md
    * - `['fe-main', 'be-main']` → both (fullstack integration)
    * 
    * ### Multi-Package Frontend (Monorepo)
-   * - `['fe-web']` → fe-system-design-web.md
-   * - `['fe-admin']` → fe-system-design-admin.md
+   * - `['fe-web']` → fe-system-web.md
+   * - `['fe-admin']` → fe-system-admin.md
    * 
    * ### MSA Backend
-   * - `['be-auth']` → be-system-design-auth.md + api-contract-auth.md
+   * - `['be-auth']` → be-system-auth.md + api-contract-auth.md
    * - `['be-auth', 'be-order']` → auth + order (inter-service)
    * 
    * ### Cross-Tier Integration
@@ -120,7 +120,7 @@ export interface CodeTask extends BaseTask {
  * Design-specific Task
  */
 export interface DesignTask extends BaseTask {
-  targetFile?: string;             // Which design document (e.g., "be-system-design-main.md")
+  targetFile?: string;             // Which design document (e.g., "be-system-main.md")
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
   
   /**

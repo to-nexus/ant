@@ -278,10 +278,10 @@ export class ModeController {
           if (targetFile.includes('api-contract')) {
             injections.push(`design/base/injections/api-contract-guide`);
             console.log(`[ModeController] Adding api-contract-guide for targetFile: ${targetFile}`);
-          } else if (targetFile.includes('fe-system-design') || targetFile.includes('frontend')) {
+          } else if (targetFile.includes('fe-system-') || targetFile.includes('frontend')) {
             injections.push(`design/base/injections/frontend-guide`);
             console.log(`[ModeController] Adding frontend-guide for targetFile: ${targetFile}`);
-          } else if (targetFile.includes('be-system-design') || targetFile.includes('backend')) {
+          } else if (targetFile.includes('be-system-') || targetFile.includes('backend')) {
             injections.push(`design/base/injections/backend-guide`);
             console.log(`[ModeController] Adding backend-guide for targetFile: ${targetFile}`);
           }
@@ -365,7 +365,7 @@ export class ModeController {
       const fileName = context.designDocPath.toLowerCase();
       
       // Frontend design document
-      if (fileName.includes('fe-system-design') || 
+      if (fileName.includes('fe-system-') || 
           fileName.includes('frontend-design') ||
           fileName.includes('fe-design')) {
         console.log(`[ModeController] Detected environment from file name (${context.designDocPath}): browser`);
@@ -373,7 +373,7 @@ export class ModeController {
       }
       
       // Backend design document
-      if (fileName.includes('be-system-design') || 
+      if (fileName.includes('be-system-') || 
           fileName.includes('backend-design') ||
           fileName.includes('be-design') ||
           fileName.includes('api-design')) {

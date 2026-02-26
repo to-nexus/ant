@@ -422,9 +422,9 @@ function extractDesignLessons(state: DesignGraphState): string {
   sections.push(`\n## Design Document Summary`);
   
   const primaryDesign = state.files?.find(f => 
-    f.path.includes('system-design') || f.path.includes('design.md')
+    f.path.includes('fe-system-') || f.path.includes('be-system-') || f.path.includes('design.md')
   );
-  
+
   if (primaryDesign) {
     const lines = primaryDesign.content.split('\n').length;
     sections.push(`**File**: ${primaryDesign.path}`);
@@ -457,7 +457,7 @@ function extractDesignDecisions(state: DesignGraphState): string {
   
   // Get primary design document content
   const primaryDesign = state.files?.find(f => 
-    f.path.includes('system-design') || f.path.includes('design.md')
+    f.path.includes('fe-system-') || f.path.includes('be-system-') || f.path.includes('design.md')
   );
   
   if (!primaryDesign) {
