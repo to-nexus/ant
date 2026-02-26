@@ -1,8 +1,8 @@
 ## ⚙️ BACKEND DESIGN DOCUMENT GUIDE
 
-**Document Type**: `be-system-design.md`
-**Role**: HOW Backend IMPLEMENTS api-contract.md
-**Phase**: Written AFTER api-contract.md is finalized
+**Document Type**: `be-system-design-main.md`
+**Role**: HOW Backend IMPLEMENTS api-contract-main.md
+**Phase**: Written AFTER api-contract-main.md is finalized
 
 ### 🎯 What This Document IS
 
@@ -15,12 +15,12 @@
 
 **Characteristics:**
 - PROVIDER perspective: How to implement APIs, not define them
-- REFERENCE contract: "Implements LoginRequest → LoginResponse per api-contract.md §3.1"
+- REFERENCE contract: "Implements LoginRequest → LoginResponse per api-contract-main.md §3.1"
 - ARCHITECTURE focus: Layer boundaries, data flow, patterns
 
 ### 🚫 What This Document is NOT
 
-- ❌ NO API definitions (already in api-contract.md)
+- ❌ NO API definitions (already in api-contract-main.md)
 - ❌ NO DTO redefinition (reference contract only!)
 - ❌ NO full method implementations (only signatures + purpose)
 - ❌ NO detailed SQL queries (only schema + relationships)
@@ -32,7 +32,7 @@
 
 ### 1. Overview & API Contract Compliance (mandatory)
 
-**MUST acknowledge api-contract.md:**
+**MUST acknowledge api-contract-main.md:**
 ```markdown
 ## 1. Overview
 
@@ -43,7 +43,7 @@
 [Layered, Hexagonal, Clean Architecture, etc.]
 
 ### API Contract Compliance
-This backend implements the **provider side** of `api-contract.md` EXACTLY.
+This backend implements the **provider side** of `api-contract-main.md` EXACTLY.
 All endpoints, DTOs, and status codes match the contract specification.
 NO deviations from the contract are permitted.
 
@@ -112,12 +112,12 @@ NO deviations from the contract are permitted.
 ### 4. Endpoint Implementation Mapping ⚠️ MOST CRITICAL
 
 **🚨 CRITICAL RULES:**
-1. **NEVER redefine DTOs** - Reference api-contract.md only
-2. **Reference contract explicitly**: "Implements LoginRequest → LoginResponse (api-contract.md §3.1)"
+1. **NEVER redefine DTOs** - Reference api-contract-main.md only
+2. **Reference contract explicitly**: "Implements LoginRequest → LoginResponse (api-contract-main.md §3.1)"
 3. **Focus on architecture-level mapping**, not step-by-step algorithms or library calls
 
 **For EACH endpoint group, specify (repeatable template):**
-- **Contract reference**: exact endpoint/method from `api-contract.md` section
+- **Contract reference**: exact endpoint/method from `api-contract-main.md` section
 - **Controller responsibility**: request binding + DTO validation + auth context extraction + error translation
 - **Application/Service responsibility**: orchestration of use case; transactional boundary (if any)
 - **Domain responsibility** (if applicable): pure business rules / invariants
@@ -249,9 +249,9 @@ NO deviations from the contract are permitted.
 
 ---
 
-### 10. Real-time & Connection State (if api-contract.md defines WebSocket/SSE)
+### 10. Real-time & Connection State (if api-contract-main.md defines WebSocket/SSE)
 
-**Only if api-contract.md includes real-time communication.**
+**Only if api-contract-main.md includes real-time communication.**
 
 #### 10.1 Connection Management Observation
 
@@ -378,7 +378,7 @@ Response: { accessToken, user }
 **✅ CORRECT**:
 ```markdown
 ### POST /api/auth/login
-**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
+**Contract**: LoginRequest → LoginResponse (api-contract-main.md §3.1)
 **Implementation**: AuthService validates credentials → JWT signing → Response mapping
 ```
 
@@ -395,15 +395,15 @@ interface LoginRequest {  ← Duplicating contract!
 **✅ CORRECT**:
 ```typescript
 import { LoginRequest, LoginResponse } from 'api-contract-types';
-// Or simply: "Validates LoginRequest per api-contract.md"
+// Or simply: "Validates LoginRequest per api-contract-main.md"
 ```
 
 ### Rule 3: Reference Contract Explicitly
 
 **Every endpoint implementation must reference contract:**
 ```markdown
-- POST /api/auth/login implements LoginRequest → LoginResponse (api-contract.md §3.1)
-- GET /api/users/profile returns User (api-contract.md §4.1)
+- POST /api/auth/login implements LoginRequest → LoginResponse (api-contract-main.md §3.1)
+- GET /api/users/profile returns User (api-contract-main.md §4.1)
 ```
 
 ### Rule 4: Implementation Details ARE Allowed Here
@@ -421,7 +421,7 @@ import { LoginRequest, LoginResponse } from 'api-contract-types';
 ## 4. Endpoint Implementation
 
 ### POST /api/auth/login
-**Contract**: LoginRequest → LoginResponse (api-contract.md §3.1)
+**Contract**: LoginRequest → LoginResponse (api-contract-main.md §3.1)
 
 **Mapping**:
 - Controller: binds LoginRequest, validates per contract, translates errors to contract ErrorResponse
@@ -467,11 +467,11 @@ async function login(req, res) {  ← This is full implementation code!
 
 ### Required Sections (per service document)
 
-1. **Overview**: Service name, responsibility, api-contract.md reference
+1. **Overview**: Service name, responsibility, api-contract-main.md reference
 2. **Architecture**: THIS service's internal layers (Controller → Service → Repository)
 3. **Database Schema**: Tables/collections THIS service owns
-4. **Endpoint Implementation Mapping**: Endpoints from api-contract.md that THIS service implements
-5. **Event Integration**: Events published/subscribed with api-contract.md reference
+4. **Endpoint Implementation Mapping**: Endpoints from api-contract-main.md that THIS service implements
+5. **Event Integration**: Events published/subscribed with api-contract-main.md reference
 
 ### Cross-Reference Principle
 
@@ -479,10 +479,10 @@ async function login(req, res) {  ← This is full implementation code!
 
 | Content Type | Location | Reference Method |
 |--------------|----------|------------------|
-| Endpoint definitions | api-contract.md | "Implements api-contract.md §X" |
-| DTO definitions | api-contract.md | "Uses {DTOName} from api-contract.md §Y" |
-| Event payloads | api-contract.md | "Publishes {EventName} per api-contract.md §Z" |
-| Inter-service calls | api-contract.md | "Calls {Service} endpoint per api-contract.md §W" |
+| Endpoint definitions | api-contract-main.md | "Implements api-contract-main.md §X" |
+| DTO definitions | api-contract-main.md | "Uses {DTOName} from api-contract-main.md §Y" |
+| Event payloads | api-contract-main.md | "Publishes {EventName} per api-contract-main.md §Z" |
+| Inter-service calls | api-contract-main.md | "Calls {Service} endpoint per api-contract-main.md §W" |
 
 ### Template for Service Document Header
 
@@ -493,9 +493,9 @@ async function login(req, res) {  ← This is full implementation code!
 
 **Service Name**: {service}
 **Responsibility**: {1-2 sentences from PRD}
-**API Contract Reference**: api-contract.md
+**API Contract Reference**: api-contract-main.md
 
-### Endpoints Implemented (from api-contract.md)
+### Endpoints Implemented (from api-contract-main.md)
 - § Internal API → {service} section
 - § Async Events → {service} as Publisher/Subscriber
 
@@ -506,10 +506,10 @@ async function login(req, res) {  ← This is full implementation code!
 ### ⚠️ Constraint
 
 - Each service document focuses on **HOW** (implementation architecture)
-- api-contract.md defines **WHAT** (interfaces, DTOs, events)
+- api-contract-main.md defines **WHAT** (interfaces, DTOs, events)
 - **Do NOT redefine DTOs or endpoint schemas in service documents**
 - **Do NOT describe other services' implementation details**
 
 ---
 
-**Purpose**: This guide ensures be-system-design.md (or be-system-design-{service}.md) focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.
+**Purpose**: This guide ensures be-system-design-main.md (or be-system-design-{service}.md) focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.

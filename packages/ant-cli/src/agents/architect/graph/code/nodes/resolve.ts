@@ -332,20 +332,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   console.log(`📄 [Resolve] Design: ${design ? 'loaded' : 'none'}, PRD: ${prd ? 'loaded' : 'none'}, UI: ${parsedUiDocs ? 'loaded' : 'none'}`);
 
-  // ✅ Load all available design documents (api-contract / fe / be / system-design)
-  // Use ArtifactService to ensure FileSystemPort receives workspace-relative paths
+  // ✅ Load all design documents (api-contract-*.md / fe-system-design-*.md / be-system-design-*.md)
   const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
 
   // ✅ Load spec documents (spec-{slug}.md) for feature-scoped specifications
   const specDocs = await ArtifactService.loadSpecDocuments(context, gitPort, fileSystem);
-
-  // ✅ Fallback: if structured designDocs are missing but a unified design exists, keep it usable
-  if (
-    (!designDocs.apiContract && !designDocs.feDesign && !designDocs.beDesign && !designDocs.unifiedDesign) &&
-    design
-  ) {
-    designDocs.unifiedDesign = design;
-  }
 
   // 2. Load directive with override priority
   // ✅ Priority: overrideDirective (from chat) > directive.md > directive-nnn.md

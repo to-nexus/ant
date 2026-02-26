@@ -71,41 +71,40 @@ export interface CodeTask extends BaseTask {
    * **REQUIRED**: Every task MUST have packages set by decompose.
    * If missing, plan/codeGen falls back to state.design (all docs) with a warning.
    * 
-   * ## Normalized Tag Format
+   * ## Normalized Tag Format (unified naming: always `{type}-{name}.md`)
    * 
    * | Tag Pattern | Maps To | Description |
    * |-------------|---------|-------------|
-   * | `fe` | `fe-system-design.md` | Single frontend |
+   * | `fe-main` | `fe-system-design-main.md` | Single frontend |
    * | `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi frontend (monorepo) |
-   * | `be` | `be-system-design.md` | Single backend |
+   * | `be-main` | `be-system-design-main.md` | Single backend |
    * | `be-{svc}` | `be-system-design-{svc}.md` | MSA service |
-   * | `shared` | api-contract.md only | Shared/utility package (types, DTOs, configs) |
+   * | `shared` | all api-contract-*.md | Shared/utility package (types, DTOs, configs) |
    * 
    * ## Examples
    * 
    * ### Single Package Projects
-   * - `['fe']` → fe-system-design.md
-   * - `['be']` → be-system-design.md
-   * - `['fe', 'be']` → both (fullstack integration)
+   * - `['fe-main']` → fe-system-design-main.md
+   * - `['be-main']` → be-system-design-main.md
+   * - `['fe-main', 'be-main']` → both (fullstack integration)
    * 
    * ### Multi-Package Frontend (Monorepo)
    * - `['fe-web']` → fe-system-design-web.md
    * - `['fe-admin']` → fe-system-design-admin.md
-   * - `['fe-web', 'fe-shared-ui']` → web app + shared UI library
    * 
    * ### MSA Backend
-   * - `['be-auth']` → be-system-design-auth.md
+   * - `['be-auth']` → be-system-design-auth.md + api-contract-auth.md
    * - `['be-auth', 'be-order']` → auth + order (inter-service)
    * 
    * ### Cross-Tier Integration
    * - `['fe-web', 'be-auth']` → frontend + specific backend service
    * 
    * ### Shared / Root Workspace
-   * - `['shared']` → api-contract.md only (no system design doc mapped)
+   * - `['shared']` → all api-contract-*.md only
    * 
    * ## Note
-   * - `api-contract.md` is ALWAYS injected when any package is specified
-   * - `shared` tag has no system design mapping — only api-contract.md is injected
+   * - All api-contract-*.md files are ALWAYS injected when any package is specified
+   * - `shared` tag has no system design mapping — only api-contracts are injected
    * - If undefined, falls back to environment-based selection (all docs) — this is a decompose bug
    */
   packages?: string[];
@@ -121,7 +120,7 @@ export interface CodeTask extends BaseTask {
  * Design-specific Task
  */
 export interface DesignTask extends BaseTask {
-  targetFile?: string;             // Which design document (e.g., "system-design.md")
+  targetFile?: string;             // Which design document (e.g., "be-system-design-main.md")
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
   
   /**

@@ -58,11 +58,13 @@ export async function buildPlanPrompt(
 
   let designDoc: string;
   if (state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
-    // Spec-driven mode: use spec as primary, api-contract only as supplementary
+    // Spec-driven mode: use spec as primary, api-contracts as supplementary
     const parts: string[] = [];
     parts.push(`# Feature Specification (Primary)\n\n${state.specDocs[state.selectedSpec]}`);
-    if (state.designDocs?.apiContract) {
-      parts.push(`# API Contract (Reference)\n\n${state.designDocs.apiContract}`);
+    if (state.designDocs?.apiContracts) {
+      for (const [name, content] of Object.entries(state.designDocs.apiContracts)) {
+        parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
+      }
     }
     designDoc = parts.join('\n\n────────────────────────────────────────\n\n');
     console.log(`📋 [Plan] Using spec doc "${state.selectedSpec}" as primary (${designDoc.length} chars)`);
