@@ -612,6 +612,22 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         if (get().sseReconnectGrace) {
           console.log('[Store] SSE reconnect grace expired (timeout)');
           set({ sseReconnectGrace: false });
+
+          const { kanban, isRunning } = get();
+          if (kanban && isRunning) {
+            const stillRunning = kanban.dataSource === 'live' || kanban.dataSource === 'estimating';
+            if (!stillRunning) {
+              console.log('[Store] SSE grace expired: no live data received — job completed during grace');
+              set({
+                isRunning: false,
+                currentMode: undefined,
+                jobStartPending: false,
+              });
+              removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
+              removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
+              removeFromStorage(STORAGE_KEYS.TASK_MODE);
+            }
+          }
         }
       }, 5000);
     });
