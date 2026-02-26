@@ -425,12 +425,12 @@ export async function detectEnvironment(
     const hasUiDocs = hasUiTokens && hasUiAssets && hasUiSpec;
     
     // Derive from state.existingDesignDocs (populated by resolve node with pattern scan)
-    // This correctly discovers MSA files (be-system-design-api.md, fe-system-design-web.md, etc.)
+    // This correctly discovers MSA files (be-system-api.md, fe-system-web.md, etc.)
     const existingDocNames = state.existingDesignDocs ? Object.keys(state.existingDesignDocs) : [];
-    const hasSystemDesign = existingDocNames.some(f => f.startsWith('be-system-design-') || f.startsWith('fe-system-design-'));
+    const hasSystemDesign = existingDocNames.some(f => f.startsWith('be-system-') || f.startsWith('fe-system-'));
     const hasApiContract = existingDocNames.some(f => f.startsWith('api-contract-'));
-    const hasFeSystemDesign = existingDocNames.some(f => f.startsWith('fe-system-design'));
-    const hasBeSystemDesign = existingDocNames.some(f => f.startsWith('be-system-design'));
+    const hasFeSystemDesign = existingDocNames.some(f => f.startsWith('fe-system-'));
+    const hasBeSystemDesign = existingDocNames.some(f => f.startsWith('be-system-'));
     const hasSystemDocs = existingDocNames.length > 0;
     
     if (hasUiDocs) {

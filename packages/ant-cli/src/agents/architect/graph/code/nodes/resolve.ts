@@ -332,7 +332,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   console.log(`📄 [Resolve] Design: ${design ? 'loaded' : 'none'}, PRD: ${prd ? 'loaded' : 'none'}, UI: ${parsedUiDocs ? 'loaded' : 'none'}`);
 
-  // ✅ Load all design documents (api-contract-*.md / fe-system-design-*.md / be-system-design-*.md)
+  // ✅ Load all design documents (api-contract-*.md / fe-system-*.md / be-system-*.md)
   const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
 
   // ✅ Load spec documents (spec-{slug}.md) for feature-scoped specifications

@@ -7,9 +7,9 @@ YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 
 **IMPORTANT: Document Type Detection**
 - **API Contract** (api-contract-main.md): typically 120-350 lines (binding specification)
-- **Frontend** (fe-system-design-main.md): typically 150-450 lines (consumer architecture)
-- **Backend** (be-system-design-main.md): typically 150-450 lines (provider architecture)
-- **Unified** (be-system-design-main.md): typically 150-450 lines (single doc)
+- **Frontend** (fe-system-main.md): typically 150-450 lines (consumer architecture)
+- **Backend** (be-system-main.md): typically 150-450 lines (provider architecture)
+- **Unified** (be-system-main.md): typically 150-450 lines (single doc)
 
 **Absolute rule**: The task description line budget ("MAX [N] lines") is the real cap; the ranges above are guidance.
 
@@ -58,7 +58,7 @@ STRUCTURE PER CHAPTER:
 {{#if currentTask.targetFile}}
 **Target file: `{{currentTask.targetFile}}`** (defined by decompose, DO NOT change!)
 {{else}}
-**Target file: `be-system-design-main.md`** (default)
+**Target file: `be-system-main.md`** (default)
 {{/if}}
 
 ⚠️ You MUST append to existing document (see rules.md for HOW)
@@ -72,7 +72,7 @@ STRUCTURE PER CHAPTER:
 {{#if currentTask.targetFile}}
 **Target file: `{{currentTask.targetFile}}`** (defined by decompose, DO NOT change!)
 {{else}}
-**Target file: `be-system-design-main.md`** (default)
+**Target file: `be-system-main.md`** (default)
 {{/if}}
 
 {{/if}}
@@ -353,9 +353,9 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 
 **Your document type is determined by task.targetFile:**
 - `api-contract-main.md` - Binding API specification (WHAT interfaces exist)
-- `fe-system-design-main.md` - Frontend architecture (standalone or consuming APIs)
-- `be-system-design-main.md` - Backend architecture (HOW to implement APIs)
-- `be-system-design-main.md` - Unified design (rare fallback for unclassified projects)
+- `fe-system-main.md` - Frontend architecture (standalone or consuming APIs)
+- `be-system-main.md` - Backend architecture (HOW to implement APIs)
+- `be-system-main.md` - Unified design (rare fallback for unclassified projects)
 
 **A document type-specific guide has been automatically injected above** with:
 - Required sections tailored to this document type
@@ -363,7 +363,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 - Code examples and anti-patterns
 - Common mistakes to avoid
 
-**If no type-specific guide appears above**, you're writing **`be-system-design-main.md` (unified)**:
+**If no type-specific guide appears above**, you're writing **`be-system-main.md` (unified)**:
 
 ### Unified System Design Structure
 

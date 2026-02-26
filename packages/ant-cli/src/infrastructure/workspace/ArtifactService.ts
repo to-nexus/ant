@@ -362,11 +362,11 @@ export class ArtifactService {
 
     const priorityPatterns: RegExp[] = [];
     if (preferredEnvironment === 'frontend') {
-      priorityPatterns.push(/^fe-system-design-.+\.md$/, /^api-contract-.+\.md$/, /^be-system-design-.+\.md$/);
+      priorityPatterns.push(/^fe-system-.+\.md$/, /^api-contract-.+\.md$/, /^be-system-.+\.md$/);
     } else if (preferredEnvironment === 'backend') {
-      priorityPatterns.push(/^be-system-design-.+\.md$/, /^api-contract-.+\.md$/, /^fe-system-design-.+\.md$/);
+      priorityPatterns.push(/^be-system-.+\.md$/, /^api-contract-.+\.md$/, /^fe-system-.+\.md$/);
     } else {
-      priorityPatterns.push(/^fe-system-design-.+\.md$/, /^be-system-design-.+\.md$/, /^api-contract-.+\.md$/);
+      priorityPatterns.push(/^fe-system-.+\.md$/, /^be-system-.+\.md$/, /^api-contract-.+\.md$/);
     }
 
     for (const pattern of priorityPatterns) {
@@ -399,8 +399,8 @@ export class ArtifactService {
    * 
    * Scans outputs/design/ for unified `{type}-{name}.md` pattern only:
    *   - api-contract-{name}.md
-   *   - fe-system-design-{name}.md
-   *   - be-system-design-{name}.md
+   *   - fe-system-{name}.md
+   *   - be-system-{name}.md
    */
   static async loadDesignDocuments(
     context: ArtifactProjectContext,
@@ -423,8 +423,8 @@ export class ArtifactService {
     const designFiles = await ArtifactService.listDesignFiles(fileSystem, designPath);
     
     const apiContractPattern = /^api-contract-(.+)\.md$/;
-    const fePattern = /^fe-system-design-(.+)\.md$/;
-    const bePattern = /^be-system-design-(.+)\.md$/;
+    const fePattern = /^fe-system-(.+)\.md$/;
+    const bePattern = /^be-system-(.+)\.md$/;
     
     for (const file of designFiles) {
       const apiMatch = file.match(apiContractPattern);
@@ -444,7 +444,7 @@ export class ArtifactService {
         const content = await fileSystem.readFile(filePath);
         if (content) {
           result.feDesigns[feMatch[1]] = content;
-          console.log(`📄 [ArtifactService] Loaded fe-system-design-${feMatch[1]}.md`);
+          console.log(`📄 [ArtifactService] Loaded fe-system-${feMatch[1]}.md`);
         }
         continue;
       }
@@ -455,7 +455,7 @@ export class ArtifactService {
         const content = await fileSystem.readFile(filePath);
         if (content) {
           result.beDesigns[beMatch[1]] = content;
-          console.log(`📄 [ArtifactService] Loaded be-system-design-${beMatch[1]}.md`);
+          console.log(`📄 [ArtifactService] Loaded be-system-${beMatch[1]}.md`);
         }
       }
     }
@@ -575,7 +575,7 @@ export class ArtifactService {
     await fileSystem.createDirectory(designDir);
     
     const timestamp = Date.now();
-    const fileName = `system-design-${context.project}-${timestamp}.md`;
+    const fileName = `design-${context.project}-${timestamp}.md`;
     const designFile = path.join(designDir, fileName);
     await fileSystem.writeFile(designFile, content);
     

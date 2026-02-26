@@ -258,20 +258,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const feKeys = Object.keys(docs.feDesigns);
     if (feKeys.length > 0) {
       for (const name of feKeys) {
-        lines.push(`- fe-system-design-${name}: present`);
+        lines.push(`- fe-system-${name}: present`);
       }
     } else {
-      lines.push(`- fe-system-design: absent`);
+      lines.push(`- fe-system: absent`);
     }
 
     // Backend
     const beKeys = Object.keys(docs.beDesigns);
     if (beKeys.length > 0) {
       for (const name of beKeys) {
-        lines.push(`- be-system-design-${name}: present`);
+        lines.push(`- be-system-${name}: present`);
       }
     } else {
-      lines.push(`- be-system-design: absent`);
+      lines.push(`- be-system: absent`);
     }
 
     designDocsMeta = lines.join('\n');

@@ -46,7 +46,7 @@ export interface AssembledContext {
     type: string;
     priority: number;
     description: string;
-    targetFile?: string;      // ✅ Target file for design job (api-contract-main.md, fe-system-design-main.md, etc.)
+    targetFile?: string;      // ✅ Target file for design job (api-contract-main.md, fe-system-main.md, etc.)
   };
   
   // ✅ NEW: Retry and Plan Context
@@ -226,7 +226,7 @@ export class ContextAssembler {
     
     // ✅ CRITICAL: Pass detectedEnvironment for ModeController priority-0 check
     // Without this, ModeController falls back to designDocPath filename detection,
-    // which returns 'browser' for fullstack projects (fe-system-design.md is checked first).
+    // which returns 'browser' for fullstack projects (fe-system-main.md is checked first).
     // The detectedEnvironment comes from detectEnvironment node (LLM-based analysis)
     // and is set on context by promptBuilder from state.detectionReport.environment.
     if ((context as any).detectedEnvironment) {

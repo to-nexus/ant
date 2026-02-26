@@ -147,7 +147,7 @@ export async function analyzeWorkspace(
   if (fs.existsSync(designPath)) {
     const files = fs.readdirSync(designPath);
     state.hasSystemDesignDoc = files.some(f => 
-      (f.startsWith('fe-system-design-') || f.startsWith('be-system-design-') || f.startsWith('api-contract-')) && f.endsWith('.md')
+      (f.startsWith('fe-system-') || f.startsWith('be-system-') || f.startsWith('api-contract-')) && f.endsWith('.md')
     );
   } else {
     state.hasSystemDesignDoc = false;

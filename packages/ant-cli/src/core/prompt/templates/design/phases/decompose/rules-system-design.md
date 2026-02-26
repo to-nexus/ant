@@ -62,15 +62,15 @@ API contract is written first as the single source of truth. Implementation docu
 | Phase | Priority | Target File | Content |
 |-------|----------|-------------|---------|
 | 1 | 200-209 | api-contract-main.md | Endpoints, DTOs, auth scheme, error format |
-| 2 | 210-229 | fe-system-design-main.md | Component architecture, routing, state, API integration |
-| 3 | 230-249 | be-system-design-main.md | Service layers, database schema, endpoint implementations |
+| 2 | 210-229 | fe-system-main.md | Component architecture, routing, state, API integration |
+| 3 | 230-249 | be-system-main.md | Service layers, database schema, endpoint implementations |
 
 ### Backend-only (no frontend)
 
 | Phase | Priority | Target File | Content |
 |-------|----------|-------------|---------|
 | 1 | 200-209 | api-contract-main.md | Endpoints, DTOs, auth scheme, error format |
-| 2 | 210-229 | be-system-design-main.md | Service layers, database schema, endpoint implementations |
+| 2 | 210-229 | be-system-main.md | Service layers, database schema, endpoint implementations |
 
 **Constraint**: api-contract-*.md tasks are ALWAYS written first (exclusive). Implementation documents follow.
 
@@ -81,8 +81,8 @@ API contract is written first as the single source of truth. Implementation docu
 **When PRD explicitly indicates multiple backend service boundaries OR multiple frontend package boundaries.**
 
 MSA applies to BOTH tiers independently:
-- **Backend MSA**: Multiple backend services → `be-system-design-{service}.md` + `api-contract-{service}.md` per service
-- **Frontend MSA**: Multiple frontend packages/micro-frontends → `fe-system-design-{package}.md` per package
+- **Backend MSA**: Multiple backend services → `be-system-{service}.md` + `api-contract-{service}.md` per service
+- **Frontend MSA**: Multiple frontend packages/micro-frontends → `fe-system-{package}.md` per package
 - Both can coexist in a fullstack project
 
 ### Priority Assignment
@@ -90,16 +90,16 @@ MSA applies to BOTH tiers independently:
 | Phase | Priority | Target File | Content |
 |-------|----------|-------------|---------|
 | 1 | 200-209 | api-contract-{service}.md | **Per service** - Endpoints this service provides/consumes, events, DTOs |
-| 2 | 210-219 | fe-system-design-{package}.md | **Per package** (if FE MSA) or fe-system-design-main.md (if single FE) |
-| 3 | 220-249 | be-system-design-{service}.md | **Per service** (if BE MSA) or be-system-design-main.md (if single BE) |
+| 2 | 210-219 | fe-system-{package}.md | **Per package** (if FE MSA) or fe-system-main.md (if single FE) |
+| 3 | 220-249 | be-system-{service}.md | **Per service** (if BE MSA) or be-system-main.md (if single BE) |
 
 ### Document Naming
 
 | Tier | Constraint | Rule |
 |------|------------|------|
 | API Contract | Filename pattern | `api-contract-{service}.md` where `{service}` is PRD-specified name (or `main` if single) |
-| Backend | Filename pattern | `be-system-design-{service}.md` where `{service}` is PRD-specified name (or `main` if single) |
-| Frontend | Filename pattern | `fe-system-design-{package}.md` where `{package}` is PRD-specified name (or `main` if single) |
+| Backend | Filename pattern | `be-system-{service}.md` where `{service}` is PRD-specified name (or `main` if single) |
+| Frontend | Filename pattern | `fe-system-{package}.md` where `{package}` is PRD-specified name (or `main` if single) |
 | All | Case | Use exact case from PRD (lowercase recommended) |
 | All | No invention | Do NOT create names not in PRD |
 
@@ -174,14 +174,14 @@ MSA applies to BOTH tiers independently:
 
 **"unified"**:
 - Use for: Frontend-only projects, CLI tools, or projects without externally-consumed API
-- targetFiles (frontend-only): `["fe-system-design-main.md"]`
-- targetFiles (backend without external API): `["be-system-design-main.md"]`
+- targetFiles (frontend-only): `["fe-system-main.md"]`
+- targetFiles (backend without external API): `["be-system-main.md"]`
 - services: `[]`, fePackages: `[]`
 
 **"contract-first"**:
 - Use for: Projects that expose external API (fullstack or backend-only)
-- targetFiles (fullstack): `["api-contract-main.md", "fe-system-design-main.md", "be-system-design-main.md"]`
-- targetFiles (backend-only): `["api-contract-main.md", "be-system-design-main.md"]`
+- targetFiles (fullstack): `["api-contract-main.md", "fe-system-main.md", "be-system-main.md"]`
+- targetFiles (backend-only): `["api-contract-main.md", "be-system-main.md"]`
 - services: `[]`, fePackages: `[]`
 
 **"msa-contract-first"**:
@@ -213,7 +213,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 **`parallelGroup: "<group-id>"`** — Tasks with SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
 
-- **"unified"** mode: All tasks target the SAME file → same group ID (e.g., `"fe-system-design-main"`)
+- **"unified"** mode: All tasks target the SAME file → same group ID (e.g., `"fe-system-main"`)
 - **"contract-first"** mode: Implementation tasks target DIFFERENT files → different group IDs (e.g., `"fe-main"`, `"be-main"`)
 - **"msa-contract-first"** mode: Each service targets a DIFFERENT file → each service gets its own group ID (e.g., `"be-auth"`, `"be-order"`)
 
@@ -229,21 +229,21 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 {
   "documentType": "unified",
   "services": [],
-  "targetFiles": ["fe-system-design-main.md"],
+  "targetFiles": ["fe-system-main.md"],
   "tasks": [
     {
       "id": "design-arch",
       "name": "Design Document: Architecture & Data",
-      "targetFile": "fe-system-design-main.md",
-      "parallelGroup": "fe-system-design-main",
+      "targetFile": "fe-system-main.md",
+      "parallelGroup": "fe-system-main",
       "description": "Design system architecture, API integration strategy, and data models. MAX 100 lines! (Total: 200 lines)",
       "priority": 220
     },
     {
       "id": "design-ui",
       "name": "Design Document: UI Components",
-      "targetFile": "fe-system-design-main.md",
-      "parallelGroup": "fe-system-design-main",
+      "targetFile": "fe-system-main.md",
+      "parallelGroup": "fe-system-main",
       "description": "Design component structure, routing, and interaction patterns. MAX 100 lines! (Total: 200 lines, ~100 after task 1)",
       "priority": 240
     }
@@ -257,7 +257,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 {
   "documentType": "contract-first",
   "services": [],
-  "targetFiles": ["api-contract-main.md", "be-system-design-main.md"],
+  "targetFiles": ["api-contract-main.md", "be-system-main.md"],
   "tasks": [
     {
       "id": "design-contract",
@@ -270,7 +270,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-backend",
       "name": "Backend System Design",
-      "targetFile": "be-system-design-main.md",
+      "targetFile": "be-system-main.md",
       "parallelGroup": "be-main",
       "description": "Design backend architecture implementing API contract: services, database, endpoints. MAX 200 lines!",
       "priority": 220
@@ -285,7 +285,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 {
   "documentType": "contract-first",
   "services": [],
-  "targetFiles": ["api-contract-main.md", "fe-system-design-main.md", "be-system-design-main.md"],
+  "targetFiles": ["api-contract-main.md", "fe-system-main.md", "be-system-main.md"],
   "tasks": [
     {
       "id": "design-contract",
@@ -298,7 +298,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-frontend",
       "name": "Frontend System Design",
-      "targetFile": "fe-system-design-main.md",
+      "targetFile": "fe-system-main.md",
       "parallelGroup": "fe-main",
       "description": "Design frontend consuming API contract: components, state, integration. MAX 200 lines!",
       "priority": 220
@@ -306,7 +306,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-backend",
       "name": "Backend System Design",
-      "targetFile": "be-system-design-main.md",
+      "targetFile": "be-system-main.md",
       "parallelGroup": "be-main",
       "description": "Design backend implementing API contract: services, database, endpoints. MAX 200 lines!",
       "priority": 240
@@ -326,10 +326,10 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     "api-contract-auth.md",
     "api-contract-order.md",
     "api-contract-payment.md",
-    "fe-system-design-main.md",
-    "be-system-design-auth.md",
-    "be-system-design-order.md",
-    "be-system-design-payment.md"
+    "fe-system-main.md",
+    "be-system-auth.md",
+    "be-system-order.md",
+    "be-system-payment.md"
   ],
   "tasks": [
     {
@@ -359,7 +359,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-frontend",
       "name": "Frontend System Design",
-      "targetFile": "fe-system-design-main.md",
+      "targetFile": "fe-system-main.md",
       "parallelGroup": "fe-main",
       "description": "Design frontend consuming public API from api-contracts. MAX 150 lines!",
       "priority": 210
@@ -367,7 +367,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-be-auth",
       "name": "Backend: Auth Service",
-      "targetFile": "be-system-design-auth.md",
+      "targetFile": "be-system-auth.md",
       "targetService": "auth",
       "parallelGroup": "be-auth",
       "description": "Design auth service architecture implementing endpoints from api-contract-auth.md. MAX 120 lines!",
@@ -376,7 +376,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-be-order",
       "name": "Backend: Order Service",
-      "targetFile": "be-system-design-order.md",
+      "targetFile": "be-system-order.md",
       "targetService": "order",
       "parallelGroup": "be-order",
       "description": "Design order service architecture implementing endpoints from api-contract-order.md. MAX 120 lines!",
@@ -385,7 +385,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-be-payment",
       "name": "Backend: Payment Service",
-      "targetFile": "be-system-design-payment.md",
+      "targetFile": "be-system-payment.md",
       "targetService": "payment",
       "parallelGroup": "be-payment",
       "description": "Design payment service architecture implementing endpoints from api-contract-payment.md. MAX 120 lines!",
@@ -406,9 +406,9 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
   "fePackages": ["web", "admin"],
   "targetFiles": [
     "api-contract-main.md",
-    "fe-system-design-web.md",
-    "fe-system-design-admin.md",
-    "be-system-design-main.md"
+    "fe-system-web.md",
+    "fe-system-admin.md",
+    "be-system-main.md"
   ],
   "tasks": [
     {
@@ -422,7 +422,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-fe-web",
       "name": "Frontend: Web App",
-      "targetFile": "fe-system-design-web.md",
+      "targetFile": "fe-system-web.md",
       "targetService": "web",
       "parallelGroup": "fe-web",
       "description": "Design public-facing web application consuming API contract. MAX 150 lines!",
@@ -431,7 +431,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-fe-admin",
       "name": "Frontend: Admin Dashboard",
-      "targetFile": "fe-system-design-admin.md",
+      "targetFile": "fe-system-admin.md",
       "targetService": "admin",
       "parallelGroup": "fe-admin",
       "description": "Design admin dashboard consuming API contract. MAX 120 lines!",
@@ -440,7 +440,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
     {
       "id": "design-backend",
       "name": "Backend System Design",
-      "targetFile": "be-system-design-main.md",
+      "targetFile": "be-system-main.md",
       "parallelGroup": "be-main",
       "description": "Design backend architecture implementing API contract. MAX 200 lines!",
       "priority": 230
@@ -502,7 +502,7 @@ Before outputting, verify:
 **MSA-specific validation:**
 - ✅ If `msa-contract-first` → at least one of `services` or `fePackages` is NOT empty
 - ✅ If `msa-contract-first` → names match PRD exactly (do NOT invent)
-- ✅ If `services` present → each service has `be-system-design-{service}.md` AND `api-contract-{service}.md` in targetFiles
-- ✅ If `fePackages` present → each package has `fe-system-design-{package}.md` in targetFiles
+- ✅ If `services` present → each service has `be-system-{service}.md` AND `api-contract-{service}.md` in targetFiles
+- ✅ If `fePackages` present → each package has `fe-system-{package}.md` in targetFiles
 - ✅ Each MSA task has `targetService` field matching its service/package name
 {{/if}}
