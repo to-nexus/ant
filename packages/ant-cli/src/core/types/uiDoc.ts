@@ -11,9 +11,10 @@
  */
 export interface UiSpecSection {
   /**
-   * Semantic identifier for the section
-   * - Component sections: "gnb", "hero", "about", "ecosystem", "token", "technology", "social", "footer"
-   * - Common sections: "layout", "overview", "responsive", "accessibility", "grid", "performance"
+   * Semantic identifier dynamically discovered from ui-spec.json keys at parse time.
+   * - Container keys (all children are objects): split into "{key}-{childKey}"
+   *   e.g., "pages-events", "modals-connectModal", "sections-globalHeader"
+   * - Leaf keys: used as-is, e.g., "meta", "layout"
    */
   id: string;
   
@@ -117,62 +118,3 @@ export interface UiSpecTocEntry {
   tokenEstimate: number;
 }
 
-/**
- * Standard section ID mapping
- * Maps various title patterns to canonical section IDs
- */
-export const UI_SECTION_ID_MAP: Record<string, string> = {
-  // Component sections (from ### N. Component Name)
-  'gnb': 'gnb',
-  'global navigation bar': 'gnb',
-  'header': 'gnb',
-  'hero': 'hero',
-  'hero section': 'hero',
-  'about': 'about',
-  'about section': 'about',
-  'ecosystem': 'ecosystem',
-  'ecosystem section': 'ecosystem',
-  'token': 'token',
-  'token section': 'token',
-  'technology': 'technology',
-  'technology section': 'technology',
-  'social': 'social',
-  'social section': 'social',
-  'footer': 'footer',
-  'footer section': 'footer',
-  
-  // Common sections (from ## N. Section Name)
-  'overview': 'overview',
-  'layout': 'layout',
-  'layout structure': 'layout',
-  'component specifications': 'components',
-  'responsive': 'responsive',
-  'responsive behavior': 'responsive',
-  'responsive layout grid': 'responsive',
-  'accessibility': 'accessibility',
-  'accessibility requirements': 'accessibility',
-  'performance': 'performance',
-  'performance and optimization': 'performance',
-  'performance and optimization considerations': 'performance',
-  'grid': 'grid',
-};
-
-/**
- * Default sections to always include for UI tasks
- * These provide essential context regardless of specific component
- */
-export const UI_DEFAULT_SECTIONS = ['overview', 'layout', 'tokens'];
-
-/**
- * Component sections that can be individually requested
- */
-export const UI_COMPONENT_SECTIONS = [
-  'gnb', 'hero', 'about', 'ecosystem', 'token', 'technology', 'social', 'footer'
-];
-
-/**
- * Common sections that provide shared specifications
- */
-export const UI_COMMON_SECTIONS = [
-  'overview', 'layout', 'responsive', 'accessibility', 'grid', 'performance'
-];

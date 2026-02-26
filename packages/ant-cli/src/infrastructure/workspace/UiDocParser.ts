@@ -14,7 +14,6 @@ import {
   ParsedUiDocs,
   UiSpecSection,
   UiSpecTocEntry,
-  UI_SECTION_ID_MAP,
 } from '../../core/types/uiDoc';
 
 /**
@@ -26,84 +25,91 @@ function estimateTokens(text: string): number {
 }
 
 /**
- * Normalize section title to canonical section ID
+ * Detect whether a JSON value is a "container" that should be split into
+ * per-child sections. A container is a non-array object whose every child
+ * is also a non-array object (i.e., it acts as a namespace for named items).
  */
-function normalizeSectionId(title: string): string {
-  const cleaned = title.toLowerCase().trim();
-  
-  // Try exact match first
-  if (UI_SECTION_ID_MAP[cleaned]) {
-    return UI_SECTION_ID_MAP[cleaned];
+function isContainerValue(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const children = Object.values(value as Record<string, unknown>);
+  if (children.length === 0) return false;
+  return children.every(v => v && typeof v === 'object' && !Array.isArray(v));
+}
+
+/**
+ * Register a section into the result map with duplicate-key protection.
+ * On collision: warn and merge the new content into the existing section.
+ */
+function addSection(
+  result: Map<string, UiSpecSection>,
+  id: string,
+  title: string,
+  content: string,
+  lineNum: number,
+): number {
+  const tokenEstimate = estimateTokens(content);
+  const lineCount = content.split('\n').length;
+
+  if (result.has(id)) {
+    console.warn(`[UiDocParser] Duplicate section id "${id}" — merging content`);
+    const existing = result.get(id)!;
+    existing.content += '\n' + content;
+    existing.tokenEstimate += tokenEstimate;
+    existing.lineRange[1] = lineNum + lineCount;
+  } else {
+    result.set(id, {
+      id,
+      title,
+      level: 2,
+      content,
+      tokenEstimate,
+      lineRange: [lineNum, lineNum + lineCount],
+    });
   }
-  
-  // Try partial match
-  for (const [pattern, id] of Object.entries(UI_SECTION_ID_MAP)) {
-    if (cleaned.includes(pattern) || pattern.includes(cleaned)) {
-      return id;
-    }
-  }
-  
-  // Generate ID from cleaned title
-  return cleaned
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, '-')
-    .substring(0, 30);
+
+  return lineNum + lineCount;
 }
 
 /**
  * Parse JSON sections from ui-spec.json
- * Excludes _meta field (used for chapter tracking, not needed in Code Job)
+ *
+ * Section IDs are discovered dynamically from the JSON structure:
+ * - Container keys (all children are objects): split into "{key}-{childKey}"
+ *   e.g., pages → pages-events, modals → modals-connectModal
+ * - Leaf keys: used as-is, e.g., meta, layout
+ *
+ * _meta is excluded (Design Job internal tracking).
  */
 function parseJsonSections(content: string): Map<string, UiSpecSection> {
   const result = new Map<string, UiSpecSection>();
-  
+
   try {
-    const parsed = JSON.parse(content) as any;
+    const parsed = JSON.parse(content) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object') {
       return result;
     }
-    
-    // Extract sections from the 'sections' key
-    const sections = parsed.sections || {};
+
     let lineNum = 1;
-    
-    for (const [sectionId, sectionData] of Object.entries(sections)) {
-      const sectionContent = JSON.stringify({ [sectionId]: sectionData }, null, 2);
-      const id = normalizeSectionId(sectionId);
-      
-      result.set(id, {
-        id,
-        title: sectionId,
-        level: 2,
-        content: sectionContent,
-        tokenEstimate: estimateTokens(sectionContent),
-        lineRange: [lineNum, lineNum + sectionContent.split('\n').length],
-      });
-      
-      lineNum += sectionContent.split('\n').length;
-    }
-    
-    // Also extract meta, layout, components, accessibility as separate sections
-    // NOTE: _meta is excluded (internal tracking field, not needed for Code Job)
-    const topLevelSections = ['meta', 'layout', 'components', 'accessibility'];
-    for (const key of topLevelSections) {
-      if (parsed[key]) {
-        const sectionContent = JSON.stringify({ [key]: parsed[key] }, null, 2);
-        result.set(key, {
-          id: key,
-          title: key,
-          level: 2,
-          content: sectionContent,
-          tokenEstimate: estimateTokens(sectionContent),
-          lineRange: [1, sectionContent.split('\n').length],
-        });
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key === '_meta') continue;
+      if (!value || typeof value !== 'object') continue;
+
+      if (isContainerValue(value)) {
+        for (const [childKey, childData] of Object.entries(value as Record<string, unknown>)) {
+          const sectionContent = JSON.stringify({ [childKey]: childData }, null, 2);
+          const id = `${key}-${childKey}`;
+          lineNum = addSection(result, id, `${key}/${childKey}`, sectionContent, lineNum);
+        }
+      } else {
+        const sectionContent = JSON.stringify({ [key]: value }, null, 2);
+        lineNum = addSection(result, key, key, sectionContent, lineNum);
       }
     }
-    
   } catch (error) {
     console.warn('[UiDocParser] Failed to parse JSON:', error);
   }
-  
+
   return result;
 }
 
@@ -335,29 +341,31 @@ export function generateUiSectionsSummary(parsedDocs: ParsedUiDocs): string {
   }
   lines.push('');
   
-  // Component sections
-  const componentSections = parsedDocs.specToc.filter(e => 
-    ['gnb', 'hero', 'about', 'ecosystem', 'token', 'technology', 'social', 'footer'].includes(e.id)
-  );
-  
-  if (componentSections.length > 0) {
-    lines.push('### Component Sections');
-    lines.push('');
-    for (const entry of componentSections) {
-      lines.push(`- \`"${entry.id}"\`: ${entry.title} - ~${entry.tokenEstimate} tokens`);
-    }
-    lines.push('');
+  // Dynamically group sections by their container prefix.
+  // Sections with a hyphen (e.g., "pages-events") are grouped by prefix ("pages").
+  // Sections without a hyphen (e.g., "meta", "layout") go into "common".
+  const groups = new Map<string, UiSpecTocEntry[]>();
+
+  for (const entry of parsedDocs.specToc) {
+    const dashIdx = entry.id.indexOf('-');
+    const groupKey = dashIdx > 0 ? entry.id.substring(0, dashIdx) : '_common';
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey)!.push(entry);
   }
-  
-  // Common sections
-  const commonSections = parsedDocs.specToc.filter(e => 
-    ['meta', 'layout', 'components', 'accessibility'].includes(e.id)
-  );
-  
-  if (commonSections.length > 0) {
-    lines.push('### Common Sections (recommended when implementing any UI)');
+
+  const GROUP_LABELS: Record<string, string> = {
+    pages: 'Page Sections',
+    modals: 'Modal Sections',
+    sections: 'Shared Component Sections',
+    overlays: 'Overlay Sections',
+    _common: 'Common Sections (recommended when implementing any UI)',
+  };
+
+  for (const [groupKey, entries] of groups) {
+    const label = GROUP_LABELS[groupKey] ?? `${groupKey.charAt(0).toUpperCase()}${groupKey.slice(1)} Sections`;
+    lines.push(`### ${label}`);
     lines.push('');
-    for (const entry of commonSections) {
+    for (const entry of entries) {
       lines.push(`- \`"${entry.id}"\`: ${entry.title} - ~${entry.tokenEstimate} tokens`);
     }
     lines.push('');
@@ -372,7 +380,7 @@ export function generateUiSectionsSummary(parsedDocs: ParsedUiDocs): string {
   lines.push('');
   lines.push('```json');
   lines.push('{');
-  lines.push('  "uiSections": ["tokens", "assets", "hero", "layout"]');
+  lines.push('  "uiSections": ["tokens", "assets", "pages-events", "layout"]');
   lines.push('}');
   lines.push('```');
   lines.push('');
