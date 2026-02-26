@@ -3,8 +3,8 @@
  * 
  * Unified naming: all design docs use `{type}-{name}.md` pattern.
  *   - api-contract-{name}.md
- *   - fe-system-design-{name}.md
- *   - be-system-design-{name}.md
+ *   - fe-system-{name}.md
+ *   - be-system-{name}.md
  * Single-service uses suffix "main"; MSA uses service/package names.
  */
 
@@ -42,13 +42,13 @@ export function selectDesignFiles(
 
   if (shouldIncludeFe) {
     for (const name of Object.keys(designDocs.feDesigns)) {
-      selectedFiles.push(`fe-system-design-${name}.md`);
+      selectedFiles.push(`fe-system-${name}.md`);
     }
   }
 
   if (shouldIncludeBe) {
     for (const name of Object.keys(designDocs.beDesigns)) {
-      selectedFiles.push(`be-system-design-${name}.md`);
+      selectedFiles.push(`be-system-${name}.md`);
     }
   }
 
@@ -77,12 +77,12 @@ export function selectDesignFilesByPackages(
     if (pkg.startsWith('fe-')) {
       const name = pkg.slice(3);
       if (designDocs.feDesigns[name]) {
-        selectedFiles.push(`fe-system-design-${name}.md`);
+        selectedFiles.push(`fe-system-${name}.md`);
       }
     } else if (pkg.startsWith('be-')) {
       const name = pkg.slice(3);
       if (designDocs.beDesigns[name]) {
-        selectedFiles.push(`be-system-design-${name}.md`);
+        selectedFiles.push(`be-system-${name}.md`);
       }
     }
   }

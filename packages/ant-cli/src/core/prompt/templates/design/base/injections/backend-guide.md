@@ -1,6 +1,6 @@
 ## ⚙️ BACKEND DESIGN DOCUMENT GUIDE
 
-**Document Type**: `be-system-design-main.md`
+**Document Type**: `be-system-main.md`
 **Role**: HOW Backend IMPLEMENTS api-contract-main.md
 **Phase**: Written AFTER api-contract-main.md is finalized
 
@@ -453,7 +453,7 @@ async function login(req, res) {  ← This is full implementation code!
 
 ## 🏗️ SERVICE-SPECIFIC DOCUMENT (if MSA / msa-contract-first)
 
-**When writing `be-system-design-{service}.md`, follow these additional rules.**
+**When writing `be-system-{service}.md`, follow these additional rules.**
 
 ### Document Scope Principle
 
@@ -512,4 +512,4 @@ async function login(req, res) {  ← This is full implementation code!
 
 ---
 
-**Purpose**: This guide ensures be-system-design-main.md (or be-system-design-{service}.md) focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.
+**Purpose**: This guide ensures be-system-main.md (or be-system-{service}.md) focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.

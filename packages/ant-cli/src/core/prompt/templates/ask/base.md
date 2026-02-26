@@ -89,7 +89,7 @@ The PRD file (`inputs/sources/prd.md`) serves as **persistent state** across job
 |--------|-------------|
 | **Trigger** | Text requirements exist without visual inputs |
 | **Input** | PRD (Product Requirements Document) |
-| **Output** | be-system-design-main.md |
+| **Output** | be-system-main.md |
 | **Focus** | How it works - architecture, API, data models |
 
 ---
@@ -157,7 +157,7 @@ Input quality directly determines output quality:
 | **ui-tokens.md** | Design system: colors, typography, spacing, borders, shadows, breakpoints |
 | **ui-assets.md** | Asset mappings: icons, images, logos with naming conventions |
 | **ui-spec.md** | Component specs: hierarchy, props, variants, layout, states |
-| **be-system-design-main.md** | Architecture: API specs, data models, services, error handling |
+| **be-system-main.md** | Architecture: API specs, data models, services, error handling |
 
 ---
 

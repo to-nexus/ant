@@ -130,7 +130,7 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 
 **Important exception (Document Types)**:
 - For `api-contract-main.md`, **exact URL paths/methods/status codes/field names are REQUIRED** because they *are the contract*, not "implementation wiring".
-- For `fe-system-design-main.md` / `be-system-design-main.md`, avoid hard-coded paths/keys unless the PRD explicitly requires them.
+- For `fe-system-main.md` / `be-system-main.md`, avoid hard-coded paths/keys unless the PRD explicitly requires them.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## ✍️ UNIVERSAL WRITING RULES (Apply to ALL design documents)

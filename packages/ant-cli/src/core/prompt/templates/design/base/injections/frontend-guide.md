@@ -1,6 +1,6 @@
 ## 🎨 FRONTEND SYSTEM DESIGN GUIDE
 
-**Document**: `fe-system-design-main.md`  
+**Document**: `fe-system-main.md`  
 **Role**: Consumer of `api-contract-main.md`  
 **Focus**: Client-side architecture selected based on observed project complexity
 

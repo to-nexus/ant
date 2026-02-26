@@ -15,7 +15,7 @@ import { logPrompt } from '../../../../../../core/utils/promptLogger';
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
  * 
- * Handles system-design work type (fe-system-design, be-system-design, api-contract, etc.)
+ * Handles system-design work type (fe-system, be-system, api-contract, etc.)
  */
 export async function buildMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -42,7 +42,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     let lastSectionNumber = 0;
     let sectionPattern = '';  // 'top-level' or 'nested'
     
-    const targetFile = state.currentTask.targetFile || 'be-system-design-main.md';
+    const targetFile = state.currentTask.targetFile || 'be-system-main.md';
     console.log(`📄 [DocGen] Target file: ${targetFile}`);
     
     // ✅ Check if this is the last task for this document
@@ -53,7 +53,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       (task: any) => {
         // Exclude current task from remaining count
         if (task.id === currentTaskId) return false;
-        return (task.targetFile || 'be-system-design-main.md') === targetFile;
+        return (task.targetFile || 'be-system-main.md') === targetFile;
       }
     );
     const isLastTaskForDocument = remainingTasksForFile.length === 0;
@@ -114,11 +114,11 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
-    // Load api-contract-*.md files if generating fe/be-system-design (implementation docs need the contract)
+    // Load api-contract-*.md files if generating fe/be-system docs (implementation docs need the contract)
     let apiContractContent: string | undefined;
     const isImplementationDesign = 
-      targetFile.startsWith('fe-system-design-') || 
-      targetFile.startsWith('be-system-design-');
+      targetFile.startsWith('fe-system-') || 
+      targetFile.startsWith('be-system-');
     
     if (isImplementationDesign) {
       try {
@@ -237,9 +237,9 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         
         if (targetFile.includes('api-contract')) {
           usedTemplates.push('design/base/injections/api-contract-guide');
-        } else if (targetFile.includes('be-system-design')) {
+        } else if (targetFile.includes('be-system-')) {
           usedTemplates.push('design/base/injections/backend-guide');
-        } else if (targetFile.includes('fe-system-design')) {
+        } else if (targetFile.includes('fe-system-')) {
           usedTemplates.push('design/base/injections/frontend-guide');
         }
         
@@ -273,7 +273,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
               designDomain: state.detectionReport?.domain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,
-              isMSAServiceDoc: targetFile.startsWith('be-system-design-'),  // ✅ NEW: MSA indicator
+              isMSAServiceDoc: targetFile.startsWith('be-system-'),  // ✅ NEW: MSA indicator
             },
           }
         );
@@ -359,14 +359,14 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       }, 0);
       
       // ✅ Determine actually used templates based on targetFile
-      const targetFileForLog = state.currentTask?.targetFile || 'be-system-design-main.md';
+      const targetFileForLog = state.currentTask?.targetFile || 'be-system-main.md';
       const usedTemplatesForLog: string[] = ['design/phases/execute/rules-system-design'];
       
       if (targetFileForLog.includes('api-contract')) {
         usedTemplatesForLog.push('design/base/injections/api-contract-guide');
-      } else if (targetFileForLog.includes('be-system-design')) {
+      } else if (targetFileForLog.includes('be-system-')) {
         usedTemplatesForLog.push('design/base/injections/backend-guide');
-      } else if (targetFileForLog.includes('fe-system-design')) {
+      } else if (targetFileForLog.includes('fe-system-')) {
         usedTemplatesForLog.push('design/base/injections/frontend-guide');
       }
       
@@ -397,7 +397,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             jobMode: state.detectionReport?.jobMode,
             designDomain: state.detectionReport?.domain,
-            isMSAServiceDoc: targetFileForLog.startsWith('be-system-design-'),  // ✅ NEW
+            isMSAServiceDoc: targetFileForLog.startsWith('be-system-'),  // ✅ NEW
           },
         }
       );
@@ -452,7 +452,7 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
   //   Use content matching targetFile from existingDesignDocs (not state.design which may be a different file)
   if (state.detectionReport?.jobMode === 'refactor') {
-    const targetFileName = task?.targetFile || 'be-system-design-main.md';
+    const targetFileName = task?.targetFile || 'be-system-main.md';
     const existingContent = state.existingDesignDocs?.[targetFileName] || state.design;
     if (existingContent) {
       lines.push(`# Existing Design Document`);

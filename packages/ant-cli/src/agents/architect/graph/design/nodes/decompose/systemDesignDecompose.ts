@@ -62,13 +62,13 @@ interface SystemDesignResponse {
 /**
  * Known system design document patterns (unified naming):
  * - api-contract-{name}.md
- * - fe-system-design-{name}.md
- * - be-system-design-{name}.md
+ * - fe-system-{name}.md
+ * - be-system-{name}.md
  */
 const SYSTEM_DESIGN_FILE_PATTERNS = [
   /^api-contract-.+\.md$/,
-  /^fe-system-design-.+\.md$/,
-  /^be-system-design-.+\.md$/,
+  /^fe-system-.+\.md$/,
+  /^be-system-.+\.md$/,
 ];
 
 function isSystemDesignFile(fileName: string): boolean {
@@ -86,8 +86,8 @@ function isSystemDesignFile(fileName: string): boolean {
  * Flow: MSA expansion → task remap → documentType inference → coverage check.
  *
  * MSA expansion (both FE and BE):
- *   be-system-design-main.md → be-system-design-{service}.md  (when response.services exists)
- *   fe-system-design-main.md → fe-system-design-{package}.md  (when response.fePackages exists)
+ *   be-system-main.md → be-system-{service}.md  (when response.services exists)
+ *   fe-system-main.md → fe-system-{package}.md  (when response.fePackages exists)
  *   api-contract-main.md → api-contract-{service}.md  (when response.services exists)
  */
 function validateAndFixTargetFiles(
@@ -101,8 +101,8 @@ function validateAndFixTargetFiles(
 
   if (response.services?.length) {
     effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
-      f === 'be-system-design-main.md'
-        ? response.services!.map(s => `be-system-design-${s}.md`)
+      f === 'be-system-main.md'
+        ? response.services!.map(s => `be-system-${s}.md`)
         : f === 'api-contract-main.md'
           ? response.services!.map(s => `api-contract-${s}.md`)
           : [f]
@@ -111,8 +111,8 @@ function validateAndFixTargetFiles(
 
   if (response.fePackages?.length) {
     effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
-      f === 'fe-system-design-main.md'
-        ? response.fePackages!.map(p => `fe-system-design-${p}.md`)
+      f === 'fe-system-main.md'
+        ? response.fePackages!.map(p => `fe-system-${p}.md`)
         : [f]
     );
   }
@@ -124,9 +124,9 @@ function validateAndFixTargetFiles(
   response.tasks = response.tasks.map(t => {
     if (validFiles.has(t.targetFile)) return t;
     if (t.targetService) {
-      const beFile = `be-system-design-${t.targetService}.md`;
+      const beFile = `be-system-${t.targetService}.md`;
       if (validFiles.has(beFile)) return { ...t, targetFile: beFile };
-      const feFile = `fe-system-design-${t.targetService}.md`;
+      const feFile = `fe-system-${t.targetService}.md`;
       if (validFiles.has(feFile)) return { ...t, targetFile: feFile };
     }
     return { ...t, targetFile: effectiveTargetFiles[0] };
@@ -254,7 +254,7 @@ export async function decomposeSystemDesign(
     ? (resolvedTargetFiles || (existingDesignFiles.length > 0 ? existingDesignFiles : undefined))
     : (existingDesignFiles.length > 0 ? existingDesignFiles : undefined);
   const promptPrimaryFile = resolvedTargetFiles?.[0]
-    || (existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'be-system-design-main.md');
+    || (existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'be-system-main.md');
 
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
@@ -313,10 +313,10 @@ export async function decomposeSystemDesign(
     } else if (parsedResponse.tasks) {
       response = {
         documentType: 'unified',
-        targetFiles: ['be-system-design-main.md'],
+        targetFiles: ['be-system-main.md'],
         tasks: parsedResponse.tasks.map((task: any) => ({
           ...task,
-          targetFile: task.targetFile || 'be-system-design-main.md'
+          targetFile: task.targetFile || 'be-system-main.md'
         }))
       };
     } else {

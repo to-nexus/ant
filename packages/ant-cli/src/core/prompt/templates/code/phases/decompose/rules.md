@@ -234,10 +234,10 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 | Tag | Maps To | Description |
 |-----|---------|-------------|
-| `fe` | `fe-system-design-main.md` | Single frontend |
-| `fe-{pkg}` | `fe-system-design-{pkg}.md` | Multi-package frontend |
-| `be` | `be-system-design-main.md` | Single backend |
-| `be-{svc}` | `be-system-design-{svc}.md` | MSA service |
+| `fe` | `fe-system-main.md` | Single frontend |
+| `fe-{pkg}` | `fe-system-{pkg}.md` | Multi-package frontend |
+| `be` | `be-system-main.md` | Single backend |
+| `be-{svc}` | `be-system-{svc}.md` | MSA service |
 | `shared` | api-contract-main.md only | Shared/utility (types, DTOs, configs) |
 
 - `api-contract-main.md` is ALWAYS injected when any package is specified.
@@ -454,7 +454,7 @@ Output in this exact order:
 <profile>
 {
   "environment": "backend",
-  "environmentReasoning": "Only be-system-design documents present, no fe- documents",
+  "environmentReasoning": "Only be-system- documents present, no fe- documents",
   "language": "go",
   "framework": "gin"
 }

@@ -128,7 +128,7 @@ export interface WorkspaceState {
   assetCount?: number;
   
   // Design job - system-design mode
-  hasSystemDesignDoc: boolean;   // outputs/design/*-system-design-*.md or api-contract-*.md
+  hasSystemDesignDoc: boolean;   // outputs/design/*-system-*.md or api-contract-*.md
   hasUiDocs: boolean;            // outputs/design/ui-*.json
   
   // Evaluations

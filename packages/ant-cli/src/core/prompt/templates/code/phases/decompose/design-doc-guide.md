@@ -31,7 +31,7 @@
 Analyze project characteristics to determine structure:
 
 **Monorepo Indicators:**
-{{#if (and (includes designDoc "fe-system-design") (includes designDoc "be-system-design"))}}
+{{#if (and (includes designDoc "fe-system-") (includes designDoc "be-system-"))}}
 - ✅ **Fullstack project** (Frontend + Backend)
 {{/if}}
 - Multiple independent applications/services
@@ -74,23 +74,23 @@ Analyze project characteristics to determine structure:
 ## 🏗️ MSA DESIGN DOCUMENT HANDLING
 ════════════════════════════════════════════════════════════════════════════════
 
-**When design documents include multiple `be-system-design-{service}.md` files:**
+**When design documents include multiple `be-system-{service}.md` files:**
 
 ### Document Structure Detection
 
 | Pattern Observed | Document Type | Package Strategy |
 |------------------|---------------|------------------|
-| `be-system-design-main.md` only | Unified | Single package |
-| `api-contract-main.md` + `be-system-design-main.md` | Contract-First | FE + BE packages |
-| `api-contract-main.md` + `be-system-design-*.md` (multiple) | MSA-Contract-First | **Package per service** |
+| `be-system-main.md` only | Unified | Single package |
+| `api-contract-main.md` + `be-system-main.md` | Contract-First | FE + BE packages |
+| `api-contract-main.md` + `be-system-*.md` (multiple) | MSA-Contract-First | **Package per service** |
 
 ### MSA Package Mapping Principle
 
 | Design Document | Maps To Package |
 |-----------------|-----------------|
 | `api-contract-main.md` | `packages/shared/` (types, DTOs, contracts) |
-| `fe-system-design-main.md` | `packages/frontend/` or `packages/web/` |
-| `be-system-design-{service}.md` | `packages/{service}/` |
+| `fe-system-main.md` | `packages/frontend/` or `packages/web/` |
+| `be-system-{service}.md` | `packages/{service}/` |
 
 **⚠️ Package name MUST match service name in design document filename.**
 
@@ -100,7 +100,7 @@ Analyze project characteristics to determine structure:
 |------|----------|----------|-------|
 | Root workspace | 100 | exclusive: true | pnpm-workspace.yaml, root config |
 | Shared package | 101 | exclusive: false, parallelGroup: unique | Types/DTOs from api-contract-main.md |
-| Service packages | 102+ | exclusive: false, parallelGroup: unique each | One per `be-system-design-{service}.md` |
+| Service packages | 102+ | exclusive: false, parallelGroup: unique each | One per `be-system-{service}.md` |
 | Frontend package | Last | exclusive: false, parallelGroup: unique | Depends on shared |
 
 ### MSA Feature Task Generation
@@ -109,13 +109,13 @@ Analyze project characteristics to determine structure:
 
 | Task Target | Design Doc Reference | Scope |
 |-------------|---------------------|-------|
-| Auth service implementation | `be-system-design-auth.md` | Auth service only |
-| Order service implementation | `be-system-design-order.md` | Order service only |
-| Frontend implementation | `fe-system-design-main.md` | Frontend only |
+| Auth service implementation | `be-system-auth.md` | Auth service only |
+| Order service implementation | `be-system-order.md` | Order service only |
+| Frontend implementation | `fe-system-main.md` | Frontend only |
 
 **⚠️ Constraint**: 
 - Do NOT mix service implementations in a single task
-- Each service task references its specific `be-system-design-{service}.md`
+- Each service task references its specific `be-system-{service}.md`
 - All tasks reference `api-contract-main.md` for interface contracts
 
 ════════════════════════════════════════════════════════════════════════════════

@@ -22,7 +22,7 @@ function makeCodeState(overrides: Record<string, any> = {}): any {
 function makeDesignState(overrides: Record<string, any> = {}): any {
   return {
     context: { featurePath: '/tmp/test' },
-    currentTask: { id: 'design-1', name: 'System Design', targetFile: 'be-system-design-main.md', description: 'Design a REST API system' },
+    currentTask: { id: 'design-1', name: 'System Design', targetFile: 'be-system-main.md', description: 'Design a REST API system' },
     directive: 'Design a REST API',
     existingDocument: null,
     detectionReport: null,
@@ -101,7 +101,7 @@ describe('buildRuntimeContext (design)', () => {
   it('includes Target Document when currentTask has targetFile', () => {
     const result = buildDesignRuntimeContext(makeDesignState());
     expect(result).toContain('Target Document');
-    expect(result).toContain('be-system-design-main.md');
+    expect(result).toContain('be-system-main.md');
   });
 
   it('includes Directive when present', () => {
@@ -113,7 +113,7 @@ describe('buildRuntimeContext (design)', () => {
     const result = buildDesignRuntimeContext(makeDesignState({
       detectionReport: { jobMode: 'refactor' },
       existingDesignDocs: {
-        'be-system-design-main.md': '# Existing Design\nPrevious content here',
+        'be-system-main.md': '# Existing Design\nPrevious content here',
       },
     }));
     expect(result).toContain('Existing Design');

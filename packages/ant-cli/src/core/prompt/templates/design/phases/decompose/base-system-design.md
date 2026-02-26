@@ -168,13 +168,13 @@ Observe whether the project defines API boundaries consumed by external parties:
 |-------------|-------------------|
 | Project has **both frontend and backend** | `contract-first` (api-contract + fe + be) |
 | Project is **backend-only** and exposes external API | `contract-first` without FE (api-contract + be) |
-| Project is **frontend-only** | `unified` (`fe-system-design-main.md`) |
+| Project is **frontend-only** | `unified` (`fe-system-main.md`) |
 
 ### Decision
 
-**IF fullstack → CONTRACT-FIRST** (`api-contract-main.md` + `fe-system-design-main.md` + `be-system-design-main.md`)
-**IF backend with external API → CONTRACT-FIRST without FE** (`api-contract-main.md` + `be-system-design-main.md`)
-**IF frontend-only → UNIFIED** (`fe-system-design-main.md`)
+**IF fullstack → CONTRACT-FIRST** (`api-contract-main.md` + `fe-system-main.md` + `be-system-main.md`)
+**IF backend with external API → CONTRACT-FIRST without FE** (`api-contract-main.md` + `be-system-main.md`)
+**IF frontend-only → UNIFIED** (`fe-system-main.md`)
 
 ---
 
@@ -183,8 +183,8 @@ Observe whether the project defines API boundaries consumed by external parties:
 **After CONTRACT-FIRST detection, check if either tier requires splitting into multiple units.**
 
 MSA applies to BOTH tiers independently:
-- **Backend**: multiple services → `be-system-design-{service}.md` + `api-contract-{service}.md`
-- **Frontend**: multiple packages/micro-frontends → `fe-system-design-{package}.md`
+- **Backend**: multiple services → `be-system-{service}.md` + `api-contract-{service}.md`
+- **Frontend**: multiple packages/micro-frontends → `fe-system-{package}.md`
 
 ### Observation Checklist
 
@@ -200,10 +200,10 @@ MSA applies to BOTH tiers independently:
 
 | Observation Result | Action |
 |-------------------|--------|
-| Single backend domain | Keep `be-system-design-main.md` + `api-contract-main.md` |
-| **Multiple backend service boundaries** | Split to `be-system-design-{service}.md` + `api-contract-{service}.md`, set `services` |
-| Single frontend app | Keep `fe-system-design-main.md` |
-| **Multiple frontend app/package boundaries** | Split to `fe-system-design-{package}.md`, set `fePackages` |
+| Single backend domain | Keep `be-system-main.md` + `api-contract-main.md` |
+| **Multiple backend service boundaries** | Split to `be-system-{service}.md` + `api-contract-{service}.md`, set `services` |
+| Single frontend app | Keep `fe-system-main.md` |
+| **Multiple frontend app/package boundaries** | Split to `fe-system-{package}.md`, set `fePackages` |
 
 **Constraint**: Do NOT assume MSA. Only split if PRD explicitly indicates boundaries.
 
@@ -224,9 +224,9 @@ MSA applies to BOTH tiers independently:
   "targetFiles": [
     "api-contract-<service1>.md",
     "api-contract-<service2>.md",
-    "fe-system-design-main.md",
-    "be-system-design-<service1>.md",
-    "be-system-design-<service2>.md"
+    "fe-system-main.md",
+    "be-system-<service1>.md",
+    "be-system-<service2>.md"
   ]
 }
 ```
@@ -239,9 +239,9 @@ MSA applies to BOTH tiers independently:
   "fePackages": ["<package1>", "<package2>"],
   "targetFiles": [
     "api-contract-main.md",
-    "fe-system-design-<package1>.md",
-    "fe-system-design-<package2>.md",
-    "be-system-design-main.md"
+    "fe-system-<package1>.md",
+    "fe-system-<package2>.md",
+    "be-system-main.md"
   ]
 }
 ```
