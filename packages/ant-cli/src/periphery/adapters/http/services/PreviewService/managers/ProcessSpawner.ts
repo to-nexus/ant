@@ -370,6 +370,11 @@ export class ProcessSpawner {
     // Check Makefile for dev/run/serve targets first (language-agnostic)
     const makefileTarget = this.detectMakefileTarget(pkg.path);
     if (makefileTarget) {
+      const requiredCommand = this.getRequiredCommand(language);
+      if (requiredCommand && !this.isCommandAvailable(requiredCommand)) {
+        options.onLog('stderr', `❌ ${language} toolchain (${requiredCommand}) is not installed. Makefile target '${makefileTarget}' will likely fail.`);
+        throw new Error(`${language} toolchain not found in PATH. Cannot start dev server.`);
+      }
       command = 'make';
       args = [makefileTarget];
     } else {
@@ -514,6 +519,16 @@ export class ProcessSpawner {
         }
       } catch { /* skip unreadable dirs */ }
     }
+  }
+
+  private getRequiredCommand(language: string): string | null {
+    const toolchainMap: Record<string, string> = {
+      go: 'go',
+      python: 'python',
+      rust: 'cargo',
+      java: 'java',
+    };
+    return toolchainMap[language] ?? null;
   }
 
   /**
