@@ -143,12 +143,11 @@ export async function analyzeWorkspace(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const designPath = path.join(featurePath, 'outputs', 'design');
   
-  // System design - check for any *system-design*.md pattern
-  // (system-design.md, fe-system-design.md, be-system-design.md, etc.)
+  // System design - check for any design doc matching unified naming patterns
   if (fs.existsSync(designPath)) {
     const files = fs.readdirSync(designPath);
     state.hasSystemDesignDoc = files.some(f => 
-      f.includes('system-design') && f.endsWith('.md')
+      (f.startsWith('fe-system-design-') || f.startsWith('be-system-design-') || f.startsWith('api-contract-')) && f.endsWith('.md')
     );
   } else {
     state.hasSystemDesignDoc = false;
@@ -267,7 +266,7 @@ export function formatWorkspaceState(state: WorkspaceState): string {
     ? '✅ UI docs (ui-tokens.json, ui-assets.json, ui-spec.json)' 
     : '❌ No UI docs');
   lines.push(state.hasSystemDesignDoc 
-    ? '✅ System design (system-design.md)' 
+    ? '✅ System design docs found' 
     : '❌ No system design');
   
   lines.push('');

@@ -18,7 +18,7 @@
 
 ════════════════════════════════════════════════════════════════════════════════
 
-### 📋 API Contract (api-contract.md) - LAYER 0: SOURCE OF TRUTH
+### 📋 API Contract (api-contract-main.md) - LAYER 0: SOURCE OF TRUTH
 
 **Purpose**: Immutable specification for Frontend-Backend integration
 

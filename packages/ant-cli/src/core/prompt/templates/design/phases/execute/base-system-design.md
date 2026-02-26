@@ -6,16 +6,16 @@
 YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
 
 **IMPORTANT: Document Type Detection**
-- **API Contract** (api-contract.md): typically 120-350 lines (binding specification)
-- **Frontend** (fe-system-design.md): typically 150-450 lines (consumer architecture)
-- **Backend** (be-system-design.md): typically 150-450 lines (provider architecture)
-- **Unified** (system-design.md): typically 150-450 lines (single doc)
+- **API Contract** (api-contract-main.md): typically 120-350 lines (binding specification)
+- **Frontend** (fe-system-design-main.md): typically 150-450 lines (consumer architecture)
+- **Backend** (be-system-design-main.md): typically 150-450 lines (provider architecture)
+- **Unified** (be-system-design-main.md): typically 150-450 lines (single doc)
 
 **Absolute rule**: The task description line budget ("MAX [N] lines") is the real cap; the ranges above are guidance.
 
 {{#if (includes currentTask.targetFile "api-contract")}}
 API Contract structure rules (ignore generic "chapter limits"):
-- Use the required sections from the injected `api-contract.md` guide
+- Use the required sections from the injected `api-contract-main.md` guide
 - Prefer endpoint-by-endpoint specification, grouped by resource/use case
 - Be precise; this document is a binding spec, not an architecture essay
 {{else}}
@@ -58,7 +58,7 @@ STRUCTURE PER CHAPTER:
 {{#if currentTask.targetFile}}
 **Target file: `{{currentTask.targetFile}}`** (defined by decompose, DO NOT change!)
 {{else}}
-**Target file: `system-design.md`** (default)
+**Target file: `be-system-design-main.md`** (default)
 {{/if}}
 
 ⚠️ You MUST append to existing document (see rules.md for HOW)
@@ -72,7 +72,7 @@ STRUCTURE PER CHAPTER:
 {{#if currentTask.targetFile}}
 **Target file: `{{currentTask.targetFile}}`** (defined by decompose, DO NOT change!)
 {{else}}
-**Target file: `system-design.md`** (default)
+**Target file: `be-system-design-main.md`** (default)
 {{/if}}
 
 {{/if}}
@@ -352,10 +352,10 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 ════════════════════════════════════════════════════════════════════════════════
 
 **Your document type is determined by task.targetFile:**
-- `api-contract.md` - Binding API specification (WHAT interfaces exist)
-- `fe-system-design.md` - Frontend architecture (standalone or consuming APIs)
-- `be-system-design.md` - Backend architecture (HOW to implement APIs)
-- `system-design.md` - Unified design (rare fallback for unclassified projects)
+- `api-contract-main.md` - Binding API specification (WHAT interfaces exist)
+- `fe-system-design-main.md` - Frontend architecture (standalone or consuming APIs)
+- `be-system-design-main.md` - Backend architecture (HOW to implement APIs)
+- `be-system-design-main.md` - Unified design (rare fallback for unclassified projects)
 
 **A document type-specific guide has been automatically injected above** with:
 - Required sections tailored to this document type
@@ -363,7 +363,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 - Code examples and anti-patterns
 - Common mistakes to avoid
 
-**If no type-specific guide appears above**, you're writing **`system-design.md` (unified)**:
+**If no type-specific guide appears above**, you're writing **`be-system-design-main.md` (unified)**:
 
 ### Unified System Design Structure
 

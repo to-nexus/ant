@@ -65,11 +65,11 @@ Only skip the metadata comments at the end.
 - Check `task.targetFile` field (HIGHEST PRIORITY)
 - If `task.targetFile` exists → use exactly that filename
 - Fallback pattern matching:
-  - "api-contract.md" mentioned → use `api-contract.md`
-  - "fe-system-design.md" mentioned → use `fe-system-design.md`
-  - "be-system-design.md" mentioned → use `be-system-design.md`
+  - "api-contract-main.md" mentioned → use `api-contract-main.md`
+  - "fe-system-design-main.md" mentioned → use `fe-system-design-main.md`
+  - "be-system-design-main.md" mentioned → use `be-system-design-main.md`
   - "be-system-design-{service}.md" pattern → use exact filename (MSA)
-  - No mention → use `system-design.md`
+  - No mention → use `be-system-design-main.md`
 
 **⚠️ MSA Note**: For `msa-contract-first`, the filename includes service name (e.g., `be-system-design-auth.md`). Use the exact `task.targetFile` value.
 
@@ -104,7 +104,7 @@ Use `<append>` tag:
 
 **❌ FATAL ERROR - Using <file> on existing document:**
 ```xml
-<file path="outputs/design/system-design.md">  ← WRONG! Will OVERWRITE!
+<file path="outputs/design/be-system-design-main.md">  ← WRONG! Will OVERWRITE!
 ## N. [Topic]
 ...
 </file>
@@ -112,7 +112,7 @@ Use `<append>` tag:
 
 **✅ CORRECT - Using <append> for continuation:**
 ```xml
-<append path="outputs/design/system-design.md">  ← CORRECT! Adds at end
+<append path="outputs/design/be-system-design-main.md">  ← CORRECT! Adds at end
 ## N. [Topic]
 ...
 </append>
@@ -124,7 +124,7 @@ Use `edit_file` tool to modify existing sections:
 
 ```python
 edit_file(
-  path="outputs/design/system-design.md",
+  path="outputs/design/be-system-design-main.md",
   old_str="""## 2. Architecture
 
 ### 2.1 System Overview
@@ -145,37 +145,37 @@ edit_file(
 **CRITICAL: All paths must be in `outputs/design/` directory!**
 
 **API Contract Document:**
-- Path: `outputs/design/api-contract.md`
+- Path: `outputs/design/api-contract-main.md`
 - Usage: Any project that exposes external API (fullstack, backend-only, MSA)
 - Timing: Written FIRST (before implementation design documents)
 
 **Frontend Design Document:**
-- Path: `outputs/design/fe-system-design.md`
+- Path: `outputs/design/fe-system-design-main.md`
 - Usage: Frontend-only projects, fullstack, and MSA projects
-- Timing: Written AFTER api-contract.md (if api-contract exists), otherwise first
+- Timing: Written AFTER api-contract-main.md (if api-contract exists), otherwise first
 
 **Backend Design Document (single backend):**
-- Path: `outputs/design/be-system-design.md`
-- Usage: Fullstack and backend-only contract-first projects (implements api-contract.md)
-- Timing: Written AFTER api-contract.md
+- Path: `outputs/design/be-system-design-main.md`
+- Usage: Fullstack and backend-only contract-first projects (implements api-contract-main.md)
+- Timing: Written AFTER api-contract-main.md
 
 **Backend Design Document (MSA - per service):**
 - Path: `outputs/design/be-system-design-{service}.md`
 - Usage: MSA-Contract-First projects (multiple services)
-- Timing: Written AFTER api-contract.md
+- Timing: Written AFTER api-contract-main.md
 - **⚠️ `{service}` MUST match decompose output's `services` array**
 
 **Unified Design Document:**
-- Path: `outputs/design/system-design.md`
+- Path: `outputs/design/be-system-design-main.md`
 - Usage: Rare fallback only (CLI tools, libraries, or projects where environment is unknown)
 
 ### Path Pattern Reference
 
 | documentType | targetFile Pattern | Valid Path Pattern |
 |--------------|------------|------------|
-| `unified` (frontend) | `fe-system-design.md` | `outputs/design/fe-system-design.md` |
-| `unified` (fallback) | `system-design.md` | `outputs/design/system-design.md` |
-| `contract-first` | `be-system-design.md` | `outputs/design/be-system-design.md` |
+| `unified` (frontend) | `fe-system-design-main.md` | `outputs/design/fe-system-design-main.md` |
+| `unified` (fallback) | `be-system-design-main.md` | `outputs/design/be-system-design-main.md` |
+| `contract-first` | `be-system-design-main.md` | `outputs/design/be-system-design-main.md` |
 | `msa-contract-first` | `be-system-design-{service}.md` | `outputs/design/be-system-design-{service}.md` |
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -216,12 +216,12 @@ Is lastSectionNumber provided in context?
 If you need multiple file operations, use multiple XML tags:
 
 ```xml
-<append path="outputs/design/system-design.md">
+<append path="outputs/design/be-system-design-main.md">
 ## 4. Technology Stack
 ...
 </append>
 
-<append path="outputs/design/system-design.md">
+<append path="outputs/design/be-system-design-main.md">
 ## 5. Non-Functional Requirements
 ...
 </append>
@@ -256,10 +256,10 @@ Before generating output, verify:
 **Path Correctness:**
 - ✅ Path starts with `outputs/design/`?
 - ✅ Filename matches document type from task description?
-  - API Contract → `api-contract.md`
-  - Frontend → `fe-system-design.md`
-  - Backend → `be-system-design.md`
-  - Unified → `system-design.md`
+  - API Contract → `api-contract-main.md`
+  - Frontend → `fe-system-design-main.md`
+  - Backend → `be-system-design-main.md`
+  - Unified → `be-system-design-main.md`
 
 **Content Format:**
 - ✅ Valid markdown inside XML tags?
@@ -424,7 +424,7 @@ Before generating output, verify:
   - Keep all later sections strictly aligned with that chosen model (no mixed models in different chapters)
 
 ### Contract Section Guardrail
-- Unified `system-design.md` documents MUST contain a dedicated **Core Interfaces & Contracts** chapter:
+- Unified `be-system-design-main.md` documents MUST contain a dedicated **Core Interfaces & Contracts** chapter:
   - List EVERY cross-boundary contract here (services, engines, ports, providers, repositories, systems)
   - For each contract, follow the language-neutral pattern: **Name / Role / Operations / Rules**
 - Other sections MUST:
@@ -449,7 +449,7 @@ Before generating output, verify:
 - Do NOT restate the same architecture decision, flow, or technology constraint in multiple chapters:
   - Define each major decision/flow ONCE in the most appropriate chapter
   - In later sections, reference it briefly (e.g., "see §3. Core Interfaces & Contracts") instead of re-explaining
-- For unified `system-design.md`:
+- For unified `be-system-design-main.md`:
   - Keep **Execution Flows** to 2–3 essential flows (no step-by-step gameplay narratives)
   - Keep technology/platform constraints (framework, DOM vs Canvas, etc.) in the **Technology Stack & Platform Constraints** chapter; avoid repeating them in UI/Domain sections
 

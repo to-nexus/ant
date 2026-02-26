@@ -42,7 +42,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     let lastSectionNumber = 0;
     let sectionPattern = '';  // 'top-level' or 'nested'
     
-    const targetFile = state.currentTask.targetFile || 'system-design.md';
+    const targetFile = state.currentTask.targetFile || 'be-system-design-main.md';
     console.log(`📄 [DocGen] Target file: ${targetFile}`);
     
     // ✅ Check if this is the last task for this document
@@ -53,7 +53,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       (task: any) => {
         // Exclude current task from remaining count
         if (task.id === currentTaskId) return false;
-        return (task.targetFile || 'system-design.md') === targetFile;
+        return (task.targetFile || 'be-system-design-main.md') === targetFile;
       }
     );
     const isLastTaskForDocument = remainingTasksForFile.length === 0;
@@ -114,30 +114,40 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
-    // ✅ CRITICAL: Load api-contract.md if generating fe/be-system-design
-    // Also handles MSA service-specific backend docs: be-system-design-{service}.md
+    // Load api-contract-*.md files if generating fe/be-system-design (implementation docs need the contract)
     let apiContractContent: string | undefined;
     const isImplementationDesign = 
-      targetFile === 'fe-system-design.md' || 
-      targetFile === 'be-system-design.md' ||
-      targetFile.startsWith('be-system-design-');  // ✅ MSA service-specific pattern
+      targetFile.startsWith('fe-system-design-') || 
+      targetFile.startsWith('be-system-design-');
     
     if (isImplementationDesign) {
       try {
         const featurePath = state.context.featurePath;
         if (featurePath) {
-          const path = await import('path');
-          const apiContractPath = path.join(featurePath, 'outputs/design/api-contract.md');
-          const fs = await import('fs/promises');
+          const pathMod = await import('path');
+          const fsMod = await import('fs/promises');
+          const designDir = pathMod.join(featurePath, 'outputs/design');
           try {
-            apiContractContent = await fs.readFile(apiContractPath, 'utf-8');
-            console.log(`📋 [DocGen] Loaded api-contract.md from disk (${apiContractContent.length} chars)`);
+            const entries = await fsMod.readdir(designDir);
+            const contractFiles = entries.filter(f => /^api-contract-.+\.md$/.test(f));
+            const parts: string[] = [];
+            for (const cf of contractFiles) {
+              const content = await fsMod.readFile(pathMod.join(designDir, cf), 'utf-8');
+              const name = cf.replace(/^api-contract-/, '').replace(/\.md$/, '');
+              parts.push(`# API Contract: ${name}\n\n${content}`);
+            }
+            if (parts.length > 0) {
+              apiContractContent = parts.join('\n\n---\n\n');
+              console.log(`📋 [DocGen] Loaded ${contractFiles.length} api-contract file(s) from disk`);
+            } else {
+              console.log(`ℹ️  [DocGen] No api-contract-*.md found (may not be needed)`);
+            }
           } catch {
-            console.log(`ℹ️  [DocGen] No api-contract.md found (may not be needed)`);
+            console.log(`ℹ️  [DocGen] No design dir or api-contract files found`);
           }
         }
       } catch (error) {
-        console.warn(`⚠️  [DocGen] Failed to load api-contract.md:`, error);
+        console.warn(`⚠️  [DocGen] Failed to load api-contract files:`, error);
       }
     }
     
@@ -349,7 +359,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       }, 0);
       
       // ✅ Determine actually used templates based on targetFile
-      const targetFileForLog = state.currentTask?.targetFile || 'system-design.md';
+      const targetFileForLog = state.currentTask?.targetFile || 'be-system-design-main.md';
       const usedTemplatesForLog: string[] = ['design/phases/execute/rules-system-design'];
       
       if (targetFileForLog.includes('api-contract')) {
@@ -442,7 +452,7 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
   //   Use content matching targetFile from existingDesignDocs (not state.design which may be a different file)
   if (state.detectionReport?.jobMode === 'refactor') {
-    const targetFileName = task?.targetFile || 'system-design.md';
+    const targetFileName = task?.targetFile || 'be-system-design-main.md';
     const existingContent = state.existingDesignDocs?.[targetFileName] || state.design;
     if (existingContent) {
       lines.push(`# Existing Design Document`);

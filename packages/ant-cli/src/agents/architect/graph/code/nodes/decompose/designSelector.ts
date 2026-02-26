@@ -2,61 +2,33 @@ import { ArchitectGraphState } from "../../state";
 
 /**
  * Combine all design documents into a single string for the decompose prompt.
- * 
- * Design documents are passed through unfiltered from resolve.
- * Decompose receives ALL documents and determines profile (tier, language, framework).
+ * Uses unified map-only DesignDocs structure.
  */
 export function selectDesignDocuments(state: ArchitectGraphState): string {
   const designDocs = state.designDocs;
-  
-  // If no structured designDocs, fall back to state.design (legacy single doc)
+
   if (!designDocs) {
     return state.design || '';
   }
-  
+
   const parts: string[] = [];
-  
-  // API contract (always first if present)
-  if (designDocs.apiContract) {
-    parts.push('# API Contract\n\n' + designDocs.apiContract);
+
+  for (const [name, content] of Object.entries(designDocs.apiContracts)) {
+    parts.push(`# API Contract: ${name}\n\n${content}`);
   }
-  
-  // Frontend: monolith (single)
-  if (designDocs.feDesign) {
-    parts.push('# Frontend System Design\n\n' + designDocs.feDesign);
+
+  for (const [name, content] of Object.entries(designDocs.feDesigns)) {
+    parts.push(`# Frontend: ${name}\n\n${content}`);
   }
-  
-  // Frontend: monorepo (multi-package)
-  if (designDocs.feDesigns) {
-    for (const [pkg, content] of Object.entries(designDocs.feDesigns)) {
-      parts.push(`# Frontend: ${pkg}\n\n${content}`);
-    }
+
+  for (const [name, content] of Object.entries(designDocs.beDesigns)) {
+    parts.push(`# Backend: ${name}\n\n${content}`);
   }
-  
-  // Backend: monolith (single)
-  if (designDocs.beDesign) {
-    parts.push('# Backend System Design\n\n' + designDocs.beDesign);
-  }
-  
-  // Backend: MSA (multi-service)
-  if (designDocs.beDesigns) {
-    for (const [svc, content] of Object.entries(designDocs.beDesigns)) {
-      parts.push(`# Backend: ${svc} Service\n\n${content}`);
-    }
-  }
-  
-  // Unified design (only if no tier-specific docs exist)
-  const hasTierDocs = designDocs.feDesign || designDocs.feDesigns || 
-                      designDocs.beDesign || designDocs.beDesigns;
-  if (!hasTierDocs && designDocs.unifiedDesign) {
-    parts.push('# System Design\n\n' + designDocs.unifiedDesign);
-  }
-  
+
   if (parts.length === 0) {
-    // Fall back to state.design if no structured docs found
     return state.design || '';
   }
-  
+
   return parts.join('\n\n────────────────────────────────────────\n\n');
 }
 
