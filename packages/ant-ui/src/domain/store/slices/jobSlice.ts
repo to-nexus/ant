@@ -38,6 +38,8 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
   currentMode: undefined,
   // ✅ Cloud multi-pod: Protects isRunning from SSE overwrite until actual job starts
   jobStartPending: false,
+  // ✅ Cloud multi-pod: Protects isRunning from stale initial data after SSE reconnect
+  sseReconnectGrace: false,
   // ✅ Inline Ask: Context for handling ask during interrupted jobs
   inlineAskContext: null,
 
