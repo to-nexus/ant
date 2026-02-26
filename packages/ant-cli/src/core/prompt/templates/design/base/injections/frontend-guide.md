@@ -1,7 +1,7 @@
 ## 🎨 FRONTEND SYSTEM DESIGN GUIDE
 
-**Document**: `fe-system-design.md`  
-**Role**: Consumer of `api-contract.md`  
+**Document**: `fe-system-design-main.md`  
+**Role**: Consumer of `api-contract-main.md`  
 **Focus**: Client-side architecture selected based on observed project complexity
 
 ---
@@ -58,7 +58,7 @@
 
 ### 3. API Contract Compliance
 
-- **Never redefine** DTOs from api-contract.md
+- **Never redefine** DTOs from api-contract-main.md
 - **Always reference** contract sections
 - Infrastructure/external communication boundary receives DTOs → orchestration boundary transforms to domain models
 - External services: List only if PRD explicitly requires (with PRD reference)
@@ -108,4 +108,4 @@ Adapt sections based on the architecture pattern selected in §1:
 - **Describe architecture, not implementation**
 - **Trust LLM to infer specifics from principles**
 - **Keep abstractions framework-agnostic**
-- **Reference PRD for requirements, api-contract.md for DTOs**
+- **Reference PRD for requirements, api-contract-main.md for DTOs**

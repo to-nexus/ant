@@ -98,9 +98,11 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     }
 
     if (state.existingDesignDocs) {
-      const apiContract = state.existingDesignDocs['api-contract.md'];
-      if (apiContract) {
-        contextParts.push(`# Existing API Contract (for reference)\n\n${apiContract}`);
+      for (const [filename, content] of Object.entries(state.existingDesignDocs)) {
+        if (filename.startsWith('api-contract-') && filename.endsWith('.md')) {
+          const name = filename.replace(/^api-contract-/, '').replace(/\.md$/, '');
+          contextParts.push(`# Existing API Contract: ${name} (for reference)\n\n${content}`);
+        }
       }
     }
 
@@ -152,7 +154,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
               jobMode,
               hasExistingSpec: jobMode === 'refactor',
               hasPrd: !!state.prd,
-              hasApiContract: !!state.existingDesignDocs?.['api-contract.md'],
+              hasApiContract: state.existingDesignDocs ? Object.keys(state.existingDesignDocs).some(f => f.startsWith('api-contract-')) : false,
             },
           }
         );

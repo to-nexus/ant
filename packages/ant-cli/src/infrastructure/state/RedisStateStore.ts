@@ -116,6 +116,19 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   private setupSubscriber(): void {
+    this.subscriber.on('ready', () => {
+      logger.info(`Redis subscriber ready (${this.subscriptions.size} channels)`, { component: 'RedisStateStore' });
+    });
+    this.subscriber.on('reconnecting', () => {
+      logger.warn('Redis subscriber reconnecting', { component: 'RedisStateStore' });
+    });
+    this.subscriber.on('error', (err: Error) => {
+      logger.error('Redis subscriber error', { component: 'RedisStateStore' }, err);
+    });
+    this.subscriber.on('close', () => {
+      logger.warn('Redis subscriber closed', { component: 'RedisStateStore' });
+    });
+
     this.subscriber.on('message', (channel: string, message: string) => {
       const callbacks = this.subscriptions.get(channel);
       if (callbacks) {
@@ -326,6 +339,11 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       component: 'RedisStateStore',
       jobId
     });
+  }
+
+  async setWorkflowStateSilent(jobId: string, state: WorkflowRealtimeState): Promise<void> {
+    const key = this.key(REDIS_KEYS.JOB.WORKFLOW, jobId);
+    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.JOB.WORKFLOW);
   }
 
   async getWorkflowState(jobId: string): Promise<WorkflowRealtimeState | null> {

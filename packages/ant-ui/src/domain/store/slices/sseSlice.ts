@@ -94,6 +94,11 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       set({ jobStartPending: false });
     }
     
+    // ✅ Cloud multi-pod: Clear SSE reconnect grace when live data arrives
+    if (isJobRunning && state.sseReconnectGrace) {
+      set({ sseReconnectGrace: false });
+    }
+    
     // Clear queue position when job actually starts running (has inProgress tasks)
     if (isJobRunning && data.inProgress?.length > 0 && state.isQueued) {
       console.log('[Store] 🚀 Job started running, clearing queue position');
@@ -132,6 +137,16 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     }
     
     if (!isJobRunning && state.isRunning && currentFeatureKey) {
+      // ✅ Cloud multi-pod: SSE reconnect grace — stale session data must not reset isRunning.
+      // After ALB drops the SSE connection, EventSource auto-reconnects and the new Realtime
+      // pod sends initial kanban (dataSource:'session') before the next live broadcast arrives.
+      // Without this guard, that stale initial data would incorrectly set isRunning=false.
+      if (state.sseReconnectGrace && data.dataSource === 'session') {
+        console.log('[Store] SSE reconnect grace: protecting isRunning from stale session data');
+        set({ kanban: data, runningJobsByFeature: updatedRunningJobs });
+        return;
+      }
+      
       const interruptionWasDismissed = 
         data.interruption?.timestamp && 
         data.interruption.timestamp === state.dismissedInterruptTimestamp;
@@ -142,17 +157,13 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         return;
       }
       
-      // Debug logging (disabled for production)
-      // console.log(`[Store] ✅ Job completed for ${currentFeatureKey}`);
       set({ 
-        // ✅ Defense: Force-clear estimating state on job completion
-        // Prevents stale "PRD 생성 중" banner when backend misses clearEstimatingActivity()
         kanban: { ...data, isEstimating: false, estimatingLabel: undefined, estimatingStartedAt: undefined, estimatingNodeId: undefined },
         runningJobsByFeature: updatedRunningJobs,
         currentJobId: kanbanJobId,
         isRunning: false,
         currentMode: undefined,
-        jobStartPending: false  // ✅ Clear pending flag on job completion
+        jobStartPending: false
       });
       
       // ✅ CRITICAL: Clear localStorage to prevent useJobRestoration from restoring completed job
@@ -590,6 +601,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         set({ connectionStatus: status });
         console.log(`[Store] 📡 SSE connection status: ${status}`);
       }
+    });
+    
+    // Register reconnect callback to protect isRunning from stale initial data
+    // after SSE reconnects (e.g., ALB idle-timeout, HTTP/2 GOAWAY, tab visibility)
+    sseManager.setOnReconnectCallback(() => {
+      console.log('[Store] SSE reconnected, enabling grace period');
+      set({ sseReconnectGrace: true });
+      setTimeout(() => {
+        if (get().sseReconnectGrace) {
+          console.log('[Store] SSE reconnect grace expired (timeout)');
+          set({ sseReconnectGrace: false });
+        }
+      }, 5000);
     });
     
     sseManager.connect(state.selectedProject, state.selectedFeature, jobType);
