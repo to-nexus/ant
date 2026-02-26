@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand';
 import { ProjectState } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import type { Feature } from '@/infrastructure/http/api';
+import { sseManager } from '@/infrastructure/sse/SSEManager';
 
 export interface ProjectActions {
   setProjects: (projects: string[]) => void;
@@ -71,43 +72,54 @@ export const createProjectSlice: StateCreator<
     }
     
     if (!projectId) {
+      sseManager.disconnectAll();
+      
       set({ 
         selectedProject: undefined,
         selectedFeature: undefined,
         features: [],
+        session: undefined,
+        chatMessages: [],
+        kanban: undefined,
+        isRunning: false,
+        currentJobId: undefined,
+        currentMode: undefined,
+        jobStartPending: false,
+        sseReconnectGrace: false,
       } as any);
-      // Also clear related state from other slices
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
       if (state.setFileContent) state.setFileContent(undefined);
       if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
-      if (state.setRunning) state.setRunning(false);
       
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
-      // Clear project-last-features mapping when clearing project selection
-      // (projectId is undefined here, so just remove the mapping key entirely)
       removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
     } else {
+      sseManager.disconnectAll();
+      
       // ✅ Check if we need to restore last feature
       const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
       const lastFeature = projectFeatures[projectId];
       const needsRestore = lastFeature !== undefined;
       
-      // ✅ If restoring, start session restore to block branch manager
       if (needsRestore) {
         console.log(`[Store] 🚀 Starting restore for ${projectId}, expected feature: ${lastFeature || 'undefined (base)'}`);
         get().startSessionRestore(lastFeature);
       }
       
-      // Just set the project, features will be loaded separately
-      // ✅ Also clear features & selectedFeature immediately to prevent stale state
       set({ 
         selectedProject: projectId,
         selectedFeature: undefined,
         features: [],
         session: undefined,
+        chatMessages: [],
+        kanban: undefined,
+        isRunning: false,
+        currentJobId: undefined,
+        currentMode: undefined,
+        jobStartPending: false,
+        sseReconnectGrace: false,
       } as any);
-      // Clear related state
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
       if (state.setFileContent) state.setFileContent(undefined);

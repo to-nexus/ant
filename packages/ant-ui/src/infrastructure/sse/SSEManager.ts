@@ -508,6 +508,17 @@ class SSEManager {
   }
   
   /**
+   * Disconnect all SSE connections (unified + workflow) without clearing handlers/callbacks.
+   * Used during project switch to tear down connections before new ones are established.
+   */
+  disconnectAll(): void {
+    this.disconnect();
+    this.workflowConnections.forEach((_, jobId) => {
+      this.disconnectWorkflow(jobId);
+    });
+  }
+  
+  /**
    * Cleanup all connections
    */
   cleanup(): void {

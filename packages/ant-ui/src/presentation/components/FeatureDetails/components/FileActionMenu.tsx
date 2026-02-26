@@ -62,11 +62,13 @@ export function FileActionMenu({
   const { t } = useTranslation('artifacts');
   const [isOpen, setIsOpen] = useState(false);
 
-  // Notify parent when open state changes
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
   const setOpenState = useCallback((open: boolean) => {
     setIsOpen(open);
-    onOpenChange?.(open);
-  }, [onOpenChange]);
+    onOpenChangeRef.current?.(open);
+  }, []);
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -199,7 +201,12 @@ export function FileActionMenu({
       }
     };
 
-    const handleScroll = () => setOpenState(false);
+    const handleScroll = (e: Event) => {
+      if (triggerRef.current && e.target instanceof Node &&
+          (e.target as Node).contains(triggerRef.current)) {
+        setOpenState(false);
+      }
+    };
     const handleResize = () => setOpenState(false);
     
     document.addEventListener('mousedown', handleClickOutside);
