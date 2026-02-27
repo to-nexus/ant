@@ -33,6 +33,10 @@ const LEARN_NODES: NodeConfig[] = [
   { key: 'default', labelKey: 'llmModels.default', description: 'llmModels.defaultLearnDesc' },
 ];
 
+const PLAN_NODES: NodeConfig[] = [
+  { key: 'default', labelKey: 'llmModels.default', description: 'llmModels.defaultPlanDesc' },
+];
+
 export function LLMModelsSection({
   editedConfig,
   availableModels,
@@ -42,7 +46,7 @@ export function LLMModelsSection({
   const { t } = useTranslation('config');
   const renderJobSection = (
     jobName: string,
-    jobKey: 'design' | 'code' | 'learn',
+    jobKey: 'design' | 'code' | 'learn' | 'plan',
     nodes: NodeConfig[]
   ) => {
     const jobConfig = editedConfig.llmModels?.[jobKey];
@@ -112,6 +116,7 @@ export function LLMModelsSection({
         <div className="space-y-4">
           {renderJobSection('Design', 'design', DESIGN_NODES)}
           {renderJobSection('Code', 'code', CODE_NODES)}
+          {renderJobSection('Plan', 'plan', PLAN_NODES)}
           {renderJobSection('Learn', 'learn', LEARN_NODES)}
         </div>
       )}

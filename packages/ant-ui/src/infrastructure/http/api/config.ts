@@ -22,6 +22,7 @@ export interface ProjectConfig {
     design?: JobLLMConfig;
     code?: JobLLMConfig;
     learn?: JobLLMConfig;
+    plan?: JobLLMConfig;
   };
 }
 

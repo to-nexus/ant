@@ -32,6 +32,8 @@ export function useModelName(
           jobConfig = config.llmModels.code;
         } else if (selectedJobType === 'learn') {
           jobConfig = config.llmModels.learn;
+        } else if (selectedJobType === 'plan') {
+          jobConfig = config.llmModels.plan;
         }
         
         if (!jobConfig) {

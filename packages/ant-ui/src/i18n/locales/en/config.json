@@ -104,7 +104,8 @@
     "planDesc": "Context gathering and planning",
     "defaultCodeDesc": "Default model for all code nodes",
     "codeGenDesc": "Code generation and editing",
-    "defaultLearnDesc": "Default model for learning tasks"
+    "defaultLearnDesc": "Default model for learning tasks",
+    "defaultPlanDesc": "Default model for PRD generation (Planner agent)"
   },
   "account": {
     "patLabel": "Personal Access Token",
