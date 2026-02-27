@@ -92,7 +92,7 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     
     set({ 
       isRunning,
-      currentJobId: isRunning ? jobId : undefined,
+      currentJobId: isRunning ? (jobId ?? get().currentJobId) : get().currentJobId,
       taskStartTime: startTime,
       elapsedTime: isRunning ? 0 : get().elapsedTime,
       currentMode: isRunning ? mode : undefined,
