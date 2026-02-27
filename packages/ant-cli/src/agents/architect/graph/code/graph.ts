@@ -909,9 +909,10 @@ export function buildCodeGraph() {
       // === isResume === true ===
       
       if (hasTaskQueue && hasNewDirective) {
-        // Resume with existing tasks + new chat input → revise (may modify tasks)
-        console.log(`[RouteAfterResolve] Resume + new directive → revise`);
-        return 'revise';
+        // Resume with new chat input → triage first (may redirect to design for spec).
+        // If triage says proceed, routeAfterTriage routes to revise (not detectEnvironment).
+        console.log(`[RouteAfterResolve] Resume + new directive → triage (then revise if proceed)`);
+        return 'triage';
       }
       
       if (hasTaskQueue) {
@@ -957,6 +958,7 @@ export function buildCodeGraph() {
     routeAfterTriage as any,
     {
       detectEnvironment: "detectEnvironment",
+      revise: "revise",
       __end__: "__end__"
     } as any
   );

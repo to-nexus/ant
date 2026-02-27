@@ -405,8 +405,14 @@ function logTriageResult(result: TriageResult): void {
  */
 export function routeAfterTriage<T extends TriageableState>(state: T): string {
   const result = state.triageResult;
+  const isResume = (state as any).isResume === true;
+  const hasTaskQueue = (state as any).taskQueue && !(state as any).taskQueue.isEmpty();
   
   if (!result) {
+    if (isResume && hasTaskQueue) {
+      console.log('[TriageRouter] No triage result (resume with tasks) → revise');
+      return 'revise';
+    }
     console.log('[TriageRouter] No triage result, proceeding to detectEnvironment');
     return 'detectEnvironment';
   }
@@ -417,6 +423,10 @@ export function routeAfterTriage<T extends TriageableState>(state: T): string {
   }
   
   if (result.workStatus === 'proceed') {
+    if (isResume && hasTaskQueue) {
+      console.log('[TriageRouter] work:proceed (resume with tasks) → revise');
+      return 'revise';
+    }
     console.log('[TriageRouter] work:proceed → detectEnvironment');
     return 'detectEnvironment';
   }
@@ -435,6 +445,10 @@ export function routeAfterTriage<T extends TriageableState>(state: T): string {
     return '__end__';
   }
   
+  if (isResume && hasTaskQueue) {
+    console.log('[TriageRouter] default (resume with tasks) → revise');
+    return 'revise';
+  }
   console.log('[TriageRouter] default → detectEnvironment');
   return 'detectEnvironment';
 }
