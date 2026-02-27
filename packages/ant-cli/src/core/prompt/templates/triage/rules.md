@@ -59,20 +59,32 @@ This constraint does NOT apply to `code` or `learn` jobs — those redirect norm
 
 **Applies when**: Current job is `code` AND intent is `work` AND **Step 2 classified the request target as `code`**.
 
-**Principle**: Observe the **scope** of the requested change, not the action verb. A request that spans multiple subsystems, introduces a new flow, or restructures existing architecture benefits from upfront specification.
+**Principle**: Scope breadth determines whether upfront specification benefits the task. Action verbs do NOT determine scope.
 
-| Observation | Action |
-|-------------|--------|
-| Request describes a substantial feature or architectural change (multiple files, new flow, cross-cutting) AND **no spec documents exist** AND **no design documents exist** | Set `redirect` to `design` job with `redirectReason` explaining the benefit of writing a spec first |
-| Request is a localized change (bug fix, single-file edit, style tweak, rename) | Do NOT suggest spec — `proceed` normally |
-| Spec documents OR design documents already exist in workspace | Do NOT suggest spec — existing design documentation will guide development |
-| Request explicitly references a spec document by name | Do NOT suggest spec — `proceed` normally |
+**Observation target**: Observe the scope breadth of what the directive addresses, independent of how the request is framed.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Boundary count** | Does the directive address multiple independent subsystems, modules, or persistence boundaries? |
+| **Existing specification** | Do spec documents OR design documents already exist in workspace? |
+
+**Constraint**: Do NOT skip scope observation based on how the request is framed. Investigation, diagnosis, and implementation requests can all span multiple boundaries.
+
+**Constraint**: When scope breadth spans multiple independent boundaries AND no spec/design documents exist, set `redirect` to `design` job with `redirectReason`.
+
+**Constraint**: When spec documents OR design documents already exist in workspace, do NOT suggest spec — existing documentation will guide development.
+
+**Constraint**: When the request targets a single boundary (one file, one module, one isolated behavior), proceed normally regardless of action verb.
+
+**Constraint**: When the request explicitly references a spec document by name, proceed normally.
 
 **Constraint**: This step ONLY applies when `currentJob === "code"`. Do NOT apply to other jobs.
 
 **Constraint**: This step does NOT override Step 2 classification. If Step 2 classified the request target as belonging to a different job (e.g., `design`), that classification stands — do NOT suppress the redirect.
 
 **Constraint**: When suggesting spec, set `suggestedJob: "design"` and `suggestedAgent: "architect"`. The design job will detect spec intent from the directive automatically.
+
+⚠️ **Blind spot**: Request framing (investigation, diagnosis, fix, new feature) easily masks scope breadth. A directive that says "investigate" or "find root cause" can span the same boundaries as one that says "implement". Observe boundary count, not how the request is framed.
 
 ### Step 2.7: Determine Agent Match (for work intent)
 
@@ -141,7 +153,7 @@ When user input appears to be:
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → `ask` + `inScope: false`, ask for clarification
 ⚠️ **Workspace state ≠ User intent**: Workspace document presence indicates past work output, NOT current user intent. Observe the REQUEST TARGET (what the user wants to produce now), not the WORKSPACE STATE (what already exists). Existing documents do NOT change the classification of a request whose target is a different job's activity.
 ⚠️ **Redirect prerequisite principle**: Redirect validity depends on whether the target job's PREREQUISITES (defined in its capabilities section) exist — not on whether its OUTPUT documents already exist. Absent outputs indicate the target job hasn't run yet, which is a reason to redirect, not to block it.
-⚠️ **Spec suggestion (code job)**: When current job is `code`, a substantial feature request with NO existing spec docs AND NO existing design docs → suggest `redirect` to `design`. If design documents already exist (system design, API contract, etc.), they are sufficient for development — do NOT suggest spec. Localized changes (bug fix, single file, rename) → do NOT suggest.
+⚠️ **Spec suggestion (code job)**: Observe scope breadth, not action verb. Requests spanning multiple independent boundaries with NO existing spec/design docs → suggest `redirect` to `design`. Existing design documentation is sufficient — do NOT suggest. Single-boundary requests → do NOT suggest regardless of verb.
 ⚠️ **Document creation vs. code implementation ambiguity (design job)**: When current job is `design`, observe whether the request target is unambiguously a **document** or **source code**:
   - Unambiguous document target (write/draft/create a specification, architecture document) → `proceed` in design
   - Unambiguous source code target (fix bug, modify source file, build runnable application) → `redirect` to `code`
