@@ -134,12 +134,12 @@ MSA applies to BOTH tiers independently:
 {
   "documentType": "unified",
   "jobMode": "refactor",
-  "targetFiles": ["{{primaryDesignFile}}"],
+  "targetFiles": ["{chosen-file-from-existing-list}"],
   "tasks": [
     {
       "id": "refactor-{section}",
       "name": "Refactor: {brief description}",
-      "targetFile": "{{primaryDesignFile}}",
+      "targetFile": "{chosen-file-from-existing-list}",
       "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 200
     }
@@ -156,6 +156,7 @@ MSA applies to BOTH tiers independently:
 | Name format | `Refactor: {description}` |
 | Description | Must include "Keep all other content unchanged" |
 | targetFile | MUST match an existing design document filename |
+| targetFiles | Include ONLY the file being modified — do NOT list files unrelated to the change |
 
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)
