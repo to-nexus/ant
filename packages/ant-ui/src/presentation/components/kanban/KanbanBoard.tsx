@@ -79,7 +79,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
         titleActions={
           <>
             <ElapsedTimeBadge
-              totalElapsedTime={kanbanData.totalElapsedTime}
               jobTiming={kanbanData.jobTiming}
               completedTasks={kanbanData.completed?.map(task => ({
                 id: task.id || task.name,
@@ -140,7 +139,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
       titleActions={
         <>
           <ElapsedTimeBadge
-            totalElapsedTime={kanbanData.totalElapsedTime}
             jobTiming={kanbanData.jobTiming}
             completedTasks={kanbanData.completed?.map(task => ({
               id: task.id || task.name,

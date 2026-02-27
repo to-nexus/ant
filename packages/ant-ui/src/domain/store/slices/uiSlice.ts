@@ -237,7 +237,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         interruption: undefined,
         recursionCount: undefined,
         recursionLimit: undefined,
-        totalElapsedTime: undefined,
         jobTiming: undefined
       }
     });
