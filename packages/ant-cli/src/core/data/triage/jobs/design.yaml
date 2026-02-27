@@ -2,8 +2,9 @@
 id: design
 agent: architect
 description: |
-  Creates UI specifications and system architecture documents.
-  Two modes: UI Design (from reference images) and System Design (from PRD).
+  Creates specifications and architecture documents.
+  Three modes: UI Design (from reference images), System Design (from PRD), and Spec (feature-scoped planning).
+  Spec mode analyzes existing codebase and plans multi-boundary changes before implementation.
   Output documents guide Code Job for accurate implementation.
 
 modes:
@@ -71,7 +72,34 @@ modes:
       - Data model and schema design
       - Service boundaries and interactions
 
+  - id: spec
+    description: |
+      Creates feature-scoped specification documents for implementation planning.
+      Analyzes existing codebase to understand affected boundaries and plan changes.
+      Handles multi-boundary tasks: bug analysis, feature additions, complex modifications.
+      Has full codebase analysis capability — equivalent to code job's analysis power.
+    detection:
+      all_of:
+        - type: has_directive
+        - none_of:
+            - path: inputs/references
+              type: directory_with_files
+    prerequisites:
+      required:
+        - id: directive
+          type: has_directive
+          description: Task description or problem statement entered via chat
+      recommended:
+        - id: codebase
+          type: indexed_codebase
+          description: Existing codebase for analysis
+    scope:
+      - Feature-scoped implementation planning
+      - Multi-boundary bug analysis and root cause investigation
+      - Cross-module impact analysis
+      - Task decomposition for complex modifications
+
 redirect_signals:
-  to_code: Request target is source code (implementation, bug fix, runnable application)
+  to_code: Request is pure explanation/analysis without modification intent (any boundary), OR single-boundary implementation/modification that does not require upfront specification
   to_learn: Request target is codebase analysis or indexing output
   to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
