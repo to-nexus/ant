@@ -437,8 +437,10 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
         if (response.suggestedAgent) {
           useStore.getState().setSelectedAgent(response.suggestedAgent);
         }
-        setSelectedJobType(response.suggestedJob as any);
         await runJob(targetAgent, response.suggestedJob, response.directive, { skipTriage: true });
+        // Switch job type AFTER runJob so SSE reconnect reads fully-persisted metadata.
+        // setSelectedJobType triggers reconnectSSE → initial_state full replace of chatMessages.
+        setSelectedJobType(response.suggestedJob as any);
       }
 
       // Handle proceedAnyway: continue despite blocked status (skip triage to avoid loop)

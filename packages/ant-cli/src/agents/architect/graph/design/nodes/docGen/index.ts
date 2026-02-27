@@ -69,7 +69,7 @@ export async function docGen(
   
   // Tool activation: Select appropriate tool set based on work type
   const tools = isExplainMode
-    ? undefined
+    ? getToolsByNames(TOOL_SETS.designExplain)
     : workType === 'ui-design'
       ? getToolsByNames(TOOL_SETS.uiDesign)
       : getToolsByNames(TOOL_SETS.design);
