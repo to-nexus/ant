@@ -291,6 +291,9 @@ export const TOOL_SETS = {
   // Plan node: read-only exploration (verify existing modules, avoid duplication)
   planExplore: ['read_file', 'list_files', 'search_code'] as ToolName[],
 
+  // Design explain mode: read-only exploration (no writes, no run_command)
+  designExplain: ['read_file', 'list_files', 'search_code'] as ToolName[],
+
   // Full set for design job (no run_command, no reference)
   design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir'] as ToolName[],
   
