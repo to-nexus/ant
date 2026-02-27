@@ -1,4 +1,6 @@
+{{#if hasTools}}
 {{> code/base/injections/plan-tools-batch}}
+{{/if}}
 
 ## Your Task
 
