@@ -122,7 +122,15 @@ export interface CodeTask extends BaseTask {
 export interface DesignTask extends BaseTask {
   targetFile?: string;             // Which design document (e.g., "be-system-main.md")
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
-  
+
+  /**
+   * Spec chapter decomposition fields.
+   * When a spec document is split into sections, each task carries its section context.
+   */
+  sectionIndex?: number;           // 0-based index of this section (0 = first)
+  totalSections?: number;          // Total number of sections for this spec
+  sectionScope?: string;           // Description of what this section covers
+
   /**
    * Per-task resume state (exists only when interrupted during parallel execution).
    * Contains the worker's execution context at the time of interruption.

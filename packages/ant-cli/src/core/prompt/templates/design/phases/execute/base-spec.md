@@ -14,39 +14,30 @@ Write clearly and precisely so an LLM or developer can implement the feature wit
 
 ## Output Format
 
-Write the spec document as a Markdown file wrapped in XML file tags:
+{{#if isFirstSection}}
+This is the **first section** of the spec document. Create the document using a `<file>` tag:
 
 ```xml
 <file path="outputs/design/{{targetFile}}">
 # Spec: {{title}}
 
-## Overview
-Brief description of the feature/change.
-
-## Requirements
-- Functional requirements (what it should do)
-- Non-functional requirements (performance, security, etc.)
-
-## Scope
-- What is included in this work
-- What is explicitly excluded
-
-## Technical Approach
-- Architecture changes needed
-- Data model changes
-- API changes (new endpoints, modified contracts)
-- Dependencies on existing code/systems
-
-## Implementation Tasks
-1. Task 1: Description
-2. Task 2: Description
-...
-
-## Acceptance Criteria
-- Criterion 1
-- Criterion 2
+[Write content for this section only — see CURRENT SECTION SCOPE below]
 </file>
 ```
+
+{{else}}
+This is a **continuation section**. The document already exists. Use `<append>` tag to add this section:
+
+```xml
+<append path="outputs/design/{{targetFile}}">
+
+[Write content for this section only — see CURRENT SECTION SCOPE below]
+</append>
+```
+
+⚠️ **CRITICAL: Do NOT use `<file>` tag — it will OVERWRITE the existing document!**
+
+{{/if}}
 
 {{#if (eq jobMode "refactor")}}
 ════════════════════════════════════════════════════════════════════════════════
@@ -56,4 +47,32 @@ Brief description of the feature/change.
 You are MODIFYING an existing spec document. Apply the user's requested changes while preserving the overall structure.
 
 **Constraint**: Output the FULL modified document using `<file>` tag, not a diff or partial update.
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
+## 🎯 CURRENT SECTION SCOPE
+════════════════════════════════════════════════════════════════════════════════
+
+{{#if sectionScope}}
+**Write ONLY the following content in this task:**
+
+> {{sectionScope}}
+
+Section **{{add sectionIndex 1}} of {{totalSections}}**
+
+**Constraint**: Do NOT write content that belongs to other sections. Do NOT duplicate content already written.
+{{else}}
+Write the complete spec document with all sections (Overview, Requirements, Scope, Technical Approach, Implementation Tasks, Acceptance Criteria).
+{{/if}}
+
+{{#if previousSections}}
+════════════════════════════════════════════════════════════════════════════════
+## 📄 ALREADY WRITTEN (for context only — do NOT repeat)
+════════════════════════════════════════════════════════════════════════════════
+
+{{previousSections}}
+
+---
+
+**Constraint**: The content above is already written. Your task is to ADD the next section only.
 {{/if}}

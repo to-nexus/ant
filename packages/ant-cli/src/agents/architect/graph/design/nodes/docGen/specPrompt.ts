@@ -1,12 +1,14 @@
 /**
  * Spec Prompt Builder
- * 
+ *
  * Builds LLM messages for spec document generation.
- * Unlike system-design (chapter-based, multi-file) or ui-design (JSON, multi-doc),
- * spec produces a single spec-{slug}.md with a fixed structure.
- * 
- * Uses template files (base-spec.md + rules-spec.md) via FilePromptAdapter,
- * following the same WHAT/HOW separation as system-design and ui-design.
+ * Supports chapter-based decomposition: each DesignTask may represent a single
+ * section of the spec document. Sections are appended sequentially to the same
+ * spec-{slug}.md file.
+ *
+ * - sectionIndex === 0 (first): uses <file> tag to create the document
+ * - sectionIndex > 0: uses <append> tag, provides previous sections as context
+ * - totalSections === 1 (no decomposition): identical to original behaviour
  */
 
 import { DesignGraphState } from '../../state';
@@ -54,13 +56,43 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const jobMode = state.detectionReport?.jobMode || 'generate';
 
   if (!state.conversationHistory || state.conversationHistory.length === 0) {
-    console.log(`📋 [DocGen/Spec] Building fresh prompt for ${targetFile}`);
+    // ─── Chapter decomposition fields ───────────────────────────────────────
+    const sectionIndex: number = (task as any)?.sectionIndex ?? 0;
+    const totalSections: number = (task as any)?.totalSections ?? 1;
+    const sectionScope: string = (task as any)?.sectionScope ?? '';
+    const isFirstSection = sectionIndex === 0;
 
-    const title = task?.name?.replace('Spec: ', '') || 'Feature';
+    // ─── Load previous sections content if this is a continuation ───────────
+    let previousSections = '';
+    if (!isFirstSection && state.deps?.fileSystem && state.context.featurePath) {
+      try {
+        const pathModule = await import('path');
+        let specDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
+        const rootPath = state.deps.fileSystem.getRootPath?.();
+        if (rootPath && pathModule.isAbsolute(specDocPath)) {
+          specDocPath = pathModule.relative(rootPath, specDocPath);
+        }
+        if (await state.deps.fileSystem.fileExists(specDocPath)) {
+          previousSections = (await state.deps.fileSystem.readFile(specDocPath)) || '';
+          console.log(`📋 [DocGen/Spec] Loaded existing spec for context: ${targetFile} (${previousSections.length} chars)`);
+        }
+      } catch (error) {
+        console.warn(`⚠️  [DocGen/Spec] Could not load previous sections:`, error);
+      }
+    }
+
+    console.log(`📋 [DocGen/Spec] Building fresh prompt for ${targetFile} (section ${sectionIndex + 1}/${totalSections})`);
+
+    const title = task?.name?.replace(/^Spec: .+ — /, 'Spec: ').replace('Spec: ', '') || 'Feature';
     const systemPrompt = await renderSpecSystemPrompt(state, {
       targetFile,
       title,
       jobMode,
+      isFirstSection,
+      sectionIndex,
+      totalSections,
+      sectionScope,
+      previousSections,
     });
 
     const systemBlock: CacheableContent = {
@@ -152,6 +184,10 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
             injectedVariables: {
               targetFile,
               jobMode,
+              isFirstSection,
+              sectionIndex,
+              totalSections,
+              sectionScope: sectionScope.slice(0, 80),
               hasExistingSpec: jobMode === 'refactor',
               hasPrd: !!state.prd,
               hasApiContract: state.existingDesignDocs ? Object.keys(state.existingDesignDocs).some(f => f.startsWith('api-contract-')) : false,
