@@ -287,7 +287,7 @@ export async function orchestrator(params: {
     case "planner": {
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = createLLMClient('planner', undefined, undefined, configData);
+      const llm = createLLMClient('planner', undefined, { jobType: 'plan' }, configData);
       
       // Setup real-time updates via Redis Pub/Sub
       let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;

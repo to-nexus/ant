@@ -40,6 +40,7 @@ export function useConfigEditor(
             design: { default: defaultModelId, decompose: defaultModelId },
             code: { default: defaultModelId, decompose: defaultModelId },
             learn: { default: defaultModelId },
+            plan: { default: defaultModelId },
           }
         }));
       }

@@ -104,7 +104,8 @@
     "planDesc": "컨텍스트 수집 및 계획",
     "defaultCodeDesc": "모든 코드 노드의 기본 모델",
     "codeGenDesc": "코드 생성 및 편집",
-    "defaultLearnDesc": "학습 태스크의 기본 모델"
+    "defaultLearnDesc": "학습 태스크의 기본 모델",
+    "defaultPlanDesc": "PRD 생성의 기본 모델 (Planner 에이전트)"
   },
   "account": {
     "patLabel": "Personal Access Token",
