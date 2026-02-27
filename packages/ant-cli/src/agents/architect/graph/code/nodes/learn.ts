@@ -261,6 +261,18 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const _workerId = (state as any).workerId;
   const isWorkerContext = _workerId !== undefined && _workerId !== null;
   
+  // Determine whether this is the final learn invocation (all tasks completed).
+  // Must be computed before hasOrchestratorFailure so we can clear stale interruptions.
+  const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
+
+  // Clear stale orchestrator interruption when all remaining tasks completed
+  // after an earlier parallel failure. Without this, runner.ts propagates the
+  // old interruption → JobWorker reports hasInterruption=true → failed choice card.
+  if (isLastTask && (state as any).interruption?.reason === 'tasks_failed') {
+    console.log(`✅ [Learn] All tasks completed despite earlier parallel failure — clearing stale interruption`);
+    (state as any).interruption = undefined;
+  }
+
   // ✅ FIX: Skip session write when parallelOrchestrator already saved
   // failure/interruption state. The orchestrator's updateArtifacts includes
   // failed tasks, interruption details, and correct taskQueue. If the learn
@@ -332,7 +344,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // ✨ Mark job as completed — ONLY set completedAt on the LAST task.
     // Setting it after every task contaminates the session, causing SSE reconnects
     // to serve stale completedAt → frontend isRunning=false → badge freezes.
-    const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
     const completedJobTiming = (state as any).jobTiming ? {
       ...(state as any).jobTiming,
       ...(isLastTask && { completedAt: new Date().toISOString() })
@@ -372,7 +383,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           resolvedCategories: state.resolvedCategories || [],
           recursionCount: state.recursionCount,  // ✅ Preserve recursion tracking
           recursionLimit: state.recursionLimit,
-          interruption: existingSession.state?.interruption || (state as any).interruption,  // ✅ CRITICAL: Preserve interruption details!
+          interruption: isLastTask ? null : (existingSession.state?.interruption || (state as any).interruption),
           jobId: (state as any).jobId,  // ✨ Preserve jobId
           jobTiming: completedJobTiming,  // ✨ Mark as completed
           tokenUsage: (state as any).tokenUsage,  // ✅ Preserve token usage

@@ -236,7 +236,7 @@ function compactToolResultContent(toolName: string, content: string): string {
 
   if (toolName === 'read_file') {
     const lineCount = content.split('\n').length;
-    return `[read_file result: ${lineCount} lines — content omitted, re-read with read_file if needed for edit_file]`;
+    return `[read_file result: ${lineCount} lines — content omitted]`;
   }
 
   if (toolName === 'search_code' || toolName === 'search_reference_code') {
@@ -502,7 +502,7 @@ function buildSummaryText(facts: ExtractedFact, turnCount: number): string {
   }
 
   sections.push('');
-  sections.push('Note: File contents from compacted turns are no longer available. Use read_file to re-read any file before editing.');
+  sections.push('Note: File contents from compacted turns are no longer available.');
 
   return sections.join('\n');
 }

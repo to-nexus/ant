@@ -70,14 +70,15 @@ async function decomposeSpecSections(
   if (!llm) return fallback();
 
   const prompt = [
-    `You are a software architect. Analyze the following directive and decompose it into`,
-    `sequential spec document sections.`,
+    `You are a software architect. Analyze the following directive and decide how to structure a spec document.`,
     ``,
     `Rules:`,
-    `- Return 1 section for simple, single-boundary tasks.`,
-    `- Return 2–5 sections for complex, multi-boundary tasks.`,
-    `- Sections must be ordered: earlier sections feed context into later ones.`,
-    `- Each section must be independently writable given the previous sections.`,
+    `- If the directive covers a SINGLE topic, return exactly 1 section.`,
+    `- If the directive covers MULTIPLE distinct topics or subsystems, split into one section per topic (max 5).`,
+    `  Each section becomes a chapter appended to the same document.`,
+    `- Each section MUST be a self-contained writing unit that explores AND writes its chapter.`,
+    `  NEVER create "analysis-only" or "writing-only" sections — every section must produce document content.`,
+    `- Sections are ordered: earlier sections are written first and provide context for later ones.`,
     ``,
     `Directive: "${directive}"`,
     ``,
@@ -86,8 +87,7 @@ async function decomposeSpecSections(
     `  "slug": "short-url-safe-slug",`,
     `  "title": "Human Readable Title",`,
     `  "sections": [`,
-    `    { "id": "spec-{slug}-1", "name": "Section Name", "scope": "What this section covers" },`,
-    `    { "id": "spec-{slug}-2", "name": "Section Name", "scope": "What this section covers" }`,
+    `    { "id": "spec-{slug}-1", "name": "Chapter Name", "scope": "What this chapter covers" }`,
     `  ]`,
     `}`,
   ].join('\n');

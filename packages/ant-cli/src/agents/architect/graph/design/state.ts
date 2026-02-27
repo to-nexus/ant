@@ -105,6 +105,9 @@ export interface DesignGraphState extends TaskArtifacts {
   
   
   
+  /** Per-task docGen call counter (reset on task transition) */
+  _docGenCallIndex?: number;
+
   // Results (populated by learn node)
   lessons?: string;
   
