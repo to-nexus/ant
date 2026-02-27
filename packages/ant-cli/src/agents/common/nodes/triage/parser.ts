@@ -42,6 +42,11 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
       result.askResponse = parsed.askResponse;
     }
     
+    // Continuation assessment (Step 0.5 — present when existing task context was provided)
+    if (parsed.continuationType === 'supplement' || parsed.continuationType === 'newScope') {
+      result.continuationType = parsed.continuationType;
+    }
+    
     // work-specific fields
     if (result.intent === 'work') {
       result.workStatus = parsed.workStatus;

@@ -438,7 +438,7 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
           useStore.getState().setSelectedAgent(response.suggestedAgent);
         }
         setSelectedJobType(response.suggestedJob as any);
-        await runJob(targetAgent, response.suggestedJob, response.directive);
+        await runJob(targetAgent, response.suggestedJob, response.directive, { skipTriage: true });
       }
 
       // Handle proceedAnyway: continue despite blocked status (skip triage to avoid loop)

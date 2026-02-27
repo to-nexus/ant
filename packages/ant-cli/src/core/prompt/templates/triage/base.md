@@ -29,11 +29,15 @@ You analyze user input to determine intent and execution readiness.
 ### Spec Documents
 {{#if hasSpecDocs}}✅ Spec docs: {{specDocCount}} files ({{specDocNames}}){{else}}❌ No spec documents{{/if}}
 
-### Codebase
-{{#if hasCodebase}}✅ Indexed ({{indexedFileCount}} files){{else}}❌ Not indexed{{/if}}
 {{#if hasDesignDoc}}✅ Design documents exist{{else}}❌ No design documents{{/if}}
 
 {{{jobCapabilities}}}
+
+{{#if hasExistingTasks}}
+## EXISTING TASK CONTEXT (Interrupted Job)
+The following tasks are in the queue for the currently interrupted {{currentJob}} job:
+{{{existingTaskSummary}}}
+{{/if}}
 
 ## RESPONSE FORMAT
 
@@ -43,6 +47,8 @@ You analyze user input to determine intent and execution readiness.
   
   "inScope": true | false,       // true = the ask system will handle this with its own tools
   "askResponse": "Brief description of what will be looked up (when inScope=true) OR direct answer (when inScope=false)",
+  
+  "continuationType": "supplement" | "newScope",  // only when EXISTING TASK CONTEXT is present
   
   "workStatus": "proceed" | "redirect" | "blocked",
   "suggestedAgent": "architect | planner",
