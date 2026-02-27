@@ -17,7 +17,9 @@
     "paused": "일시정지:",
     "timeBreakdown": "시간 분석",
     "tokenUsage": "토큰 사용량",
-    "tasksCount": "태스크 ({{count}}):"
+    "tasksCount": "태스크 ({{count}}):",
+    "parallelTotal": "태스크 합계:",
+    "parallelSaved": "병렬 절약:"
   },
   "tokenStats": {
     "input": "입력",

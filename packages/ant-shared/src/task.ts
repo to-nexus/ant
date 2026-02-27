@@ -124,7 +124,6 @@ export interface KanbanData {
   jobType?: string;
 
   // Timing
-  totalElapsedTime?: number;
   jobTiming?: JobTiming;
 
   // Interruption state

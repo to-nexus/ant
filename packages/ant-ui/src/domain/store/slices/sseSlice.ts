@@ -47,15 +47,12 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
   updateKanban: (data) => {
     const state = get();
     
-    // ✅ Preserve jobTiming & totalElapsedTime from existing state if not in incoming data.
+    // Preserve jobTiming from existing state if not in incoming data.
     // KanbanBroadcaster (live Redis Pub/Sub) sends task queue updates without job-level timing,
     // while KanbanService (HTTP/session) provides them. Merge to prevent ElapsedTimeBadge from disappearing.
     const existingKanban = state.kanban;
     if (!data.jobTiming && existingKanban?.jobTiming) {
       data = { ...data, jobTiming: existingKanban.jobTiming };
-    }
-    if (data.totalElapsedTime === undefined && existingKanban?.totalElapsedTime !== undefined) {
-      data = { ...data, totalElapsedTime: existingKanban.totalElapsedTime };
     }
     
     // ✅ Preserve recursion tracking from existing state if not in incoming data.

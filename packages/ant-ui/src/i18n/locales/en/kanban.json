@@ -17,7 +17,9 @@
     "paused": "Paused:",
     "timeBreakdown": "Time Breakdown",
     "tokenUsage": "Token Usage",
-    "tasksCount": "Tasks ({{count}}):"
+    "tasksCount": "Tasks ({{count}}):",
+    "parallelTotal": "Sum of tasks:",
+    "parallelSaved": "Parallel saved:"
   },
   "tokenStats": {
     "input": "Input",
