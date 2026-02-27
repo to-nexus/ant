@@ -72,11 +72,15 @@ Observe the **intent** of the directive with respect to existing documents:
 
 | Observation | jobMode |
 |-------------|---------|
-| Directive asks to **analyze, explain, or describe** existing content | `explain` |
+| Directive explicitly asks to **understand, summarize, or explain the content of existing design/spec documents** | `explain` |
 | Directive asks to **modify, update, or improve** a specific part of existing documents | `refactor` |
-| Directive asks to **create new** content | `generate` |
+| Directive asks to **create new** content, **solve a problem**, or **plan implementation** | `generate` |
 
 **Constraint**: `explain` and `refactor` require that **documents for the same tier** exist. If they do not exist, fall back to `generate`.
+
+**Constraint**: `explain` ONLY applies when the **subject of analysis is an existing design/spec document itself**. If the directive asks to analyze a **problem, bug, codebase behavior, or issue**, the intent is to produce a new spec — use `generate`.
+
+⚠️ **Blind Spot — "analyze" ≠ explain**: Directives like "analyze why X fails", "investigate the problem", "debug this issue", or "분석해라" (analyze) are requests to **create a spec** for solving the problem, NOT to explain existing documents. These MUST be `generate`, not `explain`.
 
 ⚠️ **Blind Spot**: Existing documents from a **different tier** do NOT make this `refactor`. Observe which tier the directive targets:
 - Frontend directive + only `api-contract-main.md`/`be-system-main.md` exist → `generate` (no frontend docs to refactor)

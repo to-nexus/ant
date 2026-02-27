@@ -519,6 +519,14 @@ export async function detectEnvironment(
     // Parse response
     const parsed = parseDetectResponse(response);
 
+    // Structural override: skipTriage (redirect/proceedAnyway) implies active work intent.
+    // explain mode is for passive document understanding — incompatible with redirect context.
+    if (state.skipTriage && parsed.jobMode === 'explain' && parsed.workType !== 'error' && parsed.workType !== 'clarify') {
+      console.log('⚠️  [detectEnvironment] Override: explain → generate (skipTriage implies active work intent)');
+      parsed.jobMode = 'generate';
+      parsed.jobModeReasoning = 'Overridden from explain: skipTriage flag indicates redirect/proceedAnyway — active work intent.';
+    }
+
     // Handle error case
     if (parsed.workType === 'error') {
       console.log(`\n❌ Error: ${parsed.errorType}`);
