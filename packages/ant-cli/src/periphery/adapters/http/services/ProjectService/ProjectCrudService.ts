@@ -98,7 +98,9 @@ export class ProjectCrudService {
     const configPath = path.join(projectPath, 'config.json');
     
     // ✅ Get LLM config from environment variables
-    const defaultModel = process.env.AI_MODEL_NAME;
+    const envModel = process.env.AI_MODEL_NAME;
+    const modelOpus = envModel || 'claude-opus-4-6';
+    const modelSonnet = envModel || 'claude-sonnet-4-6';
     
     // ✅ Determine if Cloud Mode
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
@@ -111,7 +113,8 @@ export class ProjectCrudService {
     
     logger.debug('Creating project config', { component: 'ProjectCrudService', organizationId: userContext.organizationId, userId: userContext.userId, projectId: id }, {
       isCloudMode,
-      defaultModel,
+      modelOpus,
+      modelSonnet,
       defaultGithubRepo,
     });
     
@@ -126,16 +129,16 @@ export class ProjectCrudService {
       branchBase: 'main',
       llmModels: {
         design: {
-          default: defaultModel,
+          default: modelOpus,
         },
         code: {
-          default: defaultModel,
+          default: modelOpus,
         },
         learn: {
-          default: defaultModel,
+          default: modelSonnet,
         },
         plan: {
-          default: defaultModel,
+          default: modelSonnet,
         }
       }
     };
@@ -239,8 +242,10 @@ export class ProjectCrudService {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
     const configPath = path.join(projectPath, 'config.json');
     
-    // Get environment variable defaults for LLM
-    const defaultLLMModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
+    // Get environment variable defaults for LLM (per-job)
+    const envModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
+    const fallbackOpus = envModel || 'claude-opus-4-6';
+    const fallbackSonnet = envModel || 'claude-sonnet-4-6';
     
     try {
       const configData = await fs.promises.readFile(configPath, 'utf-8');
@@ -253,27 +258,27 @@ export class ProjectCrudService {
       
       // ✅ Ensure job-level structure exists with defaults
       if (!config.llmModels.design) {
-        config.llmModels.design = { default: defaultLLMModel };
-      } else if (!config.llmModels.design.default && defaultLLMModel) {
-        config.llmModels.design.default = defaultLLMModel;
+        config.llmModels.design = { default: fallbackOpus };
+      } else if (!config.llmModels.design.default) {
+        config.llmModels.design.default = fallbackOpus;
       }
       
       if (!config.llmModels.code) {
-        config.llmModels.code = { default: defaultLLMModel };
-      } else if (!config.llmModels.code.default && defaultLLMModel) {
-        config.llmModels.code.default = defaultLLMModel;
+        config.llmModels.code = { default: fallbackOpus };
+      } else if (!config.llmModels.code.default) {
+        config.llmModels.code.default = fallbackOpus;
       }
       
       if (!config.llmModels.learn) {
-        config.llmModels.learn = { default: defaultLLMModel };
-      } else if (!config.llmModels.learn.default && defaultLLMModel) {
-        config.llmModels.learn.default = defaultLLMModel;
+        config.llmModels.learn = { default: fallbackSonnet };
+      } else if (!config.llmModels.learn.default) {
+        config.llmModels.learn.default = fallbackSonnet;
       }
       
       if (!config.llmModels.plan) {
-        config.llmModels.plan = { default: defaultLLMModel };
-      } else if (!config.llmModels.plan.default && defaultLLMModel) {
-        config.llmModels.plan.default = defaultLLMModel;
+        config.llmModels.plan = { default: fallbackSonnet };
+      } else if (!config.llmModels.plan.default) {
+        config.llmModels.plan.default = fallbackSonnet;
       }
       
       return config;
@@ -285,16 +290,16 @@ export class ProjectCrudService {
         branchBase: 'main',
         llmModels: {
           design: {
-            default: defaultLLMModel,
+            default: fallbackOpus,
           },
           code: {
-            default: defaultLLMModel,
+            default: fallbackOpus,
           },
           learn: {
-            default: defaultLLMModel,
+            default: fallbackSonnet,
           },
           plan: {
-            default: defaultLLMModel,
+            default: fallbackSonnet,
           }
         }
       };

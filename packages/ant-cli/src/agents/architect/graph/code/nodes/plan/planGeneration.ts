@@ -51,7 +51,8 @@ export async function buildPlanPrompt(
   projectCodeContext: any,
   violationsText: string | undefined,
   uiDoc: string | undefined,
-  remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined
+  remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
+  options?: { hasTools?: boolean },
 ): Promise<string> {
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) throw new Error('[Plan] PromptEngine not available');
@@ -82,7 +83,8 @@ export async function buildPlanPrompt(
     violationsText,
     uiDoc,
     state.profile,
-    remainingTasks
+    remainingTasks,
+    { hasTools: options?.hasTools ?? false },
   );
 }
 

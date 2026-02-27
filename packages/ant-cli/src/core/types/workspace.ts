@@ -126,30 +126,32 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
 
 /**
  * Default workspace config
- * Reads default model from environment variable AI_MODEL_NAME
+ * If AI_MODEL_NAME env var is set, all jobs use that model (override).
+ * Otherwise, design/code default to Opus, plan/learn default to Sonnet.
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
-  // Read default model from environment variable
-  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-6-20250929';  // ✅ Latest default
+  const envModel = process.env.AI_MODEL_NAME;
+  const modelOpus = envModel || 'claude-opus-4-6';
+  const modelSonnet = envModel || 'claude-sonnet-4-6';
   
   return {
     projectName,
     repoType: 'local',
     branchBase: 'main',
-    llmModels: defaultModel ? {
+    llmModels: {
       design: {
-        default: defaultModel,
+        default: modelOpus,
       },
       code: {
-        default: defaultModel,
+        default: modelOpus,
       },
       learn: {
-        default: defaultModel,
+        default: modelSonnet,
       },
       plan: {
-        default: defaultModel,
+        default: modelSonnet,
       },
-    } : undefined,
+    },
   };
 }
 
