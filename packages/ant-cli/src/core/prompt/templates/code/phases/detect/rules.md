@@ -2,24 +2,23 @@
 
 ### 1. Mode Inference
 
-Determine the **intent** of the directive by analyzing the **action verbs**:
+**Principle**: Mode is determined by what the directive describes, not by the action verb used.
 
-**generate**: Creating new features/files from scratch
-- **Action verbs**: "create", "add", "new", "implement", "build", "initialize", "set up"
-- **Key indicator**: No existing code is being modified
+**Observation target**: Observe what the directive addresses to determine mode.
 
-**refactor**: Modifying/improving existing code
-- **Action verbs**: "fix", "update", "change", "improve", "refactor", "optimize", "modify", "correct", "adjust"
-- **Key indicator**: Directive mentions fixing, changing, or improving existing code
+| Checkpoint | What to observe | Mode |
+|-----------|----------------|------|
+| **Broken behavior** | Does the directive describe incorrect, missing, or failing behavior? | `refactor` |
+| **New capability** | Does the directive describe functionality that does not yet exist? | `generate` |
+| **Understanding only** | Does the directive request explanation without describing any problem or missing capability? | `explain` |
 
-**explain**: Understanding/documenting code (READ-ONLY, NO changes)
-- **Action verbs**: "explain", "describe", "analyze", "understand", "document", "show", "tell"
-- **Key indicator**: NO action verbs for modification
+**Constraint**: Do NOT classify as `explain` when the directive describes broken or incorrect behavior. Broken behavior implies modification is needed → `refactor`.
 
-⚠️ **Decision Rules**:
-- If directive contains ANY modification verbs (fix, change, update) → **refactor**
-- If directive contains ONLY investigation verbs (check, analyze) with NO modification → **explain**
-- If directive contains creation verbs (create, add, build) → **generate**
+**Constraint**: Classify as `explain` ONLY when the directive requests pure understanding and describes NO broken behavior and NO missing capability.
+
+**Constraint**: When the directive describes both broken behavior and new capability, choose `refactor` if existing behavior is the primary subject, `generate` if new capability is the primary subject.
+
+⚠️ **Blind spot**: Investigation verbs ("analyze", "investigate", "find root cause", "check") easily mask modification intent. When these verbs accompany descriptions of broken or incorrect behavior, the mode is `refactor`, not `explain`.
 
 ---
 
