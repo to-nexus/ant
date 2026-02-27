@@ -133,6 +133,12 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
       uiReferences: null as any,
       uiAssetsList: null as any,
       isResume: null as any,
+      existingDesignDocs: null as any,
+      recursionCount: null as any,
+      recursionLimit: null as any,
+      interruption: null as any,
+      awaitingDetectClarify: null as any,
+      awaitingClarify: null as any,
       // Worker-specific
       workerId: null as any,
       _taskCompleted: null as any,

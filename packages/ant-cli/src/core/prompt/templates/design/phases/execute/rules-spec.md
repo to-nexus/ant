@@ -15,9 +15,23 @@
 
 **Constraint**: When you need to inspect multiple files, issue ALL needed tool calls in ONE response. Do NOT discover incrementally when the context already reveals the needed set.
 
-**Constraint**: Do NOT explore the entire codebase. Focus only on the area directly relevant to the directive.
+**Constraint**: Do NOT explore the entire codebase. Focus only on the area directly relevant to this section's scope.
 
-⚠️ **Blind spot**: LLMs tend to write specs from imagination rather than observation. If the directive references existing functionality, ALWAYS verify with tools before writing the spec.
+⚠️ **Blind spot**: LLMs tend to write specs from imagination rather than observation. If the directive references existing functionality, ALWAYS verify with tools before writing.
+
+════════════════════════════════════════════════════════════════════════════════
+
+## Section Scope Constraint
+
+**Principle**: Each task covers exactly the scope assigned to it. Overlap between sections produces duplicate, contradictory, or incomplete specs.
+
+**Constraint**: Write ONLY the content described in the CURRENT SECTION SCOPE. Do NOT write content that belongs to other sections.
+
+**Constraint**: Do NOT repeat content that appears in ALREADY WRITTEN sections.
+
+**Constraint**: Each section must be independently readable but reference earlier sections by name rather than restating their content.
+
+⚠️ **Blind spot**: LLMs tend to write "complete" documents rather than assigned sections. Always check CURRENT SECTION SCOPE before writing.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -48,7 +62,7 @@
 
 **Rules:**
 1. Output `<done>true</done>` ONLY after:
-   - Document content has been generated with `<file>` tag
+   - Document content has been generated with `<file>` or `<append>` tag
    - You have no more tool calls to make
 
 2. **Do NOT output `<done>true</done>` if:**
@@ -59,7 +73,7 @@
 3. **Typical flow:**
    ```
    Turn 1: search_code(...), read_file(...) → Wait
-   Turn 2: <file>...</file> + <done>true</done>
+   Turn 2: <file>...</file> or <append>...</append> + <done>true</done>
    ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
