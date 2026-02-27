@@ -15,11 +15,20 @@ Scoring: Each category is scored **0–4**, total **0–20**.
 - Avoids implementation details (hooks, lifecycle, component props, storage keys).
 - Describes modules/services through **contracts**, not methods/code.
 - Includes rationale and tradeoffs where appropriate.
+- Intentional tech stack decisions (framework, runtime, key libraries) are stated as architectural choices with rationale, not penalized as implementation detail.
 
 ### ✘ Weak Indicators (0–2)
-- Mentions concrete React/Vue/Unity APIs, lifecycle events, state hooks.
+- Mentions framework-internal APIs (lifecycle hooks, state primitives, internal routing APIs) that belong in code, not architecture.
 - Hardcodes data structures, DTO shapes, LocalStorage keys, URL formats.
 - Reads like an implementation guide instead of an architecture document.
+
+### ⚠ Exemptions (Not Penalized)
+The following are AI-essential operational context required for implementation and MUST NOT be penalized:
+- Intentional tech stack choices (e.g., "Use React 18 with Next.js App Router") when stated as architectural decisions.
+- Environment variable names required for runtime configuration (e.g., `NEXT_PUBLIC_API_URL`, `DATABASE_URL`).
+- SDK initialization keys or service credentials references needed for third-party integration.
+- Package registry configuration (e.g., `.npmrc` scoped registry settings for private packages).
+- External service endpoints or API base URLs that the AI must know to wire integrations.
 
 ---
 
@@ -80,12 +89,20 @@ Scoring: Each category is scored **0–4**, total **0–20**.
 - No references to concrete hooks (useState/useEffect), CSS classes, timers, recoil atoms, redux slices.
 - No mention of data schema specifics unless cross-layer contract.
 - No component prop details or DOM structures.
-- No localStorage key names, routing syntax, HTTP URLs, or library configs.
+- No localStorage key names, internal routing syntax, or internal library configs (except items listed in Exemptions).
 
 ### ✘ Weak Indicators (0–2)
 - Contains many direct implementation details.
 - Reads like code disguised as design.
 - System Design includes concrete state shapes, method names, or UI event wiring.
+
+### ⚠ Exemptions (Not Penalized)
+Operational context that AI requires for correct implementation is NOT leakage:
+- Environment variable names and their purposes.
+- SDK/API keys or credential references (not actual secret values).
+- Registry or package manager configuration needed for project setup.
+- Explicitly chosen tech stack names and versions as architectural constraints.
+- External API base URLs or webhook endpoints required for integration wiring.
 
 ---
 
