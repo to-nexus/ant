@@ -1,17 +1,19 @@
 /**
  * Spec Decompose
- * 
- * Creates a single task for spec document generation.
- * Unlike system-design (multi-file LLM decomposition) and ui-design (multi-chapter LLM decomposition),
- * spec always produces exactly ONE document: spec-{slug}.md.
- * 
- * The slug is derived from the directive using a lightweight LLM call.
+ *
+ * LLM-driven chapter decomposition for spec document generation.
+ * The LLM analyzes the directive and decides how many sections are needed,
+ * producing one DesignTask per section. Each section writes to the same
+ * spec-{slug}.md file (appended sequentially).
+ *
+ * For simple directives, the LLM may return a single section — identical
+ * behaviour to the previous implementation, with no regression.
  */
 
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../code/state";
-import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
+import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
 import {
   saveCheckpoint,
   updateKanban,
@@ -27,56 +29,104 @@ interface DecomposeContext {
   newJobTiming: any;
 }
 
-/**
- * Generate a URL-safe slug from LLM analysis of the directive.
- * Falls back to a timestamp-based slug if LLM fails.
- */
-async function resolveSlug(
+// ─────────────────────────────────────────────────────────────
+// LLM response shape
+// ─────────────────────────────────────────────────────────────
+
+interface SpecSection {
+  id: string;       // e.g. "spec-social-login-1"
+  name: string;     // e.g. "Overview & Requirements"
+  scope: string;    // Description of what this section covers
+}
+
+interface SpecDecomposeResponse {
+  slug: string;
+  title: string;
+  sections: SpecSection[];
+}
+
+// ─────────────────────────────────────────────────────────────
+// LLM call: decompose directive into slug + sections
+// ─────────────────────────────────────────────────────────────
+
+async function decomposeSpecSections(
   state: DesignGraphState
-): Promise<{ slug: string; specTitle: string }> {
+): Promise<SpecDecomposeResponse> {
   const directive = state.overrideDirective || state.directive || '';
   const llm = await resolveLLMClient(state);
-  if (!llm) {
-    return { slug: `feature-${Date.now()}`, specTitle: directive.slice(0, 60) };
-  }
+
+  const fallback = (): SpecDecomposeResponse => ({
+    slug: `feature-${Date.now()}`,
+    title: directive.slice(0, 60),
+    sections: [
+      {
+        id: `spec-feature-${Date.now()}-1`,
+        name: 'Full Spec',
+        scope: directive,
+      },
+    ],
+  });
+
+  if (!llm) return fallback();
 
   const prompt = [
-    `Given the following user directive, extract:`,
-    `1. A short URL-safe slug (lowercase, hyphens, no spaces, max 40 chars) that identifies the feature/task.`,
-    `2. A human-readable title for the spec document.`,
+    `You are a software architect. Analyze the following directive and decompose it into`,
+    `sequential spec document sections.`,
+    ``,
+    `Rules:`,
+    `- Return 1 section for simple, single-boundary tasks.`,
+    `- Return 2–5 sections for complex, multi-boundary tasks.`,
+    `- Sections must be ordered: earlier sections feed context into later ones.`,
+    `- Each section must be independently writable given the previous sections.`,
     ``,
     `Directive: "${directive}"`,
     ``,
-    `Respond with ONLY a JSON object:`,
-    `{"slug": "social-login", "title": "Social Login Integration"}`,
+    `Respond with ONLY a JSON object (no markdown):`,
+    `{`,
+    `  "slug": "short-url-safe-slug",`,
+    `  "title": "Human Readable Title",`,
+    `  "sections": [`,
+    `    { "id": "spec-{slug}-1", "name": "Section Name", "scope": "What this section covers" },`,
+    `    { "id": "spec-{slug}-2", "name": "Section Name", "scope": "What this section covers" }`,
+    `  ]`,
+    `}`,
   ].join('\n');
 
   try {
-    let response = '';
-    for await (const event of llm.stream(
+    const result = await (llm as any).invokeWithUsage?.(
       [{ role: 'user', content: prompt }],
-      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: 256, enableThinking: false }
-    )) {
-      if (event.text) response += event.text;
-      
-      const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
-      const usage = extractTokenUsageFromStreamEvent(event);
-      if (usage) await trackTokenUsage(state, usage);
-    }
+      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: 512 }
+    );
+    const response: string = result?.content || await llm.invoke([{ role: 'user', content: prompt }]);
+
+    await trackTokenUsage(state, result?.usage);
 
     const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      const slug = (parsed.slug || '').replace(/[^a-z0-9-]/g, '').slice(0, 40) || `feature-${Date.now()}`;
-      const title = parsed.title || directive.slice(0, 60);
-      return { slug, specTitle: title };
-    }
-  } catch (error) {
-    console.warn('⚠️  [specDecompose] Failed to resolve slug via LLM:', error);
-  }
+    if (!jsonMatch) throw new Error('No JSON found in LLM response');
 
-  return { slug: `feature-${Date.now()}`, specTitle: directive.slice(0, 60) };
+    const parsed: SpecDecomposeResponse = JSON.parse(jsonMatch[0]);
+
+    // Validate
+    const slug = (parsed.slug || '').replace(/[^a-z0-9-]/g, '').slice(0, 40) || `feature-${Date.now()}`;
+    const title = parsed.title || directive.slice(0, 60);
+    const sections: SpecSection[] = Array.isArray(parsed.sections) && parsed.sections.length > 0
+      ? parsed.sections.map((s, i) => ({
+          id: s.id || `spec-${slug}-${i + 1}`,
+          name: s.name || `Section ${i + 1}`,
+          scope: s.scope || '',
+        }))
+      : [{ id: `spec-${slug}-1`, name: 'Full Spec', scope: directive }];
+
+    return { slug, title, sections };
+  } catch (error) {
+    console.warn('⚠️  [specDecompose] Failed to decompose via LLM, using fallback:', error);
+    return fallback();
+  }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Main export
+// ─────────────────────────────────────────────────────────────
 
 export async function decomposeSpec(
   state: DesignGraphState,
@@ -93,23 +143,31 @@ export async function decomposeSpec(
 
   await showChatPlaceholder();
 
-  const { slug, specTitle } = await resolveSlug(state);
+  const { slug, title, sections } = await decomposeSpecSections(state);
   const targetFile = `spec-${slug}.md`;
 
-  console.log(`📋 [specDecompose] Target: ${targetFile} ("${specTitle}")`);
+  console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${sections.length} section(s)`);
+  sections.forEach((s, i) => console.log(`   ${i + 1}. ${s.name}: ${s.scope.slice(0, 80)}`));
 
-  const task: DesignTask = {
-    id: `spec-${slug}`,
-    name: `Spec: ${specTitle}`,
-    type: 'doc',
-    priority: 200,
-    targetFile,
-    description: directive,
-    completed: false,
-  };
-
+  // Build one DesignTask per section
   const taskQueue = new TaskQueue<DesignTask>();
-  taskQueue.push(task);
+
+  sections.forEach((section, index) => {
+    const task: DesignTask = {
+      id: section.id,
+      name: `Spec: ${title} — ${section.name}`,
+      type: 'doc',
+      priority: 200 + index * 10,
+      targetFile,
+      description: directive,
+      sectionIndex: index,
+      totalSections: sections.length,
+      sectionScope: section.scope,
+      parallelGroup: `spec-${slug}`,
+      completed: false,
+    };
+    taskQueue.push(task);
+  });
 
   updateKanban(state, null, taskQueue.getAll());
 
@@ -118,7 +176,7 @@ export async function decomposeSpec(
     ctx.newJobId,
     'decompose-spec',
     directive.length,
-    { targetFile, slug, jobMode }
+    { targetFile, slug, title, sectionCount: sections.length, jobMode }
   );
 
   await saveCheckpoint(state, {
