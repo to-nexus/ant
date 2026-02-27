@@ -234,12 +234,35 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       isFirstMsg = false;
     }
 
+    // Writing deadline: inject escalating urgency based on call index
+    const callIndex = state._docGenCallIndex || 0;
+    const SOFT_DEADLINE = 10;
+    const HARD_DEADLINE = 15;
+
+    let deadlineMsg = '';
+    if (callIndex >= HARD_DEADLINE) {
+      deadlineMsg =
+        `⚠️ WRITING DEADLINE: You have used ${callIndex} turns exploring. ` +
+        `You MUST generate the spec document NOW using <file> or <append> tag, then output <done>true</done>. ` +
+        `No more tool calls — write the document with what you have gathered so far.`;
+    } else if (callIndex >= SOFT_DEADLINE) {
+      deadlineMsg =
+        `Note: You have spent ${callIndex} turns exploring the codebase. ` +
+        `Start writing the spec document soon. Gather only what is strictly necessary, then produce the document.`;
+    }
+
     // Anthropic API requires conversation to end with a user message.
     // If history ends with assistant (e.g., retry after no <done>), append continuation.
     if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+      const text = deadlineMsg ? `Continue.\n\n${deadlineMsg}` : 'Continue.';
       messages.push({
         role: 'user',
-        content: [{ type: 'text', text: 'Continue.' }],
+        content: [{ type: 'text', text }],
+      });
+    } else if (deadlineMsg) {
+      messages.push({
+        role: 'user',
+        content: [{ type: 'text', text: deadlineMsg }],
       });
     }
 

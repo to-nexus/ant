@@ -25,6 +25,14 @@ const AVAILABLE_MODELS: LLMModelInfo[] = [
     recommended: true,
     capabilities: ['coding', 'reasoning', 'large-context']
   },
+  {
+    id: 'claude-opus-4-6',
+    displayName: 'Opus 4.6',
+    provider: 'anthropic',
+    description: 'Most capable Claude model, best for complex reasoning',
+    recommended: false,
+    capabilities: ['coding', 'reasoning', 'large-context', 'complex-analysis']
+  },
 ];
 
 /**

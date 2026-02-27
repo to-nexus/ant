@@ -11,6 +11,7 @@ import { learn } from "./nodes/learn";
 import { detectEnvironment } from "./nodes/detectEnvironment";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
+import { routeAfterDocGen } from "./routers/docGenRouter";
 
 /**
  * Check task status and handle completion
@@ -144,6 +145,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       conversationHistory: [],  // ✅ CRITICAL: Reset conversation history between tasks
       files: [],  // ✅ CRITICAL: Reset files for next task (each task generates fresh)
       tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Return accumulated job-level token usage
+      _docGenCallIndex: 0,  // ✅ Reset call budget for next task
     };
   }
   
@@ -443,6 +445,9 @@ export function buildDesignGraph() {
       // ✅ Parallel orchestrator failure signal (propagated to learn for failure-aware handling)
       interruption: null as any,
 
+      // ✅ DocGen call budget tracking
+      _docGenCallIndex: null as any,
+
       // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
       awaitingDetectClarify: null as any,
       awaitingClarify: null as any,
@@ -585,28 +590,10 @@ export function buildDesignGraph() {
   );
   (graph as any).addEdge("plan", "docGen");
   
-  // ✅ Conditional routing: docGen → tool (if tool call) or checkTaskStatus (if done) or docGen (retry)
+  // ✅ Conditional routing: docGen → tool / checkTaskStatus / docGen (with call budget safety net)
   graph.addConditionalEdges(
     "docGen" as any,
-    ((s: DesignGraphState) => {
-      // Check if there are pending tool calls
-      const toolCalls = s.llmResponse?.toolCalls;
-      if (toolCalls && toolCalls.length > 0) {
-        console.log(`🔧 [Graph] Tool call detected: ${toolCalls[0].name}`);
-        return "tool";  // Execute tool
-      }
-      
-      // ✅ CRITICAL: Check for explicit done signal (same pattern as Code Job)
-      // Only complete task if LLM explicitly output <done>true</done>
-      const isDone = s.llmResponse?.done === true;
-      if (isDone) {
-        return "checkTaskStatus";  // Task complete
-      }
-      
-      // ✅ No tool calls and no explicit done → LLM response incomplete, retry
-      console.warn(`⚠️  [Graph] No tool calls and done=${s.llmResponse?.done} - retrying docGen`);
-      return "docGen";  // Retry (LLM will continue from conversation history)
-    }) as any,
+    routeAfterDocGen as any,
     { tool: "tool", checkTaskStatus: "checkTaskStatus", docGen: "docGen" } as any
   );
   
