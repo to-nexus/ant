@@ -37,18 +37,20 @@ You are analyzing requirements to break them into design tasks.
 {
   "documentType": "unified",
   "jobMode": "refactor",
-  "targetFiles": ["{{primaryDesignFile}}"],
+  "targetFiles": ["{chosen-file-from-existing-list}"],
   "tasks": [
     {
       "id": "refactor-{section}",
       "name": "Refactor: {brief description}",
-      "targetFile": "{{primaryDesignFile}}",
+      "targetFile": "{chosen-file-from-existing-list}",
       "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 200
     }
   ]
 }
 ```
+
+**⚠️ Choose `targetFile` based on the directive.** Analyze which existing document the requested change belongs to, and target ONLY that file. Do NOT include files unrelated to the requested change in `targetFiles`.
 
 {{else}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
