@@ -543,9 +543,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   }
   
   // ✅ Log job_complete event and finalize debug loggers
-  // Skip in worker context — each worker task should NOT finalize the shared log files.
-  // Only the main graph's final learn call should log job_complete and close the JSON arrays.
-  if (!_isLearnWorkerContext && state.context?.featurePath && state._httpJobId) {
+  // Only on the very last task (queue empty) in the main graph context.
+  // Without the isLastTask guard, orchestrator failures trigger premature logging
+  // and clear the loggers before remaining tasks have a chance to run on resume.
+  if (isLastTask && !_isLearnWorkerContext && state.context?.featurePath && state._httpJobId) {
     const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');
     const { clearTokenLogger } = await import('../../../../../core/utils/tokenLogger');
     const execLogger = getExecutionLogger({

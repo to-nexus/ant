@@ -261,6 +261,50 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // SETUP FAST PATH: Skip keyword/RAG/tool-loop entirely.
+  // New projects have no existing code to search or explore.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (nextTask.type === 'setup') {
+    console.log(`⚡ [Plan] Setup task — skipping keyword/RAG/tool-loop (no existing code to search)`);
+
+    const emptyCodeContext = {
+      source: 'plan' as const,
+      filePaths: [] as string[],
+      files: [] as any[],
+      stats: { filesLoaded: 0, stackTraceCount: 0, semanticCount: 0, deduplicatedCount: 0, estimatedTokens: 0 },
+    };
+
+    const setupRemainingTasks = (state.taskQueue?.getAll() || [])
+      .filter(t => t.id !== nextTask.id)
+      .map(t => ({ id: t.id, name: t.name, description: t.description, priority: t.priority }));
+
+    const setupPlanText = await generatePlanText(
+      llm, nextTask, state, emptyCodeContext, [],
+      state.violations, undefined, setupRemainingTasks,
+    );
+
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+    }
+
+    return {
+      ...state,
+      currentTask: nextTask,
+      projectCodeContext: emptyCodeContext,
+      referenceCodeContexts: [],
+      lessons: [],
+      planText: setupPlanText,
+      retries: isRetry ? state.retries : 0,
+      completedTasksDetails: state.completedTasksDetails || [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      workspaceConfig: state.workspaceConfig,
+      _planExploring: false,
+      planConversationHistory: undefined,
+    };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0.8: Generate directory tree early (for keyword LLM)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let directoryTree: string | undefined;
@@ -397,7 +441,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ✅ Split injection: Extract only needed UI sections for this task
   const uiDocForPlan = (() => {
     if (!state.parsedUiDocs) return undefined;
-    if (nextTask.type === 'setup' || nextTask.type === 'doc') return undefined;
+    if (nextTask.type === 'doc') return undefined;
     
     // Check if UI injection is needed
     const needsUi = (() => {
@@ -436,7 +480,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
   if (tryToolsFirst) {
     const violationsText = state.violations?.length ? formatViolations(state.violations) : undefined;
-    const prompt = await buildPlanPrompt(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks);
+    const prompt = await buildPlanPrompt(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true });
     const messages = [{ role: 'user' as const, content: prompt }];
     const result = await runPlanLLMWithTools(state, messages, nextTask);
     if (result && '_planExploring' in result) {

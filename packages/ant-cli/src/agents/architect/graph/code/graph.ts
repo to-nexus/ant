@@ -1050,17 +1050,23 @@ export function buildCodeGraph() {
   // This allows the agent to re-analyze the problem and create a better strategy
   graph.addEdge("enforce" as any, "plan" as any);
   
-  // ✅ NEW: Learn node routing - continue to next task or end
+  // ✅ Learn node routing - continue to next task or end
+  // Universal rule: if orchestrator set an interruption (task failure, recursion limit,
+  // user stop), respect the decision and stop. Queue data is preserved for resume.
   graph.addConditionalEdges(
     "learn" as any,
     ((s: ArchitectGraphState) => {
-      // Check if more tasks exist in queue
+      if ((s as any).interruption) {
+        const reason = (s as any).interruption.reason;
+        console.log(`\n⛔ [Learn] Interruption detected (${reason}) → stopping execution\n`);
+        return "__end__";
+      }
       if (s.taskQueue && !s.taskQueue.isEmpty()) {
         console.log(`\n📋 [Learn] More tasks in queue (${s.taskQueue.size()} remaining) → continuing to plan\n`);
-        return "plan";  // ← Next task
+        return "plan";
       } else {
         console.log(`\n✅ [Learn] All tasks completed! Workflow finished.\n`);
-        return "__end__";  // ← All done
+        return "__end__";
       }
     }) as any,
     { plan: "plan", __end__: "__end__" } as any
