@@ -97,6 +97,7 @@ export async function orchestrator(params: {
         let interruptedJob = 'design';
         let interruptedAgent = 'architect';
         let foundInterruptedSession = false;
+        let existingTaskSummary: string | undefined;
 
         for (const entry of getAllSessionPaths(featurePath)) {
           if (fsSync.existsSync(entry.path)) {
@@ -107,6 +108,21 @@ export async function orchestrator(params: {
                 interruptedAgent = entry.agent;
                 foundInterruptedSession = true;
                 console.log(`🔧 [Orchestrator:InlineAsk] Detected interrupted job: ${interruptedAgent}/${interruptedJob}`);
+
+                // Build task summary for continuation assessment
+                const taskQueue = data.state?.taskQueue;
+                const completedTasks = data.state?.completedTasks;
+                if (taskQueue && Array.isArray(taskQueue) && taskQueue.length > 0) {
+                  const taskLines = taskQueue.map((t: any, i: number) =>
+                    `${i + 1}. [${t.status || 'pending'}] ${t.title || t.description || t.id || 'Untitled task'}`
+                  );
+                  const completedCount = Array.isArray(completedTasks) ? completedTasks.length : 0;
+                  existingTaskSummary = `Pending tasks (${taskQueue.length}):\n${taskLines.join('\n')}`;
+                  if (completedCount > 0) {
+                    existingTaskSummary += `\n\nCompleted tasks: ${completedCount}`;
+                  }
+                  console.log(`📋 [Orchestrator:InlineAsk] Task summary: ${taskQueue.length} pending, ${completedCount} completed`);
+                }
                 break;
               }
             } catch {
@@ -127,11 +143,16 @@ export async function orchestrator(params: {
           projectId: project,
           deps: { llm, memory },
           _httpJobId: jobId,
+          existingTaskSummary,
         });
 
         return {
           status: result.status,
           intent: result.intent,
+          action: result.action,
+          suggestedJob: result.suggestedJob,
+          suggestedAgent: result.suggestedAgent,
+          redirectReason: result.redirectReason,
           response: result.response,
           noSession: !foundInterruptedSession,
         };

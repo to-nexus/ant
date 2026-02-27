@@ -267,7 +267,11 @@ export class RouteConfigurator {
           if (isInlineAsk) {
             const intent = data.result?.output?.intent;
             const noSession = data.result?.output?.noSession === true;
-            logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent}, noSession=${noSession})`, {
+            const action = data.result?.output?.action;
+            const suggestedJob = data.result?.output?.suggestedJob;
+            const suggestedAgent = data.result?.output?.suggestedAgent;
+            const redirectReason = data.result?.output?.redirectReason;
+            logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent}, action=${action}, noSession=${noSession})`, {
               component: 'RouteConfigurator'
             });
             
@@ -292,12 +296,16 @@ export class RouteConfigurator {
                       featureName,
                       jobId,
                       intent,
+                      action,
+                      suggestedJob,
+                      suggestedAgent,
+                      redirectReason,
                       noSession,
                       timestamp: new Date().toISOString(),
                     },
                     userContext,
                   });
-                  logger.info(`Broadcast inline-ask completion: ${jobId} (intent=${intent}, noSession=${noSession})`, {
+                  logger.info(`Broadcast inline-ask completion: ${jobId} (intent=${intent}, action=${action}, noSession=${noSession})`, {
                     component: 'RouteConfigurator'
                   });
                 }

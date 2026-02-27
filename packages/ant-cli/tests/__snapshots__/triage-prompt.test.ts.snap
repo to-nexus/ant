@@ -6,6 +6,25 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 
 ## CLASSIFICATION PROTOCOL
 
+### Step 0.5: Continuation Assessment (when existing task context is present)
+
+**Applies when**: EXISTING TASK CONTEXT section is present in the input.
+
+**Principle**: Determine whether the directive addresses the same scope as existing tasks or introduces an independent scope. This classification is independent of intent — perform it BEFORE Step 1.
+
+**Observation target**: Compare the directive's subject matter with the scope described in existing tasks.
+
+| Observation | continuationType |
+|-------------|-----------------|
+| Directive supplements, refines, or adds constraints to existing task scope | \`supplement\` |
+| Directive addresses a scope independent from all existing tasks | \`newScope\` |
+
+**Constraint**: When existing tasks address scope A and the directive addresses scope B with no overlap, this is \`newScope\`.
+
+**Constraint**: When the directive provides additional context, constraints, or corrections for the existing task scope, this is \`supplement\`.
+
+**Constraint**: When the EXISTING TASK CONTEXT section is NOT present, omit \`continuationType\` from the response entirely.
+
 ### Step 1: Observe Intent
 
 **Principle**: Classify by **what the request produces**, not by the action verb.
@@ -19,13 +38,20 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 
 **Constraint**: Do NOT classify by verb alone. The same verb can imply different intents depending on context.
 
-⚠️ **Blind Spot — Ant system vs. project code**: Observe whether the question targets the **Ant tool** or the **user's project**:
+**Constraint**: Directives describing broken, incorrect, or failing behavior in the user's project are ALWAYS \`work\`. Broken behavior requires investigation or modification of project code — this is never an Ant system question.
+
+**Constraint**: Do NOT classify as \`ask\` based on sentence form (question, imperative, declarative). Only the CONTENT determines intent. A question about the user's project is \`work\`, not \`ask\`.
+
+⚠️ **Blind Spot — Ant system vs. project code**: Observe whether the directive targets the **Ant tool** or the **user's project**:
+- Descriptions of broken, incorrect, or failing project behavior → \`work\` (regardless of sentence form)
 - Questions about user's project code, architecture, or implementation → \`work\` (code job's explain mode)
 - Questions about Ant system, workflow, or capabilities → \`ask\`
-- Do NOT classify project code questions as \`ask\` just because they use question form
+
+⚠️ **Blind Spot — broken behavior in question form**: Directives describing broken or unexpected project behavior using question syntax are easily misclassified as \`ask\`. Observe what the content DESCRIBES, not the sentence structure. If the content describes broken behavior, missing functionality, or incorrect project state → ALWAYS \`work\`.
 
 ⚠️ **Blind Spot — quality judgment vs. explanation**: Observe whether the user wants **a quality judgment** or **an explanation/modification**:
-- Request to score, grade, or assess quality → \`ask\` (rubric-based evaluation)
+- Request to score, grade, or assess quality against a rubric → \`ask\` (rubric-based evaluation)
+- Correctness validation of project behavior (does X work? why doesn't Y appear?) → \`work\` (this is NOT rubric-based scoring — it describes broken behavior)
 - Request to explain or describe project code or artifacts → \`work\` (current job's explain capability)
 - Request to modify or create artifacts → \`work\` (current job's generation capability)
 - Prior evaluation/assessment mentioned as context or basis for the request does NOT change the expected output type — observe the PRIMARY output the user expects, not the inputs they reference
@@ -40,16 +66,16 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 | UI planning, design, visual specification | \`design\` |
 | System architecture, API design, system planning | \`design\` |
 | Source code files (.ts, .tsx, .js, .py, etc.) | \`code\` |
-| Code implementation, bug fixes | \`code\` |
-| Codebase analysis, indexing | \`learn\` |
+| Code implementation, bug fixes (single boundary) | \`code\` |
+| Spec creation, feature-scoped planning, codebase analysis for design purposes | \`design\` |
+| Explicit codebase indexing request | \`learn\` |
 | PRD (Product Requirements Document) creation or editing | \`plan\` |
 
-**Principle**: 
-- "Update UI spec" → \`design\` (target is design document)
-- "Update component code" → \`code\` (target is source code)
-- If user explicitly mentions "design" or "planning" → \`design\`
+**Principle**: The target job is determined by the PRIMARY OUTPUT the user expects, not by intermediate steps needed. Codebase analysis that feeds into spec/design output → \`design\`. Codebase analysis that feeds into code modification → \`code\`.
 
 **Priority**: Step 2 classification by request target is authoritative. Subsequent steps (2.5, 2.7) refine routing WITHIN the classified job — they do NOT reclassify the target job.
+
+**Constraint**: When current job is \`code\` and the request would redirect to \`code\` (same job), this is a classification error. Re-evaluate whether the request actually needs \`design\` (spec) or truly belongs to \`code\` (single-boundary implementation).
 
 ⚠️ **Blind Spot — Design ↔ Plan mutual boundary (design or plan job)**: Design and Plan jobs share overlapping context (requirements, architecture, scope). When EITHER is the current job, do NOT redirect to the other — **neither job NOR agent** — UNLESS the user names the other job's artifact type explicitly:
 - Current=\`plan\`: only redirect to \`design\`/\`architect\` when user explicitly names a design artifact (UI spec, system design doc). PRD content about technology/architecture is NOT a signal.
@@ -61,9 +87,9 @@ This constraint does NOT apply to \`code\` or \`learn\` jobs — those redirect 
 
 ### Step 2.5: Spec Suggestion (Code Job Only)
 
-**Applies when**: Current job is \`code\` AND intent is \`work\` AND **Step 2 classified the request target as \`code\`**.
+**Applies when**: Current job is \`code\` AND intent is \`work\`.
 
-**Principle**: Scope breadth determines whether upfront specification benefits the task. Action verbs do NOT determine scope.
+**Principle**: When a task spans multiple independent boundaries, upfront specification prevents wasted effort. The design job has full codebase analysis capability — redirecting to design does NOT lose any analytical power.
 
 **Observation target**: Observe the scope breadth of what the directive addresses, independent of how the request is framed.
 
@@ -72,27 +98,22 @@ This constraint does NOT apply to \`code\` or \`learn\` jobs — those redirect 
 | **Boundary count** | Does the directive address multiple independent subsystems, modules, or persistence boundaries? |
 | **Spec documents** | Do feature-scoped spec documents (\`spec-*.md\`) exist in workspace? |
 
-**Constraint**: Do NOT skip scope observation based on how the request is framed. Investigation, diagnosis, and implementation requests can all span multiple boundaries.
+**Decision**:
+- Multiple boundaries + no spec documents → \`redirect\` to \`design\` job
+- Multiple boundaries + spec documents exist → \`proceed\` (already planned)
+- Single boundary → \`proceed\` (spec unnecessary)
 
-**Constraint**: When scope breadth spans multiple independent boundaries AND no spec documents exist, set \`redirect\` to \`design\` job with \`redirectReason\`.
+**Constraint**: Do NOT skip scope observation based on how the request is framed. Investigation, diagnosis, root cause analysis, and implementation requests can all span multiple boundaries.
 
-**Constraint**: When spec documents exist for the relevant scope, proceed normally — the task approach is already planned.
+**Constraint**: Presence of design documents (system design, API contract, UI specification) does NOT substitute for spec documents. Design documents provide architectural guidance; spec documents provide task-scoped planning.
 
-**Constraint**: Presence of design documents (system design, API contract, UI specification) does NOT substitute for spec documents. Design documents provide architectural guidance; spec documents provide task-scoped planning. Do NOT skip spec suggestion based on design document presence alone.
-
-**Constraint**: When the request targets a single boundary (one file, one module, one isolated behavior), proceed normally regardless of action verb.
-
-**Constraint**: When the request explicitly references a spec document by name, proceed normally.
+**Constraint**: When suggesting spec, set \`suggestedJob: "design"\` and \`suggestedAgent: "architect"\`.
 
 **Constraint**: This step ONLY applies when \`currentJob === "code"\`. Do NOT apply to other jobs.
 
-**Constraint**: This step does NOT override Step 2 classification. If Step 2 classified the request target as belonging to a different job (e.g., \`design\`), that classification stands — do NOT suppress the redirect.
+⚠️ **Blind spot — scope underestimation**: Root cause analysis, debugging, and investigation for bugs that manifest in one place but originate across multiple layers (UI, data, API, state management) span multiple boundaries. Observe the FULL scope of affected subsystems, not just where the symptom appears.
 
-**Constraint**: When suggesting spec, set \`suggestedJob: "design"\` and \`suggestedAgent: "architect"\`. The design job will detect spec intent from the directive automatically.
-
-⚠️ **Blind spot**: Request framing (investigation, diagnosis, fix, new feature) easily masks scope breadth. A directive that says "investigate" or "find root cause" can span the same boundaries as one that says "implement". Observe boundary count, not how the request is framed.
-
-⚠️ **Blind spot**: Design documents (system design, API contract) are easily confused with spec documents. Design documents describe system architecture. Spec documents (\`spec-*.md\`) describe task-scoped implementation plans. Observe the SPEC DOCUMENTS section in workspace state, not the DESIGN DOCUMENTS section.
+⚠️ **Blind spot — design documents vs. spec documents**: Design documents describe system architecture. Spec documents (\`spec-*.md\`) describe task-scoped implementation plans. Observe the SPEC DOCUMENTS section in workspace state, not the DESIGN DOCUMENTS section.
 
 ### Step 2.7: Determine Agent Match (for work intent)
 
@@ -111,9 +132,13 @@ This constraint does NOT apply to \`code\` or \`learn\` jobs — those redirect 
 |-------------|--------|
 | Request matches current job capability AND prerequisites present | \`proceed\` |
 | Request content belongs to DIFFERENT job or agent than current | \`redirect\` |
-| Request matches current job BUT prerequisites missing | \`blocked\` |
+| Request matches current job BUT REQUIRED prerequisites missing | \`blocked\` |
 
 **Constraint**: If request content requires different job or agent capability than current, MUST set \`redirect\` with \`suggestedJob\` (and \`suggestedAgent\` if agent differs).
+
+**Constraint**: Only missing REQUIRED prerequisites trigger \`blocked\`. Missing RECOMMENDED prerequisites do NOT affect status — proceed normally.
+
+**Constraint**: Step 2.5 redirect decisions are FINAL for code jobs. When Step 2.5 has set \`redirect\` (spec suggestion), Step 3 MUST NOT override it with a different redirect or blocked status.
 
 ## SCOPE BOUNDARY (for ask intent)
 
@@ -161,7 +186,9 @@ When user input appears to be:
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → \`ask\` + \`inScope: false\`, ask for clarification
 ⚠️ **Workspace state ≠ User intent**: Workspace document presence indicates past work output, NOT current user intent. Observe the REQUEST TARGET (what the user wants to produce now), not the WORKSPACE STATE (what already exists). Existing documents do NOT change the classification of a request whose target is a different job's activity.
 ⚠️ **Redirect prerequisite principle**: Redirect validity depends on whether the target job's PREREQUISITES (defined in its capabilities section) exist — not on whether its OUTPUT documents already exist. Absent outputs indicate the target job hasn't run yet, which is a reason to redirect, not to block it.
-⚠️ **Spec suggestion (code job)**: Observe scope breadth, not action verb. Multi-boundary requests with NO spec documents → suggest \`redirect\` to \`design\`. Design documents (system design, API contract) do NOT substitute for spec documents. Single-boundary requests → do NOT suggest regardless of verb.
+⚠️ **Required vs. Recommended**: Only REQUIRED prerequisites affect routing decisions. Missing RECOMMENDED prerequisites are informational only — they NEVER trigger \`blocked\` or \`redirect\` to a different job.
+⚠️ **Spec suggestion (code job)**: Multi-boundary requests with NO spec documents → MUST \`redirect\` to \`design\`. The design job has full codebase analysis capability — redirecting loses nothing. Single-boundary requests → \`proceed\` in code. Design documents do NOT substitute for spec documents.
+⚠️ **NEVER redirect code→code**: If current job is \`code\` and you would set \`suggestedJob: "code"\`, STOP — this is always wrong. Re-evaluate: multi-boundary → \`design\`, single-boundary → \`proceed\`.
 ⚠️ **Document creation vs. code implementation ambiguity (design job)**: When current job is \`design\`, observe whether the request target is unambiguously a **document** or **source code**:
   - Unambiguous document target (write/draft/create a specification, architecture document) → \`proceed\` in design
   - Unambiguous source code target (fix bug, modify source file, build runnable application) → \`redirect\` to \`code\`
@@ -201,8 +228,6 @@ Build an API
 ### Spec Documents
 ❌ No spec documents
 
-### Codebase
-❌ Not indexed
 ❌ No design documents
 
 ## AVAILABLE JOBS
@@ -363,6 +388,7 @@ Improves quality, adds missing sections, clarifies requirements.
 
 
 
+
 ## RESPONSE FORMAT
 
 <triage>
@@ -371,6 +397,8 @@ Improves quality, adds missing sections, clarifies requirements.
   
   "inScope": true | false,       // true = the ask system will handle this with its own tools
   "askResponse": "Brief description of what will be looked up (when inScope=true) OR direct answer (when inScope=false)",
+  
+  "continuationType": "supplement" | "newScope",  // only when EXISTING TASK CONTEXT is present
   
   "workStatus": "proceed" | "redirect" | "blocked",
   "suggestedAgent": "architect | planner",

@@ -28,10 +28,15 @@ export interface InlineAskParams {
   projectId?: string;
   deps: { llm: any; memory?: any };
   _httpJobId?: string;
+  existingTaskSummary?: string;
 }
 
 export interface InlineAskResult {
   intent: 'ask' | 'work';
+  action?: 'continue' | 'newJob' | 'redirect';
+  suggestedJob?: string;
+  suggestedAgent?: string;
+  redirectReason?: string;
   response?: string;
   status: 'completed' | 'paused';
 }
@@ -79,6 +84,7 @@ export async function runInlineAsk(params: InlineAskParams): Promise<InlineAskRe
     currentAgent,
     workspaceState,
     jobCapabilities,
+    existingTaskSummary: params.existingTaskSummary,
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -159,10 +165,47 @@ export async function runInlineAsk(params: InlineAskParams): Promise<InlineAskRe
     }
   }
 
-  // ✅ Work intent: Return immediately, let frontend trigger continueJob
-  console.log('🔧 [InlineAsk] Work intent detected. Frontend should trigger continueJob.');
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 5: Handle Work Intent — derive action + send choice card for redirect
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const workStatus = triageResult.workStatus;
+  const continuationType = triageResult.continuationType;
+
+  let action: InlineAskResult['action'] = 'continue';
+
+  if (workStatus === 'redirect') {
+    action = 'redirect';
+  } else if (continuationType === 'newScope') {
+    action = 'newJob';
+  }
+
+  console.log(`🔧 [InlineAsk] Work intent: action=${action}, workStatus=${workStatus}, continuationType=${continuationType || 'none'}`);
+
+  if (action === 'redirect' && triageResult.needsChoice && triageResult.choiceOptions) {
+    try {
+      console.log('📤 [InlineAsk] Sending triage choice card for redirect...');
+      const chatAPI = getChatAPIClient();
+      await chatAPI.startMessage();
+      await chatAPI.sendTriageChoice(
+        triageResult.displayMessage || triageResult.redirectReason || 'A different job is more suitable.',
+        params._httpJobId || 'unknown',
+        triageResult.choiceOptions,
+        triageResult,
+        message
+      );
+      await chatAPI.finalizeMessage();
+      console.log('✅ [InlineAsk] Triage choice card sent');
+    } catch (chatError) {
+      console.error('❌ [InlineAsk] Failed to send triage choice card:', chatError);
+    }
+  }
+
   return {
     intent: 'work',
+    action,
+    suggestedJob: triageResult.suggestedJob,
+    suggestedAgent: triageResult.suggestedAgent,
+    redirectReason: triageResult.redirectReason,
     status: 'completed',
   };
 }
