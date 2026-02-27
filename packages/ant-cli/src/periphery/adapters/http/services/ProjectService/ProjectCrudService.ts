@@ -133,6 +133,9 @@ export class ProjectCrudService {
         },
         learn: {
           default: defaultModel,
+        },
+        plan: {
+          default: defaultModel,
         }
       }
     };
@@ -267,6 +270,12 @@ export class ProjectCrudService {
         config.llmModels.learn.default = defaultLLMModel;
       }
       
+      if (!config.llmModels.plan) {
+        config.llmModels.plan = { default: defaultLLMModel };
+      } else if (!config.llmModels.plan.default && defaultLLMModel) {
+        config.llmModels.plan.default = defaultLLMModel;
+      }
+      
       return config;
     } catch (error) {
       // If config doesn't exist, return minimal default config
@@ -282,6 +291,9 @@ export class ProjectCrudService {
             default: defaultLLMModel,
           },
           learn: {
+            default: defaultLLMModel,
+          },
+          plan: {
             default: defaultLLMModel,
           }
         }

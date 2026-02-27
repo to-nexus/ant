@@ -33,6 +33,7 @@ export interface LLMModels {
   design?: JobLLMConfig;      // Design job configuration
   code?: JobLLMConfig;        // Code job configuration
   learn?: JobLLMConfig;       // Learn job configuration
+  plan?: JobLLMConfig;        // Plan job configuration (Planner agent)
 }
 
 /**
@@ -143,6 +144,9 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         default: defaultModel,
       },
       learn: {
+        default: defaultModel,
+      },
+      plan: {
         default: defaultModel,
       },
     } : undefined,

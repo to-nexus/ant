@@ -21,7 +21,7 @@ interface LLMConfig {
  * Job/Node context for model selection
  */
 export interface LLMContext {
-  jobType: 'design' | 'code' | 'learn';
+  jobType: 'design' | 'code' | 'learn' | 'plan';
   nodeType?: 'decompose' | 'plan' | 'docGen' | 'codeGen' | 'tool' | 'validate' | 'learn' | 'detectEnvironment';
 }
 
