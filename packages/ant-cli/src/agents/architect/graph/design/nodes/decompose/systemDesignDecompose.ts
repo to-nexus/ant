@@ -93,7 +93,8 @@ function isSystemDesignFile(fileName: string): boolean {
 function validateAndFixTargetFiles(
   response: SystemDesignResponse,
   resolvedTargetFiles: string[],
-  _detectedEnv: string | undefined
+  _detectedEnv: string | undefined,
+  jobMode: JobMode = 'generate'
 ): SystemDesignResponse {
   // Step 1: MSA expansion FIRST (before any task validation)
   // Replaces -main.md with per-service/package files when MSA is detected
@@ -139,7 +140,22 @@ function validateAndFixTargetFiles(
     );
   }
 
-  // Step 3: documentType inference
+  // Step 3 (refactor only): Narrow targetFiles to only what the LLM chose to modify.
+  // In refactor mode the LLM intentionally targets a subset of files — respect that
+  // instead of forcing coverage on all resolved files.
+  if (jobMode === 'refactor' && response.tasks.length > 0) {
+    const llmTargetedFiles = [...new Set(response.tasks.map(t => t.targetFile))];
+    if (llmTargetedFiles.length < effectiveTargetFiles.length) {
+      console.log(
+        `ℹ️  [validateAndFixTargetFiles] Refactor mode: narrowing targetFiles from ` +
+        `[${effectiveTargetFiles.join(', ')}] → [${llmTargetedFiles.join(', ')}]`
+      );
+      effectiveTargetFiles = llmTargetedFiles;
+      response.targetFiles = effectiveTargetFiles;
+    }
+  }
+
+  // Step 4: documentType inference
   const hasMSA = (response.services?.length ?? 0) > 0 || (response.fePackages?.length ?? 0) > 0;
   const hasApiContract = effectiveTargetFiles.some(f => f.startsWith('api-contract-'));
   if (hasMSA) {
@@ -150,11 +166,15 @@ function validateAndFixTargetFiles(
     response.documentType = 'contract-first';
   }
 
-  // Step 4: Coverage check (unified for all cases)
-  const coveredFiles = new Set(response.tasks.map(t => t.targetFile));
-  const uncovered = effectiveTargetFiles.filter(f => !coveredFiles.has(f));
-  if (uncovered.length > 0) {
-    response.tasks.push(...generateMinimumTasks(uncovered));
+  // Step 5: Coverage check — generate mode only.
+  // In refactor mode, Step 3 already narrowed targetFiles to the LLM's selection,
+  // so forcing tasks for uncovered files would re-introduce the files we just trimmed.
+  if (jobMode !== 'refactor') {
+    const coveredFiles = new Set(response.tasks.map(t => t.targetFile));
+    const uncovered = effectiveTargetFiles.filter(f => !coveredFiles.has(f));
+    if (uncovered.length > 0) {
+      response.tasks.push(...generateMinimumTasks(uncovered));
+    }
   }
 
   return response;
@@ -337,9 +357,11 @@ export async function decomposeSystemDesign(
     // Normalize: validate against resolved targets (single path for all environments)
     const effectiveResolvedFiles = resolvedTargetFiles
       || resolveDesignTargetFiles(detectedEnv as JobEnvironment, jobMode as JobMode, existingDesignFiles).targetFiles;
-    response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv);
+    response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv, jobMode as JobMode);
 
-    // Validate: every targetFile must have at least one task
+    // Validate: every targetFile must have at least one task.
+    // In refactor mode, targetFiles were already narrowed to LLM's selection in
+    // validateAndFixTargetFiles, so this validates the narrowed set.
     const { valid, uncovered } = validateTaskCoverage(response);
     if (!valid) {
       throw new Error(`Task coverage incomplete: no tasks for [${uncovered.join(', ')}]`);
