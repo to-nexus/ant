@@ -68,6 +68,7 @@ ARG RUST_VERSION=""
 ARG JAVA_VERSION=""
 
 # Base system deps (curl/bash needed by rustup/uv/mise installers)
+# libc6-compat: required to run official Go binaries (glibc-linked) on Alpine (musl)
 RUN apk add --no-cache \
     git \
     ca-certificates \
@@ -77,6 +78,7 @@ RUN apk add --no-cache \
     gcc \
     musl-dev \
     build-base \
+    libc6-compat \
     docker-cli \
     docker-cli-compose
 
@@ -190,10 +192,12 @@ FROM node:20-alpine AS production
 ARG GO_VERSION="1.23.6"
 
 # Install runtime dependencies
+# libc6-compat: required to run official Go binaries (glibc-linked) on Alpine (musl)
 RUN apk add --no-cache \
     git \
     ca-certificates \
-    wget
+    wget \
+    libc6-compat
 
 # Go toolchain (official binary + GOTOOLCHAIN=auto for per-project version switching)
 RUN if [ -n "${GO_VERSION}" ]; then \
@@ -280,4 +284,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 
 # Start server using tsx (avoids ESM module resolution issues)
 CMD ["tsx", "src/composition/server.ts"]
-
