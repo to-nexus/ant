@@ -39,34 +39,69 @@ function LiveElapsedTime({ startedAt }: { startedAt: string }) {
 }
 
 /**
- * Calculate elapsed time from JobTiming using Date.now().
+ * Wall-clock elapsed time from JobTiming.
  * Pure function — call on every render for real-time display.
+ * Uses the same formula for all states (completed/paused/running).
  */
-function calculateJobElapsed(jobTiming: JobTiming, totalElapsedTime?: number): number {
-  // Completed: use final value
-  if (jobTiming.completedAt) {
-    return totalElapsedTime ?? jobTiming.totalElapsedTime ?? 0;
-  }
-
-  // Paused: calculate elapsed up to pause point
-  if (jobTiming.pausedAt) {
-    const start = new Date(jobTiming.startedAt).getTime();
-    const paused = new Date(jobTiming.pausedAt).getTime();
-    return Math.max(0, paused - start - (jobTiming.totalPausedDuration || 0));
-  }
-
-  // Running: calculate from Date.now()
+function calculateJobElapsed(jobTiming: JobTiming): number {
   const start = new Date(jobTiming.startedAt).getTime();
-  return Math.max(0, Date.now() - start - (jobTiming.totalPausedDuration || 0));
+  const paused = jobTiming.totalPausedDuration || 0;
+
+  if (jobTiming.completedAt) {
+    return Math.max(0, new Date(jobTiming.completedAt).getTime() - start - paused);
+  }
+  if (jobTiming.pausedAt) {
+    return Math.max(0, new Date(jobTiming.pausedAt).getTime() - start - paused);
+  }
+  return Math.max(0, Date.now() - start - paused);
+}
+
+/**
+ * Calculate wall-clock duration for the tasks phase using interval merging.
+ * Overlapping intervals (parallel tasks) are merged so their time is not double-counted.
+ */
+function calculateTasksWallClock(
+  completedTasks?: Array<{ timing?: { startedAt?: string; completedAt?: string } }>,
+  inProgressTasks?: Array<{ timing?: { startedAt?: string } }>
+): number {
+  const intervals: [number, number][] = [];
+
+  for (const task of completedTasks || []) {
+    if (task.timing?.startedAt && task.timing?.completedAt) {
+      intervals.push([
+        new Date(task.timing.startedAt).getTime(),
+        new Date(task.timing.completedAt).getTime(),
+      ]);
+    }
+  }
+  for (const task of inProgressTasks || []) {
+    if (task.timing?.startedAt) {
+      intervals.push([new Date(task.timing.startedAt).getTime(), Date.now()]);
+    }
+  }
+  if (intervals.length === 0) return 0;
+
+  intervals.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [intervals[0]];
+  for (let i = 1; i < intervals.length; i++) {
+    const last = merged[merged.length - 1];
+    if (intervals[i][0] <= last[1]) {
+      last[1] = Math.max(last[1], intervals[i][1]);
+    } else {
+      merged.push(intervals[i]);
+    }
+  }
+  return merged.reduce((sum, [s, e]) => sum + (e - s), 0);
 }
 
 interface ElapsedTimeBadgeProps {
-  totalElapsedTime?: number;
   jobTiming?: JobTiming;
   completedTasks?: Array<{
     id: string;
     name: string;
     timing?: {
+      startedAt?: string;
+      completedAt?: string;
       elapsedTime?: number;
     };
   }>;
@@ -78,7 +113,6 @@ interface ElapsedTimeBadgeProps {
       elapsedTime?: number;
     };
   }>;
-  /** Current estimating node activity (e.g., { label: "환경 분석 중", startedAt: "..." }) */
   estimatingActivity?: {
     label: string;
     startedAt: string;
@@ -93,7 +127,6 @@ interface ElapsedTimeBadgeProps {
  * Same proven pattern as LiveElapsedTime.
  */
 export function ElapsedTimeBadge({
-  totalElapsedTime,
   jobTiming,
   completedTasks,
   inProgressTasks,
@@ -113,8 +146,7 @@ export function ElapsedTimeBadge({
     return null;
   }
 
-  // ✅ Pure calculation on every render — always uses Date.now() for running jobs
-  const realtimeElapsed = calculateJobElapsed(jobTiming, totalElapsedTime);
+  const realtimeElapsed = calculateJobElapsed(jobTiming);
   
   // Format elapsed time (include seconds for real-time updates)
   const formattedTime = formatElapsedTime(realtimeElapsed, true);
@@ -122,10 +154,11 @@ export function ElapsedTimeBadge({
   // Calculate breakdown
   const estimatingTime = jobTiming.estimatingDuration || 0;
   const isEstimatingFinalized = !!jobTiming.estimatingDuration;
-  const tasksTotal = completedTasks?.reduce((sum, task) => {
-    return sum + (task.timing?.elapsedTime || 0);
-  }, 0) || 0;
+  const tasksTotal = calculateTasksWallClock(completedTasks, inProgressTasks);
   const taskCount = (completedTasks?.length || 0) + (inProgressTasks?.length || 0);
+  const tasksSequentialSum = (completedTasks?.reduce((s, t) => s + (t.timing?.elapsedTime || 0), 0) || 0)
+    + (inProgressTasks?.reduce((s, t) => s + (t.timing?.startedAt ? Date.now() - new Date(t.timing.startedAt).getTime() : 0), 0) || 0);
+  const parallelSaved = tasksSequentialSum - tasksTotal;
   
   // Build tooltip content
   const tooltipContent = (
@@ -222,6 +255,27 @@ export function ElapsedTimeBadge({
                 </span>
               </div>
             ))}
+            {/* Parallel execution breakdown */}
+            {parallelSaved > 1000 && (
+              <div className="space-y-0.5 pt-1 mt-1 border-t border-blue-200 dark:border-blue-800">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {t('header.parallelTotal')}
+                  </span>
+                  <span className="font-mono text-gray-600 dark:text-gray-400">
+                    {formatElapsedTime(tasksSequentialSum, true)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                    {t('header.parallelSaved')}
+                  </span>
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                    -{formatElapsedTime(parallelSaved, true)}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

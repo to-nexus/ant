@@ -12,7 +12,6 @@ export interface JobTiming {
   completedAt?: string;           // 완료 시간
   totalPausedDuration: number;    // 총 일시정지 시간 (ms)
   estimatingDuration?: number;    // Estimating 단계 소요 시간 (ms, decompose 완료까지)
-  totalElapsedTime?: number;      // 총 실 소요 시간 (ms, 일시정지 제외)
 }
 
 export class JobTimingManager {

@@ -26,47 +26,6 @@ export class KanbanService {
   // Last-known-good session cache to survive partial writes (file read fallback)
   private lastGoodSessionByPath: Map<string, any> = new Map();
   
-  /**
-   * Calculate total elapsed time for a job
-   */
-  private calculateTotalElapsedTime(
-    jobTiming: any | undefined,
-    completedTasksDetails: any[],
-    currentTask: any | null
-  ): number {
-    if (!jobTiming) {
-      if (process.env.DEBUG_KANBAN === '1') {
-        console.warn(`⚠️  [KanbanService] calculateTotalElapsedTime: No jobTiming data!`);
-      }
-      return 0;
-    }
-    
-    let totalElapsed = 0;
-    
-    // 1. Add estimating duration
-    if (jobTiming.estimatingDuration) {
-      totalElapsed += jobTiming.estimatingDuration;
-    }
-    
-    // 2. Add completed tasks elapsed time
-    for (const task of completedTasksDetails) {
-      if (task.timing?.elapsedTime) {
-        totalElapsed += task.timing.elapsedTime;
-      } else if (task.elapsedTime) {
-        totalElapsed += task.elapsedTime;
-      }
-    }
-    
-    // 3. Add current task elapsed time (if in progress)
-    if (currentTask?.timing?.startedAt) {
-      const currentTaskStartTime = new Date(currentTask.timing.startedAt).getTime();
-      const currentTaskElapsed = Date.now() - currentTaskStartTime - (currentTask.timing.totalPausedDuration || 0);
-      totalElapsed += currentTaskElapsed;
-    }
-    
-    return Math.max(0, totalElapsed);
-  }
-  
   constructor(workspaceRoot: string, workspaceResolver?: WorkspaceResolver, stateStore?: StateStorePort) {
     this.workspaceRoot = workspaceRoot;
     this.workspaceResolver = workspaceResolver;
@@ -325,12 +284,6 @@ export class KanbanService {
       if (isEstimating) {
         dlog(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot)`);
         
-        const totalElapsedTime = this.calculateTotalElapsedTime(
-          sessionState.jobTiming,
-          completedTasksDetails,
-          null
-        );
-        
         return {
           jobId: sessionJobId,
           todo: sessionTaskQueue,
@@ -344,24 +297,16 @@ export class KanbanService {
           dataSource: 'estimating',
           recursionCount: sessionState.recursionCount || 0,
           recursionLimit: sessionState.recursionLimit || finalLimit,
-          totalElapsedTime,
           jobTiming: sessionState.jobTiming,
-        tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
-        estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage,
-        // Node activity banner from snapshot
-        estimatingLabel: liveSnapshot.estimatingLabel,
-        estimatingStartedAt: liveSnapshot.estimatingStartedAt,
-        estimatingNodeId: liveSnapshot.estimatingNodeId,
-      };
-    }
+          tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
+          estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage,
+          estimatingLabel: liveSnapshot.estimatingLabel,
+          estimatingStartedAt: liveSnapshot.estimatingStartedAt,
+          estimatingNodeId: liveSnapshot.estimatingNodeId,
+        };
+      }
       
       dlog(`\n🔴 [KanbanService] LIVE DATA from Redis returned\n`);
-      
-      const totalElapsedTime = this.calculateTotalElapsedTime(
-        sessionState.jobTiming,
-        liveCompletedTasks,
-        liveCurrentTask
-      );
       
       return {
         jobId: sessionJobId,
@@ -378,7 +323,6 @@ export class KanbanService {
         recursionLimit: liveSnapshot.recursionLimit || finalLimit,
         pausedDueToLimit: sessionState.pausedDueToLimit || false,
         tasksRemaining: sessionState.tasksRemaining || 0,
-        totalElapsedTime,
         jobTiming: sessionState.jobTiming,
         tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
         estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage
@@ -388,12 +332,6 @@ export class KanbanService {
     // Priority 2: ESTIMATING (job running but no live snapshot yet)
     if (sessionJobId && !isJobCompleted && isActuallyRunning && !liveSnapshot) {
       dlog(`\n🎯 [KanbanService] ESTIMATING STATE (no live snapshot yet)`);
-      
-      const totalElapsedTime = this.calculateTotalElapsedTime(
-        sessionState.jobTiming,
-        completedTasksDetails,
-        null
-      );
       
       return {
         jobId: sessionJobId,
@@ -408,7 +346,6 @@ export class KanbanService {
         dataSource: 'estimating',
         recursionCount: sessionState.recursionCount || 0,
         recursionLimit: sessionState.recursionLimit || finalLimit,
-        totalElapsedTime,
         jobTiming: sessionState.jobTiming,
         tokenUsage: sessionState.tokenUsage,
         estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
@@ -417,12 +354,6 @@ export class KanbanService {
     
     // Priority 3: SESSION DATA (job completed or no session)
     dlog(`\n📁 [KanbanService] SESSION DATA returned`);
-    
-    const totalElapsedTime = this.calculateTotalElapsedTime(
-      sessionState.jobTiming,
-      completedTasksDetails,
-      currentTask
-    );
     
     return {
       jobId: sessionJobId,
@@ -441,7 +372,6 @@ export class KanbanService {
       interruption: sessionState.interruption,
       recursionCount: sessionState.recursionCount,
       recursionLimit: sessionState.recursionLimit || finalLimit,
-      totalElapsedTime,
       jobTiming: sessionState.jobTiming,
       tokenUsage: sessionState.tokenUsage,
       estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
