@@ -5,6 +5,7 @@ import { PromptModeConfig } from "./ModeController";
 import { AssembledContext } from "./ContextAssembler";
 import { formatGitDiffForPrompt } from "../../codebase/GitDiffSummary";
 import { getLanguageInstruction, UserLanguage } from "../../utils/languageDetector";
+import { sanitizeInjectionVars } from "./InputSanitizer";
 
 /**
  * Composed prompt parts
@@ -62,9 +63,11 @@ export class TemplateComposer {
     // Design doc is already filtered by detectEnvironment node
     
     // 4. Render base template
+    // User-controlled fields (prdSpec, directive, designDoc) are wrapped
+    // in boundary tags by sanitizeInjectionVars to mitigate prompt injection.
     const base = await this.renderTemplate(
       modeConfig.templates.base,
-      {
+      sanitizeInjectionVars({
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         // Variables used by code/phases/execute/base.md and design/phases/execute/base-system-design.md
@@ -104,7 +107,7 @@ export class TemplateComposer {
         
         // ✅ Used in {{#if hasUiDoc}} for UI specification existence
         hasUiDoc: (assembled as any).hasUiDoc || false
-      },
+      }),
       failedTemplates,
       true // critical: base template failure = job must fail
     );
@@ -371,7 +374,8 @@ export class TemplateComposer {
 
     };
     
-    return varMap[filename] || {};
+    const vars = varMap[filename] || {};
+    return sanitizeInjectionVars(vars);
   }
   
   /**
