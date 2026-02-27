@@ -98,6 +98,41 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     console.log(`   hasNewDirective: ${hasNewDirective}`);
     console.log(`   → Router will decide next node\n`);
     
+    // ✅ existingDesignDocs: always reload from disk (per state.ts contract)
+    // NOT stored in session, so must be scanned here even on resume.
+    // Without this, detectEnvironment sees hasSystemDocs=false after user_stopped + retry.
+    const featurePath = context.featurePath || '';
+    if (featurePath) {
+      const fs = await import('fs');
+      const DESIGN_FILE_PATTERNS = [
+        /^api-contract-.+\.md$/,
+        /^fe-system-.+\.md$/,
+        /^be-system-.+\.md$/,
+      ];
+      try {
+        const designDirAbs = path.join(featurePath, "outputs/design");
+        if (fs.existsSync(designDirAbs)) {
+          const designEntries = fs.readdirSync(designDirAbs, { withFileTypes: true });
+          const designFiles = designEntries.filter(
+            (e: any) => !e.isDirectory() && DESIGN_FILE_PATTERNS.some(p => p.test(e.name))
+          );
+          if (designFiles.length > 0) {
+            const reloaded: Record<string, string> = {};
+            for (const entry of designFiles) {
+              const content = fs.readFileSync(path.join(designDirAbs, entry.name), 'utf-8');
+              if (content?.trim()) {
+                reloaded[entry.name] = content;
+              }
+            }
+            state.existingDesignDocs = reloaded;
+            console.log(`📄 [Design Resolve] Reloaded existingDesignDocs: [${Object.keys(reloaded).join(', ')}]`);
+          }
+        }
+      } catch {
+        // Non-critical: design directory may not exist yet
+      }
+    }
+    
     // ✅ Record phase timing
     state._phaseTimings = { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart };
     
