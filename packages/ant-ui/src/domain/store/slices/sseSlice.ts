@@ -482,64 +482,91 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           }
           break;
         
-        // ✅ Inline Ask: Handle completion of inline-ask during interrupted jobs
+        // ✅ Inline Ask: Handle completion with 3-way routing
         case 'inline_ask_complete': {
           const intent = event.intent as 'ask' | 'work';
+          const action = event.action as 'continue' | 'newJob' | 'redirect' | undefined;
           const inlineAskContext = get().inlineAskContext;
-          console.log(`[Store] 💬 Inline ask complete: intent=${intent}, jobId=${event.jobId}`);
+          console.log(`[Store] 💬 Inline ask complete: intent=${intent}, action=${action}, jobId=${event.jobId}`);
           
           if (intent === 'work' && inlineAskContext) {
             const noSession = event.noSession === true;
-            
-            if (noSession) {
-              // ✅ Work intent but no interrupted session exists — start a fresh job
-              console.log('[Store] ⚠️ Work intent + noSession → starting fresh job instead of continue');
-              
+
+            const dismissInterruption = () => {
               const kanbanData = get().kanban;
               if (kanbanData?.interruption?.timestamp) {
                 get().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
               }
-              
+            };
+
+            const cleanupCancelledCard = () => {
+              if (inlineAskContext.interruptedJobId) {
+                get().removeCancelledMessage(inlineAskContext.interruptedJobId);
+              }
+            };
+
+            const startFreshJob = (jobType?: string, agent?: string) => {
+              dismissInterruption();
+              cleanupCancelledCard();
               get().setInlineAskContext(null);
               
               const state = get() as any;
-              const jobType = state.selectedJobType || 'design';
-              const agent = state.selectedAgent || 'architect';
+              const effectiveJobType = jobType || state.selectedJobType || 'design';
+              const effectiveAgent = agent || state.selectedAgent || 'architect';
               
-              import('@/infrastructure/http/api').then(({ executeJob }) => {
-                executeJob({
-                  projectId: inlineAskContext.projectId,
-                  featureName: inlineAskContext.featureName,
-                  jobType,
-                  agent,
-                  overrideDirective: inlineAskContext.message,
-                  chatSource: true,
-                }).then((result) => {
-                  console.log('[Store] ✅ Fresh job started:', result.jobId);
-                  get().setRunning(true, result.jobId);
-                  get().setLastJobFailed(false);
-                }).catch((error) => {
-                  console.error('[Store] ❌ Fresh job start failed:', error);
-                  get().setRunning(false);
+              import('@/infrastructure/http/api').then(({ clearSessionData, executeJob }) => {
+                clearSessionData(
+                  inlineAskContext.projectId,
+                  inlineAskContext.featureName,
+                  state.selectedJobType || 'code'
+                ).then(() => {
+                  console.log('[Store] ✅ Session cleared for fresh start');
+                }).catch(() => {
+                  console.warn('[Store] ⚠️ Session clear failed, proceeding anyway');
+                }).finally(() => {
+                  executeJob({
+                    projectId: inlineAskContext.projectId,
+                    featureName: inlineAskContext.featureName,
+                    jobType: effectiveJobType,
+                    agent: effectiveAgent,
+                    overrideDirective: inlineAskContext.message,
+                    chatSource: true,
+                  }).then((result) => {
+                    console.log('[Store] ✅ Fresh job started:', result.jobId);
+                    get().setRunning(true, result.jobId);
+                    get().setLastJobFailed(false);
+                  }).catch((error) => {
+                    console.error('[Store] ❌ Fresh job start failed:', error);
+                    get().setRunning(false);
+                  });
                 });
               });
+            };
+            
+            if (noSession) {
+              console.log('[Store] ⚠️ Work intent + noSession → starting fresh job');
+              startFreshJob();
+            } else if (action === 'redirect') {
+              // Scenario 3: Redirect — choice card already sent by backend
+              // Only cleanup UI state; do NOT auto-start job (user interacts with choice card)
+              console.log('[Store] 🔀 Work + redirect → dismissing interruption, awaiting choice card');
+              dismissInterruption();
+              cleanupCancelledCard();
+              get().setRunning(false);
+              get().setInlineAskContext(null);
+            } else if (action === 'newJob') {
+              // Scenario 2: New independent task → clear session, start fresh same mode
+              console.log('[Store] 🆕 Work + newJob → clear session, start fresh');
+              startFreshJob();
             } else {
-              // ✅ Work intent: Auto-continue the interrupted job
-              console.log('[Store] 🔧 Work intent → auto-continuing interrupted job:', inlineAskContext.interruptedJobId);
+              // Scenario 1 (default): Supplement existing task → continueJob (revise)
+              console.log('[Store] 🔧 Work + continue → auto-continuing interrupted job:', inlineAskContext.interruptedJobId);
               
-              // Dismiss interruption before continuing
-              const kanbanData = get().kanban;
-              if (kanbanData?.interruption?.timestamp) {
-                get().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-              }
-              
-              // Keep isRunning true, update jobId to the interrupted one
+              dismissInterruption();
+              cleanupCancelledCard();
               get().setRunning(true, inlineAskContext.interruptedJobId);
-              
-              // Clear inline ask context
               get().setInlineAskContext(null);
               
-              // Trigger continueJob
               import('@/infrastructure/http/api').then(({ continueJob }) => {
                 continueJob(
                   inlineAskContext.interruptedJobId,

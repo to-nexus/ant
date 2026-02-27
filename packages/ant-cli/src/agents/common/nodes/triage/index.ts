@@ -336,8 +336,9 @@ export function buildTriagePrompt(params: {
   currentAgent: string;
   workspaceState: WorkspaceState;
   jobCapabilities: string;
+  existingTaskSummary?: string;
 }): { system: string; user: string } {
-  const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities } = params;
+  const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities, existingTaskSummary } = params;
   
   const { base, rules } = loadTriageTemplates();
   
@@ -365,6 +366,9 @@ export function buildTriagePrompt(params: {
     hasCodebase: workspaceState.hasCodebase,
     indexedFileCount: workspaceState.indexedFileCount || 'unknown',
     hasDesignDoc: workspaceState.hasDesignDoc,
+    // Existing task context (for continuation assessment)
+    hasExistingTasks: !!existingTaskSummary,
+    existingTaskSummary,
   });
   
   return { system: rules, user };

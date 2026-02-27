@@ -69,6 +69,8 @@ export interface ChoiceOptions {
 /**
  * TriageResult: Triage 분석 결과
  */
+export type ContinuationType = 'supplement' | 'newScope';
+
 export interface TriageResult {
   intent: Intent;
   
@@ -78,6 +80,7 @@ export interface TriageResult {
   
   // work 관련
   workStatus?: WorkStatus;
+  continuationType?: ContinuationType;
   
   // work → redirect
   suggestedAgent?: string;
