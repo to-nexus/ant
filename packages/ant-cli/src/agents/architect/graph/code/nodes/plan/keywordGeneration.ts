@@ -17,8 +17,11 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getSessionDebugDir } from "../../../../../../core/utils/sessionPaths";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { TaskKeywords } from "./combineCodeContext";
+import { KeywordDeduplicator } from "../../../../../../core/prompt/engine/InputSanitizer";
 
 export type { TaskKeywords };
+
+const keywordDedup = new KeywordDeduplicator();
 
 /**
  * Generate task-specific keywords using LLM
@@ -29,6 +32,16 @@ export async function generateTaskKeywords(
   state: ArchitectGraphState,
   directoryTree?: string
 ): Promise<TaskKeywords> {
+  if (keywordDedup.isDuplicate(task.id)) {
+    console.warn(`⚠️  [Plan-Keyword] Duplicate call for task "${task.id}" (call #${keywordDedup.getCallCount(task.id)}), using fallback keywords`);
+    return {
+      errorFiles: [],
+      keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
+      requiredFiles: [],
+      references: new Map()
+    };
+  }
+
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
     console.warn('[Plan] PromptEngine not available, using fallback keywords');
