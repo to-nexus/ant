@@ -19,6 +19,7 @@ import { docGen } from '../nodes/docGen/index';
 import { tool } from '../nodes/tool';
 import { learn } from '../nodes/learn';
 import type { WorkerGraphBuilder } from '../../code/parallel/types';
+import { routeAfterDocGen } from '../routers/docGenRouter';
 
 /**
  * Check task status within a design worker subgraph.
@@ -70,6 +71,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       conversationHistory: [],
       files: [],
       tokenUsage: (state as any).tokenUsage,
+      _docGenCallIndex: 0,
     } as any;
   }
 
@@ -139,6 +141,7 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
       interruption: null as any,
       awaitingDetectClarify: null as any,
       awaitingClarify: null as any,
+      _docGenCallIndex: null as any,
       // Worker-specific
       workerId: null as any,
       _taskCompleted: null as any,
@@ -157,21 +160,10 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
   graph.addEdge('__start__' as any, 'plan' as any);
   graph.addEdge('plan' as any, 'docGen' as any);
 
-  // docGen routing (tool call / done / retry)
+  // docGen routing (tool call / done / retry — with call budget safety net)
   graph.addConditionalEdges(
     'docGen' as any,
-    ((s: DesignGraphState) => {
-      const toolCalls = s.llmResponse?.toolCalls;
-      if (toolCalls && toolCalls.length > 0) {
-        return 'tool';
-      }
-      const isDone = s.llmResponse?.done === true;
-      if (isDone) {
-        return 'checkTaskStatus';
-      }
-      console.warn(`⚠️  [Worker Graph] No tool calls and done=${s.llmResponse?.done} - retrying docGen`);
-      return 'docGen';
-    }) as any,
+    routeAfterDocGen as any,
     { tool: 'tool', checkTaskStatus: 'checkTaskStatus', docGen: 'docGen' } as any,
   );
 

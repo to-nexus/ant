@@ -37,6 +37,9 @@ export async function docGen(
   // ✅ Increment recursion count (track node execution for UI gauge)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
+  // ✅ Increment docGen call index (for call budget safety net)
+  const newCallIndex = (state._docGenCallIndex || 0) + 1;
+  
   const llmClient = state.deps?.llm;
   const gitPort = state.deps?.git;
   if (!llmClient || !gitPort) {
@@ -247,6 +250,7 @@ export async function docGen(
           conversationHistory,
           awaitingClarify: true,
           llmResponse: { textResponse, done: true },
+          _docGenCallIndex: newCallIndex,
         };
       }
     }
@@ -254,6 +258,7 @@ export async function docGen(
     return {
       files,
       conversationHistory,
+      _docGenCallIndex: newCallIndex,
       // ✅ Return tool calls for routing decision
       // CRITICAL: Only mark done if LLM explicitly output <done>true</done> (same as Code Job)
       llmResponse: hasToolCalls ? {

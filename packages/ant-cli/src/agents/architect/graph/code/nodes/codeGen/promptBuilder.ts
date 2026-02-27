@@ -123,7 +123,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     'code',
     contextWithProfile,
     {
-      directive: state.directive,
+      directive: isVerificationTask ? undefined : state.directive,
       designDoc: designDocForTask,
       prdSpec: isVerificationTask ? undefined : state.prd,
       uiDoc: isVerificationTask ? undefined : uiDocForTask,
