@@ -1,17 +1,23 @@
 ## 📋 TASK CREATION RULES
 
-### Task Description Requirements
+### Task Description Role
 
-**Task descriptions guide WHAT to design, NOT HOW to implement.**
+**Constraint**: Task descriptions are TOPIC HINTS — they suggest approximate coverage areas for each task. They are NOT authoritative plans.
 
-| ❌ Forbidden | ✅ Required |
+- The **document-type guide** (frontend-guide, backend-guide, api-contract-guide) defines the allowed section catalog (scope ceiling)
+- The **individual task's plan phase** makes the actual section decisions at execution time
+- The **decompose description** provides hints about which guide sections to cover in this task
+
+**Why?** If descriptions are too prescriptive, the execution phase copies them verbatim — including invented component names, procedural flows, and implementation details. Keeping descriptions as hints lets the guide's section catalog control what actually gets written.
+
+### Task Description Content Rules
+
+| ❌ Forbidden in descriptions | ✅ Required in descriptions |
 |-------------|-------------|
-| "LocalStorage" | "client-side persistence" |
-| "React Router" | "routing mechanism" |
-| "Zustand/Redux" | "state management" |
-| "NewsData.io, TheNewsAPI" | "multi-source APIs" |
-
-**Why?** Task descriptions flow into docGen prompts. Concrete tech names get copied into System Design.
+| Concrete technology names ("LocalStorage", "React Router") | Abstract terms ("client-side persistence", "routing mechanism") |
+| Component/service names ("GNB", "AuthService") | Boundary roles ("navigation boundary", "auth orchestration") |
+| Step-by-step procedures | Topic areas referencing guide sections |
+| Implementation-level detail ("polling every 5s") | Architecture-level scope ("real-time data strategy") |
 
 ### Incremental Document Building
 
@@ -21,10 +27,11 @@
 
 ### Task Description Must Include
 
-- Which **topics** to write (NO chapter numbers!)
-- Key content to cover
+- Which **topic areas** to cover (reference guide section names, NOT chapter numbers!)
 - **Length budget**: "MAX [N] lines for this task!"
 - **Total limit**: "(Total doc limit: [Total] lines)"
+
+**Constraint**: Do NOT list specific content items beyond topic area names. The individual task's plan phase determines actual content within the guide's section catalog.
 
 ### Priority Assignment
 
@@ -59,18 +66,18 @@ API contract is written first as the single source of truth. Implementation docu
 
 ### Fullstack (frontend + backend)
 
-| Phase | Priority | Target File | Content |
+| Phase | Priority | Target File | Content Scope |
 |-------|----------|-------------|---------|
-| 1 | 200-209 | api-contract-main.md | Endpoints, DTOs, auth scheme, error format |
-| 2 | 210-229 | fe-system-main.md | Component architecture, routing, state, API integration |
-| 3 | 230-249 | be-system-main.md | Service layers, database schema, endpoint implementations |
+| 1 | 200-209 | api-contract-main.md | Per api-contract-guide section catalog |
+| 2 | 210-229 | fe-system-main.md | Per frontend-guide section catalog |
+| 3 | 230-249 | be-system-main.md | Per backend-guide section catalog |
 
 ### Backend-only (no frontend)
 
-| Phase | Priority | Target File | Content |
+| Phase | Priority | Target File | Content Scope |
 |-------|----------|-------------|---------|
-| 1 | 200-209 | api-contract-main.md | Endpoints, DTOs, auth scheme, error format |
-| 2 | 210-229 | be-system-main.md | Service layers, database schema, endpoint implementations |
+| 1 | 200-209 | api-contract-main.md | Per api-contract-guide section catalog |
+| 2 | 210-229 | be-system-main.md | Per backend-guide section catalog |
 
 **Constraint**: api-contract-*.md tasks are ALWAYS written first (exclusive). Implementation documents follow.
 
@@ -222,70 +229,15 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ---
 
-## 📋 EXAMPLES
+## 📋 STRUCTURAL EXAMPLE
 
-### Example 1: Frontend-only (Unified)
-
-```json
-{
-  "documentType": "unified",
-  "services": [],
-  "targetFiles": ["fe-system-main.md"],
-  "tasks": [
-    {
-      "id": "design-arch",
-      "name": "Design Document: Architecture & Data",
-      "targetFile": "fe-system-main.md",
-      "parallelGroup": "fe-system-main",
-      "description": "Design system architecture, API integration strategy, and data models. MAX 100 lines! (Total: 200 lines)",
-      "priority": 220
-    },
-    {
-      "id": "design-ui",
-      "name": "Design Document: UI Components",
-      "targetFile": "fe-system-main.md",
-      "parallelGroup": "fe-system-main",
-      "description": "Design component structure, routing, and interaction patterns. MAX 100 lines! (Total: 200 lines, ~100 after task 1)",
-      "priority": 240
-    }
-  ]
-}
-```
-
-### Example 2: Backend-only with API (Contract-First without FE)
+**Principle**: One example shows the JSON structure. Variations (unified, MSA) follow from the Document Type Rules and MSA Detection sections above.
 
 ```json
 {
   "documentType": "contract-first",
   "services": [],
-  "targetFiles": ["api-contract-main.md", "be-system-main.md"],
-  "tasks": [
-    {
-      "id": "design-contract",
-      "name": "API Contract Definition",
-      "targetFile": "api-contract-main.md",
-      "exclusive": true,
-      "description": "Define API contract (endpoints, DTOs, auth scheme, error format). MAX 120 lines!",
-      "priority": 200
-    },
-    {
-      "id": "design-backend",
-      "name": "Backend System Design",
-      "targetFile": "be-system-main.md",
-      "parallelGroup": "be-main",
-      "description": "Design backend architecture implementing API contract: services, database, endpoints. MAX 200 lines!",
-      "priority": 220
-    }
-  ]
-}
-```
-
-### Example 3: Frontend + Backend (Contract-First)
-
-```json
-{
-  "documentType": "contract-first",
-  "services": [],
+  "fePackages": [],
   "targetFiles": ["api-contract-main.md", "fe-system-main.md", "be-system-main.md"],
   "tasks": [
     {
@@ -293,7 +245,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "API Contract Definition",
       "targetFile": "api-contract-main.md",
       "exclusive": true,
-      "description": "Define REST endpoints, DTOs, auth scheme, error format. MAX 120 lines!",
+      "description": "Cover api-contract-guide sections. MAX 120 lines!",
       "priority": 200
     },
     {
@@ -301,7 +253,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "Frontend System Design",
       "targetFile": "fe-system-main.md",
       "parallelGroup": "fe-main",
-      "description": "Design frontend consuming API contract: components, state, integration. MAX 200 lines!",
+      "description": "Cover frontend-guide sections. MAX 200 lines! (Total: 500 lines)",
       "priority": 220
     },
     {
@@ -309,148 +261,18 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "Backend System Design",
       "targetFile": "be-system-main.md",
       "parallelGroup": "be-main",
-      "description": "Design backend implementing API contract: services, database, endpoints. MAX 200 lines!",
+      "description": "Cover backend-guide sections. MAX 200 lines! (Total: 500 lines)",
       "priority": 240
     }
   ]
 }
 ```
 
-### Example 4: Backend MSA with Multiple Services (MSA-Contract-First)
-
-```json
-{
-  "documentType": "msa-contract-first",
-  "services": ["auth", "order", "payment"],
-  "fePackages": [],
-  "targetFiles": [
-    "api-contract-auth.md",
-    "api-contract-order.md",
-    "api-contract-payment.md",
-    "fe-system-main.md",
-    "be-system-auth.md",
-    "be-system-order.md",
-    "be-system-payment.md"
-  ],
-  "tasks": [
-    {
-      "id": "design-contract-auth",
-      "name": "API Contract: Auth Service",
-      "targetFile": "api-contract-auth.md",
-      "exclusive": true,
-      "description": "Define auth service API: provided endpoints, consumed APIs, events, DTOs. MAX 80 lines!",
-      "priority": 200
-    },
-    {
-      "id": "design-contract-order",
-      "name": "API Contract: Order Service",
-      "targetFile": "api-contract-order.md",
-      "exclusive": true,
-      "description": "Define order service API: provided endpoints, consumed APIs, events, DTOs. MAX 80 lines!",
-      "priority": 201
-    },
-    {
-      "id": "design-contract-payment",
-      "name": "API Contract: Payment Service",
-      "targetFile": "api-contract-payment.md",
-      "exclusive": true,
-      "description": "Define payment service API: provided endpoints, consumed APIs, events, DTOs. MAX 80 lines!",
-      "priority": 202
-    },
-    {
-      "id": "design-frontend",
-      "name": "Frontend System Design",
-      "targetFile": "fe-system-main.md",
-      "parallelGroup": "fe-main",
-      "description": "Design frontend consuming public API from api-contracts. MAX 150 lines!",
-      "priority": 210
-    },
-    {
-      "id": "design-be-auth",
-      "name": "Backend: Auth Service",
-      "targetFile": "be-system-auth.md",
-      "targetService": "auth",
-      "parallelGroup": "be-auth",
-      "description": "Design auth service architecture implementing endpoints from api-contract-auth.md. MAX 120 lines!",
-      "priority": 220
-    },
-    {
-      "id": "design-be-order",
-      "name": "Backend: Order Service",
-      "targetFile": "be-system-order.md",
-      "targetService": "order",
-      "parallelGroup": "be-order",
-      "description": "Design order service architecture implementing endpoints from api-contract-order.md. MAX 120 lines!",
-      "priority": 230
-    },
-    {
-      "id": "design-be-payment",
-      "name": "Backend: Payment Service",
-      "targetFile": "be-system-payment.md",
-      "targetService": "payment",
-      "parallelGroup": "be-payment",
-      "description": "Design payment service architecture implementing endpoints from api-contract-payment.md. MAX 120 lines!",
-      "priority": 240
-    }
-  ]
-}
-```
-
-**⚠️ Note**: Service names (`auth`, `order`, `payment`) MUST come from PRD. Do NOT invent.
-
-### Example 5: Frontend MSA with Multiple Packages
-
-```json
-{
-  "documentType": "msa-contract-first",
-  "services": [],
-  "fePackages": ["web", "admin"],
-  "targetFiles": [
-    "api-contract-main.md",
-    "fe-system-web.md",
-    "fe-system-admin.md",
-    "be-system-main.md"
-  ],
-  "tasks": [
-    {
-      "id": "design-contract",
-      "name": "API Contract Definition",
-      "targetFile": "api-contract-main.md",
-      "exclusive": true,
-      "description": "Define API contract for both client apps (public user + admin). MAX 150 lines!",
-      "priority": 200
-    },
-    {
-      "id": "design-fe-web",
-      "name": "Frontend: Web App",
-      "targetFile": "fe-system-web.md",
-      "targetService": "web",
-      "parallelGroup": "fe-web",
-      "description": "Design public-facing web application consuming API contract. MAX 150 lines!",
-      "priority": 210
-    },
-    {
-      "id": "design-fe-admin",
-      "name": "Frontend: Admin Dashboard",
-      "targetFile": "fe-system-admin.md",
-      "targetService": "admin",
-      "parallelGroup": "fe-admin",
-      "description": "Design admin dashboard consuming API contract. MAX 120 lines!",
-      "priority": 220
-    },
-    {
-      "id": "design-backend",
-      "name": "Backend System Design",
-      "targetFile": "be-system-main.md",
-      "parallelGroup": "be-main",
-      "description": "Design backend architecture implementing API contract. MAX 200 lines!",
-      "priority": 230
-    }
-  ]
-}
-```
-
-**⚠️ Note**: Package names (`web`, `admin`) MUST come from PRD. Do NOT invent.
+**Key patterns demonstrated:**
+- `exclusive: true` for api-contract tasks (shared interface, must run alone)
+- `parallelGroup` for implementation tasks (same file = same group, different files = different groups)
+- Description references guide section catalog as topic HINTS with line budget
+- For MSA, replace `main` with `{service}` (BE/API) or `{package}` (FE) per Document Naming rules above
 
 ---
 
@@ -492,13 +314,14 @@ Before outputting, verify:
 - ✅ All fields present (id, name, targetFile, description, priority)
 - ✅ Description includes "MAX N lines!"
 - ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
+- ✅ Description references guide section names as topic hints (not implementation topics)
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 - ✅ If reference project mentioned → `references` array included
 - ✅ Every task has either `exclusive: true` OR `parallelGroup: "<id>"`
 - ✅ api-contract-* tasks have `exclusive: true`
 - ✅ Tasks targeting the same file share the same `parallelGroup`
-- ✅ All filenames use `{type}-{name}.md` format (no bare `api-contract.md` or `system-design.md`)
+- ✅ All filenames use `{type}-{identifier}.md` format (no bare `api-contract.md` or `system-design.md`)
 
 **MSA-specific validation:**
 - ✅ If `msa-contract-first` → at least one of `services` or `fePackages` is NOT empty

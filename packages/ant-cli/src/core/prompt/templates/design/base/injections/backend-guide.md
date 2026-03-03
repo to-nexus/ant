@@ -1,8 +1,8 @@
 ## ⚙️ BACKEND DESIGN DOCUMENT GUIDE
 
-**Document Type**: `be-system-main.md`
-**Role**: HOW Backend IMPLEMENTS api-contract-main.md
-**Phase**: Written AFTER api-contract-main.md is finalized
+**Document Type**: `be-system-{name}.md` (e.g., `be-system-main.md`, `be-system-auth.md`)
+**Role**: HOW Backend IMPLEMENTS the corresponding `api-contract-{name}.md`
+**Phase**: Written AFTER the corresponding api-contract document is finalized
 
 ### 🎯 What This Document IS
 
@@ -15,12 +15,12 @@
 
 **Characteristics:**
 - PROVIDER perspective: How to implement APIs, not define them
-- REFERENCE contract: "Implements LoginRequest → LoginResponse per api-contract-main.md §3.1"
+- REFERENCE contract: "Implements LoginRequest → LoginResponse per api-contract-{name}.md §3.1"
 - ARCHITECTURE focus: Layer boundaries, data flow, patterns
 
 ### 🚫 What This Document is NOT
 
-- ❌ NO API definitions (already in api-contract-main.md)
+- ❌ NO API definitions (already in the corresponding api-contract document)
 - ❌ NO DTO redefinition (reference contract only!)
 - ❌ NO full method implementations (only signatures + purpose)
 - ❌ NO detailed SQL queries (only schema + relationships)
@@ -28,31 +28,14 @@
 
 ---
 
-## 📐 REQUIRED SECTIONS
+## Section Catalog (CLOSED LIST)
 
-### 1. Overview & API Contract Compliance (mandatory)
+**Constraint**: The sections below are the ONLY sections allowed in this document (`be-system-{name}.md`). Do NOT create sections outside this catalog. Decompose task descriptions are topic HINTS — the actual sections written MUST come from this catalog. Skip sections marked "conditional" when the condition is not met.
 
-**MUST acknowledge api-contract-main.md:**
-```markdown
-## 1. Overview
-
-### System Purpose
-[Backend capabilities and business domain]
-
-### Architecture Pattern
-[Layered, Hexagonal, Clean Architecture, etc.]
-
-### API Contract Compliance
-This backend implements the **provider side** of `api-contract-main.md` EXACTLY.
-All endpoints, DTOs, and status codes match the contract specification.
-NO deviations from the contract are permitted.
-
-**Contract Implementation Checklist**:
-- ✅ All endpoints from §3 implemented
-- ✅ All request/response DTOs validated per contract
-- ✅ All error codes from §6 implemented
-- ✅ Authentication per §2 implemented
-```
+### § Overview & API Contract Compliance (mandatory)
+- System purpose and business domain
+- Selected architecture pattern with rationale (reference observation from §2)
+- API contract compliance statement referencing the corresponding `api-contract-{name}.md`
 
 ### 2. Architecture Pattern Selection
 
@@ -86,119 +69,48 @@ NO deviations from the contract are permitted.
 
 **Constraint**: Framework conventions alone do NOT satisfy architecture boundary separation when this document specifies explicit boundaries.
 
-### 3. Database Design
+### § Database Design (conditional: if persistence needed)
+- Entity relationships (conceptual schema, NOT SQL DDL)
+- Key constraints and indexes
+- Table/collection structure with field types
 
-**Schema Design:**
-```markdown
-### Users Table
-- `id`: UUID (PK)
-- `email`: VARCHAR(255), unique, indexed
-- `password_hash`: VARCHAR(255)
-- `name`: VARCHAR(100)
-- `role`: ENUM('user', 'admin')
-- `created_at`: TIMESTAMP
+**Constraint**: Focus on structure and relationships — NOT on concrete SQL syntax, DDL, or ORM mappings.
 
-**Relationships**:
-- users (1) → (N) sessions
-- users (1) → (N) posts
+### § Endpoint Implementation Mapping
 
-**Indexes**:
-- email (unique)
-- created_at (for pagination queries)
-```
+**Constraint**: NEVER redefine DTOs — reference the corresponding api-contract document only.
 
-**Focus**: Table structure, relationships, and key indexes (NOT SQL DDL)
+For EACH endpoint group, specify:
+- **Contract reference**: exact endpoint/method from the corresponding api-contract document
+- **Boundary responsibilities**: which architecture boundary handles request binding, orchestration, domain rules, persistence
+- **Error mapping policy**: how domain/application errors flow to contract error codes
+- **Idempotency / concurrency notes** (only if PRD requires or risk is obvious)
 
-### 4. Endpoint Implementation Mapping ⚠️ MOST CRITICAL
+### § Authentication & Authorization (conditional: if PRD requires auth)
+- Auth boundary placement (where enforcement happens in the architecture)
+- Auth context propagation (how identity becomes available to inner boundaries)
+- Token/session strategy at policy level (NOT algorithms, TTLs, or claims detail)
+- Authorization model (role-based, permission-based, etc.)
 
-**🚨 CRITICAL RULES:**
-1. **NEVER redefine DTOs** - Reference api-contract-main.md only
-2. **Reference contract explicitly**: "Implements LoginRequest → LoginResponse (api-contract-main.md §3.1)"
-3. **Focus on architecture-level mapping**, not step-by-step algorithms or library calls
+### § Business Logic Placement
+- Which architecture boundary owns domain rules vs orchestration vs data access
+- Transactional boundary ownership
+- Cross-cutting concern placement (logging, validation, error translation)
 
-**For EACH endpoint group, specify (repeatable template):**
-- **Contract reference**: exact endpoint/method from `api-contract-main.md` section
-- **Controller responsibility**: request binding + DTO validation + auth context extraction + error translation
-- **Application/Service responsibility**: orchestration of use case; transactional boundary (if any)
-- **Domain responsibility** (if applicable): pure business rules / invariants
-- **Persistence responsibility**: repositories/DAOs used and what they own
-- **Error mapping policy**: how domain/application errors map to contract error codes/status codes
-- **Idempotency / concurrency notes** (only if PRD requires or risk is obvious from contract)
+### § Data Storage Architecture (conditional: if persistence needed)
 
-### 5. Authentication & Authorization Implementation
-
-**Only if PRD requires auth**:
-- **Auth boundary**: where authentication is enforced (middleware/filter vs controller vs gateway)
-- **Auth context propagation**: how user identity/roles become available to application layer
-- **Token/session strategy**: name the approach at a high level; leave algorithms/TTL/claims to implementation unless PRD mandates them
-- **Refresh/revocation policy**: describe responsibilities and persistence needs, not exact mechanics
-
-**Authorization Strategy:**
-```markdown
-### Role-Based Access Control (RBAC)
-- Roles: 'user', 'admin'
-- Middleware checks user.role against required role
-- Admin endpoints require role: 'admin'
-```
-
-### 6. Business Logic Placement
-
-**Service Layer Responsibilities:**
-```markdown
-### AuthService
-- `authenticate(email, password): User` - Validates credentials
-- `generateTokens(userId): { accessToken, refreshToken }` - Creates JWT tokens
-- `refreshAccessToken(refreshToken): { accessToken }` - Issues new token
-
-### UserService  
-- `getProfile(userId): User` - Fetches user data
-- `updateProfile(userId, updates): User` - Updates user with validation
-```
-
-**Focus**: Service method signatures and responsibilities (NOT full implementations)
-
-### 7. Data Storage Architecture ⚠️ OBSERVE PRD FIRST
-
-**Do NOT default to RDB. Observe actual requirements.**
-
-#### 7.1 Storage Pattern Observation
+**Constraint**: Do NOT default to RDB. Observe actual requirements.
 
 | Checkpoint | Observation Target |
 |------------|-------------------|
-| **Schema structure** | Fixed fields (users, orders) OR dynamic/flexible (user-defined, varied documents)? |
+| **Schema structure** | Fixed fields OR dynamic/flexible? |
 | **Query patterns** | Complex joins/aggregations OR simple key-based access? |
 | **Consistency needs** | ACID transactions required OR eventual consistency acceptable? |
 | **Scale pattern** | Read-heavy? Write-heavy? Time-series? |
 
-#### 7.2 Storage Selection Principles
-
-| Pattern Observed | Storage Type |
-|-----------------|--------------|
-| Fixed schema + complex joins + transactions | RDB (PostgreSQL, MySQL) |
-| Flexible schema + document-oriented + horizontal scale | Document DB (MongoDB) |
-| High-speed key-value access + session/cache | In-memory (Redis) |
-| Time-series data + analytics | Time-series DB or Column store |
-| Multiple patterns | Hybrid (polyglot persistence) |
-
 **Constraint**: If hybrid storage needed, document which data belongs where and why.
 
-#### 7.3 Multi-Database Architecture (if applicable)
-
-**If PRD requires multiple storage types:**
-- **Primary store**: Authoritative data (typically RDB)
-- **Cache layer**: Read performance (Redis, in-memory)
-- **Search index**: Full-text/analytics (Elasticsearch, if PRD requires)
-- **Document store**: Flexible schema data (MongoDB, if needed)
-
-**Principle**: Each storage type serves specific access patterns. Document the boundary.
-
----
-
-### 8. Caching Strategy (if applicable)
-
-**Only if PRD indicates performance requirements or read-heavy patterns.**
-
-#### 8.1 Cache Layer Observation
+### § Caching Strategy (conditional: if PRD indicates performance requirements)
 
 | Checkpoint | Observation Target |
 |------------|-------------------|
@@ -207,53 +119,20 @@ NO deviations from the contract are permitted.
 | **Invalidation triggers** | When does cached data become invalid? |
 | **Scope** | Request-local, instance-local, or distributed? |
 
-#### 8.2 Caching Principles
-
-| Scope | When to Use |
-|-------|-------------|
-| **Request-local** | Data reused within single request processing |
-| **Instance-local** | Single server, no horizontal scaling |
-| **Distributed** | Multiple instances need consistent cache (Redis) |
-
 **Constraint**: If horizontal scaling expected, distributed cache strategy MUST be documented.
 
----
-
-### 9. Async Processing & Message Queue (if applicable)
-
-**Only if PRD indicates long-running tasks, background jobs, or event-driven patterns.**
-
-#### 9.1 Async Pattern Observation
+### § Async Processing & Message Queue (conditional: if PRD indicates background jobs or event-driven patterns)
 
 | Checkpoint | Observation Target |
 |------------|-------------------|
-| **Long-running tasks** | Operations that take seconds/minutes (email, file processing, AI inference)? |
+| **Long-running tasks** | Operations that take seconds/minutes? |
 | **Decoupling needed** | Producer shouldn't wait for consumer? |
 | **Reliability** | Must tasks survive server restart? |
 | **Order guarantee** | Must messages be processed in order? |
 
-#### 9.2 Async Processing Principles
+**Constraint**: If message queue used, document queue/topic structure, message schema reference, retry/dead-letter policy, and consumer scaling — all at architectural level.
 
-| Pattern Observed | Solution Type |
-|-----------------|---------------|
-| Simple background tasks, single instance | In-process queue (BullMQ, etc.) |
-| Distributed tasks, reliability needed | Message broker (RabbitMQ, Redis Streams) |
-| High-throughput, event streaming | Event streaming (Kafka) |
-| Scheduled tasks | Job scheduler (cron, Bull scheduler) |
-
-**Constraint**: If message queue used, document:
-- Queue/topic structure
-- Message schema (reference DTOs or define separately)
-- Retry and dead-letter policy (at architectural level, not exact values)
-- Consumer scaling strategy
-
----
-
-### 10. Real-time & Connection State (if api-contract-main.md defines WebSocket/SSE)
-
-**Only if api-contract-main.md includes real-time communication.**
-
-#### 10.1 Connection Management Observation
+### § Real-time & Connection State (conditional: if the corresponding api-contract document defines WebSocket/SSE)
 
 | Checkpoint | Observation Target |
 |------------|-------------------|
@@ -261,45 +140,9 @@ NO deviations from the contract are permitted.
 | **State persistence** | Connection state needs to survive reconnection? |
 | **Scale model** | Single instance OR multiple instances? |
 
-#### 10.2 Scalability Principles
-
-| Scale Model | Strategy |
-|-------------|----------|
-| **Single instance** | In-memory connection registry acceptable |
-| **Multiple instances** | Connection state externalized (Redis Pub/Sub, etc.) |
-| **Sticky sessions** | Load balancer affinity based on user/session |
-| **Broadcast** | Pub/Sub to all instances, each forwards to local connections |
-
 **Constraint**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
 
-#### 10.3 Sticky Session Consideration ⚠️ REMINDER
-
-**If server holds per-user state AND horizontal scaling expected:**
-
-| State Type | Options |
-|-----------|---------|
-| In-memory session | Sticky session OR externalize (Redis, etc.) |
-| Stateful connection (WS/SSE) | Sticky session OR Pub/Sub broadcast |
-| Upload progress | Sticky session OR distributed storage |
-
-**Principle**: Sticky session trades simplicity for scalability complexity. LLM chooses appropriate strategy based on PRD requirements.
-
----
-
-### 11. Architecture Style (if PRD indicates complexity)
-
-**Observe PRD for service boundary indicators.**
-
-#### 11.1 Architecture Style Observation
-
-| Checkpoint | Observation Target |
-|------------|-------------------|
-| **Domain boundaries** | Clear separation between business domains? |
-| **Team structure** | Multiple teams working independently? |
-| **Deployment independence** | Need to deploy services separately? |
-| **Scale independence** | Different services need different scaling? |
-
-#### 11.2 Architecture Selection Principles
+### § Architecture Style (conditional: if PRD indicates multi-domain complexity)
 
 | Observation | Architecture Style |
 |-------------|-------------------|
@@ -309,145 +152,50 @@ NO deviations from the contract are permitted.
 
 **Constraint**: Do NOT default to MSA. Complexity must match requirements.
 
-#### 11.3 If Service-Oriented / MSA
+### § External Integrations (conditional: if applicable)
+- Third-party APIs, file storage, external authentication providers
 
-**Document (at architectural level only):**
-- Service boundaries and responsibilities
-- Inter-service communication (sync HTTP vs async messaging)
-- Data ownership per service
-- Shared infrastructure (API gateway, service discovery, config)
+### § Technology Stack (mandatory)
 
----
+**Constraint**: Technology stack MUST be specified. If PRD does not specify, default to TypeScript + Node.js + PostgreSQL. Include cache/queue/real-time technologies only when corresponding conditional sections are present.
 
-### 12. External Integrations (if applicable)
-
-- Third-party APIs (payment, email, etc.)
-- File storage (S3, local filesystem)
-- External authentication providers (OAuth, OIDC)
+### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
+- Boundary-to-directory mapping principle
+- Import direction enforcement rules
+- Coding phase directives
 
 ---
 
-### 13. Technology Stack ⚠️ MANDATORY
+## Scope Ceiling
 
-**🚨 CRITICAL: You MUST specify technology stack**
+**Constraint**: The following topics MUST NOT appear as sections in this document. They belong in coding phase or implementation — NOT in system design.
 
-**Default Stack (if PRD does not specify):**
-- **Language**: TypeScript
-- **Runtime**: Node.js
-- **Framework**: Express.js or NestJS (choose based on complexity)
-- **Database**: PostgreSQL (if persistence needed)
-
-**If PRD explicitly specifies different technologies:**
-- Use exactly what PRD specifies
-- Reference PRD section: "(per PRD §X)"
-
-**Required Format:**
-```markdown
-### Technology Stack
-
-**Language & Runtime**: [TypeScript + Node.js | Go | Python | Java]
-**Framework**: [Express.js | NestJS | Gin | FastAPI | Spring Boot]
-**Database**: [PostgreSQL | MongoDB | MySQL | None (if PRD §X excludes persistence)]
-**Cache**: [Redis | None] (if caching needed per §8)
-**Message Queue**: [RabbitMQ | Redis Streams | Kafka | None] (if async processing per §9)
-**Real-time**: [Socket.io | ws | SSE | None] (if real-time per §10)
-
-**Key Libraries**:
-- [Based on language choice and requirements]
-```
-
-**Decision Rule:**
-1. PRD mentions backend language/framework? → Use it
-2. PRD silent on backend tech? → **Default to TypeScript + Node.js**
-3. PRD indicates caching/queue/realtime? → Include appropriate technology
+| Forbidden Topic | Reason |
+|----------------|--------|
+| API endpoint definitions (request/response schemas) | Already in the corresponding api-contract document |
+| DTO type definitions or interface declarations | Already in the corresponding api-contract document |
+| Full function/method implementations | Implementation detail |
+| SQL DDL or ORM model definitions | Implementation detail |
+| Concrete library API calls or syntax | Implementation detail |
+| Numeric constants (TTLs, retry counts, cache keys) | Implementation detail (unless PRD mandates) |
+| Step-by-step procedural algorithms | System design describes POLICY, not STEPS |
+| Named service classes with method signatures | LLM-invented identifiers forbidden in system design |
 
 ---
 
-## ⚠️ CRITICAL RULES FOR BACKEND
+## Critical Rules
 
 ### Rule 1: NO API Redefinition
-**Backend NEVER redefines APIs, only implements them!**
-
-**❌ WRONG**:
-```markdown
-### POST /api/auth/login
-Request: { email, password }  ← This is API definition!
-Response: { accessToken, user }
-```
-
-**✅ CORRECT**:
-```markdown
-### POST /api/auth/login
-**Contract**: LoginRequest → LoginResponse (api-contract-main.md §3.1)
-**Implementation**: AuthService validates credentials → JWT signing → Response mapping
-```
+**Constraint**: Backend NEVER redefines APIs. Always reference the corresponding api-contract document sections.
 
 ### Rule 2: NO DTO Duplication
-
-**❌ WRONG**:
-```typescript
-interface LoginRequest {  ← Duplicating contract!
-  email: string;
-  password: string;
-}
-```
-
-**✅ CORRECT**:
-```typescript
-import { LoginRequest, LoginResponse } from 'api-contract-types';
-// Or simply: "Validates LoginRequest per api-contract-main.md"
-```
+**Constraint**: Never duplicate DTO definitions. Reference contract types only.
 
 ### Rule 3: Reference Contract Explicitly
+**Constraint**: Every endpoint implementation mapping must reference the specific section of the corresponding api-contract document.
 
-**Every endpoint implementation must reference contract:**
-```markdown
-- POST /api/auth/login implements LoginRequest → LoginResponse (api-contract-main.md §3.1)
-- GET /api/users/profile returns User (api-contract-main.md §4.1)
-```
-
-### Rule 4: Implementation Details ARE Allowed Here
-
-**Backend may include implementation *boundaries* (what lives where), but should avoid implementation *recipes*:**
-- ✅ Allowed: where validation/auth/domain rules/persistence live; transactions; error mapping; consistency model
-- ❌ Forbidden (unless PRD mandates): concrete libraries/algorithms, numeric constants, retry/backoff math, TTLs, exact cache keys
-
----
-
-## ✅ GOOD vs BAD Examples
-
-**✅ GOOD (Backend HOW)**:
-```markdown
-## 4. Endpoint Implementation
-
-### POST /api/auth/login
-**Contract**: LoginRequest → LoginResponse (api-contract-main.md §3.1)
-
-**Mapping**:
-- Controller: binds LoginRequest, validates per contract, translates errors to contract ErrorResponse
-- AuthService (application): orchestrates authentication use case; returns domain result or domain error
-- UserRepository: reads user credential record; mapping boundary converts persistence record to domain model
-
-**Error Mapping**:
-- Email not found → 401 INVALID_CREDENTIALS
-- Password mismatch → 401 INVALID_CREDENTIALS
-- Rate limited → contract-defined error (only if PRD/contract specifies)
-```
-
-**❌ BAD (API definition or full code)**:
-```markdown
-## 4. API Endpoints
-
-### POST /api/auth/login  ← This is API definition, not Backend!
-Request: { email, password }
-Response: { accessToken, user }
-
-async function login(req, res) {  ← This is full implementation code!
-  const user = await User.findOne({ email: req.body.email });
-  if (!user) return res.status(401).json({ error: 'Invalid' });
-  // ... 20 more lines of code
-}
-```
+### Rule 4: Boundaries, Not Recipes
+**Constraint**: Backend may describe implementation BOUNDARIES (what lives where) but must avoid implementation RECIPES (step-by-step algorithms, concrete library calls, numeric constants).
 
 ---
 
@@ -467,11 +215,11 @@ async function login(req, res) {  ← This is full implementation code!
 
 ### Required Sections (per service document)
 
-1. **Overview**: Service name, responsibility, api-contract-main.md reference
+1. **Overview**: Service name, responsibility, corresponding api-contract document reference
 2. **Architecture**: THIS service's internal layers (Controller → Service → Repository)
 3. **Database Schema**: Tables/collections THIS service owns
-4. **Endpoint Implementation Mapping**: Endpoints from api-contract-main.md that THIS service implements
-5. **Event Integration**: Events published/subscribed with api-contract-main.md reference
+4. **Endpoint Implementation Mapping**: Endpoints from the corresponding api-contract document that THIS service implements
+5. **Event Integration**: Events published/subscribed with corresponding api-contract document reference
 
 ### Cross-Reference Principle
 
@@ -479,10 +227,10 @@ async function login(req, res) {  ← This is full implementation code!
 
 | Content Type | Location | Reference Method |
 |--------------|----------|------------------|
-| Endpoint definitions | api-contract-main.md | "Implements api-contract-main.md §X" |
-| DTO definitions | api-contract-main.md | "Uses {DTOName} from api-contract-main.md §Y" |
-| Event payloads | api-contract-main.md | "Publishes {EventName} per api-contract-main.md §Z" |
-| Inter-service calls | api-contract-main.md | "Calls {Service} endpoint per api-contract-main.md §W" |
+| Endpoint definitions | api-contract-{name}.md | "Implements api-contract-{name}.md §X" |
+| DTO definitions | api-contract-{name}.md | "Uses {DTOName} from api-contract-{name}.md §Y" |
+| Event payloads | api-contract-{name}.md | "Publishes {EventName} per api-contract-{name}.md §Z" |
+| Inter-service calls | api-contract-{name}.md | "Calls {Service} endpoint per api-contract-{name}.md §W" |
 
 ### Template for Service Document Header
 
@@ -493,9 +241,9 @@ async function login(req, res) {  ← This is full implementation code!
 
 **Service Name**: {service}
 **Responsibility**: {1-2 sentences from PRD}
-**API Contract Reference**: api-contract-main.md
+**API Contract Reference**: api-contract-{name}.md
 
-### Endpoints Implemented (from api-contract-main.md)
+### Endpoints Implemented (from api-contract-{name}.md)
 - § Internal API → {service} section
 - § Async Events → {service} as Publisher/Subscriber
 
@@ -506,10 +254,15 @@ async function login(req, res) {  ← This is full implementation code!
 ### ⚠️ Constraint
 
 - Each service document focuses on **HOW** (implementation architecture)
-- api-contract-main.md defines **WHAT** (interfaces, DTOs, events)
+- The corresponding api-contract document defines **WHAT** (interfaces, DTOs, events)
 - **Do NOT redefine DTOs or endpoint schemas in service documents**
 - **Do NOT describe other services' implementation details**
 
 ---
 
-**Purpose**: This guide ensures be-system-main.md (or be-system-{service}.md) focuses on HOW to build the backend architecture that implements the API contract, without duplicating interface definitions.
+## Key Reminders
+
+- **Describe architecture boundaries, not implementation recipes**
+- **Reference the corresponding api-contract document — never duplicate it**
+- **Decompose task descriptions are HINTS — this section catalog is the scope ceiling**
+- **Conditional sections should be skipped when their condition is not met**
