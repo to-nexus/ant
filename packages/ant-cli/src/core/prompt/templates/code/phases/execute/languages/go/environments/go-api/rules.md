@@ -21,46 +21,6 @@
 
 ---
 
-### Architecture Compliance
-
-**Constraint**: Architecture boundaries defined in System Design MUST be reflected as directory-level boundaries in the codebase.
-
-**Principle**: Framework wiring mechanisms and architecture boundaries are complementary:
-- Framework mechanisms handle routing, middleware chaining, and dependency injection
-- Architecture boundaries handle concern separation and dependency direction
-- Both coexist; neither substitutes for the other
-
-**Constraint**: If System Design specifies explicit boundary separation, framework-conventional structure alone does NOT satisfy this requirement. Architecture boundaries MUST exist alongside framework conventions.
-
-**Blind spot reminder**: When a framework provides strong convention patterns (route groups, handler registration), it is easy to let those patterns become the ONLY structural organization. Verify that each architecture boundary from System Design has a corresponding directory boundary — not just a conceptual separation within framework route groups.
-
----
-
-### Reference Project Layout
-
-The following is the reference directory structure for Go backend projects.
-Use this as the default layout. Adapt (reduce or extend directories) only
-when the architecture in System Design does not fit this structure.
-
-```
-cmd/           Entry points
-config/        Configuration loading
-docs/          API documentation
-internal/      Private application packages
-router/        Route definitions and setup
-schema/        Database schemas and migrations
-test/          Integration and E2E tests
-```
-
-**Constraint**: Do NOT flatten architecture layers into root-level directories.
-Layers from System Design (handler, service, repository, etc.) belong as
-sub-packages within this layout, not as root directories.
-
-**Constraint**: Before creating any directory, observe the existing directory
-tree. Follow established structure.
-
----
-
 ### Concurrency Considerations
 
 **Principle**: Observe whether shared mutable state exists before introducing synchronization.

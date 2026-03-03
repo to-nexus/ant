@@ -11,14 +11,6 @@ They run in the browser (with optional server-side rendering), but are NOT backe
 
 ---
 
-### Architecture Compliance
-
-**Constraint**: Architecture boundaries defined in System Design MUST be reflected as directory-level boundaries in the codebase.
-
-**Constraint**: Framework conventions alone do NOT satisfy architecture boundary separation when System Design specifies explicit boundaries.
-
----
-
 ### For CSR Frameworks (React, Vue, Angular)
 
 **Key Constraints:**

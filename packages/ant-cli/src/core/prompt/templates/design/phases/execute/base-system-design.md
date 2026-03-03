@@ -379,8 +379,9 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 4. **Core Domain Concepts**: Key entities, relationships, domain invariants (describe concepts, NOT full schemas)
 5. **Core Interfaces & Contracts**: Boundary contracts (services, engines, ports, providers) - define once, reference elsewhere
 6. **Main Execution Flows**: Key flows (e.g., "user action flow", "game loop") - high-level who-calls-whom
-7. **Technology Stack**: Framework, database (if any), key libraries, platform constraints
-8. **Non-Functional Requirements** (if PRD specifies): Security, performance, integrations
+7. **Directory Structure & Boundary Mapping** (if framework augmentation injected): Boundary-to-directory mapping principle, coding phase directives
+8. **Technology Stack**: Framework, database (if any), key libraries, platform constraints
+9. **Non-Functional Requirements** (if PRD specifies): Security, performance, integrations
 
 **Critical**: Focus on architecture decisions and component interaction, NOT implementation formulas.
 
@@ -444,7 +445,9 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
     - ✅ Platform APIs → Generic interfaces?
     - ✅ Deployment terms → Constraint intents only?
     - ✅ UI implementation patterns → Component responsibilities?
-
-**If YES to all → Output using XML tags per rules.md. If NO → Fix first!**
+15. ✅ **DIRECTORY STRUCTURE** (if framework augmentation was injected above):
+    - ✅ Boundary-to-directory mapping principle stated?
+    - ✅ Coding phase directives included?
+    - ✅ Import direction / dependency rules between boundaries stated?
 
 **If YES to all → Output using XML tags per rules.md. If NO → Fix first!**
