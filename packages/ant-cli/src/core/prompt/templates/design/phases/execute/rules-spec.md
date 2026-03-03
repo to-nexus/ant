@@ -19,6 +19,12 @@
 
 ⚠️ **Blind spot**: LLMs tend to write specs from imagination rather than observation. If the directive references existing functionality, ALWAYS verify with tools before writing.
 
+### External API Verification
+
+**Observation target**: Does this spec section describe integration with an external SDK, API, or service?
+
+**Constraint**: If yes, use `search_web` to verify the current API surface (endpoints, auth method, rate limits) before specifying technical approach. Do NOT assume training-data accuracy for third-party interfaces.
+
 ════════════════════════════════════════════════════════════════════════════════
 
 ## Section Scope Constraint

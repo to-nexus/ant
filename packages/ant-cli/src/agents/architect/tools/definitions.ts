@@ -211,6 +211,21 @@ export const ARCHITECT_TOOLS = {
       required: [],
     },
   },
+
+  search_web: {
+    name: 'search_web',
+    description: 'Search the web for technical information, SDK documentation, API references, framework constraints, or technology best practices. Use when you need current information that may not be in your training data.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query — be specific (e.g., "wagmi v2 connector API", "Next.js 14 app router SSR limitations")',
+        },
+      },
+      required: ['query'],
+    },
+  },
 } as const satisfies Record<string, ToolDefinition>;
 
 /**
@@ -289,13 +304,13 @@ export const TOOL_SETS = {
   codeBasic: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir', 'run_command'] as ToolName[],
 
   // Plan node: read-only exploration (verify existing modules, avoid duplication)
-  planExplore: ['read_file', 'list_files', 'search_code'] as ToolName[],
+  planExplore: ['read_file', 'list_files', 'search_code', 'search_web'] as ToolName[],
 
   // Design explain mode: read-only exploration (no writes, no run_command)
-  designExplain: ['read_file', 'list_files', 'search_code'] as ToolName[],
+  designExplain: ['read_file', 'list_files', 'search_code', 'search_web'] as ToolName[],
 
   // Full set for design job (no run_command, no reference)
-  design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir'] as ToolName[],
+  design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir', 'search_web'] as ToolName[],
   
   // UI Design job - includes image/asset tools for multimodal document generation
   uiDesign: [

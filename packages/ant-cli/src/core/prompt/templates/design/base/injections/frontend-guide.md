@@ -71,37 +71,7 @@
 
 Adapt sections based on the architecture pattern selected in §1. Skip sections marked "conditional" when the condition is not met.
 
-### § Overview
-- System purpose, selected architecture pattern with rationale (reference observation from §1.1)
-- PRD constraints relevant to architecture (platform, integrations, prohibitions)
-- API contract compliance statement (reference the corresponding `api-contract-{name}.md`)
-
-### § Architecture Boundaries
-- For each boundary: name, responsibility, what it owns
-- Dependency direction between boundaries
-- What crosses each boundary (data types, commands, events)
-- Rendering strategy per route category (SSR/CSR/hybrid) if applicable
-
-### § API Integration & Error Strategy
-- Infrastructure adapter role (single adapter wrapping external communication)
-- Auth lifecycle POLICY (describe ownership and boundary flow, not step-by-step procedure)
-- Error propagation POLICY (how errors flow across boundaries, not HTTP status codes)
-
-### § State Management & Data Flow
-- State ownership per boundary (global vs route-scoped vs view-local)
-- Server state caching POLICY (invalidation triggers, staleness handling)
-- Optimistic update POLICY (when to apply, reconciliation principle)
-- Real-time data strategy if applicable (polling vs push, coordination ownership)
-
-### § Domain Rules (conditional: if explicit domain boundary selected)
-- View-model derivation PRINCIPLES (what they aggregate, not field-level definitions)
-- Format policy reference (point to PRD section, do NOT redefine formulas)
-- Client-side validation invariants
-
-### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
-- Boundary-to-directory mapping principle
-- Import direction enforcement rules
-- Coding phase directives
+{{> design/base/catalogs/frontend-catalog}}
 
 ---
 
@@ -118,6 +88,9 @@ Adapt sections based on the architecture pattern selected in §1. Skip sections 
 | Step-by-step procedural flows | System design describes POLICY, not STEPS |
 | Props, interfaces, or function signatures | Implementation detail |
 | CSS / layout / grid specifications | Implementation detail |
+| PRD formula / calculation reproduction | Reference PRD section; domain boundary owns the calculation |
+| HTTP status codes / transport-level classifications | Describe error FLOW between boundaries, not status codes |
+| Routing as a standalone section | Route access policy belongs in Architecture Boundaries |
 
 ---
 
@@ -131,6 +104,9 @@ Adapt sections based on the architecture pattern selected in §1. Skip sections 
 ❌ Framework-specific details (hooks, lifecycle)  
 ❌ Step-by-step numbered procedures (describe POLICY instead)  
 ❌ HTTP status codes or transport details (describe error FLOW between boundaries)  
+❌ Reproducing PRD formulas/calculations verbatim (REFERENCE the PRD section instead)  
+❌ View-model field-by-field property listings (describe what domain concepts are aggregated)  
+❌ Validation rules as implementation-ready expressions (reference PRD section for concrete values)  
 
 ---
 

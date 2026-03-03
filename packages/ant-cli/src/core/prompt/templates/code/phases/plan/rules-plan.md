@@ -165,6 +165,14 @@ what YOU own; depend on interfaces for what others own.
 
 In your `<analysis>` section, cover:
 
+### External Dependency Verification
+
+**Observation target**: Does this task involve integrating an external SDK, library API, or third-party service?
+
+**Constraint**: If yes, use `search_web` to verify current API patterns, required setup steps, or known constraints BEFORE finalizing the plan. Do NOT assume SDK interfaces from training data.
+
+**Constraint**: Do NOT use `search_web` for internal architecture decisions or standard language features.
+
 {{#if hasUiDoc}}
 **FOR UI TASKS:**
 
