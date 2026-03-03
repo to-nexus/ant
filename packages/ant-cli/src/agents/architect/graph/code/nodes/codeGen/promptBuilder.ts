@@ -171,8 +171,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
   const projectContextParts = [
     composed.injections,
-    (!isVerificationTask && state.prd) ? `# Requirements\n\n${state.prd}` : null,
-    designDocForTask ? `# Design Document\n\n${designDocForTask}` : null,
     foundationContract,
     schemaAnchor,
   ].filter(Boolean);
