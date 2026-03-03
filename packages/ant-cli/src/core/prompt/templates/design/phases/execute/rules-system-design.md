@@ -289,10 +289,10 @@ Before generating output, verify:
 **System Design is about STRUCTURE, not STEPS**
 
 ### Write This Way:
-✅ "AuthService handles user authentication and token generation"
+✅ "Authentication boundary handles credential validation and token lifecycle"
 ✅ "Renderer converts application state to visual output using the chosen UI framework"
 ✅ "Chose an appropriate architecture style (e.g., layered, hexagonal, ECS) and defined clear boundaries"
-✅ "Components communicate through props or input parameters; state flows unidirectionally"
+✅ "Presentation boundary observes state from application layer; state flows unidirectionally"
 
 ### Never Write This Way:
 ❌ Algorithm steps: "Loop through array, calculate distance, find minimum"
@@ -475,13 +475,13 @@ Before generating output, verify:
   - "Is this a platform-specific API/feature?" (YES = abstract to interface)
   - "Did I extract INTENT from PRD, not copy wording?" (YES = good)
 
-### Task Description vs Prompt Rules
-- [ ] **Task description provides TOPICS (WHAT to cover)**
-- [ ] **Prompt rules dictate ABSTRACTION LEVEL (HOW to write)**
-- [ ] **When conflict: Prompt rules win, task description loses**
-- [ ] **If task says "Design LocalStorage integration":**
-  - I wrote: "Design client-side persistence strategy" ✅
-  - NOT: "Design LocalStorage integration" ❌
+### Task Description vs Guide Section Catalog
+- [ ] **Guide Section Catalog is the scope ceiling** (only these sections are allowed)
+- [ ] **Task description is a topic HINT** (advisory, not binding)
+- [ ] **Prompt rules dictate ABSTRACTION LEVEL** (HOW to write)
+- [ ] **Priority: Guide Section Catalog > Prompt rules > Task description**
+- [ ] **All sections I wrote exist in the guide's Section Catalog**
+- [ ] **No topic from the guide's Scope Ceiling appears in my output**
 
 ### PRD Alignment
 - [ ] **External services listed exactly as in PRD** (with § references)

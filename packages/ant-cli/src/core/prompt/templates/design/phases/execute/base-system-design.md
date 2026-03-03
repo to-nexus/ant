@@ -84,28 +84,24 @@ STRUCTURE PER CHAPTER:
 **Task**: {{currentTask.name}}
 **Description**: {{currentTask.description}}
 
-🚨 **CRITICAL: Task Description is GUIDANCE, not absolute instruction** 🚨
+🚨 **CRITICAL: Task Description is a HINT, not absolute instruction** 🚨
 
-**Task description shows WHAT topics to cover.**
-**BUT: How you write (abstraction level, terminology) follows the PROMPTS BELOW, not description!**
+**Task description suggests topic areas to cover — it is NOT a binding plan.**
+**The document-type guide's Section Catalog (CLOSED LIST) defines which sections are allowed.**
+**Abstraction level and terminology follow the PROMPTS BELOW, not the description!**
 
-**If task description says "LocalStorage" or "React Router":**
-- ❌ DO NOT copy these concrete terms
-- ✅ USE architectural abstractions instead:
-  - "LocalStorage" → "client-side persistence adapter"
-  - "React Router" → "routing mechanism"
-  - "Zustand/Redux" → "state management approach"
+**Priority hierarchy:**
+1. **Guide Section Catalog** → scope ceiling (what sections CAN exist)
+2. **Prompt rules below** → abstraction level (HOW to write)
+3. **Task description** → topic hint (approximate coverage area)
 
-**Golden Rule:**
-```
-Task description = TOPICS to cover (WHAT)
-Prompt rules below = HOW to write (abstraction, terminology)
-```
+**If task description mentions a topic NOT in the guide's Section Catalog → SKIP it.**
+**If task description uses concrete terms → ABSTRACT them per prompt rules.**
 
-**When there's conflict:**
-- Task description: "Design LocalStorage integration" 
-- Prompt rule: "Abstract implementation technologies"
-- **YOU MUST follow prompt rule!** Write: "Design client-side persistence strategy"
+**Examples:**
+- "LocalStorage" → "client-side persistence adapter"
+- "React Router" → "routing mechanism"
+- "Component architecture" → Skip if guide Scope Ceiling forbids it
 
 🚨 STRUCTURAL CONSTRAINTS 🚨
 **Chapter limit based on your line budget:**
@@ -358,10 +354,10 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 - `be-system-main.md` - Unified design (rare fallback for unclassified projects)
 
 **A document type-specific guide has been automatically injected above** with:
-- Required sections tailored to this document type
-- Critical MECE rules (no duplication between docs)
-- Code examples and anti-patterns
-- Common mistakes to avoid
+- **Section Catalog (CLOSED LIST)** defining the ONLY allowed sections for this document type
+- **Scope Ceiling** defining topics that MUST NOT appear in the document
+- Anti-patterns and common mistakes to avoid
+- Core principles specific to this document type
 
 **If no type-specific guide appears above**, you're writing **`be-system-main.md` (unified)**:
 

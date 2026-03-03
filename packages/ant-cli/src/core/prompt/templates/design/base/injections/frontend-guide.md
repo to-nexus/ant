@@ -1,7 +1,7 @@
 ## 🎨 FRONTEND SYSTEM DESIGN GUIDE
 
-**Document**: `fe-system-main.md`  
-**Role**: Consumer of `api-contract-main.md`  
+**Document**: `fe-system-{name}.md` (e.g., `fe-system-main.md`, `fe-system-web.md`)  
+**Role**: Consumer of the corresponding `api-contract-{name}.md`  
 **Focus**: Client-side architecture selected based on observed project complexity
 
 ---
@@ -58,48 +58,79 @@
 
 ### 3. API Contract Compliance
 
-- **Never redefine** DTOs from api-contract-main.md
+- **Never redefine** DTOs from the corresponding api-contract document
 - **Always reference** contract sections
 - Infrastructure/external communication boundary receives DTOs → orchestration boundary transforms to domain models
 - External services: List only if PRD explicitly requires (with PRD reference)
 
 ---
 
-## Required Sections
+## Section Catalog (CLOSED LIST)
 
-Adapt sections based on the architecture pattern selected in §1:
+**Constraint**: The sections below are the ONLY sections allowed in this document (`fe-system-{name}.md`). Do NOT create sections outside this catalog. Decompose task descriptions are topic HINTS — the actual sections written MUST come from this catalog.
+
+Adapt sections based on the architecture pattern selected in §1. Skip sections marked "conditional" when the condition is not met.
 
 ### § Overview
-- System purpose
-- Selected architecture pattern with rationale (reference observation from §1.1)
-- API contract compliance statement
+- System purpose, selected architecture pattern with rationale (reference observation from §1.1)
+- PRD constraints relevant to architecture (platform, integrations, prohibitions)
+- API contract compliance statement (reference the corresponding `api-contract-{name}.md`)
 
-### § Boundary Responsibilities
-- For each boundary in the selected pattern: name, responsibility, what it owns
+### § Architecture Boundaries
+- For each boundary: name, responsibility, what it owns
 - Dependency direction between boundaries
 - What crosses each boundary (data types, commands, events)
+- Rendering strategy per route category (SSR/CSR/hybrid) if applicable
 
-### § Domain Rules (if explicit domain boundary selected)
-- Display models (what they aggregate/derive)
-- Client-side rules and validations
-- Domain invariants
+### § API Integration & Error Strategy
+- Infrastructure adapter role (single adapter wrapping external communication)
+- Auth lifecycle POLICY (describe ownership and boundary flow, not step-by-step procedure)
+- Error propagation POLICY (how errors flow across boundaries, not HTTP status codes)
 
-### § State Management
-- State ownership per boundary
-- Caching strategy
-- Optimistic updates (if applicable)
+### § State Management & Data Flow
+- State ownership per boundary (global vs route-scoped vs view-local)
+- Server state caching POLICY (invalidation triggers, staleness handling)
+- Optimistic update POLICY (when to apply, reconciliation principle)
+- Real-time data strategy if applicable (polling vs push, coordination ownership)
+
+### § Domain Rules (conditional: if explicit domain boundary selected)
+- View-model derivation PRINCIPLES (what they aggregate, not field-level definitions)
+- Format policy reference (point to PRD section, do NOT redefine formulas)
+- Client-side validation invariants
+
+### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
+- Boundary-to-directory mapping principle
+- Import direction enforcement rules
+- Coding phase directives
 
 ---
 
-## Anti-Patterns to Avoid
+## Scope Ceiling
+
+**Constraint**: The following topics MUST NOT appear as sections in this document. They belong in UI spec, coding phase, or implementation — NOT in system design.
+
+| Forbidden Topic | Reason |
+|----------------|--------|
+| Component architecture / page composition | UI implementation — coding phase decides component structure |
+| Component names, hierarchies, or trees | LLM-invented identifiers forbidden in system design |
+| Micro-interactions / animation catalog | Implementation detail |
+| Responsive breakpoint specifications | Implementation detail (reference PRD section if needed) |
+| Step-by-step procedural flows | System design describes POLICY, not STEPS |
+| Props, interfaces, or function signatures | Implementation detail |
+| CSS / layout / grid specifications | Implementation detail |
+
+---
+
+## Anti-Patterns
 
 ❌ Listing backend DTOs as "Domain models"  
 ❌ Putting business logic in orchestration/coordination boundary  
-❌ Naming specific components  
+❌ Naming specific components (e.g., "GNB", "TradingPanel", "FilterBar")  
 ❌ Specifying props/interfaces  
-❌ Redefining APIs or DTOs  
+❌ Redefining APIs or DTOs already in the corresponding api-contract document  
 ❌ Framework-specific details (hooks, lifecycle)  
-❌ Technology stack (move to appendix or omit)
+❌ Step-by-step numbered procedures (describe POLICY instead)  
+❌ HTTP status codes or transport details (describe error FLOW between boundaries)  
 
 ---
 
@@ -108,4 +139,5 @@ Adapt sections based on the architecture pattern selected in §1:
 - **Describe architecture, not implementation**
 - **Trust LLM to infer specifics from principles**
 - **Keep abstractions framework-agnostic**
-- **Reference PRD for requirements, api-contract-main.md for DTOs**
+- **Reference PRD for requirements, the corresponding api-contract document for DTOs**
+- **Decompose task descriptions are HINTS — this section catalog is the scope ceiling**
