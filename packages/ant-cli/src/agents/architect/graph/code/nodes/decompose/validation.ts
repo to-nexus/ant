@@ -1,5 +1,6 @@
 import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
+import { DesignDocs, getDesignDocByPackage } from "../detectEnvironment/designSelector";
 
 /**
  * Post-validation: Check if LLM correctly classified error vs feature
@@ -44,7 +45,8 @@ export function detectPotentialMisclassification(
 export function validateTasks(
   tasks: CodeTask[],
   mode: string | undefined,
-  directive: string | undefined
+  directive: string | undefined,
+  designDocs?: DesignDocs
 ): void {
   // ✅ STRICT: UI flag must be explicitly provided (decompose is the source of truth)
   // Rationale: UI doc/image injection should be deterministic, not heuristic-driven.
@@ -58,7 +60,24 @@ export function validateTasks(
     }
   }
 
-  // Skip validation for generate mode
+  // Warn about packages referencing non-existent design docs
+  if (designDocs) {
+    for (const t of tasks) {
+      if (!t.packages) continue;
+      for (const pkg of t.packages) {
+        if (pkg === 'shared') continue;
+        const content = getDesignDocByPackage(pkg, designDocs);
+        if (!content) {
+          console.warn(
+            `⚠️  [Decompose Validation] Task "${t.id}" references package "${pkg}" ` +
+            `but no matching design doc found — design doc will not be injected for this tag`
+          );
+        }
+      }
+    }
+  }
+
+  // Skip remaining validation for generate mode
   if (mode === 'generate') return;
   
   // ✅ Check for potential misclassification

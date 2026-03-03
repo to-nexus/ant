@@ -439,7 +439,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  validateTasks(tasks, state.detectionReport?.jobMode, state.directive);
+  validateTasks(tasks, state.detectionReport?.jobMode, state.directive, state.designDocs);
   
   const { taskQueue, featureTasks } = createTaskQueue(tasks);
   logTaskSummary(tasks, referenceRequests);

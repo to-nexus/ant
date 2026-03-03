@@ -92,7 +92,8 @@ export function selectDesignFilesByPackages(
 
 /**
  * Get design document content by package tag.
- * Package tag format: "fe-{name}" or "be-{name}"
+ * Package tag format: "fe-{name}" or "be-{name}".
+ * "shared" returns undefined (api-contract only, handled by caller).
  */
 export function getDesignDocByPackage(
   pkg: string,
