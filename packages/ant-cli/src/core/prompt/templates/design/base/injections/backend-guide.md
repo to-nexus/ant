@@ -32,14 +32,13 @@
 
 **Constraint**: The sections below are the ONLY sections allowed in this document (`be-system-{name}.md`). Do NOT create sections outside this catalog. Decompose task descriptions are topic HINTS — the actual sections written MUST come from this catalog. Skip sections marked "conditional" when the condition is not met.
 
-### § Overview & API Contract Compliance (mandatory)
-- System purpose and business domain
-- Selected architecture pattern with rationale (reference observation from §2)
-- API contract compliance statement referencing the corresponding `api-contract-{name}.md`
+{{> design/base/catalogs/backend-catalog}}
 
-### 2. Architecture Pattern Selection
+---
 
-#### 2.1 Internal Architecture Observation
+### Architecture Pattern Selection (Core Principle)
+
+#### Internal Architecture Observation
 
 | Checkpoint | Observation Target |
 |-----------|-------------------|
@@ -47,7 +46,7 @@
 | **Integration boundary count** | Does the system interact with multiple external systems that may change independently? |
 | **Dependency direction concern** | Do core business rules need to be testable or replaceable independent of framework and persistence? |
 
-#### 2.2 Architecture Selection Principle
+#### Architecture Selection Principle
 
 | Complexity Observed | Pattern Direction |
 |--------------------|--------------------|
@@ -58,7 +57,7 @@
 **Constraint**: Do NOT default to the most complex pattern. Observed complexity must justify the chosen separation level.
 **Constraint**: Selected pattern MUST specify boundary responsibilities clearly in this document.
 
-#### 2.3 Directory Structure Principle
+#### Directory Structure Principle
 
 **Constraint**: Each architecture boundary specified in this document MUST correspond to a directory-level boundary in the codebase.
 
@@ -69,100 +68,25 @@
 
 **Constraint**: Framework conventions alone do NOT satisfy architecture boundary separation when this document specifies explicit boundaries.
 
-### § Database Design (conditional: if persistence needed)
-- Entity relationships (conceptual schema, NOT SQL DDL)
-- Key constraints and indexes
-- Table/collection structure with field types
+---
 
-**Constraint**: Focus on structure and relationships — NOT on concrete SQL syntax, DDL, or ORM mappings.
+### Section-Specific Writing Guidance
 
-### § Endpoint Implementation Mapping
+**§ Database Design**: Focus on structure and relationships — NOT on concrete SQL syntax, DDL, or ORM mappings.
 
-**Constraint**: NEVER redefine DTOs — reference the corresponding api-contract document only.
+**§ Endpoint Implementation Mapping**: NEVER redefine DTOs — reference the corresponding api-contract document only. For each endpoint group: contract reference, boundary responsibilities, error mapping policy, idempotency/concurrency notes (only if PRD requires).
 
-For EACH endpoint group, specify:
-- **Contract reference**: exact endpoint/method from the corresponding api-contract document
-- **Boundary responsibilities**: which architecture boundary handles request binding, orchestration, domain rules, persistence
-- **Error mapping policy**: how domain/application errors flow to contract error codes
-- **Idempotency / concurrency notes** (only if PRD requires or risk is obvious)
+**§ Data Storage Architecture**: Do NOT default to RDB. Observe actual requirements (schema structure, query patterns, consistency needs, scale pattern). If hybrid storage needed, document which data belongs where and why.
 
-### § Authentication & Authorization (conditional: if PRD requires auth)
-- Auth boundary placement (where enforcement happens in the architecture)
-- Auth context propagation (how identity becomes available to inner boundaries)
-- Token/session strategy at policy level (NOT algorithms, TTLs, or claims detail)
-- Authorization model (role-based, permission-based, etc.)
+**§ Caching Strategy**: If horizontal scaling expected, distributed cache strategy MUST be documented.
 
-### § Business Logic Placement
-- Which architecture boundary owns domain rules vs orchestration vs data access
-- Transactional boundary ownership
-- Cross-cutting concern placement (logging, validation, error translation)
+**§ Async Processing & Message Queue**: If message queue used, document queue/topic structure, message schema reference, retry/dead-letter policy, and consumer scaling — all at architectural level.
 
-### § Data Storage Architecture (conditional: if persistence needed)
+**§ Real-time & Connection State**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
 
-**Constraint**: Do NOT default to RDB. Observe actual requirements.
+**§ Architecture Style**: Do NOT default to MSA. Complexity must match requirements.
 
-| Checkpoint | Observation Target |
-|------------|-------------------|
-| **Schema structure** | Fixed fields OR dynamic/flexible? |
-| **Query patterns** | Complex joins/aggregations OR simple key-based access? |
-| **Consistency needs** | ACID transactions required OR eventual consistency acceptable? |
-| **Scale pattern** | Read-heavy? Write-heavy? Time-series? |
-
-**Constraint**: If hybrid storage needed, document which data belongs where and why.
-
-### § Caching Strategy (conditional: if PRD indicates performance requirements)
-
-| Checkpoint | Observation Target |
-|------------|-------------------|
-| **Read frequency** | Same data read repeatedly? |
-| **Data freshness** | How stale is acceptable? |
-| **Invalidation triggers** | When does cached data become invalid? |
-| **Scope** | Request-local, instance-local, or distributed? |
-
-**Constraint**: If horizontal scaling expected, distributed cache strategy MUST be documented.
-
-### § Async Processing & Message Queue (conditional: if PRD indicates background jobs or event-driven patterns)
-
-| Checkpoint | Observation Target |
-|------------|-------------------|
-| **Long-running tasks** | Operations that take seconds/minutes? |
-| **Decoupling needed** | Producer shouldn't wait for consumer? |
-| **Reliability** | Must tasks survive server restart? |
-| **Order guarantee** | Must messages be processed in order? |
-
-**Constraint**: If message queue used, document queue/topic structure, message schema reference, retry/dead-letter policy, and consumer scaling — all at architectural level.
-
-### § Real-time & Connection State (conditional: if the corresponding api-contract document defines WebSocket/SSE)
-
-| Checkpoint | Observation Target |
-|------------|-------------------|
-| **Connection scope** | Per-user? Per-session? Per-room/channel? |
-| **State persistence** | Connection state needs to survive reconnection? |
-| **Scale model** | Single instance OR multiple instances? |
-
-**Constraint**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
-
-### § Architecture Style (conditional: if PRD indicates multi-domain complexity)
-
-| Observation | Architecture Style |
-|-------------|-------------------|
-| Simple domain, single team, uniform scaling | Monolith |
-| Clear domains, same deployment, code organization | Modular Monolith |
-| Independent deployment + scaling per domain | Service-oriented / MSA |
-
-**Constraint**: Do NOT default to MSA. Complexity must match requirements.
-
-### § External Integrations (conditional: if applicable)
-- Third-party APIs, file storage, external authentication providers
-
-### § Technology Stack (mandatory)
-
-**Constraint**: Technology stack MUST be specified. If PRD does not specify, default to TypeScript + Node.js + PostgreSQL. Include cache/queue/real-time technologies only when corresponding conditional sections are present.
-
-### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
-- Boundary-to-directory mapping principle
-- Import direction enforcement rules
-- Coding phase directives
+**§ Technology Stack**: Technology stack MUST be specified. If PRD does not specify, default to TypeScript + Node.js + PostgreSQL. Include cache/queue/real-time technologies only when corresponding conditional sections are present.
 
 ---
 

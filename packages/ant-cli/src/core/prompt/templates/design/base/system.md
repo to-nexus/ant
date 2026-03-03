@@ -141,7 +141,7 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 2. **Bullet Lists**: Use lists, not prose
 3. **Minimal Code**: Prefer prose; use code blocks only when necessary for cross-boundary clarity (doc-type guides may override)
 4. **No Tutorials**: Design decisions only, NOT "What is React?" explanations
-5. **Chapter Count**: Balance completeness with line budget
+5. **Chapter Count**: Each chapter maps to one catalog section; be concise
 6. **Technical Precision**: Use exact terms, avoid vague language
 
 ### Forbidden Content (LLM-Chosen Implementation Details):

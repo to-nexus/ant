@@ -18,7 +18,15 @@
 
 ---
 
-## 📐 REQUIRED SECTIONS
+## Section Catalog (CLOSED LIST)
+
+**Constraint**: The sections below are the ONLY sections allowed in this document (`api-contract-{name}.md`). Do NOT create sections outside this catalog. Decompose task descriptions are topic HINTS — the actual sections written MUST come from this catalog.
+
+{{> design/base/catalogs/api-contract-catalog}}
+
+---
+
+## Section Writing Guidance
 
 ### 1. Overview (3-5 lines)
 - API purpose and scope

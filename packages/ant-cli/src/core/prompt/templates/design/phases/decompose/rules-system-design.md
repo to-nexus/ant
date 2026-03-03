@@ -28,8 +28,6 @@
 ### Task Description Must Include
 
 - Which **topic areas** to cover (reference guide section names, NOT chapter numbers!)
-- **Length budget**: "MAX [N] lines for this task!"
-- **Total limit**: "(Total doc limit: [Total] lines)"
 
 **Constraint**: Do NOT list specific content items beyond topic area names. The individual task's plan phase determines actual content within the guide's section catalog.
 
@@ -207,7 +205,7 @@ MSA applies to BOTH tiers independently:
 | id | Unique, kebab-case (e.g., "design-arch", "design-ch1-2") |
 | name | Concise (< 60 chars) |
 | targetFile | MUST match one of targetFiles |
-| description | ABSTRACT terms + "MAX N lines!" |
+| description | ABSTRACT terms referencing guide section names as topic hints |
 | priority | 200-299 range |
 | exclusive | `true` if task must run alone (e.g., api-contract) |
 | parallelGroup | Group ID for parallel scheduling (tasks with same group conflict) |
@@ -245,7 +243,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "API Contract Definition",
       "targetFile": "api-contract-main.md",
       "exclusive": true,
-      "description": "Cover api-contract-guide sections. MAX 120 lines!",
+      "description": "Cover api-contract-guide sections: Overview, Endpoints, Shared Types, Error Handling.",
       "priority": 200
     },
     {
@@ -253,7 +251,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "Frontend System Design",
       "targetFile": "fe-system-main.md",
       "parallelGroup": "fe-main",
-      "description": "Cover frontend-guide sections. MAX 200 lines! (Total: 500 lines)",
+      "description": "Cover frontend-guide sections: Overview, Architecture Boundaries, API Integration.",
       "priority": 220
     },
     {
@@ -261,7 +259,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "Backend System Design",
       "targetFile": "be-system-main.md",
       "parallelGroup": "be-main",
-      "description": "Cover backend-guide sections. MAX 200 lines! (Total: 500 lines)",
+      "description": "Cover backend-guide sections: Overview, Architecture Pattern, Endpoint Mapping.",
       "priority": 240
     }
   ]
@@ -271,7 +269,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **Key patterns demonstrated:**
 - `exclusive: true` for api-contract tasks (shared interface, must run alone)
 - `parallelGroup` for implementation tasks (same file = same group, different files = different groups)
-- Description references guide section catalog as topic HINTS with line budget
+- Description references guide section catalog as topic HINTS
 - For MSA, replace `main` with `{service}` (BE/API) or `{package}` (FE) per Document Naming rules above
 
 ---
@@ -312,9 +310,8 @@ Before outputting, verify:
 - ✅ `targetFiles` matches documentType
 - ✅ Every task's `targetFile` is in `targetFiles`
 - ✅ All fields present (id, name, targetFile, description, priority)
-- ✅ Description includes "MAX N lines!"
-- ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
 - ✅ Description references guide section names as topic hints (not implementation topics)
+- ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 - ✅ If reference project mentioned → `references` array included

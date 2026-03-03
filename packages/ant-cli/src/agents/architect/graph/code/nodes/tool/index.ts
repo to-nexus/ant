@@ -60,6 +60,7 @@ import {
   handleSearchReferenceCode,
   handleCreateFile
 } from './handlers';
+import { executeSearchWeb } from '../../../../tools/searchWeb';
 
 /**
  * Execute a single tool by name
@@ -106,6 +107,9 @@ async function executeToolByName(
         break;
       case 'search_reference_code':
         result = await handleSearchReferenceCode(state, args as any);
+        break;
+      case 'search_web':
+        result = await executeSearchWeb(args as { query: string });
         break;
       case 'file':
       case 'write_file':

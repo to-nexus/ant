@@ -1,0 +1,54 @@
+### § Overview & API Contract Compliance (mandatory)
+- System purpose and business domain
+- Selected architecture pattern with rationale
+- API contract compliance statement referencing the corresponding `api-contract-{name}.md`
+
+### § Architecture Pattern Selection
+- Internal architecture observation (domain complexity, integration boundary count, dependency direction concern)
+- Architecture selection principle (framework-conventional vs explicit domain boundary vs port/adapter)
+- Directory structure principle (each boundary maps to a directory-level boundary)
+
+### § Database Design (conditional: if persistence needed)
+- Entity relationships (conceptual schema, NOT SQL DDL)
+- Key constraints and indexes
+- Table/collection structure with field types
+
+### § Endpoint Implementation Mapping
+- Contract reference per endpoint group (exact endpoint/method from api-contract document)
+- Boundary responsibilities (request binding, orchestration, domain rules, persistence)
+- Error mapping policy (domain/application errors to contract error codes)
+
+### § Authentication & Authorization (conditional: if PRD requires auth)
+- Auth boundary placement, context propagation, token/session strategy, authorization model
+
+### § Business Logic Placement
+- Domain rules vs orchestration vs data access ownership
+- Transactional boundary ownership
+- Cross-cutting concern placement
+
+### § Data Storage Architecture (conditional: if persistence needed)
+- Storage type observation (schema structure, query patterns, consistency, scale)
+- Hybrid storage documentation when multiple storage types needed
+
+### § Caching Strategy (conditional: if PRD indicates performance requirements)
+- Read frequency, data freshness, invalidation triggers, scope (request/instance/distributed)
+
+### § Async Processing & Message Queue (conditional: if PRD indicates background jobs or event-driven patterns)
+- Queue/topic structure, message schema reference, retry/dead-letter policy, consumer scaling
+
+### § Real-time & Connection State (conditional: if api-contract defines WebSocket/SSE)
+- Connection scope, state persistence, scale model
+
+### § Architecture Style (conditional: if PRD indicates multi-domain complexity)
+- Monolith vs modular monolith vs service-oriented selection
+
+### § External Integrations (conditional: if applicable)
+- Third-party APIs, file storage, external authentication providers
+
+### § Technology Stack (mandatory)
+- Framework, database, cache/queue/real-time technologies
+
+### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
+- Boundary-to-directory mapping principle
+- Import direction enforcement rules
+- Coding phase directives
