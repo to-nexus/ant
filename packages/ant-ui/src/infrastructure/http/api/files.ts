@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, getAuthHeaders } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, getAuthHeaders, getUserEmail } from './client';
 
 export interface FileNode {
   name: string;
@@ -218,5 +218,10 @@ export function getDownloadUrl(
   featureName: string,
   filePath: string,
 ): string {
-  return `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/download?path=${encodeURIComponent(filePath)}`;
+  const base = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/download?path=${encodeURIComponent(filePath)}`;
+  const email = getUserEmail();
+  if (email) {
+    return `${base}&user-email=${encodeURIComponent(email)}`;
+  }
+  return base;
 }
