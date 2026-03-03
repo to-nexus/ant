@@ -527,12 +527,14 @@ get_design_context(fileKey, nodeId="292:8139")  # events (dark)
 
 ## Phase 3: ui-spec.json 생성
 
+> **⚠️ 핵심 원칙**: Phase 0에서 수집한 **3개 매트릭스(Variation Matrix + Component State Matrix + Interaction State)의 모든 프레임**에 대해 `get_design_context`를 호출해야 한다. 어느 하나라도 조회하지 않으면 해당 정보가 ui-spec.json에서 누락되고, Code Job은 이를 구현하지 않는다.
+
 ### 입력 소스
-- Phase 0-3a **Variation Matrix** (변형별 nodeId 목록 — 핵심 입력)
-- Phase 0-3b **Annotation 수집 결과** (디자이너 주석 → behavior spec)
-- Phase 0-3c **Component State Matrix** (컴포넌트별 상태 변형 → `states` 블록)
+- Phase 0-3a **Variation Matrix** (페이지 레벨 변형 → `variants` 블록, 레이아웃 구조)
+- Phase 0-3b **Annotation 수집 결과** (디자이너 주석 → `behavior` 필드)
+- Phase 0-3c **Component State Matrix** (컴포넌트 상태 → `states` 블록)
 - Phase 0-3d **Interaction State 수집 결과** (인터랙션 상태 → `interactionStates` 블록)
-- `get_design_context` (변형별 개별 호출)
+- `get_design_context` (3개 매트릭스의 **모든 프레임**에 대해 개별 호출)
 - `get_metadata` 좌표 데이터 (레이아웃 구조 검증용)
 - `inputs/sources/prd.md` (화면 목록, 사용자 흐름, 기능 요구사항; 없으면 Figma 메타데이터·Annotation만으로 화면 목록·동작 사양 도출)
 - Phase 1 ui-tokens.json (REFERENCE)
@@ -541,14 +543,17 @@ get_design_context(fileKey, nodeId="292:8139")  # events (dark)
 
 PRD가 없으면: Figma 메타데이터의 페이지/프레임 목록과 Annotation만으로 화면 목록과 동작 사양을 도출한다. 페이지 의도(intent)는 프레임/섹션 이름과 Annotation에서 추론한다.
 
-### 변형별 탐색 프로세스 (Variation Matrix 기반)
+---
+
+### Phase 3-1: 페이지 레벨 탐색 (Variation Matrix 기반)
 
 Phase 0-3a에서 작성한 Variation Matrix의 **모든 프레임**에 대해 개별적으로
 `get_design_context`를 호출한다. 대표 프레임 1개만 호출하면 안 된다.
 
 ```
 # Variation Matrix 기반 호출 — events/detail 예시
-get_design_context(fileKey, nodeId="272:8710")   # Multi Yes/No (기본)
+get_design_context(fileKey, nodeId="272:8710")   # Multi Yes/No (기본) light
+get_design_context(fileKey, nodeId="292:7834")   # Multi Yes/No (기본) dark
 get_design_context(fileKey, nodeId="292:8947")   # Multi Yes/No (오더북 확장)
 get_design_context(fileKey, nodeId="321:4175")   # Single Yes/No
 get_design_context(fileKey, nodeId="279:9759")   # Up/Down
@@ -556,7 +561,7 @@ get_design_context(fileKey, nodeId="292:13221")  # 종료된 마켓
 ...
 ```
 
-각 호출 결과에서 다음을 비교 분석한다:
+**호출 후 분석 항목**:
 
 1. **레이아웃 구조 diff**: 변형 간 컴포넌트 배치가 다른지 확인
    - 예: Multi-market에서 오더북이 Left Column에 있지만, 구현에서 Sidebar로 잘못 배치
@@ -566,6 +571,121 @@ get_design_context(fileKey, nodeId="292:13221")  # 종료된 마켓
    - 예: 종료된 마켓에만 "Claim" 버튼 존재
 
 **대용량 프레임 처리**: `get_design_context` 응답이 불완전하거나 잘린 경우, 해당 프레임의 **주요 자식 노드 ID**를 `get_metadata`에서 확인한 뒤 **자식 단위로 개별 `get_design_context`** 호출한다. 필요 시 MCP의 `forceCode` 옵션을 사용할 수 있다. 자세한 절차는 문서 말미의 "대용량 디자인 처리"를 참고한다.
+
+---
+
+### Phase 3-2: 컴포넌트 그룹 탐색 (Component State Matrix + Interaction State 기반)
+
+> **이 단계가 없으면 인터랙션 상태·컴포넌트 변형이 누락된다.**
+> Phase 3-1은 페이지 전체 프레임만 다루므로, 개별 컴포넌트의 hover/focus/error/expanded/collapsed 등
+> 세부 상태는 이 단계에서 별도로 조회해야 한다.
+
+Phase 0-3c(Component State Matrix)와 0-3d(Interaction State)에서 수집한
+**모든 프레임**에 대해 `get_design_context`를 호출한다.
+
+```
+# Component State Matrix 기반 호출
+get_design_context(fileKey, nodeId="329:10078")  # Card_YesNo Closed 상태
+get_design_context(fileKey, nodeId="329:10129")  # Card_YesNo Upcoming 상태
+get_design_context(fileKey, nodeId="329:10098")  # Card_Multi Closed 상태
+...
+
+# Interaction State 기반 호출
+get_design_context(fileKey, nodeId="292:3212")   # Amount Input (hover/focus/error 상태)
+get_design_context(fileKey, nodeId="292:3598")   # Order Summary (열림/닫힘)
+get_design_context(fileKey, nodeId="279:11013")  # Buy/Sell 버튼 (hover 상태)
+get_design_context(fileKey, nodeId="292:4058")   # Merge/Split 드롭다운 메뉴
+get_design_context(fileKey, nodeId="292:2829")   # 거래 유형 드롭다운 (Market/Limit)
+get_design_context(fileKey, nodeId="292:7419")   # Rules 섹션
+...
+```
+
+**호출 후 추출 항목**:
+
+| 매트릭스 출처 | 추출 → 반영 대상 | 예시 |
+|---|---|---|
+| Component State Matrix | `states` 블록 | Card: `active`, `closed`, `upcoming` |
+| Interaction State | `interactionStates` 블록 | Input: `default`, `hover`, `focus`, `error` |
+| Interaction State | 중첩 컴포넌트 상세 구조 | OrderSummary expanded 시 line items |
+
+**각 호출에서 반드시 기록해야 하는 것**:
+1. **상태 전환 트리거**: 무엇이 상태 변화를 유발하는지 (hover, click, focus, data condition)
+2. **시각적 변화**: 어떤 CSS 속성이 변하는지 (border width/color, background, shadow)
+3. **내부 콘텐츠 변화**: 상태에 따라 보이거나 숨겨지는 요소 (expanded content, error message)
+4. **기본 상태**: 어떤 상태가 default인지 (Annotation에서 확인)
+
+---
+
+### Phase 3-3: Coverage Verification (커버리지 검증)
+
+> **ui-spec.json 작성 전에 반드시 수행한다. 이 단계를 건너뛰면 누락이 발생한다.**
+
+Phase 3-1과 3-2의 호출 결과를 대조하여 **모든 식별된 프레임이 조회되었는지** 확인한다.
+
+```
+Coverage Report:
+┌───────────────────────────┬──────────┬──────────┬─────────┐
+│ 매트릭스                    │ 식별 수   │ 조회 수   │ 누락    │
+├───────────────────────────┼──────────┼──────────┼─────────┤
+│ Variation Matrix (0-3a)   │ 15       │ 15       │ 0       │
+│ Component State (0-3c)    │ 6        │ 6        │ 0       │
+│ Interaction State (0-3d)  │ 8        │ 8        │ 0       │
+├───────────────────────────┼──────────┼──────────┼─────────┤
+│ TOTAL                     │ 29       │ 29       │ 0 ✅    │
+└───────────────────────────┴──────────┴──────────┴─────────┘
+```
+
+**누락이 있으면**: 해당 프레임에 대해 `get_design_context`를 추가 호출한 후 재검증한다.
+**Coverage 100%가 확인된 후에만** Phase 3-4로 진행한다.
+
+---
+
+### Phase 3-4: Spec 조립 및 컴포넌트 최소 깊이 검증
+
+Phase 3-1 ~ 3-3에서 수집한 모든 데이터를 ui-spec.json으로 조립한다.
+
+#### 컴포넌트 유형별 최소 깊이 요구사항
+
+> **Code Job은 ui-spec.json에 없는 것은 구현하지 않는다.**
+> 따라서 각 컴포넌트 유형별로 **최소한 아래 블록이 반드시 포함**되어야 한다.
+
+| 컴포넌트 유형 | 필수 블록 | 미포함 시 결과 |
+|---|---|---|
+| **텍스트 입력 (input)** | `interactionStates`: default, hover, focus, filled, error + errorMessages | focus 시 border 변화 없음, 에러 표시 안 됨 |
+| **버튼 (button)** | `interactionStates`: default, hover, disabled; `variants`: 조건별 label/color | hover 피드백 없음, 조건별 분기 없음 |
+| **아코디언 (accordion)** | `interactionStates`: collapsed, expanded + expanded의 내부 콘텐츠 구조 | 항상 열림 또는 항상 닫힘으로 구현 |
+| **드롭다운 (dropdown)** | `menu`: items, 각 item 구조, shadow, 위치; `interactionStates`: closed, open | 메뉴 항목 누락, 스타일 불일치 |
+| **탭 (tabs)** | `items`, `activeStyle`, `inactiveStyle`, 각 탭 콘텐츠 구조 | 탭 전환 스타일 누락 |
+| **테이블 (data-table)** | `columns`(각 컬럼 key/label/width/align), `headerStyle`, `rowStyle`, `emptyState`, `pagination` | 컬럼 누락, 빈 상태 없음 |
+| **카드 (card)** | `contentOrder`, 각 하위 요소, `interactionStates`: hover | hover 효과 없음 |
+| **모달 (modal)** | `backdrop`, 크기, `contentOrder`, 내부 폼 구조, 닫기 동작 | 레이아웃·크기 불일치 |
+| **토스트 (toast)** | `position`, `duration`, success/error 변형, `animation` | 위치·시간 불명확 |
+| **토글 그룹 (toggle-group)** | 각 옵션의 `selected`/`unselected` 스타일, 조합 상태 | 선택 시각 피드백 없음 |
+| **타임라인 (timeline)** | `items`, 각 item의 dot/title/subtitle, `connector` 스타일 | 연결선·아이콘 누락 |
+
+**검증 방법**: ui-spec.json 작성 후, 모든 interactive 컴포넌트에 대해 위 표를 대조한다.
+누락된 필수 블록이 있으면 Phase 3-2로 돌아가 해당 컴포넌트의 `get_design_context`를 추가 호출한다.
+
+#### 중첩 컴포넌트의 깊이 요구사항
+
+복합 컴포넌트(예: tradingPanel)는 내부에 여러 하위 컴포넌트를 포함한다.
+**각 하위 컴포넌트도 위 표의 최소 깊이를 독립적으로 충족해야 한다.**
+
+```
+tradingPanel (container)
+├── buySellTabs (tabs) → items, activeStyle, inactiveStyle ✅
+├── optionButtons (toggle-group) → selected/unselected per option ✅
+├── orderTypeDropdown (dropdown) → menu items, open state ✅
+├── amountInput (input) → default/hover/focus/filled/error ✅
+├── quickAmounts (button-group) → hover per item ✅
+├── potentialPayout (display) → format, conditional color ✅
+├── orderSummary (accordion) → collapsed/expanded + line items ✅
+└── submitButton (button) → variants per buy/sell × yes/no ✅
+```
+
+하위 컴포넌트 중 하나라도 최소 깊이를 충족하지 않으면, 해당 컴포넌트만 추가 조회한다.
+
+---
 
 ### 좌표 기반 레이아웃 구조 파악
 
@@ -615,41 +735,184 @@ get_design_context(fileKey, nodeId="292:13221")  # 종료된 마켓
 
 ### 출력 형식
 
+#### 기본 구조
+
 ```json
 {
   "_meta": {
-    "lastSection": "<number>",
-    "sectionPattern": "page"
+    "figmaFileKey": "<fileKey>",
+    "sectionPattern": "top-level",
+    "generatedFrom": {
+      "<page>": ["<nodeId>", "..."],
+      "<page>Components": ["<nodeId>", "..."]
+    }
   },
   "meta": {
-    "viewport": "<px> (desktop-first)",
-    "breakpoints": { "xl": "<px>", "lg": "<px>", "md": "<px>", "sm": "<px>" },
-    "fontFamily": "<font>",
-    "colorScheme": "light"
+    "viewport": { "width": 1440, "minWidth": 1440 },
+    "font": { "family": "<font>", "fallback": "sans-serif" },
+    "colorScheme": ["light", "dark"]
   },
   "layout": {
     "type": "vertical-stack",
-    "maxWidth": "<px>",
-    "structure": ["header", "titleBar", "content", "footer"],
-    "pagePadding": { "horizontal": "<spacing-token>" }
+    "contentOrder": ["header", "content", "footer"],
+    "background": "<token>"
   },
-  "sections": {
-    "<section-id>": {
-      "intent": "<이 디자인 선택의 이유>",
-      "layout": { "direction": "<row|column>", "justify": "<value>", "align": "<value>" },
-      "contentOrder": ["<first>", "<second>"],
-      "elements": { }
-    }
-  },
-  "pages": {
-    "<page-id>": {
-      "intent": "<페이지 목적>",
-      "background": "<token>",
-      "variants": { },
-      "components": { }
-    }
-  },
+  "sections": { },
+  "pages": { },
   "overlays": { }
+}
+```
+
+#### interactionStates 예시 (input 컴포넌트)
+
+> Phase 3-2에서 조회한 인터랙션 상태 데이터가 반영되는 형식.
+> 각 상태의 **시각적 변화**(border, background, color)와 **콘텐츠 변화**(에러 메시지)를 명시한다.
+
+```json
+{
+  "amountInput": {
+    "type": "number-input",
+    "suffix": "CROSSD",
+    "borderRadius": "<token>",
+    "interactionStates": {
+      "default": {
+        "border": { "width": "<token>", "color": "<token>" },
+        "valueDisplay": "empty"
+      },
+      "hover": {
+        "border": { "width": "<token>", "color": "<token>" },
+        "cursor": "text"
+      },
+      "focus": {
+        "border": { "width": "<thicker-token>", "color": "<accent-token>" },
+        "intent": "Stroke width increases, color changes to accent"
+      },
+      "filled": {
+        "border": { "width": "<thicker-token>", "color": "<accent-token>" },
+        "valueDisplay": "{amount}"
+      },
+      "error": {
+        "border": { "width": "<thicker-token>", "color": "<danger-token>" },
+        "background": "<danger-bg-token>",
+        "errorMessages": [
+          {
+            "condition": "amount > balance",
+            "icon": "<icon>",
+            "message": "Insufficient balance",
+            "color": "<danger-token>"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+#### 아코디언 collapsed/expanded 예시
+
+> 기본 상태와 확장 상태에서 **보이는 콘텐츠가 다른** 경우의 형식.
+
+```json
+{
+  "orderSummary": {
+    "type": "accordion",
+    "defaultState": "collapsed",
+    "header": {
+      "label": "Order Summary",
+      "expandIcon": { "icon": "<icon>", "rotation": { "collapsed": 0, "expanded": 180 } }
+    },
+    "interactionStates": {
+      "collapsed": { "contentVisible": false },
+      "expanded": {
+        "contentVisible": true,
+        "content": {
+          "background": "<token>",
+          "rows": [
+            { "label": "Order Type", "format": "{orderType}" },
+            { "label": "Price", "format": "{price}¢" },
+            { "label": "Shares", "format": "{shares}" }
+          ],
+          "divider": { "type": "horizontal-line" },
+          "totalRow": {
+            "label": "Potential PnL",
+            "format": "+{pnl} CROSSD",
+            "valueColor": "<bullish-token>"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### 중첩 컴포넌트 + combinedStates 예시
+
+> 여러 하위 컴포넌트의 상태가 **조합**되는 경우(Buy/Sell × Yes/No)의 형식.
+> `combinedStates`로 각 조합 시 하위 컴포넌트들의 동기화 상태를 명시한다.
+
+```json
+{
+  "tradingPanel": {
+    "contentOrder": ["buySellTabs", "optionButtons", "amountSection", "submitButton"],
+    "buySellTabs": {
+      "type": "segmented-control",
+      "items": ["Buy", "Sell"],
+      "buySelected": { "background": "<bullish-token>", "color": "<on-bullish-token>" },
+      "sellSelected": { "background": "<bearish-token>", "color": "<on-bearish-token>" }
+    },
+    "optionButtons": {
+      "type": "toggle-group",
+      "items": [
+        { "value": "yes", "selected": { "background": "...", "border": "..." }, "unselected": { "..." } },
+        { "value": "no", "selected": { "..." }, "unselected": { "..." } }
+      ]
+    },
+    "submitButton": {
+      "variants": {
+        "buyYes": { "label": "Buy Yes", "background": "<accent-token>" },
+        "sellNo": { "label": "Sell No", "background": "<bearish-token>" }
+      }
+    },
+    "combinedStates": {
+      "buyYesSelected": {
+        "buySellTabs": "buy",
+        "optionButtons": "yes",
+        "submitButton": "buyYes"
+      },
+      "sellNoSelected": {
+        "buySellTabs": "sell",
+        "optionButtons": "no",
+        "submitButton": "sellNo"
+      }
+    }
+  }
+}
+```
+
+#### two-column 레이아웃 예시
+
+> 좌표 데이터로 검증된 레이아웃 구조를 명시하는 형식.
+
+```json
+{
+  "pages": {
+    "marketDetail": {
+      "layout": {
+        "type": "two-column",
+        "gap": "<spacing-token>",
+        "leftColumn": { "width": 968, "flex": 1 },
+        "rightColumn": { "width": 360, "position": "sticky", "top": 80 }
+      },
+      "leftColumn": {
+        "contentOrder": ["backButton", "header", "chart", "optionsList", "rules"],
+        "components": { }
+      },
+      "rightColumn": {
+        "contentOrder": ["selectedOption", "tradingPanel", "mergeSplit"],
+        "components": { }
+      }
+    }
+  }
 }
 ```
 
@@ -868,49 +1131,87 @@ export 후 파일 크기로 빠르게 검증:
 
 ---
 
-## 체크리스트
+## 체크리스트 (프로세스 통합형)
 
-### Phase 0: 에셋/스크린샷/변형 탐색
+> **각 Phase의 체크리스트는 다음 Phase로 진행하기 전에 모두 통과해야 한다.**
+> 체크되지 않은 항목이 있으면 해당 Phase로 돌아가 보완한다.
+
+### Phase 0 GATE: 탐색 완료 확인
+
 - [ ] PAT 유효성 확인 (REST API 테스트 호출)
 - [ ] get_metadata로 모든 페이지/섹션을 한 번씩 조회했는가?
 - [ ] 메타데이터가 잘렸다면 REST API nodes로 노드 목록을 보완했는가?
 - [ ] 모든 커스텀 에셋 nodeId 확보 (컴포넌트 원본 ID)
-- [ ] SVG 에셋 다운로드 후 viewBox/크기 검증
-- [ ] PNG 에셋 다운로드 후 파일 타입/크기 검증
+- [ ] SVG/PNG 에셋 다운로드 후 검증 (viewBox, 파일 크기)
 - [ ] 주요 페이지 스크린샷 다운로드
-- [ ] **Variation Matrix 완성**: 모든 섹션의 모든 프레임 변형이 식별됨
-- [ ] **테마 변형 식별**: 라이트/다크 모드 쌍이 Variation Matrix에 테마 컬럼으로 구분됨
-- [ ] **Annotation 수집 완료**: 섹션 직속 text 노드에서 디자이너 주석 추출됨
 
-### Phase 1: ui-tokens.json
+**매트릭스 완성도** (Phase 1 진행 전 필수):
+- [ ] **Variation Matrix (0-3a)**: 모든 섹션의 모든 페이지 레벨 프레임 식별됨, 테마 변형 구분됨
+- [ ] **Annotation (0-3b)**: 섹션 직속 text 노드에서 디자이너 주석 추출됨
+- [ ] **Component State Matrix (0-3c)**: 섹션 외부의 컴포넌트 상태 변형 프레임 식별됨
+- [ ] **Interaction State (0-3d)**: 호버/포커스/에러/열림/닫힘 등 인터랙션 프레임 식별됨
+- [ ] **3개 매트릭스의 총 프레임 수 기록**: `__개 (VM: __개 + CSM: __개 + IS: __개)`
+
+### Phase 1 GATE: 토큰 완전성 확인
+
 - [ ] 모든 고유 색상 값 캡처 (도메인 색상 포함)
-- [ ] **다크/라이트 모드 토큰 쌍 추출**: 같은 CSS 변수의 라이트/다크 fallback 값이 모두 기록됨
-- [ ] 모든 타이포그래피 패턴 캡처
-- [ ] 시맨틱 키 사용 (목적 기반)
-- [ ] 유효한 JSON 구문
+- [ ] 다크/라이트 모드 토큰 쌍 추출: 같은 CSS 변수의 라이트/다크 fallback 값이 모두 기록됨
+- [ ] 모든 타이포그래피 스타일 캡처 (Figma의 style 메타데이터 대조)
+- [ ] spacing, cornerRadius, stroke, effects 캡처
+- [ ] 시맨틱 키 사용 (목적 기반 네이밍)
+- [ ] JSON 유효성 검증 통과
 
-### Phase 2: ui-assets.json
-- [ ] `inputs/assets/` 의 모든 파일이 매핑됨
-- [ ] 아이콘 라이브러리(Lucide 등) 별도 섹션으로 분리
-- [ ] 모든 에셋에 `rendering` 필드 포함
-- [ ] 모든 에셋에 `dest` 필드 포함
-- [ ] `_meta.pathPattern` 정의
-- [ ] `figmaNodeId` 기록 (재 export 대비)
+### Phase 2 GATE: 에셋 매핑 완전성 확인
 
-### Phase 3: ui-spec.json
+- [ ] `inputs/assets/`의 모든 파일이 매핑됨
+- [ ] 아이콘 라이브러리(Lucide 등) 별도 섹션
+- [ ] 모든 에셋에 `rendering`, `figmaNodeId` 포함
+- [ ] JSON 유효성 검증 통과
+
+### Phase 3-1 GATE: 페이지 레벨 탐색 완료
+
+- [ ] **Variation Matrix의 모든 프레임**에 대해 `get_design_context` 호출됨
+- [ ] 각 변형 간 레이아웃 diff 분석됨
+- [ ] 좌표 데이터로 컬럼 배치 교차검증됨
+
+### Phase 3-2 GATE: 컴포넌트 그룹 탐색 완료
+
+- [ ] **Component State Matrix의 모든 프레임**에 대해 `get_design_context` 호출됨
+- [ ] **Interaction State의 모든 프레임**에 대해 `get_design_context` 호출됨
+- [ ] 각 호출에서 상태 전환 트리거, 시각적 변화, 콘텐츠 변화, 기본 상태가 기록됨
+
+### Phase 3-3 GATE: Coverage 100% 확인
+
+- [ ] **Coverage Report 작성**: 3개 매트릭스의 식별 수 = 조회 수
+- [ ] **누락 0건** 확인. 누락 시 추가 조회 후 재검증
+
+### Phase 3-4 GATE: Spec 완전성 확인
+
+**구조 검증**:
 - [ ] 모든 값이 토큰 참조 (raw hex/px 없음)
-- [ ] PRD의 모든 페이지가 포함됨
-- [ ] sections/pages/modals/overlays 구조 분리
+- [ ] PRD(있는 경우)의 모든 페이지가 포함됨
+- [ ] sections/pages/overlays 구조 분리
 - [ ] 모든 컨테이너에 contentOrder 포함
-- [ ] intent 필드 포함
-- [ ] 관찰되지 않은 속성 미추가
-- [ ] **Variation Matrix의 모든 변형에 대해 `get_design_context` 호출됨**
-- [ ] **변형이 있는 페이지에 `variants` 블록 포함**
-- [ ] **각 variant의 `layout.content`가 좌표 데이터와 일치** (교차검증)
-- [ ] **Annotation에서 도출한 behavior spec이 `behavior` 필드에 반영됨**
-- [ ] **컬럼 배치 검증**: `get_metadata` 좌표의 x/width로 도출한 컬럼 구조가 `layout`과 일치
-- [ ] **Component State Matrix의 모든 상태가 해당 컴포넌트의 `states` 블록에 반영됨**
-- [ ] **Interaction State의 모든 인터랙션이 해당 요소의 `interactionStates`에 반영됨**
-- [ ] **독립 테이블 컴포넌트가 각각 별도로 정의됨** (공유 참조가 아닌 개별 컬럼 명세)
-- [ ] **모달의 다단계 플로우가 `flow` 블록에 순서대로 정의됨**
-- [ ] **종료 상태 변형의 레이아웃이 활성 상태와 다를 경우 별도 layout 명시됨**
+
+**변형 검증**:
+- [ ] 변형이 있는 페이지에 `variants` 블록 포함
+- [ ] 각 variant의 `layout`이 좌표 데이터와 일치 (교차검증)
+- [ ] Annotation에서 도출한 behavior가 반영됨
+
+**컴포넌트 최소 깊이 검증**:
+- [ ] 모든 input에 `interactionStates` (default/hover/focus/filled/error) 포함
+- [ ] 모든 accordion에 collapsed/expanded + expanded 내부 콘텐츠 구조 포함
+- [ ] 모든 dropdown에 menu items + open 상태 포함
+- [ ] 모든 button에 hover/disabled + variants(조건부) 포함
+- [ ] 모든 table에 columns, headerStyle, rowStyle, emptyState 포함
+- [ ] 모든 modal에 backdrop, 크기, contentOrder, 폼 구조 포함
+
+**상태 매트릭스 반영 검증**:
+- [ ] Component State Matrix의 모든 상태 → 해당 컴포넌트의 `states` 블록
+- [ ] Interaction State의 모든 인터랙션 → 해당 요소의 `interactionStates` 블록
+
+**최종 검증**:
+- [ ] JSON 유효성 검증 통과
+- [ ] ui-tokens.json 참조 검증: spec의 모든 토큰 참조가 tokens에 존재
+- [ ] ui-assets.json 참조 검증: spec의 모든 에셋 참조가 assets에 존재
+- [ ] `_meta.generatedFrom`에 조회한 모든 nodeId가 카테고리별로 기록됨
