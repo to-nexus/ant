@@ -100,6 +100,19 @@ if (import.meta.env.DEV) {
 }
 
 /**
+ * Get user email from localStorage (parsed).
+ * Returns undefined in local mode or if not set.
+ */
+export function getUserEmail(): string | undefined {
+  if (getBackendMode() === 'local') return undefined;
+  try {
+    const stored = localStorage.getItem('ant-ui:user-email');
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return undefined;
+}
+
+/**
  * Get authentication headers for Cloud mode
  */
 export function getAuthHeaders(): HeadersInit {
