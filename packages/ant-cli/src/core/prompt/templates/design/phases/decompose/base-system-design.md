@@ -149,19 +149,20 @@ Previous design:
 | Message queue/async processing needed | +1 |
 | Multiple databases (RDB + NoSQL/Cache) | +1 |
 
-### Step 3: Determine Budget
+### Step 3: Determine Task Count
 
-| Score | Complexity | Total Lines | Tasks |
-|-------|------------|-------------|-------|
-| 0 | Simple | 100-150 | 2 tasks |
-| 1-2 | Medium | 180-300 | 3 tasks |
-| 3+ | Complex | 360-600 | 4 tasks |
+| Score | Complexity | Max Tasks per Document |
+|-------|------------|-----------------------|
+| 0 | Simple | 2 tasks |
+| 1-2 | Medium | 3 tasks |
+| 3+ | Complex | 4 tasks |
 
-### Step 4: Divide Budget
+### Step 4: Distribute Catalog Sections
 
-- Divide total budget by number of tasks
-- Each task description MUST include its line budget
-- Distribute sections from the guide's Section Catalog across tasks as topic HINTS
+- Each task covers 1-3 sections from the guide's Section Catalog
+- Task descriptions reference catalog section names as topic HINTS (advisory, not binding)
+- Total tasks for a document type MUST NOT exceed the number of catalog sections for that type
+- Skip conditional catalog sections whose condition is not met
 
 ---
 
@@ -170,6 +171,23 @@ Previous design:
 **Focus on architecture, NOT implementation.**
 
 **Constraint**: Each document type has a guide (frontend-guide, backend-guide, api-contract-guide) that defines a **Section Catalog (CLOSED LIST)**. Task descriptions should reference sections from that catalog as topic hints. The guide's Section Catalog and Scope Ceiling are authoritative — decompose descriptions are advisory.
+
+### Section Catalogs by Document Type
+
+Use these catalogs to distribute sections across tasks. Each task should reference 1-3 catalog sections as topic hints.
+
+{{#if (or (eq environment "frontend") (eq environment "fullstack"))}}
+#### Frontend (`fe-system-{name}.md`) Section Catalog:
+{{> design/base/catalogs/frontend-catalog}}
+{{/if}}
+
+{{#if (or (eq environment "backend") (eq environment "fullstack"))}}
+#### Backend (`be-system-{name}.md`) Section Catalog:
+{{> design/base/catalogs/backend-catalog}}
+
+#### API Contract (`api-contract-{name}.md`) Section Catalog:
+{{> design/base/catalogs/api-contract-catalog}}
+{{/if}}
 
 ### Abstraction Level (applies to ALL document types)
 

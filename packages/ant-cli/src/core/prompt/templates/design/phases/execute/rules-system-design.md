@@ -1,3 +1,36 @@
+## Architectural Context Gathering
+
+### Principle
+
+The prompt already contains the PRD (injected as `prdSpec`) and the API contract (injected as `designDoc`). These are your primary architectural inputs — do NOT re-read them via tools.
+
+### Observation Targets
+
+| Target | When to read | How |
+|--------|-------------|-----|
+| Your target document (`task.targetFile`) | Continuation task (lastSectionNumber exists) AND you need `edit_file` | `read_file` on the target path only |
+| Other system design documents (`*-system-*.md`, `api-contract-*.md`) | Only if your task explicitly references cross-document dependencies not already in the prompt | `read_file` on the specific file |
+
+### Constraint
+
+Do NOT read UI design artifacts (`ui-spec.json`, `ui-tokens.json`, `ui-assets.json`). These are visual implementation outputs consumed by the coding phase — they contain no architectural information for system design.
+
+### Constraint
+
+Do NOT read session metadata (`sessions/*`, `chat.json`). These are internal system files irrelevant to architectural decisions.
+
+### Constraint
+
+Do NOT re-read files already present in your conversation history. If you read a file in a previous turn, its content is still available — issuing a duplicate `read_file` wastes budget without adding information.
+
+### Constraint
+
+When you need to inspect multiple files, issue ALL needed tool calls in ONE response. Do NOT discover incrementally (read one file, then decide the next) when the context already reveals the needed set.
+
+⚠️ **Blind spot**: LLMs default to reading every file visible in `list_files` results for "completeness." For system design, the PRD and API contract in your prompt are sufficient for most tasks. Additional reads should be the exception, not the default.
+
+---
+
 ## 📚 REFERENCE PROJECT USAGE RULES
 
 ### Principle
@@ -16,6 +49,31 @@ Use `search_reference_code` tool to **observe** existing contracts and interface
 ### ⚠️ Blind Spot Reminder
 
 When designing API contracts, you MUST search reference projects first to ensure compatibility. Do NOT assume endpoint structures.
+
+---
+
+## Information Freshness
+
+### Principle
+
+When PRD references external technologies, services, or standards, verify current state via `search_web` rather than relying on training data.
+
+### Observation Target
+
+Does the PRD or task description mention any of the following?
+- A specific SDK, library, or external service to integrate
+- A framework whose routing model, rendering strategy, or module system affects architecture
+- Version-specific behavior or migration from one version to another
+
+### Constraint
+
+If any of the above are observed, use `search_web` BEFORE making architectural decisions that depend on that information.
+
+Do NOT use `search_web` for general architecture patterns (Layered, Hexagonal, etc.) — these are stable knowledge.
+
+### Blind Spot
+
+LLMs generate plausible but outdated API structures and framework constraints with high confidence. A wrong architectural constraint propagates to all downstream code tasks.
 
 ---
 
@@ -297,11 +355,15 @@ Before generating output, verify:
 ### Never Write This Way:
 ❌ Algorithm steps: "Loop through array, calculate distance, find minimum"
 ❌ Formulas: "velocity = v - 2(v·n)n where n is normal vector"
+❌ PRD formula reproduction: copying calculation expressions from PRD verbatim (REFERENCE the PRD section instead; domain boundary owns the calculation)
 ❌ Specific values: "timeout: 3000ms", "angle: 45 degrees", "padding: 16px"
 ❌ Library/framework syntax: specific API calls (e.g., storage access functions, UI framework hooks, low-level rendering APIs)
 ❌ Implementation details: "hash with bcrypt rounds=10", "JWT HS256 algorithm"
 ❌ Language-specific type/contract syntax: `interface GameEngine { ... }`, `type GameState = { ... }`
 ❌ Local/internal helper state schemas that never cross a boundary (these belong in implementation, not design)
+❌ HTTP status code enumerations: listing status codes with per-code handling (describe boundary-level error POLICY instead)
+❌ Step-by-step procedural flows: "get credentials → sign payload → call API → store token → load data" (describe ownership POLICY instead)
+❌ View-model property listings: enumerating individual computed fields (describe what domain concepts the view-model aggregates)
 
 ### UI / Rendering Detail Guardrail
 - System Design MUST NOT describe UI at the level of implementation details:
@@ -327,6 +389,7 @@ Before generating output, verify:
 ### The Deciding Question: "Did PRD specify this, or did I choose it?"
 
 **If PRD specified it → Document it (architectural constraint)**
+**If PRD specifies FORMULAS or CALCULATIONS → REFERENCE the PRD section only** (the formula's existence is architectural — domain boundary owns it; the formula's content is implementation)
 **If YOU chose it → Omit it (implementation detail)**
 
 ### DO NOT Write (LLM-chosen implementation details):
@@ -360,6 +423,17 @@ Before generating output, verify:
   - **Framework hooks or events**: `onClick`, `onChange`, `useEffect`, `componentDidMount`
   - Loading spinner types, modal implementations, toast notification details
   - Error message templates, validation rules (unless domain invariants)
+  
+- ❌ **PRD formula/calculation reproduction**:
+  - Do NOT copy formulas or expressions from PRD into system design
+  - Instead: "Domain boundary encapsulates calculations per PRD §X.Y"
+  - The formula's *existence* (boundary ownership) is architecture; the formula's *content* is implementation
+
+- ❌ **View-model property listings**:
+  - Do NOT enumerate individual computed fields or derived properties
+  - Instead: describe what domain concepts the view-model aggregates and which DTOs it combines
+  - "Market detail view-model combines market DTO with orderbook DTO and user position data" — OK
+  - "Market detail view-model contains: bestBid, bestAsk, spread, userLevels..." — NOT OK
 
 ### ALWAYS Write (PRD-specified constraints):
 - ✅ **Platform constraints**: Client-side only, No backend, Serverless, Browser-based
@@ -474,6 +548,10 @@ Before generating output, verify:
   - "Is this a library/framework/tool name?" (YES = abstract to role)
   - "Is this a platform-specific API/feature?" (YES = abstract to interface)
   - "Did I extract INTENT from PRD, not copy wording?" (YES = good)
+  - "Did I reproduce any PRD formula instead of referencing the section?" (reference only = good)
+  - "Did I list HTTP status codes?" (boundary-level error flow only = good)
+  - "Did I write step-by-step procedures?" (POLICY description only = good)
+  - "Did I enumerate view-model fields?" (aggregated domain concepts only = good)
 
 ### Task Description vs Guide Section Catalog
 - [ ] **Guide Section Catalog is the scope ceiling** (only these sections are allowed)

@@ -3,48 +3,35 @@
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if currentTask}}
-YOUR LINE BUDGET: Look for "MAX [N] lines" in task description below.
-
-**IMPORTANT: Document Type Detection**
-- **API Contract** (api-contract-main.md): typically 120-350 lines (binding specification)
-- **Frontend** (fe-system-main.md): typically 150-450 lines (consumer architecture)
-- **Backend** (be-system-main.md): typically 150-450 lines (provider architecture)
-- **Unified** (be-system-main.md): typically 150-450 lines (single doc)
-
-**Absolute rule**: The task description line budget ("MAX [N] lines") is the real cap; the ranges above are guidance.
+CONCISENESS PRINCIPLE:
+- Write the minimum content needed to convey each architectural decision
+- If a section can be described in 3 bullets, do not write 10
+- The Section Catalog defines WHAT to write; write only that, nothing more
 
 {{#if (includes currentTask.targetFile "api-contract")}}
-API Contract structure rules (ignore generic "chapter limits"):
-- Use the required sections from the injected `api-contract-main.md` guide
+API Contract structure rules:
+- Use the required sections from the injected api-contract guide
 - Prefer endpoint-by-endpoint specification, grouped by resource/use case
 - Be precise; this document is a binding spec, not an architecture essay
+- Code blocks are allowed for DTO/schema clarity (define once, reference elsewhere)
 {{else}}
-CHAPTER LIMIT based on budget:
-- Budget ≤ 60 lines → Create EXACTLY 1 chapter
-- Budget 61-120 lines → Create 1-2 chapters MAX
-- Budget 121-200 lines → Create 2-3 chapters MAX
-- Budget 201-300 lines → Create 3-4 chapters MAX
-- Budget 301+ lines → Create 4-6 chapters MAX
+CHAPTER COUNT:
+- Each chapter corresponds to ONE section from the guide's Section Catalog
+- Write ONLY chapters for catalog sections assigned to your task
+- If all catalog sections for your task are already in the document, output ONLY the metadata (LAST_SECTION comment) with no new content
 
 STRUCTURE PER CHAPTER:
 - Maximum 5-6 subsections (###) for complex chapters
 - Each subsection: 3-8 bullet points
-- Each bullet: 1-2 sentences MAX (keep ultra-concise!)
-{{/if}}
+- Each bullet: 1-2 sentences MAX
 
-**CODE BLOCK LIMITS (CRITICAL)**:
-{{#if (includes currentTask.targetFile "api-contract")}}
-- Code blocks are allowed for DTO/schema clarity
-- Keep them short and consistent (avoid nested code fences)
-- Prefer one canonical definition per shared type (define once, reference elsewhere)
-{{else}}
-- **Maximum 3 code blocks in ENTIRE document**
-- **Each code block ≤8 lines**
+CODE BLOCKS:
+- Maximum 3 code blocks in ENTIRE document, each ≤8 lines
 - Use ONLY for critical interfaces/types that cross boundaries
 - Prefer prose descriptions over code
 {{/if}}
 
-⚠️ Focus on ARCHITECTURE and COMPONENT INTERACTION, not implementation details!
+⚠️ Focus on ARCHITECTURE and BOUNDARY INTERACTION, not implementation details!
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -104,20 +91,17 @@ STRUCTURE PER CHAPTER:
 - "Component architecture" → Skip if guide Scope Ceiling forbids it
 
 🚨 STRUCTURAL CONSTRAINTS 🚨
-**Chapter limit based on your line budget:**
-- If budget ≤ 60 lines → Create 1 chapter
-- If budget 61-120 lines → Create 1-2 chapters
-- If budget 121-200 lines → Create 2-3 chapters
-- If budget 201-300 lines → Create 3-4 chapters
-- If budget 301+ lines → Create 4-6 chapters
+**Chapter count:**
+- Each chapter = ONE section from the guide's Section Catalog
+- Write ONLY chapters for catalog sections relevant to your task description
+- Skip catalog sections already covered by previous tasks in this document
 
-**For each chapter:**
-- **Maximum 5-6 subsections (###)**
-- **Each subsection: 3-8 bullet points**
-- **Each bullet: 1 sentence**
-- **Code blocks: Max 3 total, each ≤8 lines** (CRITICAL: use sparingly!)
+**Conciseness:**
+- Write the minimum needed to convey each architectural decision
+- Each bullet: 1 sentence; each subsection: 3-8 bullets
+- Code blocks: Max 3 total, each ≤8 lines
 
-**Focus**: Architecture decisions, component boundaries, interaction patterns. NOT implementation formulas.
+**Focus**: Architecture decisions, boundary responsibilities, interaction patterns. NOT implementation formulas.
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -379,7 +363,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 8. **Technology Stack**: Framework, database (if any), key libraries, platform constraints
 9. **Non-Functional Requirements** (if PRD specifies): Security, performance, integrations
 
-**Critical**: Focus on architecture decisions and component interaction, NOT implementation formulas.
+**Critical**: Focus on architecture decisions and boundary interaction, NOT implementation formulas.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)
@@ -406,7 +390,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 
 **Golden Rule**: If it's not in the PRD, DON'T design it. Your job is to design what was ASKED FOR.
 
-**Focus on WHAT to build and HOW components interact, NOT what you think SHOULD BE there.**
+**Focus on WHAT to build and HOW boundaries interact, NOT what you think SHOULD BE there.**
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -414,34 +398,33 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 
 **FINAL CHECKLIST**:
 1. ✅ **Architecture defined**: Clear pattern selection (Layered, MVC, etc.)?
-2. ✅ **Component boundaries**: Modules/layers and responsibilities specified?
+2. ✅ **Architecture boundaries**: Modules/layers and responsibilities specified?
 3. ✅ Followed PRD constraints (tech stack, scope)?
 4. ✅ Skipped sections not applicable to project type?
-5. ✅ Stayed within YOUR task's line budget?
-6. ✅ Created appropriate number of chapters for your budget?
-7. ✅ Ultra-concise (1 sentence per point)?
-8. ✅ **Code blocks ≤3 total, each ≤8 lines**?
-9. ✅ **NO implementation details** (formulas, algorithms, detailed pseudocode, internal state schemas)?
-10. ✅ NO forbidden sections (deployment, ops, monitoring)?
-11. ✅ Covered all critical architectural decisions and component interactions?
-12. ✅ **ABSTRACTION SELF-CHECK** - For each sentence, verify:
+5. ✅ Each chapter maps to a catalog section (no invented sections)?
+6. ✅ Concise — minimum content for each architectural decision?
+7. ✅ **Code blocks ≤3 total, each ≤8 lines**?
+8. ✅ **NO implementation details** (formulas, algorithms, detailed pseudocode, internal state schemas)?
+9. ✅ NO forbidden sections (deployment, ops, monitoring)?
+10. ✅ Covered all critical architectural decisions and boundary interactions?
+11. ✅ **ABSTRACTION SELF-CHECK** - For each sentence, verify:
     - ✅ Describes WHAT/WHO, not HOW implementation works?
     - ✅ Could be implemented 10+ different ways?
     - ✅ No library/framework/tool names (except external services from PRD)?
     - ✅ No platform-specific API names (browser, window, DOM, etc.)?
     - ✅ No concrete technology names abstracted to architectural roles?
     - ✅ Extracted INTENT from PRD constraints, not copied wording?
-13. ✅ **EXTERNAL SERVICES CHECK** - If PRD specifies external APIs:
+12. ✅ **EXTERNAL SERVICES CHECK** - If PRD specifies external APIs:
     - ✅ Created dedicated "External Services (Per PRD)" section?
     - ✅ Listed EVERY service by exact name with PRD §reference?
     - ✅ Checked for exclusions (services PRD says NOT to use)?
     - ✅ NO generic names (e.g., "NewsAPI" when PRD says "NewsData.io")?
-14. ✅ **TECHNOLOGY ABSTRACTION** - Applied Heuristic Rules:
+13. ✅ **TECHNOLOGY ABSTRACTION** - Applied Heuristic Rules:
     - ✅ Library/framework names → Architectural roles?
     - ✅ Platform APIs → Generic interfaces?
     - ✅ Deployment terms → Constraint intents only?
     - ✅ UI implementation patterns → Component responsibilities?
-15. ✅ **DIRECTORY STRUCTURE** (if framework augmentation was injected above):
+14. ✅ **DIRECTORY STRUCTURE** (if framework augmentation was injected above):
     - ✅ Boundary-to-directory mapping principle stated?
     - ✅ Coding phase directives included?
     - ✅ Import direction / dependency rules between boundaries stated?

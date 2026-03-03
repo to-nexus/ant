@@ -8,6 +8,7 @@ import { DesignGraphState } from '../state';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
+import { executeSearchWeb } from '../../../tools/searchWeb';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -53,6 +54,9 @@ async function executeDesignTool(
         break;
       case 'list_assets':
         result = await handleListAssets(state, args as any);
+        break;
+      case 'search_web':
+        result = await executeSearchWeb(args as { query: string });
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);

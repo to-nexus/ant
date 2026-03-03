@@ -1,6 +1,6 @@
 ## Plan-Phase Tools and Batching
 
-**Principle**: You have read-only tools available (e.g. read_file, list_files, search_code) to inspect the codebase when needed. Use them when you need to verify existing modules or structure before finalizing your plan. When done, output your plan inside `<plan>` tags.
+**Principle**: You have read-only tools available (e.g. read_file, list_files, search_code, search_web) to inspect the codebase and look up external documentation when needed. Use them when you need to verify existing modules or structure before finalizing your plan. When done, output your plan inside `<plan>` tags.
 
 **Constraint**: Do NOT be instructed to use tools in a fixed order. Use tools only when your analysis benefits from inspecting actual files or paths; otherwise produce `<plan>` from the context already provided.
 
