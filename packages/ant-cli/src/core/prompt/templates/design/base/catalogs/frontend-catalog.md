@@ -12,6 +12,7 @@
 
 ### § API Integration & Error Strategy
 - Infrastructure adapter role (single adapter wrapping external communication)
+- Adapter isolation testability (which contracts require swappable implementations per Infrastructure Testability Guardrail)
 - Auth lifecycle POLICY (which boundary owns each auth phase; NOT step-by-step procedure like "get X → call Y → store Z")
 - Error propagation POLICY (how errors flow across boundaries; NOT HTTP status code enumerations like 401/400/500)
 

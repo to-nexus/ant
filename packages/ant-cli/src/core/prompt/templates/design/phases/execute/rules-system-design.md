@@ -476,6 +476,15 @@ Before generating output, verify:
   - One or more **domain engines/models** expose pure operations for "advance one tick" or "apply inputs" without depending on timers or UI
   - UI/presentation observes the current state and maps it to visuals and controls only
 
+### Infrastructure Testability Guardrail
+- Every infrastructure capability is accessed through an abstract contract owned by the infrastructure boundary. The concrete implementation behind each contract is a boundary-internal decision.
+- **Observation target**: Does the infrastructure boundary isolate external dependencies behind swappable contracts?
+- **Constraints**:
+  - Domain and application boundaries MUST NOT import or reference concrete infrastructure implementations — only the abstract contracts
+  - Each infrastructure contract MUST support at least two implementation strategies: one for the target runtime environment and one for isolated development/testing without external service availability
+  - The selection of which implementation to activate is an infrastructure boundary concern — domain and application boundaries are unaware of the active implementation
+- ⚠️ **Blind spot**: When development always uses live external services, missing adapter contracts go unnoticed. This surfaces as: inability to run the application offline, inability to test domain logic independently, and tight coupling between business rules and external service availability.
+
 ### Routing & Navigation Guardrail
 - Application/Runtime and Domain boundaries MUST NOT directly depend on concrete routing/navigation APIs (e.g., router instances, URL manipulation)
 - System Design should express navigation intent via:
