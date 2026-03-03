@@ -26,97 +26,47 @@
 ## 🏗️ REPOSITORY STRUCTURE DECISION
 ════════════════════════════════════════════════════════════════════════════════
 
-**STEP 1: Decide Repository Structure**
+**Observation target**: How many independently deployable tiers does the design document describe?
 
-Analyze project characteristics to determine structure:
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Tier count** | Count distinct document prefixes: `fe-system-*`, `be-system-*`, `api-contract-*` |
+| **Service boundaries** | Are there multiple `be-system-{service}.md` files (one per service)? |
+| **Shared contracts** | Does `api-contract-*` exist, implying a frontend-backend integration boundary? |
 
-**Monorepo Indicators:**
 {{#if (and (includes designDoc "fe-system-") (includes designDoc "be-system-"))}}
-- ✅ **Fullstack project** (Frontend + Backend)
+✅ **Fullstack project detected** (Frontend + Backend design documents present)
 {{/if}}
-- Multiple independent applications/services
-- Shared code/libraries between components
-- Medium-to-large scale project
 
-**Monolithic Indicators:**
-- Single application (frontend-only or backend-only)
-- Small-to-medium scale
-- No shared code requirements
+**Principle**: Repository structure follows tier boundaries — each independently buildable tier becomes a package in a multi-package workspace. A single-tier project remains monolithic.
 
-**STEP 2: Setup Tasks Based on Structure**
+**Constraint**: When multiple `be-system-{service}.md` files exist, each service boundary becomes a separate package. Package names MUST match the service name in the design document filename.
 
-**If MONOREPO:**
-- Create MULTIPLE setup tasks (one per package/app + root)
-- Root setup (priority 100): `exclusive: true` — workspace config, shared dependencies
-- Package-level setups (priority 101+): `exclusive: false`, distinct `parallelGroup` per package
-- Structure:
-  1. Root workspace setup (priority 100, exclusive: true)
-  2. Per-package setup (priority 101+, exclusive: false, parallelGroup: unique per package)
+**Constraint**: Shared types and contracts (from `api-contract-*`) belong in a dedicated shared package when the project has multiple tiers or services.
 
-**If MONOLITHIC:**
-- Create SINGLE setup task (priority 100)
-- All configuration and dependencies in one task
-
-**⚠️ If MSA/Service-Oriented (check design doc for service boundaries):**
-- Each service boundary in design doc = separate package
-- Shared code (types, DTOs) = separate package
-- Create setup task per package (root → shared → services → gateway/frontend)
-- **Follow design doc's service naming and boundaries exactly**
-
-**Critical Rules:**
-- ✅ Decide structure based on project needs, not rigid rules
-- ✅ Create as many setup tasks as needed for chosen structure
-- ✅ Assign ascending priorities (100, 101, 102, ...)
-- ✅ Root setup: exclusive: true. Package-level setups: exclusive: false with distinct parallelGroup
-- ❌ Don't mention specific file names (package.json, etc.)
+**Setup task mapping**:
+- **Single tier** → single setup task (priority 100, exclusive)
+- **Multiple tiers/services** → root workspace setup (priority 100, exclusive) + per-package setup (priority 101+, non-exclusive, distinct parallelGroup per package)
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🏗️ MSA DESIGN DOCUMENT HANDLING
 ════════════════════════════════════════════════════════════════════════════════
 
-**When design documents include multiple `be-system-{service}.md` files:**
-
-### Document Structure Detection
+**Observation target**: Does the design document set include multiple service-scoped documents?
 
 | Pattern Observed | Document Type | Package Strategy |
 |------------------|---------------|------------------|
-| `be-system-main.md` only | Unified | Single package |
-| `api-contract-main.md` + `be-system-main.md` | Contract-First | FE + BE packages |
-| `api-contract-main.md` + `be-system-*.md` (multiple) | MSA-Contract-First | **Package per service** |
+| Single `be-system-main.md` only | Unified | Single package |
+| `api-contract-*` + single `be-system-main.md` | Contract-First | FE + BE packages |
+| `api-contract-*` + multiple `be-system-*.md` | MSA-Contract-First | Package per service |
 
-### MSA Package Mapping Principle
+**Principle**: Each service boundary maps to one package. Each service task references ONLY its own design document via the `packages` field.
 
-| Design Document | Maps To Package |
-|-----------------|-----------------|
-| `api-contract-main.md` | `packages/shared/` (types, DTOs, contracts) |
-| `fe-system-main.md` | `packages/frontend/` or `packages/web/` |
-| `be-system-{service}.md` | `packages/{service}/` |
+**Constraint**: Do NOT mix service implementations in a single task. Each service task targets a single `be-system-{service}.md` scope.
 
-**⚠️ Package name MUST match service name in design document filename.**
+**Constraint**: All tasks that involve cross-tier integration reference `api-contract-*` for interface contracts (this is automatic via the `packages` tag — api-contract is always injected).
 
-### MSA Setup Task Generation
-
-| Task | Priority | Parallel | Scope |
-|------|----------|----------|-------|
-| Root workspace | 100 | exclusive: true | pnpm-workspace.yaml, root config |
-| Shared package | 101 | exclusive: false, parallelGroup: unique | Types/DTOs from api-contract-main.md |
-| Service packages | 102+ | exclusive: false, parallelGroup: unique each | One per `be-system-{service}.md` |
-| Frontend package | Last | exclusive: false, parallelGroup: unique | Depends on shared |
-
-### MSA Feature Task Generation
-
-**For each service, reference ONLY its design document:**
-
-| Task Target | Design Doc Reference | Scope |
-|-------------|---------------------|-------|
-| Auth service implementation | `be-system-auth.md` | Auth service only |
-| Order service implementation | `be-system-order.md` | Order service only |
-| Frontend implementation | `fe-system-main.md` | Frontend only |
-
-**⚠️ Constraint**: 
-- Do NOT mix service implementations in a single task
-- Each service task references its specific `be-system-{service}.md`
-- All tasks reference `api-contract-main.md` for interface contracts
+⚠️ **Blind spot**: When multiple services share a database or message queue, they APPEAR coupled but MUST still be separate tasks with separate packages. Cross-service coordination belongs in a shared foundation task.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -135,4 +85,3 @@ Analyze project characteristics to determine structure:
 ════════════════════════════════════════════════════════════════════════════════
 
 {{/if}}
-

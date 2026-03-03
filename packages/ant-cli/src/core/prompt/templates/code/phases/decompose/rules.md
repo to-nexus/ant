@@ -234,20 +234,22 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 | Tag | Maps To | Description |
 |-----|---------|-------------|
-| `fe` | `fe-system-main.md` | Single frontend |
+| `fe-main` | `fe-system-main.md` | Single frontend |
 | `fe-{pkg}` | `fe-system-{pkg}.md` | Multi-package frontend |
-| `be` | `be-system-main.md` | Single backend |
+| `be-main` | `be-system-main.md` | Single backend |
 | `be-{svc}` | `be-system-{svc}.md` | MSA service |
 | `shared` | api-contract-main.md only | Shared/utility (types, DTOs, configs) |
+
+**Principle**: Tags always follow `{tier}-{name}` pattern. Single-package projects use `main` as the name.
 
 - `api-contract-main.md` is ALWAYS injected when any package is specified.
 - `shared` tag: only `api-contract-main.md` is injected (no system design doc).
 
 **How to choose:**
-- Task touches frontend code -> `fe` (or `fe-{pkg}` for monorepo)
-- Task touches backend code -> `be` (or `be-{svc}` for MSA)
+- Task touches frontend code -> `fe-main` (or `fe-{pkg}` for monorepo)
+- Task touches backend code -> `be-main` (or `be-{svc}` for MSA)
 - Task touches shared/common code -> `shared`
-- Task touches both tiers -> combine (e.g., `["fe", "be"]`)
+- Task touches both tiers -> combine (e.g., `["fe-main", "be-main"]`)
 - Root workspace setup -> all tier tags in the project (e.g., `["shared", "be-api", "be-redirect"]`)
 
 ⚠️ **Blind spot**: `shared` alone injects ONLY api-contract-main.md — no system design documents. Root setup and shared foundation tasks MUST combine all relevant tier tags. Without tier-specific system design documents, the plan phase cannot observe tech stack versions or infrastructure requirements.

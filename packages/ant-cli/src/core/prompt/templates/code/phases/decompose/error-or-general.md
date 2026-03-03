@@ -48,24 +48,12 @@ Description: "config.ts validation receiving wrong connection string"
 {{else}}
 
 ════════════════════════════════════════════════════════════════════════════════
-📋 GENERAL PRINCIPLE FOR ALL TASKS
+📋 GENERAL PRINCIPLE
 ════════════════════════════════════════════════════════════════════════════════
 
-**User directive contains both facts and interpretations. Distinguish them.**
-
-**Task decomposition approach:**
-
-1. **Extract what user wants** (objective):
-   - Feature to add, problem to solve, component to modify
-
-2. **Separate user's how from what**:
-   - Task description focuses on WHAT (scope boundary)
-   - HOW is determined by the Plan phase using design documents and codebase context
-
-3. **Create scope-boundary descriptions**:
-   - Task name: What needs to be done (not how)
-   - Task description: Which persistence boundary, which endpoints/functionality, which design doc sections
-   - **Do NOT** prescribe implementation details, method signatures, or specific libraries
+**User directive contains both facts and interpretations.**
+Extract objective requirements (what user wants); separate from user's implementation suggestions (how).
+Task descriptions follow the scope and content rules defined in the Task Schema section below.
 
 ════════════════════════════════════════════════════════════════════════════════
 
