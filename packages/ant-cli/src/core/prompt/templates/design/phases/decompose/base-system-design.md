@@ -161,6 +161,7 @@ Previous design:
 
 - Divide total budget by number of tasks
 - Each task description MUST include its line budget
+- Distribute sections from the guide's Section Catalog across tasks as topic HINTS
 
 ---
 
@@ -168,21 +169,17 @@ Previous design:
 
 **Focus on architecture, NOT implementation.**
 
-### ✅ INCLUDE
+**Constraint**: Each document type has a guide (frontend-guide, backend-guide, api-contract-guide) that defines a **Section Catalog (CLOSED LIST)**. Task descriptions should reference sections from that catalog as topic hints. The guide's Section Catalog and Scope Ceiling are authoritative — decompose descriptions are advisory.
 
-- **Component boundaries and responsibilities** (WHAT each does, WHY it exists)
-- **Interface definitions** (WHAT data flows, not HOW it's processed)
-- **Abstraction layers** (WHY separated, WHAT each layer owns)
-- **Interaction patterns** (call sequence, data flow direction)
-- **Design rationale** (WHY this architecture vs alternatives)
+### Abstraction Level (applies to ALL document types)
 
-### ❌ EXCLUDE
-
-- Specific algorithms, formulas, calculation steps
-- Exact parameter values (timeouts, coefficients, thresholds)
-- Library/framework usage details (API calls, syntax)
-- Performance optimization tricks
-- Storage implementation details (key names, serialization format)
+| ✅ Architecture Level | ❌ Implementation Level |
+|----------------------|------------------------|
+| Boundary responsibilities and ownership | Specific algorithms, formulas, calculation steps |
+| Data flow direction between boundaries | Exact parameter values (timeouts, coefficients, thresholds) |
+| Dependency rules (what imports what) | Library/framework usage details (API calls, syntax) |
+| Design rationale (WHY this pattern) | Performance optimization tricks |
+| Error propagation POLICY | Storage implementation details (key names, serialization format) |
 
 ---
 
