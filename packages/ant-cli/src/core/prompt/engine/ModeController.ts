@@ -287,6 +287,13 @@ export class ModeController {
           }
         }
         
+        // ✅ Framework-aware augmentations (directory structure principles)
+        const frameworkAugmentation = this.detectFrameworkAugmentation(context);
+        if (frameworkAugmentation) {
+          injections.push(frameworkAugmentation);
+          console.log(`[ModeController] Adding framework augmentation: ${frameworkAugmentation}`);
+        }
+        
         // ✅ Domain-specific guides (game vs service)
         if (context.designDomain === 'game') {
           const gameGuidePath = `design/phases/execute/injections/game-domain-guide`;
@@ -564,6 +571,49 @@ export class ModeController {
   // 3. enforce node provides structured violations with suggestedFix
   // 4. LLM's native TypeScript error fixing capability
   // No need for 278-line typescript-error-fix.md injection!
+  
+  /**
+   * Detect framework-specific augmentation for design job.
+   * Infers framework from codebase profile, PRD, or design document content.
+   * Returns the augmentation template path, or undefined if no match.
+   */
+  private detectFrameworkAugmentation(context: AssembledContext): string | undefined {
+    // 1. Check codebase profile (existing projects)
+    const framework = context.codebaseProfile?.framework?.toLowerCase();
+    const language = context.codebaseProfile?.language?.toLowerCase();
+    
+    if (framework) {
+      if (framework.includes('next') || framework.includes('nextjs')) {
+        return 'design/phases/execute/injections/nextjs-augmentation';
+      }
+    }
+    
+    if (language?.includes('go') || language?.includes('golang')) {
+      // Go API projects get Go augmentation (CLI projects do not need directory structure augmentation)
+      const preDetected = (context as any).detectedEnvironment;
+      if (!preDetected || preDetected === 'backend' || preDetected === 'fullstack') {
+        return 'design/phases/execute/injections/go-api-augmentation';
+      }
+    }
+    
+    // 2. Infer from PRD/spec or design doc content (new projects)
+    const textSources = [context.prdSpec, (context as any).spec, context.designDoc].filter(Boolean);
+    const combined = textSources.join(' ').toLowerCase();
+    
+    if (!combined) return undefined;
+    
+    if (combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) {
+      return 'design/phases/execute/injections/nextjs-augmentation';
+    }
+    
+    // Go API detection from text
+    if ((combined.includes('go ') || combined.includes('golang')) && 
+        (combined.includes('api') || combined.includes('server') || combined.includes('backend'))) {
+      return 'design/phases/execute/injections/go-api-augmentation';
+    }
+    
+    return undefined;
+  }
   
   /**
    * Detect if directive contains runtime error messages or execution feedback
