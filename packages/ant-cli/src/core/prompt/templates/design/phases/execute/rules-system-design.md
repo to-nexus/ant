@@ -453,6 +453,14 @@ Before generating output, verify:
   - Keep **Execution Flows** to 2–3 essential flows (no step-by-step gameplay narratives)
   - Keep technology/platform constraints (framework, DOM vs Canvas, etc.) in the **Technology Stack & Platform Constraints** chapter; avoid repeating them in UI/Domain sections
 
+### Directory Structure Output Guardrail
+- When a framework augmentation guide is injected above, the design document MUST include a **Directory Structure & Boundary Mapping** section or subsection covering:
+  - Boundary-to-directory mapping principle (which architecture boundary maps to which top-level directory)
+  - Dependency/import direction rules between boundaries
+  - Coding phase directives (a concise checklist for the coding phase to enforce structural constraints)
+- **Constraint**: Output directory structure at the principle level only. Do NOT produce a full file tree, specific filenames, or component names. State the invariant and let the coding phase fill in details.
+- **Constraint**: If NO framework augmentation guide is injected, do NOT add a directory structure section — framework conventions are sufficient and the coding phase will follow them.
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚨 FINAL SELF-VALIDATION CHECKLIST
 ════════════════════════════════════════════════════════════════════════════════

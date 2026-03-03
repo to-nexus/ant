@@ -44,6 +44,8 @@
     "ui-spec-guide": [],
     "game-domain-guide": [],
     "service-domain-guide": [],
-    "ui-continuation": ["targetDoc"]
+    "ui-continuation": ["targetDoc"],
+    "go-api-augmentation": [],
+    "nextjs-augmentation": []
   }
 }
