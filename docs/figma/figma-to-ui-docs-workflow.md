@@ -84,9 +84,11 @@ get_metadata(fileKey, nodeId="0:1")
 
 ### 0-3a. Variation Matrix 작성
 
-`get_metadata` 결과의 `<section>` 노드 아래 모든 `<frame>` 자식을 목록화한다.
+`get_metadata` 결과에서 **섹션 역할**을 하는 컨테이너와 그 아래 모든 `<frame>` 자식을 목록화한다.
 각 프레임은 같은 페이지의 **상태 변형(state variation)**이다.
 Annotation에서 "라이트모드"/"다크모드"가 식별되면 **테마 변형**으로 분류한다.
+
+**구조 가정 완화**: `get_metadata` XML에 `<section>` 노드가 없을 수 있다. Figma 파일마다 PAGE > FRAME, PAGE > GROUP > FRAME 등 구조가 다르다. 이 경우 **페이지 직속의 named GROUP** 또는 **동일 부모 아래의 FRAME 묶음**을 섹션으로 간주하고 Variation Matrix를 작성한다. XML 요소명이 `section`이 아닐 수 있음(SECTION, FRAME, GROUP 등) — **이름·계층 구조**로 "여러 프레임을 묶는 컨테이너"를 식별하면 된다.
 
 ```
 # get_metadata 결과에서 section 하위 frame을 추출
@@ -227,6 +229,18 @@ Section: events/detail
 > Section 외부 또는 별도 그룹의 **컴포넌트 변형**은 0-3c에서,
 > **인터랙션 상태**는 0-3d에서 별도로 처리한다.
 > 세 매트릭스를 합치면 피그마의 모든 프레임이 빠짐없이 커버된다.
+
+### 0-3e. 메타데이터가 잘린 경우
+
+`get_metadata` 응답이 잘려서 섹션·프레임 목록이 불완전할 때는 Figma REST API로 노드 트리를 보완한다.
+
+```bash
+# 동일 페이지(또는 루트)의 하위 트리를 JSON으로 조회
+curl -s -H "X-Figma-Token: $FIGMA_PAT" \
+  "https://api.figma.com/v1/files/$FILE_KEY/nodes?ids=0:1&depth=4"
+```
+
+응답의 `nodes.<nodeId>.document` 하위에서 섹션·프레임·노드 ID 목록을 추출한다. 이 목록으로 Variation Matrix와 Component State Matrix를 채운 뒤, Phase 1~3은 동일하게 진행한다.
 
 ### 0-4. 컴포넌트 내부 에셋 노드 탐색
 
@@ -520,10 +534,12 @@ get_design_context(fileKey, nodeId="292:8139")  # events (dark)
 - Phase 0-3d **Interaction State 수집 결과** (인터랙션 상태 → `interactionStates` 블록)
 - `get_design_context` (변형별 개별 호출)
 - `get_metadata` 좌표 데이터 (레이아웃 구조 검증용)
-- `inputs/sources/prd.md` (화면 목록, 사용자 흐름, 기능 요구사항)
+- `inputs/sources/prd.md` (화면 목록, 사용자 흐름, 기능 요구사항; 없으면 Figma 메타데이터·Annotation만으로 화면 목록·동작 사양 도출)
 - Phase 1 ui-tokens.json (REFERENCE)
 - Phase 2 ui-assets.json (REFERENCE)
 - `inputs/references/` 스크린샷 (보조 — Code Job에는 전달되지 않음)
+
+PRD가 없으면: Figma 메타데이터의 페이지/프레임 목록과 Annotation만으로 화면 목록과 동작 사양을 도출한다. 페이지 의도(intent)는 프레임/섹션 이름과 Annotation에서 추론한다.
 
 ### 변형별 탐색 프로세스 (Variation Matrix 기반)
 
@@ -548,6 +564,8 @@ get_design_context(fileKey, nodeId="292:13221")  # 종료된 마켓
    - 예: "기본적으로 다 닫혀있음" → accordion defaultState = closed
 3. **조건부 속성**: 변형에만 존재하는 요소 식별
    - 예: 종료된 마켓에만 "Claim" 버튼 존재
+
+**대용량 프레임 처리**: `get_design_context` 응답이 불완전하거나 잘린 경우, 해당 프레임의 **주요 자식 노드 ID**를 `get_metadata`에서 확인한 뒤 **자식 단위로 개별 `get_design_context`** 호출한다. 필요 시 MCP의 `forceCode` 옵션을 사용할 수 있다. 자세한 절차는 문서 말미의 "대용량 디자인 처리"를 참고한다.
 
 ### 좌표 기반 레이아웃 구조 파악
 
@@ -634,6 +652,8 @@ get_design_context(fileKey, nodeId="292:13221")  # 종료된 마켓
   "overlays": { }
 }
 ```
+
+**Ant 호환성**: Ant의 Code Job과 UiDocParser는 `sections`, `pages`, `overlays` 등 모든 top-level 컨테이너를 섹션으로 파싱한다. ui-spec 최상위에 `sections`(공통 영역), `pages`(페이지별·variants), `overlays`를 두면 그대로 사용 가능하다. `_meta.sectionPattern`은 `"top-level"` 또는 `"page"` 모두 처리 가능하며, Ant 가이드와의 일관성을 위해 `"top-level"` 사용을 권장한다.
 
 ### variants 구조 (페이지 변형이 있는 경우 필수)
 
@@ -852,6 +872,8 @@ export 후 파일 크기로 빠르게 검증:
 
 ### Phase 0: 에셋/스크린샷/변형 탐색
 - [ ] PAT 유효성 확인 (REST API 테스트 호출)
+- [ ] get_metadata로 모든 페이지/섹션을 한 번씩 조회했는가?
+- [ ] 메타데이터가 잘렸다면 REST API nodes로 노드 목록을 보완했는가?
 - [ ] 모든 커스텀 에셋 nodeId 확보 (컴포넌트 원본 ID)
 - [ ] SVG 에셋 다운로드 후 viewBox/크기 검증
 - [ ] PNG 에셋 다운로드 후 파일 타입/크기 검증
