@@ -55,67 +55,85 @@ export function createSSERoutes(deps: {
     });
     
     // Register client (await ensures Redis Pub/Sub subscription is active before initial state)
+    const t0 = Date.now();
     await deps.sseService.registerClient(projectId, featureName, res, userContext);
     logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
-    
-    // Send initial states (Redis subscription is now guaranteed active - no update gap)
+    logger.info(`[SSE:timing] registerClient=${Date.now() - t0}ms`, { component: 'SSE', projectId, featureName });
+
+    // Send initial states in parallel (Redis subscription is guaranteed active after registerClient).
+    // Previously these were sequential awaits, causing fileTree to arrive 4-5s late because
+    // getKanbanData reads EFS synchronously (readFileSync) before fileTree could be sent.
+    // Now each fetch runs independently and sends as soon as ready.
     try {
-      // 1. Send initial Kanban state
-      const kanbanData = await deps.kanbanService.getKanbanData(
-        projectId,
-        featureName,
-        job,
-        deps.jobToProject,
-        deps.jobs,
-        deps.taskQueueSnapshots,
-        userContext  // ✅ Pass user context
-      );
-      deps.sseService.sendInitialState(res, 'kanban', kanbanData);
-      
-      // 2. Send initial Chat messages (using async version to ensure file/Redis is loaded)
-      const chatMessages = await deps.chatService.getMessagesAsync(projectId, featureName, userContext);
-      deps.sseService.sendInitialState(res, 'chat', { 
-        type: 'initial_state', 
-        messages: chatMessages,
-        projectId,      // ✅ Include for frontend filtering
-        featureName     // ✅ Include for frontend filtering
-      });
-      
-      // 3. Send initial FileTree (Redis cache first, EFS fallback)
-      let fileTree: any[] | null = null;
-      if (deps.stateStore) {
-        try {
-          fileTree = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
-        } catch (err) {
-          logger.warn(`Failed to read fileTree cache from Redis`, { component: 'SSE', projectId, featureName }, err);
-        }
-      }
-      if (!fileTree) {
-        fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
-      }
-      deps.sseService.sendInitialState(res, 'fileTree', { 
-        type: 'initial', 
-        tree: fileTree 
-      });
-      
-      // 4. Send initial Unseen Artifacts
-      if (deps.stateStore) {
-        try {
-          const unseenPaths = await deps.stateStore.getUnseenArtifacts(
-            userContext.userId,
+      const tStates = Date.now();
+
+      await Promise.all([
+        // 1. Kanban (EFS readFileSync + Redis — can be slow)
+        deps.kanbanService.getKanbanData(
+          projectId,
+          featureName,
+          job,
+          deps.jobToProject,
+          deps.jobs,
+          deps.taskQueueSnapshots,
+          userContext
+        ).then(kanbanData => {
+          logger.info(`[SSE:timing] kanban=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
+          deps.sseService.sendInitialState(res, 'kanban', kanbanData);
+        }).catch(err => {
+          logger.warn(`Failed to send initial kanban`, { component: 'SSE', projectId, featureName }, err);
+        }),
+
+        // 2. Chat (Redis/EFS — can be slow)
+        deps.chatService.getMessagesAsync(projectId, featureName, userContext).then(chatMessages => {
+          logger.info(`[SSE:timing] chat=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
+          deps.sseService.sendInitialState(res, 'chat', {
+            type: 'initial_state',
+            messages: chatMessages,
             projectId,
             featureName
-          );
-          deps.sseService.sendInitialState(res, 'unseenArtifacts', {
-            type: 'initial',
-            paths: unseenPaths
           });
-        } catch (err) {
-          logger.warn(`Failed to send initial unseen artifacts`, { component: 'SSE', projectId, featureName }, err);
-        }
-      }
-      
-      logger.debug(`Initial states sent`, { component: 'SSE', projectId, featureName });
+        }).catch(err => {
+          logger.warn(`Failed to send initial chat`, { component: 'SSE', projectId, featureName }, err);
+        }),
+
+        // 3. FileTree — Redis cache (~5ms), no wait for kanban/chat
+        (async () => {
+          let fileTree: any[] | null = null;
+          if (deps.stateStore) {
+            try {
+              fileTree = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
+            } catch (err) {
+              logger.warn(`Failed to read fileTree cache from Redis`, { component: 'SSE', projectId, featureName }, err);
+            }
+          }
+          if (!fileTree) {
+            fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
+          }
+          logger.info(`[SSE:timing] fileTree=${Date.now() - tStates}ms (cache=${deps.stateStore ? 'yes' : 'no'})`, { component: 'SSE', projectId, featureName });
+          deps.sseService.sendInitialState(res, 'fileTree', {
+            type: 'initial',
+            tree: fileTree
+          });
+        })().catch(err => {
+          logger.warn(`Failed to send initial fileTree`, { component: 'SSE', projectId, featureName }, err);
+        }),
+
+        // 4. Unseen Artifacts (Redis SMEMBERS — fast)
+        deps.stateStore
+          ? deps.stateStore.getUnseenArtifacts(userContext.userId, projectId, featureName).then(unseenPaths => {
+              logger.info(`[SSE:timing] unseenArtifacts=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
+              deps.sseService.sendInitialState(res, 'unseenArtifacts', {
+                type: 'initial',
+                paths: unseenPaths
+              });
+            }).catch(err => {
+              logger.warn(`Failed to send initial unseen artifacts`, { component: 'SSE', projectId, featureName }, err);
+            })
+          : Promise.resolve(),
+      ]);
+
+      logger.info(`[SSE:timing] all initial states sent total=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
     } catch (error) {
       logger.warn(`Failed to send initial states`, { component: 'SSE', projectId, featureName }, error);
     }
