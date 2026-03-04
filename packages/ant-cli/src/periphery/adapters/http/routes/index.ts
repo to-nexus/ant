@@ -66,7 +66,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   // File operations
   router.use(createFilesRoutes({
     projectService: deps.projectService,
-    stateStore: deps.stateStore
+    stateStore: deps.stateStore,
+    fileTreeNotifier: deps.fileTreeNotifier
   }));
   
   // Chat operations
