@@ -14,6 +14,7 @@ import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/re
 export function createFilesRoutes(deps: {
   projectService: ProjectService;
   stateStore?: StateStorePort;
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
 }): Router {
   const router = Router();
 
@@ -197,6 +198,10 @@ export function createFilesRoutes(deps: {
       // Write file
       await fs.promises.writeFile(fullPath, content, 'utf-8');
       
+      if (deps.fileTreeNotifier) {
+        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+      }
+
       res.json({ success: true, path: filePath });
     } catch (error: any) {
       console.error('[files.routes] Error creating/updating file:', error);
@@ -268,6 +273,10 @@ export function createFilesRoutes(deps: {
         }
       }
       
+      if (deps.fileTreeNotifier) {
+        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+      }
+
       res.json({ 
         success: true, 
         uploadedFiles,
@@ -303,6 +312,10 @@ export function createFilesRoutes(deps: {
       // Create directory recursively
       await fs.promises.mkdir(fullPath, { recursive: true });
       
+      if (deps.fileTreeNotifier) {
+        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+      }
+
       res.json({ success: true, path: dirPath });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -337,6 +350,10 @@ export function createFilesRoutes(deps: {
       await fs.promises.mkdir(path.dirname(fullNewPath), { recursive: true });
       await fs.promises.rename(fullOldPath, fullNewPath);
 
+      if (deps.fileTreeNotifier) {
+        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+      }
+
       res.json({ success: true, oldPath, newPath });
     } catch (error: any) {
       console.error('[files.routes] Rename error:', error);
@@ -358,6 +375,10 @@ export function createFilesRoutes(deps: {
       const userContext = extractUserContext(req);
       await deps.projectService.deleteFile(projectId, featureName, itemPath, userContext);
       
+      if (deps.fileTreeNotifier) {
+        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+      }
+
       res.json({ success: true, path: itemPath });
     } catch (error: any) {
       if (error.code === 'ENOENT') {
