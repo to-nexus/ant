@@ -10,10 +10,13 @@ CONCISENESS PRINCIPLE:
 
 {{#if (includes currentTask.targetFile "api-contract")}}
 API Contract structure rules:
-- Use the required sections from the injected api-contract guide
+- Each chapter corresponds to ONE section from the Section Catalog
+- Write ONLY chapters for your ASSIGNED sections (see Section Scope below)
+- Do NOT embed FORBIDDEN section content as subsections within ASSIGNED chapters
 - Prefer endpoint-by-endpoint specification, grouped by resource/use case
 - Be precise; this document is a binding spec, not an architecture essay
 - Code blocks are allowed for DTO/schema clarity (define once, reference elsewhere)
+- Reference shared DTOs by name only; do NOT pre-define them outside their assigned section
 {{else}}
 CHAPTER COUNT:
 - Each chapter corresponds to ONE section from the guide's Section Catalog

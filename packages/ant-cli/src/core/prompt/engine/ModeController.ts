@@ -288,7 +288,7 @@ export class ModeController {
         }
         
         // ✅ Framework-aware augmentations (directory structure principles)
-        const frameworkAugmentation = this.detectFrameworkAugmentation(context);
+        const frameworkAugmentation = this.detectFrameworkAugmentation(context, targetFile);
         if (frameworkAugmentation) {
           injections.push(frameworkAugmentation);
           console.log(`[ModeController] Adding framework augmentation: ${frameworkAugmentation}`);
@@ -575,21 +575,24 @@ export class ModeController {
   /**
    * Detect framework-specific augmentation for design job.
    * Infers framework from codebase profile, PRD, or design document content.
-   * Returns the augmentation template path, or undefined if no match.
+   * Filters by targetFile so that frontend augmentations only apply to frontend
+   * documents and backend augmentations only apply to backend documents.
    */
-  private detectFrameworkAugmentation(context: AssembledContext): string | undefined {
+  private detectFrameworkAugmentation(context: AssembledContext, targetFile?: string): string | undefined {
+    const isFrontendDoc = !targetFile || targetFile.includes('fe-system-') || targetFile.includes('frontend');
+    const isBackendDoc = !targetFile || targetFile.includes('be-system-') || targetFile.includes('api-contract') || targetFile.includes('backend');
+
     // 1. Check codebase profile (existing projects)
     const framework = context.codebaseProfile?.framework?.toLowerCase();
     const language = context.codebaseProfile?.language?.toLowerCase();
     
     if (framework) {
-      if (framework.includes('next') || framework.includes('nextjs')) {
+      if ((framework.includes('next') || framework.includes('nextjs')) && isFrontendDoc) {
         return 'design/phases/execute/injections/nextjs-augmentation';
       }
     }
     
-    if (language?.includes('go') || language?.includes('golang')) {
-      // Go API projects get Go augmentation (CLI projects do not need directory structure augmentation)
+    if ((language?.includes('go') || language?.includes('golang')) && isBackendDoc) {
       const preDetected = (context as any).detectedEnvironment;
       if (!preDetected || preDetected === 'backend' || preDetected === 'fullstack') {
         return 'design/phases/execute/injections/go-api-augmentation';
@@ -602,13 +605,12 @@ export class ModeController {
     
     if (!combined) return undefined;
     
-    if (combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) {
+    if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {
       return 'design/phases/execute/injections/nextjs-augmentation';
     }
     
-    // Go API detection from text
     if ((combined.includes('go ') || combined.includes('golang')) && 
-        (combined.includes('api') || combined.includes('server') || combined.includes('backend'))) {
+        (combined.includes('api') || combined.includes('server') || combined.includes('backend')) && isBackendDoc) {
       return 'design/phases/execute/injections/go-api-augmentation';
     }
     

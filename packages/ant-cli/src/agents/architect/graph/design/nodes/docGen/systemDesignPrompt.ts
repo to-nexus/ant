@@ -212,7 +212,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
               designDomain: state.detectionReport?.domain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,
-              isMSAServiceDoc: targetFile.startsWith('be-system-'),
+              isMSAServiceDoc: targetFile.startsWith('be-system-') && !targetFile.includes('be-system-main'),
               sectionScope: sectionScope ? `[${sectionScope.length} chars]` : undefined,
               filteredCatalog: filteredCatalog ? `[${filteredCatalog.length} chars]` : undefined,
             },
@@ -336,7 +336,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             jobMode: state.detectionReport?.jobMode,
             designDomain: state.detectionReport?.domain,
-            isMSAServiceDoc: targetFileForLog.startsWith('be-system-'),  // ✅ NEW
+            isMSAServiceDoc: targetFileForLog.startsWith('be-system-') && !targetFileForLog.includes('be-system-main'),
           },
         }
       );
@@ -429,24 +429,26 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
   }
   
   // Framework augmentation detection (mirrors ModeController.detectFrameworkAugmentation)
+  // Filter by targetFile: nextjs → frontend docs only, go-api → backend docs only
+  const isFrontendDoc = targetFile.includes('fe-system-') || targetFile.includes('frontend');
+  const isBackendDoc = targetFile.includes('be-system-') || targetFile.includes('api-contract') || targetFile.includes('backend');
   const framework = (state.context as any)?.codebaseProfile?.framework?.toLowerCase();
   const language = (state.context as any)?.codebaseProfile?.language?.toLowerCase();
   
-  if (framework?.includes('next') || framework?.includes('nextjs')) {
+  if ((framework?.includes('next') || framework?.includes('nextjs')) && isFrontendDoc) {
     templates.push('design/phases/execute/injections/nextjs-augmentation');
-  } else if (language?.includes('go') || language?.includes('golang')) {
+  } else if ((language?.includes('go') || language?.includes('golang')) && isBackendDoc) {
     const env = state.detectionReport?.environment;
     if (!env || env === 'backend' || env === 'fullstack') {
       templates.push('design/phases/execute/injections/go-api-augmentation');
     }
   } else {
-    // Text-based inference from PRD/directive
     const textSources = [state.prd, state.directive].filter(Boolean);
     const combined = textSources.join(' ').toLowerCase();
-    if (combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) {
+    if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {
       templates.push('design/phases/execute/injections/nextjs-augmentation');
     } else if ((combined.includes('go ') || combined.includes('golang')) &&
-               (combined.includes('api') || combined.includes('server') || combined.includes('backend'))) {
+               (combined.includes('api') || combined.includes('server') || combined.includes('backend')) && isBackendDoc) {
       templates.push('design/phases/execute/injections/go-api-augmentation');
     }
   }
