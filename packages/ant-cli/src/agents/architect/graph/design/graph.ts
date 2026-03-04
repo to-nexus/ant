@@ -40,6 +40,97 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     );
   }
   
+  // ✅ CALL LIMIT INTERRUPTION: task force-stopped by call budget
+  if ((state as any)._callLimitReached && state.currentTask) {
+    const { TaskTimingHelper } = await import('../code/state');
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
+    
+    const taskTokenUsage = getTaskTokenUsage(state as any);
+    if (taskTokenUsage) {
+      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+    }
+    
+    const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
+    (pausedTask as any).interrupted = true;
+    
+    const callIndex = state._docGenCallIndex || 0;
+    console.warn(`⚠️  [checkTaskStatus] Call limit reached for "${state.currentTask.name}" (${callIndex} calls) — creating interruption`);
+    
+    const { TaskQueue: TQ } = await import('../../types/task');
+    const newQueue = new TQ<DesignTask>();
+    newQueue.push(pausedTask);
+    state.taskQueue?.getAll().forEach((t: any) => {
+      if (t.id !== state.currentTask!.id) newQueue.push(t);
+    });
+    
+    const interruption = {
+      reason: 'call_limit' as const,
+      message: `Task "${state.currentTask.name}" paused: call budget exhausted (${callIndex} calls). Resume to continue.`,
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: {
+        callLimit: callIndex,
+        tasksRemaining: newQueue.size(),
+        completedCount: (state.completedTasks || []).length,
+      }
+    };
+    
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'design',
+          {
+            state: {
+              taskQueue: newQueue.getAll(),
+              completedTasks: state.completedTasks || [],
+              completedTasksDetails: state.completedTasksDetails || [],
+              currentTask: undefined,
+              planText: state.planText,
+              conversationHistory: state.conversationHistory || [],
+              files: state.files || [],
+              filesToDelete: state.filesToDelete || [],
+              jobId: (state as any).jobId,
+              jobTiming: (state as any).jobTiming,
+              tokenUsage: (state as any).tokenUsage,
+              overrideDirective: state.overrideDirective,
+              chatSource: state.chatSource,
+              detectionReport: state.detectionReport,
+              interruption,
+            }
+          }
+        );
+        console.log(`💾 [checkTaskStatus] Interruption checkpoint saved (${(state.completedTasks || []).length} completed, ${newQueue.size()} remaining)\n`);
+      } catch (error) {
+        console.warn(`[checkTaskStatus] ⚠️  Failed to save interruption checkpoint:`, error);
+      }
+    }
+    
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpJobId,
+        null,
+        newQueue.getAll(),
+        state.completedTasksDetails || [],
+        state.recursionCount,
+        state.recursionLimit,
+        (state as any).tokenUsage
+      );
+    }
+    
+    console.log(`⏸️  [checkTaskStatus] Task paused. ${(state.completedTasks || []).length} completed, ${newQueue.size()} remaining`);
+    
+    return {
+      currentTask: undefined,
+      taskQueue: newQueue,
+      _callLimitReached: false,
+      _docGenCallIndex: 0,
+      interruption,
+      tokenUsage: (state as any).tokenUsage,
+    } as any;
+  }
+  
   // ✅ Current task completed successfully
   if (state.currentTask) {
     // ✅ Get helpers
@@ -447,6 +538,7 @@ export function buildDesignGraph() {
 
       // ✅ DocGen call budget tracking
       _docGenCallIndex: null as any,
+      _callLimitReached: null as any,
 
       // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
       awaitingDetectClarify: null as any,
@@ -600,10 +692,13 @@ export function buildDesignGraph() {
   // ✅ Tool → docGen (loop back for next LLM turn)
   (graph as any).addEdge("tool", "docGen");
   
-  // ✅ Conditional routing: more tasks → plan, all done → learn
+  // ✅ Conditional routing: interrupted → learn, more tasks → plan, all done → learn
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
     ((s: DesignGraphState) => {
+      if ((s as any).interruption) {
+        return "learn";  // ← Interrupted (call limit / recursion) — skip to cleanup
+      }
       if (s.taskQueue && !s.taskQueue.isEmpty()) {
         return "plan";  // ← Next task
       } else {

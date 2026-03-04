@@ -236,8 +236,8 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
 
     // Writing deadline: inject escalating urgency based on call index
     const callIndex = state._docGenCallIndex || 0;
-    const SOFT_DEADLINE = 10;
-    const HARD_DEADLINE = 15;
+    const SOFT_DEADLINE = 20;
+    const HARD_DEADLINE = 30;
 
     let deadlineMsg = '';
     if (callIndex >= HARD_DEADLINE) {

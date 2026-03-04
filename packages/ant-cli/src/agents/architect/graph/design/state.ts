@@ -107,6 +107,9 @@ export interface DesignGraphState extends TaskArtifacts {
   
   /** Per-task docGen call counter (reset on task transition) */
   _docGenCallIndex?: number;
+  
+  /** Set by docGenRouter when call budget exhausted — signals checkTaskStatus to create interruption */
+  _callLimitReached?: boolean;
 
   // Results (populated by learn node)
   lessons?: string;
