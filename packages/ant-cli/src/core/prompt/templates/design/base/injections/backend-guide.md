@@ -1,9 +1,8 @@
-## ⚙️ BACKEND DESIGN DOCUMENT GUIDE
+## BACKEND DESIGN DOCUMENT GUIDE
 
 **Document**: `be-system-{name}.md`  
-**Role**: Backend implementation architecture for the corresponding `api-contract-{name}.md` (PROVIDER perspective)  
-**Phase**: Written AFTER the corresponding api-contract document is finalized  
-**Focus**: HOW to implement the contract at an architectural level — boundary responsibilities, data flow, domain placement
+**Role**: Backend internal architecture derived from PRD requirements  
+**Focus**: Internal system structure — boundary responsibilities, data flow, domain placement, infrastructure decisions
 
 ---
 
@@ -43,15 +42,15 @@
 
 ---
 
-### 2. Contract Compliance
+### 2. API Interface Scope
 
-**Principle**: This document describes HOW to implement the API contract at an architectural level — NOT the API interface itself. Endpoint definitions, DTOs, and schemas are defined in the corresponding api-contract document and MUST NOT be redefined here.
+**Principle**: This document describes internal backend architecture — NOT the API interface specification (endpoints, DTOs, schemas). Interface details are defined in a separate api-contract document and consumed during the coding phase.
 
-- Reference api-contract sections by document name and section number
-- Infrastructure/request boundary receives contract DTOs → orchestration boundary coordinates → domain boundary applies rules
-- Error mapping: describe how domain/application errors map to contract error codes at boundary level
+- Describe boundary responsibilities for request processing (which boundary owns validation, orchestration, domain rules, persistence)
+- Error handling: describe how domain/application errors propagate across boundaries at policy level
+- External services: list only if PRD explicitly requires (with PRD reference)
 
-**Constraint**: Do NOT duplicate any content that exists in the api-contract document. Reference only.
+**Constraint**: Do NOT define or reproduce endpoint specifications, DTO schemas, or request/response formats. These belong in the api-contract document (separate concern).
 
 ---
 
@@ -88,8 +87,6 @@
 
 **§ Database Design**: Focus on structure and relationships — NOT on concrete SQL syntax, DDL, or ORM mappings.
 
-**§ Endpoint Implementation Mapping**: NEVER redefine DTOs — reference the corresponding api-contract document only. For each endpoint group: contract reference, boundary responsibilities, error mapping policy, idempotency/concurrency notes (only if PRD requires).
-
 **§ Data Storage Architecture**: Do NOT default to a single storage type. Observe actual requirements (schema structure, query patterns, consistency needs, scale pattern). If hybrid storage needed, document which data belongs where and why.
 
 **§ Caching Strategy**: If horizontal scaling expected, distributed cache strategy MUST be documented.
@@ -106,30 +103,14 @@
 
 ---
 
-## MSA Service Scope (conditional: if multiple `be-system-{service}.md` documents)
-
-**Principle**: Each service document follows the same Section Catalog (CLOSED LIST), scoped to THIS service only. Sections that reference content from other services MUST cross-reference, not duplicate.
-
-| Constraint | What to observe |
-|-----------|----------------|
-| **Service isolation** | Does THIS document describe only THIS service's architecture, schema, and endpoint implementations? |
-| **Cross-service leakage** | Does THIS document describe other services' internals, schemas, or endpoint implementations? |
-| **Contract reference** | Does every endpoint mapping reference the specific section of the corresponding api-contract document? |
-| **Shared infrastructure** | Gateway, shared message bus, or cross-cutting infrastructure belongs in a shared foundation — NOT in individual service documents |
-
-**Constraint**: Do NOT describe other services' implementation details.  
-**Constraint**: Do NOT duplicate api-contract content — reference by document name and section number.
-
----
-
 ## Scope Ceiling
 
-**Constraint**: The following topics MUST NOT appear as sections in this document. They belong in the api-contract document, coding phase, or implementation — NOT in system design.
+**Constraint**: The following topics MUST NOT appear as sections in this document. They belong in api-contract, coding phase, or implementation — NOT in system design.
 
 | Forbidden Topic | Reason |
 |----------------|--------|
-| API endpoint definitions (request/response schemas) | Already in the corresponding api-contract document |
-| DTO type definitions or interface declarations | Already in the corresponding api-contract document |
+| API endpoint definitions (request/response schemas) | Defined in api-contract document (separate concern) |
+| DTO type definitions or interface declarations | Defined in api-contract document (separate concern) |
 | Full function/method implementations | Implementation detail |
 | SQL DDL or ORM model definitions | Implementation detail |
 | Concrete library API calls or syntax | Implementation detail |
@@ -139,23 +120,36 @@
 
 ---
 
+## MSA Service Scope (conditional: if multiple `be-system-{service}.md` documents)
+
+**Principle**: Each service document follows the same Section Catalog (CLOSED LIST), scoped to THIS service only. Sections that reference content from other services MUST cross-reference, not duplicate.
+
+| Constraint | What to observe |
+|-----------|----------------|
+| **Service isolation** | Does THIS document describe only THIS service's architecture, schema, and boundary responsibilities? |
+| **Cross-service leakage** | Does THIS document describe other services' internals, schemas, or boundary responsibilities? |
+| **Shared infrastructure** | Gateway, shared message bus, or cross-cutting infrastructure belongs in a shared foundation — NOT in individual service documents |
+
+**Constraint**: Do NOT describe other services' implementation details.
+
+---
+
 ## Anti-Patterns
 
-❌ Redefining APIs or DTOs from the api-contract document  
-❌ Duplicating endpoint schemas instead of referencing contract sections  
-❌ Including full method implementations or SQL DDL  
-❌ Specifying concrete numeric constants (TTLs, retry counts, cache keys) unless PRD mandates  
-❌ Step-by-step procedural algorithms (describe POLICY instead)  
-❌ Naming specific service classes with method signatures  
-❌ Framework-specific details (lifecycle hooks, DI configuration, middleware chains)  
-❌ Defaulting to the most complex architecture pattern without observed justification
+- Defining API endpoints or DTO schemas — belongs in api-contract and coding phase
+- Including full method implementations or SQL DDL
+- Specifying concrete numeric constants (TTLs, retry counts, cache keys) unless PRD mandates
+- Step-by-step procedural algorithms (describe POLICY instead)
+- Naming specific service classes with method signatures
+- Framework-specific details (lifecycle hooks, DI configuration, middleware chains)
+- Defaulting to the most complex architecture pattern without observed justification
 
 ---
 
 ## Key Reminders
 
 - **Describe architecture boundaries, not implementation recipes**
-- **Reference the corresponding api-contract document — never duplicate it**
 - **Keep abstractions framework-agnostic**
+- **API interface details are defined separately and consumed during the coding phase**
 - **Decompose task descriptions are HINTS — this section catalog is the scope ceiling**
 - **Conditional sections should be skipped when their condition is not met**

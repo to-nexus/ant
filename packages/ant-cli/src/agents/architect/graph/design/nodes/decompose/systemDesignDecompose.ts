@@ -196,19 +196,18 @@ function validateTaskCoverage(response: SystemDesignResponse): { valid: boolean;
 
 /**
  * Generate minimum viable tasks from targetFiles.
- * Each targetFile gets exactly one task. api-contract is exclusive, others get parallelGroup.
+ * Each targetFile gets exactly one task with parallelGroup set to baseName.
  */
 function generateMinimumTasks(targetFiles: string[]): SystemDesignResponse['tasks'] {
   return targetFiles.map((file, idx) => {
     const baseName = file.replace('.md', '');
-    const isApiContract = file.startsWith('api-contract-');
     return {
       id: `design-${baseName}`,
       name: `Design Document: ${baseName}`,
       targetFile: file,
       priority: 200 + idx * 20,
       description: `Generate ${file} design document based on requirements.`,
-      ...(isApiContract ? { exclusive: true } : { parallelGroup: baseName }),
+      parallelGroup: baseName,
     };
   });
 }
@@ -238,8 +237,7 @@ function buildTaskQueue(response: SystemDesignResponse): TaskQueue<DesignTask> {
       taskData.targetFile = response.targetFiles[0];
     }
     
-    const isApiContract = taskData.targetFile.startsWith('api-contract-');
-    const exclusive = typeof taskData.exclusive === 'boolean' ? taskData.exclusive : (isApiContract || undefined);
+    const exclusive = typeof taskData.exclusive === 'boolean' ? taskData.exclusive : undefined;
     const parallelGroup = !exclusive && typeof taskData.parallelGroup === 'string'
       ? taskData.parallelGroup
       : undefined;

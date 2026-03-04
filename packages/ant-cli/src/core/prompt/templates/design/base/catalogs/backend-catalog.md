@@ -1,17 +1,11 @@
-### § Overview & API Contract Compliance (mandatory)
+### § Overview (mandatory)
 - System purpose and business domain
 - Selected architecture pattern with rationale (reference observation from §1.1)
-- API contract compliance statement referencing the corresponding `api-contract-{name}.md`
 
 ### § Database Design (conditional: if persistence needed)
 - Entity relationships (conceptual schema, NOT SQL DDL)
 - Key constraints and indexes
 - Table/collection structure with field types
-
-### § Endpoint Implementation Mapping
-- Contract reference per endpoint group (exact endpoint/method from api-contract document)
-- Boundary responsibilities (request binding, orchestration, domain rules, persistence)
-- Error mapping policy (domain/application errors to contract error codes)
 
 ### § Authentication & Authorization (conditional: if PRD requires auth)
 - Auth boundary placement, context propagation, token/session strategy, authorization model
@@ -31,7 +25,7 @@
 ### § Async Processing & Message Queue (conditional: if PRD indicates background jobs or event-driven patterns)
 - Queue/topic structure, message schema reference, retry/dead-letter policy, consumer scaling
 
-### § Real-time & Connection State (conditional: if api-contract defines WebSocket/SSE)
+### § Real-time & Connection State (conditional: if PRD indicates real-time requirements)
 - Connection scope, state persistence, scale model
 
 ### § Architecture Style (conditional: if PRD indicates multi-domain complexity)

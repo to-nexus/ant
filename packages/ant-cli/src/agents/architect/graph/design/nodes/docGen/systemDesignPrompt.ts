@@ -109,50 +109,11 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
-    // Load api-contract-*.md files for backend system docs only.
-    // Frontend system design is architecture-level (boundaries, policies, data flow direction)
-    // and does not consume api-contract content — the code job handles that.
-    let apiContractContent: string | undefined;
-    const isImplementationDesign = 
-      targetFile.startsWith('be-system-');
-    
-    if (isImplementationDesign) {
-      try {
-        const featurePath = state.context.featurePath;
-        if (featurePath) {
-          const pathMod = await import('path');
-          const fsMod = await import('fs/promises');
-          const designDir = pathMod.join(featurePath, 'outputs/design');
-          try {
-            const entries = await fsMod.readdir(designDir);
-            const contractFiles = entries.filter(f => /^api-contract-.+\.md$/.test(f));
-            const parts: string[] = [];
-            for (const cf of contractFiles) {
-              const content = await fsMod.readFile(pathMod.join(designDir, cf), 'utf-8');
-              const name = cf.replace(/^api-contract-/, '').replace(/\.md$/, '');
-              parts.push(`# API Contract: ${name}\n\n${content}`);
-            }
-            if (parts.length > 0) {
-              apiContractContent = parts.join('\n\n---\n\n');
-              console.log(`📋 [DocGen] Loaded ${contractFiles.length} api-contract file(s) from disk`);
-            } else {
-              console.log(`ℹ️  [DocGen] No api-contract-*.md found (may not be needed)`);
-            }
-          } catch {
-            console.log(`ℹ️  [DocGen] No design dir or api-contract files found`);
-          }
-        }
-      } catch (error) {
-        console.warn(`⚠️  [DocGen] Failed to load api-contract files:`, error);
-      }
-    }
-    
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',
       state.context,
       {
         directive: state.directive || '',
-        designDoc: apiContractContent,
         lastSectionNumber,
         sectionPattern,
         prdSpec: state.prd,
@@ -197,7 +158,6 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     const contextParts = [
       composed.injections,
       state.prd ? `# Requirements\n\n${state.prd}` : null,
-      apiContractContent ? `# API Contract\n\n${apiContractContent}` : null,
     ].filter(Boolean);
     
     const contextBlock: CacheableContent = {
@@ -243,10 +203,8 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
             templatePath: 'design/phases/execute/base-system-design',
             usedTemplates,
             injectedVariables: {
-              targetFile,  // ✅ NEW: Critical for MSA debugging
+              targetFile,
               directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-              designDoc: apiContractContent ? `[${apiContractContent.length} chars]` : undefined,
-              apiContractLoaded: !!apiContractContent,  // ✅ NEW: Quick check if contract was loaded
               lastSectionNumber,
               sectionPattern,
               prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
@@ -403,7 +361,7 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   const task = state.currentTask;
   const lines: string[] = [];
   
-  // ✅ 1. Target File (CRITICAL for CONTRACT-FIRST design)
+  // ✅ 1. Target File
   if (task?.targetFile) {
     lines.push(`# Target Document`);
     lines.push(`Write to: \`outputs/design/${task.targetFile}\``);

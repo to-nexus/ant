@@ -64,32 +64,37 @@ DO NOT CREATE tasks for:
 ---
 
 {{#unless (eq jobMode "refactor")}}
-## 📋 CONTRACT-FIRST STRATEGY (if applicable)
+## MULTI-DOCUMENT STRATEGY (if applicable)
 
 ### Principle
 
-API contract is written first as the single source of truth. Implementation documents reference the contract.
+Each design document is derived independently from the PRD. Documents cover distinct, non-overlapping concerns:
+- **api-contract**: External interface specification (WHAT endpoints exist)
+- **fe-system**: Frontend internal architecture (HOW frontend is structured)
+- **be-system**: Backend internal architecture (HOW backend is structured)
+
+All document types can be generated in parallel. Tasks targeting the SAME file share the same `parallelGroup` (sequential within file, parallel across files).
 
 ### Fullstack (frontend + backend)
 
-| Phase | Priority | Target File | Content Scope |
-|-------|----------|-------------|---------|
-| 1 | 200-209 | api-contract-main.md | Per api-contract-guide section catalog |
-| 2 | 210-229 | fe-system-main.md | Per frontend-guide section catalog |
-| 3 | 230-249 | be-system-main.md | Per backend-guide section catalog |
+| Priority Range | Target File | Concern |
+|---------------|-------------|---------|
+| 200-249 | api-contract-main.md | Per api-contract-guide section catalog |
+| 200-249 | fe-system-main.md | Per frontend-guide section catalog |
+| 200-249 | be-system-main.md | Per backend-guide section catalog |
 
 ### Backend-only (no frontend)
 
-| Phase | Priority | Target File | Content Scope |
-|-------|----------|-------------|---------|
-| 1 | 200-209 | api-contract-main.md | Per api-contract-guide section catalog |
-| 2 | 210-229 | be-system-main.md | Per backend-guide section catalog |
+| Priority Range | Target File | Concern |
+|---------------|-------------|---------|
+| 200-249 | api-contract-main.md | Per api-contract-guide section catalog |
+| 200-249 | be-system-main.md | Per backend-guide section catalog |
 
-**Constraint**: api-contract-*.md tasks are ALWAYS written first (exclusive). Implementation documents follow.
+**Constraint**: Tasks targeting the SAME file MUST share the same `parallelGroup`. Tasks targeting DIFFERENT files can run in parallel.
 
 ---
 
-## 📋 MSA-CONTRACT-FIRST STRATEGY (if service/package boundaries detected)
+## MSA MULTI-DOCUMENT STRATEGY (if service/package boundaries detected)
 
 **When PRD explicitly indicates multiple backend service boundaries OR multiple frontend package boundaries.**
 
@@ -100,11 +105,13 @@ MSA applies to BOTH tiers independently:
 
 ### Priority Assignment
 
-| Phase | Priority | Target File | Content |
-|-------|----------|-------------|---------|
-| 1 | 200-209 | api-contract-{service}.md | **Per service** - Endpoints this service provides/consumes, events, DTOs |
-| 2 | 210-219 | fe-system-{package}.md | **Per package** (if FE MSA) or fe-system-main.md (if single FE) |
-| 3 | 220-249 | be-system-{service}.md | **Per service** (if BE MSA) or be-system-main.md (if single BE) |
+All document types use the same priority range (200-249). Tasks targeting different files run in parallel; tasks targeting the same file run sequentially within their `parallelGroup`.
+
+| Priority Range | Target File | Concern |
+|---------------|-------------|---------|
+| 200-249 | api-contract-{service}.md | **Per service** - Endpoints this service provides/consumes, events, DTOs |
+| 200-249 | fe-system-{package}.md | **Per package** (if FE MSA) or fe-system-main.md (if single FE) |
+| 200-249 | be-system-{service}.md | **Per service** (if BE MSA) or be-system-main.md (if single BE) |
 
 ### Document Naming
 
@@ -216,23 +223,19 @@ MSA applies to BOTH tiers independently:
 | assignedSections | Array of catalog section names (e.g., `["§ Overview", "§ Architecture Boundaries"]`). EXCLUSIVE scope — no overlap between tasks. |
 | description | ABSTRACT terms providing context (section assignments are authoritative) |
 | priority | 200-299 range |
-| exclusive | `true` if task must run alone (e.g., api-contract) |
 | parallelGroup | Group ID for parallel scheduling (tasks with same group conflict) |
 
-### Parallel Execution Hints (`exclusive` and `parallelGroup`)
+### Parallel Execution Hints (`parallelGroup`)
 
-Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-id>"`.
-
-**`exclusive: true`** — Task must run alone (no concurrent execution):
-- API contract tasks (`api-contract-*.md`) → ALWAYS exclusive (defines shared interface)
+Each task MUST include `"parallelGroup": "<group-id>"`.
 
 **`parallelGroup: "<group-id>"`** — Tasks with SAME group ID cannot run simultaneously. Tasks with DIFFERENT group IDs can run in parallel.
 
 - **"unified"** mode: All tasks target the SAME file → same group ID (e.g., `"fe-system-main"`)
-- **"contract-first"** mode: Implementation tasks target DIFFERENT files → different group IDs (e.g., `"fe-main"`, `"be-main"`)
-- **"msa-contract-first"** mode: Each service targets a DIFFERENT file → each service gets its own group ID (e.g., `"be-auth"`, `"be-order"`)
+- **"contract-first"** mode: Each document type targets a DIFFERENT file → different group IDs (e.g., `"api-contract-main"`, `"fe-system-main"`, `"be-system-main"`)
+- **"msa-contract-first"** mode: Each file gets its own group ID (e.g., `"api-contract-auth"`, `"be-system-auth"`, `"be-system-order"`)
 
-**⚠️ Constraint:** If tasks write to the same file, they MUST share the same `parallelGroup`.
+**Constraint:** Tasks writing to the same file MUST share the same `parallelGroup`.
 
 ---
 
@@ -251,7 +254,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "id": "design-contract",
       "name": "API Contract Definition",
       "targetFile": "api-contract-main.md",
-      "exclusive": true,
+      "parallelGroup": "api-contract-main",
       "assignedSections": ["§ Overview", "§ Endpoints", "§ Shared Types", "§ Error Handling"],
       "description": "Cover api-contract-guide sections: Overview, Endpoints, Shared Types, Error Handling.",
       "priority": 200
@@ -260,19 +263,19 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "id": "design-frontend",
       "name": "Frontend System Design",
       "targetFile": "fe-system-main.md",
-      "parallelGroup": "fe-main",
+      "parallelGroup": "fe-system-main",
       "assignedSections": ["§ Overview", "§ Architecture Boundaries", "§ API Integration & Error Strategy"],
       "description": "Cover frontend-guide sections: Overview, Architecture Boundaries, API Integration.",
-      "priority": 220
+      "priority": 200
     },
     {
       "id": "design-backend",
       "name": "Backend System Design",
       "targetFile": "be-system-main.md",
-      "parallelGroup": "be-main",
-      "assignedSections": ["§ Overview", "§ Architecture Pattern", "§ Endpoint Mapping"],
-      "description": "Cover backend-guide sections: Overview, Architecture Pattern, Endpoint Mapping.",
-      "priority": 240
+      "parallelGroup": "be-system-main",
+      "assignedSections": ["§ Overview", "§ Business Logic Placement", "§ Technology Stack"],
+      "description": "Cover backend-guide sections: Overview, Business Logic Placement, Technology Stack.",
+      "priority": 200
     }
   ]
 }
@@ -280,8 +283,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 **Key patterns demonstrated:**
 - `assignedSections` defines EXCLUSIVE scope — each catalog section assigned to exactly one task
-- `exclusive: true` for api-contract tasks (shared interface, must run alone)
-- `parallelGroup` for implementation tasks (same file = same group, different files = different groups)
+- `parallelGroup` for all tasks (same file = same group, different files = different groups)
+- All document types use the same priority range — they run in parallel across files
 - Description provides context; `assignedSections` is authoritative
 - For MSA, replace `main` with `{service}` (BE/API) or `{package}` (FE) per Document Naming rules above
 
@@ -329,8 +332,7 @@ Before outputting, verify:
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 - ✅ If reference project mentioned → `references` array included
-- ✅ Every task has either `exclusive: true` OR `parallelGroup: "<id>"`
-- ✅ api-contract-* tasks have `exclusive: true`
+- ✅ Every task has `parallelGroup: "<id>"`
 - ✅ Tasks targeting the same file share the same `parallelGroup`
 - ✅ All filenames use `{type}-{identifier}.md` format (no bare `api-contract.md` or `system-design.md`)
 
