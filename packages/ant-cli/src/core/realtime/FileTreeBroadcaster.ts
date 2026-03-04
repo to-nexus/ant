@@ -103,7 +103,11 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
       // 1. Build file tree from filesystem
       const tree = await this.buildFileTree(this.projectPath);
 
-      // 2. Broadcast via user-scoped Redis Pub/Sub channel
+      // 2. Cache in Redis for cross-pod initial state (bypasses NFS attribute caching)
+      const cacheKey = `${REDIS_KEYS.ARTIFACTS.FILETREE}${userContext.userId}:${projectId}:${featureName}`;
+      await this.pubRedis.set(cacheKey, JSON.stringify(tree), 'EX', REDIS_TTL.ARTIFACTS.FILETREE);
+
+      // 3. Broadcast via user-scoped Redis Pub/Sub channel
       const message: FileTreeBroadcastMessage = {
         projectId,
         featureName,
@@ -118,7 +122,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
       const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
       await this.pubRedis.publish(channel, JSON.stringify(message));
       
-      console.log(`[FileTreeBroadcaster] ✅ File tree update sent to ${channel} for ${projectId}/${featureName}`);
+      console.log(`[FileTreeBroadcaster] ✅ File tree cached + sent to ${channel} for ${projectId}/${featureName}`);
     } catch (error: any) {
       console.error(`[FileTreeBroadcaster] ❌ Error building file tree:`, error.message);
       throw error;
