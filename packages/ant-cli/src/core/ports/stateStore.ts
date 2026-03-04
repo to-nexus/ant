@@ -513,6 +513,24 @@ export interface StateStorePort {
   clearUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<void>;
 
   // ============================================
+  // FileTree Cache (cross-pod consistency via Redis)
+  // ============================================
+
+  /**
+   * Cache file tree snapshot in Redis.
+   * Called by FileTreeBroadcaster (Worker) and WorkflowBridge (API server)
+   * after building the tree from filesystem.
+   */
+  setFileTreeCache(userId: string, projectId: string, feature: string, tree: any[]): Promise<void>;
+
+  /**
+   * Get cached file tree from Redis.
+   * Used by Realtime server for SSE initial state instead of reading EFS directly,
+   * bypassing NFS attribute caching issues in multi-pod environments.
+   */
+  getFileTreeCache(userId: string, projectId: string, feature: string): Promise<any[] | null>;
+
+  // ============================================
   // Job Recovery (Crash Recovery)
   // ============================================
 

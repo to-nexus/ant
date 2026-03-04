@@ -81,8 +81,18 @@ export function createSSERoutes(deps: {
         featureName     // ✅ Include for frontend filtering
       });
       
-      // 3. Send initial FileTree
-      const fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);  // ✅ Pass user context
+      // 3. Send initial FileTree (Redis cache first, EFS fallback)
+      let fileTree: any[] | null = null;
+      if (deps.stateStore) {
+        try {
+          fileTree = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
+        } catch (err) {
+          logger.warn(`Failed to read fileTree cache from Redis`, { component: 'SSE', projectId, featureName }, err);
+        }
+      }
+      if (!fileTree) {
+        fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
+      }
       deps.sseService.sendInitialState(res, 'fileTree', { 
         type: 'initial', 
         tree: fileTree 

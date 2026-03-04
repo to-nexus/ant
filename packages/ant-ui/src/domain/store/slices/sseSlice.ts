@@ -169,6 +169,9 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
       removeFromStorage(STORAGE_KEYS.TASK_MODE);
       console.log('[Store] 🧹 Cleared localStorage for completed job');
+      
+      // ✅ Sync final file tree on job completion (safety net for missed Pub/Sub events)
+      get().refreshFileTree();
     }
     else if (isJobRunning && !state.isRunning && currentFeatureKey) {
       if (state.userStoppedJobId === kanbanJobId) {
@@ -467,9 +470,10 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
             const setRunning = get().setRunning;
             if (setRunning) {
               console.log('[Store] ✅ Job completed/failed, setting isRunning=false');
-              // setRunning(false) now also clears runningJobsByFeature for current feature
               setRunning(false);
             }
+            // ✅ Sync final file tree on job completion (safety net for missed Pub/Sub events)
+            get().refreshFileTree();
           } else if (event.status === 'running' || event.status === 'started') {
             // ✅ Cloud multi-pod: Clear jobStartPending when job actually starts
             if (get().jobStartPending) {

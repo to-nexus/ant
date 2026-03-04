@@ -1186,6 +1186,22 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
+  // FileTree Cache
+  // ============================================
+
+  async setFileTreeCache(userId: string, projectId: string, feature: string, tree: any[]): Promise<void> {
+    const key = this.key(REDIS_KEYS.ARTIFACTS.FILETREE, `${userId}:${projectId}:${feature}`);
+    await this.redis.set(key, JSON.stringify(tree), 'EX', REDIS_TTL.ARTIFACTS.FILETREE);
+    logger.debug(`FileTree cache set for ${projectId}/${feature}`, { component: 'RedisStateStore' });
+  }
+
+  async getFileTreeCache(userId: string, projectId: string, feature: string): Promise<any[] | null> {
+    const key = this.key(REDIS_KEYS.ARTIFACTS.FILETREE, `${userId}:${projectId}:${feature}`);
+    const data = await this.redis.get(key);
+    return data ? JSON.parse(data) : null;
+  }
+
+  // ============================================
   // Lifecycle
   // ============================================
 
