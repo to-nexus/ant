@@ -210,7 +210,7 @@ edit_file(
 **Frontend Design Document:**
 - Path: `outputs/design/fe-system-main.md`
 - Usage: Frontend-only projects, fullstack, and MSA projects
-- Timing: Written AFTER api-contract-main.md (if api-contract exists), otherwise first
+- Timing: Content derived independently from PRD (does not consume api-contract)
 
 **Backend Design Document (single backend):**
 - Path: `outputs/design/be-system-main.md`
@@ -499,7 +499,7 @@ Before generating output, verify:
   - Do NOT include implementation details: class names, in-memory store mechanisms, delay simulation, environment variable names, or concrete switching code
   - Local infrastructure (databases, caches, queues managed by docker-compose) MUST NOT be replaced by mock adapters — they run as real local instances
 
-- ⚠️ **Blind spot**: In FE-only projects that consume an API contract, the implementing backend service does not yet exist. Without development-mode API adapters, the frontend CANNOT function at all — this is easily missed because the API contract exists as a design artifact.
+- ⚠️ **Blind spot**: In frontend projects where the backend service does not yet exist, development-mode API adapters are essential. Without them the frontend CANNOT function at all — this is easily missed because the PRD describes API consumption as if the backend is available.
 
 - ⚠️ **Blind spot**: Cross-project dependencies (e.g., `ant-project:` references) may point to services still under construction. These require the same adapter isolation as any unavailable external service.
 

@@ -1,7 +1,6 @@
 ### § Overview
 - System purpose, selected architecture pattern with rationale (reference observation from §1.1)
 - PRD constraints relevant to architecture (platform, integrations, prohibitions)
-- API contract compliance statement (reference the corresponding `api-contract-{name}.md`)
 
 ### § Architecture Boundaries
 - For each boundary: name, responsibility, what it owns
@@ -32,6 +31,7 @@
 - Each external service adapter: which boundary owns it, what it exposes inward
 - Connection lifecycle policy (initialization, reconnection, teardown ownership)
 - Adapter isolation principle (external SDK details do not leak into domain/orchestration boundaries)
+- Development independence per adapter with external dependencies (production + development-mode implementation strategies per Infrastructure Independence Guardrail)
 
 ### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
 - Boundary-to-directory mapping principle

@@ -1,7 +1,7 @@
 ## 🎨 FRONTEND SYSTEM DESIGN GUIDE
 
 **Document**: `fe-system-{name}.md` (e.g., `fe-system-main.md`, `fe-system-web.md`)  
-**Role**: Consumer of the corresponding `api-contract-{name}.md`  
+**Role**: Client-side architecture derived from PRD requirements  
 **Focus**: Client-side architecture selected based on observed project complexity
 
 ---
@@ -56,29 +56,30 @@
 
 ---
 
-### 3. API Contract Compliance
+### 3. API Layer Scope
 
-- **Never redefine** DTOs from the corresponding api-contract document
-- **Always reference** contract sections
-- Infrastructure/external communication boundary receives DTOs → orchestration boundary transforms to domain models
+**Principle**: This document describes the architecture of API consumption — adapter boundaries, error propagation policies, auth lifecycle ownership — NOT the API interface specification (endpoints, DTOs, schemas). Interface details are defined separately and consumed during the coding phase.
+
+- Infrastructure/external communication boundary receives external responses → orchestration boundary transforms to domain models
+- Describe expected API consumption patterns based on PRD requirements
 - External services: List only if PRD explicitly requires (with PRD reference)
 
 ---
 
 ### 4. Infrastructure Independence
 
-**Observation target**: Does the project consume an API contract or external services whose implementing service is unavailable during development (unconstructed backend, third-party API, cross-project dependency)?
+**Observation target**: Does the project consume backend APIs or external services whose implementing service is unavailable during development (unconstructed backend, third-party API, cross-project dependency)?
 
 | Checkpoint | What to observe |
 |-----------|----------------|
-| **API contract without backend** | Does a corresponding `api-contract-{name}.md` exist without a matching `be-system-{name}.md` in this project? |
+| **Backend API consumption** | Does the PRD describe backend API consumption where the backend may not yet exist? |
 | **External service adapters** | Does PRD specify third-party APIs or cross-project service dependencies? |
 
-**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and development-mode implementation strategies in § API Integration & Error Strategy.
+**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and development-mode implementation strategies in the catalog section where that adapter is introduced.
 
 **Constraint**: State ONLY the port name, its role, and the two strategy labels (production + development-mode). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
 
-**Constraint**: Development-mode implementations MUST follow the same DTO contracts defined in the corresponding api-contract document.
+**Constraint**: Development-mode implementations MUST follow the same DTO contracts as production (as derived from PRD requirements).
 
 ---
 
@@ -117,7 +118,7 @@ Adapt sections based on the architecture pattern selected in §1. Skip sections 
 ❌ Putting business logic in orchestration/coordination boundary  
 ❌ Naming specific components (e.g., "GNB", "TradingPanel", "FilterBar")  
 ❌ Specifying props/interfaces  
-❌ Redefining APIs or DTOs already in the corresponding api-contract document  
+❌ Defining API interface details (endpoints, DTOs, schemas) — belongs in API contract and coding phase  
 ❌ Framework-specific details (hooks, lifecycle)  
 ❌ Step-by-step numbered procedures (describe POLICY instead)  
 ❌ HTTP status codes or transport details (describe error FLOW between boundaries)  
@@ -132,5 +133,5 @@ Adapt sections based on the architecture pattern selected in §1. Skip sections 
 - **Describe architecture, not implementation**
 - **Trust LLM to infer specifics from principles**
 - **Keep abstractions framework-agnostic**
-- **Reference PRD for requirements, the corresponding api-contract document for DTOs**
+- **Reference PRD for all requirements — API interface details are consumed during the coding phase**
 - **Decompose task descriptions are HINTS — this section catalog is the scope ceiling**

@@ -114,10 +114,11 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
-    // Load api-contract-*.md files if generating fe/be-system docs (implementation docs need the contract)
+    // Load api-contract-*.md files for backend system docs only.
+    // Frontend system design is architecture-level (boundaries, policies, data flow direction)
+    // and does not consume api-contract content — the code job handles that.
     let apiContractContent: string | undefined;
     const isImplementationDesign = 
-      targetFile.startsWith('fe-system-') || 
       targetFile.startsWith('be-system-');
     
     if (isImplementationDesign) {
