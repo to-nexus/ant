@@ -174,19 +174,19 @@ Previous design:
 
 ### Section Catalogs by Document Type
 
-Use these catalogs to distribute sections across tasks. Each task should reference 1-3 catalog sections as topic hints.
+Use these catalogs to distribute sections across tasks. Each task description references 1-3 catalog section **names** only.
 
 {{#if (or (eq environment "frontend") (eq environment "fullstack"))}}
 #### Frontend (`fe-system-{name}.md`) Section Catalog:
-{{> design/base/catalogs/frontend-catalog}}
+{{> design/base/catalogs/frontend-catalog-names}}
 {{/if}}
 
 {{#if (or (eq environment "backend") (eq environment "fullstack"))}}
 #### Backend (`be-system-{name}.md`) Section Catalog:
-{{> design/base/catalogs/backend-catalog}}
+{{> design/base/catalogs/backend-catalog-names}}
 
 #### API Contract (`api-contract-{name}.md`) Section Catalog:
-{{> design/base/catalogs/api-contract-catalog}}
+{{> design/base/catalogs/api-contract-catalog-names}}
 {{/if}}
 
 ### Abstraction Level (applies to ALL document types)
