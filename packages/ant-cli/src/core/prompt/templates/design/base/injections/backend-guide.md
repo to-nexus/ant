@@ -84,6 +84,8 @@
 
 **§ Real-time & Connection State**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
 
+**§ External Integrations**: When external service adapters exist, each port's development-mode implementation strategy MUST be documented per Infrastructure Independence Guardrail. State the port name, role, and two strategy labels (production + development-mode). Do NOT specify implementation details (class names, data structures, environment variables). Local infrastructure (DB, cache, queue via docker-compose) is NOT a mock target.
+
 **§ Architecture Style**: Do NOT default to MSA. Complexity must match requirements.
 
 **§ Technology Stack**: Technology stack MUST be specified. If PRD does not specify, default to TypeScript + Node.js + PostgreSQL. Include cache/queue/real-time technologies only when corresponding conditional sections are present.

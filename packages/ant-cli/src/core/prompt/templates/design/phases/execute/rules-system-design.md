@@ -476,13 +476,33 @@ Before generating output, verify:
   - One or more **domain engines/models** expose pure operations for "advance one tick" or "apply inputs" without depending on timers or UI
   - UI/presentation observes the current state and maps it to visuals and controls only
 
-### Infrastructure Testability Guardrail
-- Every infrastructure capability is accessed through an abstract contract owned by the infrastructure boundary. The concrete implementation behind each contract is a boundary-internal decision.
-- **Observation target**: Does the infrastructure boundary isolate external dependencies behind swappable contracts?
+### Infrastructure Independence Guardrail
+
+**Principle**: The application MUST be demonstrable without depending on the availability of external systems beyond the project boundary. Every infrastructure adapter that crosses a system boundary (external API, third-party service, peer service, cross-project dependency) must be designed for independent operation.
+
+**Scope clarification**: Local infrastructure provisioned by the project itself (databases, caches, message queues via docker-compose) is NOT a mock target — these run as real instances locally. Mock adapters apply ONLY to services outside the project boundary that may be unavailable during development.
+
+- **Observation target**: Does the design identify which infrastructure ports depend on external services, and does each specify a development-mode implementation strategy?
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **External dependency ports** | Which infrastructure contracts depend on services outside the project boundary (unconstructed backend, third-party APIs, cross-project services)? |
+| **Implementation multiplicity** | Does each external-dependency port define at least two implementation strategies — production and development-mode? |
+| **Switching architecture** | Is the mechanism for selecting the active implementation owned by the infrastructure boundary, invisible to domain and application? |
+| **Data contract compliance** | Do development-mode implementations state that responses follow the same DTO contracts as production? |
+
 - **Constraints**:
   - Domain and application boundaries MUST NOT import or reference concrete infrastructure implementations — only the abstract contracts
-  - Each infrastructure contract MUST support at least two implementation strategies: one for the target runtime environment and one for isolated development/testing without external service availability
+  - Each infrastructure contract with external dependencies MUST support at least two implementation strategies: one for the target runtime environment and one for development without external service availability
   - The selection of which implementation to activate is an infrastructure boundary concern — domain and application boundaries are unaware of the active implementation
+  - The design document MUST list which ports have external dependencies and their implementation strategies when external services exist
+  - Do NOT include implementation details: class names, in-memory store mechanisms, delay simulation, environment variable names, or concrete switching code
+  - Local infrastructure (databases, caches, queues managed by docker-compose) MUST NOT be replaced by mock adapters — they run as real local instances
+
+- ⚠️ **Blind spot**: In FE-only projects that consume an API contract, the implementing backend service does not yet exist. Without development-mode API adapters, the frontend CANNOT function at all — this is easily missed because the API contract exists as a design artifact.
+
+- ⚠️ **Blind spot**: Cross-project dependencies (e.g., `ant-project:` references) may point to services still under construction. These require the same adapter isolation as any unavailable external service.
+
 - ⚠️ **Blind spot**: When development always uses live external services, missing adapter contracts go unnoticed. This surfaces as: inability to run the application offline, inability to test domain logic independently, and tight coupling between business rules and external service availability.
 
 ### Routing & Navigation Guardrail

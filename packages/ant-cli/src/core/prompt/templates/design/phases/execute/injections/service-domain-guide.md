@@ -80,9 +80,11 @@ Regardless of architecture pattern chosen, service systems MUST maintain these s
     - Whether **circuit breaker** behavior exists, and if so, which boundary is responsible for opening/closing it.
     - Which operations must be **idempotent** (safe to retry) and how that is enforced at the contract level.
     - How errors propagate: which errors are mapped to domain-level failures, which become user-visible messages, which are logged only.
+- **Development independence**: Each external-dependency port MUST define production and development-mode implementation strategies per Infrastructure Independence Guardrail. State the port name and two strategy labels — do NOT specify mock implementation details. Local infrastructure (DB, cache, queue via docker-compose) is NOT a mock target.
 - Do **not** specify:
   - Exact timeout values, retry counts, backoff formulas.
   - Concrete HTTP client libraries, SDK configuration, or monitoring/tooling setup.
+  - Mock adapter class names, in-memory data structures, delay simulation, or environment variable names.
 - When PRD does **not** mention reliability/availability explicitly, you may keep this section brief but still state which boundary **would** own retries/timeouts/error mapping if added later.
 
 ### 6. UI / Presentation: Stay at System-Design Level

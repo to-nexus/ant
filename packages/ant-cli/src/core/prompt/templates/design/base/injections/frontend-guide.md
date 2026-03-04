@@ -65,6 +65,23 @@
 
 ---
 
+### 4. Infrastructure Independence
+
+**Observation target**: Does the project consume an API contract or external services whose implementing service is unavailable during development (unconstructed backend, third-party API, cross-project dependency)?
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **API contract without backend** | Does a corresponding `api-contract-{name}.md` exist without a matching `be-system-{name}.md` in this project? |
+| **External service adapters** | Does PRD specify third-party APIs or cross-project service dependencies? |
+
+**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and development-mode implementation strategies in § API Integration & Error Strategy.
+
+**Constraint**: State ONLY the port name, its role, and the two strategy labels (production + development-mode). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
+
+**Constraint**: Development-mode implementations MUST follow the same DTO contracts defined in the corresponding api-contract document.
+
+---
+
 ## Section Catalog (CLOSED LIST)
 
 **Constraint**: The sections below are the ONLY sections allowed in this document (`fe-system-{name}.md`). Do NOT create sections outside this catalog. Decompose task descriptions are topic HINTS — the actual sections written MUST come from this catalog.
