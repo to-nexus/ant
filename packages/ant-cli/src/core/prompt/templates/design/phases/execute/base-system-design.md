@@ -11,6 +11,8 @@ CONCISENESS PRINCIPLE:
 {{#if (includes currentTask.targetFile "api-contract")}}
 API Contract structure rules:
 - Each chapter corresponds to ONE section from the Section Catalog
+- Each catalog section produces exactly ONE top-level chapter (## heading)
+- Do NOT split one catalog section into multiple ## chapters; use ### subsections instead
 - Write ONLY chapters for your ASSIGNED sections (see Section Scope below)
 - Do NOT embed FORBIDDEN section content as subsections within ASSIGNED chapters
 - Prefer endpoint-by-endpoint specification, grouped by resource/use case
@@ -20,6 +22,8 @@ API Contract structure rules:
 {{else}}
 CHAPTER COUNT:
 - Each chapter corresponds to ONE section from the guide's Section Catalog
+- Each ASSIGNED section produces exactly ONE top-level chapter (## heading)
+- Do NOT split one catalog section into multiple ## chapters; use ### subsections instead
 - Write ONLY chapters for your ASSIGNED sections (see Section Scope below)
 - If all assigned sections are already in the document, output ONLY the metadata (LAST_SECTION comment) with no new content
 
@@ -325,35 +329,12 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 - `api-contract-main.md` - External API interface specification (WHAT endpoints exist)
 - `fe-system-main.md` - Frontend internal architecture (HOW frontend is structured)
 - `be-system-main.md` - Backend internal architecture (HOW backend is structured)
-- `be-system-main.md` - Unified design (rare fallback for unclassified projects)
 
 **A document type-specific guide has been automatically injected above** with:
 - **Section Catalog (CLOSED LIST)** defining the ONLY allowed sections for this document type
 - **Scope Ceiling** defining topics that MUST NOT appear in the document
 - Anti-patterns and common mistakes to avoid
 - Core principles specific to this document type
-
-**If no type-specific guide appears above**, you're writing **`be-system-main.md` (unified)**:
-
-### Unified System Design Structure
-
-**Use this for:**
-- Projects where environment is unknown (CLI tools, libraries)
-- Projects without separate FE/BE split
-
-**Adapt sections based on project type** (skip non-applicable sections):
-
-1. **Overview**: System purpose, architecture style, key use cases
-2. **Responsibilities & Boundaries**: Architecture pattern (Layered, Hexagonal, MVC, ECS, etc.), component/layer boundaries
-3. **State Model & Ownership**: State classification (Domain/Session/UI), single source of truth per state type
-4. **Core Domain Concepts**: Key entities, relationships, domain invariants (describe concepts, NOT full schemas)
-5. **Core Interfaces & Contracts**: Boundary contracts (services, engines, ports, providers) - define once, reference elsewhere
-6. **Main Execution Flows**: Key flows (e.g., "user action flow", "game loop") - high-level who-calls-whom
-7. **Directory Structure & Boundary Mapping** (if framework augmentation injected): Boundary-to-directory mapping principle, coding phase directives
-8. **Technology Stack**: Framework, database (if any), key libraries, platform constraints
-9. **Non-Functional Requirements** (if PRD specifies): Security, performance, integrations
-
-**Critical**: Focus on architecture decisions and boundary interaction, NOT implementation formulas.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 ABSOLUTELY FORBIDDEN (Unless PRD EXPLICITLY requests)
