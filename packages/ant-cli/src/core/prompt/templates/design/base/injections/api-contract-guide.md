@@ -2,7 +2,7 @@
 
 **Document Type**: `api-contract-{name}.md` (e.g., `api-contract-main.md`, `api-contract-auth.md`)
 **Role**: BINDING SPECIFICATION - Single Source of Truth for Frontend/Backend integration
-**Phase**: Written FIRST, before FE and BE design documents
+**Phase**: Written independently from PRD
 
 ---
 

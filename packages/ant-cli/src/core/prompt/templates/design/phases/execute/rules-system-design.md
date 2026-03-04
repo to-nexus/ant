@@ -2,11 +2,7 @@
 
 ### Principle
 
-{{#if (includes currentTask.targetFile "be-system")}}
-The prompt already contains the PRD (injected as `prdSpec`) and the API contract (injected as `designDoc`). These are your primary architectural inputs — do NOT re-read them via tools.
-{{else}}
 The prompt already contains the PRD (injected as `prdSpec`). This is your primary architectural input — do NOT re-read it via tools.
-{{/if}}
 
 ### Observation Targets
 
@@ -31,11 +27,7 @@ Do NOT re-read files already present in your conversation history. If you read a
 
 When you need to inspect multiple files, issue ALL needed tool calls in ONE response. Do NOT discover incrementally (read one file, then decide the next) when the context already reveals the needed set.
 
-{{#if (includes currentTask.targetFile "be-system")}}
-⚠️ **Blind spot**: LLMs default to reading every file visible in `list_files` results for "completeness." For system design, the PRD and API contract in your prompt are sufficient for most tasks. Additional reads should be the exception, not the default.
-{{else}}
 ⚠️ **Blind spot**: LLMs default to reading every file visible in `list_files` results for "completeness." For system design, the PRD in your prompt is sufficient for most tasks. Additional reads should be the exception, not the default.
-{{/if}}
 
 ---
 
