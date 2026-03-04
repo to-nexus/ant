@@ -26,7 +26,8 @@ export function routeAfterDocGen(state: DesignGraphState): string {
   }
 
   const callIndex = state._docGenCallIndex || 0;
-  const maxCalls = 25;
+  const envMaxCalls = parseInt(process.env.DOCGEN_MAX_CALLS || '', 10);
+  const maxCalls = (!isNaN(envMaxCalls) && envMaxCalls >= 10) ? envMaxCalls : 50;
 
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📍 [DocGenRouter] Routing Info:`);
@@ -37,9 +38,10 @@ export function routeAfterDocGen(state: DesignGraphState): string {
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
   // Safety Net A: Call budget
-  const warningThreshold = Math.floor(maxCalls * 0.8); // 20
+  const warningThreshold = Math.floor(maxCalls * 0.8);
   if (callIndex >= maxCalls) {
-    console.warn(`⚠️  [DocGenRouter] Call limit reached (${callIndex}/${maxCalls}) — forcing completion`);
+    console.warn(`⚠️  [DocGenRouter] Call limit reached (${callIndex}/${maxCalls}) — forcing interruption`);
+    (state as any)._callLimitReached = true;
     return 'checkTaskStatus';
   }
   if (callIndex === warningThreshold) {
