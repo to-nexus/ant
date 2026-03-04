@@ -59,6 +59,22 @@
 
 ---
 
+## Scope Ceiling
+
+**Constraint**: The following topics MUST NOT appear as standalone sections in this document. They belong in other documents or as subsections within catalog sections above.
+
+| Forbidden Topic | Where It Belongs |
+|----------------|-----------------|
+| Server-side processing flows or implementation steps | Backend system design (be-system) |
+| Backend internal architecture diagrams or data flows | Backend system design (be-system) |
+| Database schemas or internal state management | Backend system design (be-system) |
+| Enumeration/constant definitions as standalone sections | Subsection within Shared Type Definitions |
+| Access control mechanisms as standalone sections | Subsection within Authentication & Authorization |
+| Implementation details (signing algorithms, hashing, caching) | Backend system design or coding phase |
+| Step-by-step numbered procedures | Describe WHAT the endpoint accepts/returns, not HOW the server processes it |
+
+---
+
 ## 🏗️ MSA STRUCTURE (if msa-contract-first)
 
 **When multiple service boundaries exist, each service gets its own `api-contract-{service}.md`.**

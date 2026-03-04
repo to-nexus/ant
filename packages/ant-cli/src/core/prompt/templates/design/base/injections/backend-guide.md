@@ -85,13 +85,13 @@
 
 ## Section-Specific Writing Guidance
 
-**§ Database Design**: Focus on structure and relationships — NOT on concrete SQL syntax, DDL, or ORM mappings.
+**§ Database Design**: Focus on structure and relationships — NOT on concrete SQL syntax, DDL, or ORM mappings. ALL schema content (entities, relationships, field types, indexes) belongs in this ONE chapter. Do NOT create a separate "detailed schema" chapter. Use generic types (integer, string, decimal), NOT database-engine-specific types.
 
 **§ Data Storage Architecture**: Do NOT default to a single storage type. Observe actual requirements (schema structure, query patterns, consistency needs, scale pattern). If hybrid storage needed, document which data belongs where and why.
 
 **§ Caching Strategy**: If horizontal scaling expected, distributed cache strategy MUST be documented.
 
-**§ Async Processing & Message Queue**: If message queue used, document queue/topic structure, message schema reference, retry/dead-letter policy, and consumer scaling — all at architectural level.
+**§ Async Processing & Message Queue**: If message queue used, document queue/topic structure, message schema reference, retry/dead-letter policy, and consumer scaling — all at architectural level. If the system both produces AND consumes messages, document the FULL message queue topology here. The Real-time section should REFERENCE this topology, not redefine or contradict it.
 
 **§ Real-time & Connection State**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
 

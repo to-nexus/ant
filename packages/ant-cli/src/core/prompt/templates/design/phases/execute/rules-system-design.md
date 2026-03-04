@@ -471,46 +471,18 @@ Before generating output, verify:
   - Implements navigation using the chosen framework/router (outside of Domain/Application concerns)
 
 ### Layer Consistency Guardrail
-- When you define boundaries and ownership in the **Responsibilities & Boundaries** chapter:
-  - Treat that description as the **single source of truth** for what each boundary owns (state, loop, input, rules)
-  - All later sections (UI, Domain, Flows, etc.) MUST stay consistent with that definition (no reassigning ownership to a different boundary)
-- For layered/frontend-only game designs (common pattern):
-  - **UI/View boundaries**: rendering + input events → abstract commands; NO authoritative domain state, NO loop ownership
-  - **Application/Runtime/Orchestration boundary**: owns long-lived game/session state and loop scheduling; coordinates calls into domain engines
-  - **Domain boundary**: provides pure operations on state (e.g., `applyCommands`, `advanceTick`); it does NOT internally manage persistent session state visible to UI
-- If your design intentionally deviates from this pattern, you MUST:
-  - Explicitly state the alternative ownership model once (in Responsibilities & Boundaries), and
-  - Keep all later sections strictly aligned with that chosen model (no mixed models in different chapters)
+- When you define boundaries and ownership in an early section of the document:
+  - Treat that description as the single source of truth for what each boundary owns
+  - All later sections MUST stay consistent with that definition — do NOT reassign ownership to a different boundary in a later chapter
+- If your design intentionally deviates from the initially stated pattern:
+  - Explicitly state the alternative ownership model once, and
+  - Keep all later sections strictly aligned with that chosen model
 
-### Contract Section Guardrail
-- Unified `be-system-main.md` documents MUST contain a dedicated **Core Interfaces & Contracts** chapter:
-  - List EVERY cross-boundary contract here (services, engines, ports, providers, repositories, systems)
-  - For each contract, follow the language-neutral pattern: **Name / Role / Operations / Rules**
-- Other sections MUST:
-  - Reference these contracts by name (e.g., "uses `GameEngine` from §3. Core Interfaces & Contracts")
-  - NOT redefine or partially restate method shapes in prose (avoid drifting, duplication, or conflicting descriptions)
-
-### Input Flow Guardrail (Single Canonical Path)
-- System Design MUST define exactly ONE canonical input flow across boundaries; all variants are implementations of this flow, not separate flows:
-  - Typical game/interaction pattern:
-    - UI/View captures raw input events (e.g., keyboard, pointer)
-    - An **InputAdapter/InputProvider** converts raw events into abstract Commands
-    - The **Runtime/Orchestrator** collects Commands for the current tick/frame
-    - Domain engines/models consume Commands + state to produce next state
-- Forbidden ambiguity:
-  - Do NOT describe multiple, conflicting flows (e.g., UI sometimes sends Commands directly to Engine, sometimes via Runtime)
-  - If you introduce InputProvider or StateProvider abstractions, they MUST appear in the Core Interfaces & Contracts chapter with clear roles and operations
-- Write other sections to reference this canonical flow:
-  - UI section: "captures events and passes Commands to InputProvider/Runtime as per §Core Interfaces & Contracts"
-  - Flow section: "per tick: collect Commands via InputProvider → call Runtime/Engine → propagate new state"
-
-### Redundancy & Focus Guardrail
-- Do NOT restate the same architecture decision, flow, or technology constraint in multiple chapters:
-  - Define each major decision/flow ONCE in the most appropriate chapter
-  - In later sections, reference it briefly (e.g., "see §3. Core Interfaces & Contracts") instead of re-explaining
-- For unified `be-system-main.md`:
-  - Keep **Execution Flows** to 2–3 essential flows (no step-by-step gameplay narratives)
-  - Keep technology/platform constraints (framework, DOM vs Canvas, etc.) in the **Technology Stack & Platform Constraints** chapter; avoid repeating them in UI/Domain sections
+### Cross-Section Consistency Guardrail
+- When multiple conditional catalog sections cover overlapping infrastructure (e.g., Async Processing + Real-time, Database Design + Data Storage Architecture):
+  - Define the infrastructure topology ONCE in the first relevant section
+  - Later sections MUST reference, not redefine, the established topology
+  - Do NOT contradict earlier sections; extend with new information if needed
 
 ### Directory Structure Output Guardrail
 - When a framework augmentation guide is injected above, the design document MUST include a **Directory Structure & Boundary Mapping** section or subsection covering:
