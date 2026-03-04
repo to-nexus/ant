@@ -58,7 +58,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       state._httpJobId,
       null,  // No current task
       [],    // Empty queue
-      completedTasksDetails
+      completedTasksDetails,
+      state.recursionCount,
+      state.recursionLimit
     );
   }
   
@@ -356,6 +358,8 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
         interruption: existingSession.state?.interruption,
         jobId: (state as any).jobId,  // ✨ Preserve jobId
         jobTiming: completedJobTiming,  // ✨ Mark as completed
+        tokenUsage: (state as any).tokenUsage,  // ✅ Preserve job-level token usage
+        estimatingTokenUsage: (state as any)._estimatingTokenUsage,  // ✅ Preserve estimating phase breakdown
         directives: directivesArray,  // ✅ Save directives array (newest first)
         overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
         chatSource: state.chatSource,  // ✅ Save chat source flag
