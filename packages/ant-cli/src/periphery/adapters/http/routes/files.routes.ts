@@ -61,7 +61,19 @@ export function createFilesRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
-      
+
+      // Redis cache first (bypasses EFS/NFS attribute caching in multi-pod cloud deployments)
+      if (deps.stateStore) {
+        try {
+          const cached = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
+          if (cached) {
+            return res.json(cached);
+          }
+        } catch {
+          // Fall through to EFS on Redis error
+        }
+      }
+
       const tree = await deps.projectService.getFileTree(projectId, featureName, userContext);
       res.json(tree);
     } catch (error: any) {
