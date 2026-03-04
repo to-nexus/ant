@@ -314,28 +314,14 @@ When PRD specifies external services or APIs, you MUST:
 Use `search_reference_code` tool to query these projects. See rules for constraints.
 {{/if}}
 
-{{#if designDoc}}
-════════════════════════════════════════════════════════════════════════════════
-## 🚨 API CONTRACT (IMMUTABLE SPECIFICATION - HIGHEST PRIORITY)
-════════════════════════════════════════════════════════════════════════════════
-
-**⚠️ CRITICAL: This API Contract was already finalized and CANNOT be changed!**
-
-────────────────────────────────────────────────────────────────────────────────
-
-{{designDoc}}
-
-────────────────────────────────────────────────────────────────────────────────
-{{/if}}
-
 ════════════════════════════════════════════════════════════════════════════════
 ## 📐 DOCUMENT TYPE-SPECIFIC GUIDE
 ════════════════════════════════════════════════════════════════════════════════
 
 **Your document type is determined by task.targetFile:**
-- `api-contract-main.md` - Binding API specification (WHAT interfaces exist)
-- `fe-system-main.md` - Frontend architecture (standalone or consuming APIs)
-- `be-system-main.md` - Backend architecture (HOW to implement APIs)
+- `api-contract-main.md` - External API interface specification (WHAT endpoints exist)
+- `fe-system-main.md` - Frontend internal architecture (HOW frontend is structured)
+- `be-system-main.md` - Backend internal architecture (HOW backend is structured)
 - `be-system-main.md` - Unified design (rare fallback for unclassified projects)
 
 **A document type-specific guide has been automatically injected above** with:

@@ -201,20 +201,20 @@ Use these catalogs to distribute sections across tasks. Each task description re
 
 ---
 
-## 🔀 CONTRACT-FIRST DETECTION
+## DOCUMENT STRUCTURE DETECTION
 
 ### Principle
 
-Separate API interface specification from implementation architecture when the project exposes APIs consumed by external clients.
+Separate concerns into distinct design documents. Each document covers a non-overlapping concern and is derived independently from the PRD.
 
 ### Observation Target
 
-Observe whether the project defines API boundaries consumed by external parties:
+Observe the project's tier structure to determine which documents are needed:
 
 | Observation | Document Structure |
 |-------------|-------------------|
-| Project has **both frontend and backend** | `contract-first` (api-contract + fe + be) |
-| Project is **backend-only** and exposes external API | `contract-first` without FE (api-contract + be) |
+| Project has **both frontend and backend** | `contract-first` (api-contract + fe + be — all independent) |
+| Project is **backend-only** and exposes external API | `contract-first` without FE (api-contract + be — both independent) |
 | Project is **frontend-only** | `unified` (`fe-system-main.md`) |
 
 ### Decision
@@ -225,9 +225,9 @@ Observe whether the project defines API boundaries consumed by external parties:
 
 ---
 
-## 🏗️ MSA / MULTI-UNIT DETECTION
+## MSA / MULTI-UNIT DETECTION
 
-**After CONTRACT-FIRST detection, check if either tier requires splitting into multiple units.**
+**After document structure detection, check if either tier requires splitting into multiple units.**
 
 MSA applies to BOTH tiers independently:
 - **Backend**: multiple services → `be-system-{service}.md` + `api-contract-{service}.md`
