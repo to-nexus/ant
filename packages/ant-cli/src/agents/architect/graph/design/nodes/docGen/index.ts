@@ -46,6 +46,15 @@ export async function docGen(
     throw new Error('LLM client or GitPort not available');
   }
   
+  // ✅ Log iteration start info (per-call debugging, like code job's codeGen)
+  const taskTokensSoFar = (state as any)._currentTaskTokenUsage;
+  console.log(`\n💭 [DocGen] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
+  console.log(`   Work type: ${state.detectionReport?.workType || 'unknown'}`);
+  console.log(`   Conversation history: ${state.conversationHistory?.length || 0} messages`);
+  if (taskTokensSoFar?.totalTokens) {
+    console.log(`   Task tokens so far: ${taskTokensSoFar.totalTokens} (in=${taskTokensSoFar.inputTokens} out=${taskTokensSoFar.outputTokens})`);
+  }
+  
   // ✅ Build messages based on work type
   const workType = state.detectionReport?.workType;
   const isExplainMode = state.detectionReport?.jobMode === 'explain';
@@ -198,8 +207,26 @@ export async function docGen(
     
     // Accumulate token usage to state
     if (capturedUsage) {
-      const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+      const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
       accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
+      updateKanbanTokenUsage(state as any);
+      
+      const taskUsage = (state as any)._currentTaskTokenUsage;
+      logTokenUsageToFile(
+        state.context?.featurePath,
+        state._httpJobId,
+        capturedUsage,
+        {
+          taskId: state.currentTask?.id || 'unknown',
+          taskName: state.currentTask?.name || 'unknown',
+          node: 'docGen',
+          callIndex: newCallIndex - 1,
+          conversationHistoryLength: state.conversationHistory?.length || 0,
+          estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0),
+          taskCumulativeInput: taskUsage?.inputTokens || 0,
+          taskCumulativeOutput: taskUsage?.outputTokens || 0,
+        }
+      );
     }
     
     console.log(`✅ [DocGen] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);

@@ -21,6 +21,8 @@ export interface AssembledContext {
   lastSectionNumber?: number;
   sectionPattern?: string;  // ✅ 'top-level' or 'nested' structure pattern
   isLastTaskForDocument?: boolean;  // ✅ If true, don't output metadata
+  sectionScope?: string;  // Pre-rendered ASSIGNED/FORBIDDEN section scope block
+  filteredCatalog?: string;  // Pre-filtered catalog containing only assigned sections' guides
   previousDesign?: string;
   
   designDocs?: {
@@ -143,6 +145,8 @@ export class ContextAssembler {
       lastSectionNumber?: number;
       sectionPattern?: string;
       isLastTaskForDocument?: boolean;
+      sectionScope?: string;
+      filteredCatalog?: string;
       projectCodeContext?: ProjectCodeContext;
       referenceCodeContexts?: ReferenceCodeContext[];
       currentTask?: {
@@ -173,6 +177,8 @@ export class ContextAssembler {
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
       assembled.sectionPattern = artifacts.sectionPattern;
       assembled.isLastTaskForDocument = artifacts.isLastTaskForDocument;
+      assembled.sectionScope = artifacts.sectionScope;
+      assembled.filteredCatalog = artifacts.filteredCatalog;
       assembled.projectCodeContext = artifacts.projectCodeContext;
       assembled.referenceCodeContexts = artifacts.referenceCodeContexts || [];
       assembled.currentTask = artifacts.currentTask;
@@ -215,6 +221,15 @@ export class ContextAssembler {
       }
       if (artifacts.currentTask !== undefined) {
         assembled.currentTask = artifacts.currentTask;
+      }
+      if (artifacts.prdSpec !== undefined) {
+        assembled.prdSpec = artifacts.prdSpec;
+      }
+      if (artifacts.sectionScope !== undefined) {
+        assembled.sectionScope = artifacts.sectionScope;
+      }
+      if (artifacts.filteredCatalog !== undefined) {
+        assembled.filteredCatalog = artifacts.filteredCatalog;
       }
     }
     

@@ -153,16 +153,18 @@ export class TokenLogger {
         ...(context.recursionCount !== undefined ? { recursionCount: context.recursionCount } : {}),
       };
 
-      // ━━━ Monitoring alerts ━━━
-      if (context.callIndex > 0 && cacheHitRatio < 0.5 && context.node === 'codeGen') {
+      // ━━━ Monitoring alerts (applies to iterative LLM nodes: codeGen, docGen) ━━━
+      const isIterativeNode = context.node === 'codeGen' || context.node === 'docGen';
+      
+      if (context.callIndex > 0 && cacheHitRatio < 0.5 && isIterativeNode) {
         console.warn(
           `⚠️  [TokenMonitor] Low cache hit: ${(cacheHitRatio * 100).toFixed(1)}% ` +
-          `(task=${context.taskId}, call=${context.callIndex}). ` +
+          `(node=${context.node}, task=${context.taskId}, call=${context.callIndex}). ` +
           `cacheRead=${cacheReadTokens} input=${inputTokens} creation=${cacheCreationTokens}`,
         );
       }
 
-      if (context.callIndex > 0 && context.callIndex % 5 === 0 && context.node === 'codeGen') {
+      if (context.callIndex > 0 && context.callIndex % 5 === 0 && isIterativeNode) {
         const cumInput = (context.taskCumulativeInput ?? 0) + inputTokens;
         const cumOutput = (context.taskCumulativeOutput ?? 0) + outputTokens;
         console.log(
@@ -171,10 +173,10 @@ export class TokenLogger {
         );
       }
 
-      if (context.callIndex >= 15 && context.node === 'codeGen') {
+      if (context.callIndex >= 15 && isIterativeNode) {
         console.warn(
           `⚠️  [TokenMonitor] High iteration count: ${context.callIndex} calls ` +
-          `(task=${context.taskId} "${context.taskName}")`,
+          `(node=${context.node}, task=${context.taskId} "${context.taskName}")`,
         );
       }
 

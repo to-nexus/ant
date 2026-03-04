@@ -55,7 +55,8 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const directive = state.overrideDirective || state.directive || '';
   const jobMode = state.detectionReport?.jobMode || 'generate';
 
-  if (!state.conversationHistory || state.conversationHistory.length === 0) {
+  // System prompt is ALWAYS rebuilt (prevents context loss from history pruning)
+  {
     // ─── Chapter decomposition fields ───────────────────────────────────────
     const sectionIndex: number = (task as any)?.sectionIndex ?? 0;
     const totalSections: number = (task as any)?.totalSections ?? 1;
@@ -208,9 +209,22 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     console.log(`📋 [DocGen/Spec] Appending conversation history (${state.conversationHistory.length} messages)`);
 
+    // Skip initial user messages (old system prompt — replaced by fresh rebuild above)
+    let skipInitialUserMessages = true;
+    const filteredHistory: typeof state.conversationHistory = [];
+    for (const msg of state.conversationHistory) {
+      if (msg.role === 'assistant') {
+        skipInitialUserMessages = false;
+      }
+      if (skipInitialUserMessages && msg.role === 'user') {
+        continue;
+      }
+      filteredHistory.push(msg);
+    }
+
     const tokenManager = new TokenBudgetManager();
     
-    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(state.conversationHistory, tokenManager);
+    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(filteredHistory, tokenManager);
 
     let isFirstMsg = true;
     for (const msg of prunedHistory) {

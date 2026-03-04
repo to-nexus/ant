@@ -165,6 +165,13 @@ export async function runDesignGraph(initial: DesignGraphState) {
     initial.isResume = true;
   }
   
+  // ✅ Write resume marker to token log so run boundaries are visible
+  if (initial.isResume && initial.context?.featurePath && (initial as any).jobId) {
+    const { getTokenLogger } = await import('../../../../core/utils/tokenLogger');
+    const tLogger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: (initial as any).jobId });
+    tLogger.logResumeMarker().catch(() => {});
+  }
+  
   // ✅ Initialize recursion tracking in state (for UI gauge display)
   initial.recursionCount = initial.recursionCount || 0;
   initial.recursionLimit = initial.recursionLimit || finalLimit;

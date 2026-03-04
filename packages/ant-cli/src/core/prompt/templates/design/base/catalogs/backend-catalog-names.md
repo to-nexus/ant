@@ -1,5 +1,4 @@
 - § Overview & API Contract Compliance
-- § Architecture Pattern Selection
 - § Database Design (conditional: if persistence needed)
 - § Endpoint Implementation Mapping
 - § Authentication & Authorization (conditional: if PRD requires auth)

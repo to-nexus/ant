@@ -26,9 +26,9 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
   // NOTE: UI Design mode is handled separately in docGen() entry point
   // This function handles system-design messages only
   
-  // ✅ Use PromptEngine for system prompt (if no conversation history)
-  if (!state.conversationHistory || state.conversationHistory.length === 0) {
-    console.log(`📄 [DocGen] Building fresh prompt (no conversation history)`);
+  // ✅ System prompt is ALWAYS rebuilt (prevents context loss from history pruning)
+  {
+    console.log(`📄 [DocGen] Building system prompt`);
     const promptEngine = state.deps?.promptEngine;
     
     if (!promptEngine) {
@@ -45,21 +45,16 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     const targetFile = state.currentTask.targetFile || 'be-system-main.md';
     console.log(`📄 [DocGen] Target file: ${targetFile}`);
     
-    // ✅ Check if this is the last task for this document
-    // CRITICAL: Exclude current task from the count (it may still be in queue)
-    const currentTaskId = state.currentTask?.id;
-    const allQueuedTasks = state.taskQueue?.getAll?.() || [];
-    const remainingTasksForFile = allQueuedTasks.filter(
-      (task: any) => {
-        // Exclude current task from remaining count
-        if (task.id === currentTaskId) return false;
-        return (task.targetFile || 'be-system-main.md') === targetFile;
-      }
-    );
-    const isLastTaskForDocument = remainingTasksForFile.length === 0;
+    // ✅ Use pre-computed isLastTaskForDocument from decompose phase
+    // (Avoids dependency on taskQueue which may be empty in parallel worker contexts)
+    const isLastTaskForDocument = (state.currentTask as any)?.isLastTaskForDocument ?? false;
     if (isLastTaskForDocument) {
       console.log(`📄 [DocGen] This is the LAST task for ${targetFile} - will NOT output metadata`);
     }
+    
+    // ✅ Build section scope from assignedSections (exclusive scope enforcement)
+    const sectionScope = await buildSectionScope(state, targetFile);
+    const filteredCatalog = await buildFilteredCatalog(state, targetFile);
     
     try {
       // ✅ FIX: Convert absolute path to workspace-relative path for FileSystemPort
@@ -169,8 +164,9 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
           description: state.currentTask.description,
           ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),
         } as any,
-        isLastTaskForDocument,  // ✅ If true, don't output metadata (passed separately)
-        
+        isLastTaskForDocument,
+        sectionScope,
+        filteredCatalog,
       },
       undefined,
       undefined
@@ -233,23 +229,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     const jobId = state.jobId || state._httpJobId || 'unknown';
     if (state.context.featurePath) {
       try {
-        // ✅ Determine actually used templates based on targetFile (mirrors ModeController logic)
-        const usedTemplates: string[] = ['design/phases/execute/rules-system-design'];
-        
-        if (targetFile.includes('api-contract')) {
-          usedTemplates.push('design/base/injections/api-contract-guide');
-        } else if (targetFile.includes('be-system-')) {
-          usedTemplates.push('design/base/injections/backend-guide');
-        } else if (targetFile.includes('fe-system-')) {
-          usedTemplates.push('design/base/injections/frontend-guide');
-        }
-        
-        // Domain-specific guides
-        if (state.detectionReport?.domain === 'game') {
-          usedTemplates.push('design/phases/execute/injections/game-domain-guide');
-        } else if (state.detectionReport?.domain === 'service') {
-          usedTemplates.push('design/phases/execute/injections/service-domain-guide');
-        }
+        const usedTemplates = detectUsedTemplates(state, targetFile);
         
         await logPrompt(
           state.context.featurePath,
@@ -274,7 +254,9 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
               designDomain: state.detectionReport?.domain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,
-              isMSAServiceDoc: targetFile.startsWith('be-system-'),  // ✅ NEW: MSA indicator
+              isMSAServiceDoc: targetFile.startsWith('be-system-'),
+              sectionScope: sectionScope ? `[${sectionScope.length} chars]` : undefined,
+              filteredCatalog: filteredCatalog ? `[${filteredCatalog.length} chars]` : undefined,
             },
           }
         );
@@ -293,10 +275,23 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     console.log(`📄 [DocGen] Using existing conversation history (${state.conversationHistory.length} messages)`);
     
+    // Skip initial user messages (old system prompt — replaced by fresh rebuild above)
+    let skipInitialUserMessages = true;
+    const filteredHistory: typeof state.conversationHistory = [];
+    for (const msg of state.conversationHistory) {
+      if (msg.role === 'assistant') {
+        skipInitialUserMessages = false;
+      }
+      if (skipInitialUserMessages && msg.role === 'user') {
+        continue;
+      }
+      filteredHistory.push(msg);
+    }
+    
     const tokenManager = new TokenBudgetManager();
     
-    // Universal 3-step compaction: microcompact → auto-compact → prune
-    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(state.conversationHistory, tokenManager);
+    // Universal 3-step compaction on tool conversation only (system prompt excluded)
+    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(filteredHistory, tokenManager);
     
     // Convert history to CacheableContent format
     let isFirstMsg = true;
@@ -359,23 +354,8 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         }, 0);
       }, 0);
       
-      // ✅ Determine actually used templates based on targetFile
       const targetFileForLog = state.currentTask?.targetFile || 'be-system-main.md';
-      const usedTemplatesForLog: string[] = ['design/phases/execute/rules-system-design'];
-      
-      if (targetFileForLog.includes('api-contract')) {
-        usedTemplatesForLog.push('design/base/injections/api-contract-guide');
-      } else if (targetFileForLog.includes('be-system-')) {
-        usedTemplatesForLog.push('design/base/injections/backend-guide');
-      } else if (targetFileForLog.includes('fe-system-')) {
-        usedTemplatesForLog.push('design/base/injections/frontend-guide');
-      }
-      
-      if (state.detectionReport?.domain === 'game') {
-        usedTemplatesForLog.push('design/phases/execute/injections/game-domain-guide');
-      } else if (state.detectionReport?.domain === 'service') {
-        usedTemplatesForLog.push('design/phases/execute/injections/service-domain-guide');
-      }
+      const usedTemplatesForLog = detectUsedTemplates(state, targetFileForLog);
       
       await logPrompt(
         state.context.featurePath,
@@ -466,5 +446,244 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // The lastSectionNumber in the base prompt is sufficient for sequential chapter numbering
   
   return lines.join('\n');
+}
+
+/**
+ * Detect all templates that would be used, including framework augmentations.
+ * Mirrors ModeController.detectFrameworkAugmentation logic for accurate logging.
+ */
+function detectUsedTemplates(state: DesignGraphState, targetFile: string): string[] {
+  const templates: string[] = ['design/phases/execute/rules-system-design'];
+  
+  if (targetFile.includes('api-contract')) {
+    templates.push('design/base/injections/api-contract-guide');
+  } else if (targetFile.includes('be-system-')) {
+    templates.push('design/base/injections/backend-guide');
+  } else if (targetFile.includes('fe-system-')) {
+    templates.push('design/base/injections/frontend-guide');
+  }
+  
+  // Domain-specific guides
+  if (state.detectionReport?.domain === 'game') {
+    templates.push('design/phases/execute/injections/game-domain-guide');
+  } else if (state.detectionReport?.domain === 'service') {
+    templates.push('design/phases/execute/injections/service-domain-guide');
+  }
+  
+  // Framework augmentation detection (mirrors ModeController.detectFrameworkAugmentation)
+  const framework = (state.context as any)?.codebaseProfile?.framework?.toLowerCase();
+  const language = (state.context as any)?.codebaseProfile?.language?.toLowerCase();
+  
+  if (framework?.includes('next') || framework?.includes('nextjs')) {
+    templates.push('design/phases/execute/injections/nextjs-augmentation');
+  } else if (language?.includes('go') || language?.includes('golang')) {
+    const env = state.detectionReport?.environment;
+    if (!env || env === 'backend' || env === 'fullstack') {
+      templates.push('design/phases/execute/injections/go-api-augmentation');
+    }
+  } else {
+    // Text-based inference from PRD/directive
+    const textSources = [state.prd, state.directive].filter(Boolean);
+    const combined = textSources.join(' ').toLowerCase();
+    if (combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) {
+      templates.push('design/phases/execute/injections/nextjs-augmentation');
+    } else if ((combined.includes('go ') || combined.includes('golang')) &&
+               (combined.includes('api') || combined.includes('server') || combined.includes('backend'))) {
+      templates.push('design/phases/execute/injections/go-api-augmentation');
+    }
+  }
+  
+  return templates;
+}
+
+/**
+ * Catalog file mapping by targetFile prefix.
+ * - names: section name list (for computing ASSIGNED/FORBIDDEN scope)
+ * - full: detailed per-section writing guides (for filteredCatalog)
+ */
+const CATALOG_MAP: Record<string, { names: string; full: string }> = {
+  'fe-system-': {
+    names: 'design/base/catalogs/frontend-catalog-names.md',
+    full: 'design/base/catalogs/frontend-catalog.md',
+  },
+  'be-system-': {
+    names: 'design/base/catalogs/backend-catalog-names.md',
+    full: 'design/base/catalogs/backend-catalog.md',
+  },
+  'api-contract-': {
+    names: 'design/base/catalogs/api-contract-catalog-names.md',
+    full: 'design/base/catalogs/api-contract-catalog.md',
+  },
+};
+
+/**
+ * Parse catalog-names.md content into an array of section names.
+ * Format: "- § Section Name" or "- § Section Name (conditional: ...)"
+ */
+function parseCatalogSections(content: string): string[] {
+  return content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('- §'))
+    .map(line => {
+      const match = line.match(/^- (§ [^(]+)/);
+      return match ? match[1].trim() : '';
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Resolve the templates directory, compatible with both ESM dev (tsx) and bundled (esbuild) environments.
+ * - Dev:  import.meta.url → src/agents/architect/.../docGen/systemDesignPrompt.ts → ../../../../../../core/prompt/templates
+ * - Prod: import.meta.url → dist/composition/job-runner.js → ../core/prompt/templates (via /dist/ marker)
+ */
+async function resolveTemplateDir(): Promise<string> {
+  const { fileURLToPath } = await import('url');
+  const pathModule = await import('path');
+
+  const currentDir = pathModule.dirname(fileURLToPath(import.meta.url));
+
+  const distMarker = `${pathModule.sep}dist${pathModule.sep}`;
+  const distIdx = currentDir.lastIndexOf(distMarker);
+  if (distIdx !== -1) {
+    const distRoot = currentDir.substring(0, distIdx + distMarker.length - 1);
+    return pathModule.join(distRoot, 'core', 'prompt', 'templates');
+  }
+
+  return pathModule.resolve(currentDir, '../../../../../../core/prompt/templates');
+}
+
+/**
+ * Build the ASSIGNED/FORBIDDEN section scope block for the execute prompt.
+ * Returns undefined if assignedSections is not available on the current task.
+ */
+async function buildSectionScope(
+  state: DesignGraphState,
+  targetFile: string
+): Promise<string | undefined> {
+  const assignedSections = (state.currentTask as any)?.assignedSections as string[] | undefined;
+  if (!assignedSections || assignedSections.length === 0) {
+    return undefined;
+  }
+  
+  // Resolve the catalog-names file for this document type
+  let catalogTemplatePath: string | undefined;
+  for (const [prefix, entry] of Object.entries(CATALOG_MAP)) {
+    if (targetFile.startsWith(prefix)) {
+      catalogTemplatePath = entry.names;
+      break;
+    }
+  }
+  
+  if (!catalogTemplatePath) {
+    console.warn(`⚠️  [DocGen] No catalog mapping for targetFile: ${targetFile}`);
+    return `**ASSIGNED sections (write ONLY these):** ${assignedSections.join(', ')}`;
+  }
+  
+  // Load the catalog-names file from the templates directory
+  let allSections: string[] = [];
+  try {
+    const pathModule = await import('path');
+    const fsModule = await import('fs/promises');
+    const templateDir = await resolveTemplateDir();
+    const catalogPath = pathModule.join(templateDir, catalogTemplatePath);
+    const content = await fsModule.readFile(catalogPath, 'utf-8');
+    allSections = parseCatalogSections(content);
+  } catch (error) {
+    console.warn(`⚠️  [DocGen] Failed to load catalog-names: ${catalogTemplatePath}`, error);
+    return `**ASSIGNED sections (write ONLY these):** ${assignedSections.join(', ')}`;
+  }
+  
+  // Compute FORBIDDEN = all catalog sections not in ASSIGNED
+  const assignedSet = new Set(assignedSections);
+  const forbiddenSections = allSections.filter(s => !assignedSet.has(s));
+  
+  const lines = [
+    `**ASSIGNED sections (write ONLY these):** ${assignedSections.join(', ')}`,
+  ];
+  if (forbiddenSections.length > 0) {
+    lines.push(`**FORBIDDEN sections (do NOT write):** ${forbiddenSections.join(', ')}`);
+  }
+  
+  console.log(`📄 [DocGen] Section scope: ${assignedSections.length} assigned, ${forbiddenSections.length} forbidden`);
+  return lines.join('\n');
+}
+
+/**
+ * Split a full catalog file into individual sections.
+ * Each section starts with "### §" and continues until the next "### §" or EOF.
+ */
+function splitCatalogIntoSections(content: string): Array<{ name: string; block: string }> {
+  const sections: Array<{ name: string; block: string }> = [];
+  const lines = content.split('\n');
+  let currentName = '';
+  let currentLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.trimStart().startsWith('### §')) {
+      if (currentName) {
+        sections.push({ name: currentName, block: currentLines.join('\n') });
+      }
+      const nameMatch = line.match(/### (§ [^(]+)/);
+      currentName = nameMatch ? nameMatch[1].trim() : line.trim();
+      currentLines = [line];
+    } else if (currentName) {
+      currentLines.push(line);
+    }
+  }
+  if (currentName) {
+    sections.push({ name: currentName, block: currentLines.join('\n') });
+  }
+
+  return sections;
+}
+
+/**
+ * Build a filtered catalog containing only the assigned sections' writing guides.
+ * When assignedSections is set, the LLM should only see HOW-to-write guidance for
+ * its assigned sections — preventing it from writing sections outside its scope.
+ * Returns undefined when no filtering is needed (full catalog will be shown via partial).
+ */
+async function buildFilteredCatalog(
+  state: DesignGraphState,
+  targetFile: string
+): Promise<string | undefined> {
+  const assignedSections = (state.currentTask as any)?.assignedSections as string[] | undefined;
+  if (!assignedSections || assignedSections.length === 0) {
+    return undefined;
+  }
+
+  let catalogRelPath: string | undefined;
+  for (const [prefix, entry] of Object.entries(CATALOG_MAP)) {
+    if (targetFile.startsWith(prefix)) { catalogRelPath = entry.full; break; }
+  }
+  if (!catalogRelPath) {
+    console.warn(`⚠️  [DocGen] No catalog mapping for targetFile: ${targetFile}`);
+    return undefined;
+  }
+
+  try {
+    const pathModule = await import('path');
+    const fsModule = await import('fs/promises');
+    const templateDir = await resolveTemplateDir();
+    const catalogPath = pathModule.join(templateDir, catalogRelPath);
+    const content = await fsModule.readFile(catalogPath, 'utf-8');
+
+    const allSections = splitCatalogIntoSections(content);
+    const filtered = allSections.filter(s =>
+      assignedSections.some(assigned => s.name.includes(assigned.replace('§ ', '')))
+    );
+
+    if (filtered.length === 0) {
+      console.warn(`⚠️  [DocGen] No catalog sections matched assignedSections: ${assignedSections.join(', ')}`);
+      return undefined;
+    }
+
+    console.log(`📄 [DocGen] Filtered catalog: ${filtered.length}/${allSections.length} sections for [${assignedSections.join(', ')}]`);
+    return filtered.map(s => s.block).join('\n\n');
+  } catch (error) {
+    console.warn(`⚠️  [DocGen] Failed to load full catalog: ${catalogRelPath}`, error);
+    return undefined;
+  }
 }
 
