@@ -312,6 +312,30 @@ export async function architectAgent(
         };
       }
       
+      // ✅ Check for interruption (call limit, recursion limit, etc.)
+      const designInterruption = (d as any).interruption;
+      if (designInterruption) {
+        const tasksRemaining = designInterruption.metadata?.tasksRemaining || 0;
+        const completedCount = d.completedTasks?.length || 0;
+        
+        if (tasksRemaining === 0) {
+          // All tasks completed despite interruption (edge case: interrupted but recovered)
+          return {
+            success: true,
+            job: 'design',
+            message: `Design document created. Review and approve before generating code.`
+          };
+        }
+        
+        return {
+          success: true,
+          status: 'paused',
+          job: 'design',
+          interruption: designInterruption,
+          message: designInterruption.message || `Design paused: ${completedCount} task(s) completed, ${tasksRemaining} remaining. Resume to continue.`
+        };
+      }
+      
       // ✅ Normal completion: design documents created
       return {
         success: true,
