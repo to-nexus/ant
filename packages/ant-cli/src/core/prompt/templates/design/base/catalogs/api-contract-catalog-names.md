@@ -1,0 +1,7 @@
+- § Overview
+- § Authentication & Authorization (conditional: if PRD requires auth)
+- § API Endpoints
+- § GraphQL API (conditional: if PRD specifies)
+- § Real-time Communication (conditional: if PRD indicates server push or bidirectional)
+- § Shared Type Definitions
+- § Error Handling Conventions

@@ -1,0 +1,7 @@
+- § Overview
+- § Architecture Boundaries
+- § API Integration & Error Strategy
+- § State Management & Data Flow
+- § Domain Rules (conditional: if explicit domain boundary selected)
+- § External Integrations (conditional: if PRD specifies third-party SDKs or external service adapters)
+- § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)

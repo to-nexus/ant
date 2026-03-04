@@ -1,0 +1,14 @@
+- § Overview & API Contract Compliance
+- § Architecture Pattern Selection
+- § Database Design (conditional: if persistence needed)
+- § Endpoint Implementation Mapping
+- § Authentication & Authorization (conditional: if PRD requires auth)
+- § Business Logic Placement
+- § Data Storage Architecture (conditional: if persistence needed)
+- § Caching Strategy (conditional: if PRD indicates performance requirements)
+- § Async Processing & Message Queue (conditional: if PRD indicates background jobs or event-driven patterns)
+- § Real-time & Connection State (conditional: if api-contract defines WebSocket/SSE)
+- § Architecture Style (conditional: if PRD indicates multi-domain complexity)
+- § External Integrations (conditional: if applicable)
+- § Technology Stack
+- § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
