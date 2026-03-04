@@ -107,6 +107,8 @@ export const REDIS_KEYS = {
   ARTIFACTS: {
     /** SET of unseen file paths per user/project/feature - ant:artifacts:unseen:{userId}:{projectId}:{featureName} */
     UNSEEN: `${REDIS_DOMAINS.ARTIFACTS}:unseen:`,
+    /** Cached file tree per user/project/feature - ant:artifacts:filetree:{userId}:{projectId}:{featureName} */
+    FILETREE: `${REDIS_DOMAINS.ARTIFACTS}:filetree:`,
   },
 } as const;
 
@@ -151,6 +153,7 @@ export const REDIS_TTL = {
   /** Unseen artifacts TTLs */
   ARTIFACTS: {
     UNSEEN: 7 * 24 * 60 * 60,    // 7 days
+    FILETREE: 24 * 60 * 60,      // 24 hours (aligned with job lifecycle)
   },
 } as const;
 

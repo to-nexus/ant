@@ -171,9 +171,12 @@ export class WorkflowBridge {
         });
         return;
       }
+
+      // Cache in Redis for cross-pod initial state (bypasses NFS attribute caching)
+      await stateStore.setFileTreeCache(userContext.userId, projectId, featureName, fileTree);
       
       const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
-      logger.debug(`[FileTreeUpdate] Broadcasting via ${channel}`, { 
+      logger.debug(`[FileTreeUpdate] Cached + broadcasting via ${channel}`, { 
         component: 'WorkflowBridge', 
         projectId, 
         featureName, 
