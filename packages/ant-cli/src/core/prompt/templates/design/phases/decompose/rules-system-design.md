@@ -239,53 +239,37 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
 
 ---
 
-## 📋 STRUCTURAL EXAMPLE
+## 📋 OUTPUT STRUCTURE
 
-**Principle**: One example shows the JSON structure. Variations (unified, MSA) follow from the Document Type Rules and MSA Detection sections above.
+**Principle**: The JSON structure below defines the required output shape. Field values are placeholders — derive actual values from the PRD and the rules above.
 
 ```json
 {
-  "documentType": "contract-first",
+  "documentType": "<unified | contract-first | msa-contract-first>",
   "services": [],
   "fePackages": [],
-  "targetFiles": ["api-contract-main.md", "fe-system-main.md", "be-system-main.md"],
+  "targetFiles": ["<target-file>.md"],
   "tasks": [
     {
-      "id": "design-contract",
-      "name": "API Contract Definition",
-      "targetFile": "api-contract-main.md",
-      "parallelGroup": "api-contract-main",
-      "assignedSections": ["§ Overview", "§ Endpoints", "§ Shared Types", "§ Error Handling"],
-      "description": "Cover api-contract-guide sections: Overview, Endpoints, Shared Types, Error Handling.",
-      "priority": 200
-    },
-    {
-      "id": "design-frontend",
-      "name": "Frontend System Design",
-      "targetFile": "fe-system-main.md",
-      "parallelGroup": "fe-system-main",
-      "assignedSections": ["§ Overview", "§ Architecture Boundaries", "§ API Integration & Error Strategy"],
-      "description": "Cover frontend-guide sections: Overview, Architecture Boundaries, API Integration.",
-      "priority": 200
-    },
-    {
-      "id": "design-backend",
-      "name": "Backend System Design",
-      "targetFile": "be-system-main.md",
-      "parallelGroup": "be-system-main",
-      "assignedSections": ["§ Overview", "§ Business Logic Placement", "§ Technology Stack"],
-      "description": "Cover backend-guide sections: Overview, Business Logic Placement, Technology Stack.",
+      "id": "<unique-kebab-case-id>",
+      "name": "<concise task name>",
+      "targetFile": "<must match one of targetFiles>",
+      "parallelGroup": "<group-id: same file = same group>",
+      "assignedSections": ["§ <exact catalog section name>", "§ <exact catalog section name>"],
+      "description": "<abstract topic areas; section assignments are authoritative>",
       "priority": 200
     }
   ]
 }
 ```
 
-**Key patterns demonstrated:**
-- `assignedSections` defines EXCLUSIVE scope — each catalog section assigned to exactly one task
-- `parallelGroup` for all tasks (same file = same group, different files = different groups)
-- All document types use the same priority range — they run in parallel across files
-- Description provides context; `assignedSections` is authoritative
+**Constraints:**
+- `assignedSections` values MUST use exact names from the document-type catalog (e.g., `"§ API Endpoints"`, NOT abbreviated forms like `"§ Endpoints"`)
+- Each catalog section assigned to exactly ONE task — no overlap, no gaps
+- 1-3 assigned sections per task is ideal; split into multiple tasks if a file has many sections
+- Tasks targeting the SAME file share the same `parallelGroup`; different files get different groups
+- All document types use the same priority range (200-249) — they run in parallel across files
+- Description provides context in abstract terms; `assignedSections` is the authoritative scope
 - For MSA, replace `main` with `{service}` (BE/API) or `{package}` (FE) per Document Naming rules above
 
 ---
