@@ -82,6 +82,7 @@ const SAMPLE_VARS: Record<string, any> = {
   hasRemainingTasks: false,
   isRetry: false,
   hasSetupConstraints: false,
+  hasTools: false,
 
   // code/phases/revise
   context: 'revision context',

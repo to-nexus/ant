@@ -189,17 +189,37 @@ export async function showChatPlaceholder(): Promise<void> {
   await chatAPI.showChatStatus('placeholder');
 }
 
+/** Internal call counter for decompose token logging */
+let _decomposeCallIndex = 0;
+
+/** Reset decompose call counter (call at decompose start) */
+export function resetDecomposeCallIndex(): void {
+  _decomposeCallIndex = 0;
+}
+
 /**
  * Accumulate token usage from LLM result (job-level only for decompose).
  */
-export async function trackTokenUsage(state: DesignGraphState, usage: any): Promise<void> {
+export async function trackTokenUsage(state: DesignGraphState, usage: any, subNode?: string): Promise<void> {
   if (!usage) return;
-  const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+  const { accumulateTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
   accumulateTokenUsage(state as any, usage, { taskLevel: false, jobLevel: true });
   // ✅ Push live token update to Kanban UI during estimating phase
   if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
     state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
   }
+  
+  logTokenUsageToFile(
+    state.context?.featurePath,
+    state.jobId || state._httpJobId,
+    usage,
+    {
+      taskId: 'estimating',
+      taskName: subNode || 'decompose',
+      node: 'decompose',
+      callIndex: _decomposeCallIndex++,
+    }
+  );
 }
 
 // ============================================

@@ -124,6 +124,17 @@ export interface DesignTask extends BaseTask {
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
 
   /**
+   * Catalog section names assigned to this task (set by decompose).
+   * Defines the EXCLUSIVE scope — this task writes ONLY these sections.
+   * Other catalog sections not listed here are FORBIDDEN for this task.
+   * e.g. ["§ Overview", "§ Architecture Boundaries"]
+   */
+  assignedSections?: string[];
+
+  /** Pre-computed at decompose time: true if this is the last task targeting the same file. */
+  isLastTaskForDocument?: boolean;
+
+  /**
    * Spec chapter decomposition fields.
    * When a spec document is split into sections, each task carries its section context.
    */

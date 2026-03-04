@@ -507,13 +507,26 @@ export async function detectEnvironment(
     }
     
     if (capturedUsage) {
-      const { accumulateTokenUsage } = await import("../../../../common/graph/llmHelpers");
+      const { accumulateTokenUsage, logTokenUsageToFile } = await import("../../../../common/graph/llmHelpers");
       accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
       console.log(`   Tokens: ${capturedUsage.totalTokens} total`);
       // ✅ Push live token update to Kanban UI during estimating phase
       if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
         state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
       }
+      
+      logTokenUsageToFile(
+        state.context?.featurePath,
+        state.jobId || state._httpJobId,
+        capturedUsage,
+        {
+          taskId: 'estimating',
+          taskName: 'detectEnvironment',
+          node: 'detectEnvironment',
+          callIndex: 0,
+          estimatedPromptChars: prompt.length,
+        }
+      );
     }
 
     // Parse response

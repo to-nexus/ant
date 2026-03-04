@@ -160,6 +160,11 @@ async function handleDefaultTask(
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
   const phaseStart = Date.now();
 
+  console.log('\n📋 ══════════════════════════ DESIGN DECOMPOSE PHASE ══════════════════════════');
+  console.log(`   Work type: ${state.detectionReport?.workType || 'unknown'}`);
+  console.log(`   Job mode: ${state.detectionReport?.jobMode || 'unknown'}`);
+  console.log('═══════════════════════════════════════════════════════════════════════════════\n');
+
   // Activity banner
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('decompose', state._uiLocale), 'decompose');

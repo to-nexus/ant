@@ -2,14 +2,18 @@
 
 ### Principle
 
+{{#if (includes currentTask.targetFile "be-system")}}
 The prompt already contains the PRD (injected as `prdSpec`) and the API contract (injected as `designDoc`). These are your primary architectural inputs — do NOT re-read them via tools.
+{{else}}
+The prompt already contains the PRD (injected as `prdSpec`). This is your primary architectural input — do NOT re-read it via tools.
+{{/if}}
 
 ### Observation Targets
 
 | Target | When to read | How |
 |--------|-------------|-----|
 | Your target document (`task.targetFile`) | Continuation task (lastSectionNumber exists) AND you need `edit_file` | `read_file` on the target path only |
-| Other system design documents (`*-system-*.md`, `api-contract-*.md`) | Only if your task explicitly references cross-document dependencies not already in the prompt | `read_file` on the specific file |
+| Other system design documents for this project | Only if your task explicitly references cross-document dependencies not already in the prompt | `read_file` on the specific file |
 
 ### Constraint
 
@@ -27,7 +31,11 @@ Do NOT re-read files already present in your conversation history. If you read a
 
 When you need to inspect multiple files, issue ALL needed tool calls in ONE response. Do NOT discover incrementally (read one file, then decide the next) when the context already reveals the needed set.
 
+{{#if (includes currentTask.targetFile "be-system")}}
 ⚠️ **Blind spot**: LLMs default to reading every file visible in `list_files` results for "completeness." For system design, the PRD and API contract in your prompt are sufficient for most tasks. Additional reads should be the exception, not the default.
+{{else}}
+⚠️ **Blind spot**: LLMs default to reading every file visible in `list_files` results for "completeness." For system design, the PRD in your prompt is sufficient for most tasks. Additional reads should be the exception, not the default.
+{{/if}}
 
 ---
 
@@ -46,9 +54,11 @@ Use `search_reference_code` tool to **observe** existing contracts and interface
 | **Compatibility** | If observed contracts exist, your design MUST be compatible. |
 | **Abstraction** | Apply same "Implementation Detail Filter" rules to reference code. Extract architectural intent, not literals. |
 
+{{#if (includes currentTask.targetFile "api-contract")}}
 ### ⚠️ Blind Spot Reminder
 
 When designing API contracts, you MUST search reference projects first to ensure compatibility. Do NOT assume endpoint structures.
+{{/if}}
 
 ---
 
@@ -119,17 +129,7 @@ Only skip the metadata comments at the end.
 - `LAST_SECTION`: Your last section number
 {{/if}}
 
-**Filename determination:**
-- Check `task.targetFile` field (HIGHEST PRIORITY)
-- If `task.targetFile` exists → use exactly that filename
-- Fallback pattern matching:
-  - "api-contract-main.md" mentioned → use `api-contract-main.md`
-  - "fe-system-main.md" mentioned → use `fe-system-main.md`
-  - "be-system-main.md" mentioned → use `be-system-main.md`
-  - "be-system-{service}.md" pattern → use exact filename (MSA)
-  - No mention → use `be-system-main.md`
-
-**⚠️ MSA Note**: For `msa-contract-first`, the filename includes service name (e.g., `be-system-auth.md`). Use the exact `task.targetFile` value.
+**Filename: `{{currentTask.targetFile}}`** (set by decompose — DO NOT change)
 
 ### Scenario 2: Appending Content (Continuation Task)
 
@@ -202,39 +202,7 @@ edit_file(
 
 **CRITICAL: All paths must be in `outputs/design/` directory!**
 
-**API Contract Document:**
-- Path: `outputs/design/api-contract-main.md`
-- Usage: Any project that exposes external API (fullstack, backend-only, MSA)
-- Timing: Written FIRST (before implementation design documents)
-
-**Frontend Design Document:**
-- Path: `outputs/design/fe-system-main.md`
-- Usage: Frontend-only projects, fullstack, and MSA projects
-- Timing: Content derived independently from PRD (does not consume api-contract)
-
-**Backend Design Document (single backend):**
-- Path: `outputs/design/be-system-main.md`
-- Usage: Fullstack and backend-only contract-first projects (implements api-contract-main.md)
-- Timing: Written AFTER api-contract-main.md
-
-**Backend Design Document (MSA - per service):**
-- Path: `outputs/design/be-system-{service}.md`
-- Usage: MSA-Contract-First projects (multiple services)
-- Timing: Written AFTER api-contract-main.md
-- **⚠️ `{service}` MUST match decompose output's `services` array**
-
-**Unified Design Document:**
-- Path: `outputs/design/be-system-main.md`
-- Usage: Rare fallback only (CLI tools, libraries, or projects where environment is unknown)
-
-### Path Pattern Reference
-
-| documentType | targetFile Pattern | Valid Path Pattern |
-|--------------|------------|------------|
-| `unified` (frontend) | `fe-system-main.md` | `outputs/design/fe-system-main.md` |
-| `unified` (fallback) | `be-system-main.md` | `outputs/design/be-system-main.md` |
-| `contract-first` | `be-system-main.md` | `outputs/design/be-system-main.md` |
-| `msa-contract-first` | `be-system-{service}.md` | `outputs/design/be-system-{service}.md` |
+**Your target document:** `outputs/design/{{currentTask.targetFile}}`
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Tag Selection Decision Tree
@@ -313,11 +281,7 @@ Before generating output, verify:
 
 **Path Correctness:**
 - ✅ Path starts with `outputs/design/`?
-- ✅ Filename matches document type from task description?
-  - API Contract → `api-contract-main.md`
-  - Frontend → `fe-system-main.md`
-  - Backend → `be-system-main.md`
-  - Unified → `be-system-main.md`
+- ✅ Filename is `{{currentTask.targetFile}}`?
 
 **Content Format:**
 - ✅ Valid markdown inside XML tags?

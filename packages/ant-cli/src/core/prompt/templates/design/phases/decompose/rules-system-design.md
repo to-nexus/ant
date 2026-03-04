@@ -1,14 +1,15 @@
 ## 📋 TASK CREATION RULES
 
-### Task Description Role
+### Section Assignment (BINDING)
 
-**Constraint**: Task descriptions are TOPIC HINTS — they suggest approximate coverage areas for each task. They are NOT authoritative plans.
+**Constraint**: Each task MUST include `assignedSections` — an array of catalog section names that define the task's EXCLUSIVE scope.
 
-- The **document-type guide** (frontend-guide, backend-guide, api-contract-guide) defines the allowed section catalog (scope ceiling)
-- The **individual task's plan phase** makes the actual section decisions at execution time
-- The **decompose description** provides hints about which guide sections to cover in this task
+- `assignedSections` is the **source of truth** for what a task writes
+- Each catalog section MUST appear in exactly ONE task's `assignedSections` (no overlap, no gaps)
+- The **document-type guide** defines the allowed section catalog (scope ceiling)
+- `description` provides additional context but is NOT the scope authority
 
-**Why?** If descriptions are too prescriptive, the execution phase copies them verbatim — including invented component names, procedural flows, and implementation details. Keeping descriptions as hints lets the guide's section catalog control what actually gets written.
+**Why?** Without explicit section assignments, tasks interpret scope from description text alone. Ambiguous keywords (e.g., "boundary" appearing in multiple section names) cause tasks to overstep and duplicate content.
 
 ### Task Description Content Rules
 
@@ -24,6 +25,13 @@
 - ALL tasks write to the SAME design document file
 - Task 1: Creates document with first sections
 - Task 2+: Appends new sections to existing document
+
+### `assignedSections` Rules
+
+- List catalog section names exactly as they appear in the Section Catalog (e.g., `"§ Overview"`, `"§ Architecture Boundaries"`)
+- Every catalog section (except conditional ones whose condition is not met) MUST be assigned to exactly one task
+- A task with 1–3 assigned sections is ideal
+- Do NOT assign the same section to multiple tasks
 
 ### Task Description Must Include
 
@@ -205,7 +213,8 @@ MSA applies to BOTH tiers independently:
 | id | Unique, kebab-case (e.g., "design-arch", "design-ch1-2") |
 | name | Concise (< 60 chars) |
 | targetFile | MUST match one of targetFiles |
-| description | ABSTRACT terms referencing guide section names as topic hints |
+| assignedSections | Array of catalog section names (e.g., `["§ Overview", "§ Architecture Boundaries"]`). EXCLUSIVE scope — no overlap between tasks. |
+| description | ABSTRACT terms providing context (section assignments are authoritative) |
 | priority | 200-299 range |
 | exclusive | `true` if task must run alone (e.g., api-contract) |
 | parallelGroup | Group ID for parallel scheduling (tasks with same group conflict) |
@@ -243,6 +252,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "API Contract Definition",
       "targetFile": "api-contract-main.md",
       "exclusive": true,
+      "assignedSections": ["§ Overview", "§ Endpoints", "§ Shared Types", "§ Error Handling"],
       "description": "Cover api-contract-guide sections: Overview, Endpoints, Shared Types, Error Handling.",
       "priority": 200
     },
@@ -251,6 +261,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "Frontend System Design",
       "targetFile": "fe-system-main.md",
       "parallelGroup": "fe-main",
+      "assignedSections": ["§ Overview", "§ Architecture Boundaries", "§ API Integration & Error Strategy"],
       "description": "Cover frontend-guide sections: Overview, Architecture Boundaries, API Integration.",
       "priority": 220
     },
@@ -259,6 +270,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
       "name": "Backend System Design",
       "targetFile": "be-system-main.md",
       "parallelGroup": "be-main",
+      "assignedSections": ["§ Overview", "§ Architecture Pattern", "§ Endpoint Mapping"],
       "description": "Cover backend-guide sections: Overview, Architecture Pattern, Endpoint Mapping.",
       "priority": 240
     }
@@ -267,9 +279,10 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 ```
 
 **Key patterns demonstrated:**
+- `assignedSections` defines EXCLUSIVE scope — each catalog section assigned to exactly one task
 - `exclusive: true` for api-contract tasks (shared interface, must run alone)
 - `parallelGroup` for implementation tasks (same file = same group, different files = different groups)
-- Description references guide section catalog as topic HINTS
+- Description provides context; `assignedSections` is authoritative
 - For MSA, replace `main` with `{service}` (BE/API) or `{package}` (FE) per Document Naming rules above
 
 ---
@@ -309,8 +322,9 @@ Before outputting, verify:
 - ✅ `services` array present (empty `[]` for non-MSA)
 - ✅ `targetFiles` matches documentType
 - ✅ Every task's `targetFile` is in `targetFiles`
-- ✅ All fields present (id, name, targetFile, description, priority)
-- ✅ Description references guide section names as topic hints (not implementation topics)
+- ✅ All fields present (id, name, targetFile, assignedSections, description, priority)
+- ✅ `assignedSections` lists exact catalog section names (e.g., `"§ Overview"`)
+- ✅ Every catalog section (except unmet conditionals) is assigned to exactly ONE task — no overlap, no gaps
 - ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
