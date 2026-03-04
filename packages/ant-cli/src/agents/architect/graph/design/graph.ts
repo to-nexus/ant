@@ -159,6 +159,27 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       console.log(`✅ Task "${completedTask.name}" completed!`);
     }
     
+    // ✅ Log task_complete to debug/logs/
+    if (state.context?.featurePath && state._httpJobId) {
+      try {
+        const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
+        const execLogger = getExecutionLogger({
+          featurePath: state.context.featurePath,
+          jobId: state._httpJobId,
+          jobType: 'design',
+        });
+        await execLogger.logTaskComplete(completedTask.id, {
+          taskName: completedTask.name,
+          elapsedMs: completedTask.timing?.elapsedTime || 0,
+          inputTokens: taskTokenUsage?.inputTokens || 0,
+          outputTokens: taskTokenUsage?.outputTokens || 0,
+          cacheReadTokens: taskTokenUsage?.cacheReadTokens || 0,
+          cacheCreationTokens: taskTokenUsage?.cacheCreationTokens || 0,
+          llmCallCount: state._docGenCallIndex || 0,
+        });
+      } catch (_) { /* non-critical */ }
+    }
+    
     // ✅ CRITICAL: Create NEW arrays (immutable update pattern for LangGraph)
     const completedTasks = [...(state.completedTasks || []), completedTask.id];
     const completedTasksDetails = [...(state.completedTasksDetails || []), completedTask];
@@ -183,8 +204,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               completedTasksDetails,
               currentTask: undefined,
               planText: state.planText,
-              conversationHistory: [],  // ✅ Reset between tasks (task completed)
-              files: state.files || [],  // ✅ Save generated files
+              conversationHistory: [],  // Checkpoint saves empty; runtime state uses retention policy
+              files: state.files || [],
               filesToDelete: state.filesToDelete || [],
               jobId: (state as any).jobId,
               jobTiming: (state as any).jobTiming,
@@ -227,16 +248,26 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       );
     }
     
-    // Return updated state
+    // Apply conversation retention policy (compact or discard based on context)
+    const { applyRetention } = await import('../../../../core/utils/conversationRetention');
+    const nextTask = state.taskQueue?.peek();
+    const retainedHistory = applyRetention({
+      jobType: 'design',
+      workType: (state.detectionReport?.workType as any) || 'system-design',
+      currentTask: { targetFile: state.currentTask.targetFile, id: state.currentTask.id },
+      nextTask: nextTask ? { targetFile: (nextTask as any).targetFile, id: nextTask.id } : undefined,
+      conversationHistory: state.conversationHistory || [],
+    });
+    
     return {
       completedTasks,
       completedTasksDetails,
       currentTask: undefined,
-      planText: '',  // ✅ Clear for next task - prevents stale planText leaking
-      conversationHistory: [],  // ✅ CRITICAL: Reset conversation history between tasks
-      files: [],  // ✅ CRITICAL: Reset files for next task (each task generates fresh)
-      tokenUsage: (state as any).tokenUsage,  // ✅ CRITICAL: Return accumulated job-level token usage
-      _docGenCallIndex: 0,  // ✅ Reset call budget for next task
+      planText: '',
+      conversationHistory: retainedHistory,
+      files: [],
+      tokenUsage: (state as any).tokenUsage,
+      _docGenCallIndex: 0,
     };
   }
   
@@ -254,12 +285,29 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   const { createDesignWorkerGraphBuilder } = await import('./parallel/workerGraph');
 
   const maxWorkers = getTaskConcurrency();
+  const parallelStartTime = Date.now();
   console.log(`\n🔀 [Design ParallelOrchestrator] Starting with maxWorkers=${maxWorkers}`);
 
   const taskQueue = state.taskQueue;
   if (!taskQueue || taskQueue.isEmpty()) {
     console.log(`[Design ParallelOrchestrator] No tasks in queue, skipping`);
     return {};
+  }
+  
+  // ✅ Log parallel_start to debug/logs/
+  if (state.context?.featurePath && state._httpJobId) {
+    try {
+      const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
+      const execLogger = getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'design',
+      });
+      await execLogger.logParallelStart({
+        taskIds: taskQueue.getAll().map((t: any) => t.id),
+        concurrency: maxWorkers,
+      });
+    } catch (_) { /* non-critical */ }
   }
 
   // Build shared context
@@ -378,6 +426,22 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   console.log(`   Completed: ${result.completedTasks.length}`);
   console.log(`   Failed: ${result.failedTasks.length}`);
   console.log(`   Remaining: ${result.remainingQueue.length}`);
+  
+  // ✅ Log parallel_complete to debug/logs/
+  if (state.context?.featurePath && state._httpJobId) {
+    try {
+      const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
+      const execLogger = getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'design',
+      });
+      await execLogger.logParallelComplete({
+        taskIds: result.completedTasks.map((t: any) => t.id),
+        elapsedMs: Date.now() - parallelStartTime,
+      });
+    } catch (_) { /* non-critical */ }
+  }
   if (result.failedTasks.length > 0) {
     for (const f of result.failedTasks) {
       console.error(`   ❌ FAILED: "${f.task.name}" (id=${f.task.id}) — ${f.error.message}`);

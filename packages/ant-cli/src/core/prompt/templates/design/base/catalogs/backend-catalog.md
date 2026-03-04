@@ -1,12 +1,7 @@
 ### § Overview & API Contract Compliance (mandatory)
 - System purpose and business domain
-- Selected architecture pattern with rationale
+- Selected architecture pattern with rationale (reference observation from §1.1)
 - API contract compliance statement referencing the corresponding `api-contract-{name}.md`
-
-### § Architecture Pattern Selection
-- Internal architecture observation (domain complexity, integration boundary count, dependency direction concern)
-- Architecture selection principle (framework-conventional vs explicit domain boundary vs port/adapter)
-- Directory structure principle (each boundary maps to a directory-level boundary)
 
 ### § Database Design (conditional: if persistence needed)
 - Entity relationships (conceptual schema, NOT SQL DDL)

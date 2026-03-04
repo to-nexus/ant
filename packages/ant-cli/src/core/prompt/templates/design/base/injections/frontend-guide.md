@@ -89,7 +89,11 @@
 
 Adapt sections based on the architecture pattern selected in §1. Skip sections marked "conditional" when the condition is not met.
 
+{{#if filteredCatalog}}
+{{{filteredCatalog}}}
+{{else}}
 {{> design/base/catalogs/frontend-catalog}}
+{{/if}}
 
 ---
 

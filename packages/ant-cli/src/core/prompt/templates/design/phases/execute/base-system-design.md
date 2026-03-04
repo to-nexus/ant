@@ -17,8 +17,8 @@ API Contract structure rules:
 {{else}}
 CHAPTER COUNT:
 - Each chapter corresponds to ONE section from the guide's Section Catalog
-- Write ONLY chapters for catalog sections assigned to your task
-- If all catalog sections for your task are already in the document, output ONLY the metadata (LAST_SECTION comment) with no new content
+- Write ONLY chapters for your ASSIGNED sections (see Section Scope below)
+- If all assigned sections are already in the document, output ONLY the metadata (LAST_SECTION comment) with no new content
 
 STRUCTURE PER CHAPTER:
 - Maximum 5-6 subsections (###) for complex chapters
@@ -71,30 +71,31 @@ CODE BLOCKS:
 **Task**: {{currentTask.name}}
 **Description**: {{currentTask.description}}
 
-🚨 **CRITICAL: Task Description is a HINT, not absolute instruction** 🚨
+{{#if sectionScope}}
+🚨 **CRITICAL: Section Scope is BINDING** 🚨
 
-**Task description suggests topic areas to cover — it is NOT a binding plan.**
-**The document-type guide's Section Catalog (CLOSED LIST) defines which sections are allowed.**
-**Abstraction level and terminology follow the PROMPTS BELOW, not the description!**
+{{{sectionScope}}}
+
+**You MUST write ONLY the sections listed in ASSIGNED sections above.**
+**You MUST NOT write ANY section listed in FORBIDDEN sections.**
+**The Guide Section Catalog defines HOW each section should be written.**
+**Task description provides context — section assignments are authoritative.**
+{{/if}}
 
 **Priority hierarchy:**
-1. **Guide Section Catalog** → scope ceiling (what sections CAN exist)
-2. **Prompt rules below** → abstraction level (HOW to write)
-3. **Task description** → topic hint (approximate coverage area)
+1. **Section assignments** → WHAT to write (binding scope)
+2. **Guide Section Catalog** → HOW to write (content rules per section)
+3. **Prompt rules below** → abstraction level
+4. **Task description** → additional context
 
-**If task description mentions a topic NOT in the guide's Section Catalog → SKIP it.**
+**If task description mentions a topic NOT in assigned sections → SKIP it.**
 **If task description uses concrete terms → ABSTRACT them per prompt rules.**
-
-**Examples:**
-- "LocalStorage" → "client-side persistence adapter"
-- "React Router" → "routing mechanism"
-- "Component architecture" → Skip if guide Scope Ceiling forbids it
 
 🚨 STRUCTURAL CONSTRAINTS 🚨
 **Chapter count:**
 - Each chapter = ONE section from the guide's Section Catalog
-- Write ONLY chapters for catalog sections relevant to your task description
-- Skip catalog sections already covered by previous tasks in this document
+- Write ONLY chapters for your ASSIGNED sections
+- Do NOT write ANY chapter for FORBIDDEN sections, even if seemingly relevant
 
 **Conciseness:**
 - Write the minimum needed to convey each architectural decision
@@ -401,7 +402,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 2. ✅ **Architecture boundaries**: Modules/layers and responsibilities specified?
 3. ✅ Followed PRD constraints (tech stack, scope)?
 4. ✅ Skipped sections not applicable to project type?
-5. ✅ Each chapter maps to a catalog section (no invented sections)?
+5. ✅ Each chapter maps to an ASSIGNED section (no invented sections, no FORBIDDEN sections)?
 6. ✅ Concise — minimum content for each architectural decision?
 7. ✅ **Code blocks ≤3 total, each ≤8 lines**?
 8. ✅ **NO implementation details** (formulas, algorithms, detailed pseudocode, internal state schemas)?

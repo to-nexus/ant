@@ -105,6 +105,12 @@ export class TemplateComposer {
         // ✅ Used in {{#unless isLastTaskForDocument}} to skip metadata output
         isLastTaskForDocument: assembled.isLastTaskForDocument || false,
         
+        // ✅ Used in {{#if sectionScope}} for exclusive section assignments
+        sectionScope: assembled.sectionScope || undefined,
+        
+        // ✅ Used in {{#if filteredCatalog}} — replaces full catalog partial with assigned-only guide
+        filteredCatalog: assembled.filteredCatalog || undefined,
+        
         // ✅ Used in {{#if hasUiDoc}} for UI specification existence
         hasUiDoc: (assembled as any).hasUiDoc || false
       }),
@@ -361,9 +367,15 @@ export class TemplateComposer {
       'port-management': {},  // ✅ Port management guide (no vars needed)
       'system-design-guide': {},
       'ui-design-guide': {},
-      'api-contract-guide': {},
-      'backend-guide': {},
-      'frontend-guide': {},
+      'api-contract-guide': {
+        filteredCatalog: assembled.filteredCatalog || undefined,
+      },
+      'backend-guide': {
+        filteredCatalog: assembled.filteredCatalog || undefined,
+      },
+      'frontend-guide': {
+        filteredCatalog: assembled.filteredCatalog || undefined,
+      },
       'game-guide': {},
       'service-guide': {},
       'game-domain-guide': {},

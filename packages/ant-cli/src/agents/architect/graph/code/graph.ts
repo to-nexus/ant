@@ -150,11 +150,15 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       }).catch(() => {});
     }
     
-    // ✅ CRITICAL: Clear conversation history for next task
-    // Each task should start fresh without previous task's conversation
-    state.conversationHistory = [];
+    // Apply centralized conversation retention policy (code job always discards)
+    const { applyRetention } = await import('../../../../core/utils/conversationRetention');
+    state.conversationHistory = applyRetention({
+      jobType: 'code',
+      currentTask: { id: state.currentTask.id },
+      nextTask: state.taskQueue?.peek() ? { id: state.taskQueue.peek()!.id } : undefined,
+      conversationHistory: state.conversationHistory || [],
+    });
     state._codeGenCallIndex = 0;
-    console.log(`🧹 [checkTaskStatus] Cleared conversation history for next task`);
     
     // ✅ CRITICAL: Clear violations for next task
     // Previous task's violations should not carry over to new task
@@ -266,8 +270,8 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       currentTask: undefined,
       retries: 0,
       violations: [],
-      conversationHistory: [],  // ✅ Clear for next task
-      _codeGenCallIndex: 0,     // ✅ Reset call counter for next task
+      conversationHistory: state.conversationHistory,  // Already processed by retention policy above
+      _codeGenCallIndex: 0,
       planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
       projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count

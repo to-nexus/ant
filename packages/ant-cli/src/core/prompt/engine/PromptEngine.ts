@@ -165,6 +165,8 @@ export class PromptEngine {
       lastSectionNumber?: number;
       sectionPattern?: string;  // ✅ 'top-level' or 'nested' structure pattern
       isLastTaskForDocument?: boolean;  // ✅ If true, don't output metadata
+      sectionScope?: string;  // ✅ Pre-rendered ASSIGNED/FORBIDDEN section scope block
+      filteredCatalog?: string;  // ✅ Pre-filtered catalog containing only assigned sections' guides
       previousDesign?: string;
       projectCodeContext?: ProjectCodeContext;
       referenceCodeContexts?: ReferenceCodeContext[];

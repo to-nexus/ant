@@ -27,7 +27,7 @@ export function routeAfterDocGen(state: DesignGraphState): string {
 
   const callIndex = state._docGenCallIndex || 0;
   const envMaxCalls = parseInt(process.env.DOCGEN_MAX_CALLS || '', 10);
-  const maxCalls = (!isNaN(envMaxCalls) && envMaxCalls >= 10) ? envMaxCalls : 50;
+  const maxCalls = (!isNaN(envMaxCalls) && envMaxCalls >= 10) ? envMaxCalls : 40;
 
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📍 [DocGenRouter] Routing Info:`);

@@ -175,6 +175,51 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
   }
   
+  // ✅ Job completion token usage summary
+  if (!_isWorkerContext && !hasOrchestratorFailure) {
+    const jobTokens = (state as any).tokenUsage;
+    if (jobTokens) {
+      console.log(`\n📊 [Learn] Job Token Usage Summary:`);
+      console.log(`   Total: ${jobTokens.totalTokens || 0} tokens`);
+      console.log(`   Input: ${jobTokens.inputTokens || 0}`);
+      console.log(`   Output: ${jobTokens.outputTokens || 0}`);
+      if (jobTokens.cacheReadTokens) console.log(`   Cache Read: ${jobTokens.cacheReadTokens}`);
+      if (jobTokens.cacheCreationTokens) console.log(`   Cache Creation: ${jobTokens.cacheCreationTokens}`);
+      console.log(`   Tasks completed: ${(state.completedTasksDetails || []).length}`);
+    }
+  }
+  
+  // ✅ Log job_complete to debug/logs/ and cleanup loggers
+  if (!_isWorkerContext && state.context?.featurePath && state._httpJobId) {
+    const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');
+    const { clearTokenLogger } = await import('../../../../../core/utils/tokenLogger');
+    
+    if (!hasOrchestratorFailure) {
+      try {
+        const jobTokens = (state as any).tokenUsage;
+        const jobTiming = (state as any).jobTiming;
+        const execLogger = getExecutionLogger({
+          featurePath: state.context.featurePath,
+          jobId: state._httpJobId,
+          jobType: 'design',
+        });
+        await execLogger.logJobComplete({
+          totalTasks: (state.completedTasksDetails || []).length,
+          totalTokens: jobTokens?.totalTokens || 0,
+          totalInputTokens: jobTokens?.inputTokens || 0,
+          totalOutputTokens: jobTokens?.outputTokens || 0,
+          totalCacheReadTokens: jobTokens?.cacheReadTokens || 0,
+          elapsedMs: jobTiming?.startedAt
+            ? Date.now() - new Date(jobTiming.startedAt).getTime()
+            : 0,
+        });
+      } catch (_) { /* non-critical */ }
+    }
+    
+    await clearTokenLogger(state._httpJobId);
+    await clearExecutionLogger(state._httpJobId);
+  }
+  
   // ✅ End workflow visualization
   // CRITICAL: Skip in worker context! Each worker runs learn after its task.
   // If worker calls endJob, it prematurely terminates workflow visualization

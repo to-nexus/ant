@@ -86,6 +86,25 @@ export async function plan(state: DesignGraphState) {
     );
   }
 
+  // ✅ Log task_start to debug/logs/
+  if (currentTask && state.context?.featurePath && state._httpJobId) {
+    try {
+      const { getExecutionLogger } = await import('../../../../../core/utils/executionLogger');
+      const execLogger = getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'design',
+      });
+      await execLogger.logTaskStart(currentTask.id, {
+        taskName: currentTask.name,
+        taskType: currentTask.type || 'doc',
+        priority: currentTask.priority || 0,
+        isParallel: false,
+        parallelGroup: (currentTask as any).parallelGroup,
+      });
+    } catch (_) { /* non-critical */ }
+  }
+
   console.log(`\n✅ [Plan] Task prepared for execution`);
   console.log(`   Task: ${currentTask?.name}`);
   console.log(`   Next node: docGen will generate document\n`);

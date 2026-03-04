@@ -22,7 +22,11 @@
 
 **Constraint**: The sections below are the ONLY sections allowed in this document (`api-contract-{name}.md`). Do NOT create sections outside this catalog. Decompose task descriptions are topic HINTS — the actual sections written MUST come from this catalog.
 
+{{#if filteredCatalog}}
+{{{filteredCatalog}}}
+{{else}}
 {{> design/base/catalogs/api-contract-catalog}}
+{{/if}}
 
 ---
 

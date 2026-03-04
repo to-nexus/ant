@@ -159,8 +159,8 @@ Previous design:
 
 ### Step 4: Distribute Catalog Sections
 
-- Each task covers 1-3 sections from the guide's Section Catalog
-- Task descriptions reference catalog section names as topic HINTS (advisory, not binding)
+- Each task covers 1-3 sections from the guide's Section Catalog via `assignedSections`
+- `assignedSections` defines EXCLUSIVE scope — each section assigned to exactly ONE task
 - Total tasks for a document type MUST NOT exceed the number of catalog sections for that type
 - Skip conditional catalog sections whose condition is not met
 
@@ -170,7 +170,7 @@ Previous design:
 
 **Focus on architecture, NOT implementation.**
 
-**Constraint**: Each document type has a guide (frontend-guide, backend-guide, api-contract-guide) that defines a **Section Catalog (CLOSED LIST)**. Task descriptions should reference sections from that catalog as topic hints. The guide's Section Catalog and Scope Ceiling are authoritative — decompose descriptions are advisory.
+**Constraint**: Each document type has a guide (frontend-guide, backend-guide, api-contract-guide) that defines a **Section Catalog (CLOSED LIST)**. Each task's `assignedSections` MUST reference sections from that catalog. The guide's Section Catalog and Scope Ceiling are authoritative — `assignedSections` defines EXCLUSIVE scope per task.
 
 ### Section Catalogs by Document Type
 

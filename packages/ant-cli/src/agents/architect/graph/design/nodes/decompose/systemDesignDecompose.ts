@@ -47,6 +47,7 @@ interface SystemDesignResponse {
     priority: number;
     exclusive?: boolean;
     parallelGroup?: string;
+    assignedSections?: string[];
   }>;
   references?: Array<{
     project: string;
@@ -219,8 +220,20 @@ function generateMinimumTasks(targetFiles: string[]): SystemDesignResponse['task
 function buildTaskQueue(response: SystemDesignResponse): TaskQueue<DesignTask> {
   const taskQueue = new TaskQueue<DesignTask>();
   
+  // Pre-compute isLastTaskForDocument per targetFile group
+  const tasksByFile = new Map<string, typeof response.tasks>();
   for (const taskData of response.tasks) {
-    // Validate targetFile
+    const file = taskData.targetFile;
+    if (!tasksByFile.has(file)) tasksByFile.set(file, []);
+    tasksByFile.get(file)!.push(taskData);
+  }
+  const lastTaskIdPerFile = new Set<string>();
+  for (const tasks of tasksByFile.values()) {
+    const sorted = [...tasks].sort((a, b) => (a.priority || 250) - (b.priority || 250));
+    if (sorted.length > 0) lastTaskIdPerFile.add(sorted[sorted.length - 1].id);
+  }
+  
+  for (const taskData of response.tasks) {
     if (!response.targetFiles.includes(taskData.targetFile)) {
       taskData.targetFile = response.targetFiles[0];
     }
@@ -239,6 +252,8 @@ function buildTaskQueue(response: SystemDesignResponse): TaskQueue<DesignTask> {
       description: taskData.description,
       targetFile: taskData.targetFile,
       targetService: taskData.targetService,
+      assignedSections: taskData.assignedSections,
+      isLastTaskForDocument: lastTaskIdPerFile.has(taskData.id),
       exclusive: exclusive || undefined,
       parallelGroup,
       completed: false
