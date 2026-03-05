@@ -580,7 +580,7 @@ export class ModeController {
    */
   private detectFrameworkAugmentation(context: AssembledContext, targetFile?: string): string | undefined {
     const isFrontendDoc = !targetFile || targetFile.includes('fe-system-') || targetFile.includes('frontend');
-    const isBackendDoc = !targetFile || targetFile.includes('be-system-') || targetFile.includes('api-contract') || targetFile.includes('backend');
+    const isBackendDoc = !targetFile || targetFile.includes('be-system-') || targetFile.includes('backend');
 
     // 1. Check codebase profile (existing projects)
     const framework = context.codebaseProfile?.framework?.toLowerCase();
