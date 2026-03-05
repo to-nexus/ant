@@ -335,7 +335,7 @@ export async function decomposeSystemDesign(
     buildSourceFileIndex,
     getSourceDocsSize,
     DECOMPOSE_SOURCE_THRESHOLD,
-    READ_SOURCE_FILE_TOOL,
+    READ_SOURCE_DOC_TOOL,
     decomposeWithToolLoop,
   } = await import('../docGen/sourceSelector');
 
@@ -348,7 +348,7 @@ export async function decomposeSystemDesign(
     console.log(`📊 [SystemDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
     const fileIndex = buildSourceFileIndex(state.sourceDocuments!);
     const specParts = [
-      `SOURCE DOCUMENTS (index only — use read_source_file tool for full content):\n\n${fileIndex}\n\n⚠️ Read selectively: only files relevant to architecture decisions and task decomposition. Do NOT read all files.`,
+      `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to architecture decisions, service boundaries, and task decomposition. Prioritize files about service decomposition, bounded contexts, and domain boundaries — these determine MSA detection.`,
       state.design ? `PREVIOUS DESIGN:\n${state.design.split('\n').slice(0, 50).join('\n')}\n...` : null,
       state.directive ? `DIRECTIVE:\n${state.directive}` : null,
     ].filter(Boolean);
@@ -357,7 +357,7 @@ export async function decomposeSystemDesign(
     console.log(`📊 [SystemDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
     const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
     const specParts = [
-      allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
+      allSourceDocs ? `SOURCE DOCUMENTS:\n${allSourceDocs}` : null,
       state.design ? `PREVIOUS DESIGN:\n${state.design}` : null,
       state.directive ? `DIRECTIVE:\n${state.directive}` : null
     ].filter(Boolean);
@@ -428,7 +428,7 @@ export async function decomposeSystemDesign(
   /**
    * Single attempt: LLM call → parse → normalize → validate
    * Small projects: single-turn invokeWithUsage (fast)
-   * Large projects: multi-turn stream with read_source_file tool (RAG)
+   * Large projects: multi-turn stream with read_source_doc tool (RAG)
    */
   async function attemptDecompose(): Promise<SystemDesignResponse> {
     let textResponse: string;
@@ -437,9 +437,9 @@ export async function decomposeSystemDesign(
       const { response, usage } = await decomposeWithToolLoop(
         llmToUse,
         [{ role: 'user', content: prompt }],
-        [READ_SOURCE_FILE_TOOL],
+        [READ_SOURCE_DOC_TOOL],
         (name, args) => {
-          if (name === 'read_source_file') {
+          if (name === 'read_source_doc') {
             const content = state.sourceDocuments![args.filename];
             if (!content) {
               const available = Object.keys(state.sourceDocuments!).join(', ');

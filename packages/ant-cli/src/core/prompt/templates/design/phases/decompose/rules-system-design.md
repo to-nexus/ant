@@ -81,7 +81,7 @@ DO NOT CREATE tasks for:
 
 ### Principle
 
-Each design document is derived independently from the PRD. Documents cover distinct, non-overlapping concerns:
+Each design document is derived independently from the requirements. Documents cover distinct, non-overlapping concerns:
 - **api-contract**: External interface specification (WHAT endpoints exist)
 - **fe-system**: Frontend internal architecture (HOW frontend is structured)
 - **be-system**: Backend internal architecture (HOW backend is structured)
@@ -109,7 +109,7 @@ All document types can be generated in parallel. Tasks targeting the SAME file s
 
 ## MSA MULTI-DOCUMENT STRATEGY (if service/package boundaries detected)
 
-**When PRD explicitly indicates multiple backend service boundaries OR multiple frontend package boundaries.**
+**When source documents define multiple backend service boundaries OR multiple frontend package boundaries.**
 
 MSA applies to BOTH tiers independently:
 - **Backend MSA**: Multiple backend services → `be-system-{service}.md` + `api-contract-{service}.md` per service
@@ -130,11 +130,11 @@ All document types use the same priority range (200-249). Tasks targeting differ
 
 | Tier | Constraint | Rule |
 |------|------------|------|
-| API Contract | Filename pattern | `api-contract-{service}.md` where `{service}` is PRD-specified name (or `main` if single) |
-| Backend | Filename pattern | `be-system-{service}.md` where `{service}` is PRD-specified name (or `main` if single) |
-| Frontend | Filename pattern | `fe-system-{package}.md` where `{package}` is PRD-specified name (or `main` if single) |
-| All | Case | Use exact case from PRD (lowercase recommended) |
-| All | No invention | Do NOT create names not in PRD |
+| API Contract | Filename pattern | `api-contract-{service}.md` where `{service}` is the name from source documents (or `main` if single) |
+| Backend | Filename pattern | `be-system-{service}.md` where `{service}` is the name from source documents (or `main` if single) |
+| Frontend | Filename pattern | `fe-system-{package}.md` where `{package}` is the name from source documents (or `main` if single) |
+| All | Case | Use exact case from source documents (lowercase recommended) |
+| All | No invention | Do NOT create names not found in source documents |
 
 ### Per-Service api-contract-{service}.md for MSA
 
@@ -232,11 +232,11 @@ The `profiles` map captures language/framework for each tier or service, enablin
 
 **"msa-contract-first"**:
 - Use for: Projects with **multiple backend service boundaries** and/or **multiple frontend package boundaries**
-- services: `["<service1>", "<service2>", ...]` (backend services from PRD, empty if single backend)
-- fePackages: `["<package1>", "<package2>", ...]` (frontend packages from PRD, empty if single frontend)
+- services: `["<service1>", "<service2>", ...]` (backend services from source documents, empty if single backend)
+- fePackages: `["<package1>", "<package2>", ...]` (frontend packages from source documents, empty if single frontend)
 - targetFiles: computed from services and fePackages
 
-**⚠️ Constraint**: Only use `msa-contract-first` if PRD explicitly defines service or package boundaries.
+**⚠️ Constraint**: Only use `msa-contract-first` when service or package boundaries are observed in source documents.
 
 ### Task Properties
 
@@ -267,7 +267,7 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
 
 ## 📋 OUTPUT STRUCTURE
 
-**Principle**: The JSON structure below defines the required output shape. Field values are placeholders — derive actual values from the PRD and the rules above.
+**Principle**: The JSON structure below defines the required output shape. Field values are placeholders — derive actual values from the requirements and the rules above.
 
 ```json
 {
@@ -354,7 +354,7 @@ Before outputting, verify:
 
 **MSA-specific validation:**
 - ✅ If `msa-contract-first` → at least one of `services` or `fePackages` is NOT empty
-- ✅ If `msa-contract-first` → names match PRD exactly (do NOT invent)
+- ✅ If `msa-contract-first` → names match source documents exactly (do NOT invent)
 - ✅ If `services` present → each service has `be-system-{service}.md` AND `api-contract-{service}.md` in targetFiles
 - ✅ If `fePackages` present → each package has `fe-system-{package}.md` in targetFiles
 - ✅ Each MSA task has `targetService` field matching its service/package name

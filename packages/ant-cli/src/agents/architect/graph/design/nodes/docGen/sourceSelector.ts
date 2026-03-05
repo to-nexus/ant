@@ -9,7 +9,7 @@
  *
  * Hybrid strategy for decompose phases:
  *   - Small projects (< DECOMPOSE_SOURCE_THRESHOLD): inject all inline
- *   - Large projects: inject file index + provide read_source_file tool
+ *   - Large projects: inject file index + provide read_source_doc tool
  */
 
 import type { LLMClient, ToolDefinition, LLMStreamEvent } from '../../../../../../core/ports/llm';
@@ -22,13 +22,19 @@ import type { TaskTokenUsage } from '@ant/shared';
 export const DECOMPOSE_SOURCE_THRESHOLD = 200_000;
 
 /**
+ * Character threshold for switching execute phase from inline injection to tool-use.
+ * Same rationale: 200K chars ≈ 100K tokens (Korean), leaving headroom for templates + response.
+ */
+export const EXECUTE_SOURCE_THRESHOLD = 200_000;
+
+/**
  * Cumulative character budget for tool results within one decompose session.
  * 300K chars ≈ ~150K tokens at worst-case ratio → prevents token overflow on subsequent turns.
  */
 const TOOL_RESULT_BUDGET = 300_000;
 
-export const READ_SOURCE_FILE_TOOL: ToolDefinition = {
-  name: 'read_source_file',
+export const READ_SOURCE_DOC_TOOL: ToolDefinition = {
+  name: 'read_source_doc',
   description: 'Read the full content of a source document by filename. Use this to examine specific requirements documents when only the file index is provided.',
   input_schema: {
     type: 'object',
@@ -252,6 +258,15 @@ export function buildSourceFileIndex(
       .slice(0, 200)
       .replace(/\|/g, '\\|');
     lines.push(`| ${i + 1} | \`${name}\` | ${content.length.toLocaleString()} chars | ${preview}... |`);
+
+    const headings = content
+      .split('\n')
+      .filter(l => /^## /.test(l))
+      .map(l => l.trim())
+      .join(' / ');
+    if (headings) {
+      lines.push(`|   |  |  | Outline: ${headings.slice(0, 500)} |`);
+    }
   }
 
   return lines.join('\n');
@@ -266,7 +281,7 @@ export function getSourceDocsSize(sourceDocuments?: Record<string, string>): num
 }
 
 /**
- * Handle read_source_file tool call by reading from in-memory source documents.
+ * Handle read_source_doc tool call by reading from in-memory source documents.
  */
 function handleReadSourceFile(
   filename: string,
@@ -310,13 +325,13 @@ export interface DecomposeToolLoopOptions {
 /**
  * Run a decompose LLM call with tool-use loop.
  *
- * The LLM can call read_source_file (or read_design_doc) to fetch documents
+ * The LLM can call read_source_doc (or read_design_doc) to fetch documents
  * on-demand. Loop continues until the LLM produces a final text response
  * without tool calls, or maxRounds is reached.
  *
  * @param llm - LLM client (must support stream with tools)
  * @param messages - Initial messages (system + user)
- * @param tools - Tool definitions (e.g., [READ_SOURCE_FILE_TOOL])
+ * @param tools - Tool definitions (e.g., [READ_SOURCE_DOC_TOOL])
  * @param toolHandler - Function that executes a tool call and returns result string
  * @param options - LLM call options + loop constraints
  */
