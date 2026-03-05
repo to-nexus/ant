@@ -201,9 +201,27 @@ export async function docGen(
       }
     }
     
+    // ✅ Wait for all file operations to complete BEFORE finalizing
+    // (parity with code job codeGen/index.ts — detects incomplete <file> tags)
+    try {
+      await orchestrator.waitForAllFileOperations();
+    } catch (fileError) {
+      const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
+      console.error(`⚠️  [DocGen] File operation failed: ${errorMsg}`);
+    }
+    
     // ✅ Finalize orchestrator (flush buffer and save files)
     const hasToolCalls = pendingToolCalls.length > 0;
     const finalizeResult = await orchestrator.finalize(hasToolCalls);  // Don't flush if tool calls pending
+    
+    // ✅ CRITICAL: Extract file errors from finalize result for output validation
+    const fileErrors = finalizeResult.fileErrors || [];
+    if (fileErrors.length > 0) {
+      console.error(`⚠️  [DocGen] ${fileErrors.length} file error(s) detected:`);
+      for (const error of fileErrors) {
+        console.error(`   - ${error.substring(0, 200)}`);
+      }
+    }
     
     // ✅ Get generated files from registry (in-memory tracking)
     const registry = orchestrator.getRegistry();
@@ -297,6 +315,7 @@ export async function docGen(
     return {
       files,
       conversationHistory,
+      fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _docGenCallIndex: newCallIndex,
       _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
       tokenUsage: (state as any).tokenUsage,

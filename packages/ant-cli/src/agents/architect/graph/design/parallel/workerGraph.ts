@@ -23,15 +23,20 @@ import { routeAfterDocGen } from '../routers/docGenRouter';
 
 /**
  * Check task status within a design worker subgraph.
- * Lighter version — doesn't pop next task or save global checkpoint.
+ * 
+ * Validation gates (parity with code job checkTaskStatus):
+ * 1. _callLimitReached → throw (TaskOrchestrator handles as failure)
+ * 2. fileErrors → throw (incomplete file operations detected)
+ * 3. Normal completion → mark task as completed
  */
 async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   // ✅ Increment recursion count (per-worker, track node execution for UI gauge)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
+  const workerId = (state as any).workerId ?? 0;
+  
   // Workflow instrumentation
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    const workerId = (state as any).workerId ?? 0;
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -45,6 +50,44 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     );
   }
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 1: Call budget exhausted — fail task (not silently complete)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state._callLimitReached && state.currentTask) {
+    const callIndex = state._docGenCallIndex || 0;
+    console.error(`❌ [workerCheckTaskStatus] Call budget exhausted for "${state.currentTask.name}" (${callIndex} calls) — failing task`);
+    
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+    }
+    
+    throw new Error(
+      `Task "${state.currentTask.name}" exhausted call budget (${callIndex} calls) without producing valid output. ` +
+      `This is a deterministic failure — the LLM could not generate the required document within the call limit.`
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 2: File operation errors — fail task
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.fileErrors && state.fileErrors.length > 0 && state.currentTask) {
+    console.error(`❌ [workerCheckTaskStatus] ${state.fileErrors.length} file error(s) for "${state.currentTask.name}":`);
+    for (const err of state.fileErrors) {
+      console.error(`   - ${err.substring(0, 200)}`);
+    }
+    
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+    }
+    
+    throw new Error(
+      `Task "${state.currentTask.name}" had ${state.fileErrors.length} file operation error(s): ${state.fileErrors[0].substring(0, 200)}`
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Normal completion
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.currentTask) {
     const { TaskTimingHelper } = await import('../../code/state');
     const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
@@ -58,9 +101,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
 
     console.log(`✅ [Worker] Design task "${completedTask.name}" completed!`);
 
-    // Workflow exit (await to ensure broadcast completes before next node's enterNode)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      const workerId = (state as any).workerId ?? 0;
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
 
@@ -70,14 +111,14 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       planText: '',
       conversationHistory: [],
       files: [],
+      fileErrors: undefined,
       tokenUsage: (state as any).tokenUsage,
       _docGenCallIndex: 0,
+      _noOutputCallCount: 0,
     } as any;
   }
 
-  // Workflow exit (await to ensure broadcast completes before next node's enterNode)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    const workerId = (state as any).workerId ?? 0;
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
   }
 
@@ -143,6 +184,8 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
       awaitingDetectClarify: null as any,
       awaitingClarify: null as any,
       _docGenCallIndex: null as any,
+      _noOutputCallCount: null as any,
+      fileErrors: null as any,
       // Worker-specific
       workerId: null as any,
       _taskCompleted: null as any,
