@@ -246,20 +246,20 @@ export function formatDetectionReportForChat(
   } else if (report.workType === 'spec') {
     // spec doc output hint is dynamic (spec-{slug}.md), shown after decompose determines the slug
   } else if (report.workType === 'system-design') {
-    if (report.targetFiles?.length) {
+    if (report.jobMode === 'refactor' && report.targetFiles?.length) {
       const filesList = report.targetFiles.map(f => `\`${f}\``).join(', ');
       formatted += isKorean
-        ? `📄 **생성 문서**: ${filesList}\n\n`
-        : `📄 **Output**: ${filesList}\n\n`;
+        ? `📄 **대상 문서**: ${filesList}\n\n`
+        : `📄 **Target**: ${filesList}\n\n`;
     } else if (report.environment) {
-      const fallbackFiles =
-        report.environment === 'fullstack' ? '`api-contract-main.md`, `fe-system-main.md`, `be-system-main.md`' :
-        report.environment === 'backend' ? '`api-contract-main.md`, `be-system-main.md`' :
-        report.environment === 'frontend' ? '`fe-system-main.md`' :
-        '`be-system-main.md`';
+      const typePatterns =
+        report.environment === 'fullstack' ? '`api-contract-*.md`, `fe-system-*.md`, `be-system-*.md`' :
+        report.environment === 'backend' ? '`api-contract-*.md`, `be-system-*.md`' :
+        report.environment === 'frontend' ? '`fe-system-*.md`' :
+        '`be-system-*.md`';
       formatted += isKorean
-        ? `📄 **생성 문서**: ${fallbackFiles}\n\n`
-        : `📄 **Output**: ${fallbackFiles}\n\n`;
+        ? `📄 **생성 문서**: ${typePatterns}\n\n`
+        : `📄 **Output**: ${typePatterns}\n\n`;
     }
   }
   
