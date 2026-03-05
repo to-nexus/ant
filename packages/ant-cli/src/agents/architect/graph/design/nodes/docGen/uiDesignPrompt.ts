@@ -134,7 +134,12 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   const sourceDocsForTask = buildSourceDocsForTask(
     (task as DesignTask)?.sourceFiles,
     state.sourceDocuments
-  ) || state.prd;
+  );
+  
+  const taskSourceFiles = (task as DesignTask)?.sourceFiles;
+  if (taskSourceFiles?.length && !sourceDocsForTask) {
+    console.warn(`⚠️ [DocGen] sourceFiles assigned [${taskSourceFiles.join(', ')}] but matched 0 documents in sourceDocuments`);
+  }
 
   if (sourceDocsForTask) {
     content.push({
@@ -228,7 +233,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   const freshSourceDocs = buildSourceDocsForTask(
     (task as DesignTask)?.sourceFiles,
     state.sourceDocuments
-  ) || state.prd;
+  );
 
   if (freshSourceDocs) {
     content.push({

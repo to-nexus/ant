@@ -89,7 +89,7 @@ Each `api-contract-{service}.md` contains:
 | **§ Consumed API** | Endpoints THIS service calls from OTHER services | External dependencies |
 | **§ Events Published** | Events THIS service emits | Async output |
 | **§ Events Subscribed** | Events THIS service listens to | Async input |
-| **§ Service DTOs** | Type definitions specific to this service | Data shapes |
+| **§ Shared Type Definitions** | Type definitions specific to this service | Data shapes |
 
 ### Provided API Section
 
@@ -103,7 +103,7 @@ Each `api-contract-{service}.md` contains:
 #### POST /api/{resource}
 - **Purpose**: ...
 - **Visibility**: public (client-facing) / internal (service-to-service)
-- **Request**: {DTO} (§ Service DTOs)
+- **Request**: {DTO} (§ Shared Type Definitions)
 - **Success**: 201 + {DTO}
 - **Errors**: ...
 ```
@@ -125,7 +125,7 @@ Each `api-contract-{service}.md` contains:
 
 | Event | Trigger | Payload |
 |-------|---------|---------|
-| OrderCreated | New order placed | OrderCreatedEvent (§ Service DTOs) |
+| OrderCreated | New order placed | OrderCreatedEvent (§ Shared Type Definitions) |
 
 ### Events Subscribed
 
@@ -137,7 +137,7 @@ Each `api-contract-{service}.md` contains:
 ### ⚠️ Blind Spot Reminders
 
 - ⚠️ **Consumed API section**: Easily forgotten, REQUIRED when service depends on other services
-- ⚠️ **Service DTOs**: Define per-service; shared types should be cross-referenced by name
+- ⚠️ **Shared Type Definitions**: Define per-service; shared types should be cross-referenced by name
 - ⚠️ **Event delivery guarantee**: MUST specify (at-least-once, at-most-once, exactly-once)
 - ⚠️ **Visibility**: Mark each endpoint as `public` (client-facing) or `internal` (service-to-service)
 
