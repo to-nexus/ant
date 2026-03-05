@@ -116,11 +116,13 @@ export interface TriageResult {
  */
 export interface WorkspaceState {
   // Common
-  hasPrd: boolean;               // ⚠️ 템플릿이 아닌 실제 내용이 있는지 체크
+  hasPrd: boolean;               // ⚠️ inputs/sources/ 내 텍스트 파일이 하나라도 있으면 true (prd.md 외 포함)
   hasDirective: boolean;         // ⚠️ 채팅 입력 시 true
   prdPath?: string;
   directivePath?: string;
   featurePath?: string;          // Feature directory path (for debug logging)
+  sourceFileCount?: number;      // inputs/sources/ 내 텍스트 파일 수
+  sourceFileNames?: string[];    // 파일명 목록 (e.g. ["prd.md", "tech-spec.md"])
   
   // Design job - ui-design mode
   hasScreens: boolean;           // inputs/references/screens/

@@ -275,8 +275,9 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   }
 
   // Validation based on mode
-  if (jobMode === 'generate' && !prd) {
-    throw new Error("Generate mode requires PRD document");
+  const hasAnySource = sourceDocuments && Object.keys(sourceDocuments).length > 0;
+  if (jobMode === 'generate' && !prd && !hasAnySource) {
+    throw new Error("Generate mode requires source documents in inputs/sources/");
   }
 
   return {
