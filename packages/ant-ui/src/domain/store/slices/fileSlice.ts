@@ -79,8 +79,11 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     }
     
     try {
+      const tFetch = performance.now();
+      console.log(`[Timing] refreshFileTree REST start @${Math.round(tFetch)}ms`);
       const { fetchFileTree } = await import('@/infrastructure/http/api');
       const tree = await fetchFileTree(selectedProject, selectedFeature);
+      console.log(`[Timing] refreshFileTree REST done (nodes=${tree?.length ?? 0}) +${Math.round(performance.now() - tFetch)}ms @${Math.round(performance.now())}ms`);
       set({ fileTree: tree });
     } catch (error) {
       console.error('Failed to refresh file tree:', error);

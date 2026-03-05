@@ -218,7 +218,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // System Design: check spec availability
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const hasSpec = Boolean(state.prd || state.design || state.directive);
+    const hasSourceDocs = state.sourceDocuments && Object.keys(state.sourceDocuments).length > 0;
+    const hasSpec = Boolean(state.prd || hasSourceDocs || state.design || state.directive);
     if (!hasSpec) {
       return handleDefaultTask(state, timing);
     }

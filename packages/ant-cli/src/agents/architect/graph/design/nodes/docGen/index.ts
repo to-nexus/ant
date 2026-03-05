@@ -208,7 +208,7 @@ export async function docGen(
     // Accumulate token usage to state
     if (capturedUsage) {
       const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-      accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
+      accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: false });
       updateKanbanTokenUsage(state as any);
       
       const taskUsage = (state as any)._currentTaskTokenUsage;
@@ -278,6 +278,8 @@ export async function docGen(
           awaitingClarify: true,
           llmResponse: { textResponse, done: true },
           _docGenCallIndex: newCallIndex,
+          _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
+          tokenUsage: (state as any).tokenUsage,
         };
       }
     }
@@ -286,8 +288,8 @@ export async function docGen(
       files,
       conversationHistory,
       _docGenCallIndex: newCallIndex,
-      // ✅ Return tool calls for routing decision
-      // CRITICAL: Only mark done if LLM explicitly output <done>true</done> (same as Code Job)
+      _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
+      tokenUsage: (state as any).tokenUsage,
       llmResponse: hasToolCalls ? {
         toolCalls: pendingToolCalls,
         textResponse,

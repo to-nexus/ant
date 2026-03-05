@@ -26,7 +26,8 @@ export function useSessionLoader(connectionStatus: string) {
     if (connectionStatus !== 'connected' || hasRestoredRef.current) return;
     
     hasRestoredRef.current = true;
-    console.log('[useSessionLoader] 🚀 Starting session restoration (one-time)');
+    const tRestore = performance.now();
+    console.log(`[Timing] useSessionLoader start @${Math.round(tRestore)}ms`);
 
     // Restore selected project and feature
     (async () => {
@@ -36,7 +37,6 @@ export function useSessionLoader(connectionStatus: string) {
 
         if (!projectId) {
           console.log('[useSessionLoader] No saved project found');
-          // No session to restore, complete immediately
           useStore.getState().completeSessionRestore();
           return;
         }
@@ -51,20 +51,18 @@ export function useSessionLoader(connectionStatus: string) {
           return;
         }
         
-        console.log('[useSessionLoader] Restoring project:', projectId);
-        
         // ✅ Step 2: Check project-last-features mapping to get expected feature
         const projectFeatures = (loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {}) as Record<string, string | undefined>;
-        const expectedFeature = projectFeatures[projectId]; // Can be undefined (base branch)
+        const expectedFeature = projectFeatures[projectId];
         
-        console.log('[useSessionLoader] Expected feature for project:', expectedFeature || 'undefined (base)');
+        console.log(`[Timing] sessionLoader: startSessionRestore +${Math.round(performance.now() - tRestore)}ms (project=${projectId}, feature=${expectedFeature})`);
         
         // ✅ Step 3: Start session restore with expected feature
-        // This signals useFeatureBranchManager to WAIT before any branch switching
         useStore.getState().startSessionRestore(expectedFeature);
         
         // ✅ Step 4: Set project (will trigger fetchFeatures)
         useStore.getState().setSelectedProject(projectId);
+        console.log(`[Timing] sessionLoader: setSelectedProject done +${Math.round(performance.now() - tRestore)}ms`);
         
         // ✅ Step 5: Wait for features to load (with timeout)
         const maxAttempts = 100;  // 10 seconds max
@@ -74,47 +72,40 @@ export function useSessionLoader(connectionStatus: string) {
           const currentFeatures = useStore.getState().features;
           const isSessionRestoring = useStore.getState().isSessionRestoring;
           
-          // Stop if not restoring anymore (might have been cancelled)
           if (!isSessionRestoring) {
             clearInterval(pollForFeatures);
             return;
           }
           
-          // Timeout
           if (attempts >= maxAttempts) {
-            console.warn('[useSessionLoader] ⚠️ Feature loading timeout, proceeding with undefined');
+            console.warn(`[Timing] sessionLoader: feature poll TIMEOUT +${Math.round(performance.now() - tRestore)}ms`);
             clearInterval(pollForFeatures);
             useStore.getState().setSelectedFeature(undefined);
             useStore.getState().completeSessionRestore();
             return;
           }
           
-          // Features loaded (or we're on base branch)
           const featuresLoaded = currentFeatures.length > 0 || expectedFeature === undefined;
           
           if (featuresLoaded) {
             clearInterval(pollForFeatures);
+            console.log(`[Timing] sessionLoader: features loaded (polls=${attempts}) +${Math.round(performance.now() - tRestore)}ms`);
             
-            // ✅ Step 6: Set feature based on what we expected
             if (expectedFeature === undefined) {
-              // We expect base branch (no feature)
-              console.log('[useSessionLoader] ✅ Restoring to base branch (undefined)');
               useStore.getState().setSelectedFeature(undefined);
               useStore.getState().completeSessionRestore();
             } else {
-              // We expect a specific feature
               const featureExists = currentFeatures.some(f => f.name === expectedFeature);
               
               if (featureExists) {
-                console.log('[useSessionLoader] ✅ Restoring feature:', expectedFeature);
                 useStore.getState().setSelectedFeature(expectedFeature);
-                useStore.getState().completeSessionRestore();
               } else {
-                console.warn('[useSessionLoader] ⚠️ Expected feature not found, setting to undefined');
+                console.warn('[useSessionLoader] Expected feature not found, setting to undefined');
                 useStore.getState().setSelectedFeature(undefined);
-                useStore.getState().completeSessionRestore();
               }
+              useStore.getState().completeSessionRestore();
             }
+            console.log(`[Timing] sessionLoader: completeSessionRestore +${Math.round(performance.now() - tRestore)}ms`);
           }
           
           attempts++;

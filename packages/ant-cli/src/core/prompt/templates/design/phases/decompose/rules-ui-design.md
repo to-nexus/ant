@@ -35,12 +35,24 @@ Adjust chapter count based on expected content:
 | ui-assets | 200-249 |
 | ui-spec | 300-349 |
 
-### 6. Overlap Prevention
+### 6. Source File Assignment
+
+{{#if sourceFileNames}}
+Each task MUST include `sourceFiles` — an array of source filenames that the task needs to reference.
+
+Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}}
+
+- A task MAY reference 1 or more files depending on its scope
+- Observe each file's relevance to the task's target document before assigning
+- **Constraint**: Do NOT omit a file that contains requirements relevant to the task scope
+{{/if}}
+
+### 7. Overlap Prevention
 
 - Add "Skip any topics already documented" to continuation chapter descriptions
 - Execution phase will automatically detect and skip duplicates
 
-### 7. ui-assets.json Path Consistency (CRITICAL!)
+### 8. ui-assets.json Path Consistency (CRITICAL!)
 
 **When creating ui-assets tasks:**
 
@@ -83,7 +95,8 @@ DO NOT CREATE:
       "id": "refactor-{document}-{section}",
       "name": "Refactor: {brief description}",
       "targetFile": "{target}.json",
-      "description": "{modification scope}. Keep all other content unchanged.",
+{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
+{{/if}}      "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 300
     }
   ]
@@ -110,14 +123,16 @@ DO NOT CREATE:
       "id": "ui-tokens-ch1",
       "name": "Design Tokens: Colors",
       "targetFile": "ui-tokens.json",
-      "description": "Color palette and backgrounds in JSON format.",
+{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
+{{/if}}      "description": "Color palette and backgrounds in JSON format.",
       "priority": 100
     },
     {
       "id": "ui-spec-ch1",
       "name": "UI Spec: Global Settings",
       "targetFile": "ui-spec.json",
-      "description": "Establish outline, breakpoints, layout rules in JSON format.",
+{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
+{{/if}}      "description": "Establish outline, breakpoints, layout rules in JSON format.",
       "priority": 300
     }
   ]

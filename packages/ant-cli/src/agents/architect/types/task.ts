@@ -135,6 +135,14 @@ export interface DesignTask extends BaseTask {
   isLastTaskForDocument?: boolean;
 
   /**
+   * Source files from inputs/sources/ relevant to this task (set by decompose).
+   * MUST be set when multiple source files exist.
+   * Can contain 1 or more filenames. e.g. ["prd.md", "tech-constraints.md"]
+   * If not set (single file case), all sourceDocuments are injected.
+   */
+  sourceFiles?: string[];
+
+  /**
    * Spec chapter decomposition fields.
    * When a spec document is split into sections, each task carries its section context.
    */

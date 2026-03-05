@@ -32,7 +32,7 @@ Each task object MUST follow this schema:
     "name": "Human-readable task name",
     "type": "setup" | "feature" | "testgen" | "doc" | "error",
     "priority": 100,
-    "packages": ["fe", "be-auth"],
+    "packages": ["<tier>-<name>"],
     "exclusive": true,
     "ui": false,
     "description": "What to do"
@@ -42,7 +42,7 @@ Each task object MUST follow this schema:
     "name": "Another Task",
     "type": "feature",
     "priority": 300,
-    "packages": ["be"],
+    "packages": ["<tier>-<name>"],
     "parallelGroup": "scope-id",
     "ui": false,
     "description": "What to do"
@@ -249,8 +249,8 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 - Task touches frontend code -> `fe-main` (or `fe-{pkg}` for monorepo)
 - Task touches backend code -> `be-main` (or `be-{svc}` for MSA)
 - Task touches shared/common code -> `shared`
-- Task touches both tiers -> combine (e.g., `["fe-main", "be-main"]`)
-- Root workspace setup -> all tier tags in the project (e.g., `["shared", "be-api", "be-redirect"]`)
+- Task touches both tiers -> combine relevant `{tier}-{name}` tags
+- Root workspace setup -> all tier tags in the project, combined with `"shared"`
 
 ⚠️ **Blind spot**: `shared` alone injects ONLY api-contract-main.md — no system design documents. Root setup and shared foundation tasks MUST combine all relevant tier tags. Without tier-specific system design documents, the plan phase cannot observe tech stack versions or infrastructure requirements.
 
@@ -336,7 +336,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Constraint**: When the observation above identifies cross-boundary atomic coordination needs, the coordination contract is shared infrastructure — the foundation task MUST define it. Without this contract, feature tasks bypass shared interfaces and independently implement coordination logic, causing architectural inconsistency.
 
-**Constraint**: The `packages` field MUST include all tier tags that parallel feature tasks span, combined with `"shared"`. Example: if parallel tasks use `["be"]`, the foundation task uses `["shared", "be"]`. `"shared"` alone provides only API contract — system design documents are required for the plan phase to identify infrastructure symbols.
+**Constraint**: The `packages` field MUST include all tier tags that parallel feature tasks span, combined with `"shared"`. `"shared"` alone provides only API contract — system design documents are required for the plan phase to identify infrastructure symbols. Always combine the relevant `{tier}-{name}` tags with `"shared"`.
 
 **Constraint**: Feature tasks that depend on shared foundation symbols MUST NOT redefine them. They import and use what the shared foundation task established.
 

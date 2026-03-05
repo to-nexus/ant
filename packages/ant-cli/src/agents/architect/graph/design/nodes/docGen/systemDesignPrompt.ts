@@ -11,6 +11,8 @@ import { CacheableContent } from '../../../../../../core/ports/llm';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
+import { buildSourceDocsForTask } from './sourceSelector';
+import { DesignTask } from '../../../../types/task';
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
@@ -109,6 +111,11 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
+    const sourceDocsForTask = buildSourceDocsForTask(
+      (state.currentTask as DesignTask)?.sourceFiles,
+      state.sourceDocuments
+    ) || state.prd;
+
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',
       state.context,
@@ -116,7 +123,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         directive: state.directive || '',
         lastSectionNumber,
         sectionPattern,
-        prdSpec: state.prd,
+        prdSpec: sourceDocsForTask,
         designDomain: state.detectionReport?.domain,
         currentTask: {
           name: state.currentTask.name,
@@ -157,7 +164,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const contextParts = [
       composed.injections,
-      state.prd ? `# Requirements\n\n${state.prd}` : null,
+      sourceDocsForTask ? `# Requirements\n\n${sourceDocsForTask}` : null,
     ].filter(Boolean);
     
     const contextBlock: CacheableContent = {
@@ -431,7 +438,7 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
   // Framework augmentation detection (mirrors ModeController.detectFrameworkAugmentation)
   // Filter by targetFile: nextjs → frontend docs only, go-api → backend docs only
   const isFrontendDoc = targetFile.includes('fe-system-') || targetFile.includes('frontend');
-  const isBackendDoc = targetFile.includes('be-system-') || targetFile.includes('api-contract') || targetFile.includes('backend');
+  const isBackendDoc = targetFile.includes('be-system-') || targetFile.includes('backend');
   const framework = (state.context as any)?.codebaseProfile?.framework?.toLowerCase();
   const language = (state.context as any)?.codebaseProfile?.language?.toLowerCase();
   
@@ -443,7 +450,10 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
       templates.push('design/phases/execute/injections/go-api-augmentation');
     }
   } else {
-    const textSources = [state.prd, state.directive].filter(Boolean);
+    const allSourceDocs = state.sourceDocuments
+      ? Object.values(state.sourceDocuments).join(' ')
+      : state.prd || '';
+    const textSources = [allSourceDocs, state.directive].filter(Boolean);
     const combined = textSources.join(' ').toLowerCase();
     if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {
       templates.push('design/phases/execute/injections/nextjs-augmentation');

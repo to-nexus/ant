@@ -16,6 +16,8 @@ import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { CacheableContent } from '../../../../../../core/ports/llm';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
+import { buildSourceDocsForTask } from './sourceSelector';
+import { DesignTask } from '../../../../types/task';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -128,11 +130,16 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     text: resourcesSummary
   });
   
-  // ✅ 3. PRD Context (if available)
-  if (state.prd) {
+  // ✅ 3. PRD Context (if available) — per-task selective injection
+  const sourceDocsForTask = buildSourceDocsForTask(
+    (task as DesignTask)?.sourceFiles,
+    state.sourceDocuments
+  ) || state.prd;
+
+  if (sourceDocsForTask) {
     content.push({
       type: 'text',
-      text: `\n\n# PRD (Requirements)\n\n${state.prd}`
+      text: `\n\n# PRD (Requirements)\n\n${sourceDocsForTask}`
     });
   }
   
@@ -217,11 +224,16 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     text: resourcesSummary
   });
   
-  // ✅ 3. PRD Context (if available)
-  if (state.prd) {
+  // ✅ 3. PRD Context (if available) — per-task selective injection
+  const freshSourceDocs = buildSourceDocsForTask(
+    (task as DesignTask)?.sourceFiles,
+    state.sourceDocuments
+  ) || state.prd;
+
+  if (freshSourceDocs) {
     content.push({
       type: 'text',
-      text: `\n\n# PRD (Requirements)\n\n${state.prd}`
+      text: `\n\n# PRD (Requirements)\n\n${freshSourceDocs}`
     });
   }
   

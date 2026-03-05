@@ -13,6 +13,8 @@
 
 import { DesignGraphState } from '../../state';
 import { CacheableContent } from '../../../../../../core/ports/llm';
+import { buildSourceDocsForTask } from './sourceSelector';
+import { DesignTask } from '../../../../types/task';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
@@ -104,8 +106,13 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
 
     const contextParts: string[] = [];
 
-    if (state.prd) {
-      contextParts.push(`# Requirements Document (PRD)\n\n${state.prd}`);
+    const sourceDocsForTask = buildSourceDocsForTask(
+      (state.currentTask as DesignTask)?.sourceFiles,
+      state.sourceDocuments
+    ) || state.prd;
+
+    if (sourceDocsForTask) {
+      contextParts.push(`# Requirements Document (PRD)\n\n${sourceDocsForTask}`);
     }
 
     if (jobMode === 'refactor') {

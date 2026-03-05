@@ -76,6 +76,9 @@ export function createFilesRoutes(deps: {
       }
 
       const tree = await deps.projectService.getFileTree(projectId, featureName, userContext);
+      if (deps.stateStore && tree) {
+        deps.stateStore.setFileTreeCache(userContext.userId, projectId, featureName, tree).catch(() => {});
+      }
       res.json(tree);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
