@@ -142,7 +142,9 @@ export class ArtifactService {
   }
 
   /**
-   * Get source materials (PRD + all resources)
+   * Get source materials from inputs/sources/.
+   * Reads ALL text files as structured sourceDocuments (filename -> content).
+   * prd field is kept for backward compatibility (= sourceDocuments["prd.md"]).
    */
   static async getSource(
     context: ArtifactProjectContext,
@@ -150,6 +152,7 @@ export class ArtifactService {
     fileSystem: FileSystemPort
   ): Promise<{
     prd?: string;
+    sourceDocuments?: Record<string, string>;
     figmaLink?: string;
     figmaData?: any;
     wireframes?: string[];
@@ -167,18 +170,33 @@ export class ArtifactService {
 
     const entries = await fileSystem.readDirectory(sourceDir);
 
-    // 1. PRD (single canonical file: prd.md)
-    const canonicalPrd = path.join(sourceDir, "prd.md");
-    if (await fileSystem.fileExists(canonicalPrd)) {
-      const content = await fileSystem.readFile(canonicalPrd);
+    // 1. Read all text files as sourceDocuments
+    const textExtensions = [".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".xml", ".html"];
+    const imageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
+    const sourceDocuments: Record<string, string> = {};
+
+    for (const entry of entries) {
+      if (entry.isDirectory) continue;
+      const nameLower = entry.name.toLowerCase();
+      if (imageExtensions.some(ext => nameLower.endsWith(ext))) continue;
+      if (!textExtensions.some(ext => nameLower.endsWith(ext))) continue;
+
+      const filePath = path.join(sourceDir, entry.name);
+      const content = await fileSystem.readFile(filePath);
       const normalized = ArtifactService.normalizeUserDoc(content);
       if (normalized) {
-        result.prd = normalized;
+        sourceDocuments[entry.name] = normalized;
       }
     }
 
+    if (Object.keys(sourceDocuments).length > 0) {
+      result.sourceDocuments = sourceDocuments;
+      result.prd = sourceDocuments["prd.md"] || undefined;
+      const fileNames = Object.keys(sourceDocuments);
+      console.log(`📄 [Source] Loaded ${fileNames.length} source file(s): ${fileNames.join(', ')}`);
+    }
+
     // 2. Wireframes (images) - legacy: direct images in inputs/sources/
-    const imageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"];
     const wireframes = entries
       .filter(e => !e.isDirectory && imageExtensions.some(ext => e.name.toLowerCase().endsWith(ext)))
       .map(e => path.join(sourceDir, e.name));

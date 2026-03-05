@@ -300,7 +300,9 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
     timestamp: new Date().toISOString(),
     input: {
       type: 'file',
-      source: 'inputs/sources/prd.md',
+      source: state.sourceDocuments && Object.keys(state.sourceDocuments).length > 0
+        ? Object.keys(state.sourceDocuments).map(f => `inputs/sources/${f}`).join(', ')
+        : 'inputs/sources/prd.md',
       summary: inputSummary,
       size: (state.directive || '').length,
     },

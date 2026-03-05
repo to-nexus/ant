@@ -235,7 +235,8 @@ export async function architectAgent(
           return {
             directive: directive || undefined,
             previousDesign: designResult?.content || undefined,
-            prdSpec: source?.prd || undefined
+            prdSpec: source?.prd || undefined,
+            sourceDocuments: source?.sourceDocuments || undefined
           };
         }
       });

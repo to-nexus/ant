@@ -19,7 +19,11 @@ export function useHealthCheck() {
     
     async function initialize() {
       try {
+        const t0 = performance.now();
+        console.log(`[Timing] useHealthCheck start @${Math.round(t0)}ms`);
+
         const isHealthy = await checkHealth();
+        console.log(`[Timing] checkHealth done +${Math.round(performance.now() - t0)}ms`);
         const store = useStore.getState();
         
         if (!isHealthy) {
@@ -28,19 +32,21 @@ export function useHealthCheck() {
           return;
         }
         
-        // ✅ Load system configuration (recursion limit, etc.)
         await store.loadSystemConfig();
+        console.log(`[Timing] loadSystemConfig done +${Math.round(performance.now() - t0)}ms`);
         
         // Cloud Mode: Skip project loading if not signed in
         if (store.backendMode === 'cloud' && !store.userEmail) {
           store.setConnectionStatus('connected');
           store.setProjects([]);
+          console.log(`[Timing] setConnectionStatus('connected') (no auth) +${Math.round(performance.now() - t0)}ms`);
           return;
         }
         
-        // Load projects once on initialization
         await store.fetchProjects();
+        console.log(`[Timing] fetchProjects done +${Math.round(performance.now() - t0)}ms`);
         store.setConnectionStatus('connected');
+        console.log(`[Timing] setConnectionStatus('connected') +${Math.round(performance.now() - t0)}ms`);
       } catch (error) {
         console.error('[useHealthCheck] Initialization failed:', error);
         useStore.getState().setConnectionStatus('error');

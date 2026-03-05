@@ -34,12 +34,16 @@ export async function decomposeUiDesign(
   state: DesignGraphState,
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
-  // Build UI context for LLM
+  // Build UI context for LLM — use all source documents (decompose needs full picture)
+  const { buildAllSourceDocs } = await import('../docGen/sourceSelector');
+  const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
   const uiContextParts = [
-    state.prd ? `PRD:\n${state.prd}` : null,
+    allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
     state.directive ? `DIRECTIVE:\n${state.directive}` : null,
   ].filter(Boolean);
   const uiContext = uiContextParts.length > 0 ? uiContextParts.join('\n\n---\n\n') : '';
+
+  const sourceFileNames = state.sourceDocuments ? Object.keys(state.sourceDocuments) : [];
 
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
@@ -51,6 +55,7 @@ export async function decomposeUiDesign(
       ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
       : 0,
     jobMode: state.detectionReport?.jobMode || 'generate',
+    sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
   });
 
   await safeLogPrompt(
@@ -109,12 +114,21 @@ export async function decomposeUiDesign(
         type: 'doc',
         priority: task.priority,
         description: task.description,
+        sourceFiles: Array.isArray((task as any).sourceFiles) ? (task as any).sourceFiles : undefined,
         completed: false,
         ui: true,
         targetFile: task.targetFile,
         parallelGroup,
       } as DesignTask);
     });
+
+    if (sourceFileNames.length > 0) {
+      for (const task of taskQueue.getAll()) {
+        if (!task.sourceFiles || task.sourceFiles.length === 0) {
+          console.warn(`⚠️ [UI Decompose] task "${task.id}" missing sourceFiles`);
+        }
+      }
+    }
 
     console.log(`✅ UI decompose: ${taskQueue.size()} tasks (${response.strategy || 'chapter-based'} strategy)`);
 

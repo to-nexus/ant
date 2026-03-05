@@ -216,7 +216,7 @@ function generateMinimumTasks(targetFiles: string[]): SystemDesignResponse['task
 // Task Queue Population
 // ============================================
 
-function buildTaskQueue(response: SystemDesignResponse): TaskQueue<DesignTask> {
+function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[] = []): TaskQueue<DesignTask> {
   const taskQueue = new TaskQueue<DesignTask>();
   
   // Pre-compute isLastTaskForDocument per targetFile group
@@ -251,11 +251,20 @@ function buildTaskQueue(response: SystemDesignResponse): TaskQueue<DesignTask> {
       targetFile: taskData.targetFile,
       targetService: taskData.targetService,
       assignedSections: taskData.assignedSections,
+      sourceFiles: Array.isArray((taskData as any).sourceFiles) ? (taskData as any).sourceFiles : undefined,
       isLastTaskForDocument: lastTaskIdPerFile.has(taskData.id),
       exclusive: exclusive || undefined,
       parallelGroup,
       completed: false
     } as DesignTask);
+  }
+
+  if (sourceFileNames.length > 0) {
+    for (const task of taskQueue.getAll()) {
+      if (!task.sourceFiles || task.sourceFiles.length === 0) {
+        console.warn(`⚠️ [Decompose] task "${task.id}" missing sourceFiles`);
+      }
+    }
   }
   
   return taskQueue;
@@ -272,9 +281,11 @@ export async function decomposeSystemDesign(
   state: DesignGraphState,
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
-  // Build spec
+  // Build spec — use all source documents (decompose needs full picture)
+  const { buildAllSourceDocs } = await import('../docGen/sourceSelector');
+  const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
   const specParts = [
-    state.prd ? `PRD:\n${state.prd}` : null,
+    allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
     state.design ? `PREVIOUS DESIGN:\n${state.design}` : null,
     state.directive ? `DIRECTIVE:\n${state.directive}` : null
   ].filter(Boolean);
@@ -297,6 +308,8 @@ export async function decomposeSystemDesign(
   const promptPrimaryFile = resolvedTargetFiles?.[0]
     || (existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'be-system-main.md');
 
+  const sourceFileNames = state.sourceDocuments ? Object.keys(state.sourceDocuments) : [];
+
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
@@ -309,6 +322,7 @@ export async function decomposeSystemDesign(
     primaryDesignFile: promptPrimaryFile,
     environment: detectedEnv,
     resolvedTargetFiles,
+    sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
   });
 
   await safeLogPrompt(
@@ -424,7 +438,7 @@ export async function decomposeSystemDesign(
   console.log(`✅ System decompose: ${response.documentType}, ${response.tasks.length} tasks → [${response.targetFiles.join(', ')}]`);
 
   // Build task queue
-  const taskQueue = buildTaskQueue(response);
+  const taskQueue = buildTaskQueue(response, sourceFileNames);
 
   // Log decompose result
   await safeLogPrompt(

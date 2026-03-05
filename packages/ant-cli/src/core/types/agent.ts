@@ -39,6 +39,8 @@ export interface CodebaseProfile {
 /** Common input materials for both design and code tasks */
 export interface TaskArtifacts {
   prd?: string;
+  /** All text files from inputs/sources/ keyed by filename. */
+  sourceDocuments?: Record<string, string>;
   prdSpec?: string;
   directive?: string;
   design?: string;

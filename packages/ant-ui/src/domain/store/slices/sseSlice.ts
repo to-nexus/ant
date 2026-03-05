@@ -279,6 +279,8 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       return;
     }
     
+    console.log(`[Timing] initializeSSE start @${Math.round(performance.now())}ms (${state.selectedProject}/${state.selectedFeature})`);
+    
     const jobType = state.selectedJobType;
     
     const connectedProject = state.selectedProject;
@@ -599,6 +601,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sseManager.registerHandler('fileTree', (data: any) => {
       if (data.type === 'initial' || data.type === 'update') {
         const tree = data.tree || data.fileTree;
+        console.log(`[Timing] SSE fileTree received (type=${data.type}, nodes=${tree?.length ?? 0}) @${Math.round(performance.now())}ms`);
         get().setFileTree(tree);
       }
     });
@@ -633,7 +636,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       const currentStatus = get().connectionStatus;
       if (currentStatus !== status) {
         set({ connectionStatus: status });
-        console.log(`[Store] 📡 SSE connection status: ${status}`);
+        console.log(`[Timing] SSE connectionStatus: ${currentStatus} -> ${status} @${Math.round(performance.now())}ms`);
       }
     });
     
