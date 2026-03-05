@@ -5,9 +5,9 @@ import { getGitStatus } from '@/infrastructure/http/api';
 export interface GitActions {
   setGitStatusLoading: (loading: boolean) => void;
   setGitStatusPhase: (phase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | 'publishing' | null) => void;
-  setGitStatus: (status: GitStatus | null) => void;  // ✅ Single setter for Git status
-  fetchGitStatus: (projectId: string) => Promise<void>;  // ✅ Fetch and update Git status
-  refreshGitStatus: () => void;  // ✅ Helper to trigger refresh
+  setGitStatus: (status: GitStatus | null) => void;
+  fetchGitStatus: (projectId: string, feature?: string) => Promise<void>;
+  refreshGitStatus: () => void;
   setBypassFetchTimer: (bypass: boolean) => void;
 }
 
@@ -38,14 +38,14 @@ export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, _get) =
     set({ gitStatus: status });
   },
   
-  fetchGitStatus: async (projectId: string) => {
+  fetchGitStatus: async (projectId: string, feature?: string) => {
     if (!projectId) {
       set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
       return;
     }
     
     try {
-      const status = await getGitStatus(projectId);
+      const status = await getGitStatus(projectId, feature);
       set({ gitStatus: status });
       console.log('[GitSlice] Git status loaded:', status);
     } catch (error) {

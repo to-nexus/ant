@@ -192,7 +192,7 @@ export function useGitChanges(
     const fetchChanges = async () => {
       setIsFetchingChanges(true);
       try {
-        const changes = await getGitChanges(selectedProject);
+        const changes = await getGitChanges(selectedProject, selectedFeature);
         setGitChanges(changes);
         setIsGitInitialized(changes.isGitInitialized ?? true);
         setCachedChanges(changes);

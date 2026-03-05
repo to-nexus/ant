@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as net from 'net';
 import { logger } from '../../../utils/logger';
 import { WorkspacePathResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { GitHelper } from '../http/services/GitService/helper/GitHelper';
 
 export interface IDEInstance {
   containerId: string;
@@ -337,12 +338,23 @@ export class IDEService {
       }
       
       // Create container
+      // Resolve additional bind mounts needed for git worktree support.
+      // Worktree .git files reference the main repo's .git directory via absolute host paths;
+      // these must be accessible inside the container at the same paths.
+      const worktreeBinds = GitHelper.resolveWorktreeBindMounts(workspacePath);
+      
       const createContainer = async () => {
+        const binds = [
+          `${workspacePath}:${dockerWorkspacePath}:rw`,
+          `${ideHomeHostPath}:/home/coder:rw`,
+          `${ideHomeHostPath}:/home/openvscode:rw`,
+          `${ideHomeHostPath}:/home/openvscode-server:rw`,
+          ...worktreeBinds,
+        ];
+
         return await this.docker.createContainer({
         Image: this.IMAGE,
         name: containerName,
-        // ✅ Make hostname human-readable so shell prompt isn't confusing across projects
-        // NOTE: Hostname cannot contain ":" so we use a sanitized dash-separated form
         Hostname: hostname,
         Labels: {
           'ant.kind': 'ide',
@@ -356,35 +368,21 @@ export class IDEService {
           `ORG_ID=${userContext.organizationId}`,
           `PROJECT_ID=${projectId}`,
           `FEATURE=${feature}`,
-          // ✅ Ensure the IDE opens the mounted project as the workspace root
-          // (Some code-server/openvscode distributions honor DEFAULT_WORKSPACE)
           `DEFAULT_WORKSPACE=${dockerWorkspacePath}`,
           `WORKSPACE=${dockerWorkspacePath}`,
-          // NOTE: openvscode-server doesn't require PASSWORD by default.
         ],
         ExposedPorts: {
-          // gitpod/openvscode-server listens on 3000 by default
           '3000/tcp': {}
         },
         HostConfig: {
-          // ✅ Mount ONLY this project (project isolation)
-          // workspacePath is expected to be the project root directory in host
-          Binds: [
-            `${workspacePath}:${dockerWorkspacePath}:rw`,
-            // ✅ Support both images: some use /home/coder, others use /home/openvscode (openvscode-server)
-            `${ideHomeHostPath}:/home/coder:rw`,
-            `${ideHomeHostPath}:/home/openvscode:rw`,
-            `${ideHomeHostPath}:/home/openvscode-server:rw`
-          ],
+          Binds: binds,
           PortBindings: {
             '3000/tcp': [{ HostPort: port.toString() }]
           },
           Memory: 2 * 1024 * 1024 * 1024, // 2GB
           NanoCpus: 2 * 1000000000, // 2 CPUs
         },
-        // ✅ Set working directory to specific project
         WorkingDir: dockerWorkspacePath,
-        // ✅ Set server-base-path so IDE generates correct URLs behind reverse proxy
         Cmd: [
           '/home/.openvscode-server/bin/openvscode-server',
           '--host', '0.0.0.0',

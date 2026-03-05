@@ -82,7 +82,15 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         ...prev,
         [key]: value
       };
-      
+
+      if (key === 'repositoryName' && typeof value === 'string' && prev.githubRepo) {
+        const match = prev.githubRepo.match(/^(https:\/\/github\.com\/[^/]+\/)([^/]*)$/);
+        if (match) {
+          const sanitized = value.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+          newConfig.githubRepo = `${match[1]}${sanitized}`;
+        }
+      }
+
       return newConfig;
     });
     

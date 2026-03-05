@@ -130,6 +130,71 @@ export class GitHelper {
     }
   }
 
+  /**
+   * Resolve Git worktree bind mounts needed for Docker containers.
+   * 
+   * A worktree's .git is a file (not a directory) containing a gitdir reference
+   * to the main repository's .git/worktrees/{name} directory. For Docker containers,
+   * both the main .git directory and the worktree path must be accessible at their
+   * original host absolute paths for git operations to work.
+   * 
+   * @param worktreePath - Absolute path to the worktree codebase directory
+   * @returns Additional bind mount strings for Docker, or empty array if not a worktree
+   */
+  static resolveWorktreeBindMounts(worktreePath: string): string[] {
+    const gitPath = path.join(worktreePath, '.git');
+    
+    if (!fs.existsSync(gitPath)) {
+      return [];
+    }
+    
+    const stat = fs.statSync(gitPath);
+    if (stat.isDirectory()) {
+      // Regular .git directory, not a worktree
+      return [];
+    }
+    
+    // .git is a file — this is a worktree
+    try {
+      const content = fs.readFileSync(gitPath, 'utf-8').trim();
+      // Format: "gitdir: /absolute/path/to/main/.git/worktrees/{name}"
+      const match = content.match(/^gitdir:\s*(.+)$/);
+      if (!match) {
+        logger.warn(`Unexpected .git file format in worktree`, { component: 'GitHelper' }, { worktreePath, content });
+        return [];
+      }
+      
+      const gitdirPath = match[1].trim();
+      // gitdirPath = /host/path/codebase/.git/worktrees/{branchName}
+      // We need the main .git directory: /host/path/codebase/.git
+      const worktreesDir = path.dirname(gitdirPath); // .../codebase/.git/worktrees
+      const mainGitDir = path.dirname(worktreesDir);  // .../codebase/.git
+      
+      if (!fs.existsSync(mainGitDir)) {
+        logger.warn(`Main .git directory not found`, { component: 'GitHelper' }, { mainGitDir, worktreePath });
+        return [];
+      }
+      
+      const binds: string[] = [];
+      
+      // Mount the main .git directory at its original host path
+      binds.push(`${mainGitDir}:${mainGitDir}:rw`);
+      
+      // The main .git/worktrees/{name}/gitdir file references the worktree's absolute path.
+      // We also need the worktree itself mounted at its host path so the back-reference resolves.
+      binds.push(`${worktreePath}:${worktreePath}:rw`);
+      
+      logger.info(`Resolved worktree bind mounts`, { component: 'GitHelper' }, { 
+        worktreePath, mainGitDir, bindCount: binds.length 
+      });
+      
+      return binds;
+    } catch (error) {
+      logger.warn(`Failed to resolve worktree bind mounts`, { component: 'GitHelper' }, { worktreePath, error });
+      return [];
+    }
+  }
+
   static async ensureUserConfig(git: SimpleGit, userContext: UserContext): Promise<void> {
     try {
       // Check if user.email is already configured (local or global)
