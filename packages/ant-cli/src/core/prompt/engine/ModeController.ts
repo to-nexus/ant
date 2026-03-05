@@ -584,7 +584,24 @@ export class ModeController {
     const isFrontendDoc = !targetFile || targetFile.includes('fe-system-') || targetFile.includes('frontend');
     const isBackendDoc = !targetFile || targetFile.includes('be-system-') || targetFile.includes('backend');
 
-    // 1. Check codebase profile (existing projects)
+    // Priority 0: Task-level structured profile (from design job decompose)
+    const taskProfile = context.currentTask?.profile;
+    if (taskProfile) {
+      const fw = taskProfile.framework?.toLowerCase();
+      const lang = taskProfile.language?.toLowerCase();
+      if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
+        console.log(`[ModeController] Framework augmentation from task profile: nextjs (${targetFile})`);
+        return 'design/phases/execute/injections/nextjs-augmentation';
+      }
+      if ((lang === 'go' || lang === 'golang') && isBackendDoc) {
+        console.log(`[ModeController] Framework augmentation from task profile: go-api (${targetFile})`);
+        return 'design/phases/execute/injections/go-api-augmentation';
+      }
+      // Profile exists but no matching augmentation → skip text search (deterministic)
+      return undefined;
+    }
+
+    // Priority 1: Check codebase profile (existing projects, Code Job)
     const framework = context.codebaseProfile?.framework?.toLowerCase();
     const language = context.codebaseProfile?.language?.toLowerCase();
     
@@ -601,7 +618,7 @@ export class ModeController {
       }
     }
     
-    // 2. Infer from PRD/spec or design doc content (new projects)
+    // Priority 2: Infer from PRD/spec or design doc content (fallback for legacy/no-profile cases)
     const textSources = [context.prdSpec, (context as any).spec, context.designDoc].filter(Boolean);
     const combined = textSources.join(' ').toLowerCase();
     

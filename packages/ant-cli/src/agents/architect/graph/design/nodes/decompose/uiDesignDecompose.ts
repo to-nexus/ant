@@ -34,14 +34,37 @@ export async function decomposeUiDesign(
   state: DesignGraphState,
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
-  // Build UI context for LLM — use all source documents (decompose needs full picture)
-  const { buildAllSourceDocs } = await import('../docGen/sourceSelector');
-  const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
-  const uiContextParts = [
-    allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
-    state.directive ? `DIRECTIVE:\n${state.directive}` : null,
-  ].filter(Boolean);
-  const uiContext = uiContextParts.length > 0 ? uiContextParts.join('\n\n---\n\n') : '';
+  const {
+    buildAllSourceDocs,
+    buildSourceFileIndex,
+    getSourceDocsSize,
+    DECOMPOSE_SOURCE_THRESHOLD,
+    READ_SOURCE_FILE_TOOL,
+    decomposeWithToolLoop,
+  } = await import('../docGen/sourceSelector');
+
+  // Hybrid strategy: small → inline, large → tool-use (RAG)
+  const sourceDocsSize = getSourceDocsSize(state.sourceDocuments);
+  const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
+
+  let uiContext: string;
+  if (useToolMode) {
+    console.log(`📊 [UIDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    const fileIndex = buildSourceFileIndex(state.sourceDocuments!);
+    const parts = [
+      `SOURCE DOCUMENTS (index only — use read_source_file tool for full content):\n\n${fileIndex}\n\n⚠️ Read selectively: only files relevant to UI design decisions.`,
+      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
+    ].filter(Boolean);
+    uiContext = parts.join('\n\n---\n\n');
+  } else {
+    console.log(`📊 [UIDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
+    const parts = [
+      allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
+      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
+    ].filter(Boolean);
+    uiContext = parts.length > 0 ? parts.join('\n\n---\n\n') : '';
+  }
 
   const sourceFileNames = state.sourceDocuments ? Object.keys(state.sourceDocuments) : [];
 
@@ -74,13 +97,41 @@ export async function decomposeUiDesign(
     const llmToUse = await resolveLLMClient(state);
     if (!llmToUse) throw new Error('LLM client not available');
     
-    const result = await llmToUse.invokeWithUsage?.(
-      [{ role: 'user', content: uiDecomposePrompt }],
-      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
-    );
-    const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: uiDecomposePrompt }]);
+    let textResponse: string;
 
-    await trackTokenUsage(state, result?.usage);
+    if (useToolMode && state.sourceDocuments) {
+      const { response, usage } = await decomposeWithToolLoop(
+        llmToUse,
+        [{ role: 'user', content: uiDecomposePrompt }],
+        [READ_SOURCE_FILE_TOOL],
+        (name, args) => {
+          if (name === 'read_source_file') {
+            const content = state.sourceDocuments![args.filename];
+            if (!content) {
+              const available = Object.keys(state.sourceDocuments!).join(', ');
+              return `Error: File "${args.filename}" not found. Available: ${available}`;
+            }
+            return content;
+          }
+          return `Error: Unknown tool "${name}"`;
+        },
+        {
+          temperature: LLM_TEMPERATURE.DECOMPOSE,
+          maxTokens: LLM_MAX_TOKENS.DEFAULT,
+          enableThinking: true,
+          thinkingBudget: 10000,
+        },
+      );
+      textResponse = response;
+      await trackTokenUsage(state, usage);
+    } else {
+      const result = await llmToUse.invokeWithUsage?.(
+        [{ role: 'user', content: uiDecomposePrompt }],
+        { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
+      );
+      textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: uiDecomposePrompt }]);
+      await trackTokenUsage(state, result?.usage);
+    }
 
     // Parse and validate
     const parsedResponse = parseLLMJsonResponse(textResponse);

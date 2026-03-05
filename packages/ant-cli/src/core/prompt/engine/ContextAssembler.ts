@@ -49,6 +49,7 @@ export interface AssembledContext {
     priority: number;
     description: string;
     targetFile?: string;      // ✅ Target file for design job (api-contract-main.md, fe-system-main.md, etc.)
+    profile?: { language: string; framework?: string };  // Technology profile (design job, from decompose)
   };
   
   // ✅ NEW: Retry and Plan Context

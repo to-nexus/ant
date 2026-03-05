@@ -14,19 +14,20 @@ API Contract structure rules:
 - Each catalog section produces exactly ONE top-level chapter (## heading)
 - Do NOT split one catalog section into multiple ## chapters; use ### subsections instead
 - Write ONLY chapters for your ASSIGNED sections (see Section Scope below)
+- Section ordering: follow the catalog's listing order
 - Do NOT embed FORBIDDEN section content as subsections within ASSIGNED chapters
 - Prefer endpoint-by-endpoint specification, grouped by resource/use case
 - Be precise; this document is a binding spec, not an architecture essay
-- Code blocks are allowed for DTO/schema clarity (define once, reference elsewhere)
-- Reference shared DTOs by name only; do NOT pre-define them outside their assigned section
-- There is exactly ONE § Shared Type Definitions chapter per document — do NOT create variant names ("Service DTOs", "Shared Type Definitions (Extended)", etc.)
-- If your assigned sections need DTOs but § Shared Type Definitions is NOT in your assignedSections, reference DTOs by name only — do NOT create any type-definition chapter
+- DTO scope rule: in all sections except § Shared Type Definitions, a DTO name reference IS the complete specification — do NOT expand names into field lists or create any type-definition chapter outside § Shared Type Definitions
+- ⚠️ Blind spot: do NOT create variant-named type chapters ("Service DTOs", "Type Definitions (Extended)", etc.)
+- Code blocks are allowed for schema clarity within your assigned sections only
 {{else}}
 CHAPTER COUNT:
 - Each chapter corresponds to ONE section from the guide's Section Catalog
 - Each ASSIGNED section produces exactly ONE top-level chapter (## heading)
 - Do NOT split one catalog section into multiple ## chapters; use ### subsections instead
 - Write ONLY chapters for your ASSIGNED sections (see Section Scope below)
+- Section ordering: follow the catalog's listing order
 - If all assigned sections are already in the document, output ONLY the metadata (LAST_SECTION comment) with no new content
 
 STRUCTURE PER CHAPTER:

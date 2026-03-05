@@ -151,6 +151,17 @@ export interface DesignTask extends BaseTask {
   sectionScope?: string;           // Description of what this section covers
 
   /**
+   * Technology profile resolved from decompose's profiles map.
+   * Used by ModeController to deterministically select framework augmentations.
+   * 
+   * Resolved at buildTaskQueue time via targetFile → tag → profiles lookup:
+   * - be-system-auth.md → tag "be-auth" → profiles["be-auth"] || profiles["be-main"]
+   * - fe-system-main.md → tag "fe-main" → profiles["fe-main"]
+   * - api-contract-auth.md → tag "be-auth" → profiles["be-auth"] || profiles["be-main"]
+   */
+  profile?: { language: string; framework?: string };
+
+  /**
    * Per-task resume state (exists only when interrupted during parallel execution).
    * Contains the worker's execution context at the time of interruption.
    */

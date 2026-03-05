@@ -1,24 +1,35 @@
 /**
  * Decompose LLM Caller
  * 
- * Handles LLM streaming for task decomposition with XML tag parsing
+ * Handles LLM streaming for task decomposition with XML tag parsing.
+ * Supports two modes:
+ *   - Inline (no tools): single-turn stream with XML parsing (fast)
+ *   - Tool-use (RAG): multi-turn stream with read_design_doc tool (large projects)
  */
 
-import { LLMClient } from "../../../../../../core/ports";
+import { LLMClient, ToolDefinition } from "../../../../../../core/ports";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
+
+interface CallDecomposeOptions {
+  tools?: ToolDefinition[];
+  toolHandler?: (name: string, args: Record<string, any>) => string;
+}
 
 /**
  * Call LLM for task decomposition (with streaming for Chat UI)
  * Uses job/node-specific model from workspaceConfig
+ *
+ * When tools are provided, uses multi-turn tool-use loop via decomposeWithToolLoop.
+ * Otherwise, uses single-turn streaming with XML parsing.
  */
 export async function callLLMForDecompose(
   llm: LLMClient,
   prompt: string | { system: string; user: string },
-  workspaceConfig?: any
+  workspaceConfig?: any,
+  options?: CallDecomposeOptions,
 ): Promise<{ response: string; tokenUsage?: any }> {
   console.log('🤖 [Decompose] Calling LLM for task breakdown...');
   
-  // ✅ NEW: Use decompose-specific model if configured
   let llmToUse = llm;
   if (workspaceConfig) {
     const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
@@ -30,18 +41,43 @@ export async function callLLMForDecompose(
     );
   }
   
-  // ✅ Use streaming with XML parsing (same as codeGen)
+  const messages = typeof prompt === 'string'
+    ? [{ role: 'user' as const, content: prompt }]
+    : [
+        { role: 'system' as const, content: prompt.system },
+        { role: 'user' as const, content: prompt.user },
+      ];
+
+  // Tool-use mode: multi-turn loop via shared utility
+  if (options?.tools && options.tools.length > 0 && options.toolHandler) {
+    console.log(`🔧 [Decompose] Tool-use mode with ${options.tools.length} tool(s)`);
+    const { decomposeWithToolLoop } = await import('../../../design/nodes/docGen/sourceSelector');
+    const { response, usage } = await decomposeWithToolLoop(
+      llmToUse,
+      messages,
+      options.tools,
+      options.toolHandler,
+      {
+        temperature: LLM_TEMPERATURE.DECOMPOSE,
+        maxTokens: LLM_MAX_TOKENS.DEFAULT,
+        enableThinking: true,
+        thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
+      },
+    );
+    return { response, tokenUsage: usage };
+  }
+
+  // Inline mode: single-turn stream with XML parsing
   const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
   
-  // ✅ Setup StreamOrchestrator for XML tag handling
   const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
   const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
   const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
   
   const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);  // No gitPort or fileSystem needed for decompose
+  const renderStrategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
@@ -50,13 +86,6 @@ export async function callLLMForDecompose(
   
   let response = '';
   let capturedUsage: any = undefined;
-  
-  const messages = typeof prompt === 'string'
-    ? [{ role: 'user', content: prompt }]
-    : [
-        { role: 'system', content: prompt.system },
-        { role: 'user', content: prompt.user },
-      ];
   
   for await (const event of llmToUse.stream(messages, {
     temperature: LLM_TEMPERATURE.DECOMPOSE,
@@ -70,7 +99,6 @@ export async function callLLMForDecompose(
       response += event.text;
     }
     
-    // ✅ Extract token usage from done event
     const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
     const usage = extractTokenUsageFromStreamEvent(event);
     if (usage) {
