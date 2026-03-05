@@ -58,6 +58,9 @@ async function executeDesignTool(
       case 'search_web':
         result = await executeSearchWeb(args as { query: string });
         break;
+      case 'read_source_doc':
+        result = handleReadSourceFileFromState(state, args as { filename: string });
+        break;
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -563,6 +566,23 @@ async function handleMkdir(
   console.log(`   📁 Created directory: ${relativePath}`);
   
   return `Directory created: ${dirPath}`;
+}
+
+/**
+ * Handle read_source_doc tool — reads from in-memory sourceDocuments.
+ * Used when source docs are too large for inline injection (tool-use mode).
+ */
+function handleReadSourceFileFromState(
+  state: DesignGraphState,
+  args: { filename: string }
+): string {
+  const { filename } = args;
+  const docs = state.sourceDocuments;
+  if (!docs || !docs[filename]) {
+    const available = docs ? Object.keys(docs).join(', ') : 'none';
+    return `Error: File "${filename}" not found. Available: ${available}`;
+  }
+  return docs[filename];
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

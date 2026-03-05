@@ -39,7 +39,7 @@ export async function decomposeUiDesign(
     buildSourceFileIndex,
     getSourceDocsSize,
     DECOMPOSE_SOURCE_THRESHOLD,
-    READ_SOURCE_FILE_TOOL,
+    READ_SOURCE_DOC_TOOL,
     decomposeWithToolLoop,
   } = await import('../docGen/sourceSelector');
 
@@ -52,7 +52,7 @@ export async function decomposeUiDesign(
     console.log(`📊 [UIDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
     const fileIndex = buildSourceFileIndex(state.sourceDocuments!);
     const parts = [
-      `SOURCE DOCUMENTS (index only — use read_source_file tool for full content):\n\n${fileIndex}\n\n⚠️ Read selectively: only files relevant to UI design decisions.`,
+      `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to UI design decisions.`,
       state.directive ? `DIRECTIVE:\n${state.directive}` : null,
     ].filter(Boolean);
     uiContext = parts.join('\n\n---\n\n');
@@ -103,9 +103,9 @@ export async function decomposeUiDesign(
       const { response, usage } = await decomposeWithToolLoop(
         llmToUse,
         [{ role: 'user', content: uiDecomposePrompt }],
-        [READ_SOURCE_FILE_TOOL],
+        [READ_SOURCE_DOC_TOOL],
         (name, args) => {
-          if (name === 'read_source_file') {
+          if (name === 'read_source_doc') {
             const content = state.sourceDocuments![args.filename];
             if (!content) {
               const available = Object.keys(state.sourceDocuments!).join(', ');

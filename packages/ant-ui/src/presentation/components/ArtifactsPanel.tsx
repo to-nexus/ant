@@ -769,7 +769,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onCreateFile={undefined}
           onCreateDirectory={undefined}
           onUploadFiles={undefined}
-          onDelete={policy.canDeleteFile ? handleDelete : undefined}
+          onDelete={handleDelete}
           onDownload={handleDownload}
           onDropError={showDropError}
           isSessionSection={true}

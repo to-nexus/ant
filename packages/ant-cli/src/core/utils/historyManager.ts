@@ -218,7 +218,7 @@ export function compactAndPruneHistory(
 // Anthropic API format (tool_use / tool_result pairing).
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const COMPACTABLE_TOOLS = new Set(['read_file', 'search_code', 'run_command', 'list_files', 'search_reference_code']);
+const COMPACTABLE_TOOLS = new Set(['read_file', 'search_code', 'run_command', 'list_files', 'search_reference_code', 'read_source_doc']);
 const MIN_CONTENT_TOKENS_TO_COMPACT = 200;
 
 function isErrorContent(content: string): boolean {
@@ -234,9 +234,9 @@ function isErrorContent(content: string): boolean {
 function compactToolResultContent(toolName: string, content: string): string {
   if (!content || typeof content !== 'string') return content;
 
-  if (toolName === 'read_file') {
+  if (toolName === 'read_file' || toolName === 'read_source_doc') {
     const lineCount = content.split('\n').length;
-    return `[read_file result: ${lineCount} lines — content omitted]`;
+    return `[${toolName} result: ${lineCount} lines — content omitted]`;
   }
 
   if (toolName === 'search_code' || toolName === 'search_reference_code') {
