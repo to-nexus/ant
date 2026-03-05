@@ -423,16 +423,12 @@ export async function decomposeSystemDesign(
   if (!maybeLlm) throw new Error('LLM client not available');
   const llmToUse = maybeLlm;
 
-  const MAX_ATTEMPTS = 2;
-
   /**
-   * Single attempt: LLM call → parse → normalize → validate
+   * Call LLM to get raw text response.
    * Small projects: single-turn invokeWithUsage (fast)
    * Large projects: multi-turn stream with read_source_doc tool (RAG)
    */
-  async function attemptDecompose(): Promise<SystemDesignResponse> {
-    let textResponse: string;
-
+  async function callLLM(): Promise<string> {
     if (useToolMode && state.sourceDocuments) {
       const { response, usage } = await decomposeWithToolLoop(
         llmToUse,
@@ -456,18 +452,23 @@ export async function decomposeSystemDesign(
           thinkingBudget: 10000,
         },
       );
-      textResponse = response;
       await trackTokenUsage(state, usage);
+      return response;
     } else {
       const result = await llmToUse.invokeWithUsage?.(
         [{ role: 'user', content: prompt }],
         { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
       );
-      textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
+      const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
       await trackTokenUsage(state, result?.usage);
+      return textResponse;
     }
+  }
 
-    // Parse
+  /**
+   * Parse raw LLM response → normalize against resolved targets → validate coverage.
+   */
+  function parseAndValidate(textResponse: string): SystemDesignResponse {
     const parsedResponse = parseLLMJsonResponse(textResponse);
     let response: SystemDesignResponse;
 
@@ -487,14 +488,10 @@ export async function decomposeSystemDesign(
       throw new Error('Invalid task breakdown format from LLM');
     }
 
-    // Normalize: validate against resolved targets (single path for all environments)
     const effectiveResolvedFiles = resolvedTargetFiles
       || resolveDesignTargetFiles(detectedEnv as JobEnvironment, jobMode as JobMode, existingDesignFiles).targetFiles;
     response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv, jobMode as JobMode);
 
-    // Validate: every targetFile must have at least one task.
-    // In refactor mode, targetFiles were already narrowed to LLM's selection in
-    // validateAndFixTargetFiles, so this validates the narrowed set.
     const { valid, uncovered } = validateTaskCoverage(response);
     if (!valid) {
       throw new Error(`Task coverage incomplete: no tasks for [${uncovered.join(', ')}]`);
@@ -503,42 +500,66 @@ export async function decomposeSystemDesign(
     return response;
   }
 
-  // ━━━ Attempt loop: try up to MAX_ATTEMPTS, then fall back to minimum tasks ━━━
+  /**
+   * Repair call: send raw response + error feedback back to LLM for JSON correction.
+   */
+  async function repairCall(rawResponse: string, errorMessage: string): Promise<string> {
+    const truncated = rawResponse.length > 4000
+      ? rawResponse.slice(0, 4000) + '\n...[truncated]'
+      : rawResponse;
+
+    const repairMessages = [
+      { role: 'user' as const, content: prompt },
+      { role: 'assistant' as const, content: truncated },
+      { role: 'user' as const, content:
+        `Your previous response could not be parsed as valid JSON.\n\n` +
+        `Error: ${errorMessage}\n\n` +
+        `Please output ONLY the corrected JSON wrapped in <decompose> tags. No markdown fences, no explanations.`
+      },
+    ];
+
+    const result = await llmToUse.invokeWithUsage?.(
+      repairMessages,
+      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
+    );
+    const textResponse = result?.content || await llmToUse.invoke(repairMessages);
+    await trackTokenUsage(state, result?.usage);
+    return textResponse;
+  }
+
+  // ━━━ Main flow: LLM call → parse → repair if needed → fail if all fail ━━━
   let response: SystemDesignResponse | null = null;
   let lastError: Error | null = null;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  let rawResponse: string | undefined;
+  try {
+    rawResponse = await callLLM();
+  } catch (error) {
+    lastError = error as Error;
+    console.error(`❌ [SystemDecompose] LLM call failed: ${lastError.message}`);
+  }
+
+  if (rawResponse) {
     try {
-      response = await attemptDecompose();
-      break; // success
-    } catch (error) {
-      lastError = error as Error;
-      if (attempt < MAX_ATTEMPTS) {
-        console.warn(`⚠️  [SystemDecompose] Attempt ${attempt} failed: ${lastError.message}. Retrying...`);
+      response = parseAndValidate(rawResponse);
+    } catch (parseError) {
+      lastError = parseError as Error;
+      console.warn(`⚠️  [SystemDecompose] Parse failed: ${lastError.message}. Sending repair call...`);
+
+      try {
+        const repairedRaw = await repairCall(rawResponse, lastError.message);
+        response = parseAndValidate(repairedRaw);
+      } catch (repairError) {
+        lastError = repairError as Error;
+        console.error(`❌ [SystemDecompose] Repair call also failed: ${lastError.message}`);
       }
     }
   }
 
-  // All attempts failed → generate minimum tasks from resolvedTargetFiles or environment
   if (!response) {
-    const fallbackFiles = resolvedTargetFiles
-      || resolveDesignTargetFiles(detectedEnv as JobEnvironment, jobMode as JobMode, existingDesignFiles).targetFiles;
-    if (!fallbackFiles) {
-      throw new Error(
-        `System design decompose failed after ${MAX_ATTEMPTS} attempts and environment is unknown.\n` +
-        `Last error: ${lastError?.message}`
-      );
-    }
-
-    console.warn(
-      `⚠️  [SystemDecompose] All ${MAX_ATTEMPTS} attempts failed. ` +
-      `Generating minimum tasks for env="${detectedEnv}" → [${fallbackFiles.join(', ')}]`
+    throw new Error(
+      `[SystemDecompose] Task decomposition failed. Last error: ${lastError?.message}`
     );
-    response = {
-      documentType: (detectedEnv === 'fullstack' || detectedEnv === 'backend') ? 'contract-first' : 'unified',
-      targetFiles: fallbackFiles,
-      tasks: generateMinimumTasks(fallbackFiles),
-    };
   }
 
   console.log(`✅ System decompose: ${response.documentType}, ${response.tasks.length} tasks → [${response.targetFiles.join(', ')}]`);
