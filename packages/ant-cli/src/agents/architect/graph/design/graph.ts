@@ -544,6 +544,7 @@ export function buildDesignGraph() {
       directive: null as any,
       design: null as any,
       existingDesignDocs: null as any,
+      sourceDocuments: null as any,
       
       // Task Queue (like code graph)
       taskQueue: null as any,

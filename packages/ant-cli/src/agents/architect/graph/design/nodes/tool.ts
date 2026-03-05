@@ -181,6 +181,8 @@ export async function tool(
   return {
     conversationHistory: newHistory,
     files: state.files,
+    _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
+    tokenUsage: (state as any).tokenUsage,
     llmResponse: {
       ...state.llmResponse!,
       toolCalls: [],

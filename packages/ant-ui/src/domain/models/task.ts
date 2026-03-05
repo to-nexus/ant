@@ -29,6 +29,9 @@ export interface UnifiedTask {
 
   // Package scope
   packages?: string[];
+
+  // Source files (design job)
+  sourceFiles?: string[];
 }
 
 /**
@@ -48,6 +51,7 @@ export function normalizeTask(task: Record<string, unknown>): UnifiedTask {
     timing: task.timing as TaskTiming | undefined,
     tokenUsage: task.tokenUsage as TaskTokenUsage | undefined,
     packages: Array.isArray(task.packages) ? task.packages as string[] : undefined,
+    sourceFiles: Array.isArray(task.sourceFiles) ? task.sourceFiles as string[] : undefined,
   };
 }
 

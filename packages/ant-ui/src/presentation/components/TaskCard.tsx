@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/presentation/components/common/badge';
 import { TaskTimer } from './TaskTimer';
-import { ChevronDown, ChevronRight, Timer, Coins, Package } from 'lucide-react';
+import { ChevronDown, ChevronRight, Timer, Coins, Package, FileText } from 'lucide-react';
 import { UnifiedTask } from '@/domain/models/task';
 import { useStore } from '@/domain/store';
 import { statusColors, badgeColors, cn } from '@/shared/utils/design-system';
@@ -172,6 +172,14 @@ export function TaskCard({
               <span className={cn('inline-flex items-start gap-1 text-xs min-w-0', colors.text.secondary)}>
                 <Package className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                 <span className="break-words min-w-0">{task.packages.join(', ')}</span>
+              </span>
+            )}
+            
+            {/* Source Files (design job) */}
+            {!task.packages && task.sourceFiles && task.sourceFiles.length > 0 && (
+              <span className={cn('inline-flex items-start gap-1 text-xs min-w-0', colors.text.secondary)}>
+                <FileText className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span className="break-words min-w-0">{task.sourceFiles.join(', ')}</span>
               </span>
             )}
             

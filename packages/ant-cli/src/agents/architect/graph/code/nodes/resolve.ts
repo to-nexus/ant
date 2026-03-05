@@ -107,6 +107,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
 
         const source = await ArtifactService.getSource(state.context, gitPort, fileSystem);
         if (source?.prd) state.prd = source.prd;
+        if (source?.sourceDocuments) state.sourceDocuments = source.sourceDocuments;
 
         state.parsedUiDocs = await ArtifactService.loadParsedUiContext(state.context, gitPort, fileSystem) || undefined;
 
@@ -323,9 +324,10 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const design = designResult?.content || undefined;
   const designDocPath = designResult?.filePath || undefined;
   
-  // Load PRD (inputs/sources) for detectEnvironment & downstream prompts
+  // Load PRD + all source documents (inputs/sources) for detectEnvironment & downstream prompts
   const source = await ArtifactService.getSource(context, gitPort, fileSystem);
   const prd = source?.prd || undefined;
+  const sourceDocuments = source?.sourceDocuments;
   
   // Load parsed UI documents (Figma-derived) for split injection
   const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
@@ -399,6 +401,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     ...state,
     directive,
     prd,
+    sourceDocuments,
     parsedUiDocs: parsedUiDocs || undefined,  // ✅ Parsed UI docs for split injection (null → undefined)
     design,
     designDocPath,  // ✅ Add design document file path for environment inference

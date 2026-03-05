@@ -195,11 +195,13 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   // ✅ Store resolved featurePath in context for use by other nodes
   context.featurePath = featurePath;
 
-  // 1. Load PRD (optional)
+  // 1. Load source documents (PRD + all text files in inputs/sources/)
   let prd: string | undefined;
+  let sourceDocuments: Record<string, string> | undefined;
   try {
     const source = await ArtifactService.getSource(context, gitPort, fileSystem);
     prd = source?.prd || undefined;
+    sourceDocuments = source?.sourceDocuments;
   } catch (error) {
     // PRD not found - might be refactor mode without PRD
     prd = undefined;
@@ -280,6 +282,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   return {
     ...state,
     prd,
+    sourceDocuments,
     directive,
     design,
     existingDesignDocs,

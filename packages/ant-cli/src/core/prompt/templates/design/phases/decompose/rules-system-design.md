@@ -39,6 +39,18 @@
 
 **Constraint**: Do NOT list specific content items beyond topic area names. The individual task's plan phase determines actual content within the guide's section catalog.
 
+### Source File Assignment
+
+{{#if sourceFileNames}}
+Each task MUST include `sourceFiles` — an array of source filenames that the task needs to reference.
+
+Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}}
+
+- A task MAY reference 1 or more files depending on its scope
+- Observe each file's relevance to the task's assigned sections before assigning
+- **Constraint**: Do NOT omit a file that contains requirements relevant to the task scope
+{{/if}}
+
 ### Priority Assignment
 
 - Use 200-299 range
@@ -221,7 +233,8 @@ All document types use the same priority range (200-249). Tasks targeting differ
 | name | Concise (< 60 chars) |
 | targetFile | MUST match one of targetFiles |
 | assignedSections | Array of catalog section names (e.g., `["§ Overview", "§ Architecture Boundaries"]`). EXCLUSIVE scope — no overlap between tasks. |
-| description | ABSTRACT terms providing context (section assignments are authoritative) |
+{{#if sourceFileNames}}| sourceFiles | Array of source filenames relevant to this task (1 or more). |
+{{/if}}| description | ABSTRACT terms providing context (section assignments are authoritative) |
 | priority | 200-299 range |
 | parallelGroup | Group ID for parallel scheduling (tasks with same group conflict) |
 
@@ -256,7 +269,8 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
       "targetFile": "<must match one of targetFiles>",
       "parallelGroup": "<group-id: same file = same group>",
       "assignedSections": ["§ <exact catalog section name>", "§ <exact catalog section name>"],
-      "description": "<abstract topic areas; section assignments are authoritative>",
+{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
+{{/if}}      "description": "<abstract topic areas; section assignments are authoritative>",
       "priority": 200
     }
   ]
@@ -315,7 +329,8 @@ Before outputting, verify:
 - ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
-- ✅ If reference project mentioned → `references` array included
+{{#if sourceFileNames}}- ✅ Every task has `sourceFiles` with relevant source filenames
+{{/if}}- ✅ If reference project mentioned → `references` array included
 - ✅ Every task has `parallelGroup: "<id>"`
 - ✅ Tasks targeting the same file share the same `parallelGroup`
 - ✅ All filenames use `{type}-{identifier}.md` format (no bare `api-contract.md` or `system-design.md`)

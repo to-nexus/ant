@@ -43,7 +43,8 @@ You are analyzing requirements to break them into design tasks.
       "id": "refactor-{section}",
       "name": "Refactor: {brief description}",
       "targetFile": "{chosen-file-from-existing-list}",
-      "description": "{modification scope}. Keep all other content unchanged.",
+{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
+{{/if}}      "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 200
     }
   ]

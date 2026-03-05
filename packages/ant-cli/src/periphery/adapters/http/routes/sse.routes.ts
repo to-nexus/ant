@@ -100,17 +100,22 @@ export function createSSERoutes(deps: {
         // 3. FileTree — Redis cache (~5ms), no wait for kanban/chat
         (async () => {
           let fileTree: any[] | null = null;
+          let cacheHit = false;
           if (deps.stateStore) {
             try {
               fileTree = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
+              if (fileTree) cacheHit = true;
             } catch (err) {
               logger.warn(`Failed to read fileTree cache from Redis`, { component: 'SSE', projectId, featureName }, err);
             }
           }
           if (!fileTree) {
             fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
+            if (deps.stateStore && fileTree) {
+              deps.stateStore.setFileTreeCache(userContext.userId, projectId, featureName, fileTree).catch(() => {});
+            }
           }
-          logger.info(`[SSE:timing] fileTree=${Date.now() - tStates}ms (cache=${deps.stateStore ? 'yes' : 'no'})`, { component: 'SSE', projectId, featureName });
+          logger.info(`[SSE:timing] fileTree=${Date.now() - tStates}ms (cacheHit=${cacheHit})`, { component: 'SSE', projectId, featureName });
           deps.sseService.sendInitialState(res, 'fileTree', {
             type: 'initial',
             tree: fileTree
