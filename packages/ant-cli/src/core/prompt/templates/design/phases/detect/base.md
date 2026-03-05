@@ -18,13 +18,13 @@ Observe the **scope of work** described in the directive. Every directive falls 
 |----------|----------------|--------|
 | **spec** | Directive scopes to **one feature, task, or bounded change unit** | `spec-{slug}.md` |
 | **ui-design** | Directive scopes to **visual appearance, interface layout, or design tokens** | `ui-*.json` |
-| **system-design** | Directive scopes to **whole-system architecture or multi-component structure** | `be-system-main.md`, `api-contract-main.md`, `*-system-*.md` |
+| **system-design** | Directive scopes to **whole-system architecture or multi-component structure** | `api-contract-*.md`, `be-system-*.md`, `fe-system-*.md` |
 | **clarify** | Scope is **genuinely ambiguous** between spec and system-design | Asks user to choose |
 | **error** | Modification requested but **target documents do not exist** | Error message |
 
 ### Constraint: Scope Determines workType, NOT Document Existence
 
-⚠️ **CRITICAL**: The presence or absence of existing documents (be-system-main.md, api-contract-main.md, be-system-main.md, etc.) MUST NOT influence your workType decision. Document existence only affects `jobMode` (Step 2).
+⚠️ **CRITICAL**: The presence or absence of existing documents (`api-contract-*.md`, `be-system-*.md`, `fe-system-*.md`, etc.) MUST NOT influence your workType decision. Document existence only affects `jobMode` (Step 2).
 
 - Existing system docs present + feature-scoped directive → **still spec** (NOT system-design refactor)
 - Existing system docs absent + architecture-scoped directive → **still system-design**
@@ -83,8 +83,8 @@ Observe the **intent** of the directive with respect to existing documents:
 ⚠️ **Blind Spot — "analyze" ≠ explain**: Directives like "analyze why X fails", "investigate the problem", "debug this issue", or "분석해라" (analyze) are requests to **create a spec** for solving the problem, NOT to explain existing documents. These MUST be `generate`, not `explain`.
 
 ⚠️ **Blind Spot**: Existing documents from a **different tier** do NOT make this `refactor`. Observe which tier the directive targets:
-- Frontend directive + only `api-contract-main.md`/`be-system-main.md` exist → `generate` (no frontend docs to refactor)
-- Backend directive + only `fe-system-main.md` exists → `generate` (no backend docs to refactor)
+- Frontend directive + only `api-contract-*.md`/`be-system-*.md` exist → `generate` (no frontend docs to refactor)
+- Backend directive + only `fe-system-*.md` exists → `generate` (no backend docs to refactor)
 - Directive explicitly asks to modify an existing document by name → `refactor`
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -145,12 +145,20 @@ Asset files: available
 
 **Skip if workType is NOT system-design.**
 
-**domain**: Observe whether the project involves realtime physics/game-loop mechanics (`game`) or standard request-response services (`service`). Default: `service`.
+### Observation Priority: Directive FIRST, then Source Documents
 
-**environment**: Observe the project structure from PRD/directive:
-- Browser-only app with no dedicated backend → `frontend`
-- API/server only with no frontend UI → `backend`
-- Both frontend and backend in the same project → `fullstack`
+**domain**: Observe from directive first, then source documents:
+- Directive mentions realtime physics, game-loop, or game engine mechanics → `game`
+- Otherwise → `service` (default)
+
+**environment**: Observe from directive first, then source documents:
+- **Directive signal (primary)**: If directive explicitly names a tier or technology stack, use it as strong evidence for environment
+- **Source document signal (supplementary)**: Observe project structure from document content
+  - Browser-only app with no dedicated backend → `frontend`
+  - API/server only with no frontend UI → `backend`
+  - Both frontend and backend in the same project → `fullstack`
+
+⚠️ **Blind Spot**: Do NOT ignore explicit technology or tier mentions in the directive. If directive says "백엔드 시스템 설계" or "Go API 서버" → `backend` is strongly implied. If directive says "프론트엔드 설계" or "React 앱" → `frontend` is strongly implied.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## Inputs
@@ -163,7 +171,9 @@ Asset files: available
 ```
 
 {{#if prdSpec}}
-### PRD
+### Source Documents (condensed)
+
+The following source documents may be truncated for budget. Use them as supplementary signals for domain/environment classification. The directive above is the primary signal.
 
 ```
 {{prdSpec}}
