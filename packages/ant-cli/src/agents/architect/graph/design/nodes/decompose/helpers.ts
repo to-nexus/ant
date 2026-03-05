@@ -14,10 +14,15 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 // ============================================
 
 /**
- * Parse LLM JSON response. Supports raw JSON, ```json fenced, or embedded object.
+ * Parse LLM JSON response.
+ * Priority: <decompose> tag → raw JSON → ```json fenced → embedded object with "tasks".
  */
 export function parseLLMJsonResponse(textResponse: string): any {
   const trimmed = (textResponse || '').trim();
+
+  const tagMatch = trimmed.match(/<decompose>\s*([\s\S]*?)\s*<\/decompose>/);
+  if (tagMatch) return JSON.parse(tagMatch[1]);
+
   try {
     return JSON.parse(trimmed);
   } catch {

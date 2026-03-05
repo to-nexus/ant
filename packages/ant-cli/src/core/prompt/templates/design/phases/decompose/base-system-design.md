@@ -33,7 +33,7 @@ You are analyzing requirements to break them into design tasks.
 
 ### Task Output Format (Refactor Mode)
 
-```json
+<decompose>
 {
   "documentType": "unified",
   "jobMode": "refactor",
@@ -49,7 +49,7 @@ You are analyzing requirements to break them into design tasks.
     }
   ]
 }
-```
+</decompose>
 
 **⚠️ Choose `targetFile` based on the directive.** Analyze which existing document the requested change belongs to, and target ONLY that file. Do NOT include files unrelated to the requested change in `targetFiles`.
 

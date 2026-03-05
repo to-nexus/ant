@@ -146,6 +146,8 @@ Each per-service document uses the **same catalog sections** but organizes conte
 {{#if (eq jobMode "refactor")}}
 ## 📤 OUTPUT FORMAT (REFACTOR MODE)
 
+Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
+
 **Create exactly ONE task for the specific modification requested.**
 
 {{#if existingDesignFiles}}
@@ -186,7 +188,9 @@ Each per-service document uses the **same catalog sections** but organizes conte
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)
 
-```json
+Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
+
+<decompose>
 {
   "documentType": "unified" | "contract-first" | "msa-contract-first",
   "services": [],
@@ -195,7 +199,7 @@ Each per-service document uses the **same catalog sections** but organizes conte
   "targetFiles": ["..."],
   "tasks": [...]
 }
-```
+</decompose>
 
 ### Technology Profiles
 
@@ -269,7 +273,7 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
 
 **Principle**: The JSON structure below defines the required output shape. Field values are placeholders — derive actual values from the requirements and the rules above.
 
-```json
+<decompose>
 {
   "documentType": "<unified | contract-first | msa-contract-first>",
   "services": [],
@@ -289,7 +293,7 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
     }
   ]
 }
-```
+</decompose>
 
 **Constraints:**
 - `assignedSections` values MUST use exact names from the document-type catalog (e.g., `"§ API Endpoints"`, NOT abbreviated forms like `"§ Endpoints"`)
@@ -313,7 +317,7 @@ If directive mentions an external codebase to reference for design → extract a
 
 Include `references` array when reference project is observed:
 
-```json
+<decompose>
 {
   "documentType": "...",
   "targetFiles": [...],
@@ -322,7 +326,7 @@ Include `references` array when reference project is observed:
   ],
   "tasks": [...]
 }
-```
+</decompose>
 
 ### Constraint
 
@@ -333,6 +337,7 @@ Only include projects **explicitly mentioned** in directive. Do NOT infer or ass
 ## ✅ VALIDATION CHECKLIST (GENERATE MODE)
 
 Before outputting, verify:
+- ✅ Output wrapped in `<decompose>` tags (no markdown fences)
 - ✅ Valid JSON syntax
 - ✅ `documentType` is "unified", "contract-first", or "msa-contract-first"
 - ✅ `services` array present (empty `[]` for non-MSA)
