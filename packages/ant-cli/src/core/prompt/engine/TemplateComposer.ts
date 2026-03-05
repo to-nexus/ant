@@ -134,7 +134,8 @@ export class TemplateComposer {
     // 6. Build injections
     const injections = await this.buildInjections(
       modeConfig.templates.injections,
-      assembled
+      assembled,
+      context
     );
     
     // 7. Load examples (if enabled)
@@ -255,12 +256,13 @@ export class TemplateComposer {
    */
   private async buildInjections(
     injectionPaths: string[],
-    assembled: AssembledContext
+    assembled: AssembledContext,
+    context?: ProjectContext
   ): Promise<string> {
     const injections: string[] = [];
     
     for (const path of injectionPaths) {
-      const vars = this.getInjectionVars(path, assembled);
+      const vars = this.getInjectionVars(path, assembled, context);
       const rendered = await this.renderTemplate(path, vars);
       
       if (rendered) {
@@ -280,7 +282,8 @@ export class TemplateComposer {
    */
   private getInjectionVars(
     path: string,
-    assembled: AssembledContext
+    assembled: AssembledContext,
+    context?: ProjectContext
   ): Record<string, any> {
     const filename = path.split('/').pop() || '';
     
@@ -360,6 +363,11 @@ export class TemplateComposer {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // Special injections (no variables)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      
+      // document-language.md expects: {{userLanguage}}
+      'document-language': {
+        userLanguage: context?.userLanguage || 'en',
+      },
       
       'modification-warning': {},
       'text-format-compact': {},

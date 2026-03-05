@@ -79,67 +79,35 @@
 
 **When multiple service boundaries exist, each service gets its own `api-contract-{service}.md`.**
 
-### Per-Service Contract Document Structure
+### Principle: Direction Separation
 
-Each `api-contract-{service}.md` contains:
+Each per-service document uses the **same catalog sections** (§ API Endpoints, § Real-time Communication, § Shared Type Definitions, etc.) but organizes content within those sections by **communication direction**:
 
-| Section | Content | Purpose |
-|---------|---------|---------|
-| **§ Provided API** | Endpoints THIS service implements | What this service offers |
-| **§ Consumed API** | Endpoints THIS service calls from OTHER services | External dependencies |
-| **§ Events Published** | Events THIS service emits | Async output |
-| **§ Events Subscribed** | Events THIS service listens to | Async input |
-| **§ Shared Type Definitions** | Type definitions specific to this service | Data shapes |
+| Catalog Section | Sub-structure by Direction |
+|----------------|--------------------------|
+| § API Endpoints | **Provided** (endpoints THIS service implements) vs **Consumed** (endpoints THIS service calls FROM other services) |
+| § Real-time Communication | **Published** (events THIS service emits) vs **Subscribed** (events THIS service listens to) |
+| § Shared Type Definitions | Type definitions scoped to THIS service; cross-reference shared types by name |
 
-### Provided API Section
+**Constraint**: These direction sub-headings live INSIDE catalog sections — they are NOT separate top-level sections.
 
-```markdown
-### Provided Endpoints
+### Observation Checkpoints
 
-| Endpoint | Method | Description | Visibility |
-|----------|--------|-------------|------------|
-| /api/... | POST   | ...         | public / internal |
+For each per-service document, observe:
 
-#### POST /api/{resource}
-- **Purpose**: ...
-- **Visibility**: public (client-facing) / internal (service-to-service)
-- **Request**: {DTO} (§ Shared Type Definitions)
-- **Success**: 201 + {DTO}
-- **Errors**: ...
-```
-
-### Consumed API Section
-
-```markdown
-### Consumed Endpoints (from other services)
-
-| Endpoint | From Service | Purpose |
-|----------|-------------|---------|
-| GET /internal/users/{id} | auth | Resolve user info |
-```
-
-### Events Section
-
-```markdown
-### Events Published
-
-| Event | Trigger | Payload |
-|-------|---------|---------|
-| OrderCreated | New order placed | OrderCreatedEvent (§ Shared Type Definitions) |
-
-### Events Subscribed
-
-| Event | From Service | Handler |
-|-------|-------------|---------|
-| PaymentCompleted | payment | Update order status |
-```
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Provided vs Consumed** | ⚠️ REQUIRED: separate endpoints THIS service offers from endpoints it depends on |
+| **Visibility** | Each provided endpoint: `public` (client-facing) or `internal` (service-to-service) |
+| **Cross-service reference** | Each consumed endpoint: which service provides it |
+| **Event direction** | Each event: published by THIS service or subscribed from ANOTHER service |
+| **Delivery guarantee** | ⚠️ REQUIRED for events: at-least-once, at-most-once, or exactly-once |
 
 ### ⚠️ Blind Spot Reminders
 
-- ⚠️ **Consumed API section**: Easily forgotten, REQUIRED when service depends on other services
-- ⚠️ **Shared Type Definitions**: Define per-service; shared types should be cross-referenced by name
-- ⚠️ **Event delivery guarantee**: MUST specify (at-least-once, at-most-once, exactly-once)
-- ⚠️ **Visibility**: Mark each endpoint as `public` (client-facing) or `internal` (service-to-service)
+- ⚠️ **Consumed endpoints**: Easily forgotten — REQUIRED when service depends on other services
+- ⚠️ **Event delivery guarantee**: MUST specify per event
+- ⚠️ **Shared types**: Define per-service; cross-reference shared types by name only
 
 ---
 
