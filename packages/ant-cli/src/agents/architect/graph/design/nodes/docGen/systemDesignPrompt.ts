@@ -11,19 +11,22 @@ import { CacheableContent } from '../../../../../../core/ports/llm';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
-import { buildSourceDocsForTask } from './sourceSelector';
+import { buildSourceDocsForTask, buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
+
+export interface BuildMessagesResult {
+  messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }>;
+  useSourceFileTool: boolean;
+}
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
  * 
  * Handles system-design work type (fe-system, be-system, api-contract, etc.)
  */
-export async function buildMessages(state: DesignGraphState): Promise<Array<{
-  role: 'user' | 'assistant';
-  content: CacheableContent[];
-}>> {
+export async function buildMessages(state: DesignGraphState): Promise<BuildMessagesResult> {
   const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
+  let useSourceFileTool = false;
   
   // NOTE: UI Design mode is handled separately in docGen() entry point
   // This function handles system-design messages only
@@ -121,6 +124,19 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
       console.warn(`⚠️ [DocGen] sourceFiles assigned [${taskSourceFiles.join(', ')}] but matched 0 documents in sourceDocuments`);
     }
 
+    let prdSpec = sourceDocsForTask;
+    if (sourceDocsForTask.length > EXECUTE_SOURCE_THRESHOLD) {
+      const filteredDocs = taskSourceFiles && taskSourceFiles.length > 0
+        ? Object.fromEntries(
+            taskSourceFiles.filter(f => state.sourceDocuments?.[f]).map(f => [f, state.sourceDocuments![f]])
+          )
+        : state.sourceDocuments || {};
+      prdSpec = buildSourceFileIndex(filteredDocs)
+        + `\n\n> Use the \`read_source_doc\` tool to read full document contents as needed for your task.`;
+      useSourceFileTool = true;
+      console.log(`📄 [DocGen] Source docs (${sourceDocsForTask.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
+    }
+
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',
       state.context,
@@ -128,7 +144,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
         directive: state.directive || '',
         lastSectionNumber,
         sectionPattern,
-        prdSpec: sourceDocsForTask,
+        prdSpec,
         designDomain: state.detectionReport?.domain,
         currentTask: {
           name: state.currentTask.name,
@@ -170,7 +186,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const contextParts = [
       composed.injections,
-      sourceDocsForTask ? `# Requirements\n\n${sourceDocsForTask}` : null,
+      prdSpec ? `# Requirements\n\n${prdSpec}` : null,
     ].filter(Boolean);
     
     const contextBlock: CacheableContent = {
@@ -358,7 +374,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
     }
   }
   
-  return messages;
+  return { messages, useSourceFileTool };
 }
 
 /**

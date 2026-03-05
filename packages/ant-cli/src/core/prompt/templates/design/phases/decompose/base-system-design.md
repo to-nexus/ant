@@ -64,12 +64,15 @@ You are analyzing requirements to break them into design tasks.
 {{#if environment}}
 ---
 
-## ⚠️ ENVIRONMENT SCOPE (Pre-resolved — DO NOT override)
+## ⚠️ ENVIRONMENT TIER (Pre-resolved — DO NOT change)
 
 **Environment**: `{{environment}}`
-**Target Files**: {{#each resolvedTargetFiles}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}}
 
-The environment has been determined by the detection phase. You MUST respect this constraint.
+The environment tier (frontend / backend / fullstack) is determined by the detection phase. You MUST NOT change it.
+
+**Default Target Files**: {{#each resolvedTargetFiles}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}}
+
+These are initial defaults for this tier. **MSA DETECTION below may expand them** (e.g., `be-system-main.md` → per-service files). The tier is immutable; only file granularity may change.
 
 {{#if (eq environment "frontend")}}
 **FRONTEND-ONLY project.**
@@ -83,7 +86,7 @@ The environment has been determined by the detection phase. You MUST respect thi
 {{#if (eq environment "backend")}}
 **BACKEND-ONLY project.**
 - Do NOT create `fe-system-*.md` tasks
-- CONTRACT-FIRST DETECTION and MSA DETECTION below apply normally for backend services
+- CONTRACT-FIRST DETECTION and MSA DETECTION below apply — observe source documents for service boundaries
 {{/if}}
 {{#if (eq environment "fullstack")}}
 **FULLSTACK project.**
@@ -124,7 +127,7 @@ Previous design:
 
 ### Step 1.5: Backend/Fullstack Complexity Indicators
 
-**Observe PRD for these patterns to determine Score in Step 2.**
+**Observe source documents for these patterns to determine Score in Step 2.**
 
 | Category | Observe for Score |
 |----------|------------------|
@@ -206,7 +209,7 @@ Use these catalogs to distribute sections across tasks. Each task description re
 
 ### Principle
 
-Separate concerns into distinct design documents. Each document covers a non-overlapping concern and is derived independently from the PRD.
+Separate concerns into distinct design documents. Each document covers a non-overlapping concern and is derived independently from the requirements.
 
 ### Observation Target
 
@@ -228,71 +231,44 @@ Observe the project's tier structure to determine which documents are needed:
 
 ## MSA / MULTI-UNIT DETECTION
 
-**After document structure detection, check if either tier requires splitting into multiple units.**
+**Principle**: After document structure detection, observe whether source documents define multiple independent units within either tier. Each tier's granularity is decided independently.
 
-MSA applies to BOTH tiers independently:
-- **Backend**: multiple services → `be-system-{service}.md` + `api-contract-{service}.md`
-- **Frontend**: multiple packages/micro-frontends → `fe-system-{package}.md`
+⚠️ **Blind spot**: Source documents containing service decomposition, bounded context maps, or domain boundary definitions ARE explicit evidence of service boundaries. Do NOT disregard them.
 
-### Observation Checklist
+### Observation Target
 
-| Tier | Checkpoint | Observation Target |
-|------|------------|-------------------|
-| BE | **Domain Boundaries** | Multiple independent business domains with separate data ownership? |
-| BE | **Deployment Independence** | Services need independent deployment or scaling? |
-| BE | **Service Communication** | Inter-service communication (sync API or async events)? |
-| FE | **App Boundaries** | Multiple independent frontend applications (user-facing + admin, etc.)? |
-| FE | **Package Boundaries** | Separate deployable packages with different concerns? |
+| Tier | What to observe in source documents |
+|------|-------------------------------------|
+| BE | Service decomposition defining separate services with distinct responsibilities? |
+| BE | Multiple bounded contexts or independent domains with separate data ownership? |
+| BE | Inter-service communication patterns (sync or async) described? |
+| FE | Multiple independent frontend applications or deployable packages? |
 
 ### Decision Principle
 
+**If ANY backend observation is positive → MSA detected for backend. Set `services` array.**
+**If ANY frontend observation is positive → MSA detected for frontend. Set `fePackages` array.**
+
 | Observation Result | Action |
 |-------------------|--------|
-| Single backend domain | Keep `be-system-main.md` + `api-contract-main.md` |
-| **Multiple backend service boundaries** | Split to `be-system-{service}.md` + `api-contract-{service}.md`, set `services` |
-| Single frontend app | Keep `fe-system-main.md` |
-| **Multiple frontend app/package boundaries** | Split to `fe-system-{package}.md`, set `fePackages` |
+| No unit boundaries observed in source documents | Keep `*-main.md`, `services: []`, `fePackages: []` |
+| **Backend service boundaries observed** | Set `services`, expand to `be-system-{service}.md` + `api-contract-{service}.md` |
+| **Frontend package boundaries observed** | Set `fePackages`, expand to `fe-system-{package}.md` |
 
-**Constraint**: Do NOT assume MSA. Only split if PRD explicitly indicates boundaries.
+**Constraint**: Do NOT invent service/package names. Extract exact identifiers from source documents.
 
-### If MSA Detected
+### When MSA Detected
 
-**⚠️ MUST extract from PRD:**
+**MUST extract from source documents:**
 
-1. **Names** - exact service/package names as PRD specifies (do NOT invent)
-2. **Responsibilities** - what each unit owns
-3. **Communication patterns** - sync (HTTP/gRPC) vs async (events/messages)
+1. **Names** — exact service/package identifiers (do NOT invent)
+2. **Responsibilities** — what each unit owns
+3. **Communication patterns** — sync vs async between units
 
-**Output structure for Backend MSA:**
-```json
-{
-  "documentType": "msa-contract-first",
-  "services": ["<service1>", "<service2>"],
-  "fePackages": [],
-  "targetFiles": [
-    "api-contract-<service1>.md",
-    "api-contract-<service2>.md",
-    "fe-system-main.md",
-    "be-system-<service1>.md",
-    "be-system-<service2>.md"
-  ]
-}
-```
-
-**Output structure for Frontend MSA:**
-```json
-{
-  "documentType": "msa-contract-first",
-  "services": [],
-  "fePackages": ["<package1>", "<package2>"],
-  "targetFiles": [
-    "api-contract-main.md",
-    "fe-system-<package1>.md",
-    "fe-system-<package2>.md",
-    "be-system-main.md"
-  ]
-}
-```
+**Structural mapping** (how names map to files):
+- Each backend service in `services` → `be-system-{service}.md` + `api-contract-{service}.md`
+- Each frontend package in `fePackages` → `fe-system-{package}.md`
+- Unaffected tiers keep their `*-main.md` file
 
 ---
 

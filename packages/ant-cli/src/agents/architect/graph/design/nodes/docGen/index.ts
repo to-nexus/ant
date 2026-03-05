@@ -25,6 +25,7 @@ import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStr
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { getToolsByNames, TOOL_SETS } from '../../../../tools/definitions';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './systemDesignPrompt';
@@ -70,18 +71,27 @@ export async function docGen(
     state.awaitingClarify = false;
   }
   
-  const messages = workType === 'ui-design'
-    ? await buildUiDesignMessages(state)
-    : workType === 'spec'
-      ? await buildSpecMessages(state)
-      : await buildMessages(state);
+  let messages;
+  let useSourceFileTool = false;
+
+  if (workType === 'ui-design') {
+    messages = await buildUiDesignMessages(state);
+  } else if (workType === 'spec') {
+    messages = await buildSpecMessages(state);
+  } else {
+    const result = await buildMessages(state);
+    messages = result.messages;
+    useSourceFileTool = result.useSourceFileTool;
+  }
   
   // Tool activation: Select appropriate tool set based on work type
   const tools = isExplainMode
     ? getToolsByNames(TOOL_SETS.designExplain)
     : workType === 'ui-design'
       ? getToolsByNames(TOOL_SETS.uiDesign)
-      : getToolsByNames(TOOL_SETS.design);
+      : useSourceFileTool
+        ? [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL]
+        : getToolsByNames(TOOL_SETS.design);
   
   // Tool configuration complete
   
