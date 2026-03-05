@@ -357,8 +357,8 @@ export async function detectEnvironment(
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     
     const directive = state.overrideDirective || state.directive || "";
-    const { buildAllSourceDocs } = await import('./docGen/sourceSelector');
-    const prdSpec = buildAllSourceDocs(state.sourceDocuments) || state.prd || "";
+    const { buildCondensedSourceDocs } = await import('./docGen/sourceSelector');
+    const prdSpec = buildCondensedSourceDocs(state.sourceDocuments, 350_000) || state.prd || "";
 
     // Scan inputs/references and inputs/assets
     const featurePath = state.context.featurePath || '';

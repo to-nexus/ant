@@ -38,6 +38,7 @@ interface SystemDesignResponse {
   services?: string[];
   fePackages?: string[];
   targetFiles: string[];
+  profiles?: Record<string, { language: string; framework?: string }>;
   tasks: Array<{
     id: string;
     name: string;
@@ -213,6 +214,43 @@ function generateMinimumTasks(targetFiles: string[]): SystemDesignResponse['task
 }
 
 // ============================================
+// Profile Resolution
+// ============================================
+
+/**
+ * Convert a design targetFile to a normalized tag using Code Job `packages` convention.
+ * e.g. "be-system-auth.md" → "be-auth", "api-contract-main.md" → "be-main"
+ */
+function targetFileToTag(targetFile: string): string | undefined {
+  const match = targetFile.match(/^(be-system|fe-system|api-contract)-(.+)\.md$/);
+  if (!match) return undefined;
+  const [, prefix, name] = match;
+  const tier = prefix === 'fe-system' ? 'fe' : 'be';
+  return `${tier}-${name}`;
+}
+
+/**
+ * Resolve a technology profile for a task based on its targetFile.
+ * Two-stage lookup: exact tag match → tier default (be-main / fe-main).
+ */
+function resolveTaskProfile(
+  targetFile: string | undefined,
+  profiles?: Record<string, { language: string; framework?: string }>,
+): { language: string; framework?: string } | undefined {
+  if (!targetFile || !profiles || Object.keys(profiles).length === 0) return undefined;
+
+  const tag = targetFileToTag(targetFile);
+  if (!tag) return undefined;
+  const tier = tag.split('-')[0]; // "be" or "fe"
+
+  if (profiles[tag]) return profiles[tag];
+  const defaultKey = `${tier}-main`;
+  if (profiles[defaultKey]) return profiles[defaultKey];
+
+  return undefined;
+}
+
+// ============================================
 // Task Queue Population
 // ============================================
 
@@ -242,6 +280,8 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
       ? taskData.parallelGroup
       : undefined;
     
+    const resolvedProfile = resolveTaskProfile(taskData.targetFile, response.profiles);
+
     taskQueue.push({
       id: taskData.id,
       name: taskData.name,
@@ -253,6 +293,7 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
       assignedSections: taskData.assignedSections,
       sourceFiles: Array.isArray((taskData as any).sourceFiles) ? (taskData as any).sourceFiles : undefined,
       isLastTaskForDocument: lastTaskIdPerFile.has(taskData.id),
+      ...(resolvedProfile && { profile: resolvedProfile }),
       exclusive: exclusive || undefined,
       parallelGroup,
       completed: false
@@ -265,6 +306,14 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
         console.warn(`⚠️ [Decompose] task "${task.id}" missing sourceFiles`);
       }
     }
+  }
+
+  if (response.profiles && Object.keys(response.profiles).length > 0) {
+    const profileSummary = taskQueue.getAll()
+      .filter(t => t.profile)
+      .map(t => `${t.id}→${t.profile!.language}${t.profile!.framework ? `/${t.profile!.framework}` : ''}`)
+      .join(', ');
+    console.log(`🔧 [Decompose] Profiles resolved: ${profileSummary || 'none'}`);
   }
   
   return taskQueue;
@@ -281,15 +330,40 @@ export async function decomposeSystemDesign(
   state: DesignGraphState,
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
-  // Build spec — use all source documents (decompose needs full picture)
-  const { buildAllSourceDocs } = await import('../docGen/sourceSelector');
-  const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
-  const specParts = [
-    allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
-    state.design ? `PREVIOUS DESIGN:\n${state.design}` : null,
-    state.directive ? `DIRECTIVE:\n${state.directive}` : null
-  ].filter(Boolean);
-  const spec = specParts.join('\n\n---\n\n');
+  const {
+    buildAllSourceDocs,
+    buildSourceFileIndex,
+    getSourceDocsSize,
+    DECOMPOSE_SOURCE_THRESHOLD,
+    READ_SOURCE_FILE_TOOL,
+    decomposeWithToolLoop,
+  } = await import('../docGen/sourceSelector');
+
+  // Hybrid strategy: small projects → inline, large projects → tool-use (RAG)
+  const sourceDocsSize = getSourceDocsSize(state.sourceDocuments);
+  const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
+
+  let spec: string;
+  if (useToolMode) {
+    console.log(`📊 [SystemDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    const fileIndex = buildSourceFileIndex(state.sourceDocuments!);
+    const specParts = [
+      `SOURCE DOCUMENTS (index only — use read_source_file tool for full content):\n\n${fileIndex}\n\n⚠️ Read selectively: only files relevant to architecture decisions and task decomposition. Do NOT read all files.`,
+      state.design ? `PREVIOUS DESIGN:\n${state.design.split('\n').slice(0, 50).join('\n')}\n...` : null,
+      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
+    ].filter(Boolean);
+    spec = specParts.join('\n\n---\n\n');
+  } else {
+    console.log(`📊 [SystemDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
+    const specParts = [
+      allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
+      state.design ? `PREVIOUS DESIGN:\n${state.design}` : null,
+      state.directive ? `DIRECTIVE:\n${state.directive}` : null
+    ].filter(Boolean);
+    spec = specParts.join('\n\n---\n\n');
+  }
+
   const hasExistingDesign = Boolean(state.design && state.design.trim().length > 0);
   const designPreview = state.design ? state.design.split('\n').slice(0, 50).join('\n') + '\n...' : '';
 
@@ -338,6 +412,8 @@ export async function decomposeSystemDesign(
         hasExistingDesign,
         environment: detectedEnv,
         resolvedTargetFiles,
+        useToolMode,
+        sourceDocsSize,
       },
     }
   );
@@ -351,16 +427,45 @@ export async function decomposeSystemDesign(
 
   /**
    * Single attempt: LLM call → parse → normalize → validate
-   * Throws on any failure (parse error, validation error).
+   * Small projects: single-turn invokeWithUsage (fast)
+   * Large projects: multi-turn stream with read_source_file tool (RAG)
    */
   async function attemptDecompose(): Promise<SystemDesignResponse> {
-    const result = await llmToUse.invokeWithUsage?.(
-      [{ role: 'user', content: prompt }],
-      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
-    );
-    const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
+    let textResponse: string;
 
-    await trackTokenUsage(state, result?.usage);
+    if (useToolMode && state.sourceDocuments) {
+      const { response, usage } = await decomposeWithToolLoop(
+        llmToUse,
+        [{ role: 'user', content: prompt }],
+        [READ_SOURCE_FILE_TOOL],
+        (name, args) => {
+          if (name === 'read_source_file') {
+            const content = state.sourceDocuments![args.filename];
+            if (!content) {
+              const available = Object.keys(state.sourceDocuments!).join(', ');
+              return `Error: File "${args.filename}" not found. Available: ${available}`;
+            }
+            return content;
+          }
+          return `Error: Unknown tool "${name}"`;
+        },
+        {
+          temperature: LLM_TEMPERATURE.DECOMPOSE,
+          maxTokens: LLM_MAX_TOKENS.DEFAULT,
+          enableThinking: true,
+          thinkingBudget: 10000,
+        },
+      );
+      textResponse = response;
+      await trackTokenUsage(state, usage);
+    } else {
+      const result = await llmToUse.invokeWithUsage?.(
+        [{ role: 'user', content: prompt }],
+        { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
+      );
+      textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
+      await trackTokenUsage(state, result?.usage);
+    }
 
     // Parse
     const parsedResponse = parseLLMJsonResponse(textResponse);
@@ -372,6 +477,7 @@ export async function decomposeSystemDesign(
       response = {
         documentType: 'unified',
         targetFiles: ['be-system-main.md'],
+        ...(parsedResponse.profiles && { profiles: parsedResponse.profiles }),
         tasks: parsedResponse.tasks.map((task: any) => ({
           ...task,
           targetFile: task.targetFile || 'be-system-main.md'
@@ -451,6 +557,7 @@ export async function decomposeSystemDesign(
       injectedVariables: {
         documentType: response.documentType,
         services: response.services || [],
+        profiles: response.profiles || {},
         targetFiles: response.targetFiles,
         taskCount: response.tasks.length,
         tasks: response.tasks.map(t => ({ id: t.id, name: t.name, targetFile: t.targetFile, priority: t.priority }))

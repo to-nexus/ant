@@ -191,10 +191,30 @@ Each per-service document uses the **same catalog sections** but organizes conte
   "documentType": "unified" | "contract-first" | "msa-contract-first",
   "services": [],
   "fePackages": [],
+  "profiles": {},
   "targetFiles": ["..."],
   "tasks": [...]
 }
 ```
+
+### Technology Profiles
+
+The `profiles` map captures language/framework for each tier or service, enabling deterministic framework-specific prompt injection at execute time.
+
+**Key convention** (same as Code Job `packages` tag format):
+
+| Key pattern | Meaning |
+|-------------|---------|
+| `be-main` | Backend default profile (non-MSA: exact match; MSA: tier fallback) |
+| `fe-main` | Frontend default profile (non-MSA: exact match; MSA: tier fallback) |
+| `be-{service}` | MSA backend service override (only if different from `be-main`) |
+| `fe-{package}` | Frontend package override (only if different from `fe-main`) |
+
+**Constraints:**
+- Observe language/framework mentions in directive and source documents — do NOT assume or infer technologies not explicitly stated
+- If no technology is mentioned for a tier, omit that tier's key entirely
+- For MSA: if ALL backend services share the same stack, a single `be-main` entry suffices — add `be-{service}` overrides only for services that differ
+- Value shape: `{ "language": "<language>", "framework": "<framework or omit>" }`
 
 ### Document Type Rules
 
@@ -254,6 +274,7 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
   "documentType": "<unified | contract-first | msa-contract-first>",
   "services": [],
   "fePackages": [],
+  "profiles": {},
   "targetFiles": ["<target-file>.md"],
   "tasks": [
     {
@@ -274,6 +295,7 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
 - `assignedSections` values MUST use exact names from the document-type catalog (e.g., `"§ API Endpoints"`, NOT abbreviated forms like `"§ Endpoints"`)
 - Each catalog section assigned to exactly ONE task — no overlap, no gaps
 - 1-3 assigned sections per task is ideal; split into multiple tasks if a file has many sections
+- ⚠️ **Blind spot**: For api-contract documents, § API Endpoints and § Shared Type Definitions have strong dependency — prefer assigning them to the SAME task to avoid cross-task DTO duplication
 - Tasks targeting the SAME file share the same `parallelGroup`; different files get different groups
 - All document types use the same priority range (200-249) — they run in parallel across files
 - Description provides context in abstract terms; `assignedSections` is the authoritative scope
@@ -323,7 +345,9 @@ Before outputting, verify:
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 {{#if sourceFileNames}}- ✅ Every task has `sourceFiles` with relevant source filenames
-{{/if}}- ✅ If reference project mentioned → `references` array included
+{{/if}}- ✅ `profiles` keys use `{tier}-main` or `{tier}-{name}` format (e.g., `be-main`, `fe-main`, `be-auth`)
+- ✅ `profiles` contains only explicitly mentioned technologies — no assumptions
+- ✅ If reference project mentioned → `references` array included
 - ✅ Every task has `parallelGroup: "<id>"`
 - ✅ Tasks targeting the same file share the same `parallelGroup`
 - ✅ All filenames use `{type}-{identifier}.md` format (no bare `api-contract.md` or `system-design.md`)

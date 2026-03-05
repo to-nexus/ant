@@ -40,9 +40,9 @@
 - Pick ONE: camelCase OR snake_case
 - NEVER mix!
 
-**Completeness**:
+**Completeness (scoped to your assigned sections)**:
 - ✅ All endpoints documented
-- ✅ All fields typed
+- ✅ All fields typed **within the section that owns them** — in all sections except § Shared Type Definitions, referencing a DTO by name IS complete; field definitions belong exclusively in § Shared Type Definitions
 - ✅ All errors with status codes
 - ✅ No "TODO", "etc.", "..." placeholders
 

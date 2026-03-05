@@ -136,6 +136,7 @@ export async function buildMessages(state: DesignGraphState): Promise<Array<{
           priority: state.currentTask.priority,
           description: state.currentTask.description,
           ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),
+          ...((state.currentTask as DesignTask).profile && { profile: (state.currentTask as DesignTask).profile }),
         } as any,
         isLastTaskForDocument,
         sectionScope,
@@ -444,27 +445,41 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
   // Filter by targetFile: nextjs → frontend docs only, go-api → backend docs only
   const isFrontendDoc = targetFile.includes('fe-system-') || targetFile.includes('frontend');
   const isBackendDoc = targetFile.includes('be-system-') || targetFile.includes('backend');
-  const framework = (state.context as any)?.codebaseProfile?.framework?.toLowerCase();
-  const language = (state.context as any)?.codebaseProfile?.language?.toLowerCase();
-  
-  if ((framework?.includes('next') || framework?.includes('nextjs')) && isFrontendDoc) {
-    templates.push('design/phases/execute/injections/nextjs-augmentation');
-  } else if ((language?.includes('go') || language?.includes('golang')) && isBackendDoc) {
-    const env = state.detectionReport?.environment;
-    if (!env || env === 'backend' || env === 'fullstack') {
+
+  // Priority 0: Task-level structured profile (from decompose)
+  const taskProfile = (state.currentTask as DesignTask)?.profile;
+  if (taskProfile) {
+    const fw = taskProfile.framework?.toLowerCase();
+    const lang = taskProfile.language?.toLowerCase();
+    if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
+      templates.push('design/phases/execute/injections/nextjs-augmentation');
+    } else if ((lang === 'go' || lang === 'golang') && isBackendDoc) {
       templates.push('design/phases/execute/injections/go-api-augmentation');
     }
   } else {
-    const allSourceDocs = state.sourceDocuments
-      ? Object.values(state.sourceDocuments).join(' ')
-      : state.prd || '';
-    const textSources = [allSourceDocs, state.directive].filter(Boolean);
-    const combined = textSources.join(' ').toLowerCase();
-    if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {
+    // Priority 1/2: codebaseProfile or text search fallback
+    const framework = (state.context as any)?.codebaseProfile?.framework?.toLowerCase();
+    const language = (state.context as any)?.codebaseProfile?.language?.toLowerCase();
+    
+    if ((framework?.includes('next') || framework?.includes('nextjs')) && isFrontendDoc) {
       templates.push('design/phases/execute/injections/nextjs-augmentation');
-    } else if ((combined.includes('go ') || combined.includes('golang')) &&
-               (combined.includes('api') || combined.includes('server') || combined.includes('backend')) && isBackendDoc) {
-      templates.push('design/phases/execute/injections/go-api-augmentation');
+    } else if ((language?.includes('go') || language?.includes('golang')) && isBackendDoc) {
+      const env = state.detectionReport?.environment;
+      if (!env || env === 'backend' || env === 'fullstack') {
+        templates.push('design/phases/execute/injections/go-api-augmentation');
+      }
+    } else {
+      const allSourceDocs = state.sourceDocuments
+        ? Object.values(state.sourceDocuments).join(' ')
+        : state.prd || '';
+      const textSources = [allSourceDocs, state.directive].filter(Boolean);
+      const combined = textSources.join(' ').toLowerCase();
+      if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {
+        templates.push('design/phases/execute/injections/nextjs-augmentation');
+      } else if ((combined.includes('go ') || combined.includes('golang')) &&
+                 (combined.includes('api') || combined.includes('server') || combined.includes('backend')) && isBackendDoc) {
+        templates.push('design/phases/execute/injections/go-api-augmentation');
+      }
     }
   }
   
