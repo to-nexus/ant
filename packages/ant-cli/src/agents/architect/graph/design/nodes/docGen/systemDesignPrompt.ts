@@ -186,7 +186,6 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const contextParts = [
       composed.injections,
-      prdSpec ? `# Requirements\n\n${prdSpec}` : null,
     ].filter(Boolean);
     
     const contextBlock: CacheableContent = {
