@@ -118,25 +118,26 @@ export function fetchFromGitHub(projectId: string, feature?: string) {
 
 // ── Git Status & Operations ─────────────────────────────────────────
 
-export function getGitStatus(projectId: string): Promise<{
+export function getGitStatus(projectId: string, feature?: string): Promise<{
   hasGit: boolean;
   hasCodebase: boolean;
   hasFeatures: boolean;
   currentBranch?: string;
 }> {
+  const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
   return apiGet<{
     hasGit: boolean;
     hasCodebase: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
-  }>(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/status`).catch(() => ({
+  }>(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/status${params}`).catch(() => ({
     hasGit: false,
     hasCodebase: false,
     hasFeatures: false,
   }));
 }
 
-export function getGitChanges(projectId: string): Promise<{
+export function getGitChanges(projectId: string, feature?: string): Promise<{
   hasChanges: boolean;
   staged: string[];
   unstaged: string[];
@@ -146,7 +147,8 @@ export function getGitChanges(projectId: string): Promise<{
   currentBranch?: string;
   isGitInitialized?: boolean;
 }> {
-  return apiGet(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes`);
+  const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
+  return apiGet(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes${params}`);
 }
 
 /**

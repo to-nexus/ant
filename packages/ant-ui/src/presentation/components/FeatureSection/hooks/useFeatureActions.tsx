@@ -110,7 +110,7 @@ export function useFeatureActions(
     
     try {
       // Check for uncommitted changes in current branch
-      const changes = await getGitChanges(currentProject);
+      const changes = await getGitChanges(currentProject, currentFeature);
       
       // ✅ FIXED: Only check staged/unstaged (untracked files are safe to ignore)
       const hasRelevantChanges = changes.staged.length > 0 || changes.unstaged.length > 0;
