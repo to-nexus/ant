@@ -54,19 +54,19 @@ export function ProjectSection() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
   
-  // ✅ Fetch Git status when project changes
+  // ✅ Fetch Git status when project or feature changes
   useEffect(() => {
     if (selectedProject) {
-      fetchGitStatus(selectedProject);
+      fetchGitStatus(selectedProject, selectedFeature || undefined);
     }
-  }, [selectedProject]);
+  }, [selectedProject, selectedFeature]);
 
   // ✅ Refresh Git status when trigger changes
   useEffect(() => {
     if (gitStatusRefreshTrigger > 0 && selectedProject) {
-      fetchGitStatus(selectedProject);
+      fetchGitStatus(selectedProject, selectedFeature || undefined);
     }
-  }, [gitStatusRefreshTrigger, selectedProject]);
+  }, [gitStatusRefreshTrigger, selectedProject, selectedFeature]);
 
   // Check if config exists when project is selected or config editor closes or git status refresh
   useEffect(() => {
@@ -161,7 +161,7 @@ export function ProjectSection() {
         
         // Refresh Git status after successful operation
         if (shouldRefreshGitStatus && selectedProject) {
-          await fetchGitStatus(selectedProject);
+          await fetchGitStatus(selectedProject, selectedFeature || undefined);
         }
       } else {
         // ✅ Errors still shown via popup (important to see)
