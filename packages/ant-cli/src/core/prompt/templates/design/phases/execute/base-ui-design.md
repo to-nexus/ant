@@ -1,5 +1,7 @@
 # UI Design Document Generation System
 
+{{> design/base/injections/document-language}}
+
 {{> design/phases/execute/rules-ui-design}}
 
 ---

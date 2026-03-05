@@ -135,17 +135,9 @@ All document types use the same priority range (200-249). Tasks targeting differ
 | All | Case | Use exact case from PRD (lowercase recommended) |
 | All | No invention | Do NOT create names not in PRD |
 
-### Per-Service api-contract-{service}.md Structure for MSA
+### Per-Service api-contract-{service}.md for MSA
 
-**Each service gets its own API contract document containing:**
-
-| Section | Content |
-|---------|---------|
-| § Provided API | Endpoints THIS service implements (public + internal) |
-| § Consumed API | Endpoints THIS service calls from OTHER services (cross-reference) |
-| § Events Published | Events THIS service publishes |
-| § Events Subscribed | Events THIS service listens to |
-| § Shared Type Definitions | Type definitions specific to this service |
+Each per-service document uses the **same catalog sections** but organizes content by **communication direction** (provided vs consumed, published vs subscribed) within each section. Top-level sections MUST come from the catalog — direction sub-headings are internal structure only.
 {{/unless}}
 
 ---

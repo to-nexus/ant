@@ -266,4 +266,68 @@ describe('Template Smoke Tests', () => {
       expect.fail(`${failures.length} template(s) failed:\n${report}`);
     }
   });
+
+  it('all § section references in design templates match canonical catalog names', async () => {
+    const catalogDir = join(TEMPLATES_DIR, 'design/base/catalogs');
+    const catalogFiles = (await fs.readdir(catalogDir))
+      .filter(f => f.endsWith('-catalog-names.md'));
+
+    const canonicalNames = new Set<string>();
+    for (const file of catalogFiles) {
+      const content = await fs.readFile(join(catalogDir, file), 'utf-8');
+      for (const line of content.split('\n')) {
+        const match = line.trim().match(/^- (§ [^(]+)/);
+        if (match) canonicalNames.add(match[1].trim());
+      }
+    }
+
+    expect(canonicalNames.size).toBeGreaterThan(0);
+
+    const designDir = join(TEMPLATES_DIR, 'design');
+    async function collectMdFiles(dir: string): Promise<string[]> {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const e of entries) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) files.push(...await collectMdFiles(p));
+        else if (e.name.endsWith('.md') && !e.name.endsWith('-catalog-names.md')) files.push(p);
+      }
+      return files;
+    }
+
+    function stripCodeBlocks(text: string): string {
+      return text
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/`[^`\n]+`/g, '');
+    }
+
+    const mdFiles = await collectMdFiles(designDir);
+    // Match Title-Case word sequences after §: stops at lowercase, parens, or non-name chars
+    const sectionRefPattern = /§ (?:[A-Z][A-Za-z-]*(?:\s*&\s*|\s+))*[A-Z][A-Za-z-]*/g;
+    const violations: Array<{ file: string; ref: string }> = [];
+
+    for (const filePath of mdFiles) {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const content = stripCodeBlocks(raw);
+      const matches = content.match(sectionRefPattern);
+      if (!matches) continue;
+
+      const uniqueRefs = [...new Set(matches.map(m => m.trim()))];
+      for (const ref of uniqueRefs) {
+        if (!canonicalNames.has(ref)) {
+          const relPath = filePath.replace(TEMPLATES_DIR + '/', '');
+          violations.push({ file: relPath, ref });
+        }
+      }
+    }
+
+    if (violations.length > 0) {
+      const report = violations
+        .map(v => `  ${v.file} → "${v.ref}"`)
+        .join('\n');
+      expect.fail(
+        `${violations.length} non-canonical § reference(s) found:\n${report}\n\nCanonical names: ${[...canonicalNames].join(', ')}`
+      );
+    }
+  });
 });

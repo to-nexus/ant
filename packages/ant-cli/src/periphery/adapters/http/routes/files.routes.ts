@@ -202,7 +202,7 @@ export function createFilesRoutes(deps: {
       await fs.promises.writeFile(fullPath, content, 'utf-8');
       
       if (deps.fileTreeNotifier) {
-        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+        try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
 
       res.json({ success: true, path: filePath });
@@ -277,7 +277,7 @@ export function createFilesRoutes(deps: {
       }
       
       if (deps.fileTreeNotifier) {
-        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+        try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
 
       res.json({ 
@@ -316,7 +316,7 @@ export function createFilesRoutes(deps: {
       await fs.promises.mkdir(fullPath, { recursive: true });
       
       if (deps.fileTreeNotifier) {
-        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+        try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
 
       res.json({ success: true, path: dirPath });
@@ -354,7 +354,7 @@ export function createFilesRoutes(deps: {
       await fs.promises.rename(fullOldPath, fullNewPath);
 
       if (deps.fileTreeNotifier) {
-        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+        try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
 
       res.json({ success: true, oldPath, newPath });
@@ -379,7 +379,7 @@ export function createFilesRoutes(deps: {
       await deps.projectService.deleteFile(projectId, featureName, itemPath, userContext);
       
       if (deps.fileTreeNotifier) {
-        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext).catch(() => {});
+        try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
 
       res.json({ success: true, path: itemPath });

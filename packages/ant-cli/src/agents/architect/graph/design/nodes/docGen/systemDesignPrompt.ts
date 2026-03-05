@@ -569,6 +569,13 @@ async function buildSectionScope(
     return `**ASSIGNED sections (write ONLY these):** ${assignedSections.join(', ')}`;
   }
   
+  // Detect non-canonical names in assignedSections (decompose bug indicator)
+  const allSectionSet = new Set(allSections);
+  const unknownSections = assignedSections.filter(s => !allSectionSet.has(s));
+  if (unknownSections.length > 0) {
+    console.warn(`⚠️ [DocGen] assignedSections contain names not in catalog: [${unknownSections.join(', ')}]`);
+  }
+
   // Compute FORBIDDEN = all catalog sections not in ASSIGNED
   const assignedSet = new Set(assignedSections);
   const forbiddenSections = allSections.filter(s => !assignedSet.has(s));

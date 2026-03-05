@@ -6,6 +6,8 @@ Your task is to create a detailed, actionable specification document (spec doc) 
 The spec doc will be consumed by a Code Job that implements the feature.
 Write clearly and precisely so an LLM or developer can implement the feature without ambiguity.
 
+{{> design/base/injections/document-language}}
+
 {{> design/phases/execute/rules-spec}}
 
 ---
