@@ -19,6 +19,8 @@ API Contract structure rules:
 - Be precise; this document is a binding spec, not an architecture essay
 - Code blocks are allowed for DTO/schema clarity (define once, reference elsewhere)
 - Reference shared DTOs by name only; do NOT pre-define them outside their assigned section
+- There is exactly ONE § Shared Type Definitions chapter per document — do NOT create variant names ("Service DTOs", "Shared Type Definitions (Extended)", etc.)
+- If your assigned sections need DTOs but § Shared Type Definitions is NOT in your assignedSections, reference DTOs by name only — do NOT create any type-definition chapter
 {{else}}
 CHAPTER COUNT:
 - Each chapter corresponds to ONE section from the guide's Section Catalog

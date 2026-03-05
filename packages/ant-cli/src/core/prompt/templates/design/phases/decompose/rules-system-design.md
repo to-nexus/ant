@@ -145,7 +145,7 @@ All document types use the same priority range (200-249). Tasks targeting differ
 | § Consumed API | Endpoints THIS service calls from OTHER services (cross-reference) |
 | § Events Published | Events THIS service publishes |
 | § Events Subscribed | Events THIS service listens to |
-| § Service DTOs | Type definitions specific to this service |
+| § Shared Type Definitions | Type definitions specific to this service |
 {{/unless}}
 
 ---

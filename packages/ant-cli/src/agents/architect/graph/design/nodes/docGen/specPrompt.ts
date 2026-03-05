@@ -109,7 +109,12 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     const sourceDocsForTask = buildSourceDocsForTask(
       (state.currentTask as DesignTask)?.sourceFiles,
       state.sourceDocuments
-    ) || state.prd;
+    );
+    
+    const taskSourceFiles = (state.currentTask as DesignTask)?.sourceFiles;
+    if (taskSourceFiles?.length && !sourceDocsForTask) {
+      console.warn(`⚠️ [DocGen] sourceFiles assigned [${taskSourceFiles.join(', ')}] but matched 0 documents in sourceDocuments`);
+    }
 
     if (sourceDocsForTask) {
       contextParts.push(`# Requirements Document (PRD)\n\n${sourceDocsForTask}`);
