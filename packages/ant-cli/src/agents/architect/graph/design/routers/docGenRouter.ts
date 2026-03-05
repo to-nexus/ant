@@ -11,11 +11,15 @@
  * 3. 그 외 → docGen 노드 (재추론)
  * 
  * Safety Nets:
- * A. Call budget exceeded → Force checkTaskStatus
+ * A. Call budget exceeded → Force checkTaskStatus (_callLimitReached)
  * B. Recursion limit approaching → Force checkTaskStatus
+ * C. Non-productive loop → Force checkTaskStatus (_callLimitReached)
+ *    Consecutive calls with only tool reads and no file output
  */
 
 import { DesignGraphState } from '../state';
+
+const MAX_NO_OUTPUT_CALLS = 10;
 
 export function routeAfterDocGen(state: DesignGraphState): string {
   const response = state.llmResponse;
@@ -29,19 +33,25 @@ export function routeAfterDocGen(state: DesignGraphState): string {
   const envMaxCalls = parseInt(process.env.DOCGEN_MAX_CALLS || '', 10);
   const maxCalls = (!isNaN(envMaxCalls) && envMaxCalls >= 10) ? envMaxCalls : 40;
 
+  // Track whether this call produced any file output
+  const hasFileOutput = (state.files && state.files.length > 0);
+  const hasToolCallsOnly = (response.toolCalls && response.toolCalls.length > 0) && !hasFileOutput;
+  const noOutputCount = state._noOutputCallCount || 0;
+
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📍 [DocGenRouter] Routing Info:`);
   console.log(`   Task: ${state.currentTask?.name || 'none'}`);
   console.log(`   callIndex: ${callIndex}/${maxCalls}`);
   console.log(`   response.done: ${response.done}`);
   console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
+  console.log(`   filesProduced: ${state.files?.length || 0}, noOutputStreak: ${noOutputCount}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
   // Safety Net A: Call budget
   const warningThreshold = Math.floor(maxCalls * 0.8);
   if (callIndex >= maxCalls) {
     console.warn(`⚠️  [DocGenRouter] Call limit reached (${callIndex}/${maxCalls}) — forcing interruption`);
-    (state as any)._callLimitReached = true;
+    state._callLimitReached = true;
     return 'checkTaskStatus';
   }
   if (callIndex === warningThreshold) {
@@ -55,6 +65,24 @@ export function routeAfterDocGen(state: DesignGraphState): string {
       console.warn(`⚠️  [DocGenRouter] Recursion limit approaching (${state.recursionCount}/${state.recursionLimit}) — forcing completion`);
       return 'checkTaskStatus';
     }
+  }
+
+  // Safety Net C: Non-productive loop detection
+  // If N consecutive calls produce only tool reads with no file output, the LLM
+  // is stuck in a read-only loop and will never produce the document.
+  if (hasToolCallsOnly && !response.done) {
+    state._noOutputCallCount = noOutputCount + 1;
+  } else if (hasFileOutput) {
+    state._noOutputCallCount = 0;
+  }
+
+  if ((state._noOutputCallCount || 0) >= MAX_NO_OUTPUT_CALLS) {
+    console.warn(
+      `⚠️  [DocGenRouter] Non-productive loop detected: ${state._noOutputCallCount} consecutive tool-only calls ` +
+      `with no file output — forcing failure`
+    );
+    state._callLimitReached = true;
+    return 'checkTaskStatus';
   }
 
   // 1. Tool calls → tool node

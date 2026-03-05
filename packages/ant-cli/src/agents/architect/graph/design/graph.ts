@@ -126,9 +126,21 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       taskQueue: newQueue,
       _callLimitReached: false,
       _docGenCallIndex: 0,
+      _noOutputCallCount: 0,
+      fileErrors: undefined,
       interruption,
       tokenUsage: (state as any).tokenUsage,
     } as any;
+  }
+  
+  // ✅ FILE ERRORS: Log warnings but don't block in sequential mode
+  // (Sequential mode doesn't throw — fileErrors are logged for diagnostics.
+  //  In parallel mode, workerCheckTaskStatus throws for proper failure handling.)
+  if (state.fileErrors && state.fileErrors.length > 0 && state.currentTask) {
+    console.warn(`⚠️  [checkTaskStatus] ${state.fileErrors.length} file error(s) for "${state.currentTask.name}":`);
+    for (const err of state.fileErrors) {
+      console.warn(`   - ${err.substring(0, 200)}`);
+    }
   }
   
   // ✅ Current task completed successfully
@@ -266,8 +278,10 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       planText: '',
       conversationHistory: retainedHistory,
       files: [],
+      fileErrors: undefined,
       tokenUsage: (state as any).tokenUsage,
       _docGenCallIndex: 0,
+      _noOutputCallCount: 0,
     };
   }
   
@@ -605,6 +619,8 @@ export function buildDesignGraph() {
       // ✅ DocGen call budget tracking
       _docGenCallIndex: null as any,
       _callLimitReached: null as any,
+      _noOutputCallCount: null as any,
+      fileErrors: null as any,
 
       // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
       awaitingDetectClarify: null as any,
