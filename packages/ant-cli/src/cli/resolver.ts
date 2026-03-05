@@ -153,18 +153,23 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
     
     switch (task) {
       case 'design': {
-        // Design task: PRD must be a single canonical file: prd.md
         const sourcesDir = path.join(inputPath, "inputs", "sources");
+        const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
         
         if (fs.existsSync(sourcesDir)) {
           const canonical = path.join(sourcesDir, 'prd.md');
           if (fs.existsSync(canonical)) {
-            console.log(`📄 Using PRD: prd.md`);
+            console.log(`📄 Using source: prd.md`);
             return canonical;
+          }
+          const files = fs.readdirSync(sourcesDir);
+          const textFile = files.find(f => textExtensions.some(ext => f.endsWith(ext)));
+          if (textFile) {
+            console.log(`📄 Using source: ${textFile}`);
+            return path.join(sourcesDir, textFile);
           }
         }
         
-        // If no PRD files, check for design directive
         const designDirPath = path.join(inputPath, "inputs", "directives", "design");
         const directiveFile = findLatestDirective(designDirPath);
         if (directiveFile) {
@@ -175,7 +180,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
         throw new Error(
           `No input found for design task in: ${inputPath}\n` +
           `Expected:\n` +
-          `  - At least one .md file in ${path.join(inputPath, "inputs/sources/")}\n` +
+          `  - At least one text file in ${path.join(inputPath, "inputs/sources/")}\n` +
           `  - OR a directive in ${path.join(inputPath, "inputs/directives/design/")}`
         );
       }

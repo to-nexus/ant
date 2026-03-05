@@ -79,21 +79,35 @@ export async function analyzeWorkspace(
   };
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check inputs/sources (PRD)
+  // Check inputs/sources (all text files, not just prd.md)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const prdPath = path.join(featurePath, 'inputs', 'sources', 'prd.md');
-  const prdExists = fs.existsSync(prdPath);
-  console.log(`📄 [WorkspaceAnalyzer] PRD check: ${prdPath} → exists=${prdExists}`);
-  if (prdExists) {
-    const content = fs.readFileSync(prdPath, 'utf-8');
-    const isTemplate = isTemplateContent(content);
-    const hasContent = content.trim().length > 0;
-    state.hasPrd = !isTemplate && hasContent;
-    console.log(`📄 [WorkspaceAnalyzer] PRD content: length=${content.length}, isTemplate=${isTemplate}, hasContent=${hasContent}, hasPrd=${state.hasPrd}`);
-    if (state.hasPrd) {
-      state.prdPath = prdPath;
+  const sourcesDir = path.join(featurePath, 'inputs', 'sources');
+  const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
+  const validSourceFiles: string[] = [];
+
+  if (fs.existsSync(sourcesDir)) {
+    const entries = fs.readdirSync(sourcesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!textExtensions.includes(ext)) continue;
+      const filePath = path.join(sourcesDir, entry.name);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      if (content.trim().length > 0 && !isTemplateContent(content)) {
+        validSourceFiles.push(entry.name);
+      }
     }
   }
+
+  state.sourceFileCount = validSourceFiles.length;
+  state.sourceFileNames = validSourceFiles.length > 0 ? validSourceFiles : undefined;
+  state.hasPrd = validSourceFiles.length > 0;
+
+  if (state.hasPrd) {
+    const prdPath = path.join(sourcesDir, 'prd.md');
+    state.prdPath = validSourceFiles.includes('prd.md') ? prdPath : path.join(sourcesDir, validSourceFiles[0]);
+  }
+  console.log(`📄 [WorkspaceAnalyzer] Source files: ${validSourceFiles.length} found (${validSourceFiles.join(', ') || 'none'}) → hasPrd=${state.hasPrd}`);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Check directives (design or code)
