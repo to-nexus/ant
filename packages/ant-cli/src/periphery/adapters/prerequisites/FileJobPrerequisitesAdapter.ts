@@ -40,9 +40,9 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
             mustHaveContent: true,
           },
           {
-            name: 'PRD (Product Requirements Document)',
-            path: 'inputs/sources/prd.md',
-            description: 'Product requirements and specifications',
+            name: 'Source Documents',
+            path: 'inputs/sources',
+            description: 'Source documents (PRD, specs, requirements, etc.)',
             mustHaveContent: true,
           },
         ];
@@ -184,30 +184,29 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
     try {
       const stats = await fs.promises.stat(fullPath);
       
-      // If it's a directory (e.g., outputs/design), check for .md files
       if (stats.isDirectory()) {
+        const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
         const files = await fs.promises.readdir(fullPath);
-        const mdFiles = files.filter(f => f.endsWith('.md'));
+        const textFiles = files.filter(f => textExtensions.some(ext => f.endsWith(ext)));
         
-        if (mdFiles.length === 0) {
-          return true; // No design documents found
+        if (textFiles.length === 0) {
+          return true;
         }
         
-        // Check if at least one .md file has content
         if (material.mustHaveContent) {
-          for (const mdFile of mdFiles) {
+          for (const textFile of textFiles) {
             const content = await fs.promises.readFile(
-              path.join(fullPath, mdFile),
+              path.join(fullPath, textFile),
               'utf-8'
             );
             if (this.hasContent(content)) {
-              return false; // Found a file with content
+              return false;
             }
           }
-          return true; // All files are empty
+          return true;
         }
         
-        return false; // Files exist
+        return false;
       }
       
       // If it's a file, check if it exists and has content
