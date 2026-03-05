@@ -317,6 +317,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     deps: state.deps,
     detectionReport: state.detectionReport,
     prd: state.prd,
+    sourceDocuments: state.sourceDocuments,
     directive: state.directive,
     design: state.design,
     existingDesignDocs: state.existingDesignDocs,

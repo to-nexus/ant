@@ -111,15 +111,11 @@ Use `<file>` tag:
 </file>
 ```
 
-{{#if isLastTaskForDocument}}
-**⚠️ THIS IS THE LAST TASK FOR THIS DOCUMENT.**
-**YOU MUST STILL GENERATE CONTENT** using `<file>` or `<append>` tags!
-Only skip the metadata comments at the end.
-{{else}}
+{{#unless isLastTaskForDocument}}
 **Required Metadata (first task only):**
 - `SECTION_PATTERN`: `top-level` or `nested`
 - `LAST_SECTION`: Your last section number
-{{/if}}
+{{/unless}}
 
 **Filename: `{{currentTask.targetFile}}`** (set by decompose — DO NOT change)
 
@@ -293,6 +289,10 @@ Before generating output, verify:
 - ✅ Added `<!-- LAST_SECTION: N -->` at end of YOUR new content?
 - ℹ️ Old metadata from previous content is automatically removed by the system
 {{/if}}
+
+**Language Consistency (if document-language directive present):**
+- ✅ All headings in the same language?
+- ✅ Technical terms only in English?
 
 **If YES to all → Output. If NO → Fix first!**
 

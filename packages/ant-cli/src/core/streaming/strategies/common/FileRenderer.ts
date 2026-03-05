@@ -359,6 +359,15 @@ export class FileRenderer {
         }
       }
 
+      if (this.jobType === 'design' && fileInfo.actionType !== 'append') {
+        const existsOnDisk = await this.fileSystem?.fileExists(fsPath);
+        if (existsOnDisk) {
+          console.warn(`⚠️ [FileRenderer] <file> tag on existing design doc "${filePath}" — auto-converting to <append>`);
+          await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
+          return;
+        }
+      }
+
       if (fileInfo.actionType === 'append' && this.jobType === 'design') {
         await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
       } else {

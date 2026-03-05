@@ -166,7 +166,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 3: Prepare design documents (environment-aware)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const { designDoc, hasDesignDoc } = prepareDesignDocument(state);
+  const { designDoc, hasDesignDoc, useToolMode } = prepareDesignDocument(state);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Build prompt and call LLM
@@ -371,7 +371,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   let rawResponse: string;
   let decomposeTokenUsage: any;
   try {
-    const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig);
+    const { READ_DESIGN_DOC_TOOL, handleReadDesignDoc } = await import('./designSelector');
+    const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, useToolMode ? {
+      tools: [READ_DESIGN_DOC_TOOL],
+      toolHandler: (name, args) => {
+        if (name === 'read_design_doc') return handleReadDesignDoc(args.name, state);
+        return `Error: Unknown tool "${name}"`;
+      },
+    } : undefined);
     rawResponse = result.response;
     decomposeTokenUsage = result.tokenUsage;
     
