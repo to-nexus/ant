@@ -271,6 +271,8 @@ export class ModeController {
       
       // Domain-specific design guides (design job only, execute phase only)
       if (job === 'design') {
+        injections.push('design/base/injections/document-language');
+        
         // ✅ Document type-specific guides (api-contract, frontend, backend)
         const targetFile = context.currentTask?.targetFile;
         

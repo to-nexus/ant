@@ -96,6 +96,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       totalSections,
       sectionScope,
       previousSections,
+      userLanguage: state.context.userLanguage || 'en',
     });
 
     const systemBlock: CacheableContent = {
