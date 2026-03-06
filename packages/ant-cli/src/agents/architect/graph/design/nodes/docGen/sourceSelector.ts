@@ -36,7 +36,7 @@ const TOOL_RESULT_BUDGET = 300_000;
 
 export const READ_SOURCE_DOC_TOOL: ToolDefinition = {
   name: 'read_source_doc',
-  description: 'Read a source document by filename. Without line range params, returns content with total line count. If truncated, a structural outline with line numbers is included to guide targeted reading. Use startLine/endLine to read specific sections.',
+  description: 'Read a source document by filename. Use startLine/endLine to read BROAD ranges (300-500+ lines per call). Prefer fewer large reads over many small ones — you have a limited call budget and MUST start writing output by call 5-7.',
   input_schema: {
     type: 'object',
     properties: {
@@ -46,11 +46,11 @@ export const READ_SOURCE_DOC_TOOL: ToolDefinition = {
       },
       startLine: {
         type: 'number',
-        description: 'Start line number (1-based, inclusive). Omit to read from the beginning.',
+        description: 'Start line number (1-based, inclusive). Use broad ranges (300-500+ lines).',
       },
       endLine: {
         type: 'number',
-        description: 'End line number (1-based, inclusive). Omit to read to the end.',
+        description: 'End line number (1-based, inclusive). Use broad ranges (300-500+ lines).',
       },
     },
     required: ['filename'],

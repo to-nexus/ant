@@ -120,6 +120,8 @@ export class TaskWorker<T extends BaseTask> {
       retries: 0,
       enforcementHistory: [],
       _currentTaskTokenUsage: undefined,
+      // Restore tool result cache from previous failed attempt (design job: avoids re-reading source docs)
+      _toolResultCache: (task as any)._cachedToolResults || undefined,
       // Restore from resumeState if task was interrupted
       ...(task.interrupted && (task as any).resumeState ? {
         planText: (task as any).resumeState.planText || '',

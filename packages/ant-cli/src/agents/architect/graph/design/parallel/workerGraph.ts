@@ -60,6 +60,13 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     const callIndex = state._docGenCallIndex || 0;
     console.error(`❌ [workerCheckTaskStatus] Call budget exhausted for "${state.currentTask.name}" (${callIndex} calls) — failing task`);
     
+    // Preserve tool result cache on task object for retry — avoids re-reading same source docs
+    if (state._toolResultCache) {
+      (state.currentTask as any)._cachedToolResults = state._toolResultCache;
+      const cacheSize = Object.keys(state._toolResultCache).length;
+      console.log(`♻️  [workerCheckTaskStatus] Saved ${cacheSize} cached tool results for potential retry`);
+    }
+    
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }

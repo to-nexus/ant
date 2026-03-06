@@ -17,21 +17,21 @@ When the prompt contains a **source file index** (table with filenames, sizes, a
 
 #### Principle
 
-Read only the sections you need, not entire documents. The index provides line numbers for each heading — use them.
+Read in broad ranges (300-500+ lines per call) to gather context quickly. Prioritize breadth over precision — you MUST start writing output by call 5-7. Do NOT exhaustively read every section before writing.
 
 #### Observation Target
 
-Identify relevant headings from the outline, then use `read_source_doc` with `startLine`/`endLine` to read those sections.
+Identify the most relevant headings from the outline, then use `read_source_doc` with `startLine`/`endLine` to read those sections in large ranges. Combine adjacent sections into a single call.
 
 #### Constraint
 
-Do NOT call `read_source_doc` without `startLine`/`endLine` on large documents. Full reads will be truncated and waste token budget. If you must read an unfamiliar document first, use the truncated result's `[File Structure]` outline to plan targeted follow-up reads.
+Do NOT call `read_source_doc` without `startLine`/`endLine` on large documents. Full reads will be truncated and waste token budget. However, prefer fewer calls with larger ranges (300-500+ lines) over many calls with small ranges (100-200 lines).
 
 #### Constraint
 
 Do NOT re-read source document sections already present in your conversation history. Previous tool results remain available.
 
-⚠️ **Blind spot**: LLMs default to reading entire documents for "completeness." A 100K-char document truncated to 15K tokens loses 80%+ of content. Targeted line-range reads retrieve 100% of the sections you actually need.
+⚠️ **Blind spot**: LLMs default to making many small, cautious reads for "precision." This exhausts the call budget before any output is produced. A single 500-line read is far more efficient than five 100-line reads — and you can start writing sooner.
 
 ### Constraint
 
@@ -53,6 +53,7 @@ When you need to inspect multiple files, issue ALL needed tool calls in ONE resp
 
 ---
 
+{{#if referenceRequests}}
 ## 📚 REFERENCE PROJECT USAGE RULES
 
 ### Principle
@@ -72,6 +73,7 @@ Use `search_reference_code` tool to **observe** existing contracts and interface
 ### ⚠️ Blind Spot Reminder
 
 When designing API contracts, you MUST search reference projects first to ensure compatibility. Do NOT assume endpoint structures.
+{{/if}}
 {{/if}}
 
 ---
