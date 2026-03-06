@@ -9,11 +9,15 @@ import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 import { executeSearchWeb } from '../../../tools/searchWeb';
+import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
   maxReadFileTokens: 15000,
+  maxSourceDocTokens: 15000,
 });
+
+const CACHEABLE_TOOLS = new Set(['read_source_doc', 'read_file', 'search_code', 'list_files', 'list_reference_images', 'list_assets']);
 
 /**
  * Execute a single design tool and return its result content (Anthropic format)
@@ -23,13 +27,23 @@ async function executeDesignTool(
   state: DesignGraphState,
   args: Record<string, any>
 ): Promise<{ result: any; error?: string; toolResultContent: any }> {
+  // Check cache for read-only tools
+  if (CACHEABLE_TOOLS.has(name) && state._toolResultCache) {
+    const cacheKey = `${name}:${JSON.stringify(args)}`;
+    const cached = state._toolResultCache[cacheKey];
+    if (cached !== undefined) {
+      console.log(`♻️  [Tool] Cache hit: ${name}(${JSON.stringify(args).substring(0, 80)})`);
+      return { result: cached, error: undefined, toolResultContent: `[Cached result — same as previous call]\n\n${cached}` };
+    }
+  }
+
   let result: any;
   let error: string | undefined;
 
   try {
     switch (name) {
       case 'read_file':
-        result = await handleReadFile(state, args as any);
+        result = await handleReadFile(state, args as { path: string; startLine?: number; endLine?: number });
         break;
       case 'list_files':
         result = await handleListFiles(state, args as any);
@@ -58,14 +72,25 @@ async function executeDesignTool(
       case 'search_web':
         result = await executeSearchWeb(args as { query: string });
         break;
-      case 'read_source_doc':
-        result = handleReadSourceFileFromState(state, args as { filename: string });
+      case 'read_source_doc': {
+        const { filename, startLine, endLine } = args as { filename: string; startLine?: number; endLine?: number };
+        const chatAPI = getChatAPIClient();
+        const readIdx = await chatAPI.addReadingSource(filename, startLine, endLine);
+        result = handleReadSourceFileFromState(state, { filename, startLine, endLine });
+        const totalMatch = typeof result === 'string' ? result.match(/of (\d+)\]/) : null;
+        const totalLines = totalMatch ? Number(totalMatch[1]) : undefined;
+        const isError = typeof result === 'string' && result.startsWith('Error:');
+        await chatAPI.addReadSourceComplete(filename, readIdx, {
+          error: isError ? result : undefined,
+          startLine, endLine, totalLines,
+        });
         break;
+      }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
 
-    console.log(`✅ [Tool] ${name} executed successfully`);
+    console.log(`✅ [Tool] ${name} executed successfully (args: ${JSON.stringify(args)})`);
     const resultPreview = typeof result === 'string'
       ? result.substring(0, 200)
       : JSON.stringify(result, null, 2).substring(0, 200);
@@ -77,6 +102,7 @@ async function executeDesignTool(
 
   // Build tool result content (handles image multimodal)
   let toolResultContent: any;
+  let truncationInfo: { wasTruncated: boolean; originalTokens: number; truncatedTokens: number } | undefined;
 
   if (name === 'read_reference_image' && result && typeof result === 'object' && result.type === 'image') {
     const imageData = result as { type: 'image'; path: string; base64: string; mediaType: string };
@@ -96,11 +122,39 @@ async function executeDesignTool(
     ];
     console.log(`   🖼️  Multimodal: Image added to conversation (${Math.round(imageData.base64.length / 1024)}KB base64)`);
   } else {
-    const truncation = toolResultManager.truncateResult(name, result, error);
+    const toolFilePath = args.path || args.filename;
+    const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath);
     toolResultContent = truncation.content;
+    truncationInfo = { wasTruncated: truncation.wasTruncated, originalTokens: truncation.originalTokens, truncatedTokens: truncation.truncatedTokens };
     if (truncation.wasTruncated) {
       console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
     }
+  }
+
+  // Log tool call to execution logger
+  const jobId = state._httpJobId;
+  const featurePath = state.context?.featurePath;
+  const taskId = (state.currentTask as any)?.id;
+  if (jobId && featurePath && taskId) {
+    try {
+      const logger = getExecutionLogger({ featurePath, jobId, jobType: 'design' });
+      await logger.logToolCall(taskId, {
+        toolName: name,
+        args,
+        resultChars: typeof result === 'string' ? result.length : JSON.stringify(result ?? '').length,
+        wasTruncated: truncationInfo?.wasTruncated ?? false,
+        originalTokens: truncationInfo?.originalTokens,
+        truncatedTokens: truncationInfo?.truncatedTokens,
+        error,
+      });
+    } catch { /* non-blocking */ }
+  }
+
+  // Store in cache for read-only tools (cache the truncated content the LLM sees)
+  if (CACHEABLE_TOOLS.has(name) && !error && typeof toolResultContent === 'string') {
+    if (!state._toolResultCache) state._toolResultCache = {};
+    const cacheKey = `${name}:${JSON.stringify(args)}`;
+    state._toolResultCache[cacheKey] = toolResultContent;
   }
 
   return { result, error, toolResultContent };
@@ -194,13 +248,15 @@ export async function tool(
 }
 
 /**
- * Handle read_file tool
+ * Handle read_file tool with optional line range support.
+ * Without startLine/endLine: returns full content (may be truncated by ToolResultManager).
+ * With startLine/endLine: returns the specified line range with a header.
  */
 async function handleReadFile(
   state: DesignGraphState,
-  args: { path: string }
+  args: { path: string; startLine?: number; endLine?: number }
 ): Promise<string> {
-  const { path: filePath } = args;
+  const { path: filePath, startLine, endLine } = args;
   const fileSystem = state.deps?.fileSystem;
   const chatAPI = getChatAPIClient();
   
@@ -214,18 +270,15 @@ async function handleReadFile(
     throw new Error('featurePath not available in context');
   }
   
-  // ✅ Build absolute path for logging
   const absolutePath = path.isAbsolute(filePath)
     ? filePath
     : path.join(featurePath, filePath);
   
-  // ✅ Convert to workspace-relative path for fileSystem port
   const rootPath = fileSystem.getRootPath?.() || '';
   const relativePath = rootPath
     ? path.relative(rootPath, absolutePath)
     : absolutePath.replace(/^\//, '');
   
-  // ✅ Add reading status and get index
   const mergeIndex = await chatAPI.addReadingFile(filePath);
   
   try {
@@ -236,12 +289,19 @@ async function handleReadFile(
     
     console.log(`   📖 Read: ${relativePath} (${content.length} bytes)`);
     
-    // ✅ UI notification: read complete (success)
     await chatAPI.addReadComplete(filePath, mergeIndex);
+
+    if (startLine || endLine) {
+      const lines = content.split('\n');
+      const totalLines = lines.length;
+      const start = Math.max(1, startLine || 1);
+      const end = Math.min(totalLines, endLine || totalLines);
+      const slice = lines.slice(start - 1, end).join('\n');
+      return `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`;
+    }
     
     return content;
   } catch (error) {
-    // ✅ Update reading status with error message
     await chatAPI.addReadComplete(filePath, mergeIndex, (error as Error).message);
     throw error;
   }
@@ -570,19 +630,31 @@ async function handleMkdir(
 
 /**
  * Handle read_source_doc tool — reads from in-memory sourceDocuments.
- * Used when source docs are too large for inline injection (tool-use mode).
+ * Supports optional startLine/endLine for selective reading of large documents.
  */
 function handleReadSourceFileFromState(
   state: DesignGraphState,
-  args: { filename: string }
+  args: { filename: string; startLine?: number; endLine?: number }
 ): string {
-  const { filename } = args;
+  const { filename, startLine, endLine } = args;
   const docs = state.sourceDocuments;
   if (!docs || !docs[filename]) {
     const available = docs ? Object.keys(docs).join(', ') : 'none';
     return `Error: File "${filename}" not found. Available: ${available}`;
   }
-  return docs[filename];
+
+  const content = docs[filename];
+  const lines = content.split('\n');
+  const totalLines = lines.length;
+
+  if (startLine || endLine) {
+    const start = Math.max(1, startLine || 1);
+    const end = Math.min(totalLines, endLine || totalLines);
+    const slice = lines.slice(start - 1, end).join('\n');
+    return `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`;
+  }
+
+  return `[Total: ${totalLines} lines]\n\n${content}`;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

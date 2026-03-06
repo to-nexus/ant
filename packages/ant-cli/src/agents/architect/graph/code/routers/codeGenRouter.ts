@@ -109,17 +109,12 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     }
   }
 
-  // Safety Net C: Final task without progress (no done, no tools, just looping)
-  if (isFinalTask && !response.done && (!response.toolCalls || response.toolCalls.length === 0)) {
-    const loopCount = (state as any)._finalTaskLoopCount || 0;
-    (state as any)._finalTaskLoopCount = loopCount + 1;
-    
-    if (loopCount >= 3) {
-      console.warn(`⚠️  [Router] Final task stuck in loop (${loopCount} iterations, no tools, no done)`);
-      console.warn(`   🚨 Forcing checkTaskStatus to break the loop`);
-      delete (state as any)._finalTaskLoopCount;
-      return 'checkTaskStatus';
-    }
+  // Safety Net C: Final task without progress (computed by codeGen node, read-only here)
+  const finalTaskLoopCount = state._finalTaskLoopCount || 0;
+  if (finalTaskLoopCount >= 3) {
+    console.warn(`⚠️  [Router] Final task stuck in loop (${finalTaskLoopCount} iterations, no tools, no done)`);
+    console.warn(`   🚨 Forcing checkTaskStatus to break the loop`);
+    return 'checkTaskStatus';
   }
   
   // 0. File errors 있으면 → checkTaskStatus (tool 실행 불필요, 바로 self-healing)

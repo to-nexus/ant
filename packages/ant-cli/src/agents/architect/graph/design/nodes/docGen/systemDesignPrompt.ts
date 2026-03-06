@@ -131,8 +131,10 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
             taskSourceFiles.filter(f => state.sourceDocuments?.[f]).map(f => [f, state.sourceDocuments![f]])
           )
         : state.sourceDocuments || {};
-      prdSpec = buildSourceFileIndex(filteredDocs)
-        + `\n\n> Use the \`read_source_doc\` tool to read full document contents as needed for your task.`;
+      prdSpec = buildSourceFileIndex(filteredDocs, 8, { includeLineNumbers: true })
+        + `\n\n> Source documents are large. Use \`read_source_doc\` with \`startLine\`/\`endLine\` to read specific sections.`
+        + ` The outline above shows line numbers (e.g., L120) for each heading.`
+        + ` Read only the sections relevant to your task — do NOT read entire documents.`;
       useSourceFileTool = true;
       console.log(`📄 [DocGen] Source docs (${sourceDocsForTask.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
     }

@@ -337,6 +337,7 @@ export async function decomposeSystemDesign(
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
     decomposeWithToolLoop,
+    handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
 
   // Hybrid strategy: small projects → inline, large projects → tool-use (RAG)
@@ -436,12 +437,7 @@ export async function decomposeSystemDesign(
         [READ_SOURCE_DOC_TOOL],
         (name, args) => {
           if (name === 'read_source_doc') {
-            const content = state.sourceDocuments![args.filename];
-            if (!content) {
-              const available = Object.keys(state.sourceDocuments!).join(', ');
-              return `Error: File "${args.filename}" not found. Available: ${available}`;
-            }
-            return content;
+            return handleReadSourceFile(args.filename, state.sourceDocuments!, args.startLine, args.endLine);
           }
           return `Error: Unknown tool "${name}"`;
         },

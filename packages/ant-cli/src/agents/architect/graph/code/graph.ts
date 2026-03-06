@@ -159,6 +159,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       conversationHistory: state.conversationHistory || [],
     });
     state._codeGenCallIndex = 0;
+    state._finalTaskLoopCount = 0;
     
     // ✅ CRITICAL: Clear violations for next task
     // Previous task's violations should not carry over to new task
@@ -272,6 +273,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       violations: [],
       conversationHistory: state.conversationHistory,  // Already processed by retention policy above
       _codeGenCallIndex: 0,
+      _finalTaskLoopCount: 0,
       planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
       projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
@@ -855,6 +857,12 @@ export function buildCodeGraph() {
       
       // ✅ codeGen call counter (per task, reset in checkTaskStatus)
       _codeGenCallIndex: {
+        value: (_prev: number, next: number) => next,
+        default: () => 0,
+      } as any,
+
+      // Safety Net C: final task loop counter (computed by codeGen node, read by router)
+      _finalTaskLoopCount: {
         value: (_prev: number, next: number) => next,
         default: () => 0,
       } as any,

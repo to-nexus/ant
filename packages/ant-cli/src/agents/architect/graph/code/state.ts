@@ -285,6 +285,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   /** Per-task LLM call counter (reset on task transition, used for debug logging) */
   _codeGenCallIndex?: number;
 
+  /** Counter for consecutive final-task iterations with no done and no tool calls (Safety Net C) */
+  _finalTaskLoopCount?: number;
+
   /** Plan↔tool loop: true while plan is exploring codebase with tools (tool routes back to plan) */
   _planExploring?: boolean;
   /** Plan-phase conversation only (separate from codeGen conversationHistory) */

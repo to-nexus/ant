@@ -17,6 +17,7 @@ export interface MessageContent {
      | 'retrieving' | 'retrieved' // Vector DB search
      | 'grepping' | 'grepped'     // Local file search (fallback)
      | 'reading' | 'read'         // File read
+     | 'reading_source' | 'read_source'  // Source document read (design job)
      | 'indexing' | 'indexed'     // Codebase indexing (learn job)
      | 'analyzing' | 'analyzed'   // File analysis (learn job)
      | 'loading' | 'loaded'       // Required files loading (code job)
@@ -63,6 +64,10 @@ export interface MessageContentMetadata {
   tokensCount?: number;   // For explored
   strategy?: string;      // For grepped (git/vector/keyword)
   filesList?: string[];   // List of files (for explored/grepped)
+  // Source document reading (reading_source / read_source)
+  startLine?: number;     // For reading_source/read_source: start line
+  endLine?: number;       // For reading_source/read_source: end line
+  totalLines?: number;    // For reading_source/read_source: total lines in file
   // Tool Actions
   toolName?: string;      // For tool_action: tool name
   actionIcon?: string;    // For tool_action: emoji/icon
@@ -176,6 +181,7 @@ export const CHAT_STATUS_TYPES = new Set([
   'retrieving', 'retrieved',
   'grepping', 'grepped', 
   'reading', 'read',
+  'reading_source', 'read_source',
   'indexing', 'indexed',
   'analyzing', 'analyzed',
   'storing', 'stored',
@@ -190,7 +196,7 @@ export const CHAT_STATUS_TYPES = new Set([
  * Completed chat status types (used for duplicate detection)
  */
 export const COMPLETED_CHAT_STATUS_TYPES = new Set([
-  'grepped', 'explored', 'read', 'command', 'learned',
+  'grepped', 'explored', 'read', 'read_source', 'command', 'learned',
   'listed_files', 'searched_code', 'searched_reference'
 ]);
 
@@ -223,7 +229,8 @@ export type ChatStatusType =
   | 'grepping' | 'grepped' 
   | 'listing_files' | 'listed_files'
   | 'searching_code' | 'searched_code'
-  | 'reading' | 'read' 
+  | 'reading' | 'read'
+  | 'reading_source' | 'read_source'
   | 'thinking' 
   | 'indexing' | 'indexed' 
   | 'analyzing' | 'analyzed' 

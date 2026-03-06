@@ -19,22 +19,25 @@ import type { LLMStreamEvent } from '../ports/llm';
 import type { LLMResponseService } from '../llm-response';
 import type { ChatStatusType } from '../llm-response/types';
 import { logger } from '../../utils/logger';
+import { getWorkerScope } from '../parallel/workerScope';
 
-// Lazy-loaded service instance
+// Lazy-loaded service instance (Promise-based to prevent race conditions)
 let llmResponseService: LLMResponseService | null = null;
-let serviceInitialized = false;
+let servicePromise: Promise<LLMResponseService | null> | null = null;
 
 /**
  * Lazily initialize LLMResponseService
- * Only creates the service once, when first needed
+ * Uses a shared Promise so concurrent callers wait for the same initialization.
  */
 async function getLLMResponseService(): Promise<LLMResponseService | null> {
-  if (serviceInitialized) {
-    return llmResponseService;
+  if (llmResponseService) return llmResponseService;
+  if (!servicePromise) {
+    servicePromise = initializeLLMResponseService();
   }
-  
-  serviceInitialized = true;
-  
+  return servicePromise;
+}
+
+async function initializeLLMResponseService(): Promise<LLMResponseService | null> {
   console.log(`🔍 [ChatAPIClient] getLLMResponseService() called - initializing...`);
   
   const redisUrl = process.env.ANT_REDIS_URL;
@@ -64,7 +67,6 @@ async function getLLMResponseService(): Promise<LLMResponseService | null> {
   
   try {
     console.log(`🔍 [ChatAPIClient] Importing RedisStateStore...`);
-    // Dynamic import to avoid circular dependencies and bundle size in non-job contexts
     const { RedisStateStore } = await import('../../infrastructure/state/RedisStateStore');
     
     console.log(`🔍 [ChatAPIClient] Importing createLLMResponseServiceWithEnv...`);
@@ -106,8 +108,43 @@ export class ChatAPIClient {
   private featureName: string;
   private jobId: string;
   private enabled: boolean;
-  private messageStarted: boolean = false;
-  private currentMessageId: string | null = null;
+  private _mainMessageStarted: boolean = false;
+  private _mainCurrentMessageId: string | null = null;
+  private _workerMsgState = new Map<number, { started: boolean; messageId: string | null }>();
+
+  private get messageStarted(): boolean {
+    const scope = getWorkerScope();
+    if (scope) return this._workerMsgState.get(scope.workerId)?.started ?? false;
+    return this._mainMessageStarted;
+  }
+
+  private set messageStarted(v: boolean) {
+    const scope = getWorkerScope();
+    if (scope) {
+      let ws = this._workerMsgState.get(scope.workerId);
+      if (!ws) { ws = { started: false, messageId: null }; this._workerMsgState.set(scope.workerId, ws); }
+      ws.started = v;
+    } else {
+      this._mainMessageStarted = v;
+    }
+  }
+
+  private get currentMessageId(): string | null {
+    const scope = getWorkerScope();
+    if (scope) return this._workerMsgState.get(scope.workerId)?.messageId ?? null;
+    return this._mainCurrentMessageId;
+  }
+
+  private set currentMessageId(v: string | null) {
+    const scope = getWorkerScope();
+    if (scope) {
+      let ws = this._workerMsgState.get(scope.workerId);
+      if (!ws) { ws = { started: false, messageId: null }; this._workerMsgState.set(scope.workerId, ws); }
+      ws.messageId = v;
+    } else {
+      this._mainCurrentMessageId = v;
+    }
+  }
 
   constructor() {
     this.projectId = process.env.ANT_PROJECT_ID || '';
@@ -425,6 +462,26 @@ export class ChatAPIClient {
       await this.showChatStatus('read', { filePath, error: true, _mergeIndex: readingIndex });
     } else {
       await this.showChatStatus('read', { filePath, _mergeIndex: readingIndex });
+    }
+  }
+
+  async addReadingSource(filename: string, startLine?: number, endLine?: number): Promise<number | undefined> {
+    return this.showChatStatus('reading_source', { filePath: filename, startLine, endLine });
+  }
+
+  async addReadSourceComplete(filename: string, readingIndex?: number, opts?: {
+    error?: string; totalLines?: number; startLine?: number; endLine?: number;
+  }): Promise<void> {
+    if (opts?.error) {
+      await this.showChatStatus('read_source', { filePath: filename, error: true, _mergeIndex: readingIndex });
+    } else {
+      await this.showChatStatus('read_source', {
+        filePath: filename,
+        startLine: opts?.startLine,
+        endLine: opts?.endLine,
+        totalLines: opts?.totalLines,
+        _mergeIndex: readingIndex,
+      });
     }
   }
 

@@ -21,6 +21,8 @@ export type MessageContentType =
   | 'searched_code'  // Code search complete
   | 'reading'        // Reading file (in progress)
   | 'read'           // File read complete
+  | 'reading_source' // Reading source document (in progress)
+  | 'read_source'    // Source document read complete
   | 'indexing'       // Codebase indexing (in progress)
   | 'indexed'        // Codebase indexing complete
   | 'analyzing'      // Analysis in progress

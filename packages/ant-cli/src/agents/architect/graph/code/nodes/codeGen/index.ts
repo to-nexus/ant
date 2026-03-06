@@ -31,6 +31,7 @@ import { ArtifactService } from '../../../../../../infrastructure/workspace/Arti
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { isFinalVerificationTask } from '../../utils/taskClassification';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -533,6 +534,7 @@ export async function codeGen(
         fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
         projectCodeContext: state.projectCodeContext,
         _codeGenCallIndex: newCallIndex,
+        _finalTaskLoopCount: 0,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         profile: state.profile,
@@ -610,6 +612,12 @@ export async function codeGen(
     // Use explicitDone from streaming pipeline (detected by SpecialTagTransformer)
     // Previously: done = toolCalls.length === 0 (caused premature completion on truncated responses)
     const explicitDone = finalizeResult.explicitDone || false;
+
+    // Safety Net: track final task loop count (MUST go through channel system via return)
+    const isFinalTask = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
+    const prevLoopCount = state._finalTaskLoopCount || 0;
+    const isStuckLooping = isFinalTask && !explicitDone && toolCalls.length === 0;
+    const newFinalTaskLoopCount = isStuckLooping ? prevLoopCount + 1 : 0;
     
     if (toolCalls.length === 0 && !explicitDone) {
       console.warn(`⚠️  [CodeGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
@@ -639,6 +647,7 @@ export async function codeGen(
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           projectCodeContext: updatedProjectCodeContext,
           _codeGenCallIndex: newCallIndex,
+          _finalTaskLoopCount: newFinalTaskLoopCount,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           profile: state.profile,
@@ -658,6 +667,7 @@ export async function codeGen(
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       projectCodeContext: updatedProjectCodeContext,
       _codeGenCallIndex: newCallIndex,
+      _finalTaskLoopCount: newFinalTaskLoopCount,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       profile: state.profile,

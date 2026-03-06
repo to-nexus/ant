@@ -12,14 +12,14 @@ import type { MessageContent } from '@/domain/models/chat';
 
 interface WorkingCardProps {
   content: MessageContent;
-  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned';
+  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'reading_source' | 'read_source' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned';
 }
 
 /**
  * Determine if variant is a progress state (~ing) or complete state (~ed)
  */
 function isProgressState(variant: string): boolean {
-  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'indexing', 'analyzing', 'loading', 'storing', 'learning'].includes(variant);
+  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing', 'learning'].includes(variant);
 }
 
 /**
@@ -88,6 +88,8 @@ function getVariantConfig(variant: string, isProgress: boolean) {
         detailClass: 'text-violet-600 dark:text-violet-400'
       };
     case 'read':
+    case 'reading_source':
+    case 'read_source':
       return {
         Icon: isProgress ? Eye : Eye,
         iconClass: isProgress ? 'animate-pulse' : '',
