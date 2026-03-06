@@ -132,9 +132,10 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           )
         : state.sourceDocuments || {};
       prdSpec = buildSourceFileIndex(filteredDocs, 8, { includeLineNumbers: true })
-        + `\n\n> Source documents are large. Use \`read_source_doc\` with \`startLine\`/\`endLine\` to read specific sections.`
+        + `\n\n> Source documents are large. Use \`read_source_doc\` with \`startLine\`/\`endLine\` to read broad ranges (300-500+ lines per call).`
         + ` The outline above shows line numbers (e.g., L120) for each heading.`
-        + ` Read only the sections relevant to your task — do NOT read entire documents.`;
+        + ` Prioritize breadth: read large sections in few calls, then START WRITING by call 5-7.`
+        + ` Do NOT read every section — gather enough context and begin output immediately.`;
       useSourceFileTool = true;
       console.log(`📄 [DocGen] Source docs (${sourceDocsForTask.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
     }
