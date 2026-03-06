@@ -13,6 +13,7 @@
  */
 
 import type { LLMClient, ToolDefinition, LLMStreamEvent } from '../../../../../../core/ports/llm';
+import { generateFileOutline } from '../../../../../../core/utils/fileOutline';
 import type { TaskTokenUsage } from '@ant/shared';
 
 /**
@@ -35,13 +36,21 @@ const TOOL_RESULT_BUDGET = 300_000;
 
 export const READ_SOURCE_DOC_TOOL: ToolDefinition = {
   name: 'read_source_doc',
-  description: 'Read the full content of a source document by filename. Use this to examine specific requirements documents when only the file index is provided.',
+  description: 'Read a source document by filename. Without line range params, returns content with total line count. If truncated, a structural outline with line numbers is included to guide targeted reading. Use startLine/endLine to read specific sections.',
   input_schema: {
     type: 'object',
     properties: {
       filename: {
         type: 'string',
         description: 'Exact filename from the source file index',
+      },
+      startLine: {
+        type: 'number',
+        description: 'Start line number (1-based, inclusive). Omit to read from the beginning.',
+      },
+      endLine: {
+        type: 'number',
+        description: 'End line number (1-based, inclusive). Omit to read to the end.',
       },
     },
     required: ['filename'],
@@ -228,9 +237,12 @@ function redistributeBudget(
  */
 export function buildSourceFileIndex(
   sourceDocuments: Record<string, string>,
-  previewLines: number = 8
+  previewLines: number = 8,
+  options?: { includeLineNumbers?: boolean },
 ): string {
   if (!sourceDocuments || Object.keys(sourceDocuments).length === 0) return '';
+
+  const includeLineNumbers = options?.includeLineNumbers ?? false;
 
   const sorted = Object.keys(sourceDocuments).sort((a, b) => {
     if (a === 'prd.md') return -1;
@@ -250,6 +262,7 @@ export function buildSourceFileIndex(
   for (let i = 0; i < sorted.length; i++) {
     const name = sorted[i];
     const content = sourceDocuments[name];
+    const totalLines = content.split('\n').length;
     const preview = content
       .split('\n')
       .filter(l => l.trim().length > 0)
@@ -257,15 +270,31 @@ export function buildSourceFileIndex(
       .join(' ')
       .slice(0, 200)
       .replace(/\|/g, '\\|');
-    lines.push(`| ${i + 1} | \`${name}\` | ${content.length.toLocaleString()} chars | ${preview}... |`);
+    const sizeStr = includeLineNumbers
+      ? `${content.length.toLocaleString()} chars (${totalLines} lines)`
+      : `${content.length.toLocaleString()} chars`;
+    lines.push(`| ${i + 1} | \`${name}\` | ${sizeStr} | ${preview}... |`);
 
-    const headings = content
-      .split('\n')
-      .filter(l => /^## /.test(l))
-      .map(l => l.trim())
-      .join(' / ');
-    if (headings) {
-      lines.push(`|   |  |  | Outline: ${headings.slice(0, 500)} |`);
+    if (includeLineNumbers) {
+      const outline = generateFileOutline(content, name);
+      if (outline) {
+        const compactOutline = outline
+          .split('\n')
+          .slice(0, 30)
+          .join(' / ')
+          .replace(/\|/g, '\\|')
+          .slice(0, 800);
+        lines.push(`|   |  |  | ${compactOutline} |`);
+      }
+    } else {
+      const headings = content
+        .split('\n')
+        .filter(l => /^#{1,3} /.test(l))
+        .map(l => l.trim())
+        .join(' / ');
+      if (headings) {
+        lines.push(`|   |  |  | Outline: ${headings.slice(0, 500)} |`);
+      }
     }
   }
 
@@ -282,17 +311,33 @@ export function getSourceDocsSize(sourceDocuments?: Record<string, string>): num
 
 /**
  * Handle read_source_doc tool call by reading from in-memory source documents.
+ * Supports optional startLine/endLine for selective reading of large documents.
+ *
+ * Shared by both execute-phase (tool.ts) and decompose-phase (decomposeWithToolLoop).
  */
-function handleReadSourceFile(
+export function handleReadSourceFile(
   filename: string,
-  sourceDocuments: Record<string, string>
+  sourceDocuments: Record<string, string>,
+  startLine?: number,
+  endLine?: number,
 ): string {
   const content = sourceDocuments[filename];
   if (!content) {
     const available = Object.keys(sourceDocuments).join(', ');
     return `Error: File "${filename}" not found. Available: ${available}`;
   }
-  return content;
+
+  const lines = content.split('\n');
+  const totalLines = lines.length;
+
+  if (startLine || endLine) {
+    const start = Math.max(1, startLine || 1);
+    const end = Math.min(totalLines, endLine || totalLines);
+    const slice = lines.slice(start - 1, end).join('\n');
+    return `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`;
+  }
+
+  return `[Total: ${totalLines} lines]\n\n${content}`;
 }
 
 /**

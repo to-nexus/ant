@@ -17,13 +17,21 @@ import type { PromptPort } from '../../../core/ports/prompt';
 export const ARCHITECT_TOOLS = {
   read_file: {
     name: 'read_file',
-    description: 'Read the contents of a file',
+    description: 'Read the contents of a file. For large files, returns the beginning with a structural outline and total line count. Use startLine/endLine to read specific sections.',
     input_schema: {
       type: 'object' as const,
       properties: {
         path: {
           type: 'string',
           description: 'File path relative to project root',
+        },
+        startLine: {
+          type: 'number',
+          description: 'Start line number (1-based, inclusive). Omit to read from the beginning.',
+        },
+        endLine: {
+          type: 'number',
+          description: 'End line number (1-based, inclusive). Omit to read to the end.',
         },
       },
       required: ['path'],

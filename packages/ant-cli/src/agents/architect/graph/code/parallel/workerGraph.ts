@@ -159,6 +159,8 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
       conversationHistory: [],
       planText: '',
       projectCodeContext: undefined,
+      _codeGenCallIndex: 0,
+      _finalTaskLoopCount: 0,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;
@@ -267,6 +269,7 @@ function buildWorkerSubgraph() {
       _currentTaskTokenUsage: null as any,
       tokenUsage: null as any,
       _codeGenCallIndex: null as any,
+      _finalTaskLoopCount: null as any,
       recursionCount: null as any,
       recursionLimit: null as any,
       llmResponse: null as any,

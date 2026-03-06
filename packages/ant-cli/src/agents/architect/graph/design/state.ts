@@ -117,6 +117,9 @@ export interface DesignGraphState extends TaskArtifacts {
   /** Counter for consecutive docGen calls with no file output (non-productive loop detection) */
   _noOutputCallCount?: number;
 
+  /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */
+  _toolResultCache?: Record<string, string>;
+
   // Results (populated by learn node)
   lessons?: string;
   

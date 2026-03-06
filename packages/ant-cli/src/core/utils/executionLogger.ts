@@ -26,7 +26,8 @@ export type ExecutionEventType =
   | 'parallel_start'
   | 'parallel_complete'
   | 'violation_detected'
-  | 'phase_complete';
+  | 'phase_complete'
+  | 'tool_call';
 
 export interface ExecutionEvent {
   /** ISO timestamp */
@@ -179,6 +180,18 @@ export class ExecutionLogger {
     details?: Record<string, any>;
   }): Promise<void> {
     await this.log('phase_complete', data);
+  }
+
+  async logToolCall(taskId: string, data: {
+    toolName: string;
+    args: Record<string, any>;
+    resultChars: number;
+    wasTruncated: boolean;
+    originalTokens?: number;
+    truncatedTokens?: number;
+    error?: string;
+  }): Promise<void> {
+    await this.log('tool_call', data, taskId);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

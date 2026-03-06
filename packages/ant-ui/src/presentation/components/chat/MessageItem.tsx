@@ -216,6 +216,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     case 'reading':
       return <WorkingCard content={content} variant="reading" />;
     
+    case 'reading_source':
+      return <WorkingCard content={content} variant="reading_source" />;
+    
     case 'indexing':
       return <WorkingCard content={content} variant="indexing" />;
     
@@ -249,6 +252,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     
     case 'read':
       return <WorkingCard content={content} variant="read" />;
+    
+    case 'read_source':
+      return <WorkingCard content={content} variant="read_source" />;
     
     case 'indexed':
       return <WorkingCard content={content} variant="indexed" />;

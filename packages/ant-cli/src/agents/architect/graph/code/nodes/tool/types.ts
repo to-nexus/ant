@@ -24,6 +24,8 @@ export interface ServerProcess {
 
 export interface ReadFileArgs {
   path: string;
+  startLine?: number;
+  endLine?: number;
 }
 
 export interface ListFilesArgs {

@@ -17,9 +17,12 @@ import type { DesignGraphState } from '../state';
 import { plan } from '../nodes/plan';
 import { docGen } from '../nodes/docGen/index';
 import { tool } from '../nodes/tool';
+import path from 'node:path';
 import { learn } from '../nodes/learn';
 import type { WorkerGraphBuilder } from '../../code/parallel/types';
 import { routeAfterDocGen } from '../routers/docGenRouter';
+
+const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
 /**
  * Check task status within a design worker subgraph.
@@ -101,6 +104,21 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
 
     console.log(`✅ [Worker] Design task "${completedTask.name}" completed!`);
 
+    // Strip internal markers from output file when last chapter for a document completes
+    const taskForMarkers = state.currentTask as any;
+    if (taskForMarkers?.isLastTaskForDocument && taskForMarkers?.targetFile && state.deps?.fileSystem && state.context?.featurePath) {
+      try {
+        const filePath = path.join(state.context.featurePath, 'outputs', 'design', taskForMarkers.targetFile);
+        const fs = state.deps.fileSystem as any;
+        const content = await fs.readFile(filePath);
+        const cleaned = (content as string).replace(INTERNAL_MARKER_RE, '');
+        if (cleaned !== content) {
+          await fs.writeFile(filePath, cleaned.trimEnd() + '\n');
+          console.log(`🧹 [workerCheckTaskStatus] Stripped internal markers from ${taskForMarkers.targetFile}`);
+        }
+      } catch { /* File may not exist, ignore */ }
+    }
+
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
@@ -115,6 +133,8 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       tokenUsage: (state as any).tokenUsage,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
+      _callLimitReached: false,
+      _toolResultCache: undefined,
     } as any;
   }
 
@@ -185,6 +205,8 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
       awaitingClarify: null as any,
       _docGenCallIndex: null as any,
       _noOutputCallCount: null as any,
+      _callLimitReached: null as any,
+      _toolResultCache: null as any,
       fileErrors: null as any,
       // Worker-specific
       workerId: null as any,

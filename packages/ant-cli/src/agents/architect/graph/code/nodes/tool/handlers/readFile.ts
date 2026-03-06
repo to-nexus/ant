@@ -41,39 +41,35 @@ export async function handleReadFile(
   state: ArchitectGraphState,
   args: ReadFileArgs
 ): Promise<string> {
-  const { path: filePath } = args;
+  const { path: filePath, startLine, endLine } = args;
   
   if (!filePath) {
     throw new Error('read_file requires path');
   }
   
-  // ✅ Check for binary files BEFORE any processing
   if (isBinaryFile(filePath)) {
     const ext = path.extname(filePath).toLowerCase();
     console.log(`[readFile] ⚠️ Binary file detected: ${filePath} (${ext})`);
     return `[Binary file: ${filePath}]
 This is a binary file (${ext}) and cannot be read as text.
 
-✅ To check if file exists: use list_files("${path.dirname(filePath)}")
-✅ To use in code: reference the path directly (e.g., url('${filePath}') or <img src="${filePath}" />)
-✅ To copy: use run_command("cp source dest")
+To check if file exists: use list_files("${path.dirname(filePath)}")
+To use in code: reference the path directly (e.g., url('${filePath}') or <img src="${filePath}" />)
+To copy: use run_command("cp source dest")
 
-→ Proceed with your next action.`;
+Proceed with your next action.`;
   }
   
   const fileSystem = getFileSystem(state, 'readFile');
   const chatAPI = getChatAPIClient();
 
-  // Canonicalize paths so tool usage is stable (repo-relative by default)
   const resolved = await resolveToolPath(state, filePath);
   
-  // ✅ Add reading status and get index
   const mergeIndex = await chatAPI.addReadingFile(resolved.displayPath);
   
   return withErrorHandling('readFile', async () => {
     logFileOperation('readFile', 'Reading file', resolved.displayPath, { fsPath: resolved.fsPath, scope: resolved.scope });
     
-    // ✅ Read from filesystem (WorkerFileSystem checks SharedFileBuffer first in parallel mode)
     const content = await fileSystem.readFile(resolved.fsPath);
     
     if (!content) {
@@ -85,8 +81,16 @@ This is a binary file (${ext}) and cannot be read as text.
     
     console.log(`[readFile] ✅ Read from disk: ${resolved.displayPath} (${content.length} bytes)`);
     
-    // ✅ UI notification: read complete (success)
     await chatAPI.addReadComplete(resolved.displayPath, mergeIndex);
+
+    if (startLine || endLine) {
+      const lines = content.split('\n');
+      const totalLines = lines.length;
+      const start = Math.max(1, startLine || 1);
+      const end = Math.min(totalLines, endLine || totalLines);
+      const slice = lines.slice(start - 1, end).join('\n');
+      return `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`;
+    }
     
     return content;
   }, { filePath: resolved.displayPath });

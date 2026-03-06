@@ -18,6 +18,7 @@ import type { TaskOrchestrator } from './TaskOrchestrator';
 import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
+import { runInWorkerScope } from '../../../../../core/parallel/workerScope';
 
 export class TaskWorker<T extends BaseTask> {
   readonly workerId: number;
@@ -113,6 +114,7 @@ export class TaskWorker<T extends BaseTask> {
       planText: '',
       conversationHistory: [],
       _codeGenCallIndex: 0,
+      _finalTaskLoopCount: 0,
       toolResults: [],
       violations: [],
       retries: 0,
@@ -143,9 +145,11 @@ export class TaskWorker<T extends BaseTask> {
     // for complex tasks (plan → codeGen ↔ tool loop easily exceeds 25 node transitions).
     // Use sharedContext.recursionLimit (from env RECURSION_LIMIT via runner.ts).
     const envLimit = parseInt(process.env.RECURSION_LIMIT || '200', 10);
-    const result = await graph.invoke(workerState, {
-      recursionLimit: workerState.recursionLimit || envLimit,
-    });
+    const result = await runInWorkerScope(this.workerId, () =>
+      graph.invoke(workerState, {
+        recursionLimit: workerState.recursionLimit || envLimit,
+      })
+    );
     this.currentState = result;
     return result;
   }
