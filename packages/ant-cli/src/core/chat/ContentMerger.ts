@@ -240,6 +240,7 @@ export class ContentMerger {
       retrieved: 'retrieving',
       grepped: 'grepping',
       read: 'reading',
+      read_source: 'reading_source',
       indexed: 'indexing',
       analyzed: 'analyzing',
       loaded: 'loading',
@@ -620,10 +621,12 @@ export class ContentMerger {
       session.lastThinkingContentIndex = undefined;
     }
 
-    // Finalize in-progress work states if cancelled
+    // Always finalize orphaned file operations (safety net for parallel workers).
+    // No-op when activeFileOperations is empty.
+    this.finalizeFileOperations(projectId, featureName, session, cancelled);
+
     if (cancelled) {
       this.finalizeInProgressWork(projectId, featureName, session);
-      this.finalizeFileOperations(projectId, featureName, session, cancelled);
     }
   }
 
@@ -633,7 +636,7 @@ export class ContentMerger {
   private finalizeInProgressWork(projectId: string, featureName: string, session: ChatSession): void {
     const inProgressWorkTypes = new Set([
       'placeholder',  // Placeholder should be removed on cancel
-      'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 'loading',
+      'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 'reading_source', 'loading',
       'indexing', 'storing', 'learning', 'searching_code', 'listing_files',
       'searching_reference'
     ]);

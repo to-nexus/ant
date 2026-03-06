@@ -2,7 +2,7 @@
 
 ### Principle
 
-The prompt already contains the PRD (injected as `prdSpec`). This is your primary architectural input — do NOT re-read it via tools.
+The prompt contains the PRD — either as **full content** or as a **source file index** (when documents are large). Both are your primary architectural input.
 
 ### Observation Targets
 
@@ -10,6 +10,28 @@ The prompt already contains the PRD (injected as `prdSpec`). This is your primar
 |--------|-------------|-----|
 | Your target document (`task.targetFile`) | Continuation task (lastSectionNumber exists) AND you need `edit_file` | `read_file` on the target path only |
 | Other system design documents for this project | Only if your task explicitly references cross-document dependencies not already in the prompt | `read_file` on the specific file |
+
+### Source Document Reading
+
+When the prompt contains a **source file index** (table with filenames, sizes, and line-numbered outlines) instead of full content:
+
+#### Principle
+
+Read only the sections you need, not entire documents. The index provides line numbers for each heading — use them.
+
+#### Observation Target
+
+Identify relevant headings from the outline, then use `read_source_doc` with `startLine`/`endLine` to read those sections.
+
+#### Constraint
+
+Do NOT call `read_source_doc` without `startLine`/`endLine` on large documents. Full reads will be truncated and waste token budget. If you must read an unfamiliar document first, use the truncated result's `[File Structure]` outline to plan targeted follow-up reads.
+
+#### Constraint
+
+Do NOT re-read source document sections already present in your conversation history. Previous tool results remain available.
+
+⚠️ **Blind spot**: LLMs default to reading entire documents for "completeness." A 100K-char document truncated to 15K tokens loses 80%+ of content. Targeted line-range reads retrieve 100% of the sections you actually need.
 
 ### Constraint
 

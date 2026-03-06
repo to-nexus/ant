@@ -12,6 +12,27 @@ import { detectEnvironment } from "./nodes/detectEnvironment";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
 import { routeAfterDocGen } from "./routers/docGenRouter";
+import path from "node:path";
+
+const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
+
+async function stripInternalMarkers(
+  fileSystem: { readFile(p: string): Promise<string>; writeFile(p: string, c: string): Promise<void> },
+  featurePath: string,
+  targetFile: string,
+): Promise<void> {
+  try {
+    const filePath = path.join(featurePath, 'outputs', 'design', targetFile);
+    const content = await fileSystem.readFile(filePath);
+    const cleaned = content.replace(INTERNAL_MARKER_RE, '');
+    if (cleaned !== content) {
+      await fileSystem.writeFile(filePath, cleaned.trimEnd() + '\n');
+      console.log(`🧹 [checkTaskStatus] Stripped internal markers from ${targetFile}`);
+    }
+  } catch {
+    // File may not exist yet (e.g., task was skipped), ignore
+  }
+}
 
 /**
  * Check task status and handle completion
@@ -127,6 +148,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _callLimitReached: false,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
+      _toolResultCache: undefined,
       fileErrors: undefined,
       interruption,
       tokenUsage: (state as any).tokenUsage,
@@ -201,6 +223,12 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       taskName: completedTask.name,
       totalCompleted: completedTasksDetails.length
     });
+    
+    // Strip internal markers from output file when last chapter for a document completes
+    const taskForMarkers = state.currentTask as any;
+    if (taskForMarkers?.isLastTaskForDocument && taskForMarkers?.targetFile && state.deps?.fileSystem && state.context?.featurePath) {
+      await stripInternalMarkers(state.deps.fileSystem as any, state.context.featurePath, taskForMarkers.targetFile);
+    }
     
     // ✅ CRITICAL: Save checkpoint after completing a task
     if (state.deps?.session && state.context.featureFolder) {
@@ -282,6 +310,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       tokenUsage: (state as any).tokenUsage,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
+      _callLimitReached: false,
+      _toolResultCache: undefined,
     };
   }
   
@@ -620,6 +650,7 @@ export function buildDesignGraph() {
       _docGenCallIndex: null as any,
       _callLimitReached: null as any,
       _noOutputCallCount: null as any,
+      _toolResultCache: null as any,
       fileErrors: null as any,
 
       // ✅ Clarify state (MUST be in channels for LangGraph state propagation)

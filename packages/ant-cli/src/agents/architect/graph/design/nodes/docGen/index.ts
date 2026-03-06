@@ -258,7 +258,38 @@ export async function docGen(
     }
     
     console.log(`✅ [DocGen] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
+    console.log(`   SafetyNet: callIndex=${newCallIndex}, noOutputStreak=${state._noOutputCallCount || 0}, newFiles=${files.length}`);
     
+    // Safety Net state calculation (MUST go through channel system via return value)
+    const MAX_NO_OUTPUT_CALLS = 10;
+    const envMaxCalls = parseInt(process.env.DOCGEN_MAX_CALLS || '', 10);
+    const maxCalls = (!isNaN(envMaxCalls) && envMaxCalls >= 10) ? envMaxCalls : 25;
+
+    const hasNewFileOutput = files.length > 0;
+    const hasToolCallsOnly = hasToolCalls && !hasNewFileOutput;
+    const prevNoOutputCount = state._noOutputCallCount || 0;
+
+    let newNoOutputCount = prevNoOutputCount;
+    if (hasToolCallsOnly) {
+      newNoOutputCount = prevNoOutputCount + 1;
+    } else if (hasNewFileOutput) {
+      newNoOutputCount = 0;
+    }
+
+    const callLimitReached = newCallIndex >= maxCalls || newNoOutputCount >= MAX_NO_OUTPUT_CALLS;
+
+    if (callLimitReached) {
+      const reason = newCallIndex >= maxCalls
+        ? `call budget exhausted (${newCallIndex}/${maxCalls})`
+        : `non-productive loop (${newNoOutputCount} consecutive tool-only calls)`;
+      console.warn(`⚠️  [DocGen] Safety net triggered: ${reason}`);
+    }
+
+    const warningThreshold = Math.floor(maxCalls * 0.8);
+    if (newCallIndex === warningThreshold) {
+      console.warn(`⚠️  [DocGen] Approaching call limit (${newCallIndex}/${maxCalls}) — ${maxCalls - newCallIndex} calls remaining`);
+    }
+
     // ✅ Spec clarify detection: if LLM response contains <clarify> tags, pause for user input
     if (workType === 'spec' && textResponse.includes('<clarify>')) {
       const clarifyMatch = textResponse.match(/<clarify>([\s\S]*?)<\/clarify>/);
@@ -306,6 +337,8 @@ export async function docGen(
           awaitingClarify: true,
           llmResponse: { textResponse, done: true },
           _docGenCallIndex: newCallIndex,
+          _noOutputCallCount: 0,
+          _callLimitReached: false,
           _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
           tokenUsage: (state as any).tokenUsage,
         };
@@ -317,6 +350,8 @@ export async function docGen(
       conversationHistory,
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _docGenCallIndex: newCallIndex,
+      _noOutputCallCount: newNoOutputCount,
+      _callLimitReached: callLimitReached,
       _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
       tokenUsage: (state as any).tokenUsage,
       llmResponse: hasToolCalls ? {

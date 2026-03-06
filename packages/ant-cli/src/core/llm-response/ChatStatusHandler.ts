@@ -229,6 +229,22 @@ export class ChatStatusHandler {
         if (error) return `❌ Read Failed: ${filePath || error}`;
         return filePath ? `Read: ${filePath}` : 'Read: file';
       }
+
+      case 'reading_source': {
+        const fn = metadata?.filePath ?? '';
+        const range = metadata?.startLine ? ` (L${metadata.startLine}-L${metadata.endLine || '?'})` : '';
+        return fn ? `Reading source: ${fn}${range}...` : 'Reading source doc...';
+      }
+
+      case 'read_source': {
+        const fn = metadata?.filePath ?? '';
+        const error = metadata?.error;
+        if (error) return `❌ Read Source Failed: ${fn || error}`;
+        const range = metadata?.startLine
+          ? ` (L${metadata.startLine}-L${metadata.endLine || '?'} of ${metadata.totalLines || '?'})`
+          : metadata?.totalLines ? ` (${metadata.totalLines} lines)` : '';
+        return fn ? `Read source: ${fn}${range}` : 'Read source doc';
+      }
       
       case 'thinking':
         return '';  // Empty content, will be filled by LLM tokens

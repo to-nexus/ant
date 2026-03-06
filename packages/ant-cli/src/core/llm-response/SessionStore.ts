@@ -12,6 +12,20 @@ import type { SessionContext, LLMResponseEnv } from './types';
 import type { ChatSession, ChatMessage, FileOperationTracker } from '../chat/types';
 import { getSessionKey, toRedisSession, fromRedisSession, toRedisMessage, fromRedisMessage, createAssistantMessage } from '../chat/schema';
 import { logger } from '../../utils/logger';
+import { getWorkerScope } from '../parallel/workerScope';
+
+/**
+ * Per-worker isolated message state.
+ * Each parallel TaskWorker gets its own currentMessage and file-operation tracking,
+ * preventing cross-worker interference on the shared SessionStore singleton.
+ */
+interface WorkerMessageState {
+  currentMessage: ChatMessage | undefined;
+  activeFileOperations: Map<string, FileOperationTracker>;
+  thinkingStartTime?: number;
+  lastThinkingContentIndex?: number;
+  sessionProxy?: ChatSession;
+}
 
 // Base branches that don't need chat.json (learning only)
 const BASE_BRANCH_NAMES = ['main', 'master', 'dev', 'develop', 'staging', 'production'];
@@ -24,6 +38,7 @@ export class SessionStore {
   private context: SessionContext;
   private localSession: ChatSession | null = null;  // Local cache for hot path
   private featurePath: string | undefined;
+  private workerMessages = new Map<number, WorkerMessageState>();
 
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
     this.stateStore = stateStore;
@@ -58,9 +73,9 @@ export class SessionStore {
    * Get or create session from Redis
    */
   async getOrCreateSession(): Promise<ChatSession> {
-    // Return local cache if available
+    // Return local cache if available (via getSession() for worker-scope Proxy)
     if (this.localSession) {
-      return this.localSession;
+      return this.getSession()!;
     }
 
     try {
@@ -119,7 +134,7 @@ export class SessionStore {
           component: 'SessionStore'
         });
         
-        return this.localSession;
+        return this.getSession()!;
       }
     } catch (error) {
       logger.warn(`Failed to load session from Redis`, { component: 'SessionStore' }, error);
@@ -135,14 +150,60 @@ export class SessionStore {
     };
     
     await this.saveSession();
-    return this.localSession;
+    return this.getSession()!;
   }
 
   /**
-   * Get current session (local cache only, no Redis fetch)
+   * Get current session (local cache only, no Redis fetch).
+   * In worker context, returns a Proxy that redirects per-worker fields
+   * (currentMessage, activeFileOperations, thinkingStartTime, lastThinkingContentIndex)
+   * to the worker's isolated state. All other fields fall through to the real session.
    */
   getSession(): ChatSession | null {
-    return this.localSession;
+    if (!this.localSession) return null;
+
+    const scope = getWorkerScope();
+    if (!scope) return this.localSession;
+
+    const ws = this.getOrCreateWorkerState(scope.workerId);
+
+    if (!ws.sessionProxy) {
+      const target = this.localSession;
+      ws.sessionProxy = new Proxy(target, {
+        get(_target, prop, receiver) {
+          switch (prop) {
+            case 'currentMessage': return ws.currentMessage;
+            case 'activeFileOperations': return ws.activeFileOperations;
+            case 'thinkingStartTime': return ws.thinkingStartTime;
+            case 'lastThinkingContentIndex': return ws.lastThinkingContentIndex;
+            default: return Reflect.get(_target, prop, receiver);
+          }
+        },
+        set(_target, prop, value, receiver) {
+          switch (prop) {
+            case 'currentMessage': ws.currentMessage = value; return true;
+            case 'activeFileOperations': ws.activeFileOperations = value; return true;
+            case 'thinkingStartTime': ws.thinkingStartTime = value; return true;
+            case 'lastThinkingContentIndex': ws.lastThinkingContentIndex = value; return true;
+            default: return Reflect.set(_target, prop, value, receiver);
+          }
+        }
+      });
+    }
+
+    return ws.sessionProxy;
+  }
+
+  private getOrCreateWorkerState(workerId: number): WorkerMessageState {
+    let ws = this.workerMessages.get(workerId);
+    if (!ws) {
+      ws = {
+        currentMessage: undefined,
+        activeFileOperations: new Map(),
+      };
+      this.workerMessages.set(workerId, ws);
+    }
+    return ws;
   }
 
   /**
@@ -167,6 +228,11 @@ export class SessionStore {
    * (e.g., resume process where Redis still has previous execution's currentMessage)
    */
   async hasActiveMessage(): Promise<boolean> {
+    const scope = getWorkerScope();
+    if (scope) {
+      return this.workerMessages.get(scope.workerId)?.currentMessage !== undefined;
+    }
+
     // Local cache is authoritative when loaded
     if (this.localSession) {
       return this.localSession.currentMessage !== undefined;
@@ -186,12 +252,27 @@ export class SessionStore {
    * Returns the message ID
    */
   async startMessage(): Promise<string> {
-    const session = await this.getOrCreateSession();
-    
+    await this.getOrCreateSession();
+
+    const scope = getWorkerScope();
+    if (scope) {
+      const message = createAssistantMessage(this.context.jobId);
+      const ws = this.getOrCreateWorkerState(scope.workerId);
+      ws.currentMessage = message;
+      ws.activeFileOperations.clear();
+      ws.thinkingStartTime = undefined;
+      ws.lastThinkingContentIndex = undefined;
+
+      logger.info(`SessionStore.startMessage (worker ${scope.workerId}): Created message ${message.id}`, {
+        component: 'SessionStore'
+      });
+      return message.id;
+    }
+
+    // Main graph path
     const message = createAssistantMessage(this.context.jobId);
-    session.currentMessage = message;
+    this.localSession!.currentMessage = message;
     
-    // ✅ Debug: Verify currentMessage is set on localSession
     logger.info(`SessionStore.startMessage: Created message ${message.id}, localSession.currentMessage set: ${!!this.localSession?.currentMessage}`, {
       component: 'SessionStore'
     });
@@ -215,13 +296,20 @@ export class SessionStore {
    * Get current message
    */
   getCurrentMessage(): ChatMessage | undefined {
+    const scope = getWorkerScope();
+    if (scope) {
+      return this.workerMessages.get(scope.workerId)?.currentMessage;
+    }
     return this.localSession?.currentMessage;
   }
 
   /**
-   * Update current message in Redis (for cross-pod consistency)
+   * Update current message in Redis (for cross-pod consistency).
+   * Worker messages are in-memory only — skip Redis for workers.
    */
   async updateCurrentMessage(): Promise<void> {
+    if (getWorkerScope()) return;
+
     if (!this.localSession?.currentMessage) return;
 
     try {
@@ -238,6 +326,42 @@ export class SessionStore {
    * Finalize current message (move to messages array)
    */
   async finalizeMessage(cancelled: boolean = false): Promise<void> {
+    const scope = getWorkerScope();
+
+    if (scope) {
+      const ws = this.workerMessages.get(scope.workerId);
+      if (!ws?.currentMessage) {
+        logger.warn(`No current message to finalize for worker ${scope.workerId}`, { component: 'SessionStore' });
+        return;
+      }
+
+      const message = ws.currentMessage;
+      delete message.isStreaming;
+
+      // Archive to shared messages array
+      this.localSession!.messages.push(message);
+
+      // Clean up worker slot
+      ws.currentMessage = undefined;
+      ws.activeFileOperations.clear();
+      ws.thinkingStartTime = undefined;
+      ws.lastThinkingContentIndex = undefined;
+
+      // Persist: Redis session + chat.json (NO Redis currentMessage key for workers)
+      try {
+        await this.saveSession();
+      } catch (error) {
+        logger.warn(`Failed to save session to Redis after worker finalize`, { component: 'SessionStore' }, error);
+      }
+      this.saveToChatFile();
+
+      logger.debug(`Finalized worker ${scope.workerId} message: ${message.id} (${message.contents.length} contents, cancelled=${cancelled})`, {
+        component: 'SessionStore'
+      });
+      return;
+    }
+
+    // Main graph path
     if (!this.localSession?.currentMessage) {
       logger.warn(`No current message to finalize`, { component: 'SessionStore' });
       return;
@@ -388,6 +512,14 @@ export class SessionStore {
    * Track active file operation
    */
   trackFileOperation(filePath: string, contentIndex: number): void {
+    const scope = getWorkerScope();
+    if (scope) {
+      const ws = this.workerMessages.get(scope.workerId);
+      if (!ws) return;
+      ws.activeFileOperations.set(filePath, { filePath, contentIndex });
+      return;
+    }
+
     if (!this.localSession) return;
     
     if (!this.localSession.activeFileOperations) {
@@ -406,6 +538,10 @@ export class SessionStore {
    * Get active file operation
    */
   getFileOperation(filePath: string): FileOperationTracker | undefined {
+    const scope = getWorkerScope();
+    if (scope) {
+      return this.workerMessages.get(scope.workerId)?.activeFileOperations.get(filePath);
+    }
     return this.localSession?.activeFileOperations?.get(filePath);
   }
 
@@ -413,6 +549,12 @@ export class SessionStore {
    * Clear active file operation
    */
   clearFileOperation(filePath: string): void {
+    const scope = getWorkerScope();
+    if (scope) {
+      this.workerMessages.get(scope.workerId)?.activeFileOperations.delete(filePath);
+      return;
+    }
+
     this.localSession?.activeFileOperations?.delete(filePath);
     
     // Save to Redis asynchronously

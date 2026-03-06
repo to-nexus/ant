@@ -219,8 +219,9 @@ export async function tool(
     // Execute
     const { result, error } = await executeToolByName(name, state, args);
 
-    // Truncate result per tool
-    const truncation = toolResultManager.truncateResult(name, result, error);
+    // Truncate result per tool (pass filePath for outline generation on read_file)
+    const toolFilePath = name === 'read_file' ? args.path : undefined;
+    const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath);
 
     if (truncation.wasTruncated) {
       console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);

@@ -14,12 +14,14 @@
  */
 
 import { TokenBudgetManager } from './tokenBudget';
+import { generateFileOutline } from './fileOutline';
 
 export interface TruncationConfig {
   maxTokensPerResult: number;     // Tool 결과당 최대 토큰 (기본: 5000)
   maxSearchResults: number;        // search_code 최대 결과 수 (기본: 20)
   maxListFiles: number;            // list_files 최대 파일 수 (기본: 50)
   maxReadFileTokens: number;       // read_file 최대 토큰 (기본: 3000)
+  maxSourceDocTokens: number;      // read_source_doc 최대 토큰 (기본: 15000)
   maxRunCommandTokens: number;     // run_command 최대 토큰 (기본: 2500)
   preserveErrors: boolean;         // 에러는 truncate 안함 (기본: true)
 }
@@ -46,6 +48,7 @@ export class ToolResultManager {
       maxSearchResults: config?.maxSearchResults || 20,
       maxListFiles: config?.maxListFiles || 50,
       maxReadFileTokens: config?.maxReadFileTokens || 3000,
+      maxSourceDocTokens: config?.maxSourceDocTokens || 15000,
       maxRunCommandTokens: config?.maxRunCommandTokens || 2500,
       preserveErrors: config?.preserveErrors !== false,
     };
@@ -53,13 +56,14 @@ export class ToolResultManager {
   
   /**
    * Tool 결과를 토큰 예산 내로 truncate
+   * @param filePath - read_file: file path, read_source_doc: filename (for outline generation)
    */
   truncateResult(
     toolName: string,
     result: any,
-    error?: string
+    error?: string,
+    filePath?: string,
   ): TruncationResult {
-    // 에러는 truncate하지 않음
     if (error && this.config.preserveErrors) {
       return {
         content: `Error: ${error}`,
@@ -69,12 +73,13 @@ export class ToolResultManager {
       };
     }
     
-    // Tool별 전용 truncation 로직
     switch (toolName) {
       case 'search_code':
         return this.truncateSearchCode(result);
       case 'read_file':
-        return this.truncateReadFile(result);
+        return this.truncateReadFile(result, filePath);
+      case 'read_source_doc':
+        return this.truncateSourceDoc(result, filePath);
       case 'run_command':
         return this.truncateRunCommand(result);
       case 'list_files':
@@ -149,11 +154,9 @@ export class ToolResultManager {
   /**
    * read_file 결과 truncation
    * 전략: maxReadFileTokens 기준으로 시작과 끝 보존, 중간 생략
-   * 
-   * 버그 수정: 이전에는 라인 수 기반 40%/40%로 자르면서 토큰 제한을 무시했음.
-   * 이제 토큰 기반으로 비율을 계산하여 maxReadFileTokens 내로 맞춤.
+   * Truncation 시 file outline (구조 목차)과 startLine/endLine 안내를 삽입.
    */
-  private truncateReadFile(result: any): TruncationResult {
+  private truncateReadFile(result: any, filePath?: string): TruncationResult {
     const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
     const originalTokens = this.tokenManager.estimateTokens(resultStr);
     const maxTokens = this.config.maxReadFileTokens;
@@ -169,21 +172,22 @@ export class ToolResultManager {
     
     const lines = resultStr.split('\n');
     
-    // 토큰 기반 비율 계산: 목표 토큰 / 원본 토큰
-    // 시작/끝 각각 절반씩 할당
     const keepRatio = maxTokens / originalTokens;
     const keepLines = Math.max(10, Math.floor(lines.length * keepRatio / 2));
     
-    // 최소 10줄, 최대 원본의 40%
     const keepStart = Math.min(keepLines, Math.floor(lines.length * 0.4));
     const keepEnd = Math.min(keepLines, Math.floor(lines.length * 0.4));
     
     const omittedLines = lines.length - keepStart - keepEnd;
+
+    const outlineSection = this.buildOutlineSection(resultStr, filePath);
     
     const truncated = [
       ...lines.slice(0, keepStart),
       `\n... (${omittedLines} lines omitted, file too large: ${originalTokens.toLocaleString()} tokens → ${maxTokens.toLocaleString()} limit) ...\n`,
       ...lines.slice(-keepEnd),
+      ...(outlineSection ? [`\n${outlineSection}`] : []),
+      `\nUse read_file with startLine/endLine to read specific sections.`,
     ].join('\n');
     
     const truncatedTokens = this.tokenManager.estimateTokens(truncated);
@@ -192,6 +196,9 @@ export class ToolResultManager {
     console.log(`   Original: ${originalTokens.toLocaleString()} tokens (${lines.length} lines)`);
     console.log(`   Truncated: ${truncatedTokens.toLocaleString()} tokens`);
     console.log(`   Kept: First ${keepStart} + Last ${keepEnd} lines (target: ${maxTokens} tokens)`);
+    if (outlineSection) {
+      console.log(`   Outline: included (${outlineSection.split('\n').length - 1} entries)`);
+    }
     
     return {
       content: truncated,
@@ -202,6 +209,58 @@ export class ToolResultManager {
     };
   }
   
+  /**
+   * read_source_doc 결과 truncation
+   * Source docs are the primary input for design tasks — use a generous limit.
+   * When truncated, inserts file outline and guides the LLM to use startLine/endLine.
+   */
+  private truncateSourceDoc(result: any, filePath?: string): TruncationResult {
+    const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+    const originalTokens = this.tokenManager.estimateTokens(resultStr);
+    const maxTokens = this.config.maxSourceDocTokens;
+
+    if (originalTokens <= maxTokens) {
+      return {
+        content: resultStr,
+        wasTruncated: false,
+        originalTokens,
+        truncatedTokens: originalTokens,
+      };
+    }
+
+    const lines = resultStr.split('\n');
+    const keepRatio = maxTokens / originalTokens;
+    const keepLines = Math.max(20, Math.floor(lines.length * keepRatio));
+
+    // Outline uses raw content (strip "[Total: N lines]\n\n" header for correct line numbers)
+    const rawContent = this.extractSourceDocContent(resultStr);
+    const outlineSection = this.buildOutlineSection(rawContent, filePath);
+
+    const truncated = [
+      ...lines.slice(0, keepLines),
+      `\n... (truncated: ${lines.length - keepLines} more lines, ${originalTokens.toLocaleString()} total tokens)`,
+      ...(outlineSection ? [`\n${outlineSection}`] : []),
+      `\nUse read_source_doc with startLine/endLine to read remaining sections.`,
+    ].join('\n');
+
+    const truncatedTokens = this.tokenManager.estimateTokens(truncated);
+
+    console.log(`\n✂️  [ToolResult] Truncated read_source_doc:`);
+    console.log(`   Original: ${originalTokens.toLocaleString()} tokens (${lines.length} lines)`);
+    console.log(`   Truncated: ${truncatedTokens.toLocaleString()} tokens (${keepLines} lines)`);
+    if (outlineSection) {
+      console.log(`   Outline: included (${outlineSection.split('\n').length - 1} entries)`);
+    }
+
+    return {
+      content: truncated,
+      wasTruncated: true,
+      originalTokens,
+      truncatedTokens,
+      reason: `Source doc too large, kept first ${keepLines} lines — use startLine/endLine for rest`,
+    };
+  }
+
   /**
    * run_command 결과 truncation
    * 전략: Header(30%) + Tail(50%) 보존. Build error는 보통 출력 끝에 위치하므로
@@ -299,6 +358,26 @@ export class ToolResultManager {
     };
   }
   
+  /**
+   * Strip the "[Total: N lines]\n\n" header that read_source_doc prepends to results.
+   * Returns raw document content so outline line numbers match startLine/endLine parameters.
+   */
+  private extractSourceDocContent(result: string): string {
+    const match = result.match(/^\[Total: \d+ lines\]\n\n/);
+    if (match) return result.slice(match[0].length);
+    return result;
+  }
+
+  /**
+   * Build a "[File Structure]" section from the file outline, or null if unavailable.
+   */
+  private buildOutlineSection(content: string, filePath?: string): string | null {
+    if (!filePath) return null;
+    const outline = generateFileOutline(content, filePath);
+    if (!outline) return null;
+    return `[File Structure]\n${outline}`;
+  }
+
   /**
    * 일반 tool 결과 truncation
    * 전략: JSON을 compact하게 포맷, 토큰 초과시 간단히 잘라냄
