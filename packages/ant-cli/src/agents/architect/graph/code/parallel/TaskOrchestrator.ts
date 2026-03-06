@@ -48,7 +48,9 @@ function isDeterministicError(error: Error): boolean {
     // Model not found / not available
     /model.*not found/i.test(msg) ||
     // Explicitly non-retriable HTTP status codes
-    /\b(400|401|403|404)\b.*\{/.test(msg)
+    /\b(400|401|403|404)\b.*\{/.test(msg) ||
+    // Call budget exhausted — retrying would repeat the same non-productive loop
+    /exhausted call budget/i.test(msg)
   );
 }
 

@@ -32,6 +32,8 @@ import { buildMessages } from './systemDesignPrompt';
 import { buildUiDesignMessages } from './uiDesignPrompt';
 import { buildSpecMessages } from './specPrompt';
 
+const MAX_NO_OUTPUT_CALLS = 15;
+
 export async function docGen(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
@@ -84,6 +86,38 @@ export async function docGen(
     useSourceFileTool = result.useSourceFileTool;
   }
   
+  // Progressive call counter + budget warning injection
+  const noOutputCount = state._noOutputCallCount || 0;
+  if (noOutputCount >= 1) {
+    const remaining = MAX_NO_OUTPUT_CALLS - noOutputCount;
+    let warningText: string;
+    if (noOutputCount >= 8) {
+      warningText = `\n\n⚠️ SYSTEM WARNING [call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls, ${remaining} remaining]\n` +
+        `STOP all reading. You MUST write your document NOW using <file> or <append> tags, or this task will be TERMINATED. ` +
+        `Use the information already in your conversation history.`;
+    } else if (noOutputCount >= 5) {
+      warningText = `\n\n⚠️ WARNING [call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls]\n` +
+        `You MUST start writing your document NOW. You have gathered enough context from source documents. ` +
+        `Do NOT read more — begin output immediately using <file> or <append> tags.`;
+    } else {
+      warningText = `\n\n[call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls]\n` +
+        `Reminder: you MUST start writing output by call 5-7. Read in broad ranges (300-500+ lines) and do not exhaustively read every section.`;
+    }
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === 'user') {
+      if (Array.isArray(lastMsg.content)) {
+        (lastMsg.content as any[]).push({ type: 'text', text: warningText });
+      } else if (typeof lastMsg.content === 'string') {
+        lastMsg.content = [
+          { type: 'text', text: lastMsg.content },
+          { type: 'text', text: warningText },
+        ];
+      }
+    }
+    const level = noOutputCount >= 8 ? 'URGENT' : noOutputCount >= 5 ? 'WARNING' : 'INFO';
+    console.log(`⚠️  [DocGen] Budget ${level}: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} no-output calls, ${remaining} remaining`);
+  }
+
   // Tool activation: Select appropriate tool set based on work type
   const tools = isExplainMode
     ? getToolsByNames(TOOL_SETS.designExplain)
@@ -261,7 +295,6 @@ export async function docGen(
     console.log(`   SafetyNet: callIndex=${newCallIndex}, noOutputStreak=${state._noOutputCallCount || 0}, newFiles=${files.length}`);
     
     // Safety Net state calculation (MUST go through channel system via return value)
-    const MAX_NO_OUTPUT_CALLS = 10;
     const envMaxCalls = parseInt(process.env.DOCGEN_MAX_CALLS || '', 10);
     const maxCalls = (!isNaN(envMaxCalls) && envMaxCalls >= 10) ? envMaxCalls : 25;
 
