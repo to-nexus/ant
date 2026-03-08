@@ -69,7 +69,7 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
       // Redirect detection — uniform across ALL boundaries.
       // Three triggers (applied symmetrically, no guarded boundary exceptions):
       //   1. LLM explicitly set workStatus='redirect'
-      //   2. LLM set proceed but leaked suggestedJob mismatch + redirectReason (confusion state)
+      //   2. LLM set proceed but leaked suggestedJob mismatch (confusion state)
       //   3. LLM set proceed but leaked suggestedAgent mismatch (cross-agent confusion)
       // For design↔plan, the prompt instructs LLM to omit suggestedJob/suggestedAgent
       // entirely when the boundary applies, so triggers 2/3 should not fire on that boundary.
@@ -77,8 +77,7 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
         !isRedirectToSame && (
           parsed.workStatus === 'redirect' ||
           (parsed.suggestedJob && 
-           parsed.suggestedJob !== effectiveCurrentJob && 
-           parsed.redirectReason) ||
+           parsed.suggestedJob !== effectiveCurrentJob) ||
           (parsed.suggestedAgent && parsed.suggestedAgent !== effectiveCurrentAgent)
         );
       
