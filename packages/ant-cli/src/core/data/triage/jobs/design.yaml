@@ -100,6 +100,6 @@ modes:
       - Task decomposition for complex modifications
 
 redirect_signals:
-  to_code: Request is pure explanation/analysis without modification intent (any boundary), OR single-boundary implementation/modification that does not require upfront specification
+  to_code: Request is pure explanation/analysis without modification intent (any boundary), OR single-boundary implementation/modification that does not require upfront specification, OR design documents already exist AND the request explicitly asks to start implementation/development
   to_learn: Request target is codebase analysis or indexing output
   to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
