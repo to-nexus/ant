@@ -70,7 +70,9 @@ export class JwtService {
     const [header, body, signature] = parts;
     const expectedSig = this.hmac(`${header}.${body}`);
 
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
+    const sigBuf = Buffer.from(signature);
+    const expectedBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       throw new Error('Invalid token signature');
     }
 
@@ -79,7 +81,7 @@ export class JwtService {
     );
 
     const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < now) {
+    if (payload.exp == null || payload.exp < now) {
       throw new Error('Token expired');
     }
 

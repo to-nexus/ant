@@ -96,6 +96,10 @@ export class RealtimeServer {
    * Setup Express middleware
    */
   private setupMiddleware(): void {
+    if (process.env.NODE_ENV === 'production') {
+      this.app.set('trust proxy', 1);
+    }
+
     // Shared CORS configuration (same as ant-api and ant-preview)
     this.app.use(createCorsMiddleware());
     
@@ -115,21 +119,18 @@ export class RealtimeServer {
     const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
     if (isCloudMode) {
       const jwtService = createJwtServiceFromEnv();
-      if (jwtService) {
-        this.app.use(createJwtAuthMiddleware({
-          jwtService,
-          publicPaths: [
-            '/health',
-            '/api/health',
-          ],
-          publicPrefixes: [],
-        }));
-        logger.info('JWT authentication enabled for Realtime Server', { component: 'RealtimeServer' });
-      } else {
-        logger.warn('ANT_JWT_SECRET not set - Realtime Server authentication disabled', { 
-          component: 'RealtimeServer' 
-        });
+      if (!jwtService) {
+        throw new Error('ANT_JWT_SECRET is required in cloud mode. Set the environment variable to enable authentication.');
       }
+      this.app.use(createJwtAuthMiddleware({
+        jwtService,
+        publicPaths: [
+          '/health',
+          '/api/health',
+        ],
+        publicPrefixes: [],
+      }));
+      logger.info('JWT authentication enabled for Realtime Server', { component: 'RealtimeServer' });
     }
     
     logger.debug('Middleware configured', { component: 'RealtimeServer' });

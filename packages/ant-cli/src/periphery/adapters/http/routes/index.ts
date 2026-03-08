@@ -87,7 +87,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   }
   
   // Figma OAuth integration
-  router.use('/figma', createFigmaOAuthRoutes(deps.workspaceRoot || process.cwd()));
+  router.use('/figma', createFigmaOAuthRoutes(deps.workspaceRoot || process.cwd(), deps.stateStore));
   
   // Figma Files integration
   if (deps.workspaceRoot && deps.workspaceResolver) {

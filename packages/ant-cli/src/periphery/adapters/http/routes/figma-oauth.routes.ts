@@ -5,9 +5,19 @@
  */
 
 import { Router, Request, Response } from 'express';
+import * as crypto from 'crypto';
 import { UserConfigManager, FigmaCredentials } from '../../../../utils/userConfig';
+import { StateStorePort } from '../../../../core/ports/stateStore';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
+
+const FIGMA_STATE_TTL_SECONDS = 5 * 60; // 5 minutes
+const FIGMA_STATE_KEY_PREFIX = 'ant:figma:state:';
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 interface FigmaTokenResponse {
   access_token: string;
@@ -23,7 +33,7 @@ interface FigmaUserResponse {
   handle?: string;
 }
 
-export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
+export function createFigmaOAuthRoutes(workspaceRoot: string, stateStore?: StateStorePort): Router {
   const router = Router();
   const userConfig = new UserConfigManager(workspaceRoot);
   
@@ -105,12 +115,9 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
    * GET /api/figma/oauth/authorize
    * Redirect to Figma OAuth authorization page
    */
-  router.get('/oauth/authorize', (req: Request, res: Response) => {
+  router.get('/oauth/authorize', async (req: Request, res: Response) => {
     if (!FIGMA_CLIENT_ID) {
-      return res.status(500).json({
-        success: false,
-        error: 'Figma OAuth not configured. Please set FIGMA_CLIENT_ID in .env'
-      });
+      return sendErrorResponse(res, 500, new Error('Figma OAuth not configured'), 'FigmaOAuth');
     }
     
     // Get user context from JWT auth middleware
@@ -126,18 +133,18 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
     // Get dynamic redirect URI
     const redirectUri = getRedirectUri(req);
     
-    const state = Buffer.from(JSON.stringify({
-      timestamp: Date.now(),
-      userId,
-      organizationId,
-      redirectUri  // Store for verification in callback
-    })).toString('base64');
+    // Generate CSRF-safe state (random token stored in Redis)
+    const stateToken = crypto.randomBytes(32).toString('hex');
+    if (stateStore) {
+      const stateData = JSON.stringify({ userId, organizationId, redirectUri });
+      await stateStore.setKeyWithTTL(`${FIGMA_STATE_KEY_PREFIX}${stateToken}`, stateData, FIGMA_STATE_TTL_SECONDS);
+    }
     
     const authUrl = new URL('https://www.figma.com/oauth');
     authUrl.searchParams.set('client_id', FIGMA_CLIENT_ID);
     authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('scope', 'current_user:read file_content:read');  // ✅ Both scopes needed
-    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('scope', 'current_user:read file_content:read');
+    authUrl.searchParams.set('state', stateToken);
     authUrl.searchParams.set('response_type', 'code');
     
     logger.debug('Redirecting to Figma OAuth', { component: 'FigmaOAuth' });
@@ -166,8 +173,20 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
     }
     
     try {
-      // Decode state to get user context
-      const stateData = JSON.parse(Buffer.from(state as string, 'base64').toString());
+      // Verify and consume CSRF state from Redis
+      let stateData: { userId: string; organizationId: string; redirectUri?: string };
+      if (stateStore) {
+        const key = `${FIGMA_STATE_KEY_PREFIX}${state}`;
+        const stored = await stateStore.getKey(key);
+        if (!stored) {
+          return res.status(400).json({ success: false, error: 'Invalid or expired state' });
+        }
+        await stateStore.deleteKey(key);
+        stateData = JSON.parse(stored);
+      } else {
+        return res.status(500).json({ success: false, error: 'State store not available' });
+      }
+      
       const userContext = {
         userId: stateData.userId,
         organizationId: stateData.organizationId,
@@ -245,37 +264,25 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
       logger.info('Figma OAuth completed successfully', { component: 'FigmaOAuth' });
       
       // Redirect to success page and notify parent window
-      const displayEmail = userData.email || 'Unknown';
-      const displayUserId = figmaUserId || 'Unknown';
+      const safeEmail = escapeHtml(userData.email || 'Unknown');
+      const safeUserId = escapeHtml(figmaUserId || 'Unknown');
+      const frontendOrigin = escapeHtml(process.env.FRONTEND_URL || '');
       
       res.send(`
         <html>
           <head><title>Figma Connected</title></head>
           <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-            <h1>✅ Figma Connected Successfully!</h1>
-            <p>Connected as: <strong>${displayEmail}</strong></p>
-            <p>User ID: <code>${displayUserId}</code></p>
+            <h1>Figma Connected Successfully!</h1>
+            <p>Connected as: <strong>${safeEmail}</strong></p>
+            <p>User ID: <code>${safeUserId}</code></p>
             <p>You can close this window and return to ANT.</p>
             <script>
-              console.log('[Figma OAuth Callback] Sending postMessage to opener...');
-              
-              // Notify parent window (opener)
               if (window.opener) {
                 window.opener.postMessage({ 
-                  type: 'figma-oauth-success',
-                  email: '${displayEmail}',
-                  userId: '${displayUserId}'
-                }, '*');
-                console.log('[Figma OAuth Callback] ✅ postMessage sent');
-              } else {
-                console.error('[Figma OAuth Callback] ❌ No window.opener found!');
+                  type: 'figma-oauth-success'
+                }, '${frontendOrigin}' || window.location.origin);
               }
-              
-              // Auto-close after 3 seconds
-              setTimeout(() => {
-                console.log('[Figma OAuth Callback] Closing window...');
-                window.close();
-              }, 3000);
+              setTimeout(function() { window.close(); }, 3000);
             </script>
           </body>
         </html>

@@ -44,7 +44,7 @@ export class GoogleOIDCService {
    * 
    * @param state - CSRF protection state parameter (stored server-side for verification)
    */
-  getAuthorizationUrl(state?: string): string {
+  getAuthorizationUrl(state: string): string {
     const url = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: [
@@ -53,7 +53,7 @@ export class GoogleOIDCService {
         'profile'
       ],
       prompt: 'consent',
-      ...(state ? { state } : {}),
+      state,
     });
     
     return url;

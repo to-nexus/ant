@@ -58,6 +58,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
 
   setUser: (email, organization) => {
     set({ userEmail: email, userOrganization: organization });
+    saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
+    saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, organization);
   },
 
   clearUser: () => {

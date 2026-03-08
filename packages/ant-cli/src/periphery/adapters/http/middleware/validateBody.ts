@@ -42,13 +42,17 @@ export function validateBody<T extends z.ZodTypeAny>(schema: T) {
  * POST /projects/:id/features/:feature/execute
  */
 export const executeJobSchema = z.object({
-  taskDescription: z.string().min(1, 'Task description is required').max(50000),
-  jobType: z.enum(['design', 'code', 'learn', 'plan']).optional(),
+  task: z.enum(['design', 'code', 'learn', 'plan']),
+  agent: z.string().optional(),
   mode: z.string().optional(),
-  agentSlug: z.string().optional(),
+  language: z.string().optional(),
+  overrideDirective: z.string().optional(),
+  chatSource: z.boolean().optional(),
+  skipTriage: z.boolean().optional(),
+  enableEvaluation: z.boolean().optional(),
   uiDocumentContext: z.any().optional(),
   designContext: z.any().optional(),
-}).passthrough(); // Allow extra fields for backward compat
+}).passthrough();
 
 /**
  * POST /projects
@@ -62,6 +66,6 @@ export const createProjectSchema = z.object({
  * POST /projects/:id/features/:feature/chat/user-message
  */
 export const chatUserMessageSchema = z.object({
-  message: z.string().min(1, 'Message is required').max(100000),
-  metadata: z.any().optional(),
+  content: z.string().min(1, 'Message content is required').max(100000),
+  jobId: z.string().optional(),
 }).passthrough();
