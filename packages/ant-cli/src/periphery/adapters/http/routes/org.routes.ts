@@ -13,6 +13,8 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
+import { sendErrorResponse } from './helpers/errorResponse';
+import { logger } from '../../../../utils/logger';
 import { CANONICAL_FEATURE_DIRS } from '../../../../core/utils/sessionPaths';
 import { OrgConfig } from '../../../../core/types/orgConfig';
 
@@ -120,7 +122,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
       res.json({ members });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -147,7 +149,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
       res.json({ projects });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -174,7 +176,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
       res.json({ features });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -209,7 +211,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
 
       res.json({ directories: canonicalDirs });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -230,7 +232,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       const config = await readOrgConfig(workspacesPath, orgId);
       res.json(config);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -259,7 +261,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       await writeOrgConfig(workspacesPath, orgId, merged);
       res.json(merged);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -279,7 +281,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       const config = await readUserConfig(workspacesPath, userContext.organizationId, userContext.userId);
       res.json(config);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -314,7 +316,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       await writeUserConfig(workspacesPath, userContext.organizationId, userContext.userId, merged);
       res.json(merged);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 
@@ -329,10 +331,10 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
       const userWorkspacePath = path.join(workspacesPath, userContext.organizationId, userContext.userId);
 
-      console.log(`[UserReset] Starting account reset for user ${userContext.userId} in org ${userContext.organizationId}`);
+      logger.debug(`[UserReset] Starting account reset for user ${userContext.userId} in org ${userContext.organizationId}`);
 
       if (!fs.existsSync(userWorkspacePath)) {
-        console.log('[UserReset] User workspace not found, nothing to reset');
+        logger.debug('[UserReset] User workspace not found, nothing to reset');
         res.json({ success: true, message: 'No data to reset' });
         return;
       }
@@ -342,20 +344,20 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
         .filter(dirent => dirent.isDirectory() && dirent.name !== '.ant')
         .map(dirent => dirent.name);
 
-      console.log(`[UserReset] Found ${projectDirs.length} projects to delete`);
+      logger.debug(`[UserReset] Found ${projectDirs.length} projects to delete`);
 
       // Delete each project directory entirely
       for (const projectId of projectDirs) {
         const projectPath = path.join(userWorkspacePath, projectId);
         await fs.promises.rm(projectPath, { recursive: true, force: true });
-        console.log(`[UserReset] Deleted project ${projectId}`);
+        logger.debug(`[UserReset] Deleted project ${projectId}`);
       }
 
       // Delete user config
       const userConfigPath = getUserConfigPath(workspacesPath, userContext.organizationId, userContext.userId);
       if (fs.existsSync(userConfigPath)) {
         await fs.promises.unlink(userConfigPath);
-        console.log('[UserReset] Deleted user-config.json');
+        logger.debug('[UserReset] Deleted user-config.json');
       }
 
       // Delete .ant directory if it exists and is now empty
@@ -364,15 +366,15 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
         const antDirContents = fs.readdirSync(antDirPath);
         if (antDirContents.length === 0) {
           await fs.promises.rmdir(antDirPath);
-          console.log('[UserReset] Deleted empty .ant directory');
+          logger.debug('[UserReset] Deleted empty .ant directory');
         }
       }
 
-      console.log('[UserReset] ✅ Account reset complete');
+      logger.debug('[UserReset] ✅ Account reset complete');
       res.json({ success: true, message: 'Account reset successfully' });
     } catch (error: any) {
-      console.error('[UserReset] Failed:', error);
-      res.status(500).json({ success: false, error: error.message });
+      logger.error('[UserReset] Failed', { component: 'UserReset' }, error);
+      sendErrorResponse(res, 500, error, 'Org');
     }
   });
 

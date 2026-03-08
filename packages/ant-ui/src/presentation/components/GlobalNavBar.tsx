@@ -2,9 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
-import { SignUpModal } from './auth/SignUpModal';
-import { SignInModal } from './auth/SignInModal';
-import { signUp, signIn, signOut, checkLocalBackend, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
+import { signOut, checkLocalBackend, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
 
@@ -54,16 +52,12 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const selectedFeature = useStore((state) => state.selectedFeature);
   const userEmail = useStore((state) => state.userEmail);
   const userOrganization = useStore((state) => state.userOrganization);
-  const setUser = useStore((state) => state.setUser);
   const clearUser = useStore((state) => state.clearUser);
   const reset = useStore((state) => state.reset);
   const backendMode = useStore((state) => state.backendMode);
   const setBackendMode = useStore((state) => state.setBackendMode);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   
-  // Auth modal state
-  const [showSignUpModal, setShowSignUpModal] = useState(false);
-  const [showSignInModal, setShowSignInModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
@@ -136,54 +130,15 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     }
   };
   
-  // Handle sign up
-  const handleSignUp = async (email: string) => {
-    const response = await signUp(email);
-    if (response.success && response.user) {
-      setUser(response.user.email, response.user.organization);
-      // Load projects after sign up
-      const fetchProjects = useStore.getState().fetchProjects;
-      await fetchProjects();
-    }
-  };
-  
-  // Handle sign in
-  const handleSignIn = async (email: string) => {
-    const response = await signIn(email);
-    if (response.success && response.user) {
-      setUser(response.user.email, response.user.organization);
-      // Load projects after sign in
-      const fetchProjects = useStore.getState().fetchProjects;
-      await fetchProjects();
-    }
-  };
-  
-  // Handle Sign In button click
+  // Handle Sign In / Sign Up — always redirect to Google OIDC
   const handleSignInClick = () => {
-    const skipAuth = import.meta.env.VITE_SKIP_AUTH_FOR_LOCALHOST === 'true';
-    
-    if (skipAuth) {
-      // SKIP=true: OAuth 건너뛰고 이메일 모달
-      setShowSignInModal(true);
-    } else {
-      // SKIP=false: OAuth 필수 - 백엔드 모드에 따라 URL 선택
-      const backendBase = getOAuthBackendBase();
-      window.location.href = `${backendBase}/api/auth/google`;
-    }
+    const backendBase = getOAuthBackendBase();
+    window.location.href = `${backendBase}/api/auth/google`;
   };
   
-  // Handle Sign Up button click
   const handleSignUpClick = () => {
-    const skipAuth = import.meta.env.VITE_SKIP_AUTH_FOR_LOCALHOST === 'true';
-    
-    if (skipAuth) {
-      // SKIP=true: OAuth 건너뛰고 이메일 모달
-      setShowSignUpModal(true);
-    } else {
-      // SKIP=false: OAuth 필수 - 백엔드 모드에 따라 URL 선택
-      const backendBase = getOAuthBackendBase();
-      window.location.href = `${backendBase}/api/auth/google`;
-    }
+    const backendBase = getOAuthBackendBase();
+    window.location.href = `${backendBase}/api/auth/google`;
   };
   
   // Handle sign out
@@ -485,18 +440,6 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
         </div>
       </div>
       
-      {/* Auth Modals */}
-      <SignUpModal
-        isOpen={showSignUpModal}
-        onClose={() => setShowSignUpModal(false)}
-        onSignUp={handleSignUp}
-      />
-      
-      <SignInModal
-        isOpen={showSignInModal}
-        onClose={() => setShowSignInModal(false)}
-        onSignIn={handleSignIn}
-      />
     </header>
   );
 }

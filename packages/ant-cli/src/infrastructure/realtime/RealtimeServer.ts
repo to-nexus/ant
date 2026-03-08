@@ -8,12 +8,17 @@
  * - Feature SSE: /api/projects/:id/features/:feature/stream
  * - Workflow SSE: /api/jobs/:jobId/workflow/stream
  * - Redis Pub/Sub subscription for cross-pod message delivery
+ * - JWT cookie authentication (shared with ant-api and ant-preview)
  * 
  * @see docs/architecture/10-cloud-architecture.md
  */
 
 import express, { Express, Request, Response } from 'express';
-import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
+import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
+import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { createSSERoutes } from '../../periphery/adapters/http/routes';
 import { 
   SSEService, 
@@ -91,46 +96,41 @@ export class RealtimeServer {
    * Setup Express middleware
    */
   private setupMiddleware(): void {
-    // CORS configuration
-    const corsOrigins = this.config.corsOrigins || [
-      'https://ant.crosstoken.io',
-      'https://ant-server.crosstoken.io',
-      'https://ant-preview.crosstoken.io',
-      'https://*.crosstoken.io',
-    ];
+    // Shared CORS configuration (same as ant-api and ant-preview)
+    this.app.use(createCorsMiddleware());
     
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (same-origin, Postman, etc.)
-        if (!origin) {
-          return callback(null, true);
-        }
-        
-        // Check if origin is in allowed list or matches pattern
-        if (corsOrigins.some(allowed => {
-          if (allowed.includes('*')) {
-            const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
-            return pattern.test(origin);
-          }
-          return allowed === origin;
-        })) {
-          return callback(null, true);
-        }
-        
-        // Allow any localhost origin in development
-        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-          return callback(null, true);
-        }
-        
-        callback(new Error(`CORS not allowed for origin: ${origin}`));
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'x-user-email', 'Authorization']
+    // Security headers
+    this.app.use(helmet({
+      crossOriginEmbedderPolicy: false,
+      contentSecurityPolicy: false,
     }));
+    
+    // Cookie parser (required for JWT cookie auth)
+    this.app.use(cookieParser());
     
     // Parse JSON for non-SSE routes
     this.app.use(express.json({ limit: '10mb' }));
+    
+    // JWT cookie authentication (cloud mode only)
+    const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
+    if (isCloudMode) {
+      const jwtService = createJwtServiceFromEnv();
+      if (jwtService) {
+        this.app.use(createJwtAuthMiddleware({
+          jwtService,
+          publicPaths: [
+            '/health',
+            '/api/health',
+          ],
+          publicPrefixes: [],
+        }));
+        logger.info('JWT authentication enabled for Realtime Server', { component: 'RealtimeServer' });
+      } else {
+        logger.warn('ANT_JWT_SECRET not set - Realtime Server authentication disabled', { 
+          component: 'RealtimeServer' 
+        });
+      }
+    }
     
     logger.debug('Middleware configured', { component: 'RealtimeServer' });
   }

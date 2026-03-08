@@ -1,24 +1,37 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { AuthService } from '../../../../infrastructure/auth/AuthService';
 import { GoogleOIDCService, OIDCUser } from '../../../../infrastructure/auth/GoogleOIDCService';
+import { JwtService } from '../../../../infrastructure/auth/JwtService';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { authRateLimiter } from '../middleware/rateLimiter';
+import { logger } from '../../../../utils/logger';
 import type { AuthContext } from '../../../../core/ports/auth';
+
+// In-memory store for OIDC state parameter (CSRF protection)
+// In production with multiple pods, use Redis TTL key instead.
+const oidcStateStore = new Map<string, { createdAt: number }>();
+const OIDC_STATE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Authentication routes for Cloud Mode
  * 
  * Handles:
- * - Legacy email-based authentication (sign up/in)
- * - Google OIDC authentication flow
+ * - Google OIDC authentication flow (JWT cookie issuance)
+ * - Session info endpoint (/api/auth/me)
+ * - Sign out (cookie clear)
  */
 export function createAuthRoutes(deps: {
   authService: AuthService;
   workspaceResolver: WorkspaceResolver;
   oidcService?: GoogleOIDCService;
+  jwtService?: JwtService;
 }): Router {
   const router = Router();
-  const { authService, workspaceResolver, oidcService } = deps;
+  const { authService, workspaceResolver, oidcService, jwtService } = deps;
+  
+  const isProduction = process.env.NODE_ENV === 'production';
   
   // ========================================
   // Common validation logic
@@ -32,24 +45,32 @@ export function createAuthRoutes(deps: {
     authContext: AuthContext;
     workspacePath: string;
   }> {
-    // Parse email
-    const [username, domain] = email.split('@');
+    const [, domain] = email.split('@');
     
-    // Only accept to.nexus organization
     if (domain !== 'to.nexus') {
       throw new Error('Only to.nexus organization is currently supported');
     }
     
-    // Authenticate (extract user context)
     const authContext = await authService.authenticate({ email });
     
-    // Get workspace path
     const workspacePath = workspaceResolver.getWorkspacePath({
       userId: authContext.user.id,
       organizationId: authContext.organization.id,
     });
     
     return { authContext, workspacePath };
+  }
+  
+  /**
+   * Cleanup expired OIDC states
+   */
+  function cleanupExpiredStates(): void {
+    const now = Date.now();
+    for (const [key, val] of oidcStateStore) {
+      if (now - val.createdAt > OIDC_STATE_TTL_MS) {
+        oidcStateStore.delete(key);
+      }
+    }
   }
   
   // ========================================
@@ -60,7 +81,7 @@ export function createAuthRoutes(deps: {
    * Initiate Google OAuth2 flow
    * GET /api/auth/google
    */
-  router.get('/auth/google', (req: Request, res: Response) => {
+  router.get('/auth/google', authRateLimiter, (req: Request, res: Response) => {
     if (!oidcService) {
       return res.status(503).json({
         error: 'Google authentication not configured',
@@ -69,15 +90,17 @@ export function createAuthRoutes(deps: {
     }
     
     try {
-      const authUrl = oidcService.getAuthorizationUrl();
+      // Generate CSRF state parameter
+      const state = crypto.randomBytes(32).toString('hex');
+      cleanupExpiredStates();
+      oidcStateStore.set(state, { createdAt: Date.now() });
       
-      // Redirect user to Google sign-in page
+      const authUrl = oidcService.getAuthorizationUrl(state);
       res.redirect(authUrl);
     } catch (error: any) {
-      console.error('[Auth] Google OAuth error:', error);
+      logger.error('[Auth] Google OAuth error', { component: 'Auth' }, error);
       return res.status(500).json({
         error: 'Failed to initiate Google authentication',
-        message: error.message
       });
     }
   });
@@ -85,247 +108,121 @@ export function createAuthRoutes(deps: {
   /**
    * Google OAuth2 callback
    * GET /api/auth/google/callback
+   * 
+   * Issues JWT httpOnly cookie and redirects to frontend.
    */
-  router.get('/auth/google/callback', async (req: Request, res: Response) => {
+  router.get('/auth/google/callback', authRateLimiter, async (req: Request, res: Response) => {
     if (!oidcService) {
       return res.status(503).json({
         error: 'Google authentication not configured'
       });
     }
     
-    const { code, error } = req.query;
+    const { code, error, state } = req.query;
+    const frontendUrl = process.env.FRONTEND_URL || '';
     
     // Handle OAuth errors
     if (error) {
-      console.error('[Auth] Google OAuth error:', error);
-      const frontendUrl = process.env.FRONTEND_URL || '';
-      return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(error as string)}`);
+      logger.warn(`[Auth] Google OAuth error: ${error}`, { component: 'Auth' });
+      return res.redirect(`${frontendUrl}/?error=oauth_failed`);
     }
     
     if (!code || typeof code !== 'string') {
-      const frontendUrl = process.env.FRONTEND_URL || '';
       return res.redirect(`${frontendUrl}/?error=no_code`);
     }
+    
+    // Verify CSRF state parameter
+    if (!state || typeof state !== 'string' || !oidcStateStore.has(state)) {
+      logger.warn('[Auth] Invalid or missing OIDC state parameter', { component: 'Auth' });
+      return res.redirect(`${frontendUrl}/?error=invalid_state`);
+    }
+    oidcStateStore.delete(state);
     
     try {
       // Exchange code for user info
       const oidcUser: OIDCUser = await oidcService.authenticateWithCode(code);
       
-      // Verify email is verified
       if (!oidcUser.emailVerified) {
-        const frontendUrl = process.env.FRONTEND_URL || '';
         return res.redirect(`${frontendUrl}/?error=email_not_verified`);
       }
       
-      // ✅ Use common validation logic
+      // Validate organization (to.nexus only)
+      const { authContext, workspacePath } = await validateAndGetWorkspace(oidcUser.email);
+      
+      // Create workspace for new user if needed
       try {
-        const { authContext, workspacePath } = await validateAndGetWorkspace(oidcUser.email);
-        
-        // Check if workspace exists (sign in vs sign up)
-        let isNewUser = false;
-        try {
-          await fs.promises.access(workspacePath);
-        } catch {
-          // Create workspace for new user
-          await fs.promises.mkdir(workspacePath, { recursive: true });
-          isNewUser = true;
-          console.log(`[Auth] Created workspace for ${oidcUser.email} at ${workspacePath}`);
-        }
-        
-        // Redirect to frontend with user info
-        const userData = encodeURIComponent(JSON.stringify({
-          email: oidcUser.email,
+        await fs.promises.access(workspacePath);
+      } catch {
+        await fs.promises.mkdir(workspacePath, { recursive: true });
+        logger.info(`[Auth] Created workspace for ${oidcUser.email}`, { component: 'Auth' });
+      }
+      
+      // Issue JWT cookie
+      if (jwtService) {
+        const token = jwtService.sign({
+          sub: authContext.user.id,
+          email: authContext.user.email,
+          org: authContext.organization.id,
           name: oidcUser.name,
           picture: oidcUser.picture,
-          organization: authContext.organization.id,
-          isNewUser
-        }));
+        });
         
-        const frontendUrl = process.env.FRONTEND_URL || '';
-        res.redirect(`${frontendUrl}/?auth=success&user=${userData}`);
-      } catch (error: any) {
-        console.error('[Auth] Validation error:', error);
-        const frontendUrl = process.env.FRONTEND_URL || '';
-        return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(error.message)}`);
+        res.cookie(
+          JwtService.cookieName,
+          token,
+          jwtService.getCookieOptions(isProduction),
+        );
       }
+      
+      // Clean redirect (no user data in URL)
+      res.redirect(`${frontendUrl}/?auth=success`);
     } catch (error: any) {
-      console.error('[Auth] Google callback error:', error);
-      const frontendUrl = process.env.FRONTEND_URL || '';
-      return res.redirect(`${frontendUrl}/?error=${encodeURIComponent(error.message)}`);
+      logger.error('[Auth] Google callback error', { component: 'Auth' }, error);
+      return res.redirect(`${frontendUrl}/?error=auth_failed`);
     }
   });
   
   // ========================================
-  // Legacy Email-based Routes
+  // Session Endpoints
   // ========================================
   
   /**
-   * Sign Up - Create user workspace
-   * POST /api/auth/signup
+   * GET /api/auth/me
+   * Returns current user info from JWT cookie.
+   * Frontend calls this after OIDC redirect to populate Zustand store.
    */
-  router.post('/auth/signup', async (req: Request, res: Response) => {
+  router.get('/auth/me', (req: Request, res: Response) => {
+    if (!jwtService) {
+      return res.status(503).json({ error: 'JWT not configured' });
+    }
+    
+    const token = (req as any).cookies?.[JwtService.cookieName];
+    if (!token) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
     try {
-      const { email } = req.body;
-      
-      if (!email) {
-        return res.status(400).json({
-          error: 'Email is required'
-        });
-      }
-      
-      // Validate email format
-      if (!email.includes('@')) {
-        return res.status(400).json({
-          error: 'Invalid email format'
-        });
-      }
-      
-      // Parse email to get organization and username
-      const [username, domain] = email.split('@');
-      
-      // Only accept to.nexus organization
-      if (domain !== 'to.nexus') {
-        return res.status(400).json({
-          error: 'Only to.nexus organization is currently supported'
-        });
-      }
-      
-      // ✅ Check if OAuth is required
-      const skipAuthForLocalhost = process.env.SKIP_AUTH_FOR_LOCALHOST === 'true';
-      
-      // SKIP_AUTH=true → 인증 건너뛰고 이메일만
-      // SKIP_AUTH=false → OAuth 필수
-      if (!skipAuthForLocalhost) {
-        // OAuth required
-        return res.status(401).json({
-          error: 'OAuth required',
-          message: 'Please use Google OAuth for authentication'
-        });
-      }
-      
-      // SKIP=true: OAuth 건너뛰고 이메일 가입 진행
-      console.log(`[Auth] Email-based signup (OAuth skipped): ${email}`);
-      
-      // ✅ Use common validation logic
-      const { authContext, workspacePath } = await validateAndGetWorkspace(email);
-      
-      // Check if workspace already exists
-      try {
-        await fs.promises.access(workspacePath);
-        return res.status(409).json({
-          error: 'Account already exists',
-          message: 'This email is already registered. Please sign in instead.'
-        });
-      } catch {
-        // Workspace doesn't exist, create it
-        await fs.promises.mkdir(workspacePath, { recursive: true });
-        
-        console.log(`[Auth] Created workspace for ${email} at ${workspacePath}`);
-        
-        return res.json({
-          success: true,
-          message: 'Account created successfully',
-          user: {
-            email: authContext.user.email,
-            userId: authContext.user.id,
-            organization: authContext.organization.name
-          }
-        });
-      }
-    } catch (error: any) {
-      console.error('[Auth] Sign up error:', error);
-      return res.status(500).json({
-        error: 'Sign up failed',
-        message: error.message
+      const payload = jwtService.verify(token);
+      res.json({
+        email: payload.email,
+        organization: payload.org,
+        name: payload.name,
+        picture: payload.picture,
+        userId: payload.sub,
       });
+    } catch {
+      return res.status(401).json({ error: 'Invalid session' });
     }
   });
   
   /**
-   * Sign In - Validate user workspace exists
-   * POST /api/auth/signin
-   */
-  router.post('/auth/signin', async (req: Request, res: Response) => {
-    try {
-      const { email } = req.body;
-      
-      if (!email) {
-        return res.status(400).json({
-          error: 'Email is required'
-        });
-      }
-      
-      // Validate email format
-      if (!email.includes('@')) {
-        return res.status(400).json({
-          error: 'Invalid email format'
-        });
-      }
-      
-      // Parse email to get organization and username
-      const [username, domain] = email.split('@');
-      
-      // Only accept to.nexus organization
-      if (domain !== 'to.nexus') {
-        return res.status(400).json({
-          error: 'Only to.nexus organization is currently supported'
-        });
-      }
-      
-      // ✅ Check if OAuth is required
-      const skipAuthForLocalhost = process.env.SKIP_AUTH_FOR_LOCALHOST === 'true';
-      
-      // SKIP_AUTH=true → 인증 건너뛰고 이메일만
-      // SKIP_AUTH=false → OAuth 필수
-      if (!skipAuthForLocalhost) {
-        // OAuth required
-        return res.status(401).json({
-          error: 'OAuth required',
-          message: 'Please use Google OAuth for authentication'
-        });
-      }
-      
-      // SKIP=true: OAuth 건너뛰고 이메일 로그인 진행
-      console.log(`[Auth] Email-based signin (OAuth skipped): ${email}`);
-      
-      // ✅ Use common validation logic
-      const { authContext, workspacePath } = await validateAndGetWorkspace(email);
-      
-      // Check if workspace exists
-      try {
-        await fs.promises.access(workspacePath);
-        
-        console.log(`[Auth] User signed in: ${email}`);
-        
-        return res.json({
-          success: true,
-          message: 'Signed in successfully',
-          user: {
-            email: authContext.user.email,
-            userId: authContext.user.id,
-            organization: authContext.organization.name
-          }
-        });
-      } catch {
-        return res.status(404).json({
-          error: 'Account not found',
-          message: 'No account found for this email. Please sign up first.'
-        });
-      }
-    } catch (error: any) {
-      console.error('[Auth] Sign in error:', error);
-      return res.status(500).json({
-        error: 'Sign in failed',
-        message: error.message
-      });
-    }
-  });
-  
-  /**
-   * Sign Out - Client-side only (clear localStorage)
-   * No server-side action needed
+   * POST /api/auth/signout
+   * Clears the JWT cookie.
    */
   router.post('/auth/signout', (_req: Request, res: Response) => {
+    if (jwtService) {
+      res.clearCookie(JwtService.cookieName, jwtService.getClearCookieOptions(isProduction));
+    }
     res.json({
       success: true,
       message: 'Signed out successfully'

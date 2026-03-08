@@ -40,6 +40,7 @@ export interface ServerDependencies {
   workspaceResolver: any;
   authService?: any;
   oidcService?: any;
+  jwtService?: any;
   portManager: any;
   portRegistry: any;
   ideService: any;
