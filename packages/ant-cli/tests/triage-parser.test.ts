@@ -180,14 +180,15 @@ describe('parseTriageResponse', () => {
       expect(result!.needsChoice).toBe(true);
     });
 
-    it('does NOT force-redirect when proceed + suggestedJob mismatch but NO redirectReason', () => {
+    it('force-redirects when proceed + suggestedJob mismatch even without redirectReason', () => {
       const result = parseTriageResponse(wrap({
         intent: 'work',
         workStatus: 'proceed',
         suggestedJob: 'design',
       }), 'code', 'architect');
-      expect(result!.workStatus).toBe('proceed');
-      expect(result!.needsChoice).toBeUndefined();
+      expect(result!.workStatus).toBe('redirect');
+      expect(result!.suggestedJob).toBe('design');
+      expect(result!.needsChoice).toBe(true);
     });
   });
 
@@ -225,23 +226,26 @@ describe('parseTriageResponse', () => {
       expect(result!.needsChoice).toBe(true);
     });
 
-    it('plan outbound: proceed + suggestedJob leak WITHOUT redirectReason → proceed', () => {
+    it('plan outbound: proceed + suggestedJob leak WITHOUT redirectReason → redirect', () => {
       const result = parseTriageResponse(wrap({
         intent: 'work',
         workStatus: 'proceed',
         suggestedJob: 'design',
       }), 'plan', 'planner');
-      // No redirectReason → force-redirect does NOT trigger
-      expect(result!.workStatus).toBe('proceed');
+      expect(result!.workStatus).toBe('redirect');
+      expect(result!.suggestedJob).toBe('design');
+      expect(result!.needsChoice).toBe(true);
     });
 
-    it('design→plan: proceed + suggestedJob leak WITHOUT redirectReason → proceed', () => {
+    it('design→plan: proceed + suggestedJob leak WITHOUT redirectReason → redirect', () => {
       const result = parseTriageResponse(wrap({
         intent: 'work',
         workStatus: 'proceed',
         suggestedJob: 'plan',
       }), 'design', 'architect');
-      expect(result!.workStatus).toBe('proceed');
+      expect(result!.workStatus).toBe('redirect');
+      expect(result!.suggestedJob).toBe('plan');
+      expect(result!.needsChoice).toBe(true);
     });
 
     it('plan outbound: explicit redirect is honored', () => {
