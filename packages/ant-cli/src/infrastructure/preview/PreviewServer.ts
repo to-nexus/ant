@@ -16,7 +16,8 @@
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
-import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -24,6 +25,10 @@ import * as net from 'net';
 import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
+import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
+import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
+import { previewRateLimiter } from '../../periphery/adapters/http/middleware/rateLimiter';
+import { createJwtServiceFromEnv } from '../auth/JwtService';
 import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
@@ -33,6 +38,7 @@ import { toUrlKey, toUrlKeyWithService, fromUrlKey, isUrlKey } from '../../perip
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import { InfrastructureManager } from '../../periphery/adapters/http/services/PreviewService/managers/InfrastructureManager';
+import { sendErrorResponse } from '../../periphery/adapters/http/routes/helpers/errorResponse';
 import { logger } from '../../utils/logger';
 
 // ============================================
@@ -133,26 +139,22 @@ export class PreviewServer {
   }
 
   /**
-   * Extract user context from request headers (Cloud mode)
+   * Extract user context from JWT-authenticated request.
+   * In cloud mode, req.user is populated by JWT middleware.
+   * In local mode, falls back to 'local:local'.
    */
   private extractUserContext(req: Request): { organizationId: string; userId: string } {
-    // Cloud mode: get from headers (set by API Gateway or auth proxy)
-    const email = req.headers['x-user-email'] as string || req.query['user-email'] as string;
-    
-    if (email && email.includes('@')) {
-      // Extract userId and organizationId from email (e.g., probe@to.nexus)
+    // Cloud mode: JWT middleware populates req.user
+    if (req.user && req.user.email) {
+      const email = req.user.email;
       const [userId, organizationId] = email.split('@');
-      return { organizationId, userId };
+      return {
+        organizationId: organizationId || req.user.organizationId || 'unknown',
+        userId: userId || req.user.id || 'unknown',
+      };
     }
-    
-    // Explicit header override (if provided)
-    const orgIdHeader = req.headers['x-organization-id'] as string;
-    const userIdHeader = req.headers['x-user-id'] as string;
-    if (orgIdHeader && userIdHeader) {
-      return { organizationId: orgIdHeader, userId: userIdHeader };
-    }
-    
-    // Local mode fallback
+
+    // Local mode fallback (JWT middleware not applied)
     return { organizationId: 'local', userId: 'local' };
   }
 
@@ -177,45 +179,28 @@ export class PreviewServer {
 
   /**
    * Setup Express middleware and routes
+   * 
+   * Middleware order (per plan):
+   * 1. CORS (shared corsConfig)
+   * 2. helmet (security headers)
+   * 3. Health check (before auth)
+   * 4. Preview Proxy middleware (no auth, before body parser)
+   * 5. cookie-parser
+   * 6. Body parsers (json)
+   * 7. JWT auth middleware (cloud only)
+   * 8. Management API routes
    */
   private setupRoutes(): void {
-    // CORS - explicit allowed origins
-    const allowedOrigins = [
-      'https://ant.crosstoken.io',
-      'https://ant-server.crosstoken.io',
-      'https://ant-preview.crosstoken.io',
-      'https://*.crosstoken.io',
-    ];
+    // 1. Shared CORS configuration (same as ant-api and ant-realtime)
+    this.app.use(createCorsMiddleware());
 
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (same-origin, server-to-server, health checks, etc.)
-        if (!origin) {
-          return callback(null, true);
-        }
-
-        // Check if origin matches allowed list (supports wildcard patterns)
-        if (allowedOrigins.some(allowed => {
-          if (allowed.includes('*')) {
-            const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
-            return pattern.test(origin);
-          }
-          return allowed === origin;
-        })) {
-          return callback(null, true);
-        }
-
-        // Allow any localhost origin in development
-        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-          return callback(null, true);
-        }
-
-        callback(new Error(`CORS not allowed for origin: ${origin}`));
-      },
-      credentials: true
+    // 2. Security headers
+    this.app.use(helmet({
+      crossOriginEmbedderPolicy: false,
+      contentSecurityPolicy: false,
     }));
 
-    // Health check (before other middleware)
+    // 3. Health check (before auth, before proxy)
     this.app.get('/health', async (_req: Request, res: Response) => {
       const previews = await this.stateStore.listPreviews();
       res.json({
@@ -226,9 +211,9 @@ export class PreviewServer {
       });
     });
 
-    // Preview Proxy - MUST be before body parsers
+    // 4. Preview Proxy - MUST be before body parsers and JWT auth
+    // No authentication required: proxies user's dev server output
     // Routes: /:urlKey/* where urlKey = tenantId--userId--projectId--feature
-    // 별도 호스트 (ant-preview.crosstoken.io) 이므로 pathPrefix 불필요
     this.app.use(createPreviewProxyMiddleware({
       portRegistry: this.stateStore,
       pathPrefix: '',
@@ -238,8 +223,32 @@ export class PreviewServer {
       }
     }));
 
-    // Body parser for API routes
+    // 5. Cookie parser (required for JWT cookie auth)
+    this.app.use(cookieParser());
+
+    // 6. Body parser for API routes
     this.app.use(express.json({ limit: '50mb' }));
+
+    // 7. JWT cookie authentication (cloud mode only)
+    const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
+    if (isCloudMode) {
+      const jwtService = createJwtServiceFromEnv();
+      if (jwtService) {
+        this.app.use(createJwtAuthMiddleware({
+          jwtService,
+          publicPaths: ['/health'],
+          publicPrefixes: [],
+        }));
+        logger.info('JWT authentication enabled for Preview Server', { component: 'PreviewServer' });
+      } else {
+        logger.warn('ANT_JWT_SECRET not set - Preview Server authentication disabled', {
+          component: 'PreviewServer'
+        });
+      }
+    }
+
+    // 8. Rate limiting for management API (after auth)
+    this.app.use('/projects/', previewRateLimiter);
 
     // ==========================================
     // Preview Management API
@@ -280,7 +289,7 @@ export class PreviewServer {
         }
       } catch (error: any) {
         logger.error('[PreviewServer] Start error', { component: 'PreviewServer' }, error);
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 
@@ -308,7 +317,7 @@ export class PreviewServer {
         res.json(result);
       } catch (error: any) {
         logger.error('[PreviewServer] Stop error', { component: 'PreviewServer' }, error);
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 
@@ -380,7 +389,7 @@ export class PreviewServer {
         });
       } catch (error: any) {
         logger.error('[PreviewServer] Status error', { component: 'PreviewServer' }, error);
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 
@@ -404,7 +413,7 @@ export class PreviewServer {
         });
       } catch (error: any) {
         logger.error('[PreviewServer] Validate error', { component: 'PreviewServer' }, error);
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 
@@ -471,7 +480,7 @@ export class PreviewServer {
         });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config get error', { component: 'PreviewServer' }, error);
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 
@@ -537,7 +546,7 @@ export class PreviewServer {
         res.json({ success: true, connections: resolvedConnections });
       } catch (error: any) {
         logger.error('[PreviewServer] Preview config save error', { component: 'PreviewServer' }, error);
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 
@@ -633,7 +642,7 @@ export class PreviewServer {
         res.json({ success: true, connections });
       } catch (error: any) {
         logger.error('[PreviewServer] Detect connections error', { component: 'PreviewServer' }, error);
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 
@@ -650,7 +659,7 @@ export class PreviewServer {
         const previews = await this.stateStore.listPreviews();
         res.json({ instances: previews });
       } catch (error: any) {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'PreviewServer');
       }
     });
 

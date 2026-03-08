@@ -2,15 +2,14 @@
  * Google OIDC Service
  * 
  * Handles Google OpenID Connect authentication flow
- * - Authorization URL generation
+ * - Authorization URL generation (with CSRF state parameter)
  * - Token exchange
  * - ID Token verification
  * - User profile extraction
  */
 
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
-import { AuthPort, AuthCredentials, AuthContext } from '../../core/ports/auth';
-import type { User, Organization } from '../../core/types/user';
+import { logger } from '../../utils/logger';
 
 export interface GoogleOIDCConfig {
   clientId: string;
@@ -26,7 +25,7 @@ export interface OIDCUser {
   sub: string; // Google user ID
 }
 
-export class GoogleOIDCService implements AuthPort {
+export class GoogleOIDCService {
   private oauth2Client: OAuth2Client;
   private config: GoogleOIDCConfig;
   
@@ -42,8 +41,10 @@ export class GoogleOIDCService implements AuthPort {
   /**
    * Generate Google OAuth2 authorization URL
    * User will be redirected to this URL to sign in with Google
+   * 
+   * @param state - CSRF protection state parameter (stored server-side for verification)
    */
-  getAuthorizationUrl(): string {
+  getAuthorizationUrl(state?: string): string {
     const url = this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: [
@@ -51,7 +52,8 @@ export class GoogleOIDCService implements AuthPort {
         'email',
         'profile'
       ],
-      prompt: 'consent'
+      prompt: 'consent',
+      ...(state ? { state } : {}),
     });
     
     return url;
@@ -84,30 +86,9 @@ export class GoogleOIDCService implements AuthPort {
       
       return this.extractUserFromPayload(payload);
     } catch (error: any) {
-      console.error('[GoogleOIDC] Authentication error:', error);
+      logger.error('[GoogleOIDC] Authentication error', { component: 'GoogleOIDC' }, error);
       throw new Error(`Google authentication failed: ${error.message}`);
     }
-  }
-  
-  /**
-   * Authenticate with email (fallback)
-   */
-  async authenticate(credentials: AuthCredentials): Promise<AuthContext> {
-    if (credentials.email) {
-      // Legacy email-based authentication
-      return this.authenticateWithEmail(credentials.email);
-    }
-    
-    throw new Error('Authentication requires email or authorization code');
-  }
-  
-  /**
-   * Authorize user access to resources
-   * Initial version: all authenticated users have full access
-   */
-  async authorize(user: User, resource: string, action: string): Promise<boolean> {
-    // TODO: Implement role-based access control
-    return true;
   }
   
   // ========================================
@@ -129,49 +110,5 @@ export class GoogleOIDCService implements AuthPort {
       picture: payload.picture,
       sub: payload.sub
     };
-  }
-  
-  /**
-   * Email-based authentication
-   */
-  private async authenticateWithEmail(email: string): Promise<AuthContext> {
-    const normalizedEmail = email.trim().toLowerCase();
-    
-    if (!this.isValidEmail(normalizedEmail)) {
-      throw new Error('Invalid email format');
-    }
-    
-    const [username, domain] = normalizedEmail.split('@');
-    
-    if (!username || !domain) {
-      throw new Error('Invalid email format');
-    }
-    
-    // Organization is the full domain (e.g., gmail.com, company.com)
-    const organizationId = domain;
-    
-    const user: User = {
-      id: username,
-      email: normalizedEmail,
-      organizationId: organizationId
-    };
-    
-    const organization: Organization = {
-      id: organizationId,
-      name: organizationId
-    };
-    
-    return {
-      user,
-      organization
-    };
-  }
-  
-  /**
-   * Validate email format
-   */
-  private isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
   }
 }

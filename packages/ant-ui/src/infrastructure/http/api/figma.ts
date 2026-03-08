@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, getBackendMode, apiGet } from './client';
+import { API_BASE, authFetch, apiGet } from './client';
 
 export interface FigmaConfigStatus {
   configured: boolean;
@@ -19,21 +19,10 @@ export function checkFigmaConfigStatus(): Promise<FigmaConfigStatus> {
 
 /**
  * Start Figma OAuth flow. Opens OAuth popup window.
+ * Authentication is handled via httpOnly JWT cookie — no user-email query param needed.
  */
 export async function startFigmaOAuth(): Promise<void> {
-  const backendMode = getBackendMode();
-  let userEmail = 'local@local';
-
-  if (backendMode === 'cloud') {
-    const stored = localStorage.getItem('ant-ui:user-email');
-    if (stored) {
-      userEmail = JSON.parse(stored);
-    } else {
-      throw new Error('User email not found. Please log in again.');
-    }
-  }
-
-  const authUrl = `${API_BASE()}/figma/oauth/authorize?user-email=${encodeURIComponent(userEmail)}`;
+  const authUrl = `${API_BASE()}/figma/oauth/authorize`;
   const width = 600;
   const height = 700;
   const left = (window.screen.width - width) / 2;

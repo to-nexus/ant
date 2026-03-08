@@ -25,8 +25,6 @@ export type Store = ProjectSlice &
 
 // Initialize persistent state from localStorage
 function initializePersistentState() {
-  const userEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL);
-  const userOrganization = loadFromStorage(STORAGE_KEYS.USER_ORGANIZATION);
   const dismissedInterruptTimestamp = loadFromStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP);
   const storedMainView = loadFromStorage(STORAGE_KEYS.MAIN_VIEW);
   // Backward-compat mapping: 'editor' -> 'codeIde'
@@ -34,8 +32,6 @@ function initializePersistentState() {
   const mainView = (normalizedMainView === 'codeIde' || normalizedMainView === 'agents') ? normalizedMainView : 'agents';
   
   return {
-    userEmail,
-    userOrganization,
     dismissedInterruptTimestamp,
     mainView,
   };
@@ -58,8 +54,6 @@ export const useStore = create<Store>((set, get, store) => {
     ...createResetSlice(set, get, store),
     
     // Override with persistent state
-    userEmail: persistent.userEmail,
-    userOrganization: persistent.userOrganization,
     dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,
     mainView: persistent.mainView,
   };

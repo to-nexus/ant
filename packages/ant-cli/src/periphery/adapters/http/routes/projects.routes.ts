@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { ProjectService } from '../services';
 import { extractUserContext } from './helpers/userContext';
+import { sendErrorResponse } from './helpers/errorResponse';
+import { validateBody, createProjectSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 
 /**
@@ -23,12 +25,12 @@ export function createProjectsRoutes(deps: {
       
       res.json(projects);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Projects');
     }
   });
   
   // Create a new project
-  router.post('/projects', async (req: Request, res: Response) => {
+  router.post('/projects', validateBody(createProjectSchema), async (req: Request, res: Response) => {
     try {
       const { id } = req.body;
       
@@ -48,7 +50,7 @@ export function createProjectsRoutes(deps: {
       if (error.message === 'Project already exists') {
         res.status(409).json({ error: error.message });
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -65,7 +67,7 @@ export function createProjectsRoutes(deps: {
       if (error.message === 'Project not found') {
         res.status(404).json({ error: error.message });
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -111,7 +113,7 @@ export function createProjectsRoutes(deps: {
       if (error.message === 'Config file not found') {
         res.status(404).json({ error: error.message });
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -134,7 +136,7 @@ export function createProjectsRoutes(deps: {
       } else if (error.message === 'Config file not found') {
         res.status(404).json({ error: error.message });
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -151,7 +153,7 @@ export function createProjectsRoutes(deps: {
       if (error.message === 'Session file not found') {
         res.json(null);
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -173,7 +175,7 @@ export function createProjectsRoutes(deps: {
       } else if (error.message.includes('already cloned')) {
         res.status(409).json({ success: false, error: error.message });
       } else {
-        res.status(500).json({ success: false, error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -188,7 +190,7 @@ export function createProjectsRoutes(deps: {
       res.json({ cloned });
     } catch (error: any) {
       logger.warn(`Clone status check failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      res.status(500).json({ cloned: false, error: error.message });
+      sendErrorResponse(res, 500, error, 'Projects');
     }
   });
   
@@ -210,7 +212,7 @@ export function createProjectsRoutes(deps: {
       } else if (error.message.includes('already initialized') || error.message.includes('already exists')) {
         res.status(409).json({ success: false, error: error.message });
       } else {
-        res.status(500).json({ success: false, error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -237,7 +239,7 @@ export function createProjectsRoutes(deps: {
       } else if (error.message.includes('authentication failed')) {
         res.status(401).json({ success: false, error: error.message });
       } else {
-        res.status(500).json({ success: false, error: error.message });
+        sendErrorResponse(res, 500, error, 'Projects');
       }
     }
   });
@@ -309,7 +311,7 @@ export function createProjectsRoutes(deps: {
       res.json(status);
     } catch (error: any) {
       logger.warn(`Get Git status failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Projects');
     }
   });
 
@@ -324,7 +326,7 @@ export function createProjectsRoutes(deps: {
       res.json(changes);
     } catch (error: any) {
       logger.warn(`Get Git changes failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Projects');
     }
   });
 
