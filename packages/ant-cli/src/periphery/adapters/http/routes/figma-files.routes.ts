@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { FigmaFileReader } from '../../../../core/usecases/figma/FigmaFileReader';
 import { FigmaDesignExtractor } from '../../../../core/usecases/figma/FigmaDesignExtractor';
 import { FigmaMCPAdapter } from '../../../adapters/figma/FigmaMCPAdapter';
+import { sendErrorResponse } from './helpers/errorResponse';
 import { UserConfigManager } from '../../../../utils/userConfig';
 
 export interface FigmaFilesRoutesDeps {
@@ -28,15 +29,6 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
         userId: (req as any).user.id,
         organizationId: (req as any).organization.id,
       };
-    }
-    
-    const emailFromHeader = req.headers['x-user-email'] as string;
-    const emailFromQuery = req.query['user-email'] as string;
-    const email = emailFromHeader || emailFromQuery;
-    
-    if (email) {
-      const [userId, organizationId] = email.split('@');
-      return { userId, organizationId };
     }
     
     // Fallback for local mode
@@ -66,11 +58,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
         count: references.length
       });
     } catch (error: any) {
-      console.error('[Figma Files] Error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      sendErrorResponse(res, 500, error, 'FigmaFiles');
     }
   });
   
@@ -104,11 +92,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
         count: designs.length
       });
     } catch (error: any) {
-      console.error('[Figma Extract] Error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      sendErrorResponse(res, 500, error, 'FigmaExtract');
     }
   });
   
@@ -134,11 +118,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
         message: 'Example figma.md created'
       });
     } catch (error: any) {
-      console.error('[Figma Create Example] Error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message
-      });
+      sendErrorResponse(res, 500, error, 'FigmaCreateExample');
     }
   });
   

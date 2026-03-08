@@ -6,6 +6,9 @@ import { extractUserContext } from './helpers/userContext';
 import { ChoiceService } from '../../../../infrastructure/choice';
 import { ChoiceAction } from '../../../../agents/common/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
+import { chatRateLimiter } from '../middleware/rateLimiter';
+import { validateBody, chatUserMessageSchema } from '../middleware/validateBody';
+import { logger } from '../../../../utils/logger';
 
 /**
  * Chat operations (messages, user interactions)
@@ -79,7 +82,7 @@ export function createChatRoutes(deps: {
    * Add a user message to chat history
    * Called by UI when user sends a message
    */
-  router.post('/projects/:id/features/:feature/chat/user-message', async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/user-message', chatRateLimiter, validateBody(chatUserMessageSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { content, jobId } = req.body;
@@ -210,7 +213,7 @@ export function createChatRoutes(deps: {
 
       res.json(response);
     } catch (error) {
-      console.error('[chat.routes] triage-choice error:', error);
+      logger.error('Triage choice error', { component: 'Chat' }, error);
       res.status(500).json({ error: 'Failed to process choice' });
     }
   });
@@ -292,7 +295,7 @@ export function createChatRoutes(deps: {
       // Write evaluation report
       await fs.writeFile(evalFilePath, content, 'utf-8');
 
-      console.log(`📋 [chat.routes] Eval report saved: ${relativePath}`);
+      logger.debug(`📋 [chat.routes] Eval report saved: ${relativePath}`);
 
       // ✅ Notify file tree update after eval report write
       if (deps.fileTreeNotifier) {
@@ -312,7 +315,7 @@ export function createChatRoutes(deps: {
             userContext,
           });
         } catch (e) {
-          console.warn(`[chat.routes] Failed to add unseen artifact: ${(e as Error).message}`);
+          logger.warn(`[chat.routes] Failed to add unseen artifact: ${(e as Error).message}`);
         }
       }
 
@@ -335,7 +338,7 @@ export function createChatRoutes(deps: {
         resolvedLabel: `Saved: ${relativePath}`
       });
     } catch (error: any) {
-      console.error('[chat.routes] eval-save error:', error);
+      logger.error('Eval save error', { component: 'Chat' }, error);
       res.status(500).json({ error: 'Failed to save evaluation report' });
     }
   });
@@ -378,7 +381,7 @@ export function createChatRoutes(deps: {
         // Non-critical — staging file may already be gone
       }
 
-      console.log(`📋 [chat.routes] PRD applied: outputs/plan/prd-refine.md → inputs/sources/prd.md (staging removed)`);
+      logger.debug(`📋 [chat.routes] PRD applied: outputs/plan/prd-refine.md → inputs/sources/prd.md (staging removed)`);
 
       // ✅ Notify file tree update after PRD apply write
       if (deps.fileTreeNotifier) {
@@ -397,7 +400,7 @@ export function createChatRoutes(deps: {
             userContext,
           });
         } catch (e) {
-          console.warn(`[chat.routes] Failed to add unseen artifact: ${(e as Error).message}`);
+          logger.warn(`[chat.routes] Failed to add unseen artifact: ${(e as Error).message}`);
         }
       }
 
@@ -419,7 +422,7 @@ export function createChatRoutes(deps: {
         resolvedLabel: 'Applied to inputs/sources/prd.md'
       });
     } catch (error: any) {
-      console.error('[chat.routes] prd-apply error:', error);
+      logger.error('PRD apply error', { component: 'Chat' }, error);
       if (error.code === 'ENOENT') {
         res.status(404).json({ error: 'PRD draft not found at outputs/plan/prd-refine.md' });
       } else {
@@ -465,11 +468,11 @@ export function createChatRoutes(deps: {
         );
       }
 
-      console.log(`📋 [chat.routes] Choice persisted: ${contentType}${metadataFilter ? `(${JSON.stringify(metadataFilter)})` : ''} → ${choiceAction} (${resolvedLabel})`);
+      logger.debug(`📋 [chat.routes] Choice persisted: ${contentType}${metadataFilter ? `(${JSON.stringify(metadataFilter)})` : ''} → ${choiceAction} (${resolvedLabel})`);
 
       res.json({ success: true, choiceAction, resolvedLabel });
     } catch (error: any) {
-      console.error('[chat.routes] dismiss-choice error:', error);
+      logger.error('Dismiss choice error', { component: 'Chat' }, error);
       res.status(500).json({ error: 'Failed to persist choice' });
     }
   });

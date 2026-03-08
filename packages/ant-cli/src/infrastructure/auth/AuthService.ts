@@ -59,18 +59,6 @@ export class AuthService implements AuthPort {
     };
   }
   
-  /**
-   * 사용자 권한 확인
-   * 
-   * 초기 버전: 모든 권한 허용
-   * 향후 확장: 조직별, 리소스별 권한 체계 구축
-   */
-  async authorize(user: User, resource: string, action: string): Promise<boolean> {
-    // 🚨 초기 버전: 모든 권한 허용
-    // TODO: 실제 권한 체계 구현
-    return true;
-  }
-  
   // ========================================
   // Private Methods
   // ========================================

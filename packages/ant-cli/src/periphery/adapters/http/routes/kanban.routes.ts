@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { KanbanService } from '../services/KanbanService';
 import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
+import { sendErrorResponse } from './helpers/errorResponse';
+import { logger } from '../../../../utils/logger';
 
 /**
  * Kanban board routes
@@ -36,8 +38,8 @@ export function createKanbanRoutes(deps: {
       );
       res.json(kanbanData);
     } catch (error: any) {
-      console.error(`[Kanban API] Error:`, error);
-      res.status(500).json({ error: error.message });
+      logger.error('Kanban API error', { component: 'Kanban' }, error);
+      sendErrorResponse(res, 500, error, 'Kanban');
     }
   });
   

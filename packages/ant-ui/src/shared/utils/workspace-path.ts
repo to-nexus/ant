@@ -48,6 +48,7 @@
 
 // Import from api.ts to avoid duplication
 import { getBackendMode } from '@/infrastructure/http/api';
+import { useStore } from '@/domain/store';
 
 // Re-export for consumers of this module
 export { getBackendMode };
@@ -61,29 +62,21 @@ export interface UserContext {
 }
 
 /**
- * Get user context from localStorage
+ * Get user context from Zustand store (populated by /api/auth/me on login).
  */
 function getUserContext(): UserContext {
   try {
-    const email = localStorage.getItem('ant-ui:user-email');
-    const org = localStorage.getItem('ant-ui:user-organization');
-    
-    if (email && org) {
-      const parsedEmail = JSON.parse(email);
-      const parsedOrg = JSON.parse(org);
-      
-      // Extract userId from email (e.g., alice@to.nexus -> alice)
-      const userId = parsedEmail.split('@')[0];
-      
+    const { userEmail, userOrganization } = useStore.getState();
+    if (userEmail && userOrganization) {
+      const userId = userEmail.split('@')[0];
       return {
-        organization: parsedOrg,
-        userId
+        organization: userOrganization,
+        userId,
       };
     }
   } catch (error) {
     console.warn('[workspace-path] Failed to get user context:', error);
   }
-  
   return {};
 }
 

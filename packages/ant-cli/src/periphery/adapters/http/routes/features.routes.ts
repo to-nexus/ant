@@ -3,7 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
+import { sendErrorResponse } from './helpers/errorResponse';
 import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 
 /**
@@ -30,7 +32,7 @@ export function createFeaturesRoutes(deps: {
       
       res.json(formattedFeatures);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Features');
     }
   });
   
@@ -54,7 +56,7 @@ export function createFeaturesRoutes(deps: {
       await deps.projectService.createFeature(projectId, featureName, userContext, language);
       
       if (req.user) {
-        console.log(`[Features] Created feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
+        logger.debug(`[Features] Created feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
       }
       
       res.json({ success: true, featureName });
@@ -62,7 +64,7 @@ export function createFeaturesRoutes(deps: {
       if (error.message === 'Feature already exists') {
         res.status(409).json({ error: error.message });
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Features');
       }
     }
   });
@@ -92,7 +94,7 @@ export function createFeaturesRoutes(deps: {
       await deps.projectService.deleteFeature(projectId, featureName, userContext);
       
       if (req.user) {
-        console.log(`[Features] Deleted feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
+        logger.debug(`[Features] Deleted feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
       }
       
       res.json({ success: true, message: `Feature ${featureName} deleted` });
@@ -100,7 +102,7 @@ export function createFeaturesRoutes(deps: {
       if (error.message === 'Feature not found') {
         res.status(404).json({ error: error.message });
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Features');
       }
     }
   });
@@ -119,7 +121,7 @@ export function createFeaturesRoutes(deps: {
       if (error.message === 'Session file not found' || error.message.includes('not found')) {
         res.json(null);
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Features');
       }
     }
   });
@@ -132,22 +134,22 @@ export function createFeaturesRoutes(deps: {
       const job = (req.body.job || req.query.job as 'design' | 'code' | 'learn') || 'code';
       const userContext = extractUserContext(req);
       
-      console.log(`\n🔄 [API] Reset job state request:`);
-      console.log(`   Project: ${projectId}`);
-      console.log(`   Feature: ${featureName}`);
-      console.log(`   Job: ${job}`);
+      logger.debug(`\n🔄 [API] Reset job state request:`);
+      logger.debug(`   Project: ${projectId}`);
+      logger.debug(`   Feature: ${featureName}`);
+      logger.debug(`   Job: ${job}`);
       
       await deps.projectService.resetJobState(projectId, featureName, job, userContext);
       
-      console.log(`   ✅ Job state reset successfully\n`);
+      logger.debug(`   ✅ Job state reset successfully\n`);
       
       res.json({ 
         success: true, 
         message: 'Job state reset successfully' 
       });
     } catch (error: any) {
-      console.error(`[API] Error resetting job state:`, error);
-      res.status(500).json({ error: error.message });
+      logger.error('Error resetting job state', { component: 'Features' }, error);
+      sendErrorResponse(res, 500, error, 'Features');
     }
   });
   
@@ -165,7 +167,7 @@ export function createFeaturesRoutes(deps: {
         sessionData = await deps.projectService.getSession(projectId, featureName, jobType, userContext);
       } catch (error: any) {
         if (error.message === 'Session file not found') {
-          console.log(`[Session] No session file to clear`);
+          logger.debug(`[Session] No session file to clear`);
           return res.json({ success: true, message: 'No session data to clear' });
         }
         throw error;
@@ -201,7 +203,7 @@ export function createFeaturesRoutes(deps: {
       
       await fs.promises.writeFile(sessionPath, JSON.stringify(clearedSession, null, 2), 'utf-8');
       
-      console.log(`[Session] ✅ Cleared session data: ${projectId}/${featureName}/${jobType}.json`);
+      logger.debug(`[Session] ✅ Cleared session data: ${projectId}/${featureName}/${jobType}.json`);
       
       // ✅ CRITICAL: Invalidate KanbanService cache to prevent stale data on SSE reconnect
       if (deps.kanbanService) {
@@ -211,7 +213,7 @@ export function createFeaturesRoutes(deps: {
         const previousJobId = sessionData?.state?.jobId;
         if (previousJobId) {
           deps.kanbanService.clearJobMemory(previousJobId);
-          console.log(`[Session] 🗑️ Cleared memory state for previous job: ${previousJobId}`);
+          logger.debug(`[Session] 🗑️ Cleared memory state for previous job: ${previousJobId}`);
         }
       }
       
@@ -219,16 +221,16 @@ export function createFeaturesRoutes(deps: {
       if (deps.chatService) {
         try {
           deps.chatService.clearMessages(projectId, featureName, userContext);
-          console.log(`[Session] ✅ Cleared chat session: ${projectId}/${featureName}/chat.json`);
+          logger.debug(`[Session] ✅ Cleared chat session: ${projectId}/${featureName}/chat.json`);
         } catch (error) {
-          console.warn(`[Session] ⚠️  Failed to clear chat session (non-critical):`, error);
+          logger.warn('Failed to clear chat session (non-critical)', { component: 'Features' }, error);
         }
       }
       
       res.json({ success: true, message: 'Session data cleared' });
     } catch (error: any) {
-      console.error('[Session] ❌ Error clearing session:', error);
-      res.status(500).json({ error: error.message });
+      logger.error('Error clearing session', { component: 'Features' }, error);
+      sendErrorResponse(res, 500, error, 'Features');
     }
   });
   

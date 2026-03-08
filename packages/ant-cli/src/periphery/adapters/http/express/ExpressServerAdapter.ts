@@ -14,6 +14,7 @@ import { UserContext } from '../../../../core/types/user';
 import { WorkspaceServicePort } from '../../../../core/ports/workspace';
 import { logger } from '../../../../utils/logger';
 import { createIDEWebSocketHandler } from '../middleware/ideProxy';
+import { JwtService } from '../../../../infrastructure/auth/JwtService';
 
 // Configuration and Types
 import { ServerConfig, ServerDependencies } from './types';
@@ -254,13 +255,38 @@ export class ExpressServerAdapter implements
         
         // Setup WebSocket upgrade handler for IDE proxy
         const ideWsHandler = createIDEWebSocketHandler(this.deps.portRegistry, '/ide');
+        const wsJwtService = this.deps.jwtService;
+        const wsAuthService = this.deps.authService;
         this.server.on('upgrade', (req: any, socket: any, head: Buffer) => {
           const url = req.url || '';
-          if (url.startsWith('/ide/')) {
-            ideWsHandler(req, socket, head);
-          } else {
+          if (!url.startsWith('/ide/')) {
             socket.destroy();
+            return;
           }
+
+          // Cloud mode: verify JWT cookie before allowing WebSocket upgrade
+          if (wsAuthService && wsJwtService) {
+            const cookieHeader = req.headers?.cookie || '';
+            const cookieName = JwtService.cookieName;
+            const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`));
+            const token = match?.[1];
+            if (!token) {
+              logger.warn('IDE WebSocket upgrade rejected: no JWT cookie', { component: 'IDEProxy' });
+              socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+            try {
+              wsJwtService.verify(token);
+            } catch {
+              logger.warn('IDE WebSocket upgrade rejected: invalid JWT', { component: 'IDEProxy' });
+              socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+          }
+
+          ideWsHandler(req, socket, head);
         });
       } catch (error) {
         reject(error);
