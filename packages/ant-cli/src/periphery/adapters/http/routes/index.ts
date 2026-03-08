@@ -106,6 +106,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
       transferService: deps.transferService,
       stateStore: deps.stateStore,
       workspaceResolver: deps.workspaceResolver,
+      fileTreeNotifier: deps.fileTreeNotifier,
     }));
   }
   
