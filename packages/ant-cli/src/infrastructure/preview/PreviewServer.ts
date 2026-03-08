@@ -144,13 +144,11 @@ export class PreviewServer {
    * In local mode, falls back to 'local:local'.
    */
   private extractUserContext(req: Request): { organizationId: string; userId: string } {
-    // Cloud mode: JWT middleware populates req.user
-    if (req.user && req.user.email) {
-      const email = req.user.email;
-      const [userId, organizationId] = email.split('@');
+    // Cloud mode: JWT middleware populates req.user with verified JWT payload
+    if (req.user && req.user.id) {
       return {
-        organizationId: organizationId || req.user.organizationId || 'unknown',
-        userId: userId || req.user.id || 'unknown',
+        organizationId: req.user.organizationId || 'unknown',
+        userId: req.user.id,
       };
     }
 
@@ -191,6 +189,10 @@ export class PreviewServer {
    * 8. Management API routes
    */
   private setupRoutes(): void {
+    if (process.env.NODE_ENV === 'production') {
+      this.app.set('trust proxy', 1);
+    }
+
     // 1. Shared CORS configuration (same as ant-api and ant-realtime)
     this.app.use(createCorsMiddleware());
 
@@ -233,18 +235,15 @@ export class PreviewServer {
     const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
     if (isCloudMode) {
       const jwtService = createJwtServiceFromEnv();
-      if (jwtService) {
-        this.app.use(createJwtAuthMiddleware({
-          jwtService,
-          publicPaths: ['/health'],
-          publicPrefixes: [],
-        }));
-        logger.info('JWT authentication enabled for Preview Server', { component: 'PreviewServer' });
-      } else {
-        logger.warn('ANT_JWT_SECRET not set - Preview Server authentication disabled', {
-          component: 'PreviewServer'
-        });
+      if (!jwtService) {
+        throw new Error('ANT_JWT_SECRET is required in cloud mode. Set the environment variable to enable authentication.');
       }
+      this.app.use(createJwtAuthMiddleware({
+        jwtService,
+        publicPaths: ['/health'],
+        publicPrefixes: [],
+      }));
+      logger.info('JWT authentication enabled for Preview Server', { component: 'PreviewServer' });
     }
 
     // 8. Rate limiting for management API (after auth)
@@ -703,6 +702,24 @@ export class PreviewServer {
       // look up the dev server port, then create a raw TCP tunnel to the dev server.
       this.server.on('upgrade', async (req: IncomingMessage, socket: net.Socket, head: Buffer) => {
         try {
+          // Cloud mode: verify JWT from cookie (upgrade bypasses Express middleware)
+          const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
+          if (isCloudMode) {
+            const jwtService = createJwtServiceFromEnv();
+            if (jwtService) {
+              const cookieHeader = req.headers.cookie || '';
+              const cookies = Object.fromEntries(
+                cookieHeader.split(';').map(c => {
+                  const [k, ...v] = c.trim().split('=');
+                  return [k, v.join('=')];
+                })
+              );
+              const token = cookies['ant_session'];
+              if (!token) { socket.destroy(); return; }
+              try { jwtService.verify(token); } catch { socket.destroy(); return; }
+            }
+          }
+          
           const urlPath = req.url || '/';
           const segments = urlPath.split('/').filter(Boolean);
           const firstSegment = segments[0] || '';
