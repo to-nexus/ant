@@ -1,7 +1,7 @@
 import { StateCreator } from 'zustand';
 import { ConfigState } from '../types';
 import { STORAGE_KEYS, DEFAULT_LOCAL_BACKEND_PORT, saveToStorage, loadFromStorage } from '../storage';
-import { API_BASE } from '@/infrastructure/http/api';
+import { API_BASE, authFetch } from '@/infrastructure/http/api';
 
 export interface ConfigActions {
   setRecursionLimit: (limit: number) => void;
@@ -38,7 +38,7 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
 
     loadSystemConfig: async () => {
       try {
-        const response = await fetch(`${API_BASE()}/system/config`);
+        const response = await authFetch(`${API_BASE()}/system/config`);
         if (response.ok) {
           const config = await response.json();
           set({ recursionLimit: config.recursionLimit });

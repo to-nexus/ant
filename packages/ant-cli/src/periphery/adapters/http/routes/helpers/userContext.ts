@@ -115,7 +115,13 @@ export function extractUserContext(req: Request): UserContext {
     };
   }
 
-  // Priority 2: Local mode filesystem inference
+  // Cloud mode: JWT must be present — reject if not
+  const isCloudMode = (process.env.ANT_SERVER_MODE || 'local') === 'cloud';
+  if (isCloudMode) {
+    throw new Error('Authentication required: no valid JWT token');
+  }
+
+  // Local mode: filesystem inference fallback
   const projectIdFromParams =
     (req.params as any)?.id ||
     (req.params as any)?.projectId ||

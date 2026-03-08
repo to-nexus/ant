@@ -28,6 +28,10 @@ export type { SSEMessageType, SSEMessage, SSEBroadcastMessage, SSEWorkflowMessag
  * - realtime:broadcast:{orgId}:{userId}  - Kanban, FileTree, Preview, Job status
  * - realtime:workflow:{orgId}:{userId}   - Workflow state updates
  */
+const MAX_SSE_CONNECTIONS_PER_USER = 10;
+const SSE_CONNECTION_KEY_PREFIX = 'ant:sse:connections:';
+const SSE_CONNECTION_TTL_SECONDS = 24 * 60 * 60; // 24h safety TTL
+
 export class SSEService {
   /**
    * Flush response buffer to ensure SSE data is sent immediately through proxies.
@@ -132,6 +136,19 @@ export class SSEService {
       return;
     }
     
+    // Enforce per-user global SSE connection limit via Redis (multi-pod safe)
+    const connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}`;
+    if (this.stateStore) {
+      const count = await this.stateStore.incrementKey(connKey);
+      await this.stateStore.expireKey(connKey, SSE_CONNECTION_TTL_SECONDS);
+      if (count > MAX_SSE_CONNECTIONS_PER_USER) {
+        await this.stateStore.decrementKey(connKey);
+        logger.warn(`SSE connection limit exceeded for ${userContext.organizationId}:${userContext.userId}`, { component: 'SSEService' });
+        res.status(429).json({ error: 'Too many SSE connections' });
+        return;
+      }
+    }
+    
     const key = this.getSessionKey(projectId, featureName, userContext);
     
     if (!this.clients.has(key)) {
@@ -142,8 +159,6 @@ export class SSEService {
     logger.debug(`Client registered: ${key} (total: ${this.clients.get(key)!.size})`, { component: 'SSEService', projectId, featureName });
     
     // Subscribe to user-specific channels (MUST await to prevent race condition)
-    // Without await, Redis updates published between subscribe() and initial state
-    // delivery would be permanently lost.
     try {
       await this.subscribeToUserChannels(userContext);
     } catch (error) {
@@ -155,6 +170,12 @@ export class SSEService {
       this.clients.get(key)?.delete(res);
       if (this.clients.get(key)?.size === 0) {
         this.clients.delete(key);
+      }
+      // Decrement Redis connection counter
+      if (this.stateStore) {
+        this.stateStore.decrementKey(connKey).catch((err) => {
+          logger.error('Failed to decrement SSE connection count', { component: 'SSEService' }, err);
+        });
       }
       logger.debug(`Client disconnected: ${key}`, { component: 'SSEService', projectId, featureName });
     });

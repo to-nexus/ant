@@ -556,6 +556,40 @@ export interface StateStorePort {
   subscribe(channel: string, callback: (message: any) => void): Promise<() => void>;
   
   // ============================================
+  // Generic Key-Value Operations
+  // ============================================
+  
+  /**
+   * Set a key with TTL (for OIDC state, Figma OAuth state, SSE connection counts, etc.)
+   */
+  setKeyWithTTL(key: string, value: string, ttlSeconds: number): Promise<void>;
+  
+  /**
+   * Get a key value
+   */
+  getKey(key: string): Promise<string | null>;
+  
+  /**
+   * Delete a key
+   */
+  deleteKey(key: string): Promise<void>;
+  
+  /**
+   * Increment a key and return the new value. Creates the key if it doesn't exist.
+   */
+  incrementKey(key: string): Promise<number>;
+  
+  /**
+   * Decrement a key and return the new value. Creates the key if it doesn't exist.
+   */
+  decrementKey(key: string): Promise<number>;
+  
+  /**
+   * Set TTL on an existing key.
+   */
+  expireKey(key: string, ttlSeconds: number): Promise<void>;
+  
+  // ============================================
   // Distributed Locking
   // ============================================
   

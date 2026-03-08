@@ -5,14 +5,13 @@ import { AuthService } from '../../../../infrastructure/auth/AuthService';
 import { GoogleOIDCService, OIDCUser } from '../../../../infrastructure/auth/GoogleOIDCService';
 import { JwtService } from '../../../../infrastructure/auth/JwtService';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { StateStorePort } from '../../../../core/ports/stateStore';
 import { authRateLimiter } from '../middleware/rateLimiter';
 import { logger } from '../../../../utils/logger';
 import type { AuthContext } from '../../../../core/ports/auth';
 
-// In-memory store for OIDC state parameter (CSRF protection)
-// In production with multiple pods, use Redis TTL key instead.
-const oidcStateStore = new Map<string, { createdAt: number }>();
-const OIDC_STATE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const OIDC_STATE_TTL_SECONDS = 5 * 60; // 5 minutes
+const OIDC_STATE_KEY_PREFIX = 'ant:oidc:state:';
 
 /**
  * Authentication routes for Cloud Mode
@@ -27,9 +26,10 @@ export function createAuthRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   oidcService?: GoogleOIDCService;
   jwtService?: JwtService;
+  stateStore?: StateStorePort;
 }): Router {
   const router = Router();
-  const { authService, workspaceResolver, oidcService, jwtService } = deps;
+  const { authService, workspaceResolver, oidcService, jwtService, stateStore } = deps;
   
   const isProduction = process.env.NODE_ENV === 'production';
   
@@ -62,15 +62,25 @@ export function createAuthRoutes(deps: {
   }
   
   /**
-   * Cleanup expired OIDC states
+   * Store OIDC state in Redis with TTL (multi-pod safe)
    */
-  function cleanupExpiredStates(): void {
-    const now = Date.now();
-    for (const [key, val] of oidcStateStore) {
-      if (now - val.createdAt > OIDC_STATE_TTL_MS) {
-        oidcStateStore.delete(key);
-      }
+  async function storeOidcState(state: string): Promise<void> {
+    if (!stateStore) {
+      throw new Error('StateStore required for OIDC state management');
     }
+    await stateStore.setKeyWithTTL(`${OIDC_STATE_KEY_PREFIX}${state}`, '1', OIDC_STATE_TTL_SECONDS);
+  }
+  
+  /**
+   * Verify and consume OIDC state from Redis (atomic: get + delete)
+   */
+  async function verifyAndConsumeOidcState(state: string): Promise<boolean> {
+    if (!stateStore) return false;
+    const key = `${OIDC_STATE_KEY_PREFIX}${state}`;
+    const value = await stateStore.getKey(key);
+    if (!value) return false;
+    await stateStore.deleteKey(key);
+    return true;
   }
   
   // ========================================
@@ -81,7 +91,7 @@ export function createAuthRoutes(deps: {
    * Initiate Google OAuth2 flow
    * GET /api/auth/google
    */
-  router.get('/auth/google', authRateLimiter, (req: Request, res: Response) => {
+  router.get('/auth/google', authRateLimiter, async (req: Request, res: Response) => {
     if (!oidcService) {
       return res.status(503).json({
         error: 'Google authentication not configured',
@@ -90,10 +100,9 @@ export function createAuthRoutes(deps: {
     }
     
     try {
-      // Generate CSRF state parameter
+      // Generate CSRF state parameter (stored in Redis for multi-pod safety)
       const state = crypto.randomBytes(32).toString('hex');
-      cleanupExpiredStates();
-      oidcStateStore.set(state, { createdAt: Date.now() });
+      await storeOidcState(state);
       
       const authUrl = oidcService.getAuthorizationUrl(state);
       res.redirect(authUrl);
@@ -131,12 +140,11 @@ export function createAuthRoutes(deps: {
       return res.redirect(`${frontendUrl}/?error=no_code`);
     }
     
-    // Verify CSRF state parameter
-    if (!state || typeof state !== 'string' || !oidcStateStore.has(state)) {
+    // Verify CSRF state parameter (Redis-backed, multi-pod safe)
+    if (!state || typeof state !== 'string' || !(await verifyAndConsumeOidcState(state))) {
       logger.warn('[Auth] Invalid or missing OIDC state parameter', { component: 'Auth' });
       return res.redirect(`${frontendUrl}/?error=invalid_state`);
     }
-    oidcStateStore.delete(state);
     
     try {
       // Exchange code for user info
@@ -157,22 +165,25 @@ export function createAuthRoutes(deps: {
         logger.info(`[Auth] Created workspace for ${oidcUser.email}`, { component: 'Auth' });
       }
       
-      // Issue JWT cookie
-      if (jwtService) {
-        const token = jwtService.sign({
-          sub: authContext.user.id,
-          email: authContext.user.email,
-          org: authContext.organization.id,
-          name: oidcUser.name,
-          picture: oidcUser.picture,
-        });
-        
-        res.cookie(
-          JwtService.cookieName,
-          token,
-          jwtService.getCookieOptions(isProduction),
-        );
+      // Issue JWT cookie (required for authentication)
+      if (!jwtService) {
+        logger.error('JWT service not available during OIDC callback', { component: 'Auth' });
+        return res.redirect(`${frontendUrl}/?error=auth_config_error`);
       }
+      
+      const token = jwtService.sign({
+        sub: authContext.user.id,
+        email: authContext.user.email,
+        org: authContext.organization.id,
+        name: oidcUser.name,
+        picture: oidcUser.picture,
+      });
+      
+      res.cookie(
+        JwtService.cookieName,
+        token,
+        jwtService.getCookieOptions(isProduction),
+      );
       
       // Clean redirect (no user data in URL)
       res.redirect(`${frontendUrl}/?auth=success`);

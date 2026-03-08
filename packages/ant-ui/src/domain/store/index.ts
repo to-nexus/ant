@@ -38,11 +38,16 @@ function initializePersistentState() {
   const normalizedMainView = storedMainView === 'editor' ? 'codeIde' : storedMainView;
   const mainView = (normalizedMainView === 'codeIde' || normalizedMainView === 'agents') ? normalizedMainView : 'agents';
   
+  const userEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL) as string | undefined;
+  const userOrganization = loadFromStorage(STORAGE_KEYS.USER_ORGANIZATION) as string | undefined;
+  
   return {
     dismissedInterruptTimestamp,
     mainView,
     selectedProject: selectedProject || undefined,
     selectedFeature,
+    userEmail: userEmail || undefined,
+    userOrganization: userOrganization || undefined,
   };
 }
 
@@ -69,6 +74,8 @@ export const useStore = create<Store>((set, get, store) => {
     mainView: persistent.mainView,
     selectedProject: persistent.selectedProject,
     selectedFeature: persistent.selectedFeature,
+    userEmail: persistent.userEmail,
+    userOrganization: persistent.userOrganization,
   };
 });
 

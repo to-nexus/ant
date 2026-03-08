@@ -192,11 +192,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     const parsed = parseUrlKey(urlKey);
     if (!parsed) {
       logger.warn(`Invalid urlKey format: ${urlKey}`, { component: 'PreviewProxy' });
-      res.status(400).json({
-        error: 'Invalid server key format',
-        message: 'Expected URL key format: tenantId--userId--projectId--feature',
-        received: urlKey
-      });
+      res.status(400).json({ error: 'Invalid server key format' });
       return;
     }
     
@@ -215,11 +211,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       
       if (!mapping) {
         logger.warn(`No preview found for ${internalKey}`, { component: 'PreviewProxy' });
-        res.status(404).json({
-          error: 'Preview not found',
-          message: `No preview running for ${internalKey}`,
-          serverKey: internalKey
-        });
+        res.status(404).json({ error: 'Preview not found' });
         return;
       }
       port = mapping.port;
@@ -233,10 +225,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       
     } catch (error) {
       logger.error('Port lookup error', { component: 'PreviewProxy' }, error);
-      res.status(500).json({
-        error: 'Failed to lookup preview port',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
+      res.status(500).json({ error: 'Internal server error' });
       return;
     }
     
@@ -360,11 +349,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       if (error.cause) {
         logger.error(`Fetch error cause: ${error.cause.message || error.cause}`, { component: 'PreviewProxy' });
       }
-      res.status(502).json({
-        error: 'Bad Gateway',
-        message: `Failed to connect to preview server on port ${port}`,
-        details: error.message
-      });
+      res.status(502).json({ error: 'Bad Gateway' });
     }
   };
 }

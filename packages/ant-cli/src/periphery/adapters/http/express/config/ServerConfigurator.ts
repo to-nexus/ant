@@ -36,6 +36,9 @@ export class ServerConfigurator {
    * 8. Rate limiter
    */
   configure(app: Express): void {
+    if (process.env.NODE_ENV === 'production') {
+      app.set('trust proxy', 1);
+    }
     this.setupCors(app);
     this.setupSecurityHeaders(app);
     this.setupFaviconHandler(app);
@@ -157,8 +160,7 @@ export class ServerConfigurator {
     // Cloud mode: JWT cookie authentication
     const jwtService = this.deps.jwtService;
     if (!jwtService) {
-      logger.warn('Cloud mode without ANT_JWT_SECRET - authentication disabled', { component: 'Auth' });
-      return;
+      throw new Error('ANT_JWT_SECRET is required in cloud mode. Set the environment variable to enable authentication.');
     }
 
     app.use(createJwtAuthMiddleware({
@@ -175,9 +177,7 @@ export class ServerConfigurator {
         '/api/auth/signout',
         '/api/figma/oauth/callback',
       ],
-      publicPrefixes: [
-        '/api/agents/',
-      ],
+      publicPrefixes: [],
     }));
   }
 
@@ -185,9 +185,7 @@ export class ServerConfigurator {
    * Setup rate limiting (after auth, so we can identify users)
    */
   private setupRateLimiter(app: Express): void {
-    if (process.env.NODE_ENV === 'production') {
-      app.use(generalRateLimiter);
-    }
+    app.use(generalRateLimiter);
   }
 
   /**
