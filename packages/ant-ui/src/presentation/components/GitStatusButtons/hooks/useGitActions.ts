@@ -6,6 +6,7 @@ import {
   syncWithRemote
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { GitChanges } from './useGitChanges';
 
 export function useGitActions(
@@ -15,6 +16,7 @@ export function useGitActions(
   setGitChanges: (changes: GitChanges | null) => void
 ) {
   const setGitStatusPhase = useStore((state) => state.setGitStatusPhase);
+  const { showError } = useAlertModalContext();
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
@@ -31,10 +33,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        console.error('[useGitActions] Commit failed:', result.error);
+        showError(result.error || 'Commit failed');
       }
     } catch (error: any) {
-      console.error('[useGitActions] Commit error:', error.message);
+      showError(error.message || 'Commit failed');
     } finally {
       setIsCommitting(false);
       setGitStatusPhase(null);
@@ -52,10 +54,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        console.error('[useGitActions] Push failed:', result.error);
+        showError(result.error || 'Push failed');
       }
     } catch (error: any) {
-      console.error('[useGitActions] Push error:', error.message);
+      showError(error.message || 'Push failed');
     } finally {
       setIsPushing(false);
       setGitStatusPhase(null);
@@ -73,10 +75,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        console.error('[useGitActions] Pull failed:', result.error);
+        showError(result.error || 'Pull failed');
       }
     } catch (error: any) {
-      console.error('[useGitActions] Pull error:', error.message);
+      showError(error.message || 'Pull failed');
     } finally {
       setIsPulling(false);
       setGitStatusPhase(null);
@@ -94,10 +96,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        console.error('[useGitActions] Sync failed:', result.error);
+        showError(result.error || 'Sync failed');
       }
     } catch (error: any) {
-      console.error('[useGitActions] Sync error:', error.message);
+      showError(error.message || 'Sync failed');
     } finally {
       setIsSyncing(false);
       setGitStatusPhase(null);
