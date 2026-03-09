@@ -54,6 +54,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 2. Include ALL dependencies in package.json (don't defer to feature tasks)
 3. Next task will create ALL application code - don't do it now
 4. **Tailwind `content` paths MUST match actual source directories**
+5. In monorepos, `"workspace:*"` MUST only reference packages whose source directory is physically present in `pnpm-workspace.yaml` globs. Do NOT use `"workspace:*"` for externally published packages — regardless of scope name (`@org/`) or design document terminology ("shared packages", "common libraries")
 
 ⚠️ **Blind spot — `content` path mismatch**:
 If `content` paths don't cover the directories where source files exist, zero utility classes will be generated. The CSS file still loads normally — it just contains only the base reset, making this invisible in network/console. Ensure `content` paths match the directories where source files will be created.

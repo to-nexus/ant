@@ -56,6 +56,21 @@ packages:
 - Root scripts: `pnpm --filter`, `pnpm -r`, `pnpm --parallel`
 - ❌ Do NOT use npm workspaces (slower, less strict)
 
+### Dependency Classification — `workspace:` Protocol
+
+For each dependency in `package.json`, observe whether the package source directory is physically present in this workspace:
+
+| Package physically present in workspace? | Version specifier | Protocol |
+|------------------------------------------|-------------------|----------|
+| **YES** — directory listed in `pnpm-workspace.yaml` globs | `"workspace:*"` | Workspace-local reference |
+| **NO** — not in workspace filesystem | Real version range (e.g., `"^1.0.0"`) | External npm dependency |
+
+**Constraint**: Do NOT infer workspace-local status from package scope (`@org/`), organization name, or terminology in the design document ("shared packages", "common libraries", "internal packages"). A package is workspace-local ONLY if its directory is matched by `pnpm-workspace.yaml` and physically present in this workspace.
+
+**Constraint**: `"workspace:*"` for a package that does not exist in the workspace causes `pnpm install` failure. If the package directory does not exist, it is an external dependency.
+
+⚠️ **Blind spot**: Scoped packages published by the same organization (e.g., `@company/logger`) are easily confused with workspace-local packages. They are external npm dependencies — use a version range, not `"workspace:*"`, unless their source directory is confirmed present in `pnpm-workspace.yaml`.
+
 ---
 
 ## 1. package.json ⭐
@@ -147,6 +162,7 @@ Configure as needed for project (Tailwind, ESLint, etc).
 
 ❌ Using npm workspaces instead of pnpm for monorepos
 ❌ Using `"*"` instead of `"workspace:*"` for monorepo package refs
+❌ Using `"workspace:*"` for external packages not present in `pnpm-workspace.yaml` (same-org scope does NOT mean workspace-local)
 ❌ Forgetting `"moduleResolution": "node"` in tsconfig.json
 ❌ Missing `@types/` packages in devDependencies
 ❌ Wrong `"module"` setting (use "ESNext" not "CommonJS")
