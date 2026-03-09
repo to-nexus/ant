@@ -136,23 +136,41 @@ go {same-version-as-go.work}
 
 **Key points:**
 - Module path should match the intended repository path
-- If the task description requires declaring dependencies, list them in the `require` block
+- If the task description requires declaring dependencies, list them in the `require` block — but only if you know the exact version. Omit dependencies with unknown versions (see Dependency Classification below)
 - The `go` version directive in `go.work` and every `go.mod` MUST be identical. A mismatch causes toolchain resolution failures that are invisible until build time
 
-### Dependency Classification — `replace` Directive Protocol
+### Dependency Classification Protocol
 
-For each `require` entry, observe whether the module source directory is physically present in this workspace:
+For each dependency, two decisions must be made in order: (1) local vs external, (2) version.
 
-| Module physically present in workspace? | `require` version | `replace` directive |
-|-----------------------------------------|-------------------|---------------------|
-| **YES** — listed in `go.work` or confirmed as sibling directory | `v0.0.0` | REQUIRED — relative path to local directory |
-| **NO** — not in workspace filesystem | Real version from design doc or known tag | FORBIDDEN — do NOT add |
+#### Step 1 — Local or External?
+
+| Module physically present in workspace? | `replace` directive |
+|-----------------------------------------|---------------------|
+| **YES** — listed in `go.work` or confirmed as sibling directory | REQUIRED — relative path to local directory |
+| **NO** — not in workspace filesystem | FORBIDDEN — do NOT add |
 
 **Constraint**: Do NOT infer workspace-local status from module path prefix, organization name, or terminology in the design document ("shared packages", "common libraries", "internal packages"). A module is workspace-local ONLY if its source directory is physically present in this workspace.
 
 **Constraint**: A `replace` directive pointing to a non-existent directory always causes build failure. If the target directory does not exist, the module is external.
 
 ⚠️ **Blind spot**: Packages published by the same organization (e.g., `github.com/{org}/other-repo`) are easily confused with workspace-local sibling modules. They are external dependencies — treat them identically to any third-party package unless their source directory is confirmed present.
+
+#### Step 2 — Version in `require`
+
+| Category | Version known? | Action |
+|----------|---------------|--------|
+| **Workspace-local** (Step 1 = YES) | N/A | `v0.0.0` (Go workspace resolves locally) |
+| **External** — version in design doc or LLM training data | YES | Exact version (e.g., `v1.10.1`) |
+| **External** — version unknown | NO | **Omit from `require` block entirely** |
+
+**Principle**: Go `go.mod` does not support `latest` or `*`. The ONLY valid version is an exact semver tag. If you do not know the real version, do NOT guess or use `v0.0.0` — omit the module. The verification phase runs `go mod tidy`, which discovers missing modules from import statements in `.go` files and resolves them to the latest published version automatically.
+
+**Constraint**: `v0.0.0` in `require` is reserved exclusively for workspace-local modules (where `go.work` or `replace` resolves the path locally). Using `v0.0.0` for an external module locks it to the oldest tag — `go mod tidy` does NOT upgrade existing versions.
+
+⚠️ **Blind spot**: The workspace-local example (`v0.0.0` + `replace`) is easily copied for external packages. External packages have no `replace`, so `v0.0.0` is fetched literally and never upgraded.
+
+#### Setup Command Restriction
 
 **⛔ Do NOT run any `go` commands (`go mod tidy`, `go mod download`, `go get`, `go get ./...`) during setup.**
 
@@ -163,7 +181,7 @@ For each `require` entry, observe whether the module source directory is physica
 
 Each of these produces a warning or destructive side-effect that triggers unnecessary file re-creation.
 
-**What to do instead**: Declare all dependencies directly in go.mod's `require` block when creating the file. The system handles dependency download automatically after file creation — you do not need to run any command.
+**What to do instead**: Declare dependencies with known versions in go.mod's `require` block. Omit dependencies with unknown versions — the verification phase handles them.
 
 ---
 
@@ -351,6 +369,7 @@ ENV=development
 ❌ MSA: Using a single `go.mod` for all services (each service needs its own module)
 ❌ MSA: Adding `require` for a workspace-local sibling module without a `replace` directive (build fails with "module not found")
 ❌ Adding `replace` for modules not physically present in this workspace (same-org packages are external dependencies, not workspace siblings — `replace` to a non-existent path causes build failure)
+❌ Using `v0.0.0` for external packages whose version is unknown (locks to oldest tag; `go mod tidy` never upgrades — omit from `require` instead and let verify resolve from imports)
 ❌ MSA: Mismatched `go` version between `go.work` and `go.mod` files (causes toolchain resolution failure)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
