@@ -89,7 +89,7 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     const maxVerificationCalls = 22;
     if (callIndex >= maxVerificationCalls) {
       console.warn(`⚠️  [Router] Verification codeGen call limit reached (${callIndex}/${maxVerificationCalls})`);
-      console.warn(`   🚨 Forcing checkTaskStatus to prevent runaway loop`);
+      console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
       return 'checkTaskStatus';
     }
   }
@@ -101,7 +101,7 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     const warningThreshold = Math.floor(maxFeatureCalls * 0.8); // 16
     if (callIndex >= maxFeatureCalls) {
       console.warn(`⚠️  [Router] Feature task codeGen call limit reached (${callIndex}/${maxFeatureCalls})`);
-      console.warn(`   🚨 Forcing checkTaskStatus to complete the task`);
+      console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
       return 'checkTaskStatus';
     }
     if (callIndex === warningThreshold) {
