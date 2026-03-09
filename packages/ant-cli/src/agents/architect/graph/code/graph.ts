@@ -89,6 +89,24 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     }
   }
   
+  // ✅ Budget exhaustion guard: <done> tag is the ONLY completion signal.
+  // If checkTaskStatus is reached without LLM explicitly signaling done,
+  // the task hit its call budget — this is a failure, not a success.
+  const llmExplicitlyDone = state.llmResponse?.done === true;
+  if (violations.length === 0 && state.currentTask && !llmExplicitlyDone) {
+    const taskType = state.currentTask.type;
+    if (taskType !== 'verification' && taskType !== 'error') {
+      console.warn(`⚠️  [checkTaskStatus] Task "${state.currentTask.name}" reached checkTaskStatus without <done> tag — budget exhausted`);
+      violations.push({
+        type: 'budget_exhausted' as ViolationType,
+        severity: 'critical',
+        message: `Task reached codeGen call limit without LLM signaling completion via <done> tag. The LLM could not complete within the call budget.`,
+        isRetryable: true,
+        suggestedFix: 'Break down the task scope or provide clearer implementation direction.',
+      });
+    }
+  }
+
   const hasViolations = (violations && violations.length > 0);
   
   // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
