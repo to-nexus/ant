@@ -2,6 +2,7 @@ import { ArchitectGraphState } from "./state";
 import { TaskQueue, CodeTask } from "../../types/task";
 import { buildCodeGraph } from "./graph";
 import { getChatAPIClient } from "../../../../core/adapters/ChatAPIClient";
+import { resetKeywordDedup } from "./nodes/plan/keywordGeneration";
 
 /**
  * Code Graph Runner
@@ -13,6 +14,8 @@ import { getChatAPIClient } from "../../../../core/adapters/ChatAPIClient";
  * ✅ Learn node is ALWAYS executed on exit (success/error/recursion limit)
  */
 export async function runCodeGraph(initial: ArchitectGraphState) {
+  resetKeywordDedup();
+
   const app = buildCodeGraph();
   let state: ArchitectGraphState = initial;
   let isRecursionLimit = false;
