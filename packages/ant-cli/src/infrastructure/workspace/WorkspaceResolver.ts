@@ -269,7 +269,8 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
   getCodebasePath(userContext: UserContext, projectId: string, featureId?: string): string {
     const projectPath = this.getProjectPath(userContext, projectId);
     
-    // Check if project uses a local repo path (repoType === 'local')
+    // Read project config for repoType and branchBase
+    let branchBase = 'main';
     const configPath = path.join(projectPath, 'config.json');
     try {
       if (fs.existsSync(configPath)) {
@@ -277,13 +278,16 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
         if (config.repoType === 'local' && config.localPath) {
           return resolveLocalPath(config.localPath);
         }
+        if (config.branchBase) {
+          branchBase = config.branchBase;
+        }
       }
     } catch {
       // config not found or invalid - fall through to default cloud path
     }
     
-    // Cloud mode: main → projectPath/codebase, feature → featurePath/codebase
-    if (!featureId || featureId === 'main') {
+    // Cloud mode: base branch → projectPath/codebase, feature → featurePath/codebase
+    if (!featureId || featureId.toLowerCase() === branchBase.toLowerCase()) {
       return path.join(projectPath, 'codebase');
     }
     return path.join(this.getFeaturePath(userContext, projectId, featureId), 'codebase');

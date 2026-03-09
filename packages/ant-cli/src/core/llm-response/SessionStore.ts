@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { StateStorePort, ChatSessionData, ChatMessageData } from '../ports/stateStore';
 import type { SessionContext, LLMResponseEnv } from './types';
-import type { ChatSession, ChatMessage, FileOperationTracker } from '../chat/types';
+import type { ChatSession, ChatMessage, FileOperationTracker, MessageContent } from '../chat/types';
 import { getSessionKey, toRedisSession, fromRedisSession, toRedisMessage, fromRedisMessage, createAssistantMessage } from '../chat/schema';
 import { logger } from '../../utils/logger';
 import { getWorkerScope } from '../parallel/workerScope';
@@ -27,8 +27,7 @@ interface WorkerMessageState {
   sessionProxy?: ChatSession;
 }
 
-// Base branches that don't need chat.json (learning only)
-const BASE_BRANCH_NAMES = ['main', 'master', 'dev', 'develop', 'staging', 'production'];
+import { isBaseBranch, getBranchBase } from '../utils/branchUtils';
 
 // Detect if this process is a resume (set by JobWorker)
 const IS_RESUME = process.env.ANT_IS_RESUME === 'true';
@@ -423,6 +422,52 @@ export class SessionStore {
   }
 
   /**
+   * Strip heavy file content from message contents for lightweight persistence.
+   * Replaces file body and diffs with line-count summaries.
+   * Non-file content (command output, text, thinking, etc.) is preserved as-is.
+   */
+  private static stripHeavyContent(contents: MessageContent[]): MessageContent[] {
+    const FILE_OP_TYPES = new Set([
+      'file_creating', 'file_writing', 'file_create', 'file_create_failed',
+      'file_editing', 'file_updating', 'file_edit', 'file_edit_failed',
+      'file_deleting', 'file_delete', 'file_delete_failed',
+      'file_conflict', 'file_conflict_retry'
+    ]);
+
+    const PLAN_TYPES = new Set(['plan_generating', 'plan']);
+
+    return contents.map(c => {
+      if (PLAN_TYPES.has(c.type)) {
+        const lineCount = c.content ? c.content.split('\n').length : 0;
+        return {
+          type: c.type,
+          content: '',
+          metadata: { ...c.metadata, lineCount }
+        };
+      }
+
+      if (!FILE_OP_TYPES.has(c.type)) return c;
+
+      const lineCount = c.content ? c.content.split('\n').length : 0;
+      const diffBeforeLines = c.metadata?.diffBefore ? c.metadata.diffBefore.split('\n').length : 0;
+      const diffAfterLines = c.metadata?.diffAfter ? c.metadata.diffAfter.split('\n').length : 0;
+
+      return {
+        type: c.type,
+        content: '',
+        metadata: {
+          ...c.metadata,
+          diffBefore: undefined,
+          diffAfter: undefined,
+          lineCount,
+          diffBeforeLines,
+          diffAfterLines,
+        }
+      };
+    });
+  }
+
+  /**
    * Save session to chat.json file
    * 
    * Uses read-merge-write to handle parallel workers writing to the same file.
@@ -436,7 +481,7 @@ export class SessionStore {
     }
 
     // Skip saving chat for base branches (learning only, no chat history needed)
-    if (BASE_BRANCH_NAMES.includes(this.context.featureName.toLowerCase())) {
+    if (isBaseBranch(this.context.featureName, getBranchBase())) {
       logger.debug(`Skipping chat.json save for base branch: ${this.context.featureName}`, { 
         component: 'SessionStore' 
       });
@@ -475,16 +520,41 @@ export class SessionStore {
       // Merge: deduplicate by message ID, then sort by timestamp
       const localMessages = this.localSession.messages.map(msg => ({
         ...msg,
+        contents: SessionStore.stripHeavyContent(msg.contents),
         isStreaming: undefined,  // Don't persist streaming flag
         isComplete: true  // Mark as complete
       }));
 
-      const localIds = new Set(localMessages.map(m => m.id));
+      // Include in-progress currentMessages so they survive interruption.
+      // Main graph's currentMessage:
+      const inProgressMessages: typeof localMessages = [];
+      if (this.localSession.currentMessage && this.localSession.currentMessage.contents.length > 0) {
+        inProgressMessages.push({
+          ...this.localSession.currentMessage,
+          contents: SessionStore.stripHeavyContent(this.localSession.currentMessage.contents),
+          isStreaming: undefined,
+          isComplete: false
+        });
+      }
+      // Worker-scoped currentMessages:
+      for (const [, ws] of this.workerMessages) {
+        if (ws.currentMessage && ws.currentMessage.contents.length > 0) {
+          inProgressMessages.push({
+            ...ws.currentMessage,
+            contents: SessionStore.stripHeavyContent(ws.currentMessage.contents),
+            isStreaming: undefined,
+            isComplete: false
+          });
+        }
+      }
+
+      const allLocalMessages = [...localMessages, ...inProgressMessages];
+      const localIds = new Set(allLocalMessages.map(m => m.id));
       const mergedMessages = [
         // Keep existing messages from other workers (not in local set)
         ...existingMessages.filter(m => m.id && !localIds.has(m.id)),
-        // Add all local messages (authoritative for this worker)
-        ...localMessages,
+        // Add all local messages + in-progress messages (authoritative for this worker)
+        ...allLocalMessages,
       ].sort((a, b) => {
         const ta = a.timestamp || '';
         const tb = b.timestamp || '';

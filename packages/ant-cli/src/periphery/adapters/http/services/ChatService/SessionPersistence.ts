@@ -9,13 +9,24 @@ import * as path from 'path';
 import type { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import type { UserContext } from '../../../../../core/types/user';
 import type { ChatSessionFile, ChatMessage } from './types';
-import { BASE_BRANCH_NAMES } from './types';
+import { isBaseBranch, readBranchBaseFromConfig } from '../../../../../core/utils/branchUtils';
 import { logger } from '../../../../../utils/logger';
 
 export class SessionPersistence {
   constructor(
     private workspaceResolver?: WorkspaceResolver
   ) {}
+
+  /**
+   * Check if featureName is the project's base branch.
+   * Delegates to config.branchBase via WorkspaceResolver.
+   */
+  isBaseBranchFeature(projectId: string, featureName: string, userContext: UserContext): boolean {
+    if (!this.workspaceResolver) return false;
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const branchBase = readBranchBaseFromConfig(projectPath);
+    return isBaseBranch(featureName, branchBase);
+  }
 
   /**
    * Get chat file path for a project/feature
@@ -67,9 +78,13 @@ export class SessionPersistence {
     userContext?: UserContext
   ): void {
     // Skip saving chat for base branches (learning only, no chat history needed)
-    if (BASE_BRANCH_NAMES.includes(featureName.toLowerCase())) {
-      logger.debug(`Skipping chat save for base branch: ${featureName}`, { component: 'SessionPersistence', projectId, featureName });
-      return;
+    if (this.workspaceResolver && userContext) {
+      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+      const branchBase = readBranchBaseFromConfig(projectPath);
+      if (isBaseBranch(featureName, branchBase)) {
+        logger.debug(`Skipping chat save for base branch: ${featureName}`, { component: 'SessionPersistence', projectId, featureName });
+        return;
+      }
     }
     
     const filePath = this.getChatFilePath(projectId, featureName, userContext);

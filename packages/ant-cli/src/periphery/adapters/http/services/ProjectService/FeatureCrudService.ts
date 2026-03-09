@@ -3,6 +3,7 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { getSessionFilePathByJob, getInitFeatureDirs } from '../../../../../core/utils/sessionPaths';
+import { isBaseBranch, readBranchBaseFromConfig } from '../../../../../core/utils/branchUtils';
 import { WorktreeService } from '../GitService/worktree';
 
 /**
@@ -124,8 +125,7 @@ export class FeatureCrudService {
       return [];
     }
     
-    // Base branch names that should not appear as features
-    const baseBranchNames = ['main', 'master', 'develop'];
+    const branchBase = readBranchBaseFromConfig(projectPath);
     
     const items = await fs.promises.readdir(featuresPath);
     const features = await Promise.all(
@@ -142,8 +142,8 @@ export class FeatureCrudService {
         })
     );
     
-    // Filter out base branches and null values
-    return features.filter(f => f && !baseBranchNames.includes(f.toLowerCase())) as string[];
+    // Filter out base branch and null values
+    return features.filter(f => f && !isBaseBranch(f, branchBase)) as string[];
   }
   
   /**

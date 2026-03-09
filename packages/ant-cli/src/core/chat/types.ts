@@ -43,7 +43,11 @@ export interface MessageContent {
      | 'searching_code' | 'searched_code'
      | 'searching_reference' | 'searched_reference'
      // Command Execution - Real-time streaming
-     | 'command_running' | 'command_streaming' | 'command';
+     | 'command_running' | 'command_streaming' | 'command'
+     // Plan Card - Real-time streaming (code job plan node)
+     | 'plan_generating' | 'plan'
+     // Task Response Card - Worker graph text output (parallel-safe)
+     | 'task_response';
   content: string;
   metadata?: MessageContentMetadata;
 }
@@ -112,8 +116,13 @@ export interface MessageContentMetadata {
   // Learn metadata
   taskName?: string;      // For learning
   filesWritten?: number;  // For learned
+  // File card summary (lightweight persistence — content stripped, stats kept)
+  lineCount?: number;       // Total lines written (file_create)
+  diffBeforeLines?: number; // Lines removed (file_edit)
+  diffAfterLines?: number;  // Lines added (file_edit)
   // Merge control
   _mergeIndex?: number;   // Explicit merge target index
+  _preserveContent?: boolean;  // When true, mergeByIndex only updates type (not content)
 }
 
 /**
@@ -214,10 +223,8 @@ export const INFORMATIONAL_TYPES = new Set([
   'context_loaded',
 ]);
 
-/**
- * Base branch names (skip chat persistence)
- */
-export const BASE_BRANCH_NAMES = ['main', 'master', 'develop'];
+// BASE_BRANCH_NAMES removed — use isBaseBranch() from core/utils/branchUtils instead.
+// Base branch is determined by project config (config.branchBase), not a hardcoded list.
 
 /**
  * Chat status type (for showChatStatus method)
@@ -240,4 +247,5 @@ export type ChatStatusType =
   | 'learning' | 'learned' 
   | 'context_loaded'  // ✅ Context loaded notification (eval report, PRD, design docs, etc.)
   | 'choice_card'    // ✅ Generic choice card (eval_save, prd_apply, etc.)
-  | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed';
+  | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed'
+  | 'task_response';
