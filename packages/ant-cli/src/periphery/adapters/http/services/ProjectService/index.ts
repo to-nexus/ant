@@ -2,7 +2,7 @@ import { WorkspaceResolver } from '../../../../../infrastructure/workspace/Works
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
-import type { IDEService } from '../../../ide/IDEService';
+import type { IDEOrchestratorPort } from '../../../../../core/ports/ideOrchestrator';
 
 // Import sub-services
 import { ProjectCrudService } from './ProjectCrudService';
@@ -27,7 +27,7 @@ export class ProjectService {
   private readonly workspaceResolver: WorkspaceResolver;
   private readonly githubAuthService?: GitHubAuthService;
   private readonly chatService?: ChatService;
-  private readonly ideService?: IDEService;
+  private readonly ideOrchestrator?: IDEOrchestratorPort;
   
   // Sub-services
   private readonly projectCrud: ProjectCrudService;
@@ -39,12 +39,12 @@ export class ProjectService {
     workspaceResolver: WorkspaceResolver,
     githubAuthService?: GitHubAuthService,
     chatService?: ChatService,
-    ideService?: IDEService
+    ideOrchestrator?: IDEOrchestratorPort
   ) {
     this.workspaceResolver = workspaceResolver;
     this.githubAuthService = githubAuthService;
     this.chatService = chatService;
-    this.ideService = ideService;
+    this.ideOrchestrator = ideOrchestrator;
     
     // Initialize sub-services
     this.projectCrud = new ProjectCrudService(workspaceResolver);
@@ -74,9 +74,13 @@ export class ProjectService {
   }
   
   async deleteProject(id: string, userContext: UserContext): Promise<void> {
-    // ✅ Cleanup IDE resources first (stop+remove containers, delete IDE home) to avoid dangling resources
-    if (this.ideService) {
-      await this.ideService.cleanupProject(userContext, id, { deleteHome: true });
+    // Cleanup IDE resources first (stop+remove pods/containers, delete IDE home) to avoid dangling resources
+    if (this.ideOrchestrator) {
+      try {
+        await this.ideOrchestrator.cleanupProject(userContext, id, { deleteHome: true });
+      } catch (e: any) {
+        console.warn(`[ProjectService] IDE cleanup for project ${id} failed (non-critical): ${e.message}`);
+      }
     }
     return this.projectCrud.deleteProject(id, userContext);
   }
@@ -102,6 +106,13 @@ export class ProjectService {
   }
   
   async deleteFeature(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
+    // Stop IDE pod/container for this feature before deleting the feature directory
+    if (this.ideOrchestrator) {
+      const tenantId = `${userContext.organizationId}:${userContext.userId}`;
+      await this.ideOrchestrator.stop(tenantId, projectId, featureName).catch((e: any) => {
+        console.warn(`[ProjectService] IDE stop for feature ${featureName} failed (non-critical): ${e.message}`);
+      });
+    }
     return this.featureCrud.deleteFeature(projectId, featureName, userContext);
   }
   
