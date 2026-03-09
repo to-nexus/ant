@@ -75,7 +75,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 2. `Makefile` must include `build`, `run`, `test` targets
 3. Next task will create ALL application code - don't do it now
 4. Include ALL infrastructure services in docker-compose.yml if design doc specifies them
-5. In MSA, every service `go.mod` that `require`s a workspace-local sibling module (source directory physically present in this workspace) MUST also have a `replace` directive pointing to its relative local path. Do NOT add `replace` for modules whose source is not in this workspace — regardless of organization name or module path prefix
+5. In MSA, every service `go.mod` that `require`s a workspace-local sibling module (source directory physically present in this workspace) MUST also have a `replace` directive pointing to its relative local path. Do NOT add `replace` for modules whose source is not in this workspace — regardless of organization name or module path prefix. For external modules whose version is unknown, omit them from `require` entirely — do NOT use `v0.0.0`. The verification phase's `go mod tidy` resolves omitted modules from import statements automatically
 
 **Constraint**: `docker-compose.yml` MUST contain ONLY infrastructure services (databases, caches, message queues). Do NOT add application services (API servers, web servers, redirect services) — even if the design document describes them as Docker containers. The platform manages application process lifecycle separately.
 

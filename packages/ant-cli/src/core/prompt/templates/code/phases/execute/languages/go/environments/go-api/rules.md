@@ -43,7 +43,7 @@
 
 **Constraint**: Do NOT run build, module, or dependency commands (`go build`, `go mod tidy`, `go get`, `go run`, `go test`). Build and dependency verification is handled by the verification task — not yours.
 
-⚠️ **Blind spot**: When a source file has import errors or type mismatches, the instinct is to run a build command to "check if it compiles." Resist this — fix the source code issue directly. If a dependency is missing from `go.mod`, add it to the `require` block via `edit_file` instead of running `go get`.
+⚠️ **Blind spot**: When a source file has import errors or type mismatches, the instinct is to run a build command to "check if it compiles." Resist this — fix the source code issue directly. If a dependency is missing from `go.mod` and you know the exact version, add it to the `require` block via `edit_file`. If you do not know the version, leave the import in the `.go` file — the verification phase's `go mod tidy` resolves missing modules from imports and adds them with the latest published version automatically.
 
 ---
 

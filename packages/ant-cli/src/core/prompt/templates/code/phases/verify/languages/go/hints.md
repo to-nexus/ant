@@ -8,6 +8,9 @@
 |-----------|-------------------|
 | **Workspace** | Does `go.work` exist at the repository root? If yes, each `use` directive declares a module that must be built independently. |
 | **Cross-module imports** | Do modules reference each other via `require` with `v0.0.0`? Workspace mode resolves these locally — `go mod tidy` must run per-module to sync. |
+| **Missing external modules** | Do `.go` files import modules not listed in `go.mod`? `go mod tidy` auto-discovers these from import statements and adds them with the latest published version. |
+
+**Principle**: `go mod tidy` resolves missing modules (not in `go.mod`) to the latest version, but does NOT upgrade modules already present in `go.mod`. This is by design — setup may intentionally omit external packages with unknown versions so that `go mod tidy` resolves them here.
 
 **Constraint**: `go mod tidy` MUST execute inside each module directory (where `go.mod` lives), not from the repository root. Running it from the wrong directory corrupts dependency resolution.
 
