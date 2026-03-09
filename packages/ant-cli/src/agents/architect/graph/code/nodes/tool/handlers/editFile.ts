@@ -9,7 +9,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { EditFileArgs } from '../types';
-import { resolveToolPath } from './utils';
+import { resolveToolPath, prependFixMessage } from './utils';
 
 const MAX_IO_RETRIES = 3;
 
@@ -96,7 +96,7 @@ export async function handleEditFile(
       );
     }
     
-    return `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.`;
+    return prependFixMessage(resolved, `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.`);
   } catch (error) {
     // ✅ UI notification: file edit failed
     await chatAPI.failFileEdit(filePath, (error as Error).message);

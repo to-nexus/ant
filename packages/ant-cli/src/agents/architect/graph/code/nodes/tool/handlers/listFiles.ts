@@ -5,7 +5,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { ListFilesArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation, resolveToolDirectory } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolDirectory, prependFixMessage } from './utils';
 
 export async function handleListFiles(
   state: ArchitectGraphState,
@@ -56,6 +56,9 @@ export async function handleListFiles(
       });
     }
     
+    if (resolvedDir.wasFixed && resolvedDir.fixMessage) {
+      return [resolvedDir.fixMessage, ...filtered];
+    }
     return filtered;
   }, { directory: resolvedDir.displayPath, pattern });
 }

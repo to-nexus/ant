@@ -6,7 +6,7 @@ import * as path from 'path';
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { ReadFileArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath, prependFixMessage } from './utils';
 
 /**
  * Binary file extensions that should not be read as text.
@@ -89,10 +89,10 @@ Proceed with your next action.`;
       const start = Math.max(1, startLine || 1);
       const end = Math.min(totalLines, endLine || totalLines);
       const slice = lines.slice(start - 1, end).join('\n');
-      return `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`;
+      return prependFixMessage(resolved, `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`);
     }
     
-    return content;
+    return prependFixMessage(resolved, content);
   }, { filePath: resolved.displayPath });
 }
 

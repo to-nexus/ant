@@ -83,6 +83,7 @@ export async function checkLocalBackend(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE()}/health`, {
       method: 'GET',
+      credentials: 'include',
       signal: AbortSignal.timeout(3000),
     });
     return response.ok;
@@ -100,42 +101,11 @@ if (import.meta.env.DEV) {
 }
 
 /**
- * Get user email from localStorage (parsed).
- * Returns undefined in local mode or if not set.
- */
-export function getUserEmail(): string | undefined {
-  if (getBackendMode() === 'local') return undefined;
-  try {
-    const stored = localStorage.getItem('ant-ui:user-email');
-    if (stored) return JSON.parse(stored);
-  } catch { /* ignore */ }
-  return undefined;
-}
-
-/**
- * Get authentication headers for Cloud mode
- */
-export function getAuthHeaders(): HeadersInit {
-  const backendMode = getBackendMode();
-  if (backendMode === 'local') return {};
-
-  try {
-    const userEmail = localStorage.getItem('ant-ui:user-email');
-    if (userEmail) {
-      return { 'x-user-email': JSON.parse(userEmail) };
-    }
-    console.warn('[getAuthHeaders] No userEmail in localStorage');
-  } catch (error) {
-    console.error('[getAuthHeaders] Failed to get user email:', error);
-  }
-
-  return {};
-}
-
-/**
  * Authenticated fetch wrapper.
- * Automatically includes Content-Type: application/json (except for FormData)
- * and auth headers for Cloud mode.
+ * 
+ * Authentication is handled via httpOnly JWT cookies (credentials: 'include').
+ * No custom auth headers are needed — the browser automatically sends the
+ * ant_session cookie with every cross-origin request.
  */
 export async function authFetch(url: string, options?: RequestInit): Promise<Response> {
   const isFormDataBody =
@@ -148,11 +118,14 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
 
   const headers = {
     ...baseHeaders,
-    ...getAuthHeaders(),
     ...(options?.headers || {}),
   } as HeadersInit;
 
-  return fetch(url, { ...options, headers });
+  return fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
 }
 
 // ── Generic API helpers ─────────────────────────────────────────────

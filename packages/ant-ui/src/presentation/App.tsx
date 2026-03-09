@@ -22,44 +22,59 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
 // STORAGE_KEYS/loadFromStorage no longer needed in App — QuickStart handles its own persistence
-import { signUp, signIn, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
-import { SignUpModal } from '@/presentation/components/auth/SignUpModal';
-import { SignInModal } from '@/presentation/components/auth/SignInModal';
+import { fetchAuthMe, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
 
 function App() {
   // ✅ Route handling: Track current path
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
   
-  // ✅ Handle Google OAuth callback
+  // ✅ Handle Google OAuth callback (JWT cookie-based) + session validation on startup
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const authStatus = urlParams.get('auth');
-    const userDataParam = urlParams.get('user');
     const errorParam = urlParams.get('error');
     
-    if (authStatus === 'success' && userDataParam) {
-      try {
-        const userData = JSON.parse(decodeURIComponent(userDataParam));
-        const setUser = useStore.getState().setUser;
-        
-        // Store user in global state
-        setUser(userData.email, userData.organization);
-        
-        // Load projects after authentication
-        const fetchProjects = useStore.getState().fetchProjects;
-        fetchProjects();
-        
-        // Show success notification
-        console.log('[Auth] Successfully signed in with Google:', userData.email);
-        
-        // Clean up URL
-        window.history.replaceState({}, '', '/');
-      } catch (error) {
-        console.error('[Auth] Failed to parse OAuth callback data:', error);
-      }
+    if (authStatus === 'success') {
+      // JWT cookie was set by the server during OIDC callback redirect.
+      // Fetch user info from /api/auth/me to populate Zustand store.
+      (async () => {
+        try {
+          const user = await fetchAuthMe();
+          if (user) {
+            const setUser = useStore.getState().setUser;
+            setUser(user.email, user.organization);
+            
+            const fetchProjects = useStore.getState().fetchProjects;
+            fetchProjects();
+            
+            console.log('[Auth] Successfully signed in with Google:', user.email);
+          } else {
+            console.error('[Auth] Failed to fetch user info after OAuth');
+          }
+          
+          // Clean up URL
+          window.history.replaceState({}, '', '/');
+        } catch (error) {
+          console.error('[Auth] Failed to complete OAuth:', error);
+        }
+      })();
     } else if (errorParam) {
       console.error('[Auth] OAuth error:', errorParam);
-      // TODO: Show error notification to user
+      window.history.replaceState({}, '', '/');
+    } else if (getBackendMode() === 'cloud' && useStore.getState().userEmail) {
+      // Session validation: localStorage has user but JWT cookie may have expired.
+      // Verify with /api/auth/me — if invalid, clear localStorage to force re-login.
+      (async () => {
+        try {
+          const user = await fetchAuthMe();
+          if (!user) {
+            console.warn('[Auth] JWT session expired, clearing stored user');
+            useStore.getState().clearUser();
+          }
+        } catch {
+          // Network error — don't clear user (server may be temporarily down)
+        }
+      })();
     }
   }, []);
   
@@ -112,11 +127,6 @@ function App() {
   const backendMode = useStore((state) => state.backendMode);
   const projects = useStore((state) => state.projects);
   const projectsLoaded = useStore((state) => state.projectsLoaded);
-  const setUser = useStore((state) => state.setUser);
-  
-  // Auth modals for WelcomePage
-  const [showSignUpModal, setShowSignUpModal] = useState(false);
-  const [showSignInModal, setShowSignInModal] = useState(false);
   
   const onboardingSkipped = useStore((state) => state.onboardingSkipped);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
@@ -161,7 +171,7 @@ function App() {
     }
   }, [shouldShowQuickStart]);
   
-  // ✅ Auth handlers for WelcomePage (mirrored from GlobalNavBar)
+  // ✅ Auth handlers for WelcomePage — always redirect to Google OIDC
   const getOAuthBackendBase = (): string => {
     const mode = getBackendMode();
     if (mode === 'cloud') {
@@ -172,41 +182,13 @@ function App() {
   };
   
   const handleWelcomeSignUp = () => {
-    const skipAuth = import.meta.env.VITE_SKIP_AUTH_FOR_LOCALHOST === 'true';
-    if (skipAuth) {
-      setShowSignUpModal(true);
-    } else {
-      const backendBase = getOAuthBackendBase();
-      window.location.href = `${backendBase}/api/auth/google`;
-    }
+    const backendBase = getOAuthBackendBase();
+    window.location.href = `${backendBase}/api/auth/google`;
   };
   
   const handleWelcomeSignIn = () => {
-    const skipAuth = import.meta.env.VITE_SKIP_AUTH_FOR_LOCALHOST === 'true';
-    if (skipAuth) {
-      setShowSignInModal(true);
-    } else {
-      const backendBase = getOAuthBackendBase();
-      window.location.href = `${backendBase}/api/auth/google`;
-    }
-  };
-  
-  const handleAuthSignUp = async (email: string) => {
-    const response = await signUp(email);
-    if (response.success && response.user) {
-      setUser(response.user.email, response.user.organization);
-      const fetchProjects = useStore.getState().fetchProjects;
-      await fetchProjects();
-    }
-  };
-  
-  const handleAuthSignIn = async (email: string) => {
-    const response = await signIn(email);
-    if (response.success && response.user) {
-      setUser(response.user.email, response.user.organization);
-      const fetchProjects = useStore.getState().fetchProjects;
-      await fetchProjects();
-    }
+    const backendBase = getOAuthBackendBase();
+    window.location.href = `${backendBase}/api/auth/google`;
   };
   const ideBaseUrl = useStore((state) => state.ideBaseUrl);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
@@ -409,16 +391,6 @@ function App() {
           <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
             <GlobalNavBar />
             <WelcomePage onSignUp={handleWelcomeSignUp} onSignIn={handleWelcomeSignIn} />
-            <SignUpModal
-              isOpen={showSignUpModal}
-              onClose={() => setShowSignUpModal(false)}
-              onSignUp={handleAuthSignUp}
-            />
-            <SignInModal
-              isOpen={showSignInModal}
-              onClose={() => setShowSignInModal(false)}
-              onSignIn={handleAuthSignIn}
-            />
           </div>
         </AlertModalProvider>
       </ToastProvider>

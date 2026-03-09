@@ -29,8 +29,6 @@ export type Store = ProjectSlice &
 
 // Initialize persistent state from localStorage
 function initializePersistentState() {
-  const userEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL);
-  const userOrganization = loadFromStorage(STORAGE_KEYS.USER_ORGANIZATION);
   const dismissedInterruptTimestamp = loadFromStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP);
   const storedMainView = loadFromStorage(STORAGE_KEYS.MAIN_VIEW);
   const selectedProject = loadFromStorage(STORAGE_KEYS.SELECTED_PROJECT) as string | null;
@@ -40,13 +38,16 @@ function initializePersistentState() {
   const normalizedMainView = storedMainView === 'editor' ? 'codeIde' : storedMainView;
   const mainView = (normalizedMainView === 'codeIde' || normalizedMainView === 'agents') ? normalizedMainView : 'agents';
   
+  const userEmail = loadFromStorage(STORAGE_KEYS.USER_EMAIL) as string | undefined;
+  const userOrganization = loadFromStorage(STORAGE_KEYS.USER_ORGANIZATION) as string | undefined;
+  
   return {
-    userEmail,
-    userOrganization,
     dismissedInterruptTimestamp,
     mainView,
     selectedProject: selectedProject || undefined,
     selectedFeature,
+    userEmail: userEmail || undefined,
+    userOrganization: userOrganization || undefined,
   };
 }
 
@@ -69,12 +70,12 @@ export const useStore = create<Store>((set, get, store) => {
     ...createTransferSlice(set, get, store),
     
     // Override with persistent state
-    userEmail: persistent.userEmail,
-    userOrganization: persistent.userOrganization,
     dismissedInterruptTimestamp: persistent.dismissedInterruptTimestamp,
     mainView: persistent.mainView,
     selectedProject: persistent.selectedProject,
     selectedFeature: persistent.selectedFeature,
+    userEmail: persistent.userEmail,
+    userOrganization: persistent.userOrganization,
   };
 });
 

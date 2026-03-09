@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, getAuthHeaders, getUserEmail } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete } from './client';
 
 export interface FileNode {
   name: string;
@@ -171,10 +171,7 @@ function xhrUpload(
     xhr.addEventListener('error', () => reject(new Error('Upload network error')));
 
     xhr.open('POST', url);
-    const authHeaders = getAuthHeaders();
-    Object.entries(authHeaders).forEach(([key, value]) => {
-      xhr.setRequestHeader(key, value as string);
-    });
+    xhr.withCredentials = true; // Send JWT cookie for authentication
     xhr.send(formData);
   });
 }
@@ -218,10 +215,6 @@ export function getDownloadUrl(
   featureName: string,
   filePath: string,
 ): string {
-  const base = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/download?path=${encodeURIComponent(filePath)}`;
-  const email = getUserEmail();
-  if (email) {
-    return `${base}&user-email=${encodeURIComponent(email)}`;
-  }
-  return base;
+  // Authentication via JWT cookie (credentials: 'include' on fetch, or same-origin browser navigation)
+  return `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/download?path=${encodeURIComponent(filePath)}`;
 }
