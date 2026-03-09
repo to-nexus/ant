@@ -15,7 +15,7 @@ import { AuthService } from '../../../../../infrastructure/auth/AuthService';
 import { GoogleOIDCService } from '../../../../../infrastructure/auth/GoogleOIDCService';
 import { createJwtServiceFromEnv } from '../../../../../infrastructure/auth/JwtService';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
-import { IDEService } from '../../../ide/IDEService';
+import { IDEOrchestratorPort } from '../../../../../core/ports/ideOrchestrator';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
@@ -43,8 +43,12 @@ export function initializeServices(
   const portRegistry: PortRegistryPort = factory.getStateStore() as unknown as PortRegistryPort;
   logger.info('Using RedisStateStore as PortRegistry', { component: 'ServiceInitializer' });
   
-  const ideService = new IDEService(portManager, portRegistry);
-  ideService.startIdleChecker();
+  // Use IDEOrchestratorPort: K8s mode → KubernetesIDEOrchestrator, local → LocalIDEOrchestrator (Docker)
+  // This avoids Docker socket access in K8s pods where /var/run/docker.sock doesn't exist
+  factory.setDependencies(portManager, portRegistry);
+  const ideOrchestrator: IDEOrchestratorPort = factory.getIDEOrchestrator();
+  ideOrchestrator.startIdleCheck();
+  logger.info(`IDE Orchestrator: ${ideOrchestrator.constructor.name}`, { component: 'ServiceInitializer' });
   
   // Initialize AuthService + JWT for Cloud mode
   let authService: AuthService | undefined;
@@ -97,7 +101,7 @@ export function initializeServices(
     workspaceResolver, 
     githubAuthService, 
     chatService, 
-    ideService
+    ideOrchestrator
   );
   const kanbanService = new KanbanService(config.workspacesPath, workspaceResolver, stateStore);
   
@@ -134,7 +138,7 @@ export function initializeServices(
     jwtService,
     portManager,
     portRegistry,
-    ideService,
+    ideService: ideOrchestrator,
     kanbanService,
     sessionService,
     gitWatcherService,
