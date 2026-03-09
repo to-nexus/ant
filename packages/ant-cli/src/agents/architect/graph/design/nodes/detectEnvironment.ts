@@ -496,6 +496,11 @@ export async function detectEnvironment(
       [{ role: "user", content: prompt }],
       { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: false }
     )) {
+      if (event.type === 'retry') {
+        response = '';
+        capturedUsage = undefined;
+        continue;
+      }
       if (event.text) {
         response += event.text;
       }

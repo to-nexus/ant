@@ -34,7 +34,40 @@ import {
   ORCHESTRATOR_PORT 
 } from '../constants';
 import * as path from 'path';
+import * as fs from 'fs';
 import { AsyncMutex } from '../../../parallel/AsyncMutex';
+import { WorkerFileSystem } from '../../../parallel/WorkerFileSystem';
+
+const GO_DEPENDENCY_PATTERN = /\bgo\s+(get|mod\s+tidy|mod\s+download)\b/;
+
+/**
+ * Dynamically refresh GOPRIVATE/GONOSUMCHECK/GONOSUMDB before go dependency commands.
+ * At worker startup, go.mod may not exist yet (created by setup task). This function
+ * re-reads go.mod at command execution time to pick up the module org.
+ */
+function refreshGoPrivateEnv(command: string, projectPath: string): void {
+  if (!GO_DEPENDENCY_PATTERN.test(command)) return;
+
+  const goModPath = path.join(projectPath, 'codebase', 'go.mod');
+  try {
+    if (!fs.existsSync(goModPath)) return;
+    const content = fs.readFileSync(goModPath, 'utf-8');
+    const match = content.match(/^module\s+github\.com\/([^/\s]+)\//m);
+    if (!match) return;
+
+    const moduleOrg = match[1];
+    const pattern = `github.com/${moduleOrg}/*`;
+    const current = process.env.GOPRIVATE || '';
+
+    if (!current.includes(pattern)) {
+      const updated = current ? `${current},${pattern}` : pattern;
+      process.env.GOPRIVATE = updated;
+      process.env.GONOSUMCHECK = updated;
+      process.env.GONOSUMDB = updated;
+      console.log(`   🔒 [RunCommand] Refreshed GOPRIVATE to include ${moduleOrg}: ${updated}`);
+    }
+  } catch { /* go.mod not readable — skip */ }
+}
 
 // 🚨 INTERACTIVE COMMAND DETECTION: Commands that require user input will hang forever
 // These patterns detect commands that typically prompt for input (cross-language)
@@ -195,6 +228,15 @@ async function executeCommandLogic(
   if (!fileSystem) {
     throw new Error('FileSystemPort not available');
   }
+
+  const invalidateBufferedFiles = () => {
+    if (fileSystem instanceof WorkerFileSystem) {
+      const count = fileSystem.sharedBuffer.invalidateByPrefix('codebase');
+      if (count > 0) {
+        console.log(`   🔄 [RunCommand] Invalidated ${count} buffered file(s) after shell command`);
+      }
+    }
+  };
   
   // 🚨 CRITICAL SAFEGUARD: Prevent killing orchestrator port
   checkOrchestratorPortSafeguard(command, ORCHESTRATOR_PORT);
@@ -247,6 +289,8 @@ Or use a different approach that doesn't require initialization.`;
   
   const projectPath = fileSystem.getRootPath();
 
+  refreshGoPrivateEnv(normalizedCommand, projectPath);
+
   let workingDir: string;
   if (working_directory) {
     if (path.isAbsolute(working_directory)) {
@@ -268,7 +312,7 @@ Or use a different approach that doesn't require initialization.`;
     return `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\n` +
       `Violations:\n${msg}\n\n` +
       `All file writes must target paths under codebase/. ` +
-      `Use create_file or edit_file tools instead of shell redirection for file creation.`;
+      `Use the <file> tag for new file creation, or edit_file tool for modifying existing files.`;
   }
   
   console.log(`\n   🔧 Running command: ${normalizedCommand}`);
@@ -351,6 +395,7 @@ Or use a different approach that doesn't require initialization.`;
     
     // Handle server detection: command is still running, terminate and return
     if (raceResult.type === 'server_detected') {
+      invalidateBufferedFiles();
       const allOutput = streamedStdout + streamedStderr;
       
       // Prevent unhandled promise rejection from the still-pending commandPromise.
@@ -377,6 +422,8 @@ For verification: build success + server startup = task complete.`;
     const result = raceResult.result;
     const { stdout, stderr, exitCode, success } = result;
     const output = stdout + stderr;
+
+    invalidateBufferedFiles();
     
     if (success) {
       console.log(`\n   ✅ Command succeeded (exit code: ${exitCode})\n`);
@@ -448,6 +495,7 @@ Exit Code: 0
 (No output)`;
     }
   } catch (error) {
+    invalidateBufferedFiles();
     // ✅ Handle timeout or execution errors
     const errorMessage = (error as Error).message;
     console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);

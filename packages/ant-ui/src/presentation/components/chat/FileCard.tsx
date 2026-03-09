@@ -101,20 +101,24 @@ export function FileCard({ content, operation }: FileCardProps) {
     }
   }, [fileContent, isActive, isUserScrolling]);
   
-  // Calculate line stats
+  // Calculate line stats (supports both full content and lightweight metadata from chat.json)
   const calculateLineStats = () => {
     if (operation === 'edit' && diffBefore && diffAfter) {
-      const beforeLines = diffBefore.split('\n').length;
-      const afterLines = diffAfter.split('\n').length;
-      const added = afterLines;
-      const removed = beforeLines;
-      return { added, removed, total: null };
+      return { added: diffAfter.split('\n').length, removed: diffBefore.split('\n').length, total: null };
+    } else if (operation === 'edit' && (content.metadata?.diffBeforeLines || content.metadata?.diffAfterLines)) {
+      return { added: content.metadata.diffAfterLines ?? 0, removed: content.metadata.diffBeforeLines ?? 0, total: null };
     } else if (fileContent) {
       const totalLines = fileContent.split('\n').length;
       return { 
         added: operation === 'create' ? totalLines : 0, 
         removed: operation === 'delete' ? totalLines : 0,
         total: totalLines 
+      };
+    } else if (content.metadata?.lineCount) {
+      return { 
+        added: operation === 'create' ? content.metadata.lineCount : 0, 
+        removed: operation === 'delete' ? content.metadata.lineCount : 0,
+        total: content.metadata.lineCount 
       };
     }
     return { added: 0, removed: 0, total: 0 };

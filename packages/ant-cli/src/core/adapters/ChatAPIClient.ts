@@ -91,6 +91,14 @@ async function initializeLLMResponseService(): Promise<LLMResponseService | null
     
     console.log(`✅ [ChatAPIClient] LLMResponseService created successfully`);
     
+    // Register for graceful shutdown so in-progress messages are flushed to chat.json
+    try {
+      const { registerChatFlusher } = await import('../../composition/gracefulShutdown');
+      registerChatFlusher(llmResponseService!);
+    } catch {
+      // Non-critical — graceful shutdown may not be available in all contexts
+    }
+    
     logger.info(`ChatAPIClient initialized with direct Redis: ${projectId}/${featureName} (Job: ${jobId})`, {
       component: 'ChatAPIClient'
     });

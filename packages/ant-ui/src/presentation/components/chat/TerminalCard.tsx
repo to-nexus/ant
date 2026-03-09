@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Terminal, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Terminal, ChevronDown, ChevronRight, ChevronUp, Loader2 } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
 
 interface TerminalCardProps {
@@ -26,6 +26,7 @@ export function TerminalCard({ content }: TerminalCardProps) {
   
   // ✅ Cursor/Copilot style: Default to expanded (show output), allow user to collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCommandExpanded, setIsCommandExpanded] = useState(false);
   const shouldShowOutput = !isCollapsed && output;
   
   // ✅ CRITICAL: Use ref to track previous output length
@@ -77,14 +78,18 @@ export function TerminalCard({ content }: TerminalCardProps) {
   
   const config = isActive ? activeConfig : statusConfig;
   const hasOutput = output && output.trim().length > 0;
+  const isLongCommand = command && command.length > 60;
+  const canToggleOutput = hasOutput && isCompleted;
   
   return (
     <div className={`border ${config.borderColor} rounded-lg overflow-hidden ${config.bgColor}`}>
-      {/* Header - Copilot/Cursor Style (Single Row) */}
-      <button 
-        onClick={() => hasOutput && isCompleted && setIsCollapsed(!isCollapsed)}
-        disabled={!hasOutput || !isCompleted}
-        className={`w-full ${config.headerBg} px-3 py-2.5 ${hasOutput && isCompleted ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors`}
+      {/* Header */}
+      <div
+        role="button"
+        tabIndex={canToggleOutput ? 0 : undefined}
+        onClick={() => canToggleOutput && setIsCollapsed(!isCollapsed)}
+        onKeyDown={(e) => { if (canToggleOutput && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setIsCollapsed(!isCollapsed); } }}
+        className={`w-full ${config.headerBg} px-3 py-2.5 ${canToggleOutput ? config.hoverBg + ' cursor-pointer' : 'cursor-default'} transition-colors select-none`}
       >
         <div className="flex items-center gap-2">
           {/* Status Icon */}
@@ -94,10 +99,34 @@ export function TerminalCard({ content }: TerminalCardProps) {
             <Terminal className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
           )}
           
-          {/* Command */}
-          <span className={`text-xs font-mono ${config.textColor} truncate flex-1 text-left`}>
+          {/* Command text + expand toggle for long commands */}
+          <span
+            className={`text-xs font-mono ${config.textColor} flex-1 text-left ${isCommandExpanded ? 'whitespace-pre-wrap break-all' : 'truncate'} ${isLongCommand ? 'cursor-pointer hover:opacity-80' : ''}`}
+            onClick={(e) => {
+              if (isLongCommand) {
+                e.stopPropagation();
+                setIsCommandExpanded(!isCommandExpanded);
+              }
+            }}
+            title={isLongCommand && !isCommandExpanded ? command : undefined}
+          >
             {command}
           </span>
+          
+          {/* Command expand/collapse indicator for long commands */}
+          {isLongCommand && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsCommandExpanded(!isCommandExpanded); }}
+              className={`flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors`}
+              title={isCommandExpanded ? 'Collapse command' : 'Expand command'}
+            >
+              {isCommandExpanded
+                ? <ChevronUp className={`w-3 h-3 ${config.textColor} opacity-60`} />
+                : <ChevronDown className={`w-3 h-3 ${config.textColor} opacity-60`} />
+              }
+            </button>
+          )}
           
           {/* Exit Code (Compact) */}
           {isCompleted && exitCode !== undefined && (
@@ -106,8 +135,8 @@ export function TerminalCard({ content }: TerminalCardProps) {
             </span>
           )}
           
-          {/* Expand/Collapse Icon */}
-          {isCompleted && hasOutput && (
+          {/* Output expand/collapse icon */}
+          {canToggleOutput && (
             <div className="flex-shrink-0">
               {isCollapsed ? 
                 <ChevronRight className={`w-4 h-4 ${config.textColor} opacity-60`} /> :
@@ -116,7 +145,7 @@ export function TerminalCard({ content }: TerminalCardProps) {
             </div>
           )}
         </div>
-      </button>
+      </div>
       
       {/* Output (auto-expand during streaming, collapsible when complete) */}
       {shouldShowOutput && (

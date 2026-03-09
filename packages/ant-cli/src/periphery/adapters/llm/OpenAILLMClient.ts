@@ -124,6 +124,7 @@ export class OpenAILLMClient implements LLMClient {
         initialDelayMs: 2000,
         backoffMultiplier: 2,
         retryableErrors: ['overloaded_error', 'api_error'],
+        retryMarker: { type: 'retry' as const },
       }
     );
   }

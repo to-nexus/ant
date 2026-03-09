@@ -9,4 +9,4 @@ export * from './CredentialsStore';
 export * from './IntegrationsStore';
 export * from './PreferencesStore';
 export * from './UserConfigManager';
-
+export * from './CredentialEnvBuilder';
