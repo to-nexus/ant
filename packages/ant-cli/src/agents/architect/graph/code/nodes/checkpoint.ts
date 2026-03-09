@@ -72,6 +72,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
       chatSource: state.chatSource,  // ✅ Save chat source flag
       referenceRequests: state.referenceRequests || [],  // ✅ Save reference requests for tool calling
+      designDocUnknownPackages: state.designDocUnknownPackages,  // ✅ Save unknown packages for plan injection
       // ✅ Save DetectionReport (unified detection result)
       detectionReport: state.detectionReport,
       // ✅ CRITICAL: Save artifacts for CodeGen validation on resume

@@ -75,7 +75,7 @@ export async function buildPlanPrompt(
     designDoc = state.design || '';
   }
 
-  return promptEngine.buildTaskPlanPrompt(
+  let prompt = await promptEngine.buildTaskPlanPrompt(
     task,
     state.directive || '',
     designDoc,
@@ -86,6 +86,21 @@ export async function buildPlanPrompt(
     remainingTasks,
     { hasTools: options?.hasTools ?? false },
   );
+
+  const unknownPackages = state.designDocUnknownPackages;
+  if (unknownPackages && unknownPackages.length > 0) {
+    prompt += '\n\n────────────────────────────────────────────────────────────────────────────────\n';
+    prompt += '## Design Document Unknown Packages\n\n';
+    prompt += 'The following packages were identified as unknown (not in LLM training data)\n';
+    prompt += 'from the design document. For each one relevant to YOUR task, discover its API\n';
+    prompt += 'via tools and include it in `prescribedPackages`.\n\n';
+    for (const pkg of unknownPackages) {
+      prompt += `- \`${pkg}\`\n`;
+    }
+    console.log(`📦 [Plan] Injected ${unknownPackages.length} unknown packages from decompose into plan prompt`);
+  }
+
+  return prompt;
 }
 
 /**
@@ -269,19 +284,7 @@ export async function generatePlanText(
   // Validate JSON structure and prescribedPackages
   try {
     const parsed = JSON.parse(planText);
-
-    if (state.designDocs && Object.keys(state.designDocs).length > 0) {
-      const prescribed = parsed.prescribedPackages;
-      if (!prescribed || !Array.isArray(prescribed)) {
-        console.warn(`⚠️  [Plan] prescribedPackages field missing — design docs exist but no packages declared`);
-      } else if (prescribed.length > 0) {
-        const noUsage = prescribed.filter((p: any) => !p.usedBy?.length);
-        if (noUsage.length > 0) {
-          console.warn(`⚠️  [Plan] Prescribed packages declared but not used: ${noUsage.map((p: any) => p.package).join(', ')}`);
-        }
-        console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
-      }
-    }
+    validatePrescribedPackages(parsed, state);
   } catch (jsonError) {
     // Continue anyway - CodeGen can still use the structured text
   }
@@ -362,6 +365,40 @@ async function savePlanTextForDebug(
     await fs.writeFile(filepath, JSON.stringify(plansArray, null, 2), 'utf-8');
   } catch (err) {
     // Non-blocking - plan save failed
+  }
+}
+
+/**
+ * Validate prescribedPackages against design doc references.
+ * Cross-references the auto-extracted package list with what the Plan LLM
+ * actually included in prescribedPackages, logging discrepancies.
+ */
+function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): void {
+  if (!state.designDocs || Object.keys(state.designDocs).length === 0) return;
+
+  const prescribed: any[] | undefined = parsed.prescribedPackages;
+  if (!prescribed || !Array.isArray(prescribed)) {
+    console.warn(`⚠️  [Plan] prescribedPackages field missing — design docs exist but no packages declared`);
+    return;
+  }
+
+  if (prescribed.length > 0) {
+    const noUsage = prescribed.filter((p: any) => !p.usedBy?.length);
+    if (noUsage.length > 0) {
+      console.warn(`⚠️  [Plan] Prescribed packages declared but not used: ${noUsage.map((p: any) => p.package).join(', ')}`);
+    }
+    console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
+  }
+
+  const unknownPackages = state.designDocUnknownPackages;
+  if (unknownPackages && unknownPackages.length > 0) {
+    const prescribedPaths = new Set(prescribed.map((p: any) => p.package));
+    const missing = unknownPackages.filter(dp =>
+      !prescribedPaths.has(dp) && !prescribed.some((pp: any) => dp.startsWith(pp.package + '/') || pp.package.startsWith(dp + '/'))
+    );
+    if (missing.length > 0) {
+      console.warn(`⚠️  [Plan] Unknown packages NOT in prescribedPackages: ${missing.join(', ')}`);
+    }
   }
 }
 
@@ -681,18 +718,7 @@ export async function finalizePlanFromExploration(
 
       try {
         const parsed = JSON.parse(planText);
-        if (state.designDocs && Object.keys(state.designDocs).length > 0) {
-          const prescribed = parsed.prescribedPackages;
-          if (!prescribed || !Array.isArray(prescribed)) {
-            console.warn(`⚠️  [Plan] prescribedPackages field missing — design docs exist but no packages declared`);
-          } else if (prescribed.length > 0) {
-            const noUsage = prescribed.filter((p: any) => !p.usedBy?.length);
-            if (noUsage.length > 0) {
-              console.warn(`⚠️  [Plan] Prescribed packages declared but not used: ${noUsage.map((p: any) => p.package).join(', ')}`);
-            }
-            console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
-          }
-        }
+        validatePrescribedPackages(parsed, state);
       } catch { /* non-blocking */ }
 
       await savePlanTextForDebug(state, task, planText);

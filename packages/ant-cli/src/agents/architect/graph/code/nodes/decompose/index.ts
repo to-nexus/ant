@@ -428,7 +428,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw error;
   }
   
-  const { tasks, referenceRequests, profile: parsedProfile, selectedSpec } = parsed;
+  const { tasks, referenceRequests, profile: parsedProfile, selectedSpec, unknownPackages } = parsed;
   
   // ✅ Store selectedSpec in state (used by plan node for spec injection)
   // LLM response can override auto-selected spec if it picks a different valid one
@@ -622,6 +622,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     taskQueue,
     featureTasks,
     referenceRequests: referenceRequests || state.referenceRequests || [],
+    designDocUnknownPackages: unknownPackages,
     projectCodeContext,
     referenceCodeContexts: [],
     totalSubtasks: tasks.length + 1,
