@@ -61,7 +61,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       );
     }
     
-    console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})\n`);
+    // Reset call budget for retry — without this, each retry inherits the
+    // previous attempt's call index, progressively shrinking the available
+    // budget until the safety-net fires on the very first call.
+    const prevCallIndex = state._codeGenCallIndex || 0;
+    state._codeGenCallIndex = 0;
+    state._finalTaskLoopCount = 0;
+    state.conversationHistory = [];
+    console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
+    console.log(`   ♻️  Reset: _codeGenCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
   } else if (state._planExploring === true && state.currentTask) {
     nextTask = state.currentTask;
     console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);

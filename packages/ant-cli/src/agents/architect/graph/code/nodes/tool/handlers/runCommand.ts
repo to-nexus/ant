@@ -92,6 +92,7 @@ const PACKAGE_MANAGER_INSTALL_PATTERNS = [
   /\byarn\s+(install|add)\b/i,
   /\byarn\s*$/i,
   /\bgo\s+mod\s+(download|tidy)\b/i,
+  /\bgo\s+get\b/i,
   /\bpip\s+install\b/i,
   /\bpoetry\s+install\b/i,
   /\bbundle\s+install\b/i,
@@ -301,6 +302,16 @@ Or use a different approach that doesn't require initialization.`;
     }
   } else {
     workingDir = projectPath;
+  }
+
+  // Auto-correct working_directory for Go commands: go.mod lives in codebase/,
+  // but the default cwd is the feature root (parent of codebase/).
+  if (!working_directory && /^\s*go\s+/.test(normalizedCommand)) {
+    const codebasePath = path.join(projectPath, 'codebase');
+    if (fs.existsSync(path.join(codebasePath, 'go.mod'))) {
+      workingDir = codebasePath;
+      console.log(`   📁 [RunCommand] Auto-corrected working_directory to codebase/ for go command`);
+    }
   }
 
   // Pre-execution write guard: detect shell file-writing patterns that target

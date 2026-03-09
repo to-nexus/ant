@@ -82,6 +82,11 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.referenceRequests = (session.state as any).referenceRequests;
         }
         
+        // ✅ Restore unknown packages (for plan prompt injection)
+        if ((session.state as any).designDocUnknownPackages) {
+          initial.designDocUnknownPackages = (session.state as any).designDocUnknownPackages;
+        }
+        
         // ✅ Restore projectCodeContext (filePaths for existingFiles detection in codeGen)
         if ((session.state as any).projectCodeContext) {
           initial.projectCodeContext = (session.state as any).projectCodeContext;
@@ -243,6 +248,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },  // ✅ CRITICAL: Restore jobTiming
             ...(session.state as any).detectionReport && { detectionReport: (session.state as any).detectionReport },  // ✅ Restore for tool enabling
             ...(session.state as any).referenceRequests && { referenceRequests: (session.state as any).referenceRequests },
+            ...(session.state as any).designDocUnknownPackages && { designDocUnknownPackages: (session.state as any).designDocUnknownPackages },
             ...(session.state as any).projectCodeContext && { projectCodeContext: (session.state as any).projectCodeContext },
           } as any;
         }

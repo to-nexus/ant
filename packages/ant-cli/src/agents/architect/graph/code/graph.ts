@@ -393,6 +393,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     jobTiming: (state as any).jobTiming,
     featureTasks: state.featureTasks,
     referenceRequests: state.referenceRequests,
+    designDocUnknownPackages: state.designDocUnknownPackages,
     _sharedFileBuffer: sharedFileBuffer,
   };
 
@@ -840,6 +841,9 @@ export function buildCodeGraph() {
       
       // Reference Projects (for cross-project tool calling)
       referenceRequests: null as any,
+      
+      // Unknown Packages (extracted by decompose LLM, injected into plan prompts)
+      designDocUnknownPackages: null as any,
       
       // Results
       branch: null as any,

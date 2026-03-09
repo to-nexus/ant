@@ -38,6 +38,7 @@ export interface ParsedDecomposeResponse {
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>;
   profile?: ParsedProfile;
   selectedSpec?: string | null;
+  unknownPackages?: string[];
 }
 
 /**
@@ -126,11 +127,31 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
 
+    // ✅ Extract unknown packages from <unknownPackages> tag (OPTIONAL)
+    let unknownPackages: string[] | undefined;
+    const unknownPkgsMatch = rawResponse.match(/<unknownPackages>\s*([\s\S]*?)\s*<\/unknownPackages>/);
+    if (unknownPkgsMatch) {
+      try {
+        const parsed = JSON.parse(sanitizeJsonControlChars(unknownPkgsMatch[1]));
+        if (Array.isArray(parsed)) {
+          unknownPackages = parsed.length > 0 ? parsed.filter((p: unknown) => typeof p === 'string' && p.length > 0) : undefined;
+          if (unknownPackages && unknownPackages.length > 0) {
+            console.log(`📦 [Decompose] Unknown packages extracted: ${unknownPackages.join(', ')}`);
+          }
+        } else {
+          console.warn('⚠️  [Decompose] <unknownPackages> tag content is not an array, ignoring');
+        }
+      } catch (error) {
+        console.warn('⚠️  [Decompose] Failed to parse <unknownPackages> tag content:', error);
+      }
+    }
+
     return {
       tasks,
       referenceRequests,
       profile,
       selectedSpec,
+      unknownPackages,
     };
     
   } catch (error) {
