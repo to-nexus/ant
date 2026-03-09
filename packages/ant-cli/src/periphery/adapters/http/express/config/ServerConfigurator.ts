@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
 import { createCorsMiddleware } from '../../middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
-import { generalRateLimiter } from '../../middleware/rateLimiter';
+
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
@@ -33,7 +33,6 @@ export class ServerConfigurator {
    * 5. Proxy middleware (intercepts /ide/ requests, no next())
    * 6. Body parsers (must come after proxy)
    * 7. General JWT auth (all other routes)
-   * 8. Rate limiter
    */
   configure(app: Express): void {
     if (process.env.NODE_ENV === 'production') {
@@ -47,7 +46,6 @@ export class ServerConfigurator {
     this.setupProxyMiddleware(app);
     this.setupBodyParsers(app);
     this.setupAuthentication(app);
-    this.setupRateLimiter(app);
   }
 
   /**
@@ -179,13 +177,6 @@ export class ServerConfigurator {
       ],
       publicPrefixes: [],
     }));
-  }
-
-  /**
-   * Setup rate limiting (after auth, so we can identify users)
-   */
-  private setupRateLimiter(app: Express): void {
-    app.use(generalRateLimiter);
   }
 
   /**
