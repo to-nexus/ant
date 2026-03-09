@@ -39,19 +39,6 @@ function perUserKeyGenerator(req: any): string {
 }
 
 /**
- * General API rate limit (100 req/min per user)
- */
-export const generalRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: perUserKeyGenerator,
-  store: createStore('general'),
-  message: { error: 'Too many requests', message: 'Please try again later.' },
-});
-
-/**
  * Auth rate limit (10 req/min per IP)
  */
 export const authRateLimiter = rateLimit({
