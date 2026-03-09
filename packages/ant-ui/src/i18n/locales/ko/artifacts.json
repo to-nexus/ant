@@ -6,7 +6,17 @@
     "sessions": "세션",
     "send": "보내기",
     "receive": "받기",
-    "emptyDir": "비어있는 디렉토리"
+    "emptyDir": "비어있는 디렉토리",
+    "dirHint": {
+      "references": "UI 디자인",
+      "assets": "UI 디자인",
+      "sources": "시스템 설계"
+    },
+    "dirHintTooltip": {
+      "references": "UI 디자인을 위한 참고 스크린샷/목업",
+      "assets": "UI 디자인을 위한 에셋 (이미지, 아이콘, SVG)",
+      "sources": "PRD, 스펙, 요구사항 등 기획 문서"
+    }
   },
   "actions": {
     "createFile": "파일 생성",

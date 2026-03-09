@@ -13,6 +13,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
 import { isCanonicalDir, isStructuralCanonicalDir } from '@/shared/utils/canonical-dirs';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
+import { HintBadge } from '@/presentation/components/common/HintBadge';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -33,9 +34,11 @@ interface DirectoryViewProps {
   isSessionSection?: boolean;
   unseenArtifacts?: string[];
   onMarkSeen?: (paths: string[]) => void;
+  isNarrow?: boolean;
+  nodeHints?: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' }>;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
@@ -154,6 +157,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isDirectory = node.type === 'directory';
     const isMenuActive = activeMenuPath === node.path;
     const isUnseen = node.type === 'file' && unseenArtifacts.includes(node.path);
+    const hint = isDirectory && nodeHints ? nodeHints[node.name] : undefined;
     const unseenCount = isDirectory ? getUnseenCount(node.path) : 0;
     const isStructural = isDirectory && isStructuralCanonicalDir(node.path);
     const isDragTarget = isDirectory && dragOverPath === node.path;
@@ -230,6 +234,15 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             ) : (
               <>
                 <span className={cn('text-sm truncate', textColors.primary, isUnseen && 'font-semibold')}>{node.name}</span>
+                {hint && (
+                  <HintBadge
+                    label={hint.label}
+                    tooltip={hint.tooltip}
+                    isCompact={isNarrow}
+                    colorScheme={hint.colorScheme}
+                    placement="right"
+                  />
+                )}
                 {isDirectory && unseenCount > 0 && (
                   <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
                     {unseenCount > 99 ? '99+' : unseenCount}
@@ -691,6 +704,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // sessions: show all
   const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
 
+  const inputNodeHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' }> = {
+    references: { label: t('panel.dirHint.references'), tooltip: t('panel.dirHintTooltip.references'), colorScheme: 'purple' },
+    assets: { label: t('panel.dirHint.assets'), tooltip: t('panel.dirHintTooltip.assets'), colorScheme: 'purple' },
+    sources: { label: t('panel.dirHint.sources'), tooltip: t('panel.dirHintTooltip.sources'), colorScheme: 'amber' },
+  };
+
   return (
     <div
       className="space-y-3"
@@ -740,6 +759,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
+          isNarrow={isNarrow}
+          nodeHints={inputNodeHints}
           onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
