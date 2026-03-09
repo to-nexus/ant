@@ -60,7 +60,12 @@ export type MessageContentType =
   // Triage System - User choice
   | 'triage_choice'     // Triage choice card (with buttons)
   // Generic Choice Cards
-  | 'choice_card';      // Generic choice card (eval_save, prd_apply, etc.)
+  | 'choice_card'      // Generic choice card (eval_save, prd_apply, etc.)
+  // Plan Card - Real-time streaming (code job plan node)
+  | 'plan_generating'  // Plan generation in progress (streaming)
+  | 'plan'             // Plan generation complete
+  // Task Response Card - Worker graph text output (parallel-safe)
+  | 'task_response';   // Worker node text in contained card
 
 export interface MessageContent {
   type: MessageContentType;
@@ -120,6 +125,13 @@ export interface MessageContent {
     resolvedAnswers?: Record<number, string>;  // For clarifying: per-question answers after submission
     // Context Loaded
     items?: Array<{ label: string; detail?: string }>;  // For context_loaded: loaded items
+    // Plan card
+    taskName?: string;        // For plan_generating/plan/task_response: task name in header
+    completed?: boolean;      // For task_response: individual card completion signal
+    // File card summary (lightweight persistence — content stripped, stats kept)
+    lineCount?: number;       // Total lines written (file_create)
+    diffBeforeLines?: number; // Lines removed (file_edit)
+    diffAfterLines?: number;  // Lines added (file_edit)
   };
 }
 

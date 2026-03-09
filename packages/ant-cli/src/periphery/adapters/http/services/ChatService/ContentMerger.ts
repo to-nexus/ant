@@ -325,6 +325,7 @@ export class ContentMerger {
     }
 
     const isTextOrThinking = content.type === 'text' || content.type === 'thinking';
+    const isTaskResponseStreaming = content.type === 'task_response';
     const isFileStreaming = 
       content.type === 'file_writing' ||
       content.type === 'file_updating' ||
@@ -339,6 +340,7 @@ export class ContentMerger {
     
     return (
       (isTextOrThinking && !isNewThinkingBlock) ||  // text/thinking (not new block)
+      isTaskResponseStreaming ||                     // task_response (always append)
       (isFileStreaming && isSameFile)               // file (same file only!)
     );
   }
