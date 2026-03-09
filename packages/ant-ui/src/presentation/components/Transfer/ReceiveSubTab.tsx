@@ -66,6 +66,8 @@ function groupPendingRequests(requests: TransferRequest[]): RequestGroup[] {
 
 export function ReceiveSubTab() {
   const { t } = useTranslation('transfer');
+  const selectedProject = useStore((s) => s.selectedProject);
+  const selectedFeature = useStore((s) => s.selectedFeature);
   const receivedRequests = useStore((s) => s.receivedRequests);
   const setReceivedRequests = useStore((s) => s.setReceivedRequests);
   const setPendingCount = useStore((s) => s.setPendingTransferCount);
@@ -79,8 +81,11 @@ export function ReceiveSubTab() {
     }).catch(() => {});
   }, [setReceivedRequests, setPendingCount]);
 
-  const pendingRequests = receivedRequests.filter(r => r.status === 'pending');
-  const completedRequests = receivedRequests.filter(r => r.status !== 'pending').slice(0, 20);
+  const filtered = receivedRequests.filter(r =>
+    r.destination.projectId === selectedProject && r.destination.featureId === selectedFeature
+  );
+  const pendingRequests = filtered.filter(r => r.status === 'pending');
+  const completedRequests = filtered.filter(r => r.status !== 'pending').slice(0, 20);
   const pendingGroups = groupPendingRequests(pendingRequests);
 
   const handleResolveGroup = useCallback(async (

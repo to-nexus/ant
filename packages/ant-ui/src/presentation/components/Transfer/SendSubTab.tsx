@@ -496,14 +496,18 @@ export function SendSubTab() {
         </div>
       </section>
 
-      {/* ── 4. Sent requests history ── */}
-      {sentRequests.length > 0 && (
+      {/* ── 4. Sent requests history (filtered by current source project/feature) ── */}
+      {sentRequests.filter(r =>
+        r.source.projectId === srcProjectId && r.source.featureId === srcFeatureId
+      ).length > 0 && (
         <section>
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('send.history')}</h4>
           <div className="space-y-2">
-            {sentRequests.map(req => (
-              <SentRequestCard key={req.id} request={req} onCancel={handleCancel} onDelete={handleDelete} />
-            ))}
+            {sentRequests
+              .filter(r => r.source.projectId === srcProjectId && r.source.featureId === srcFeatureId)
+              .map(req => (
+                <SentRequestCard key={req.id} request={req} onCancel={handleCancel} onDelete={handleDelete} />
+              ))}
           </div>
         </section>
       )}
