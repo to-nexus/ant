@@ -201,7 +201,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
       <div
         ref={triggerRef}
         onClick={toggleTooltip}
-        style={{ display: 'inline-block', cursor: 'pointer' }}
+        style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
       >
         {children}
       </div>

@@ -6,7 +6,17 @@
     "sessions": "Sessions",
     "send": "Send",
     "receive": "Receive",
-    "emptyDir": "Empty directory"
+    "emptyDir": "Empty directory",
+    "dirHint": {
+      "references": "UI Design",
+      "assets": "UI Design",
+      "sources": "System Design"
+    },
+    "dirHintTooltip": {
+      "references": "Reference screenshots/mockups for UI design",
+      "assets": "Design assets (images, icons, SVGs) for UI design",
+      "sources": "PRD, specifications, and requirements documents"
+    }
   },
   "actions": {
     "createFile": "Create file",
