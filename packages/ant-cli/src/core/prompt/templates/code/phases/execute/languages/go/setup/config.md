@@ -349,7 +349,8 @@ ENV=development
 ❌ MSA: Creating `docker-compose.yml` inside service directories (root only)
 ❌ MSA: Putting shared infrastructure connections in per-service `.env.example` instead of root (causes duplication)
 ❌ MSA: Using a single `go.mod` for all services (each service needs its own module)
-❌ MSA: Adding `require` for a sibling module without a `replace` directive (build fails with "module not found")
+❌ MSA: Adding `require` for a workspace-local sibling module without a `replace` directive (build fails with "module not found")
+❌ Adding `replace` for modules not physically present in this workspace (same-org packages are external dependencies, not workspace siblings — `replace` to a non-existent path causes build failure)
 ❌ MSA: Mismatched `go` version between `go.work` and `go.mod` files (causes toolchain resolution failure)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

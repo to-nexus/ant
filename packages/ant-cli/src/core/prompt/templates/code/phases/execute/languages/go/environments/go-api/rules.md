@@ -53,9 +53,9 @@
 |---------|-----------------|
 | Import errors | Module path in `go.mod`, package naming, circular imports |
 | Type errors | Visibility (exported vs unexported), interface satisfaction |
-| Cross-module imports | Does importing a sibling module require a `replace` directive in `go.mod`? |
+| Cross-module imports | Is the imported module physically present in this workspace (listed in `go.work` or as a sibling directory)? Only workspace-local modules use `replace`. |
 
-⚠️ **Blind spot**: In workspace projects, adding a `require` for a sibling module without a corresponding `replace` directive compiles locally (workspace mode resolves it) but fails in standalone builds. Every cross-module `require` must be paired with a `replace` pointing to the relative local path.
+⚠️ **Blind spot**: `replace` directives are ONLY for modules whose source directory is physically present in this workspace. Adding `replace` for modules not in the workspace (e.g., same-org packages published externally) causes build failure — the relative path does not exist. Do NOT infer workspace-local status from organization name or module path prefix.
 
 ---
 
