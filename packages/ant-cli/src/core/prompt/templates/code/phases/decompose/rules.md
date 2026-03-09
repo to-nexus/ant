@@ -16,6 +16,8 @@ First, analyze step by step (think through):
   - If ANY files exist, setup is already done
 - What are the main features to implement?
 - What is the optimal task breakdown?
+- Does testgen apply? (setup task exists OR codebase has test files → MUST include testgen tasks)
+- Does doc apply? (setup task exists OR 3+ feature tasks → MUST include doc tasks)
 
 Then output the results in order: `<profile>`, `<tasks>`, `<references>`.
 
@@ -111,6 +113,8 @@ CRITICAL:
 | **Setup task exists** | New project — testgen needed for initial coverage |
 | **No existing tests, no setup** | No established testing pattern — skip testgen |
 
+**Constraint**: When a setup task exists, testgen task(s) are MANDATORY — do NOT omit. When the codebase has existing test files, testgen task(s) are MANDATORY — do NOT omit.
+
 **Constraint**: Do NOT skip testgen solely based on feature task count. When the codebase already maintains tests, any feature addition warrants test updates to maintain coverage.
 
 **Constraint**: Do NOT create a testgen task when no feature tasks exist (error-only jobs).
@@ -153,6 +157,8 @@ CRITICAL:
 | **Setup task exists** | New project — documentation needed |
 | **3+ feature tasks with structural changes** | Substantial additions — documentation needed |
 | **Neither** | Simple fix or minor change — skip documentation |
+
+**Constraint**: When a setup task exists, doc task(s) are MANDATORY — do NOT omit. When 3+ feature tasks with structural changes exist, doc task(s) are MANDATORY — do NOT omit.
 
 ### Per-Package Doc Splitting
 
