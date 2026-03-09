@@ -185,6 +185,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Reference Requests (registered in decompose, loaded per-task in plan)
   referenceRequests?: Array<{project: string; branch?: string}>;
   
+  // ✅ Unknown Packages (extracted by decompose LLM from design documents, injected into plan prompts)
+  designDocUnknownPackages?: string[];
+  
   // Dependencies
   deps?: { 
     git?: GitPort;          // ✅ REFACTORED: Git operations only (no file I/O)

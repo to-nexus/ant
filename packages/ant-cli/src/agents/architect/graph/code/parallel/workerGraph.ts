@@ -338,7 +338,8 @@ function buildWorkerSubgraph() {
         if ((s.retries || 0) < (s.maxRetries || 3)) {
           return 'enforce';
         }
-        return 'enforce';
+        console.log(`⚠️  Worker task "${s.currentTask?.name}" exhausted retries (${s.retries}/${s.maxRetries}) — moving to learn`);
+        return 'learn';
       }
 
       return 'learn';

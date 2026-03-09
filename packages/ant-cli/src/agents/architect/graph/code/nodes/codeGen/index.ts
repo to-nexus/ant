@@ -577,6 +577,14 @@ export async function codeGen(
         await state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen', (state as any).workerId ?? 0);
       }
 
+      // Suppress fileErrors while merge is in progress — returning them
+      // would cause codeGenRouter to route to checkTaskStatus, losing the
+      // merge instruction injected above.  Any genuine non-conflict errors
+      // will resurface after the LLM processes the merge.
+      if (fileErrors.length > 0) {
+        console.log(`   🔇 [CodeGen] Suppressing ${fileErrors.length} fileError(s) during merge — will resurface after merge completes`);
+      }
+
       return {
         llmResponse: {
           thinking,
@@ -587,7 +595,7 @@ export async function codeGen(
           tokenUsage: capturedUsage,
         },
         conversationHistory: newHistory,
-        fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+        fileErrors: undefined,
         projectCodeContext: state.projectCodeContext,
         _codeGenCallIndex: newCallIndex,
         _finalTaskLoopCount: 0,

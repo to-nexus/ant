@@ -19,7 +19,7 @@ First, analyze step by step (think through):
 - Does testgen apply? (setup task exists OR codebase has test files → MUST include testgen tasks)
 - Does doc apply? (setup task exists OR 3+ feature tasks → MUST include doc tasks)
 
-Then output the results in order: `<profile>`, `<tasks>`, `<references>`.
+Then output the results in order: `<profile>`, `<tasks>`, `<references>`, `<unknownPackages>`.
 
 ---
 
@@ -212,24 +212,24 @@ across packages.
 Without explicit version specification in root Setup, each may pick different versions
 of the same dependency.
 
-### Design-Document-Prescribed Package Paths
+### Unknown Package Extraction
 
-**Observation target**: Does the design document contain literal import paths or
-module declarations for organization-internal or private packages?
+**Observation target**: Does the design document reference packages whose API is NOT in your training data (organization-internal, private, unfamiliar)?
 
-**Constraint**: When the design document contains explicit import paths for packages
-whose version is NOT known from public registries or training data, the Setup task
-description MUST include the VERBATIM fully-qualified module path as it appears in
-the design document. Do NOT abbreviate, paraphrase, or reconstruct the path.
+**Protocol**:
+1. Scan the design document for import paths, module declarations, backtick-quoted package references, and section headings that name packages
+2. For each package you do NOT recognize from training data, include its fully-qualified import path in the `<unknownPackages>` output
+3. If only a shorthand is given (e.g., `packages/router`), reconstruct the full import path from context (e.g., nearby full-path references, module path prefix, or org prefix in the design document)
 
-**Constraint**: If the design document references subpackages of a single module
-(e.g., `org/lib/sub-a`, `org/lib/sub-b`), the Setup description MUST include the
-base module path that encompasses all subpackages — not each subpackage individually.
+**Constraint**: Include ONLY packages not in your training data. Do NOT include well-known open-source packages or standard library packages.
 
-⚠️ **Blind spot**: Setup descriptions that mention only the short name or alias of
-a private package (without the fully-qualified module path) force the Setup executor
-to reconstruct the path — a frequent source of hallucinated module names. Include
-the full path so the executor can copy it directly into the install command.
+**Constraint**: Output the fully-qualified import path (e.g., `github.com/org/repo/sub/pkg`), not shorthand.
+
+**Constraint**: If the design document references subpackages of a single module, list each subpackage individually — the plan phase needs to know which specific subpackages to discover via tools.
+
+**Constraint**: If no unknown packages exist, output an empty array `[]`.
+
+⚠️ **Blind spot**: The Setup task description MUST also include the base module path of unknown packages so the executor can install them directly. Do NOT use shorthand or alias — include the fully-qualified path verbatim.
 
 ---
 
@@ -462,6 +462,17 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ⚠️ **Blind spot**: Tasks that appear logically independent (different features, different endpoints) may share the same underlying persistence boundary. Task names suggest independence but the data layer reveals coupling. Observe the design document's schema section to determine overlap.
 
+**Observation target**: For each pair of feature tasks in DIFFERENT parallel groups, check if they will create or modify any shared utility, helper, or infrastructure module.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Shared infrastructure module** | Will two tasks both need to create the same helper file, adapter implementation, or utility module? |
+| **Shared data-access implementation** | Will two tasks both need to create the same repository implementation file (not just interface)? |
+
+**Constraint**: Tasks that will CREATE the same source file MUST share the same parallelGroup. A cross-worker file conflict occurs when two parallel tasks attempt to create an identical file path — the second task's write is rejected, triggering an unresolvable retry loop.
+
+⚠️ **Blind spot**: Shared infrastructure files are EASILY MISSED during decomposition. When a design specifies common patterns (event deduplication, caching, message queue adapters, response formatters), multiple feature tasks may independently need to create the same implementation file. If two feature tasks reference the same internal module that does not yet exist, they MUST be in the same parallelGroup OR a shared foundation task must create the module first.
+
 **Naming convention**: `"<package>-<scope>"` where scope is the functional area within the package.
 
 ---
@@ -514,6 +525,14 @@ Output in this exact order:
 **Constraint**: ALWAYS output `<references>` tag, even if the array is empty.
 
 **Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
+
+**3. `<unknownPackages>` tag** (REQUIRED, even if empty):
+
+<unknownPackages>
+["github.com/org/repo/sub/pkg-a", "github.com/org/repo/sub/pkg-b"]
+</unknownPackages>
+
+**Constraint**: ALWAYS output `<unknownPackages>` tag, even if the array is empty. See "Unknown Package Extraction" section above for extraction rules.
 
 **CRITICAL:**
 - Use XML tags directly, NOT inside markdown code blocks
