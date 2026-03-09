@@ -25,6 +25,29 @@ export class FeatureCrudService {
   setWorktreeService(service: WorktreeService) {
     this.worktreeService = service;
   }
+
+  /**
+   * NFS-safe file read with retry for ESTALE (errno -116) stale file handles.
+   * In multi-pod K8s environments with EFS/NFS, another pod may modify files
+   * causing the local kernel to hold a stale inode reference.
+   * A short delay + retry forces the NFS client to re-lookup the inode.
+   */
+  private async readFileWithRetry(filePath: string, retries = 2): Promise<string> {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await fs.promises.readFile(filePath, 'utf-8');
+      } catch (err: any) {
+        const isStale = err.errno === -116 || err.code === 'ESTALE' 
+          || (err.message && err.message.includes('system error -116'));
+        if (isStale && attempt < retries) {
+          await new Promise(r => setTimeout(r, 100 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error(`Failed to read file after ${retries} retries: ${filePath}`);
+  }
   
   /**
    * Get session data for a feature
@@ -38,17 +61,15 @@ export class FeatureCrudService {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     const sessionPath = getSessionFilePathByJob(featurePath, job);
     
-    // Check if session file exists
-    const exists = await fs.promises.access(sessionPath)
-      .then(() => true)
-      .catch(() => false);
-    
-    if (!exists) {
-      throw new Error('Session file not found');
+    try {
+      const sessionData = await this.readFileWithRetry(sessionPath);
+      return JSON.parse(sessionData);
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        throw new Error('Session file not found');
+      }
+      throw err;
     }
-    
-    const sessionData = await fs.promises.readFile(sessionPath, 'utf-8');
-    return JSON.parse(sessionData);
   }
   
   /**
@@ -112,8 +133,12 @@ export class FeatureCrudService {
         .filter(item => !item.startsWith('.'))
         .map(async (item) => {
           const itemPath = path.join(featuresPath, item);
-          const stat = await fs.promises.stat(itemPath);
-          return stat.isDirectory() ? item : null;
+          try {
+            const stat = await fs.promises.stat(itemPath);
+            return stat.isDirectory() ? item : null;
+          } catch {
+            return null;
+          }
         })
     );
     
