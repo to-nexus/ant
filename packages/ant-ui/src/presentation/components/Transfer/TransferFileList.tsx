@@ -30,11 +30,13 @@ interface TransferFileListProps {
   onRestoreFile?: (path: string) => void;
   /** Set of excluded file paths for visual indication */
   excludedPaths?: Set<string>;
+  /** Removes outer border/rounded styling for embedding inside a card */
+  borderless?: boolean;
 }
 
 export function TransferFileList({
   items, fileTree, payloadTree, onRemove,
-  onExcludeFile, onRestoreFile, excludedPaths,
+  onExcludeFile, onRestoreFile, excludedPaths, borderless,
 }: TransferFileListProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
 
@@ -52,7 +54,10 @@ export function TransferFileList({
   const tree = payloadTree ?? fileTree;
 
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700/50">
+    <div className={cn(
+      'divide-y divide-gray-100 dark:divide-gray-700/50',
+      borderless ? '' : 'rounded-lg border border-gray-200 dark:border-gray-700',
+    )}>
       {items.map(item => {
         const dirFileCount = item.type === 'directory'
           ? (item.fileCount ?? (tree ? countFilesUnderPath(tree, item.path) : 0))
