@@ -97,6 +97,15 @@ export function SendSubTab() {
     }
   }, [preselected]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sync source project/feature when global selection changes
+  useEffect(() => {
+    if (!preselected) {
+      setSrcProjectId(selectedProject || '');
+      setSrcFeatureId(selectedFeature || '');
+      setSrcPaths([]);
+    }
+  }, [selectedProject, selectedFeature]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load org members + self projects
   useEffect(() => {
     fetchOrgMembers().then(({ members: m }) => {
@@ -588,9 +597,19 @@ function SentRequestCard({ request, onCancel, onDelete }: {
     <div className="group flex items-center justify-between text-sm py-2 px-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
       <div className="flex items-center gap-2 min-w-0">
         {statusIcons[request.status] || null}
-        <span className="text-gray-700 dark:text-gray-300 truncate">
-          → {request.recipient.userId} / {request.destination.path}
-        </span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-gray-700 dark:text-gray-300 truncate">
+            {request.source.path}
+            {request.fileCount != null && request.fileCount > 0 && (
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">
+                ({request.fileCount}개 파일)
+              </span>
+            )}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
+            → {request.recipient.userId} / {request.destination.path}
+          </span>
+        </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-xs text-gray-400">{timeAgo}</span>

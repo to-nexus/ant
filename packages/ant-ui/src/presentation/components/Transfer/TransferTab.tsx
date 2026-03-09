@@ -4,6 +4,7 @@
  * Contains Send and Receive sub-tabs for managing artifact transfers.
  */
 
+import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
@@ -13,7 +14,18 @@ import { ReceiveSubTab } from './ReceiveSubTab';
 export function TransferTab() {
   const activeSubTab = useStore((s) => s.transferActiveSubTab);
   const setSubTab = useStore((s) => s.setTransferSubTab);
-  const pendingCount = useStore((s) => s.pendingTransferCount);
+  const receivedRequests = useStore((s) => s.receivedRequests);
+  const selectedProject = useStore((s) => s.selectedProject);
+  const selectedFeature = useStore((s) => s.selectedFeature);
+
+  const pendingCount = useMemo(() =>
+    receivedRequests.filter(r =>
+      r.status === 'pending' &&
+      r.destination.projectId === selectedProject &&
+      r.destination.featureId === selectedFeature
+    ).length,
+    [receivedRequests, selectedProject, selectedFeature],
+  );
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-[#161b22]">
