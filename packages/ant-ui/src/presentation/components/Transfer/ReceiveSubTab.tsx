@@ -15,12 +15,13 @@ import { useStore } from '@/domain/store';
 import {
   fetchTransferRequests,
   fetchTransferPayloadFiles,
+  fetchFileTree,
   resolveTransferRequest,
   type TransferRequest,
   type FileNode,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { Package, CheckCircle, XCircle, Ban, Timer, MessageCircle } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Ban, Timer, MessageCircle, ChevronRight, ChevronDown, Folder, File } from 'lucide-react';
 import { TransferFileList, guessPathType, countFilesInTree } from './TransferFileList';
 import { Button } from '../common/button';
 import { cn } from '@/shared/utils/design-system';
@@ -133,7 +134,7 @@ export function ReceiveSubTab() {
     });
   }, [t, showConfirm, showError, setReceivedRequests, setPendingCount]);
 
-  if (receivedRequests.length === 0) {
+  if (filtered.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-400 dark:text-gray-500">
         <MessageCircle className="w-12 h-12 mb-3" />
@@ -254,28 +255,31 @@ function PendingGroupCard({ group, isLoading, onResolve }: {
         )}
       </div>
 
-      {/* File list per request */}
-      {group.requests.map(req => {
-        const pathType = guessPathType(req.source.path);
-        const payloadTree = payloadTreeMap.get(req.id);
-        const reqExcluded = excludedPathsMap.get(req.id);
-        const payloadFileCount = payloadTree ? countFilesInTree(payloadTree) : req.fileCount;
+      {/* File list — all requests merged into a single borderless list */}
+      <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+        {group.requests.map(req => {
+          const pathType = guessPathType(req.source.path);
+          const payloadTree = payloadTreeMap.get(req.id);
+          const reqExcluded = excludedPathsMap.get(req.id);
+          const payloadFileCount = payloadTree ? countFilesInTree(payloadTree) : req.fileCount;
 
-        return (
-          <TransferFileList
-            key={req.id}
-            items={[{
-              path: req.source.path,
-              type: pathType,
-              fileCount: payloadFileCount ?? req.fileCount,
-            }]}
-            payloadTree={pathType === 'directory' ? payloadTree : undefined}
-            onExcludeFile={(filePath) => handleExcludeFile(req.id, filePath)}
-            onRestoreFile={(filePath) => handleRestoreFile(req.id, filePath)}
-            excludedPaths={reqExcluded}
-          />
-        );
-      })}
+          return (
+            <TransferFileList
+              key={req.id}
+              borderless
+              items={[{
+                path: req.source.path,
+                type: pathType,
+                fileCount: payloadFileCount ?? req.fileCount,
+              }]}
+              payloadTree={pathType === 'directory' ? payloadTree : undefined}
+              onExcludeFile={(filePath) => handleExcludeFile(req.id, filePath)}
+              onRestoreFile={(filePath) => handleRestoreFile(req.id, filePath)}
+              excludedPaths={reqExcluded}
+            />
+          );
+        })}
+      </div>
 
       {/* Excluded count hint */}
       {totalExcluded > 0 && (
@@ -311,9 +315,13 @@ function PendingGroupCard({ group, isLoading, onResolve }: {
   );
 }
 
-// ─── Completed Request Row ───
+// ─── Completed Request Row (expandable for approved) ───
 function CompletedRequestRow({ request }: { request: TransferRequest }) {
   const { t } = useTranslation('transfer');
+  const [expanded, setExpanded] = useState(false);
+  const [fileTree, setFileTree] = useState<FileNode[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
   const statusConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
     approved: { icon: <CheckCircle className="w-4 h-4" />, label: t('action.approved'), color: 'text-green-500' },
     rejected: { icon: <XCircle className="w-4 h-4" />, label: t('action.rejected'), color: 'text-red-500' },
@@ -324,21 +332,88 @@ function CompletedRequestRow({ request }: { request: TransferRequest }) {
 
   const config = statusConfig[request.status] || statusConfig.completed;
   const timeAgo = getTimeAgo(request.createdAt, t);
+  const isApproved = request.status === 'approved' || request.status === 'completed';
+  const pathType = guessPathType(request.source.path);
+  const canExpand = isApproved && pathType === 'directory';
+
+  const handleToggle = useCallback(async () => {
+    if (!canExpand) return;
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    setExpanded(true);
+    if (!fileTree) {
+      setLoading(true);
+      try {
+        const tree = await fetchFileTree(request.destination.projectId, request.destination.featureId);
+        const destPath = request.destination.path.replace(/\/$/, '');
+        const subtree = findSubtree(tree, destPath);
+        setFileTree(subtree);
+      } catch {
+        setFileTree([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [canExpand, expanded, fileTree, request]);
 
   return (
-    <div className="flex items-center justify-between text-sm py-2 px-3 rounded hover:bg-gray-50 dark:hover:bg-gray-800/50">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className={cn('shrink-0', config.color)}>{config.icon}</span>
-        <span className="text-gray-700 dark:text-gray-300 truncate">
-          {request.sender.userId} · {request.source.path}
-        </span>
+    <div className="rounded hover:bg-gray-50 dark:hover:bg-gray-800/50">
+      <div
+        className={cn('flex items-center justify-between text-sm py-2 px-3', canExpand && 'cursor-pointer')}
+        onClick={handleToggle}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={cn('shrink-0', config.color)}>{config.icon}</span>
+          {canExpand && (
+            <span className="shrink-0 text-gray-400">
+              {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            </span>
+          )}
+          <span className="text-gray-700 dark:text-gray-300 truncate">
+            {request.sender.userId} · {request.source.path}
+          </span>
+          {request.fileCount != null && request.fileCount > 0 && (
+            <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+              ({request.fileCount}개 파일)
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={cn('text-xs', config.color)}>{config.label}</span>
+          <span className="text-xs text-gray-400">{timeAgo}</span>
+        </div>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className={cn('text-xs', config.color)}>{config.label}</span>
-        <span className="text-xs text-gray-400">{timeAgo}</span>
-      </div>
+      {expanded && (
+        <div className="pb-2 px-3">
+          {loading ? (
+            <div className="text-xs text-gray-400 py-2 pl-6">로딩 중...</div>
+          ) : fileTree && fileTree.length > 0 ? (
+            <TransferFileList
+              borderless
+              items={[{ path: request.destination.path, type: 'directory' }]}
+              payloadTree={fileTree}
+            />
+          ) : (
+            <div className="text-xs text-gray-400 py-2 pl-6">파일 정보를 불러올 수 없습니다.</div>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+/** Find subtree matching destination path from a full project file tree */
+function findSubtree(tree: FileNode[], destPath: string): FileNode[] {
+  for (const node of tree) {
+    if (node.path === destPath && node.children) return node.children;
+    if (destPath.startsWith(node.path + '/') && node.children) {
+      const deeper = findSubtree(node.children, destPath);
+      if (deeper.length > 0) return deeper;
+    }
+  }
+  return [];
 }
 
 // ─── Utilities ───
