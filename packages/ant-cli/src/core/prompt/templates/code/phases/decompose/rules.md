@@ -206,6 +206,25 @@ across packages.
 Without explicit version specification in root Setup, each may pick different versions
 of the same dependency.
 
+### Design-Document-Prescribed Package Paths
+
+**Observation target**: Does the design document contain literal import paths or
+module declarations for organization-internal or private packages?
+
+**Constraint**: When the design document contains explicit import paths for packages
+whose version is NOT known from public registries or training data, the Setup task
+description MUST include the VERBATIM fully-qualified module path as it appears in
+the design document. Do NOT abbreviate, paraphrase, or reconstruct the path.
+
+**Constraint**: If the design document references subpackages of a single module
+(e.g., `org/lib/sub-a`, `org/lib/sub-b`), the Setup description MUST include the
+base module path that encompasses all subpackages — not each subpackage individually.
+
+⚠️ **Blind spot**: Setup descriptions that mention only the short name or alias of
+a private package (without the fully-qualified module path) force the Setup executor
+to reconstruct the path — a frequent source of hallucinated module names. Include
+the full path so the executor can copy it directly into the install command.
+
 ---
 
 ## UI Flag

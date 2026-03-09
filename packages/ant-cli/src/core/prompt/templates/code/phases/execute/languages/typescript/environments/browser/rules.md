@@ -104,6 +104,22 @@ SSR frameworks run code in TWO contexts:
 
 ---
 
+### Unknown Package API Discovery
+
+**Principle**: If a package's API is not in your training data, observe it before writing code — do NOT guess function names or type signatures.
+
+**Protocol** (via `read_file` — index then drill-down):
+
+1. `read_file("codebase/node_modules/{package}/package.json")` — find the `types` or `typings` entry point. For scoped packages: `read_file("codebase/node_modules/@scope/name/package.json")`
+2. `read_file` the entry `.d.ts` — scan exported symbol names (this serves as the index)
+3. If the `.d.ts` is large, use `list_files` to explore the package structure, then read specific sub-module `.d.ts` files relevant to your task
+
+**Constraint**: If the package is not yet installed (`node_modules` does not contain it), inform the user that dependencies need to be installed first.
+
+⚠️ **Blind spot**: Packages from the same organization are easily assumed to follow familiar conventions. Their actual exported types may differ — always verify by reading `.d.ts` files when uncertain.
+
+---
+
 ## 🎨 Design Tokens Configuration
 
 When `ui-tokens.json` is provided, configure tokens in the project's styling system:

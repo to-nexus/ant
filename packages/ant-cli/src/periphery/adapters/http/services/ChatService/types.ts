@@ -36,7 +36,9 @@ export interface MessageContent {
      // Tool Actions - Cursor/Copilot style
      | 'tool_action'    // Simple tool actions (mkdir, etc.)
      // Command Execution - Real-time streaming
-     | 'command_running' | 'command_streaming' | 'command';
+     | 'command_running' | 'command_streaming' | 'command'
+     // Task Response Card - Worker graph text output (parallel-safe)
+     | 'task_response';
   content: string;
   metadata?: {
     filePath?: string;
@@ -91,6 +93,8 @@ export interface MessageContent {
     tokens?: number;        // For indexed: estimated tokens
     duration?: number;      // For indexed: duration in milliseconds
     error?: string;         // For indexed: error message if failed
+    // Task Response Card
+    taskName?: string;      // For task_response: task name in header
     // Merge control
     _mergeIndex?: number;   // ✅ Explicit merge target index
   };
@@ -165,10 +169,8 @@ export const CHAT_STATUS_TYPES = new Set([
  */
 export const COMPLETED_CHAT_STATUS_TYPES = new Set(['grepped', 'explored', 'read', 'command', 'learned']);
 
-/**
- * Base branch names (skip chat persistence)
- */
-export const BASE_BRANCH_NAMES = ['main', 'master', 'develop'];
+// BASE_BRANCH_NAMES removed — use isBaseBranch() from core/utils/branchUtils instead.
+// Base branch is determined by project config (config.branchBase), not a hardcoded list.
 
 
 

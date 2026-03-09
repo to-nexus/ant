@@ -10,6 +10,7 @@ import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants'
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { readBranchBaseFromConfig } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
@@ -96,6 +97,50 @@ export function createJobRoutes(deps: {
       res.json(result);
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'JobExecute');
+    }
+  });
+
+  // Execute learn job on base branch (no feature context required)
+  router.post('/projects/:id/learn', jobExecuteRateLimiter, async (req: Request, res: Response) => {
+    try {
+      const projectId = req.params.id;
+      const { message } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: 'message is required and must be a string' });
+      }
+
+      const userContext = extractUserContext(req);
+      const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
+      const branchBase = readBranchBaseFromConfig(projectPath);
+
+      // Check if base branch already has a running job
+      const existingJobId = await checkDuplicateJob(projectId, branchBase);
+      if (existingJobId) {
+        return res.status(409).json({
+          error: 'A learn job is already running for this project. Please wait for it to complete or stop it first.',
+          existingJobId,
+          featureKey: `${projectId}/${branchBase}`
+        });
+      }
+
+      const params: ExecuteJobParams = {
+        agent: 'architect',
+        jobType: 'learn',
+        project: projectId,
+        feature: branchBase,
+        overrideDirective: message,
+        chatSource: true,
+        skipTriage: true,
+        userContext
+      };
+
+      const result = await deps.executeJob(params);
+      logger.info(`Base branch learn job enqueued: ${projectId}/${branchBase} jobId=${result.jobId}`, { component: 'JobRoute' });
+
+      res.json(result);
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'ProjectLearn');
     }
   });
   

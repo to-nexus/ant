@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ChatSession, ChatMessage } from './types';
-import { BASE_BRANCH_NAMES } from './types';
+import { isBaseBranch, readBranchBaseFromConfig } from '../../../../../core/utils/branchUtils';
 import type { UserContext } from '../../../../../core/types/user';
 import type { SessionPersistence } from './SessionPersistence';
 import type { MessageBroadcaster } from './MessageBroadcaster';
@@ -513,7 +513,7 @@ export class SessionManager {
    */
   private startWatchingChatFile(projectId: string, featureName: string, userContext?: UserContext): void {
     // Base branches don't persist chat history; watching can fail because sessions dir won't be created.
-    if (BASE_BRANCH_NAMES.includes(featureName.toLowerCase())) {
+    if (userContext && this.persistence.isBaseBranchFeature(projectId, featureName, userContext)) {
       return;
     }
 

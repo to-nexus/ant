@@ -17,7 +17,7 @@ Identify the exact package name from each "cannot find module" or "unresolved im
 | `pnpm-lock.yaml` or `pnpm-workspace.yaml` | `pnpm add <packages>` |
 | `yarn.lock` | `yarn add <packages>` |
 | `package-lock.json` or `package.json` | `npm install <packages>` |
-| `go.mod` | `go get <packages>` |
+| `go.mod` | Add missing packages to the `require` block via `edit_file` with the exact version. If the version is unknown, leave the import in the `.go` file — the verification phase's `go mod tidy` resolves missing modules from imports automatically. Do NOT run `go get`. |
 | `Cargo.toml` | `cargo add <packages>` |
 | `requirements.txt` | `pip install <packages>` |
 | `pyproject.toml` | `poetry add <packages>` or `pip install <packages>` |

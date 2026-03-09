@@ -37,7 +37,8 @@ export class WorkspaceServiceAdapter implements WorkspaceResolver {
   getCodebasePath(userContext: UserContext, projectId: string, featureId?: string): string {
     const projectPath = this.getProjectPath(userContext, projectId);
     
-    // Check if project uses a local repo path (repoType === 'local')
+    // Read project config for repoType and branchBase
+    let branchBase = 'main';
     const configPath = path.join(projectPath, 'config.json');
     try {
       if (fs.existsSync(configPath)) {
@@ -45,18 +46,21 @@ export class WorkspaceServiceAdapter implements WorkspaceResolver {
         if (config.repoType === 'local' && config.localPath) {
           return resolveLocalPath(config.localPath);
         }
+        if (config.branchBase) {
+          branchBase = config.branchBase;
+        }
       }
     } catch {
       // Config read failed, fall through to default
     }
     
-    // For features, return the feature's worktree codebase path
-    if (featureId && featureId !== 'main') {
+    // For features (not base branch), return the feature's worktree codebase path
+    if (featureId && featureId.toLowerCase() !== branchBase.toLowerCase()) {
       const featurePath = this.getFeaturePath(userContext, projectId, featureId);
       return path.join(featurePath, 'codebase');
     }
     
-    // Default: main codebase in project root
+    // Default: base branch codebase in project root
     return path.join(projectPath, 'codebase');
   }
 

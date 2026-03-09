@@ -201,6 +201,32 @@ In your `<analysis>` section, cover:
 2. **📋 REQUIREMENTS ANALYSIS**
    - Extract requirements from API Contract / specs
    - Identify dependencies
+
+3. **📦 INSTALLED DEPENDENCY ANALYSIS**
+
+**Observation target**: Does the design document reference specific packages or libraries? Is there a dependency manifest in the project (observe directory tree)?
+
+**Protocol**:
+1. Read the dependency manifest to identify installed packages
+2. Cross-reference design document package references with installed dependencies
+3. For each dependency referenced in the design document AND present in the manifest, discover its exported API before finalizing the plan
+4. Include concrete API usage decisions (types, functions, patterns) in the plan
+
+**Constraint**: If the design document prescribes a specific package and the manifest confirms it is installed, the plan MUST incorporate that package. Do NOT substitute with standard library or alternative packages.
+
+**Constraint**: Do NOT assume or guess package APIs from naming conventions or training data. Observe the actual exported API first.
+
+**Discrepancy recovery**: If the design document prescribes a specific package but the dependency manifest does NOT list it:
+
+1. This indicates the setup task failed to install the package — do NOT silently substitute with alternatives
+2. Observe the design document for the fully-qualified module path (literal import statements or backtick-quoted paths)
+3. Attempt to install the missing dependency via `run_command` using the language's standard package installation command with the observed module path
+4. If installation succeeds, proceed with API discovery (steps 3-4 above)
+5. If installation fails, use the design document's code examples and usage patterns as the API reference — include the prescribed import paths in the plan so CodeGen writes the correct imports
+
+**Constraint**: When the design document contains explicit code examples with import paths and usage patterns for a package, this constitutes sufficient API knowledge to plan with even if the package cannot be installed locally.
+
+⚠️ **Blind spot**: Design documents often reference organization-internal or private packages whose API is unknown to LLMs. The instinct is to skip them and use familiar alternatives — especially when they are absent from the dependency manifest. These packages are prescribed by the design document for a reason. Attempt installation first; if that fails, the design document's own code examples are the authoritative API reference.
 {{/unless}}
 
 ────────────────────────────────────────────────────────────────────────────────
