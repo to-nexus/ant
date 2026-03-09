@@ -1,4 +1,5 @@
 import { API_BASE, apiGet, apiPost, apiDelete } from './client';
+import type { FileNode } from './files';
 
 export interface TransferRequest {
   id: string;
@@ -50,12 +51,23 @@ export function fetchTransferRequests(
   return apiGet(`${API_BASE()}/artifacts/transfer-requests?${params}`);
 }
 
+/** Fetch file tree of a pending transfer request's payload */
+export function fetchTransferPayloadFiles(
+  requestId: string,
+): Promise<{ files: FileNode[] }> {
+  return apiGet(`${API_BASE()}/artifacts/transfer-requests/${requestId}/files`);
+}
+
 /** Resolve (approve/reject) a transfer request */
 export function resolveTransferRequest(
   requestId: string,
   action: 'approve' | 'reject',
+  excludePaths?: string[],
 ): Promise<TransferRequest> {
-  return apiPost(`${API_BASE()}/artifacts/transfer-requests/${requestId}/resolve`, { action });
+  return apiPost(`${API_BASE()}/artifacts/transfer-requests/${requestId}/resolve`, {
+    action,
+    ...(excludePaths && excludePaths.length > 0 ? { excludePaths } : {}),
+  });
 }
 
 /** Cancel a pending transfer request */

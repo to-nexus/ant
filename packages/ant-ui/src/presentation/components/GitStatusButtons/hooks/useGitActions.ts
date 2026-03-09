@@ -10,6 +10,7 @@ import { GitChanges } from './useGitChanges';
 
 export function useGitActions(
   selectedProject: string | undefined,
+  selectedFeature: string | undefined,
   gitChanges: GitChanges | null,
   setGitChanges: (changes: GitChanges | null) => void
 ) {
@@ -26,7 +27,7 @@ export function useGitActions(
     setGitStatusPhase('committing');
     
     try {
-      const result = await commitGitChanges(selectedProject);
+      const result = await commitGitChanges(selectedProject, undefined, selectedFeature);
       if (result.success) {
         setGitChanges(null);
       } else {
@@ -47,7 +48,7 @@ export function useGitActions(
     setGitStatusPhase('pushing');
     
     try {
-      const result = await pushToGitHub(selectedProject);
+      const result = await pushToGitHub(selectedProject, selectedFeature);
       if (result.success) {
         setGitChanges(null);
       } else {
@@ -68,7 +69,7 @@ export function useGitActions(
     setGitStatusPhase('pulling');
     
     try {
-      const result = await pullFromGitHub(selectedProject);
+      const result = await pullFromGitHub(selectedProject, selectedFeature);
       if (result.success) {
         setGitChanges(null);
       } else {
@@ -89,7 +90,7 @@ export function useGitActions(
     setGitStatusPhase('syncing');
     
     try {
-      const result = await syncWithRemote(selectedProject);
+      const result = await syncWithRemote(selectedProject, selectedFeature);
       if (result.success) {
         setGitChanges(null);
       } else {

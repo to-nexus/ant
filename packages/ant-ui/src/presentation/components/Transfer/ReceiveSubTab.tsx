@@ -3,21 +3,25 @@
  * 
  * Shows:
  * - Pending transfer requests grouped by sender+source, with file list and approve/reject
+ * - Directory transfers can be expanded to show payload file tree
+ * - Individual files can be excluded (opt-out) before approving
  * - Completed request history (approved/rejected/cancelled/expired)
  * - Empty state when no requests
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   fetchTransferRequests,
+  fetchTransferPayloadFiles,
   resolveTransferRequest,
   type TransferRequest,
+  type FileNode,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { Package, CheckCircle, XCircle, Ban, Timer, MessageCircle } from 'lucide-react';
-import { TransferFileList, guessPathType } from './TransferFileList';
+import { TransferFileList, guessPathType, countFilesInTree } from './TransferFileList';
 import { Button } from '../common/button';
 import { cn } from '@/shared/utils/design-system';
 
@@ -55,7 +59,6 @@ function groupPendingRequests(requests: TransferRequest[]): RequestGroup[] {
     if (req.expiresAt > group.latestExpiresAt) group.latestExpiresAt = req.expiresAt;
   }
 
-  // Sort groups by earliest creation time (newest first)
   return Array.from(map.values()).sort(
     (a, b) => new Date(b.earliestCreatedAt).getTime() - new Date(a.earliestCreatedAt).getTime()
   );
@@ -69,7 +72,6 @@ export function ReceiveSubTab() {
   const { showConfirm, showError } = useAlertModalContext();
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
 
-  // Load received requests
   useEffect(() => {
     fetchTransferRequests('received').then(({ requests, pendingCount }) => {
       setReceivedRequests(requests);
@@ -81,7 +83,11 @@ export function ReceiveSubTab() {
   const completedRequests = receivedRequests.filter(r => r.status !== 'pending').slice(0, 20);
   const pendingGroups = groupPendingRequests(pendingRequests);
 
-  const handleResolveGroup = async (group: RequestGroup, action: 'approve' | 'reject') => {
+  const handleResolveGroup = useCallback(async (
+    group: RequestGroup,
+    action: 'approve' | 'reject',
+    excludedPathsMap?: Map<string, Set<string>>,
+  ) => {
     const actionLabel = action === 'approve' ? t('action.approve') : t('action.reject');
     const count = group.requests.length;
 
@@ -95,9 +101,11 @@ export function ReceiveSubTab() {
         setLoadingIds(prev => new Set([...prev, ...ids]));
         try {
           for (const req of group.requests) {
-            await resolveTransferRequest(req.id, action);
+            const reqExcludes = excludedPathsMap?.get(req.id);
+            const excludeArr = reqExcludes && reqExcludes.size > 0
+              ? Array.from(reqExcludes) : undefined;
+            await resolveTransferRequest(req.id, action, excludeArr);
           }
-          // Refresh
           const { requests, pendingCount } = await fetchTransferRequests('received');
           setReceivedRequests(requests);
           setPendingCount(pendingCount);
@@ -106,7 +114,6 @@ export function ReceiveSubTab() {
           }
         } catch (error: any) {
           showError(error.message || t('error.actionFailed', { action: actionLabel }), { title: t('common:error.title') });
-          // Refresh anyway to show partial results
           const { requests, pendingCount } = await fetchTransferRequests('received');
           setReceivedRequests(requests);
           setPendingCount(pendingCount);
@@ -119,7 +126,7 @@ export function ReceiveSubTab() {
         }
       },
     });
-  };
+  }, [t, showConfirm, showError, setReceivedRequests, setPendingCount]);
 
   if (receivedRequests.length === 0) {
     return (
@@ -132,7 +139,6 @@ export function ReceiveSubTab() {
 
   return (
     <div className="p-4 space-y-5">
-      {/* Pending request groups */}
       {pendingGroups.length > 0 && (
         <section>
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -144,15 +150,13 @@ export function ReceiveSubTab() {
                 key={group.key}
                 group={group}
                 isLoading={group.requests.some(r => loadingIds.has(r.id))}
-                onApprove={() => handleResolveGroup(group, 'approve')}
-                onReject={() => handleResolveGroup(group, 'reject')}
+                onResolve={(action, excludedMap) => handleResolveGroup(group, action, excludedMap)}
               />
             ))}
           </div>
         </section>
       )}
 
-      {/* Completed history */}
       {completedRequests.length > 0 && (
         <section>
           <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('receive.processed')}</h4>
@@ -168,20 +172,60 @@ export function ReceiveSubTab() {
 }
 
 // ─── Pending Group Card ───
-function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
+function PendingGroupCard({ group, isLoading, onResolve }: {
   group: RequestGroup;
   isLoading: boolean;
-  onApprove: () => void;
-  onReject: () => void;
+  onResolve: (action: 'approve' | 'reject', excludedMap?: Map<string, Set<string>>) => void;
 }) {
   const { t } = useTranslation('transfer');
   const timeAgo = getTimeAgo(group.earliestCreatedAt, t);
   const expiresIn = getExpiresIn(group.latestExpiresAt, t);
   const fileCount = group.requests.length;
 
+  const [payloadTreeMap, setPayloadTreeMap] = useState<Map<string, FileNode[]>>(new Map());
+  const [excludedPathsMap, setExcludedPathsMap] = useState<Map<string, Set<string>>>(new Map());
+
+  // Auto-load payload trees for directory-type requests
+  useEffect(() => {
+    for (const req of group.requests) {
+      const pathType = guessPathType(req.source.path);
+      if (pathType === 'directory' && !payloadTreeMap.has(req.id)) {
+        fetchTransferPayloadFiles(req.id).then(({ files }) => {
+          setPayloadTreeMap(prev => new Map(prev).set(req.id, files));
+        }).catch(() => {});
+      }
+    }
+  }, [group.requests]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExcludeFile = useCallback((requestId: string, filePath: string) => {
+    setExcludedPathsMap(prev => {
+      const next = new Map(prev);
+      const existing = next.get(requestId) ?? new Set();
+      const updated = new Set(existing);
+      updated.add(filePath);
+      next.set(requestId, updated);
+      return next;
+    });
+  }, []);
+
+  const handleRestoreFile = useCallback((requestId: string, filePath: string) => {
+    setExcludedPathsMap(prev => {
+      const next = new Map(prev);
+      const existing = next.get(requestId);
+      if (!existing) return prev;
+      const updated = new Set(existing);
+      updated.delete(filePath);
+      next.set(requestId, updated);
+      return next;
+    });
+  }, []);
+
+  const totalExcluded = Array.from(excludedPathsMap.values())
+    .reduce((sum, s) => sum + s.size, 0);
+
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/50 overflow-hidden">
-      {/* Header: icon + from sender + file count */}
+      {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
         <Package className="w-4.5 h-4.5 text-blue-500 shrink-0" />
         <div className="flex-1 min-w-0">
@@ -205,14 +249,35 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
         )}
       </div>
 
-      {/* File list */}
-      <TransferFileList
-        items={group.requests.map(req => ({
-          path: req.source.path,
-          type: guessPathType(req.source.path),
-          fileCount: req.fileCount,
-        }))}
-      />
+      {/* File list per request */}
+      {group.requests.map(req => {
+        const pathType = guessPathType(req.source.path);
+        const payloadTree = payloadTreeMap.get(req.id);
+        const reqExcluded = excludedPathsMap.get(req.id);
+        const payloadFileCount = payloadTree ? countFilesInTree(payloadTree) : req.fileCount;
+
+        return (
+          <TransferFileList
+            key={req.id}
+            items={[{
+              path: req.source.path,
+              type: pathType,
+              fileCount: payloadFileCount ?? req.fileCount,
+            }]}
+            payloadTree={pathType === 'directory' ? payloadTree : undefined}
+            onExcludeFile={(filePath) => handleExcludeFile(req.id, filePath)}
+            onRestoreFile={(filePath) => handleRestoreFile(req.id, filePath)}
+            excludedPaths={reqExcluded}
+          />
+        );
+      })}
+
+      {/* Excluded count hint */}
+      {totalExcluded > 0 && (
+        <div className="px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-t border-gray-100 dark:border-gray-700/50">
+          {totalExcluded}개 파일 제외됨
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-t border-gray-100 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-800/30">
@@ -220,7 +285,7 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
           size="sm"
           variant="default"
           className="flex-1"
-          onClick={onApprove}
+          onClick={() => onResolve('approve', excludedPathsMap)}
           disabled={isLoading}
         >
           <CheckCircle className="w-4 h-4 mr-1" />
@@ -230,7 +295,7 @@ function PendingGroupCard({ group, isLoading, onApprove, onReject }: {
           size="sm"
           variant="outline"
           className="flex-1"
-          onClick={onReject}
+          onClick={() => onResolve('reject')}
           disabled={isLoading}
         >
           <XCircle className="w-4 h-4 mr-1" />

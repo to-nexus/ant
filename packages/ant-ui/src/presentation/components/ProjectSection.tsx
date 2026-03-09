@@ -195,13 +195,13 @@ export function ProjectSection() {
   );
 
   const handlePush = () => handleGitAction(
-    () => pushToGitHub(selectedProject!),
+    () => pushToGitHub(selectedProject!, selectedFeature || undefined),
     'push',
     false // Don't refresh Git status (hasGit won't change)
   );
 
   const handlePull = () => handleGitAction(
-    () => pullFromGitHub(selectedProject!),
+    () => pullFromGitHub(selectedProject!, selectedFeature || undefined),
     'pull',
     false // Don't refresh Git status (hasGit won't change)
   );

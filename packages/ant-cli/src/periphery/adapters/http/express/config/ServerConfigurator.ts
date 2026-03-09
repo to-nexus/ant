@@ -60,9 +60,9 @@ export class ServerConfigurator {
    */
   private setupSecurityHeaders(app: Express): void {
     app.use(helmet({
-      // Allow cross-origin for IDE iframe
       crossOriginEmbedderPolicy: false,
       contentSecurityPolicy: false,
+      frameguard: false,
     }));
   }
 

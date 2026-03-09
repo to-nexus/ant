@@ -245,6 +245,7 @@ export abstract class BaseProxyMiddleware {
         const lower = key.toLowerCase();
         if (['etag', 'if-none-match', 'if-modified-since', 'last-modified'].includes(lower)) return;
         if (['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
+        if (lower === 'x-frame-options') return;
         res.setHeader(key, value);
       });
 
