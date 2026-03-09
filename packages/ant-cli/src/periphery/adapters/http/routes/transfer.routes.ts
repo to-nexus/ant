@@ -5,6 +5,7 @@
  * - POST /api/artifacts/transfer - Self-transfer (immediate)
  * - POST /api/artifacts/transfer-request - Cross-user transfer request
  * - GET  /api/artifacts/transfer-requests - List transfer requests
+ * - GET  /api/artifacts/transfer-requests/:id/files - List payload files as tree
  * - POST /api/artifacts/transfer-requests/:id/resolve - Approve/reject
  * - POST /api/artifacts/transfer-requests/:id/cancel - Cancel pending request
  */
@@ -48,6 +49,42 @@ async function collectFilePaths(fullPath: string, featurePath: string): Promise<
     }
   } catch {
     // Ignore errors (destination may not exist yet)
+  }
+  return results;
+}
+
+interface FileNodeDTO {
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  children?: FileNodeDTO[];
+}
+
+/**
+ * Recursively build a FileNode tree from a directory on disk.
+ * Paths are relative to `basePath`.
+ */
+async function buildFileTree(dirPath: string, basePath: string): Promise<FileNodeDTO[]> {
+  const results: FileNodeDTO[] = [];
+  try {
+    const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    entries.sort((a, b) => {
+      if (a.isDirectory() && !b.isDirectory()) return -1;
+      if (!a.isDirectory() && b.isDirectory()) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+      if (entry.isDirectory()) {
+        const children = await buildFileTree(fullPath, basePath);
+        results.push({ name: entry.name, path: relativePath, type: 'directory', children });
+      } else {
+        results.push({ name: entry.name, path: relativePath, type: 'file' });
+      }
+    }
+  } catch {
+    // Directory may not exist or be inaccessible
   }
   return results;
 }
@@ -254,19 +291,57 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
   });
 
   // ============================================
+  // List Payload Files (Tree)
+  // ============================================
+
+  /**
+   * GET /api/artifacts/transfer-requests/:id/files
+   * Returns the file tree of a pending transfer request's payload.
+   * Only accessible by the recipient.
+   */
+  router.get('/artifacts/transfer-requests/:id/files', async (req: Request, res: Response) => {
+    try {
+      const userContext = extractUserContext(req);
+      const requestId = req.params.id;
+
+      const request = await stateStore.getTransferRequest(requestId);
+      if (!request) {
+        return res.status(404).json({ error: 'NOT_FOUND', message: '전송 요청을 찾을 수 없습니다.' });
+      }
+
+      if (request.recipient.userId !== userContext.userId || request.recipient.orgId !== userContext.organizationId) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: '이 요청의 파일 목록을 볼 권한이 없습니다.' });
+      }
+
+      if (request.status !== 'pending') {
+        return res.status(400).json({ error: 'INVALID_STATUS', message: '대기 중인 요청만 파일 목록을 조회할 수 있습니다.' });
+      }
+
+      if (!request.payloadPath || !fs.existsSync(request.payloadPath)) {
+        return res.json({ files: [] });
+      }
+
+      const tree = await buildFileTree(request.payloadPath, request.payloadPath);
+      res.json({ files: tree });
+    } catch (error: any) {
+      sendTransferError(res, error);
+    }
+  });
+
+  // ============================================
   // Resolve Transfer Request
   // ============================================
 
   /**
    * POST /api/artifacts/transfer-requests/:id/resolve
    * Approve or reject a transfer request.
-   * Body: { action: 'approve' | 'reject' }
+   * Body: { action: 'approve' | 'reject', excludePaths?: string[] }
    */
   router.post('/artifacts/transfer-requests/:id/resolve', async (req: Request, res: Response) => {
     try {
       const userContext = extractUserContext(req);
       const requestId = req.params.id;
-      const { action } = req.body;
+      const { action, excludePaths } = req.body;
 
       if (!['approve', 'reject'].includes(action)) {
         return res.status(400).json({ error: 'INVALID_PATH', message: 'action은 approve 또는 reject여야 합니다.' });
@@ -276,7 +351,8 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
         requestId,
         action,
         userContext.userId,
-        userContext.organizationId
+        userContext.organizationId,
+        Array.isArray(excludePaths) ? excludePaths : undefined
       );
 
       // Notify sender of resolution via Pub/Sub

@@ -100,12 +100,20 @@ export function publishToGitHub(projectId: string, activeFeature?: string) {
   );
 }
 
-export function pushToGitHub(projectId: string) {
-  return gitAction(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/push`);
+export function pushToGitHub(projectId: string, feature?: string) {
+  return gitAction(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/push`,
+    'POST',
+    feature ? { feature } : undefined,
+  );
 }
 
-export function pullFromGitHub(projectId: string) {
-  return gitAction(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/pull`);
+export function pullFromGitHub(projectId: string, feature?: string) {
+  return gitAction(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/pull`,
+    'POST',
+    feature ? { feature } : undefined,
+  );
 }
 
 export function fetchFromGitHub(projectId: string, feature?: string) {
@@ -157,10 +165,11 @@ export function getGitChanges(projectId: string, feature?: string): Promise<{
 export async function commitGitChanges(
   projectId: string,
   message?: string,
+  feature?: string,
 ): Promise<{ success: boolean; commitHash?: string; error?: string }> {
   const response = await authFetch(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/commit`,
-    { method: 'POST', body: JSON.stringify({ message }) },
+    { method: 'POST', body: JSON.stringify({ message, feature }) },
   );
   return response.json();
 }
@@ -168,7 +177,7 @@ export async function commitGitChanges(
 /**
  * Sync with remote (pull then push). Returns result via body.
  */
-export async function syncWithRemote(projectId: string): Promise<{
+export async function syncWithRemote(projectId: string, feature?: string): Promise<{
   success: boolean;
   pulledChanges?: boolean;
   pushedChanges?: boolean;
@@ -176,7 +185,7 @@ export async function syncWithRemote(projectId: string): Promise<{
 }> {
   const response = await authFetch(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/sync`,
-    { method: 'POST' },
+    { method: 'POST', body: JSON.stringify(feature ? { feature } : {}) },
   );
   return response.json();
 }

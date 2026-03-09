@@ -30,7 +30,7 @@ export function GitStatusButtons() {
     handlePush,
     handlePull,
     handleSync
-  } = useGitActions(selectedProject, gitChanges, setLocalGitChanges);
+  } = useGitActions(selectedProject, selectedFeature, gitChanges, setLocalGitChanges);
 
   // Don't show anything if no project is selected
   if (!selectedProject) {

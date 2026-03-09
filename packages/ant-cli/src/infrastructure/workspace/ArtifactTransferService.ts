@@ -271,12 +271,14 @@ export class ArtifactTransferService {
 
   /**
    * Approve or reject a transfer request.
+   * @param excludePaths - Payload-relative paths to skip when copying (recipient opt-out)
    */
   async resolveTransfer(
     requestId: string,
     action: 'approve' | 'reject',
     recipientUserId: string,
-    recipientOrgId: string
+    recipientOrgId: string,
+    excludePaths?: string[]
   ): Promise<TransferRequest> {
     const request = await this.stateStore.getTransferRequest(requestId);
     if (!request) {
@@ -344,14 +346,21 @@ export class ArtifactTransferService {
           payloadEntries[0] === path.basename(request.source.path) &&
           (await fs.promises.stat(path.join(request.payloadPath, payloadEntries[0]))).isFile();
 
+        const excludeSet = excludePaths && excludePaths.length > 0
+          ? new Set(excludePaths.map(p => p.replace(/\\/g, '/')))
+          : undefined;
+
         if (isSingleFileTransfer) {
-          // Single file transfer: copy the file directly to destFullPath
-          const singleEntry = path.join(request.payloadPath, payloadEntries[0]);
-          await fs.promises.mkdir(path.dirname(destFullPath), { recursive: true });
-          await fs.promises.copyFile(singleEntry, destFullPath);
+          const fileName = payloadEntries[0];
+          if (excludeSet?.has(fileName)) {
+            logger.info(`📦 [${COMPONENT}] Single file excluded by recipient: ${fileName}`, { component: COMPONENT });
+          } else {
+            const singleEntry = path.join(request.payloadPath, fileName);
+            await fs.promises.mkdir(path.dirname(destFullPath), { recursive: true });
+            await fs.promises.copyFile(singleEntry, destFullPath);
+          }
         } else {
-          // Directory transfer: copy all payload contents into destFullPath
-          await this.copyDirectoryWithExclusions(request.payloadPath, destFullPath);
+          await this.copyDirectoryWithExclusions(request.payloadPath, destFullPath, excludeSet);
         }
 
         // Handle move: remove original source if mode is 'move'
@@ -468,11 +477,16 @@ export class ArtifactTransferService {
   }
 
   /**
-   * Copy directory recursively with sessions/ exclusion
+   * Copy directory recursively with sessions/ exclusion and optional path exclusions.
+   * @param excludePaths - Set of relative paths (relative to the original srcPath root) to skip.
+   *                       Used to pass through recursion via `currentRelative`.
+   * @param currentRelative - Internal: tracks the current relative path within the copy root.
    */
   private async copyDirectoryWithExclusions(
     srcPath: string,
-    destPath: string
+    destPath: string,
+    excludePaths?: Set<string>,
+    currentRelative: string = ''
   ): Promise<{ files: number; sessionsSkipped: boolean }> {
     await fs.promises.mkdir(destPath, { recursive: true });
     
@@ -483,15 +497,19 @@ export class ArtifactTransferService {
     for (const entry of entries) {
       const srcEntry = path.join(srcPath, entry.name);
       const destEntry = path.join(destPath, entry.name);
+      const entryRelative = currentRelative ? `${currentRelative}/${entry.name}` : entry.name;
 
-      // Skip sessions directory
       if (entry.name === 'sessions') {
         sessionsSkipped = true;
         continue;
       }
 
+      if (excludePaths?.has(entryRelative)) {
+        continue;
+      }
+
       if (entry.isDirectory()) {
-        const sub = await this.copyDirectoryWithExclusions(srcEntry, destEntry);
+        const sub = await this.copyDirectoryWithExclusions(srcEntry, destEntry, excludePaths, entryRelative);
         fileCount += sub.files;
         sessionsSkipped = sessionsSkipped || sub.sessionsSkipped;
       } else {

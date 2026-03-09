@@ -86,6 +86,7 @@ export const createProjectSlice: StateCreator<
         currentMode: undefined,
         jobStartPending: false,
         sseReconnectGrace: false,
+        connectionStatus: 'connected',
       } as any);
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
@@ -119,6 +120,7 @@ export const createProjectSlice: StateCreator<
         currentMode: undefined,
         jobStartPending: false,
         sseReconnectGrace: false,
+        connectionStatus: 'connected',
       } as any);
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
