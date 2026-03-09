@@ -285,8 +285,10 @@ export class ProjectCrudService {
     } catch (error) {
       // If config doesn't exist, return minimal default config
       console.warn('[ProjectCrudService] Config not found, returning defaults');
+      const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
       return {
         repositoryName: this.sanitizeProjectName(id),
+        repoType: isCloudMode ? 'cloud' : 'local',
         branchBase: 'main',
         llmModels: {
           design: {

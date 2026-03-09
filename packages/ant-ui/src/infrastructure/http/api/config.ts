@@ -46,12 +46,15 @@ function sanitizeRepositoryName(workspaceId: string): string {
 }
 
 /** Create project config with defaults */
-export async function createProjectConfig(projectId: string): Promise<ProjectConfig> {
+export async function createProjectConfig(
+  projectId: string,
+  mode: 'local' | 'cloud' = 'local',
+): Promise<ProjectConfig> {
   const sanitizedName = sanitizeRepositoryName(projectId);
   const defaultConfig: ProjectConfig = {
     repositoryName: sanitizedName,
-    repoType: 'local',
-    localPath: `~/dev/${sanitizedName}`,
+    repoType: mode === 'cloud' ? 'cloud' : 'local',
+    ...(mode !== 'cloud' ? { localPath: `~/dev/${sanitizedName}` } : {}),
     branchBase: 'main',
   };
   await apiPut(
