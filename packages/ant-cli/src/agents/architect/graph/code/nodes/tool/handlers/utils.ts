@@ -77,6 +77,10 @@ export type ResolvedToolPath = {
   fsPath: string;
   /** Always 'workspace' since everything is project-root relative */
   scope: 'workspace' | 'repo';
+  /** True if the path was auto-corrected (e.g., missing codebase/ prefix) */
+  wasFixed: boolean;
+  /** Human-readable correction message to prepend to tool result */
+  fixMessage?: string;
 };
 
 /**
@@ -111,7 +115,7 @@ export async function resolveToolPath(
 ): Promise<ResolvedToolPath> {
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) {
-    return { displayPath: rawPath, fsPath: rawPath, scope: 'workspace' };
+    return { displayPath: rawPath, fsPath: rawPath, scope: 'workspace', wasFixed: false };
   }
 
   const p = await import('path');
@@ -120,22 +124,37 @@ export async function resolveToolPath(
   // Absolute path: make it project-root relative
   if (p.isAbsolute(rawPath)) {
     const fsPath = normalizeRelPath(p.relative(projectRoot, rawPath));
-    // Still apply auto-correction for absolute paths converted to relative
-    const { corrected } = autoCorrectCodebasePath(fsPath);
-    return { displayPath: corrected, fsPath: corrected, scope: 'workspace' };
+    const { corrected, wasFixed } = autoCorrectCodebasePath(fsPath);
+    const fixMessage = wasFixed
+      ? `⚠️ Path corrected: "${fsPath}" → "${corrected}". Always use codebase/ prefix for code files.`
+      : undefined;
+    return { displayPath: corrected, fsPath: corrected, scope: 'workspace', wasFixed, fixMessage };
   }
 
   const rel = normalizeRelPath(rawPath);
   
-  // ✅ Apply auto-correction for common LLM path mistakes
-  const { corrected, wasFixed, reason } = autoCorrectCodebasePath(rel);
+  const { corrected, wasFixed } = autoCorrectCodebasePath(rel);
+  const fixMessage = wasFixed
+    ? `⚠️ Path corrected: "${rel}" → "${corrected}". Always use codebase/ prefix for code files.`
+    : undefined;
   
   if (wasFixed) {
-    // Track the correction for debugging/learning
     console.log(`[resolveToolPath] Auto-corrected path: ${rel} → ${corrected}`);
   }
   
-  return { displayPath: corrected, fsPath: corrected, scope: 'workspace' };
+  return { displayPath: corrected, fsPath: corrected, scope: 'workspace', wasFixed, fixMessage };
+}
+
+/**
+ * Prepend path correction feedback to a tool result string.
+ * If the path was auto-corrected, the LLM sees the correction so it learns
+ * to use codebase/ prefix in subsequent calls.
+ */
+export function prependFixMessage(resolved: ResolvedToolPath, result: string): string {
+  if (resolved.wasFixed && resolved.fixMessage) {
+    return `${resolved.fixMessage}\n\n${result}`;
+  }
+  return result;
 }
 
 export async function resolveToolDirectory(

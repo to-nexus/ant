@@ -137,13 +137,13 @@ Your modularization:
 
 ```xml
 <!-- ✅ CORRECT: Self-contained XML tags -->
-<file path="src/App.tsx">
+<file path="codebase/src/App.tsx">
 code content here...
 </file>
 <done>true</done>
 
 <!-- ❌ WRONG: NEVER close with </parameter> or </invoke> -->
-<file path="src/App.tsx">
+<file path="codebase/src/App.tsx">
 code...
 </parameter>   ← WRONG! This breaks the parser!
 </invoke>      ← WRONG! These are NOT tool call tags!
@@ -205,8 +205,8 @@ code...
 **⚠️ NEVER nest file tags. Each is independent:**
 ```xml
 <!-- ✅ CORRECT -->
-<file path="a.ts">...</file>
-<append path="b.ts">...</append>
+<file path="codebase/src/a.ts">...</file>
+<append path="codebase/src/b.ts">...</append>
 ```
 
 **⚠️ DO NOT include closing tags in code:**
@@ -377,7 +377,7 @@ const speed = PADDLE_SPEED;
 | Duplicate files with similar names | One file per purpose |
 | Markdown in content (` ```code``` `) | Raw code only |
 | Code placeholders (`// ... logic ...`) | Complete implementation |
-| Placeholder paths (`path/to/file.ext`) | Actual paths (`src/utils.ts`) |
+| Placeholder paths (`path/to/file.ext`) | Actual paths (`codebase/src/utils.ts`) |
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚨 TASK COMPLETION SIGNAL (CRITICAL)
