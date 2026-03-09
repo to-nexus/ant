@@ -222,6 +222,35 @@ export class SharedFileBuffer {
   }
 
   /**
+   * Invalidate a single file entry so the next read falls back to disk.
+   * Called after run_command modifies files outside the buffer's awareness.
+   */
+  invalidate(filePath: string): boolean {
+    const normalized = this.normalizePath(filePath);
+    return this.files.delete(normalized);
+  }
+
+  /**
+   * Invalidate all buffered files whose normalized path equals or starts with
+   * the given prefix. Returns the number of entries removed.
+   *
+   * Used after run_command to flush stale entries — shell commands can modify
+   * any file under codebase/ and the buffer has no way to detect which ones
+   * changed, so the caller invalidates the whole subtree conservatively.
+   */
+  invalidateByPrefix(prefix: string): number {
+    const normalizedPrefix = this.normalizePath(prefix);
+    let count = 0;
+    for (const key of this.files.keys()) {
+      if (key === normalizedPrefix || key.startsWith(normalizedPrefix + '/')) {
+        this.files.delete(key);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
    * Get files written by OTHER workers (for cross-worker context injection).
    */
   getWrittenFilesByOtherWorkers(

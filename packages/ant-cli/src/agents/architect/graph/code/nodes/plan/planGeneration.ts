@@ -266,9 +266,22 @@ export async function generatePlanText(
   
   const planText = planMatch[1].trim();
   
-  // Validate JSON structure (basic check)
+  // Validate JSON structure and prescribedPackages
   try {
-    JSON.parse(planText);
+    const parsed = JSON.parse(planText);
+
+    if (state.designDocs && Object.keys(state.designDocs).length > 0) {
+      const prescribed = parsed.prescribedPackages;
+      if (!prescribed || !Array.isArray(prescribed)) {
+        console.warn(`⚠️  [Plan] prescribedPackages field missing — design docs exist but no packages declared`);
+      } else if (prescribed.length > 0) {
+        const noUsage = prescribed.filter((p: any) => !p.usedBy?.length);
+        if (noUsage.length > 0) {
+          console.warn(`⚠️  [Plan] Prescribed packages declared but not used: ${noUsage.map((p: any) => p.package).join(', ')}`);
+        }
+        console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
+      }
+    }
   } catch (jsonError) {
     // Continue anyway - CodeGen can still use the structured text
   }
@@ -352,10 +365,10 @@ async function savePlanTextForDebug(
   }
 }
 
-/** Max plan↔tool round-trips before falling back to generatePlanText (no tools).
- * Reduced from 8: most productive exploration completes within 2-3 rounds.
- * Keeping 4 as a safety margin while preventing runaway token burn. */
-export const PLAN_TOOL_LOOP_MAX = 4;
+/** Max plan↔tool round-trips before forcing plan finalization.
+ * After this many rounds the LLM is called once more WITHOUT tools
+ * so it must produce a <plan> from the gathered exploration context. */
+export const PLAN_TOOL_LOOP_MAX = 8;
 
 export type PlanWithToolsResult =
   | { planText: string }
@@ -371,13 +384,23 @@ export async function runPlanLLMWithTools(
   task: CodeTask
 ): Promise<PlanWithToolsResult> {
   const llm = state.deps?.llm as LLMClient | undefined;
-  if (!llm?.stream) return null;
+  if (!llm) {
+    console.log('[Plan] runPlanLLMWithTools: llm not available, skipping tools');
+    return null;
+  }
 
   const { getPlanTools } = await import('./getPlanTools');
   const tools = await getPlanTools(state);
-  if (!tools?.length) return null;
+  if (!tools?.length) {
+    console.log('[Plan] runPlanLLMWithTools: no tools available, skipping tools');
+    return null;
+  }
 
   const llmToUse = await selectLLMForTask(llm, task, state);
+  if (!llmToUse?.stream) {
+    console.log('[Plan] runPlanLLMWithTools: resolved LLM has no stream method, skipping tools');
+    return null;
+  }
 
   // ✅ UI streaming (aligned with decompose/codeGen pattern)
   const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
@@ -465,6 +488,40 @@ export async function runPlanLLMWithTools(
     }
   }
 
+  // Log prompt for plan-toolLoop so it appears in prompt-*.md debug files
+  const planRound = Math.floor((messages.length - 1) / 2);
+  const jobId = state._httpJobId || 'unknown';
+  if (state.context?.featurePath) {
+    try {
+      const estimatedChars = messages.reduce(
+        (n, m) => n + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0,
+      );
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'code',
+        `plan-toolLoop`,
+        estimatedChars,
+        {
+          taskId: task.id,
+          taskName: task.name,
+          templatePath: 'plan-toolLoop (with tools)',
+          usedTemplates: ['code/base/injections/plan-tools-batch'],
+          resolvedPartials: collectResolvedPartials(['code/base/injections/plan-tools-batch']),
+          injectedVariables: {
+            round: planRound,
+            historyMessages: messages.length,
+            toolCallsThisRound: toolCalls.length,
+            toolNames: toolCalls.map(t => t.name),
+            hasTextResponse: textResponse.length > 0,
+          },
+        },
+      );
+    } catch {
+      // Non-blocking
+    }
+  }
+
   if (toolCalls.length > 0) {
     await orchestrator.finalize(true);
     return {
@@ -483,5 +540,166 @@ export async function runPlanLLMWithTools(
       return { planText };
     }
   }
+  return null;
+}
+
+/**
+ * Finalize plan from tool exploration context.
+ *
+ * Called when the plan↔tool loop hits PLAN_TOOL_LOOP_MAX. Instead of
+ * discarding the conversation (which contains valuable tool results like
+ * `go doc` output, file contents, etc.), this function makes ONE MORE
+ * LLM call with the existing conversation history but WITHOUT tools,
+ * forcing the LLM to synthesize a <plan> from what it has gathered.
+ *
+ * @returns planText string on success, null on failure (caller falls back to generatePlanText)
+ */
+export async function finalizePlanFromExploration(
+  state: ArchitectGraphState,
+  history: Array<{ role: 'user' | 'assistant'; content: string | any[] }>,
+  task: CodeTask,
+): Promise<string | null> {
+  const llm = state.deps?.llm as LLMClient | undefined;
+  if (!llm || !history?.length) return null;
+
+  const llmToUse = await selectLLMForTask(llm, task, state);
+  if (!llmToUse?.stream) return null;
+
+  const finalizeMessage: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [
+    ...history,
+    {
+      role: 'user' as const,
+      content:
+        'You have finished exploring. Based on ALL the tool results above, ' +
+        'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+        'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.',
+    },
+  ];
+
+  console.log(`📋 [Plan] Finalizing plan from exploration context (${history.length} messages)`);
+
+  const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  await chatAPI.showChatStatus('placeholder');
+
+  const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
+  const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
+  const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
+
+  const createStrategy = () => {
+    const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);
+    strategy.setPlanTaskTitle(task.name);
+    strategy.setParallelTaskName(task.name);
+    return strategy;
+  };
+
+  let orchestrator = new StreamOrchestrator({
+    parser: new XMLStreamParser(),
+    renderStrategy: createStrategy(),
+    existingFiles: new Set(),
+  });
+
+  let textResponse = '';
+  let tokenUsage: any = undefined;
+
+  for await (const event of llmToUse.stream(finalizeMessage, {
+    maxTokens: LLM_MAX_TOKENS.DEFAULT,
+    enableThinking: true,
+    thinkingBudget: LLM_THINKING_BUDGET.PLAN,
+  })) {
+    if (event.type === 'retry') {
+      textResponse = '';
+      tokenUsage = undefined;
+      orchestrator = new StreamOrchestrator({
+        parser: new XMLStreamParser(),
+        renderStrategy: createStrategy(),
+        existingFiles: new Set(),
+      });
+      continue;
+    }
+
+    await orchestrator.processEvent(event);
+
+    if (event.type === 'text') {
+      textResponse += (event as any).text ?? '';
+    }
+    if (event.type === 'done' && (event as any).usage) {
+      tokenUsage = (event as any).usage;
+      const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
+      accumulateTokenUsage(state as any, tokenUsage, { taskLevel: true, jobLevel: true });
+      updateKanbanTokenUsage(state as any);
+      logTokenUsageToFile(
+        state.context?.featurePath,
+        state._httpJobId,
+        tokenUsage,
+        {
+          taskId: task.id,
+          taskName: task.name,
+          node: 'plan-finalize',
+          callIndex: 0,
+          conversationHistoryLength: finalizeMessage.length,
+          recursionCount: state.recursionCount,
+        },
+      );
+    }
+  }
+
+  await orchestrator.finalize();
+
+  // Log to prompt log for traceability
+  const jobId = state._httpJobId || 'unknown';
+  if (state.context?.featurePath) {
+    try {
+      await logPrompt(
+        state.context.featurePath,
+        jobId,
+        'code',
+        'plan-finalize',
+        finalizeMessage.reduce((n, m) => n + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0),
+        {
+          taskId: task.id,
+          taskName: task.name,
+          templatePath: 'plan-finalize (from exploration)',
+          usedTemplates: [],
+          resolvedPartials: [],
+          injectedVariables: {
+            explorationRounds: Math.floor(history.length / 2),
+            historyMessages: history.length,
+          },
+        },
+      );
+    } catch {
+      // Non-blocking
+    }
+  }
+
+  const planMatch = textResponse.match(/<plan>([\s\S]*?)<\/plan>/);
+  if (planMatch) {
+    const planText = planMatch[1].trim();
+    if (planText.length >= 50) {
+      console.log(`✅ [Plan] Finalized plan from exploration (${planText.length} chars)`);
+
+      try {
+        const parsed = JSON.parse(planText);
+        if (state.designDocs && Object.keys(state.designDocs).length > 0) {
+          const prescribed = parsed.prescribedPackages;
+          if (!prescribed || !Array.isArray(prescribed)) {
+            console.warn(`⚠️  [Plan] prescribedPackages field missing — design docs exist but no packages declared`);
+          } else if (prescribed.length > 0) {
+            const noUsage = prescribed.filter((p: any) => !p.usedBy?.length);
+            if (noUsage.length > 0) {
+              console.warn(`⚠️  [Plan] Prescribed packages declared but not used: ${noUsage.map((p: any) => p.package).join(', ')}`);
+            }
+            console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
+          }
+        }
+      } catch { /* non-blocking */ }
+
+      await savePlanTextForDebug(state, task, planText);
+      return planText;
+    }
+  }
+
+  console.warn(`⚠️ [Plan] finalizePlanFromExploration failed to produce valid <plan>, falling back`);
   return null;
 }

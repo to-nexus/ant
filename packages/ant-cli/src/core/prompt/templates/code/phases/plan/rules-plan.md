@@ -50,6 +50,7 @@ existing modules, design specs, dependencies, etc.)
     "id": "task-id",
     "goal": "One-line goal description"
   },
+  "prescribedPackages": [],
   "implementation": {
     "create": [...],
     "modify": [...],
@@ -69,13 +70,20 @@ existing modules, design specs, dependencies, etc.)
     "id": "[task identifier from input]",
     "goal": "[one-line goal derived from analysis]"
   },
+  "prescribedPackages": [
+    {
+      "package": "[import path from design document]",
+      "apis": ["[function/type discovered via tools]"],
+      "usedBy": ["[name of create entry that uses this package]"]
+    }
+  ],
   "implementation": {
     "create": [
       {
         "name": "[module name]",
         "type": "[component | util | hook | api | service | class]",
         "location": "[semantic area - observe from directory tree]",
-        "purpose": "[what this module does]"
+        "purpose": "[what this module does — behavior only, no import paths]"
       }
     ],
     "modify": [
@@ -100,6 +108,13 @@ existing modules, design specs, dependencies, etc.)
 }
 ```
 
+| Field | Required | Description |
+|-------|----------|-------------|
+| `prescribedPackages` | Yes | Design-document-referenced packages discovered via tools. Empty array `[]` if none. |
+| `prescribedPackages[].package` | Yes | Exact import path from design document |
+| `prescribedPackages[].apis` | Yes | Concrete functions/types discovered via tools |
+| `prescribedPackages[].usedBy` | Yes | Names of `create` entries that use this package |
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 MODIFY FIELD CONSTRAINT
 ────────────────────────────────────────────────────────────────────────────────
@@ -107,6 +122,29 @@ existing modules, design specs, dependencies, etc.)
 **Principle**: `modify.action` and `modify.changes` describe WHAT to change, not HOW to execute it. CodeGen decides the operational steps.
 
 **Constraint**: Do NOT include tool execution instructions in MODIFY fields (e.g., "Read existing content first", "Use read_file to check", "Run list_files"). State only the intended change.
+
+────────────────────────────────────────────────────────────────────────────────
+## 📦 PRESCRIBED PACKAGES AND PURPOSE SEPARATION
+────────────────────────────────────────────────────────────────────────────────
+
+**Principle**: `purpose` and `prescribedPackages` have distinct, non-overlapping roles.
+
+| Field | Describes | Does NOT describe |
+|-------|-----------|-------------------|
+| `purpose` | What the module achieves (behavior, responsibility) | Which packages to import |
+| `prescribedPackages` | Which design-doc packages to use and their discovered APIs | What the module does |
+
+**Constraint**: `purpose` MUST NOT contain import paths, package names, or "use X instead of Y" comparisons. Import decisions are derived exclusively from `prescribedPackages`.
+
+**Constraint**: `prescribedPackages` MUST list every design-document-referenced package whose API was discovered via tools during analysis. If no prescribed packages exist, use an empty array.
+
+**Constraint**: Each `prescribedPackages` entry MUST include concrete `apis` (discovered via tools) and `usedBy` (which create modules use it). Vague entries without API details are insufficient.
+
+**Constraint**: If a prescribed package provides the functionality a module needs, that module MUST use the prescribed package. Do NOT substitute with well-known alternatives.
+
+⚠️ **Blind spot**: The `purpose` field easily becomes an implementation instruction when specifying exact imports. If `purpose` contains import paths that conflict with `prescribedPackages`, CodeGen receives contradictory guidance. Keep `purpose` behavioral — what the module does — not technical — which package it imports.
+
+⚠️ **Blind spot**: Discovering an API via tools but then omitting it from `prescribedPackages` — the discovery effort is wasted and CodeGen falls back to well-known alternatives from training data.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🔒 TASK SCOPE PRINCIPLE
@@ -202,31 +240,24 @@ In your `<analysis>` section, cover:
    - Extract requirements from API Contract / specs
    - Identify dependencies
 
-3. **📦 INSTALLED DEPENDENCY ANALYSIS**
+3. **📦 DEPENDENCY ANALYSIS**
 
-**Observation target**: Does the design document reference specific packages or libraries? Is there a dependency manifest in the project (observe directory tree)?
+**Observation target**: Does the design document reference specific packages or libraries? Are any of them unknown to your training data (organization-internal, private, unfamiliar)?
 
 **Protocol**:
-1. Read the dependency manifest to identify installed packages
-2. Cross-reference design document package references with installed dependencies
-3. For each dependency referenced in the design document AND present in the manifest, discover its exported API before finalizing the plan
-4. Include concrete API usage decisions (types, functions, patterns) in the plan
+1. Identify packages referenced in the design document (import statements, backtick-quoted paths, code examples)
+2. Classify each: well-known (in training data) vs unknown (private, org-internal, unfamiliar)
+3. For unknown packages present in the dependency manifest, discover their exported API via tools before finalizing the plan
+4. For unknown packages NOT in the manifest, attempt installation via `run_command`, then discover the API
+5. Record every discovered package in `prescribedPackages` with concrete API details and map to modules via `usedBy`
 
-**Constraint**: If the design document prescribes a specific package and the manifest confirms it is installed, the plan MUST incorporate that package. Do NOT substitute with standard library or alternative packages.
+**Constraint**: Design-prescribed packages MUST appear in `prescribedPackages` and be used by the modules listed in `usedBy`. Do NOT substitute with standard library or alternative packages.
 
-**Constraint**: Do NOT assume or guess package APIs from naming conventions or training data. Observe the actual exported API first.
+**Constraint**: Do NOT assume or guess unknown package APIs from naming conventions. Observe the actual exported API via tools first.
 
-**Discrepancy recovery**: If the design document prescribes a specific package but the dependency manifest does NOT list it:
+**Constraint**: If installation fails, use the design document's code examples and usage patterns as the API reference — include the prescribed import paths in `prescribedPackages` so CodeGen writes the correct imports.
 
-1. This indicates the setup task failed to install the package — do NOT silently substitute with alternatives
-2. Observe the design document for the fully-qualified module path (literal import statements or backtick-quoted paths)
-3. Attempt to install the missing dependency via `run_command` using the language's standard package installation command with the observed module path
-4. If installation succeeds, proceed with API discovery (steps 3-4 above)
-5. If installation fails, use the design document's code examples and usage patterns as the API reference — include the prescribed import paths in the plan so CodeGen writes the correct imports
-
-**Constraint**: When the design document contains explicit code examples with import paths and usage patterns for a package, this constitutes sufficient API knowledge to plan with even if the package cannot be installed locally.
-
-⚠️ **Blind spot**: Design documents often reference organization-internal or private packages whose API is unknown to LLMs. The instinct is to skip them and use familiar alternatives — especially when they are absent from the dependency manifest. These packages are prescribed by the design document for a reason. Attempt installation first; if that fails, the design document's own code examples are the authoritative API reference.
+⚠️ **Blind spot**: The instinct is to skip unknown packages and use familiar alternatives — especially when they are absent from the dependency manifest. Design-prescribed packages exist for a reason. Attempt installation first; if that fails, the design document's own code examples are the authoritative API reference.
 {{/unless}}
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -241,6 +272,8 @@ Before outputting, verify:
 - [ ] No duplicate modules (checked directory tree)
 - [ ] Cross-boundary deps use local interfaces, not full implementations
 - [ ] Shared utilities in dedicated files, not inlined in multiple modules
+- [ ] `prescribedPackages` lists all design-doc packages discovered via tools (empty array if none)
+- [ ] `purpose` fields contain behavior only — no import paths or package names
 - [ ] For UI: assets are listed if needed
 - [ ] For UI: design tokens are specified
 - [ ] Security: input validation boundaries, secrets management, error exposure considered

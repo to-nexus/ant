@@ -165,6 +165,11 @@ export async function detectEnvironment(
     maxTokens: LLM_MAX_TOKENS.DEFAULT,
     enableThinking: false,
   })) {
+    if (event.type === 'retry') {
+      response = '';
+      capturedUsage = undefined;
+      continue;
+    }
     if (event.text) {
       response += event.text;
     }

@@ -3,6 +3,29 @@ import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 import { normalizeLanguage } from "../../../../../../utils/languageUtils";
 
+/**
+ * Escape unescaped control characters inside JSON string literals.
+ * Matches quoted strings (handling escaped chars), then replaces
+ * raw 0x00–0x1F bytes within them with proper JSON escape sequences.
+ */
+function sanitizeJsonControlChars(jsonStr: string): string {
+  return jsonStr.replace(/"(?:[^"\\]|\\.)*"/g, (match) => {
+    return match.replace(/[\x00-\x1f]/g, (ch) => {
+      switch (ch) {
+        case '\n': return '\\n';
+        case '\r': return '\\r';
+        case '\t': return '\\t';
+        case '\b': return '\\b';
+        case '\f': return '\\f';
+        default: {
+          const code = ch.charCodeAt(0).toString(16).padStart(4, '0');
+          return `\\u${code}`;
+        }
+      }
+    });
+  });
+}
+
 export interface ParsedProfile {
   environment: string;
   environmentReasoning: string;
@@ -35,8 +58,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       throw new Error('Invalid response: <tasks> tag is required. LLM must follow the prompt format strictly.');
     }
     
-    // Parse JSON array from <tasks> tag
-    const tasks = JSON.parse(tasksMatch[1]);
+    const tasks = JSON.parse(sanitizeJsonControlChars(tasksMatch[1]));
     
     if (!Array.isArray(tasks)) {
       throw new Error('Invalid response: tasks must be an array');
@@ -48,7 +70,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     
     if (profileMatch) {
       try {
-        const parsedProfile = JSON.parse(profileMatch[1]);
+        const parsedProfile = JSON.parse(sanitizeJsonControlChars(profileMatch[1]));
         profile = {
           environment: parsedProfile.environment || 'unknown',
           environmentReasoning: parsedProfile.environmentReasoning || '',
@@ -81,7 +103,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     
     if (referencesMatch) {
       try {
-        const parsed = JSON.parse(referencesMatch[1]);
+        const parsed = JSON.parse(sanitizeJsonControlChars(referencesMatch[1]));
         // ✅ Accept empty array (no references)
         if (Array.isArray(parsed)) {
           referenceRequests = parsed.length > 0 ? parsed : undefined;

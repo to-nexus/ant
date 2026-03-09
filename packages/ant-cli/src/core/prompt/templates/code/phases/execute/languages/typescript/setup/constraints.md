@@ -35,9 +35,9 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 **✅ CREATE (Configuration layer)**
 - Package: package.json, lock files
 - TypeScript: tsconfig.json, tsconfig.*.json
-- Build tools: vite.config.ts, webpack.config.js, etc.
-- Styling: tailwind.config.js, postcss.config.js
-- Linting: .eslintrc.* (MUST include ignorePatterns), .prettierrc
+- Build tool config (e.g., Vite, Webpack — use the tool's current config format)
+- Styling tool config (e.g., Tailwind, PostCSS — use the tool's current config format)
+- Linting & formatting config (e.g., ESLint, Prettier — use the tool's current config format)
 - Project: .gitignore, README.md, index.html (entry point only)
 - Environment: `.env.example` (template with `@connection` annotations) AND `.env` (active copy with localhost/docker defaults)
 - Docker: Dockerfile, docker-compose.yml (see Infrastructure Services below)
@@ -50,7 +50,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 **Constraint**: Only create configuration-layer files. Do NOT create application code directories (src/*, app/*, pages/*, components/*) or application source files (.tsx/.jsx/.ts/.js outside *.config.*).
 
 **Critical Requirements:**
-1. ESLint MUST have `ignorePatterns: ["dist", "build", "node_modules", "*.config.*"]`
+1. Linter config MUST exclude build output directories (`dist`, `build`), `node_modules`, and config files (`*.config.*`) from analysis
 2. Include ALL dependencies in package.json (don't defer to feature tasks)
 3. Next task will create ALL application code - don't do it now
 4. **Tailwind `content` paths MUST match actual source directories**

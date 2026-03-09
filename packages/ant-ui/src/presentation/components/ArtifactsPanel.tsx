@@ -35,7 +35,7 @@ interface DirectoryViewProps {
   unseenArtifacts?: string[];
   onMarkSeen?: (paths: string[]) => void;
   isNarrow?: boolean;
-  nodeHints?: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' }>;
+  nodeHints?: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }>;
 }
 
 function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints }: DirectoryViewProps) {
@@ -704,10 +704,15 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // sessions: show all
   const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
 
-  const inputNodeHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' }> = {
+  const inputNodeHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }> = {
     references: { label: t('panel.dirHint.references'), tooltip: t('panel.dirHintTooltip.references'), colorScheme: 'purple' },
     assets: { label: t('panel.dirHint.assets'), tooltip: t('panel.dirHintTooltip.assets'), colorScheme: 'purple' },
     sources: { label: t('panel.dirHint.sources'), tooltip: t('panel.dirHintTooltip.sources'), colorScheme: 'amber' },
+  };
+
+  const outputNodeHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }> = {
+    design: { label: t('panel.dirHint.design'), tooltip: t('panel.dirHintTooltip.design'), colorScheme: 'blue' },
+    evals: { label: t('panel.dirHint.evals'), tooltip: t('panel.dirHintTooltip.evals'), colorScheme: 'gray' },
   };
 
   return (
@@ -778,6 +783,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDelete={policy.canDeleteFile ? handleDelete : undefined}
           onSend={handleSend}
           onDownload={handleDownload}
+          isNarrow={isNarrow}
+          nodeHints={outputNodeHints}
           onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}

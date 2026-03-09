@@ -26,7 +26,8 @@ export class DependencyInstaller {
     packagePath: string, 
     displayName: string,
     onLog: LogCallback,
-    projectProfile?: { language: string; framework?: string }
+    projectProfile?: { language: string; framework?: string },
+    credentialEnv?: Record<string, string>
   ): Promise<void> {
     const relativePath = displayName || path.basename(packagePath);
     const lang = (projectProfile?.language || 'typescript').toLowerCase();
@@ -34,12 +35,12 @@ export class DependencyInstaller {
     switch (lang) {
       case 'typescript':
       case 'javascript':
-        return this.installNodeDeps(packagePath, relativePath, onLog);
+        return this.installNodeDeps(packagePath, relativePath, onLog, credentialEnv);
       case 'go':
       case 'python':
       case 'rust':
       case 'java':
-        return this.installByLanguage(packagePath, relativePath, lang, onLog);
+        return this.installByLanguage(packagePath, relativePath, lang, onLog, credentialEnv);
       default:
         logger.debug(`No dependency install for language: ${lang}`, { component: 'DependencyInstaller' });
         return;
@@ -52,7 +53,8 @@ export class DependencyInstaller {
   private async installNodeDeps(
     packagePath: string,
     displayName: string,
-    onLog: LogCallback
+    onLog: LogCallback,
+    credentialEnv?: Record<string, string>
   ): Promise<void> {
     const nodeModulesPath = path.join(packagePath, 'node_modules');
     const projectRoot = this.findProjectRoot(packagePath);
@@ -68,7 +70,7 @@ export class DependencyInstaller {
       const rootNodeModules = path.join(projectRoot, 'node_modules');
       if (!fs.existsSync(rootNodeModules)) {
         logger.info(`Installing workspace dependencies at root: ${projectRoot}`, { component: 'DependencyInstaller' });
-        await this.runInstall(projectRoot, 'workspace root', onLog);
+        await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv);
         this.installedRoots.add(projectRoot);
         return;
       }
@@ -76,7 +78,7 @@ export class DependencyInstaller {
       // Check if workspace needs reinstall
       if (this.workspaceNeedsReinstall(projectRoot)) {
         logger.info(`Workspace needs reinstall: ${projectRoot}`, { component: 'DependencyInstaller' });
-        await this.runInstall(projectRoot, 'workspace root', onLog);
+        await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv);
         this.installedRoots.add(projectRoot);
         return;
       }
@@ -89,7 +91,7 @@ export class DependencyInstaller {
     // Non-workspace: install per package
     if (!fs.existsSync(nodeModulesPath)) {
       logger.info(`Installing dependencies (no node_modules): ${displayName}`, { component: 'DependencyInstaller' });
-      return this.runInstall(packagePath, displayName, onLog);
+      return this.runInstall(packagePath, displayName, onLog, credentialEnv);
     }
     
     // Verify critical dependencies are actually installed
@@ -109,7 +111,7 @@ export class DependencyInstaller {
     if (missingDeps.length > 0) {
       logger.info(`Missing critical deps for ${displayName}: ${missingDeps.join(', ')} (re-install)`, { component: 'DependencyInstaller' });
       onLog('stdout', `⚠️  Missing critical dependencies: ${missingDeps.join(', ')}`);
-      return this.runInstall(packagePath, displayName, onLog);
+      return this.runInstall(packagePath, displayName, onLog, credentialEnv);
     }
     
     logger.debug(`Dependencies already installed: ${packagePath}`, { component: 'DependencyInstaller' });
@@ -122,14 +124,15 @@ export class DependencyInstaller {
     packagePath: string,
     displayName: string,
     language: string,
-    onLog: LogCallback
+    onLog: LogCallback,
+    credentialEnv?: Record<string, string>
   ): Promise<void> {
     let command: string;
     let args: string[];
     
     switch (language) {
       case 'go':
-        return this.installGoDeps(packagePath, displayName, onLog);
+        return this.installGoDeps(packagePath, displayName, onLog, credentialEnv);
       case 'python':
         if (fs.existsSync(path.join(packagePath, 'requirements.txt'))) {
           command = 'pip';
@@ -176,7 +179,10 @@ export class DependencyInstaller {
       const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
-        stdio: 'pipe'
+        stdio: 'pipe',
+        ...(credentialEnv && Object.keys(credentialEnv).length > 0
+          ? { env: { ...process.env, ...credentialEnv } }
+          : {}),
       });
       
       const timeoutId = setTimeout(() => {
@@ -223,7 +229,8 @@ export class DependencyInstaller {
   private async runInstall(
     packagePath: string, 
     relativePath: string,
-    onLog: LogCallback
+    onLog: LogCallback,
+    credentialEnv?: Record<string, string>
   ): Promise<void> {
     const projectRoot = this.findProjectRoot(packagePath);
     const pm = this.detectPackageManager(projectRoot);
@@ -251,7 +258,10 @@ export class DependencyInstaller {
       const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
-        stdio: 'pipe'
+        stdio: 'pipe',
+        ...(credentialEnv && Object.keys(credentialEnv).length > 0
+          ? { env: { ...process.env, ...credentialEnv } }
+          : {}),
       });
       
       // Timeout: kill the process if install takes too long (e.g., EFS network hang)
@@ -424,7 +434,8 @@ export class DependencyInstaller {
   private async installGoDeps(
     packagePath: string,
     displayName: string,
-    onLog: LogCallback
+    onLog: LogCallback,
+    credentialEnv?: Record<string, string>
   ): Promise<void> {
     if (!fs.existsSync(path.join(packagePath, 'go.mod'))) {
       logger.debug(`No go.mod found, skipping Go dep install`, { component: 'DependencyInstaller' });
@@ -448,14 +459,14 @@ export class DependencyInstaller {
 
       onLog('stdout', `📦 Go workspace detected — running go work sync...`);
       logger.info(`Running go work sync in: ${workspaceRoot}`, { component: 'DependencyInstaller' });
-      await this.runGoCommand(['work', 'sync'], workspaceRoot, onLog, '✅ Go workspace synced');
+      await this.runGoCommand(['work', 'sync'], workspaceRoot, onLog, '✅ Go workspace synced', credentialEnv);
       this.installedRoots.add(workspaceRoot);
       return;
     }
 
     onLog('stdout', `📦 Installing go dependencies for ${displayName}...`);
     logger.info(`Running go mod tidy in: ${packagePath}`, { component: 'DependencyInstaller' });
-    await this.runGoCommand(['mod', 'tidy'], packagePath, onLog, `✅ Go dependencies installed for ${displayName}`);
+    await this.runGoCommand(['mod', 'tidy'], packagePath, onLog, `✅ Go dependencies installed for ${displayName}`, credentialEnv);
   }
 
   private runGoCommand(

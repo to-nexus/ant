@@ -86,6 +86,7 @@ export class PreviewServer {
     this.portManager = new PortManager();
     
     // Initialize preview service with Redis
+    const workspaceRoot = this.options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH;
     this.previewService = new PreviewService(
       this.portManager,
       this.stateStore,  // Redis as PortRegistry
@@ -96,7 +97,8 @@ export class PreviewServer {
           });
         }
       },
-      this.stateStore  // Redis as StateStore for Pub/Sub
+      this.stateStore,  // Redis as StateStore for Pub/Sub
+      workspaceRoot
     );
 
     logger.info('[PreviewServer] Services initialized', {

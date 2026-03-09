@@ -38,6 +38,7 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 ```json
 {
   "task": { "id": "...", "goal": "..." },
+  "prescribedPackages": [{ "package": "...", "apis": [...], "usedBy": [...] }],
   "implementation": {
     "create": [{ "name": "...", "location": "...", "purpose": "..." }],
     "modify": [{ "target": "...", "action": "...", "changes": [...] }],
@@ -52,6 +53,14 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 |-------|--------|
 | **Gather** | Identify ALL files needed from Plan and directory tree. Batch-read ALL in ONE tool response. |
 | **Implement** | Create, modify, copy per plan fields. |
+
+### prescribedPackages Compliance
+
+**Constraint**: If the plan contains a `prescribedPackages` array, those packages MUST be imported and used in the modules listed in `usedBy`. Do NOT substitute with alternative packages. Use the `apis` list as the authoritative reference for available functions and types.
+
+**Constraint**: This applies to both `create` and `modify` operations. If a `modify` entry adds new functionality that a prescribed package covers, use the prescribed package.
+
+⚠️ **Blind spot**: Training data associates common functionality with well-known packages. When `prescribedPackages` lists a wrapper around a well-known package, the instinct is to bypass the wrapper and use the underlying package directly. The prescribed package exists for a reason — use it as specified.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 2. Implementation Decisions (Your Judgment)

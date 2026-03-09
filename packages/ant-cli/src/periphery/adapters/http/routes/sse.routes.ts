@@ -53,18 +53,14 @@ export function createSSERoutes(deps: {
     });
     
     // Register client (await ensures Redis Pub/Sub subscription is active before initial state)
-    const t0 = Date.now();
     await deps.sseService.registerClient(projectId, featureName, res, userContext);
     logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
-    logger.info(`[SSE:timing] registerClient=${Date.now() - t0}ms`, { component: 'SSE', projectId, featureName });
 
     // Send initial states in parallel (Redis subscription is guaranteed active after registerClient).
     // Previously these were sequential awaits, causing fileTree to arrive 4-5s late because
     // getKanbanData reads EFS synchronously (readFileSync) before fileTree could be sent.
     // Now each fetch runs independently and sends as soon as ready.
     try {
-      const tStates = Date.now();
-
       await Promise.all([
         // 1. Kanban (EFS readFileSync + Redis — can be slow)
         deps.kanbanService.getKanbanData(
@@ -76,7 +72,6 @@ export function createSSERoutes(deps: {
           deps.taskQueueSnapshots,
           userContext
         ).then(kanbanData => {
-          logger.info(`[SSE:timing] kanban=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
           deps.sseService.sendInitialState(res, 'kanban', kanbanData);
         }).catch(err => {
           logger.warn(`Failed to send initial kanban`, { component: 'SSE', projectId, featureName }, err);
@@ -84,7 +79,6 @@ export function createSSERoutes(deps: {
 
         // 2. Chat (Redis/EFS — can be slow)
         deps.chatService.getMessagesAsync(projectId, featureName, userContext).then(chatMessages => {
-          logger.info(`[SSE:timing] chat=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
           deps.sseService.sendInitialState(res, 'chat', {
             type: 'initial_state',
             messages: chatMessages,
@@ -98,11 +92,9 @@ export function createSSERoutes(deps: {
         // 3. FileTree — Redis cache (~5ms), no wait for kanban/chat
         (async () => {
           let fileTree: any[] | null = null;
-          let cacheHit = false;
           if (deps.stateStore) {
             try {
               fileTree = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
-              if (fileTree) cacheHit = true;
             } catch (err) {
               logger.warn(`Failed to read fileTree cache from Redis`, { component: 'SSE', projectId, featureName }, err);
             }
@@ -113,7 +105,6 @@ export function createSSERoutes(deps: {
               deps.stateStore.setFileTreeCache(userContext.userId, projectId, featureName, fileTree).catch(() => {});
             }
           }
-          logger.info(`[SSE:timing] fileTree=${Date.now() - tStates}ms (cacheHit=${cacheHit})`, { component: 'SSE', projectId, featureName });
           deps.sseService.sendInitialState(res, 'fileTree', {
             type: 'initial',
             tree: fileTree
@@ -125,7 +116,6 @@ export function createSSERoutes(deps: {
         // 4. Unseen Artifacts (Redis SMEMBERS — fast)
         deps.stateStore
           ? deps.stateStore.getUnseenArtifacts(userContext.userId, projectId, featureName).then(unseenPaths => {
-              logger.info(`[SSE:timing] unseenArtifacts=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
               deps.sseService.sendInitialState(res, 'unseenArtifacts', {
                 type: 'initial',
                 paths: unseenPaths
@@ -135,8 +125,6 @@ export function createSSERoutes(deps: {
             })
           : Promise.resolve(),
       ]);
-
-      logger.info(`[SSE:timing] all initial states sent total=${Date.now() - tStates}ms`, { component: 'SSE', projectId, featureName });
     } catch (error) {
       logger.warn(`Failed to send initial states`, { component: 'SSE', projectId, featureName }, error);
     }

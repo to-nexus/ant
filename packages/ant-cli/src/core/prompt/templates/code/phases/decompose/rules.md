@@ -367,6 +367,22 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 ⚠️ **Blind spot**: Domain types are easily identified as shared, but response DTOs (enriched types that combine entity data with joined fields) and infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing feature tasks to MODIFY shared files or create duplicate types. Cross-boundary coordination contracts (how atomic operations compose multiple persistence interfaces) are ESPECIALLY EASY TO OMIT — the foundation defines individual persistence interfaces but not how they compose atomically, forcing feature tasks to bypass those interfaces entirely. Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.
 
+### Shared Foundation Splitting
+
+**Observation target**: Does the shared foundation scope span more than one functional concern group?
+
+| Group | Principle |
+|-------|-----------|
+| **Declarations** | Symbols with no executable behavior (types, interfaces, constants, contracts) |
+| **Implementations** | Symbols with executable behavior (adapters, utilities, handlers) |
+| **Schema** | Persistence structure definitions (not runtime code) |
+
+**Constraint**: If the shared foundation scope spans 2+ groups from the table above, split into separate exclusive sub-tasks — one per group — at sequential priorities (200, 201, 202, ...). Each sub-task follows all other shared foundation rules. Later sub-tasks may import from earlier ones.
+
+**Constraint**: Do NOT split within a single group unless that group alone contains symbols with independent, complex behavioral implementations that would produce a plan too broad for a single execution cycle.
+
+⚠️ **Blind spot**: Persistence structure definitions (migrations, DDL scripts) appear to be "just files" and are easily merged into a declarations task. They are persistence structure — a separate concern from runtime type declarations. If both exist, split them.
+
 ---
 
 ## Setup & Task Structure

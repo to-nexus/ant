@@ -15,6 +15,8 @@ interface RetryOptions {
   retryableErrors?: string[];
   /** Callback invoked before each retry attempt (for cleanup/reset) */
   onBeforeRetry?: () => void;
+  /** Marker value yielded before retry so consumers can reset accumulated state (streaming only) */
+  retryMarker?: any;
 }
 
 interface RetryableError {
@@ -26,7 +28,7 @@ interface RetryableError {
   status?: number;
 }
 
-const DEFAULT_OPTIONS: Required<RetryOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'retryMarker'>> = {
   maxAttempts: 4,
   initialDelayMs: 2000,
   maxDelayMs: 30000,
@@ -227,6 +229,11 @@ export async function* withRetryStream<T>(
       // ✅ Call onBeforeRetry callback if provided (for cleanup/reset)
       if (opts.onBeforeRetry) {
         opts.onBeforeRetry();
+      }
+      
+      // ✅ Yield retry marker so consumers can reset accumulated state
+      if (opts.retryMarker !== undefined) {
+        yield opts.retryMarker;
       }
       
       console.log(`[Retry] 🔄 Retrying (attempt ${attempt + 1}/${opts.maxAttempts})...`);
