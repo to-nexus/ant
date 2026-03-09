@@ -207,9 +207,12 @@ export class ContentMerger {
       logger.debug(`MERGED (explicit): ${target.type} -> ${content.type} @${targetIndex}`, { component: 'ContentMerger', projectId, featureName });
       
       target.type = content.type;
-      target.content = content.content;
+      if (!content.metadata?._preserveContent) {
+        target.content = content.content;
+      }
       target.metadata = { ...target.metadata, ...content.metadata };
-      delete target.metadata!._mergeIndex;  // Clean up
+      delete target.metadata!._mergeIndex;
+      delete target.metadata!._preserveContent;
       
       this.broadcaster?.broadcastContentUpdate(
         projectId,
@@ -370,6 +373,8 @@ export class ContentMerger {
     }
 
     const isTextOrThinking = content.type === 'text' || content.type === 'thinking';
+    const isPlanStreaming = content.type === 'plan_generating';
+    const isTaskResponseStreaming = content.type === 'task_response';
     const isFileStreaming = 
       content.type === 'file_writing' ||
       content.type === 'file_updating' ||
@@ -384,6 +389,8 @@ export class ContentMerger {
     
     return (
       (isTextOrThinking && !isNewThinkingBlock) ||  // text/thinking (not new block)
+      isPlanStreaming ||                             // plan_generating (always append)
+      isTaskResponseStreaming ||                     // task_response (always append)
       (isFileStreaming && isSameFile)               // file (same file only!)
     );
   }

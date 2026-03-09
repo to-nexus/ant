@@ -160,6 +160,7 @@ export async function docGen(
     undefined,  // ✅ Design job: no codebasePath
     state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
   );
+  renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
   
   // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
   const existingFiles = await scanExistingFiles(state, workType === 'ui-design');
@@ -195,6 +196,15 @@ export async function docGen(
       enableThinking: true,
       thinkingBudget: LLM_THINKING_BUDGET.PLAN,
     })) {
+      if (event.type === 'retry') {
+        thinking = '';
+        thinkingSignature = '';
+        textResponse = '';
+        capturedUsage = undefined;
+        pendingToolCalls = [];
+        continue;
+      }
+      
       // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
       await orchestrator.processEvent(event);
       
