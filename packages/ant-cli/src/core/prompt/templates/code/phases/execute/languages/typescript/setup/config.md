@@ -56,20 +56,34 @@ packages:
 - Root scripts: `pnpm --filter`, `pnpm -r`, `pnpm --parallel`
 - ❌ Do NOT use npm workspaces (slower, less strict)
 
-### Dependency Classification — `workspace:` Protocol
+### Dependency Classification Protocol
 
-For each dependency in `package.json`, observe whether the package source directory is physically present in this workspace:
+For each dependency in `package.json`, two decisions must be made in order: (1) local vs external, (2) version.
 
-| Package physically present in workspace? | Version specifier | Protocol |
-|------------------------------------------|-------------------|----------|
-| **YES** — directory listed in `pnpm-workspace.yaml` globs | `"workspace:*"` | Workspace-local reference |
-| **NO** — not in workspace filesystem | Real version range (e.g., `"^1.0.0"`) | External npm dependency |
+#### Step 1 — Local or External?
+
+| Package physically present in workspace? | Protocol |
+|------------------------------------------|----------|
+| **YES** — directory listed in `pnpm-workspace.yaml` globs | `"workspace:*"` |
+| **NO** — not in workspace filesystem | External npm dependency |
 
 **Constraint**: Do NOT infer workspace-local status from package scope (`@org/`), organization name, or terminology in the design document ("shared packages", "common libraries", "internal packages"). A package is workspace-local ONLY if its directory is matched by `pnpm-workspace.yaml` and physically present in this workspace.
 
 **Constraint**: `"workspace:*"` for a package that does not exist in the workspace causes `pnpm install` failure. If the package directory does not exist, it is an external dependency.
 
-⚠️ **Blind spot**: Scoped packages published by the same organization (e.g., `@company/logger`) are easily confused with workspace-local packages. They are external npm dependencies — use a version range, not `"workspace:*"`, unless their source directory is confirmed present in `pnpm-workspace.yaml`.
+⚠️ **Blind spot**: Scoped packages published by the same organization (e.g., `@company/logger`) are easily confused with workspace-local packages. They are external npm dependencies — use a version specifier, not `"workspace:*"`, unless their source directory is confirmed present in `pnpm-workspace.yaml`.
+
+#### Step 2 — Version Specifier
+
+| Category | Version known? | Action |
+|----------|---------------|--------|
+| **Workspace-local** (Step 1 = YES) | N/A | `"workspace:*"` |
+| **External** — version in design doc or LLM training data | YES | Semver range (e.g., `"^1.10.1"`) |
+| **External** — version unknown | NO | `"latest"` |
+
+**Principle**: `"latest"` is a valid npm dist-tag that all package managers resolve to the most recent published version during install. The lockfile pins the resolved version for reproducibility. If a specific version is required, it should be specified in the design document.
+
+**Constraint**: Do NOT invent version numbers for packages you do not know. Use `"latest"` — the package manager resolves it correctly. Guessing a wrong version causes `pnpm install` failure.
 
 ---
 
@@ -163,6 +177,7 @@ Configure as needed for project (Tailwind, ESLint, etc).
 ❌ Using npm workspaces instead of pnpm for monorepos
 ❌ Using `"*"` instead of `"workspace:*"` for monorepo package refs
 ❌ Using `"workspace:*"` for external packages not present in `pnpm-workspace.yaml` (same-org scope does NOT mean workspace-local)
+❌ Inventing version numbers for unknown packages (use `"latest"` — the package manager resolves it; a wrong guess causes install failure)
 ❌ Forgetting `"moduleResolution": "node"` in tsconfig.json
 ❌ Missing `@types/` packages in devDependencies
 ❌ Wrong `"module"` setting (use "ESNext" not "CommonJS")
