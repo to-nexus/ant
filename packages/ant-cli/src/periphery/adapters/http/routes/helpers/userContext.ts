@@ -98,46 +98,30 @@ function inferTenantByProjectId(projectId: string): { organizationId: string; us
 
 /**
  * Extract UserContext from Express Request
+ * 
  * Priority:
- * 1. Query parameter (user-email) - for frontend API calls
- * 2. Header (x-user-email) - for normal fetch() calls (cloud mode)
- * 3. Auth middleware (req.user, req.organization) - for authenticated requests
- * 4. Fallback to 'local' - for local mode
+ * 1. JWT auth middleware (req.user, req.organization) — cloud mode primary source
+ * 2. Local mode filesystem inference — local mode fallback
+ * 
+ * In cloud mode, user context MUST come from the verified JWT cookie.
+ * Header/query parameter based identification is removed for security.
  */
 export function extractUserContext(req: Request): UserContext {
-  // Priority 1: Query parameter (from frontend)
-  const userEmailQuery = req.query['user-email'] as string | undefined;
-  if (userEmailQuery) {
-    const userId = userEmailQuery.split('@')[0];
-    const domain = userEmailQuery.split('@')[1];
-    return {
-      userId,
-      organizationId: domain,
-    };
-  }
-  
-  // Priority 2: Header (Cloud mode fetch() calls)
-  const userEmailHeader = (req.headers['x-user-email'] as string | undefined) || undefined;
-  if (userEmailHeader) {
-    const userId = userEmailHeader.split('@')[0];
-    const domain = userEmailHeader.split('@')[1];
-    if (userId && domain) {
-      return {
-        userId,
-        organizationId: domain,
-      };
-    }
-  }
-  
-  // Priority 3: Auth middleware
+  // Priority 1: JWT auth middleware (set by createJwtAuthMiddleware)
   if (req.user && req.organization) {
     return {
       userId: req.user.id,
       organizationId: req.organization.id,
     };
   }
-  
-  // Priority 4: Fallback for Local mode
+
+  // Cloud mode: JWT must be present — reject if not
+  const isCloudMode = (process.env.ANT_SERVER_MODE || 'local') === 'cloud';
+  if (isCloudMode) {
+    throw new Error('Authentication required: no valid JWT token');
+  }
+
+  // Local mode: filesystem inference fallback
   const projectIdFromParams =
     (req.params as any)?.id ||
     (req.params as any)?.projectId ||
@@ -157,4 +141,3 @@ export function extractUserContext(req: Request): UserContext {
 export function hasUserContext(req: Request): boolean {
   return !!(req.user && req.organization);
 }
-

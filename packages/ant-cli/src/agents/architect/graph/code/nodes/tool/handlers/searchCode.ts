@@ -5,7 +5,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { SearchCodeArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation, resolveToolDirectory } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolDirectory, prependFixMessage } from './utils';
 
 export async function handleSearchCode(
   state: ArchitectGraphState,
@@ -96,7 +96,7 @@ export async function handleSearchCode(
       _mergeIndex: searchingIndex
     });
     
-    return results.join('\n');
+    return prependFixMessage(resolvedRoot, results.join('\n'));
   }, { pattern, file_pattern });
 }
 

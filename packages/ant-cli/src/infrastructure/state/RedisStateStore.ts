@@ -804,6 +804,34 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
+  // Generic Key-Value Operations
+  // ============================================
+
+  async setKeyWithTTL(key: string, value: string, ttlSeconds: number): Promise<void> {
+    await this.redis.setex(key, ttlSeconds, value);
+  }
+
+  async getKey(key: string): Promise<string | null> {
+    return this.redis.get(key);
+  }
+
+  async deleteKey(key: string): Promise<void> {
+    await this.redis.del(key);
+  }
+
+  async incrementKey(key: string): Promise<number> {
+    return this.redis.incr(key);
+  }
+
+  async decrementKey(key: string): Promise<number> {
+    return this.redis.decr(key);
+  }
+
+  async expireKey(key: string, ttlSeconds: number): Promise<void> {
+    await this.redis.expire(key, ttlSeconds);
+  }
+
+  // ============================================
   // Distributed Locking
   // ============================================
 

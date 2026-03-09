@@ -5,7 +5,19 @@
  */
 
 import { Router, Request, Response } from 'express';
+import * as crypto from 'crypto';
 import { UserConfigManager, FigmaCredentials } from '../../../../utils/userConfig';
+import { StateStorePort } from '../../../../core/ports/stateStore';
+import { sendErrorResponse } from './helpers/errorResponse';
+import { logger } from '../../../../utils/logger';
+
+const FIGMA_STATE_TTL_SECONDS = 5 * 60; // 5 minutes
+const FIGMA_STATE_KEY_PREFIX = 'ant:figma:state:';
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 interface FigmaTokenResponse {
   access_token: string;
@@ -21,7 +33,7 @@ interface FigmaUserResponse {
   handle?: string;
 }
 
-export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
+export function createFigmaOAuthRoutes(workspaceRoot: string, stateStore?: StateStorePort): Router {
   const router = Router();
   const userConfig = new UserConfigManager(workspaceRoot);
   
@@ -44,30 +56,17 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
   };
   
   /**
-   * Helper to get user context from request
+   * Helper to get user context from JWT-authenticated request
    */
   const getUserContext = (req: Request) => {
-    // Priority 1: From auth middleware (Cloud mode, already authenticated)
     if ((req as any).user && (req as any).organization) {
-      console.log('[Figma getUserContext] Using authenticated user:', (req as any).user.id);
       return {
         userId: (req as any).user.id,
         organizationId: (req as any).organization.id,
       };
     }
     
-    // Priority 2: From header/query (for OAuth flow)
-    const emailFromHeader = req.headers['x-user-email'] as string;
-    const emailFromQuery = req.query['user-email'] as string;
-    const email = emailFromHeader || emailFromQuery;
-    
-    if (email) {
-      console.log('[Figma getUserContext] Using email from header/query:', email);
-      const [userId, organizationId] = email.split('@');
-      return { userId, organizationId };
-    }
-    
-    console.log('[Figma getUserContext] No user context found');
+    // Local mode fallback
     return null;
   };
   
@@ -78,29 +77,20 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
   router.get('/config', async (req: Request, res: Response) => {
     try {
       const userContext = getUserContext(req);
-      console.log('[Figma /config] userContext:', userContext);
       
       if (!userContext) {
-        console.log('[Figma /config] ❌ No user context');
         return res.status(401).json({
           success: false,
           error: 'User context not found'
         });
       }
       
-      console.log('[Figma /config] Checking credentials for:', `${userContext.userId}@${userContext.organizationId}`);
       const credentials = await userConfig.credentials.get<FigmaCredentials>(userContext, 'figma');
-      console.log('[Figma /config] credentials:', credentials ? 'Found' : 'Not found');
-      console.log('[Figma /config] credentials.accessToken:', credentials?.accessToken ? 'Yes' : 'No');
-      
       const integration = await userConfig.integrations.get(userContext, 'figma');
-      console.log('[Figma /config] integration:', integration ? 'Found' : 'Not found');
       
       if (credentials && credentials.accessToken) {
-        // Cast to FigmaIntegration to access Figma-specific properties
         const figmaIntegration = integration as any;
         
-        console.log('[Figma /config] ✅ Returning configured=true, email:', credentials.email);
         return res.json({
           configured: true,
           enabled: integration?.enabled || false,
@@ -113,16 +103,11 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
         });
       }
       
-      console.log('[Figma /config] ❌ Returning configured=false');
       res.json({
         configured: false
       });
     } catch (error: any) {
-      console.error('[FigmaOAuth] Error checking config:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to check Figma configuration'
-      });
+      sendErrorResponse(res, 500, error, 'FigmaConfig');
     }
   });
   
@@ -130,44 +115,39 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
    * GET /api/figma/oauth/authorize
    * Redirect to Figma OAuth authorization page
    */
-  router.get('/oauth/authorize', (req: Request, res: Response) => {
+  router.get('/oauth/authorize', async (req: Request, res: Response) => {
     if (!FIGMA_CLIENT_ID) {
-      return res.status(500).json({
-        success: false,
-        error: 'Figma OAuth not configured. Please set FIGMA_CLIENT_ID in .env'
-      });
+      return sendErrorResponse(res, 500, new Error('Figma OAuth not configured'), 'FigmaOAuth');
     }
     
-    // Get user email from query parameter (passed by frontend)
-    const userEmail = req.query['user-email'] as string;
-    if (!userEmail) {
-      return res.status(400).json({
+    // Get user context from JWT auth middleware
+    const userContext = getUserContext(req);
+    if (!userContext) {
+      return res.status(401).json({
         success: false,
-        error: 'user-email query parameter is required'
+        error: 'Authentication required'
       });
     }
-    
-    // Parse user email to get userId and organizationId
-    const [userId, organizationId] = userEmail.split('@');
+    const { userId, organizationId } = userContext;
     
     // Get dynamic redirect URI
     const redirectUri = getRedirectUri(req);
     
-    const state = Buffer.from(JSON.stringify({
-      timestamp: Date.now(),
-      userId,
-      organizationId,
-      redirectUri  // Store for verification in callback
-    })).toString('base64');
+    // Generate CSRF-safe state (random token stored in Redis)
+    const stateToken = crypto.randomBytes(32).toString('hex');
+    if (stateStore) {
+      const stateData = JSON.stringify({ userId, organizationId, redirectUri });
+      await stateStore.setKeyWithTTL(`${FIGMA_STATE_KEY_PREFIX}${stateToken}`, stateData, FIGMA_STATE_TTL_SECONDS);
+    }
     
     const authUrl = new URL('https://www.figma.com/oauth');
     authUrl.searchParams.set('client_id', FIGMA_CLIENT_ID);
     authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('scope', 'current_user:read file_content:read');  // ✅ Both scopes needed
-    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('scope', 'current_user:read file_content:read');
+    authUrl.searchParams.set('state', stateToken);
     authUrl.searchParams.set('response_type', 'code');
     
-    console.log('[Figma OAuth] Redirecting to Figma with URI:', redirectUri);
+    logger.debug('Redirecting to Figma OAuth', { component: 'FigmaOAuth' });
     res.redirect(authUrl.toString());
   });
   
@@ -193,8 +173,20 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
     }
     
     try {
-      // Decode state to get user context
-      const stateData = JSON.parse(Buffer.from(state as string, 'base64').toString());
+      // Verify and consume CSRF state from Redis
+      let stateData: { userId: string; organizationId: string; redirectUri?: string };
+      if (stateStore) {
+        const key = `${FIGMA_STATE_KEY_PREFIX}${state}`;
+        const stored = await stateStore.getKey(key);
+        if (!stored) {
+          return res.status(400).json({ success: false, error: 'Invalid or expired state' });
+        }
+        await stateStore.deleteKey(key);
+        stateData = JSON.parse(stored);
+      } else {
+        return res.status(500).json({ success: false, error: 'State store not available' });
+      }
+      
       const userContext = {
         userId: stateData.userId,
         organizationId: stateData.organizationId,
@@ -202,8 +194,6 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
       
       // Get redirect URI from state (same as used in authorize)
       const redirectUri = stateData.redirectUri || getRedirectUri(req);
-      
-      console.log('[Figma OAuth] Exchanging code for token with redirect_uri:', redirectUri);
       
       // Exchange code for access token
       const tokenResponse = await fetch('https://api.figma.com/v1/oauth/token', {
@@ -222,15 +212,13 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
       
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
-        console.error('[Figma OAuth] Token exchange failed:', tokenResponse.status, errorText);
+        logger.error(`Figma token exchange failed (status: ${tokenResponse.status})`, { component: 'FigmaOAuth' });
         throw new Error(`Token exchange failed: ${tokenResponse.statusText}`);
       }
       
       const tokenData = await tokenResponse.json() as FigmaTokenResponse;
-      console.log('[Figma OAuth] Token exchange successful, user_id:', tokenData.user_id_string || tokenData.user_id);
       
       // Get user info from /v1/me endpoint
-      console.log('[Figma OAuth] Fetching user info from /v1/me...');
       const userResponse = await fetch('https://api.figma.com/v1/me', {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`
@@ -238,15 +226,11 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
       });
       
       if (!userResponse.ok) {
-        const errorText = await userResponse.text();
-        console.error('[Figma OAuth] ❌ Failed to get user info:', userResponse.status, errorText);
-        throw new Error(`Failed to get user info: ${userResponse.status} ${errorText}`);
+        logger.error(`Figma user info fetch failed (status: ${userResponse.status})`, { component: 'FigmaOAuth' });
+        throw new Error(`Failed to get user info: ${userResponse.status}`);
       }
       
       const userData = await userResponse.json() as FigmaUserResponse;
-      console.log('[Figma OAuth] User info response:', JSON.stringify(userData, null, 2));
-      console.log('[Figma OAuth] User email:', userData.email);
-      console.log('[Figma OAuth] User ID:', userData.id);
       
       // Calculate expiration
       const expiresAt = tokenData.expires_in 
@@ -255,11 +239,6 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
       
       // Use user_id_string (new format) or fall back to user_id (deprecated)
       const figmaUserId = tokenData.user_id_string || String(tokenData.user_id);
-      
-      console.log('[Figma OAuth] Preparing to save credentials...');
-      console.log('[Figma OAuth]   ANT user:', `${userContext.userId}@${userContext.organizationId}`);
-      console.log('[Figma OAuth]   Figma user:', userData.email || 'NO EMAIL');
-      console.log('[Figma OAuth]   Figma userId:', figmaUserId);
       
       // Save credentials
       await userConfig.credentials.set<FigmaCredentials>(
@@ -274,10 +253,7 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
         }
       );
       
-      console.log('[Figma OAuth] ✅ Credentials saved successfully');
-      
       // Enable integration
-      console.log('[Figma OAuth] Saving integration settings...');
       await userConfig.integrations.set(userContext, 'figma', {
         enabled: true,
         autoExtractTokens: true,
@@ -285,52 +261,34 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
         defaultFileFormat: 'svg'
       });
       
-      console.log('[Figma OAuth] ✅ Integration settings saved');
+      logger.info('Figma OAuth completed successfully', { component: 'FigmaOAuth' });
       
       // Redirect to success page and notify parent window
-      const displayEmail = userData.email || 'Unknown';
-      const displayUserId = figmaUserId || 'Unknown';
-      
-      console.log('[Figma OAuth] Sending success response with email:', displayEmail);
+      const safeEmail = escapeHtml(userData.email || 'Unknown');
+      const safeUserId = escapeHtml(figmaUserId || 'Unknown');
+      const frontendOrigin = escapeHtml(process.env.FRONTEND_URL || '');
       
       res.send(`
         <html>
           <head><title>Figma Connected</title></head>
           <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-            <h1>✅ Figma Connected Successfully!</h1>
-            <p>Connected as: <strong>${displayEmail}</strong></p>
-            <p>User ID: <code>${displayUserId}</code></p>
+            <h1>Figma Connected Successfully!</h1>
+            <p>Connected as: <strong>${safeEmail}</strong></p>
+            <p>User ID: <code>${safeUserId}</code></p>
             <p>You can close this window and return to ANT.</p>
             <script>
-              console.log('[Figma OAuth Callback] Sending postMessage to opener...');
-              
-              // Notify parent window (opener)
               if (window.opener) {
                 window.opener.postMessage({ 
-                  type: 'figma-oauth-success',
-                  email: '${displayEmail}',
-                  userId: '${displayUserId}'
-                }, '*');
-                console.log('[Figma OAuth Callback] ✅ postMessage sent');
-              } else {
-                console.error('[Figma OAuth Callback] ❌ No window.opener found!');
+                  type: 'figma-oauth-success'
+                }, '${frontendOrigin}' || window.location.origin);
               }
-              
-              // Auto-close after 3 seconds
-              setTimeout(() => {
-                console.log('[Figma OAuth Callback] Closing window...');
-                window.close();
-              }, 3000);
+              setTimeout(function() { window.close(); }, 3000);
             </script>
           </body>
         </html>
       `);
     } catch (error: any) {
-      console.error('[FigmaOAuth] Error:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to complete OAuth flow'
-      });
+      sendErrorResponse(res, 500, error, 'FigmaOAuthCallback');
     }
   });
   
@@ -356,11 +314,7 @@ export function createFigmaOAuthRoutes(workspaceRoot: string): Router {
         message: 'Figma disconnected successfully'
       });
     } catch (error: any) {
-      console.error('[FigmaOAuth] Error disconnecting:', error);
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Failed to disconnect Figma'
-      });
+      sendErrorResponse(res, 500, error, 'FigmaDisconnect');
     }
   });
   

@@ -22,6 +22,7 @@ export interface TransferRoutesDeps {
   transferService: ArtifactTransferService;
   stateStore: RedisStateStore;
   workspaceResolver?: any;  // For resolving feature paths (unseen artifact tracking)
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
 }
 
 /**
@@ -68,7 +69,7 @@ function sendTransferError(res: Response, error: any): void {
 
 export function createTransferRoutes(deps: TransferRoutesDeps): Router {
   const router = Router();
-  const { transferService, stateStore, workspaceResolver } = deps;
+  const { transferService, stateStore, workspaceResolver, fileTreeNotifier } = deps;
 
   // ============================================
   // Self-Transfer (Immediate)
@@ -129,6 +130,19 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
           }
         } catch (e) {
           console.warn(`📦 [Transfer] Failed to add unseen artifacts: ${(e as Error).message}`);
+        }
+      }
+
+      // Invalidate destination's file tree cache and broadcast via SSE
+      if (result.success && fileTreeNotifier) {
+        try {
+          await fileTreeNotifier.notifyFileTreeUpdate(
+            destination.projectId,
+            destination.featureId,
+            userContext
+          );
+        } catch (e) {
+          console.warn(`📦 [Transfer] Failed to notify file tree update: ${(e as Error).message}`);
         }
       }
 
@@ -311,6 +325,23 @@ export function createTransferRoutes(deps: TransferRoutesDeps): Router {
           }
         } catch (e) {
           console.warn(`📦 [Transfer] Failed to add unseen artifacts for approved transfer: ${(e as Error).message}`);
+        }
+      }
+
+      // Invalidate recipient's file tree cache and broadcast via SSE
+      if (action === 'approve' && fileTreeNotifier) {
+        try {
+          const recipientUserContext = {
+            userId: result.recipient.userId,
+            organizationId: result.recipient.orgId,
+          };
+          await fileTreeNotifier.notifyFileTreeUpdate(
+            result.destination.projectId,
+            result.destination.featureId,
+            recipientUserContext
+          );
+        } catch (e) {
+          console.warn(`📦 [Transfer] Failed to notify file tree update: ${(e as Error).message}`);
         }
       }
 

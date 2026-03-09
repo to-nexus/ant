@@ -8,7 +8,6 @@ import type { User, Organization } from '../types/user';
 
 export interface AuthPort {
   authenticate(credentials: AuthCredentials): Promise<AuthContext>;
-  authorize(user: User, resource: string, action: string): Promise<boolean>;
 }
 
 // ========================================

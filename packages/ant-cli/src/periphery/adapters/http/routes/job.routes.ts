@@ -8,7 +8,11 @@ import type { JobProjectMapping } from '../../../../core/types/task';
 import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
 import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
 import { extractUserContext } from './helpers/userContext';
+import { sendErrorResponse } from './helpers/errorResponse';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
+import { validateBody, executeJobSchema } from '../middleware/validateBody';
+import { logger } from '../../../../utils/logger';
 
 /**
  * Job execution routes
@@ -49,7 +53,7 @@ export function createJobRoutes(deps: {
   }
   
   // Execute task for a specific feature
-  router.post('/projects/:id/features/:feature/execute', async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/execute', jobExecuteRateLimiter, validateBody(executeJobSchema), async (req: Request, res: Response) => {
     const requestReceivedAt = new Date().toISOString();
     try {
       const projectId = req.params.id;
@@ -87,12 +91,11 @@ export function createJobRoutes(deps: {
       
       const enqueuedAt = new Date().toISOString();
       const result = await deps.executeJob(params);
-      console.log(`⏱️ [JobRoute] ${projectId}/${featureName} | jobId=${result.jobId} | requestAt=${requestReceivedAt} | enqueuedAt=${enqueuedAt}`);
+      logger.info(`Job enqueued: ${projectId}/${featureName} jobId=${result.jobId}`, { component: 'JobRoute' });
       
       res.json(result);
     } catch (error: any) {
-      console.error(`❌ [JobRoute] Error: ${error.message}`);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'JobExecute');
     }
   });
   
@@ -138,8 +141,7 @@ export function createJobRoutes(deps: {
 
       res.json(result);
     } catch (error: any) {
-      console.error(`Error getting queue position for job ${jobId}:`, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'JobQueuePosition');
     }
   });
   
@@ -148,14 +150,14 @@ export function createJobRoutes(deps: {
     const jobId = req.params.jobId;
     const { projectId, featureName, jobType } = req.body;
     
-    console.log(`\n🛑 [StopRoute] Stop request received for job: ${jobId}`);
-    console.log(`   Project: ${projectId}, Feature: ${featureName}, JobType: ${jobType || 'not provided'}`);
+    logger.info(`Stop request: job=${jobId}`, { component: 'JobRoute' });
+    logger.debug(`Stop: project=${projectId}, feature=${featureName}`, { component: 'JobRoute' });
     const userContext = extractUserContext(req);
-    console.log(`   UserContext: ${userContext.userId}@${userContext.organizationId}`);
+    logger.debug(`Stop: user=${userContext.userId}`, { component: 'JobRoute' });
     
     // Mark as user-stopped in Redis
     await deps.stateStore.markUserStopped(jobId);
-    console.log(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
+    logger.debug(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
     
     // Publish stop signal to Job Workers via Redis Pub/Sub
     await deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, { 
@@ -164,7 +166,7 @@ export function createJobRoutes(deps: {
       featureName,
       timestamp: new Date().toISOString() 
     });
-    console.log(`   ✅ Published stop signal to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`);
+    logger.debug(`   ✅ Published stop signal to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`);
     
     // Update job status in Redis
     await deps.stateStore.updateJobStatus(jobId, {
@@ -184,9 +186,9 @@ export function createJobRoutes(deps: {
       }
     };
     
-    console.log(`   Calling cleanupJobState with jobType: ${jobType || 'auto-detect'}...`);
+    logger.debug(`   Calling cleanupJobState with jobType: ${jobType || 'auto-detect'}...`);
     await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
-    console.log(`   ✅ cleanupJobState completed`);
+    logger.debug(`   ✅ cleanupJobState completed`);
     
     res.json({ 
       success: true, 
@@ -194,7 +196,7 @@ export function createJobRoutes(deps: {
       jobId 
     });
     
-    console.log(`   ✅ Stop request completed\n`);
+    logger.debug(`   ✅ Stop request completed\n`);
   });
   
   // Resume existing job
@@ -202,9 +204,9 @@ export function createJobRoutes(deps: {
     const requestedJobId = req.params.jobId;
     const { projectId, featureName, chatSource = true } = req.body;
     
-    console.log(`\n🔄 [ResumeRoute] Resume request received`);
-    console.log(`   Project: ${projectId}, Feature: ${featureName}`);
-    console.log(`   Requested jobId: ${requestedJobId} (will use session's jobId if found)`);
+    logger.debug(`\n🔄 [ResumeRoute] Resume request received`);
+    logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
+    logger.debug(`   Requested jobId: ${requestedJobId} (will use session's jobId if found)`);
     
     let sessionJobId: string | null = null;
     
@@ -226,7 +228,7 @@ export function createJobRoutes(deps: {
             const taskQueueSize = data.state.taskQueue?.length || 0;
             const completedCount = data.state.completedTasks?.length || 0;
             if (taskQueueSize === 0 && completedCount > 0) {
-              console.log(`   ⚠️ Skipping stale interruption in ${entry.agent}/${entry.job}.json (0 tasks remaining, ${completedCount} completed)`);
+              logger.debug(`   ⚠️ Skipping stale interruption in ${entry.agent}/${entry.job}.json (0 tasks remaining, ${completedCount} completed)`);
               continue;
             }
             
@@ -234,29 +236,29 @@ export function createJobRoutes(deps: {
             foundAgent = entry.agent;
             sessionJobId = data.state.jobId;
             sessionData = data;
-            console.log(`   Found interrupted job in ${entry.agent}/${entry.job}.json`);
-            console.log(`   Session jobId: ${sessionJobId}`);
+            logger.debug(`   Found interrupted job in ${entry.agent}/${entry.job}.json`);
+            logger.debug(`   Session jobId: ${sessionJobId}`);
             break;
           }
         }
       }
       
       if (!jobType || !sessionJobId || !sessionData) {
-        console.log(`   ❌ No interrupted job found in session files`);
+        logger.debug(`   ❌ No interrupted job found in session files`);
         return res.status(404).json({ 
           error: 'No interrupted job found',
           message: `No resumable job found for ${projectId}/${featureName}`
         });
       }
       
-      console.log(`   Job type: ${jobType}`);
-      console.log(`   Starting resume job execution...`);
+      logger.debug(`   Job type: ${jobType}`);
+      logger.debug(`   Starting resume job execution...`);
       
       // ✅ Resolve old cancelled messages: user chose to continue, old choice cards are no longer actionable
       if (deps.chatService && sessionJobId) {
         const resolved = await deps.chatService.resolveCancelledMessages(projectId, featureName, sessionJobId, userContext);
         if (resolved > 0) {
-          console.log(`   ✅ Resolved ${resolved} old cancelled message(s)`);
+          logger.debug(`   ✅ Resolved ${resolved} old cancelled message(s)`);
         }
       }
       
@@ -272,9 +274,9 @@ export function createJobRoutes(deps: {
         if (fs.existsSync(directivePath)) {
           inputFile = directivePath;
         }
-        console.log(`   No taskQueue, will re-run from appropriate entry point. directiveFile=${!!inputFile}`);
+        logger.debug(`   No taskQueue, will re-run from appropriate entry point. directiveFile=${!!inputFile}`);
       } else {
-        console.log(`   Plain resume: ${sessionData.state.taskQueue.length} tasks in queue`);
+        logger.debug(`   Plain resume: ${sessionData.state.taskQueue.length} tasks in queue`);
       }
       
       const params: ExecuteJobParams = {
@@ -292,8 +294,8 @@ export function createJobRoutes(deps: {
       
       const result = await deps.executeJob(params);
       
-      console.log(`   ✅ Resume job continued with existing jobId: ${sessionJobId}`);
-      console.log(`   ✅ Resume request completed\n`);
+      logger.debug(`   ✅ Resume job continued with existing jobId: ${sessionJobId}`);
+      logger.debug(`   ✅ Resume request completed\n`);
       
       res.json({
         success: true,
@@ -302,11 +304,7 @@ export function createJobRoutes(deps: {
         message: `Job ${sessionJobId} resumed`
       });
     } catch (error: any) {
-      console.error(`   ❌ Resume failed:`, error);
-      res.status(500).json({ 
-        error: error.message,
-        jobId: sessionJobId || requestedJobId
-      });
+      sendErrorResponse(res, 500, error, 'JobResume');
     }
   });
   
@@ -315,9 +313,9 @@ export function createJobRoutes(deps: {
     const jobId = req.params.jobId;
     const { projectId, featureName, newDirective, chatSource = true } = req.body;
     
-    console.log(`\n➕ [ContinueRoute] Continue request received for job: ${jobId}`);
-    console.log(`   Project: ${projectId}, Feature: ${featureName}`);
-    console.log(`   New directive: ${newDirective?.substring(0, 100)}...`);
+    logger.debug(`\n➕ [ContinueRoute] Continue request received for job: ${jobId}`);
+    logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
+    logger.debug(`   New directive: ${newDirective?.substring(0, 100)}...`);
     
     if (!newDirective || typeof newDirective !== 'string') {
       return res.status(400).json({
@@ -342,14 +340,14 @@ export function createJobRoutes(deps: {
             jobType = entry.job;
             sessionPath = entry.path;
             foundAgent = entry.agent;
-            console.log(`   Found job in ${entry.agent}/${entry.job}.json`);
+            logger.debug(`   Found job in ${entry.agent}/${entry.job}.json`);
             break;
           }
         }
       }
       
       if (!jobType || !sessionPath) {
-        console.log(`   ❌ Job ${jobId} not found in any session file`);
+        logger.debug(`   ❌ Job ${jobId} not found in any session file`);
         return res.status(404).json({ 
           error: 'Job not found',
           message: `Job ${jobId} not found in session files`
@@ -364,17 +362,17 @@ export function createJobRoutes(deps: {
       
       sessionData.state.directives.unshift(newDirective);
       
-      console.log(`   ✅ Added new directive (total: ${sessionData.state.directives.length})`);
+      logger.debug(`   ✅ Added new directive (total: ${sessionData.state.directives.length})`);
       
       fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
-      console.log(`   ✅ Session updated with new directive`);
+      logger.debug(`   ✅ Session updated with new directive`);
       
       // ✅ Resolve old cancelled messages: user chose to continue, old choice cards are no longer actionable
       const sessionJobId = sessionData.state?.jobId || jobId;
       if (deps.chatService) {
         const resolved = await deps.chatService.resolveCancelledMessages(projectId, featureName, sessionJobId, userContext);
         if (resolved > 0) {
-          console.log(`   ✅ Resolved ${resolved} old cancelled message(s)`);
+          logger.debug(`   ✅ Resolved ${resolved} old cancelled message(s)`);
         }
       }
       
@@ -396,8 +394,8 @@ export function createJobRoutes(deps: {
       
       const result = await deps.executeJob(params);
       
-      console.log(`   ✅ Continue job started: ${result.jobId}`);
-      console.log(`   ✅ Continue request completed\n`);
+      logger.debug(`   ✅ Continue job started: ${result.jobId}`);
+      logger.debug(`   ✅ Continue request completed\n`);
       
       res.json({
         success: true,
@@ -408,11 +406,7 @@ export function createJobRoutes(deps: {
         message: `Job continued from ${jobId} with new directive`
       });
     } catch (error: any) {
-      console.error(`   ❌ Continue failed:`, error);
-      res.status(500).json({ 
-        error: error.message,
-        jobId
-      });
+      sendErrorResponse(res, 500, error, 'JobContinue');
     }
   });
   
@@ -424,9 +418,9 @@ export function createJobRoutes(deps: {
     const featureName = req.params.feature;
     const { message, chatSource = true } = req.body;
     
-    console.log(`\n💬 [InlineAskRoute] Inline ask request received`);
-    console.log(`   Project: ${projectId}, Feature: ${featureName}`);
-    console.log(`   Message: ${message?.substring(0, 100)}...`);
+    logger.debug(`\n💬 [InlineAskRoute] Inline ask request received`);
+    logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
+    logger.debug(`   Message: ${message?.substring(0, 100)}...`);
     
     if (!message || typeof message !== 'string') {
       return res.status(400).json({
@@ -454,7 +448,7 @@ export function createJobRoutes(deps: {
       
       const result = await deps.executeJob(params);
       
-      console.log(`   ✅ Inline ask job started: ${result.jobId}`);
+      logger.debug(`   ✅ Inline ask job started: ${result.jobId}`);
       
       res.json({
         success: true,
@@ -463,10 +457,7 @@ export function createJobRoutes(deps: {
         message: 'Inline ask job started'
       });
     } catch (error: any) {
-      console.error(`   ❌ Inline ask failed:`, error);
-      res.status(500).json({ 
-        error: error.message 
-      });
+      sendErrorResponse(res, 500, error, 'InlineAsk');
     }
   });
 

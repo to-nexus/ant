@@ -11,6 +11,7 @@ import { Router, Request, Response } from 'express';
 import { IDEOrchestratorPort, IDEParams } from '../../../../core/ports/ideOrchestrator';
 import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
+import { sendErrorResponse } from './helpers/errorResponse';
 import * as path from 'path';
 import { logger } from '../../../../utils/logger';
 
@@ -37,7 +38,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
   router.post('/start', async (req: Request, res: Response) => {
     try {
       const { projectId, featureName } = req.body;
-      const userContext: UserContext = req.body.userContext || extractUserContext(req);
+      const userContext: UserContext = extractUserContext(req);
       
       logger.info(`POST /cloud-ide/start - projectId=${projectId}, user=${userContext?.userId}`, { component: 'CloudIDERoutes' });
       
@@ -89,7 +90,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       
     } catch (error: any) {
       logger.warn(`Start failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.body?.projectId, featureName: req.body?.featureName }, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'CloudIDE');
     }
   });
 
@@ -126,7 +127,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       res.redirect(302, getDirectUrl(req, result.instance.host, result.instance.port));
     } catch (error: any) {
       logger.warn(`Open failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.params?.projectId, featureName: req.query?.feature as any }, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'CloudIDE');
     }
   });
   
@@ -137,7 +138,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
   router.post('/stop', async (req: Request, res: Response) => {
     try {
       const { projectId, featureName } = req.body;
-      const userContext: UserContext = req.body.userContext || extractUserContext(req);
+      const userContext: UserContext = extractUserContext(req);
       
       if (!projectId) {
         return res.status(400).json({ error: 'projectId is required' });
@@ -151,7 +152,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       
     } catch (error: any) {
       logger.warn(`Stop failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.body?.projectId, featureName: req.body?.featureName }, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'CloudIDE');
     }
   });
   
@@ -187,7 +188,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       
     } catch (error: any) {
       logger.warn(`Status check failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.params?.projectId, featureName: req.query?.feature as any }, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'CloudIDE');
     }
   });
   
@@ -214,7 +215,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       
     } catch (error: any) {
       logger.warn(`List failed: ${error.message}`, { component: 'CloudIDERoutes' }, error);
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'CloudIDE');
     }
   });
   

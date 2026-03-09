@@ -202,7 +202,7 @@ When user input appears to be:
 ⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → \`ask\`
 ⚠️ **Reference source ≠ Requested output**: When evaluation is mentioned as a BASIS for the request (not the requested output), intent is determined by the actual expected output.
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → \`ask\` + \`inScope: false\`
-⚠️ **Workspace state ≠ User intent**: Workspace document presence indicates past output, NOT current intent. Observe the REQUEST TARGET, not the WORKSPACE STATE.
+⚠️ **Workspace state ≠ User intent**: The presence of a document type does NOT mean the user wants to create MORE of that type. Route by what the user REQUESTS. Exception: Step 2.2 intentionally combines workspace state (design docs exist) with request target (implementation directive) — this is a prerequisite check, not intent inference.
 ⚠️ **Redirect prerequisite principle**: Redirect validity depends on whether the target job's PREREQUISITES exist — not on whether its OUTPUT documents already exist.
 ⚠️ **Required vs. Recommended**: Only REQUIRED prerequisites affect routing. Missing RECOMMENDED prerequisites are informational only.
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags
@@ -303,7 +303,7 @@ Has full codebase analysis capability — equivalent to code job's analysis powe
 - Task decomposition for complex modifications
 
 **Redirect signals:**
-- → to_code: Request is pure explanation/analysis without modification intent (any boundary), OR single-boundary implementation/modification that does not require upfront specification
+- → to_code: Request is pure explanation/analysis without modification intent (any boundary), OR single-boundary implementation/modification that does not require upfront specification, OR design documents already exist AND the request explicitly asks to start implementation/development
 - → to_learn: Request target is codebase analysis or indexing output
 - → to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
 
