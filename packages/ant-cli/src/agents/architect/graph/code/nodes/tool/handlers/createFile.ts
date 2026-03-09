@@ -13,7 +13,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { CreateFileArgs } from '../types';
-import { resolveToolPath } from './utils';
+import { resolveToolPath, prependFixMessage } from './utils';
 
 export async function handleCreateFile(
   state: ArchitectGraphState,
@@ -67,8 +67,7 @@ export async function handleCreateFile(
       );
     }
     
-    // Return result with correction guidance for LLM
-    return [
+    const resultMsg = [
       `File created successfully: ${resolved.displayPath} (${content.length} chars)`,
       ``,
       `⚠️ IMPORTANT: Do NOT use tool calls for file creation.`,
@@ -77,6 +76,7 @@ export async function handleCreateFile(
       `...content...`,
       `</file>`,
     ].join('\n');
+    return prependFixMessage(resolved, resultMsg);
   } catch (error) {
     // UI notification: file creation failed
     await chatAPI.failFileCreation(filePath, (error as Error).message);

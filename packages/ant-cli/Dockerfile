@@ -173,7 +173,6 @@ ENV ANT_CLI_PORT=4100
 ENV ANT_WORKSPACE_BASE_PATH=/data/workspaces
 ENV GOOGLE_REDIRECT_URI=""
 ENV FRONTEND_URL=""
-ENV SKIP_AUTH_FOR_LOCALHOST="false"
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 
 EXPOSE 4100
@@ -270,7 +269,6 @@ ENV ANT_WORKSPACE_BASE_PATH=/data/workspaces
 # Auth / Redirect defaults (overridden by docker-compose env_file at runtime)
 ENV GOOGLE_REDIRECT_URI=""
 ENV FRONTEND_URL=""
-ENV SKIP_AUTH_FOR_LOCALHOST="false"
 
 # Node.js memory configuration
 ENV NODE_OPTIONS="--max-old-space-size=8192"

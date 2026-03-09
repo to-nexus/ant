@@ -5,6 +5,8 @@ import multer from 'multer';
 import archiver from 'archiver';
 import { ProjectService } from '../services';
 import { extractUserContext } from './helpers/userContext';
+import { sendErrorResponse } from './helpers/errorResponse';
+import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 
@@ -81,7 +83,7 @@ export function createFilesRoutes(deps: {
       }
       res.json(tree);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
   
@@ -128,7 +130,7 @@ export function createFilesRoutes(deps: {
         }
       }
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
   
@@ -162,7 +164,7 @@ export function createFilesRoutes(deps: {
         }
       }
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
   
@@ -189,11 +191,11 @@ export function createFilesRoutes(deps: {
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const fullPath = path.join(featurePath, filePath);
       
-      console.log(`[files.routes] Creating/updating file:`);
-      console.log(`   Project: ${projectId}`);
-      console.log(`   Feature: ${featureName}`);
-      console.log(`   File path: ${filePath}`);
-      console.log(`   Full path: ${fullPath}`);
+      logger.debug(`[files.routes] Creating/updating file:`);
+      logger.debug(`   Project: ${projectId}`);
+      logger.debug(`   Feature: ${featureName}`);
+      logger.debug(`   File path: ${filePath}`);
+      logger.debug(`   Full path: ${fullPath}`);
       
       // Ensure directory exists
       await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
@@ -207,8 +209,8 @@ export function createFilesRoutes(deps: {
 
       res.json({ success: true, path: filePath });
     } catch (error: any) {
-      console.error('[files.routes] Error creating/updating file:', error);
-      res.status(500).json({ error: error.message });
+      logger.error('Error creating/updating file', { component: 'Files' }, error);
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
 
@@ -272,7 +274,7 @@ export function createFilesRoutes(deps: {
             data: { type: 'update', paths: allUnseen }, userContext,
           });
         } catch (e) {
-          console.warn(`[Upload] Failed to add unseen artifacts: ${(e as Error).message}`);
+          logger.warn(`[Upload] Failed to add unseen artifacts: ${(e as Error).message}`);
         }
       }
       
@@ -286,8 +288,8 @@ export function createFilesRoutes(deps: {
         count: uploadedFiles.length 
       });
     } catch (error: any) {
-      console.error('[Upload] Error:', error);
-      res.status(500).json({ error: error.message });
+      logger.error('Upload error', { component: 'Files' }, error);
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
 
@@ -321,7 +323,7 @@ export function createFilesRoutes(deps: {
 
       res.json({ success: true, path: dirPath });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
 
@@ -359,8 +361,8 @@ export function createFilesRoutes(deps: {
 
       res.json({ success: true, oldPath, newPath });
     } catch (error: any) {
-      console.error('[files.routes] Rename error:', error);
-      res.status(500).json({ error: error.message });
+      logger.error('Rename error', { component: 'Files' }, error);
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
 
@@ -387,7 +389,7 @@ export function createFilesRoutes(deps: {
       if (error.code === 'ENOENT') {
         res.status(404).json({ error: 'File or directory not found' });
       } else {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Files');
       }
     }
   });
@@ -435,7 +437,7 @@ export function createFilesRoutes(deps: {
         const archive = archiver('zip', { zlib: { level: 6 } });
 
         archive.on('error', (err: Error) => {
-          console.error('[files.routes] Archive error:', err);
+          logger.error('Archive error', { component: 'Files' }, err);
           if (!res.headersSent) {
             res.status(500).json({ error: 'Archive creation failed' });
           }
@@ -467,7 +469,7 @@ export function createFilesRoutes(deps: {
       }
     } catch (error: any) {
       if (!res.headersSent) {
-        res.status(500).json({ error: error.message });
+        sendErrorResponse(res, 500, error, 'Files');
       }
     }
   });
@@ -498,7 +500,7 @@ export function createFilesRoutes(deps: {
 
       res.json({ paths });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
 
@@ -531,7 +533,7 @@ export function createFilesRoutes(deps: {
 
       res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      sendErrorResponse(res, 500, error, 'Files');
     }
   });
 

@@ -13,6 +13,7 @@ import { WorkspaceServiceAdapter } from '../../../../../infrastructure/workspace
 import { WorkspaceServicePort } from '../../../../../core/ports/workspace';
 import { AuthService } from '../../../../../infrastructure/auth/AuthService';
 import { GoogleOIDCService } from '../../../../../infrastructure/auth/GoogleOIDCService';
+import { createJwtServiceFromEnv } from '../../../../../infrastructure/auth/JwtService';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { IDEService } from '../../../ide/IDEService';
 import { logger } from '../../../../../utils/logger';
@@ -45,12 +46,21 @@ export function initializeServices(
   const ideService = new IDEService(portManager, portRegistry);
   ideService.startIdleChecker();
   
-  // Initialize AuthService for Cloud mode
+  // Initialize AuthService + JWT for Cloud mode
   let authService: AuthService | undefined;
   let oidcService: GoogleOIDCService | undefined;
+  const jwtService = config.mode === 'cloud' ? createJwtServiceFromEnv() : undefined;
   
   if (config.mode === 'cloud') {
     authService = new AuthService();
+    
+    if (jwtService) {
+      logger.info('JWT authentication enabled', { component: 'ServiceInitializer' });
+    } else {
+      logger.warn('ANT_JWT_SECRET not set - JWT authentication disabled in cloud mode', { 
+        component: 'ServiceInitializer' 
+      });
+    }
     
     // Initialize Google OIDC service if credentials are provided
     const googleClientId = process.env.GOOGLE_CLIENT_ID;
@@ -121,6 +131,7 @@ export function initializeServices(
     workspaceResolver,
     authService,
     oidcService,
+    jwtService,
     portManager,
     portRegistry,
     ideService,

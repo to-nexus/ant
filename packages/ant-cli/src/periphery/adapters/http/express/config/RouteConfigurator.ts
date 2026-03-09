@@ -92,7 +92,9 @@ export class RouteConfigurator {
       const authRoutes = createAuthRoutes({
         authService: this.deps.authService,
         workspaceResolver: this.deps.workspaceResolver,
-        oidcService: this.deps.oidcService
+        oidcService: this.deps.oidcService,
+        jwtService: this.deps.jwtService,
+        stateStore: getInfrastructureFactory().getStateStore(),
       });
       app.use('/api', authRoutes);
     }

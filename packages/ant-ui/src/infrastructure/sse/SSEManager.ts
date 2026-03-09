@@ -201,27 +201,12 @@ class SSEManager {
       this.disconnect();
     }
     
-    // ✅ Get user email from localStorage for authentication
-    let userEmail: string | undefined;
-    try {
-      const stored = localStorage.getItem('ant-ui:user-email');
-      if (stored) {
-        userEmail = JSON.parse(stored);
-      }
-    } catch (error) {
-      console.warn('[SSE] unified: failed to get user email', error);
-    }
-    
-    // ✅ Build URL with user email as query parameter (for EventSource authentication)
-    // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    // 사용자 설정(localStorage)에 따라 적절한 백엔드 URL 사용
+    // Build SSE URL — authentication is handled via httpOnly JWT cookie
+    // (withCredentials: true sends the cookie automatically)
     const realtimeBase = REALTIME_BASE();
     const basePath = `${realtimeBase}/projects/${projectId}/features/${featureName}/stream`;
     const url = realtimeBase.startsWith('http') ? new URL(basePath) : new URL(basePath, window.location.origin);
     url.searchParams.set('job', job);
-    if (userEmail) {
-      url.searchParams.set('user-email', userEmail);
-    }
     
     const finalUrl = url.toString();
     console.log(`[SSE] unified: connecting ${projectId}/${featureName}`);
@@ -359,26 +344,10 @@ class SSEManager {
       return;
     }
     
-    // ✅ Get user email from localStorage for authentication
-    let userEmail: string | undefined;
-    try {
-      const stored = localStorage.getItem('ant-ui:user-email');
-      if (stored) {
-        userEmail = JSON.parse(stored);
-      }
-    } catch (error) {
-      console.warn('[SSE] workflow: failed to get user email', error);
-    }
-    
-    // ✅ Build URL with user email as query parameter
-    // Uses dedicated Realtime Server for SSE (see 10-cloud-architecture.md)
-    // 사용자 설정(localStorage)에 따라 적절한 백엔드 URL 사용
+    // Build workflow SSE URL — authentication is handled via httpOnly JWT cookie
     const realtimeBase = REALTIME_BASE();
     const basePath = `${realtimeBase}/jobs/${jobId}/workflow/stream`;
     const url = realtimeBase.startsWith('http') ? new URL(basePath) : new URL(basePath, window.location.origin);
-    if (userEmail) {
-      url.searchParams.set('user-email', userEmail);
-    }
     
     const finalUrl = url.toString();
     console.log(`[SSE] workflow(${jobId}): connecting`);

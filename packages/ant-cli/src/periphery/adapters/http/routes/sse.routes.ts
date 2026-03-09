@@ -40,9 +40,7 @@ export function createSSERoutes(deps: {
     const job = (req.query.job as string) || 'code';
     logger.debug(`Client connecting (job: ${job})`, { component: 'SSE', projectId, featureName });
     
-    // ✅ Resolve user context consistently.
-    // NOTE: EventSource cannot set headers, so frontend should pass user-email as query param.
-    // This helper keeps that as priority #1, with fallbacks for other call sites.
+    // Resolve user context from JWT cookie (set by auth middleware).
     const userContext: UserContext = extractUserContext(req);
     logger.debug(`User context resolved`, { component: 'SSE', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
     

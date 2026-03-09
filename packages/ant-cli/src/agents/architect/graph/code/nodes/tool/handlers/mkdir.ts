@@ -4,7 +4,7 @@
 
 import { ArchitectGraphState } from '../../../state';
 import { MkdirArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath, prependFixMessage } from './utils';
 
 export async function handleMkdir(
   state: ArchitectGraphState,
@@ -22,7 +22,7 @@ export async function handleMkdir(
     
     console.log(`[mkdir] ✅ Created directory: ${resolved.displayPath}`);
     
-    return `Directory created: ${resolved.displayPath}`;
+    return prependFixMessage(resolved, `Directory created: ${resolved.displayPath}`);
   }, { dirPath });
 }
 

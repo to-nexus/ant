@@ -23,7 +23,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         path: {
           type: 'string',
-          description: 'File path relative to project root',
+          description: 'File path relative to feature root. Code files MUST use codebase/ prefix (e.g., codebase/src/main.ts, codebase/internal/handler/auth.go)',
         },
         startLine: {
           type: 'number',
@@ -46,7 +46,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         path: {
           type: 'string',
-          description: 'File path relative to project root',
+          description: 'File path relative to feature root. Code files MUST use codebase/ prefix (e.g., codebase/src/main.ts, codebase/internal/handler/auth.go)',
         },
         old_str: {
           type: 'string',
@@ -69,7 +69,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         directory: {
           type: 'string',
-          description: 'Directory path (optional, defaults to ".")',
+          description: 'Directory path relative to feature root (optional, defaults to "."). Code dirs use codebase/ prefix (e.g., codebase/src)',
         },
         pattern: {
           type: 'string',
@@ -107,7 +107,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         path: {
           type: 'string',
-          description: 'File path relative to project root',
+          description: 'File path relative to feature root. Code files MUST use codebase/ prefix (e.g., codebase/src/old.ts)',
         },
       },
       required: ['path'],
@@ -122,7 +122,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         path: {
           type: 'string',
-          description: 'Directory path relative to project root',
+          description: 'Directory path relative to feature root. Code dirs MUST use codebase/ prefix (e.g., codebase/src/utils)',
         },
       },
       required: ['path'],
@@ -141,7 +141,7 @@ export const ARCHITECT_TOOLS = {
         },
         working_directory: {
           type: 'string',
-          description: 'Working directory (optional, defaults to project root)',
+          description: 'Working directory relative to feature root (optional, defaults to feature root). Use "codebase" for build/dev commands.',
         },
         keep_running: {
           type: 'boolean',
