@@ -33,7 +33,8 @@ export function ProjectSection() {
     gitStatus,  // ✅ Use unified Git status from store
     fetchGitStatus,  // ✅ Fetch Git status action
     setGitStatusPhase,  // ✅ Git status phase setter
-    gitStatusRefreshTrigger  // ✅ Git status refresh trigger
+    gitStatusRefreshTrigger,  // ✅ Git status refresh trigger
+    backendMode
   } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
   const [config, setConfig] = useState<ProjectConfig | null>(null);
@@ -109,7 +110,7 @@ export function ProjectSection() {
     // If config doesn't exist, create it first
     if (configExists === false) {
       try {
-        await createProjectConfig(selectedProject);
+        await createProjectConfig(selectedProject, backendMode);
         setConfigExists(true);
         // Wait a moment for the backend to write the file
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -405,8 +406,8 @@ export function ProjectSection() {
             </div>
           )}
           
-          {/* ✅ Only show localPath warning for local/github repo types, not cloud */}
-          {configExists && !config?.localPath && config?.repoType !== 'cloud' && (
+          {/* Only show localPath warning in local backend mode, for local/github repo types */}
+          {backendMode !== 'cloud' && configExists && !config?.localPath && config?.repoType !== 'cloud' && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
