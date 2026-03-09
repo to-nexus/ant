@@ -5,7 +5,7 @@
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { DeleteFileArgs } from '../types';
-import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath } from './utils';
+import { getFileSystem, withErrorHandling, logFileOperation, resolveToolPath, prependFixMessage } from './utils';
 
 export async function handleDeleteFile(
   state: ArchitectGraphState,
@@ -42,7 +42,7 @@ export async function handleDeleteFile(
       );
     }
     
-    return `File deleted successfully: ${resolved.displayPath}`;
+    return prependFixMessage(resolved, `File deleted successfully: ${resolved.displayPath}`);
   }, { filePath });
 }
 

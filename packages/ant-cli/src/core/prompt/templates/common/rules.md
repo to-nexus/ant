@@ -6,7 +6,7 @@
 
 #### Create File
 ```xml
-<file path="src/App.tsx">
+<file path="codebase/src/App.tsx">
 content here...
 </file>
 ```
@@ -14,7 +14,7 @@ content here...
 
 #### Append to File
 ```xml
-<append path="src/utils.ts">
+<append path="codebase/src/utils.ts">
 additional content...
 </append>
 ```
@@ -28,18 +28,18 @@ additional content...
 
 ```xml
 <!-- ✅ CORRECT -->
-<file path="App.tsx">
+<file path="codebase/src/App.tsx">
 content...
 </file>
 
 <!-- ❌ WRONG - Using tool call syntax -->
-<file path="App.tsx">
+<file path="codebase/src/App.tsx">
 content...
 </parameter>   ← WRONG! Breaks parser!
 </invoke>      ← WRONG! Not a tool call!
 
 <!-- ❌ WRONG - Missing closing tag -->
-<file path="App.tsx">
+<file path="codebase/src/App.tsx">
 content...
 <done>true</done>  ← Missing </file>!
 ```
@@ -48,7 +48,7 @@ content...
 
 ```xml
 <!-- ✅ CORRECT sequence -->
-<file path="App.tsx">
+<file path="codebase/src/App.tsx">
 content...
 </file>
 <done>true</done>
@@ -60,14 +60,14 @@ content...
 
 #### Read File
 ```
-read_file(path="src/App.tsx")
+read_file(path="codebase/src/App.tsx")
 ```
 **Use when**: Need to see file content not already in your context
 
 #### Edit File
 ```
 edit_file(
-  path="src/App.tsx",
+  path="codebase/src/App.tsx",
   old_str="exact string to find",
   new_str="replacement string"
 )
@@ -79,12 +79,12 @@ edit_file(
 
 #### Delete File
 ```
-delete_file(path="src/old.tsx")
+delete_file(path="codebase/src/old.tsx")
 ```
 
 #### List Files
 ```
-list_files(directory="src", pattern="*.tsx")
+list_files(directory="codebase/src", pattern="*.tsx")
 ```
 
 ---

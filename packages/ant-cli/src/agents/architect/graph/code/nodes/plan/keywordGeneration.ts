@@ -24,6 +24,15 @@ export type { TaskKeywords };
 const keywordDedup = new KeywordDeduplicator();
 
 /**
+ * Reset the keyword deduplicator state.
+ * MUST be called at the start of each job to prevent stale task IDs
+ * from a previous job causing false "duplicate" detections on resume.
+ */
+export function resetKeywordDedup(): void {
+  keywordDedup.reset();
+}
+
+/**
  * Generate task-specific keywords using LLM
  */
 export async function generateTaskKeywords(
