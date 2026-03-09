@@ -137,9 +137,22 @@ go {same-version-as-go.work}
 **Key points:**
 - Module path should match the intended repository path
 - If the task description requires declaring dependencies, list them in the `require` block
-- In MSA, cross-module dependencies (e.g., service → shared) use `require` with `v0.0.0` — `go.work` resolves them locally
-- In MSA, every cross-module `require` MUST have a corresponding `replace` directive pointing to the relative local path. Without `replace`, standalone builds outside workspace mode fail with "module not found"
 - The `go` version directive in `go.work` and every `go.mod` MUST be identical. A mismatch causes toolchain resolution failures that are invisible until build time
+
+### Dependency Classification — `replace` Directive Protocol
+
+For each `require` entry, observe whether the module source directory is physically present in this workspace:
+
+| Module physically present in workspace? | `require` version | `replace` directive |
+|-----------------------------------------|-------------------|---------------------|
+| **YES** — listed in `go.work` or confirmed as sibling directory | `v0.0.0` | REQUIRED — relative path to local directory |
+| **NO** — not in workspace filesystem | Real version from design doc or known tag | FORBIDDEN — do NOT add |
+
+**Constraint**: Do NOT infer workspace-local status from module path prefix, organization name, or terminology in the design document ("shared packages", "common libraries", "internal packages"). A module is workspace-local ONLY if its source directory is physically present in this workspace.
+
+**Constraint**: A `replace` directive pointing to a non-existent directory always causes build failure. If the target directory does not exist, the module is external.
+
+⚠️ **Blind spot**: Packages published by the same organization (e.g., `github.com/{org}/other-repo`) are easily confused with workspace-local sibling modules. They are external dependencies — treat them identically to any third-party package unless their source directory is confirmed present.
 
 **⛔ Do NOT run any `go` commands (`go mod tidy`, `go mod download`, `go get`, `go get ./...`) during setup.**
 
