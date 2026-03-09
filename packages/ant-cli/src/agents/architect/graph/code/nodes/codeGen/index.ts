@@ -214,6 +214,7 @@ export async function codeGen(
     repoRootForWrites,  // ✅ Code job: write files under repoRoot (codebase)
     state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
   );
+  renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
   
   // ✅ Code job: Build existingFiles from projectCodeContext + referenceCodeContexts
   // These contain the actual codebase files loaded by the plan node
@@ -324,6 +325,16 @@ export async function codeGen(
       enableThinking: !isAfterToolCall,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
     })) {
+      if (event.type === 'retry') {
+        thinking = '';
+        thinkingSignature = '';
+        textResponse = '';
+        isDone = false;
+        toolCalls.length = 0;
+        capturedUsage = undefined;
+        continue;
+      }
+      
       await orchestrator.processEvent(event);
       
       if (event.type === 'thinking') {

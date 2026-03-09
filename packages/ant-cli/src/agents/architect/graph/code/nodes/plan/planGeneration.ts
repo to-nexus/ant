@@ -157,49 +157,96 @@ export async function generatePlanText(
     }
   }
   
-  // ✅ Use centralized LLM wrapper with automatic token tracking
-  const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-  const beforeUsage = getTaskTokenUsage(state as any);
-  const response = await invokeWithTracking(
-    llmToUse,
-    [{ role: 'user', content: prompt }],
-    state as any,
-    { temperature: LLM_TEMPERATURE.PLAN_GENERATION, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.PLAN }
-  );
-  updateKanbanTokenUsage(state as any);
+  // ✅ UI streaming (aligned with decompose/codeGen pattern)
+  const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  await chatAPI.showChatStatus('placeholder');
 
-  // Log to debug/tokens/
-  const afterUsage = getTaskTokenUsage(state as any);
-  const planCallUsage = {
-    inputTokens: afterUsage.inputTokens - beforeUsage.inputTokens,
-    outputTokens: afterUsage.outputTokens - beforeUsage.outputTokens,
-    cacheReadTokens: (afterUsage.cacheReadTokens || 0) - (beforeUsage.cacheReadTokens || 0),
-    cacheCreationTokens: (afterUsage.cacheCreationTokens || 0) - (beforeUsage.cacheCreationTokens || 0),
+  const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
+  const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
+  const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
+
+  const createStrategy = () => {
+    const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);
+    strategy.setPlanTaskTitle(task.name);
+    strategy.setParallelTaskName(task.name);
+    return strategy;
   };
-  logTokenUsageToFile(
-    state.context?.featurePath,
-    state._httpJobId,
-    planCallUsage as any,
+
+  let orchestrator = new StreamOrchestrator({
+    parser: new XMLStreamParser(),
+    renderStrategy: createStrategy(),
+    existingFiles: new Set()
+  });
+
+  let response = '';
+  let capturedUsage: any = undefined;
+
+  for await (const event of llmToUse.stream(
+    [{ role: 'user', content: prompt }],
     {
-      taskId: state.currentTask?.id || 'unknown',
-      taskName: state.currentTask?.name || 'unknown',
-      node: 'plan-planGen',
-      callIndex: 0,
-      conversationHistoryLength: 0,
-      projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
-      estimatedPromptChars: prompt.length,
-      taskCumulativeInput: beforeUsage.inputTokens,
-      taskCumulativeOutput: beforeUsage.outputTokens,
-      recursionCount: state.recursionCount,
+      temperature: LLM_TEMPERATURE.PLAN_GENERATION,
+      maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      enableThinking: true,
+      thinkingBudget: LLM_THINKING_BUDGET.PLAN,
     }
-  );
+  )) {
+    if (event.type === 'retry') {
+      response = '';
+      capturedUsage = undefined;
+      orchestrator = new StreamOrchestrator({
+        parser: new XMLStreamParser(),
+        renderStrategy: createStrategy(),
+        existingFiles: new Set()
+      });
+      continue;
+    }
+
+    await orchestrator.processEvent(event);
+
+    if (event.text) {
+      response += event.text;
+    }
+
+    if (event.type === 'done') {
+      const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+      capturedUsage = extractTokenUsageFromStreamEvent(event);
+      if (capturedUsage) {
+        accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
+        updateKanbanTokenUsage(state as any);
+      }
+    }
+  }
+
+  await orchestrator.finalize();
+
+  const { logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
+  if (capturedUsage) {
+    logTokenUsageToFile(
+      state.context?.featurePath,
+      state._httpJobId,
+      capturedUsage,
+      {
+        taskId: state.currentTask?.id || 'unknown',
+        taskName: state.currentTask?.name || 'unknown',
+        node: 'plan-planGen',
+        callIndex: 0,
+        conversationHistoryLength: 0,
+        projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
+        estimatedPromptChars: prompt.length,
+        taskCumulativeInput: 0,
+        taskCumulativeOutput: 0,
+        recursionCount: state.recursionCount,
+      }
+    );
+  }
 
   // ✅ Extract <plan> tag content (REQUIRED - structured JSON output)
   const planMatch = response.match(/<plan>([\s\S]*?)<\/plan>/);
   
   if (!planMatch) {
     const hasOpenTag = response.includes('<plan>');
-    const outputDelta = planCallUsage.outputTokens;
+    const outputDelta = capturedUsage?.outputTokens || 0;
     const isTruncation = hasOpenTag || outputDelta >= LLM_MAX_TOKENS.DEFAULT - 500;
 
     if (isTruncation) {
@@ -331,6 +378,29 @@ export async function runPlanLLMWithTools(
   if (!tools?.length) return null;
 
   const llmToUse = await selectLLMForTask(llm, task, state);
+
+  // ✅ UI streaming (aligned with decompose/codeGen pattern)
+  const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+  const chatAPI = getChatAPIClient();
+  await chatAPI.showChatStatus('placeholder');
+
+  const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
+  const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
+  const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
+
+  const createStrategy = () => {
+    const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);
+    strategy.setPlanTaskTitle(task.name);
+    strategy.setParallelTaskName(task.name);
+    return strategy;
+  };
+
+  let orchestrator = new StreamOrchestrator({
+    parser: new XMLStreamParser(),
+    renderStrategy: createStrategy(),
+    existingFiles: new Set()
+  });
+
   const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
   let textResponse = '';
   let thinking = '';
@@ -343,6 +413,22 @@ export async function runPlanLLMWithTools(
     enableThinking: true,
     thinkingBudget: LLM_THINKING_BUDGET.PLAN,
   })) {
+    if (event.type === 'retry') {
+      textResponse = '';
+      thinking = '';
+      thinkingSignature = '';
+      toolCalls.length = 0;
+      tokenUsage = undefined;
+      orchestrator = new StreamOrchestrator({
+        parser: new XMLStreamParser(),
+        renderStrategy: createStrategy(),
+        existingFiles: new Set()
+      });
+      continue;
+    }
+
+    await orchestrator.processEvent(event);
+
     if (event.type === 'thinking') {
       thinking += (event as any).thinking ?? '';
       if (event.signature) {
@@ -351,6 +437,7 @@ export async function runPlanLLMWithTools(
     }
     if (event.type === 'tool_use' && (event as any).toolUse) {
       const { id, name, input } = (event as any).toolUse;
+      await chatAPI.sendLLMEvent(event);
       toolCalls.push({ id, name, args: input ?? {} });
     }
     if (event.type === 'text') {
@@ -361,7 +448,6 @@ export async function runPlanLLMWithTools(
       const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
       accumulateTokenUsage(state as any, tokenUsage, { taskLevel: true, jobLevel: true });
       updateKanbanTokenUsage(state as any);
-      // Log per-call token usage for plan-tool loop debugging
       const planRound = Math.floor((messages.length - 1) / 2);
       logTokenUsageToFile(
         state.context?.featurePath,
@@ -380,12 +466,15 @@ export async function runPlanLLMWithTools(
   }
 
   if (toolCalls.length > 0) {
+    await orchestrator.finalize(true);
     return {
       llmResponse: { toolCalls, textResponse, thinking: thinking || undefined, thinkingSignature: thinkingSignature || undefined, done: false, tokenUsage },
       planConversationHistory: messages,
       _planExploring: true,
     };
   }
+
+  await orchestrator.finalize();
 
   const planMatch = textResponse.match(/<plan>([\s\S]*?)<\/plan>/);
   if (planMatch) {

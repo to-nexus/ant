@@ -15,6 +15,8 @@ import { FileCard } from './FileCard';
 import { ToolActionCard } from './ToolActionCard';
 import { ContextLoadedCard } from './ContextLoadedCard';
 import { ChoiceCard } from './ChoiceCard';
+import { PlanCard } from './PlanCard';
+import { TaskResponseCard } from './TaskResponseCard';
 import { TypingIndicator } from './TypingIndicator';
 
 interface MessageItemProps {
@@ -302,6 +304,15 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     case 'file_delete':
     case 'file_delete_failed':
       return <FileCard content={content} operation="delete" isStreaming={isStreaming} />;
+
+    // ===== Plan Card =====
+    case 'plan_generating':
+    case 'plan':
+      return <PlanCard content={content} isStreaming={isStreaming} />;
+
+    // ===== Task Response Card =====
+    case 'task_response':
+      return <TaskResponseCard content={content} isStreaming={isStreaming} />;
 
     // ===== Triage Choice =====
     case 'triage_choice':

@@ -74,4 +74,6 @@ export type ChatStatusType =
   | 'triage_choice'  // ✅ Triage redirect/blocked choice
   | 'choice_card'    // ✅ Generic choice card (eval_save, prd_apply, etc.)
   | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed'
-  | 'file_conflict' | 'file_conflict_retry';
+  | 'file_conflict' | 'file_conflict_retry'
+  | 'plan_generating' | 'plan'
+  | 'task_response';

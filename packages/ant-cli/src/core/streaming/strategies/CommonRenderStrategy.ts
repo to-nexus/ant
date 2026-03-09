@@ -22,6 +22,11 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private responseRenderer: ResponseRenderer;
   private fileRenderer: FileRenderer;
   private tagTransformer: SpecialTagTransformer;  // ✅ Store for explicitDone access
+  private planContentIndex: number | undefined;
+  private planTaskTitle: string | undefined;
+  private parallelTaskName: string | undefined;
+  private taskResponseIndex: number | undefined;
+  private taskResponseBuffer: string = '';
   
   constructor(
     chatAPI: ChatAPIClient,
@@ -58,7 +63,31 @@ export class CommonRenderStrategy implements IRenderStrategy {
         break;
         
       case 'response':
-        await this.responseRenderer.renderResponse(action);
+        if (this.parallelTaskName) {
+          const content = action.data.content;
+          if (!content || !content.trim()) break;
+          const transformed = this.tagTransformer.transform(content);
+          if (transformed.consumed) break;
+          const text = transformed.text || content;
+          if (!text.trim()) break;
+
+          this.taskResponseBuffer += text;
+
+          if (this.taskResponseIndex === undefined) {
+            this.taskResponseIndex = await this.chatAPI.showChatStatus('task_response', {
+              content: this.taskResponseBuffer,
+              taskName: this.parallelTaskName
+            });
+          } else {
+            await this.chatAPI.showChatStatus('task_response', {
+              content: this.taskResponseBuffer,
+              taskName: this.parallelTaskName,
+              _mergeIndex: this.taskResponseIndex
+            });
+          }
+        } else {
+          await this.responseRenderer.renderResponse(action);
+        }
         break;
         
       case 'file_start':
@@ -73,6 +102,30 @@ export class CommonRenderStrategy implements IRenderStrategy {
         await this.fileRenderer.renderFileEnd(action, registry);
         break;
       
+      case 'plan_start':
+        this.planContentIndex = await this.chatAPI.showChatStatus('plan_generating', {
+          ...(this.planTaskTitle ? { taskName: this.planTaskTitle } : {})
+        });
+        break;
+        
+      case 'plan_content': {
+        const planChunk = action.data.content || '';
+        if (planChunk) {
+          await this.chatAPI.showChatStatus('plan_generating', { content: planChunk });
+        }
+        break;
+      }
+        
+      case 'plan_end':
+        if (this.planContentIndex !== undefined) {
+          await this.chatAPI.showChatStatus('plan', {
+            _mergeIndex: this.planContentIndex,
+            _preserveContent: true
+          });
+          this.planContentIndex = undefined;
+        }
+        break;
+      
       case 'clarify_start':
         // Re-inject placeholder (typing indicator) while clarify content is being generated
         await this.chatAPI.showChatStatus('placeholder');
@@ -85,6 +138,17 @@ export class CommonRenderStrategy implements IRenderStrategy {
   
   async finalize(hasToolCalls: boolean = false): Promise<void> {
     await this.fileRenderer.finalize();
+
+    if (this.taskResponseIndex !== undefined) {
+      await this.chatAPI.showChatStatus('task_response', {
+        _mergeIndex: this.taskResponseIndex,
+        _preserveContent: true,
+        completed: true,
+        taskName: this.parallelTaskName
+      });
+      this.taskResponseIndex = undefined;
+      this.taskResponseBuffer = '';
+    }
     
     if (!hasToolCalls) {
       await this.chatAPI.finalizeMessage();
@@ -108,9 +172,27 @@ export class CommonRenderStrategy implements IRenderStrategy {
   }
   
   /**
+   * Set task title for plan card header display
+   */
+  setPlanTaskTitle(title: string): void {
+    this.planTaskTitle = title;
+  }
+  
+  /**
+   * Enable TaskResponseCard routing for worker graph nodes.
+   * When set, `response` actions are routed to task_response cards
+   * instead of plain text, providing parallel-safe contained output.
+   */
+  setParallelTaskName(name: string): void {
+    this.parallelTaskName = name;
+  }
+  
+  /**
    * Reset state for stream retry
    */
   reset(): void {
     this.fileRenderer.reset();
+    this.taskResponseIndex = undefined;
+    this.taskResponseBuffer = '';
   }
 }

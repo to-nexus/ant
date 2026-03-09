@@ -379,6 +379,15 @@ export class ChatStatusHandler {
         return `🔄 Retrying file write: ${filePath} (attempt ${attempt}/${maxRetries})`;
       }
       
+      case 'plan_generating':
+        return metadata?.content ?? '';
+      
+      case 'plan':
+        return metadata?.content ?? '';
+      
+      case 'task_response':
+        return metadata?.content ?? '';
+      
       default:
         return 'Processing...';
     }
