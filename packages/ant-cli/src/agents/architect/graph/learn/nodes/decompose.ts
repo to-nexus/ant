@@ -52,6 +52,10 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   
   let responseText = '';
   for await (const event of llm.stream([{ role: 'user', content: combinedPrompt }])) {
+    if (event.type === 'retry') {
+      responseText = '';
+      continue;
+    }
     // Pass to orchestrator for UI display
     await orchestrator.processEvent(event);
     

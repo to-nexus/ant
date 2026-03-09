@@ -77,6 +77,17 @@ export function validateTasks(
     }
   }
 
+  // Warn if a single shared foundation task has broad scope (likely spans multiple functional concerns)
+  const sharedTasks = tasks.filter(t => t.priority >= 200 && t.priority < 300);
+  if (sharedTasks.length === 1 && sharedTasks[0].description.length > 1200) {
+    console.warn(
+      `\n⚠️  [Decompose Validation] Single shared foundation task with broad scope (${sharedTasks[0].description.length} chars)\n` +
+      `   If it spans multiple functional concerns (declarations + implementations + schema),\n` +
+      `   consider splitting into sub-tasks (priority 200, 201, 202...)\n` +
+      `   Task: ${sharedTasks[0].name}\n`
+    );
+  }
+
   // Skip remaining validation for generate mode
   if (mode === 'generate') return;
   

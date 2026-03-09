@@ -273,6 +273,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: isFirstCall,
     })) {
+      if (event.type === 'retry') {
+        responseText = '';
+        toolCalls.length = 0;
+        continue;
+      }
       // Pass ALL events to StreamOrchestrator for real-time rendering:
       // - <file> tags → file card streaming (startFileCreation → streamFileContent → completeFileCreation)
       // - thinking → thinking UI

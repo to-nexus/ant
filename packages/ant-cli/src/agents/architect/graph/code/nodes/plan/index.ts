@@ -28,7 +28,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { generateTaskKeywords, displayKeywords, logKeywords, updateKeywordsWithRetrieval } from "./keywordGeneration";
 import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
-import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, PLAN_TOOL_LOOP_MAX, taskRequiresPlan } from "./planGeneration";
+import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, PLAN_TOOL_LOOP_MAX, taskRequiresPlan, finalizePlanFromExploration } from "./planGeneration";
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
@@ -211,11 +211,34 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   if (state._planExploring === true && state.planConversationHistory?.length) {
     const overLimit = state.planConversationHistory.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
     if (overLimit) {
-      console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; falling back to plan without tools`);
+      console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; finalizing plan from exploration context`);
+      const finalizedPlan = await finalizePlanFromExploration(state, state.planConversationHistory, nextTask);
+      if (finalizedPlan) {
+        state._planExploring = false;
+        state.planConversationHistory = undefined;
+        if (state.deps?.workflowUpdate && state._httpJobId) {
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+        }
+        return {
+          ...state,
+          currentTask: nextTask,
+          projectCodeContext: state.projectCodeContext,
+          referenceCodeContexts: state.referenceCodeContexts,
+          lessons: state.lessons ?? [],
+          planText: finalizedPlan,
+          _planExploring: false,
+          planConversationHistory: undefined,
+          retries: isRetry ? state.retries : 0,
+          completedTasksDetails: state.completedTasksDetails || [],
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+          workspaceConfig: state.workspaceConfig,
+        };
+      }
+      console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
       state._planExploring = false;
       state.planConversationHistory = undefined;
       forceNoTools = true;
-      // Fall through to STEP 0.8 and continue with normal flow
     } else {
       const result = await runPlanLLMWithTools(state, state.planConversationHistory, nextTask);
       if (result && '_planExploring' in result) {

@@ -23,7 +23,13 @@ interface GracefulOrchestrator {
   handleInterruption(reason: string): Promise<void>;
 }
 
+/** Minimal interface for flushing chat state on shutdown */
+interface ChatFlusher {
+  flushToChatFile(): void;
+}
+
 let activeOrchestrator: GracefulOrchestrator | null = null;
+let activeChatFlusher: ChatFlusher | null = null;
 let isShuttingDown = false;
 
 /**
@@ -39,6 +45,18 @@ export function registerActiveOrchestrator(orchestrator: GracefulOrchestrator): 
  */
 export function unregisterActiveOrchestrator(): void {
   activeOrchestrator = null;
+}
+
+/**
+ * Register a chat flusher (SessionStore) so in-progress messages are
+ * persisted to chat.json during graceful shutdown.
+ */
+export function registerChatFlusher(flusher: ChatFlusher): void {
+  activeChatFlusher = flusher;
+}
+
+export function unregisterChatFlusher(): void {
+  activeChatFlusher = null;
 }
 
 /**
@@ -60,26 +78,35 @@ export async function handleGracefulShutdown(reason: string, timeoutMs = 2500): 
   }
   isShuttingDown = true;
 
-  if (!activeOrchestrator) {
+  if (activeOrchestrator) {
+    console.log(`[GracefulShutdown] Interrupting orchestrator (reason: ${reason}, timeout: ${timeoutMs}ms)...`);
+
+    // Race between handleInterruption and a hard timeout.
+    // If handleInterruption takes too long (e.g. stuck acquiring lock),
+    // we bail out so the process can exit before SIGKILL arrives.
+    const interruptionPromise = activeOrchestrator.handleInterruption(reason).then(() => {
+      console.log(`[GracefulShutdown] ✅ Orchestrator interrupted and checkpoint saved`);
+    });
+
+    const timeoutPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        console.warn(`[GracefulShutdown] ⚠️ Timeout reached (${timeoutMs}ms) — proceeding with exit`);
+        resolve();
+      }, timeoutMs);
+    });
+
+    await Promise.race([interruptionPromise, timeoutPromise]);
+  } else {
     console.log(`[GracefulShutdown] No active orchestrator registered — checkpoint from previous phase is still valid`);
-    return;
   }
 
-  console.log(`[GracefulShutdown] Interrupting orchestrator (reason: ${reason}, timeout: ${timeoutMs}ms)...`);
-
-  // Race between handleInterruption and a hard timeout.
-  // If handleInterruption takes too long (e.g. stuck acquiring lock),
-  // we bail out so the process can exit before SIGKILL arrives.
-  const interruptionPromise = activeOrchestrator.handleInterruption(reason).then(() => {
-    console.log(`[GracefulShutdown] ✅ Orchestrator interrupted and checkpoint saved`);
-  });
-
-  const timeoutPromise = new Promise<void>((resolve) => {
-    setTimeout(() => {
-      console.warn(`[GracefulShutdown] ⚠️ Timeout reached (${timeoutMs}ms) — proceeding with exit`);
-      resolve();
-    }, timeoutMs);
-  });
-
-  await Promise.race([interruptionPromise, timeoutPromise]);
+  // Flush in-progress chat messages to chat.json so file card content survives interruption
+  if (activeChatFlusher) {
+    try {
+      activeChatFlusher.flushToChatFile();
+      console.log(`[GracefulShutdown] ✅ Chat messages flushed to disk`);
+    } catch {
+      // Best-effort — don't block shutdown
+    }
+  }
 }

@@ -147,6 +147,13 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: isFirstCall,
     })) {
+      if (event.type === 'retry') {
+        responseText = '';
+        thinkingText = '';
+        toolCalls.length = 0;
+        toolCall = undefined;
+        continue;
+      }
       // Handle thinking events - show thinking card in UI
       if (event.type === 'thinking' && event.thinking) {
         if (!streamingStarted) {

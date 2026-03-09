@@ -21,6 +21,7 @@ import { HealthChecker } from './utils/HealthChecker';
 import { IssueDetector } from './detectors/IssueDetector';
 import { logger } from '../../../../../utils/logger';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
+import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../../../../utils/userConfig';
 
 // Idle timeout configuration
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -70,6 +71,7 @@ export class PreviewService {
   private portManager?: PortManager;
   private portRegistry?: PortRegistryPort;
   private stateStore?: StateStorePort;
+  private workspaceRoot?: string;
   
   // Modular components
   private logManager: LogManager;
@@ -90,12 +92,14 @@ export class PreviewService {
     callbacks?: {
       onStatusChange?: (serverKey: string) => void;
     },
-    stateStore?: StateStorePort
+    stateStore?: StateStorePort,
+    workspaceRoot?: string
   ) {
     this.portManager = portManager;
     this.portRegistry = portRegistry;
     this.onStatusChange = callbacks?.onStatusChange;
     this.stateStore = stateStore;
+    this.workspaceRoot = workspaceRoot;
     
     // Initialize modular components
     this.logManager = new LogManager();
@@ -111,6 +115,46 @@ export class PreviewService {
     this.issueDetector = new IssueDetector();
   }
   
+  /**
+   * Read GitHub PAT from CredentialsStore and build env vars for private module access.
+   * Returns empty object on any failure (safe no-op).
+   */
+  private async getCredentialEnv(
+    orgId: string,
+    userId: string,
+    projectId: string,
+    codebasePath?: string
+  ): Promise<Record<string, string>> {
+    try {
+      const wsRoot = this.workspaceRoot || process.env.ANT_WORKSPACE_BASE_PATH;
+      if (!wsRoot) return {};
+
+      const store = new CredentialsStore(wsRoot);
+      const creds = await store.get<GitHubCredentials>(
+        { organizationId: orgId, userId },
+        'github'
+      );
+      if (!creds?.token) return {};
+
+      const fs = await import('fs');
+      const pathMod = await import('path');
+      const configPath = pathMod.join(wsRoot, orgId, userId, projectId, 'config.json');
+      let githubRepo: string | null = null;
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        githubRepo = config.githubRepo || null;
+      }
+
+      const credEnv = buildCredentialEnv(creds.token, githubRepo, codebasePath);
+      if (Object.keys(credEnv).length > 0) {
+        logger.info('🔑 Injecting GitHub credentials for private module access', { component: 'PreviewService' });
+      }
+      return credEnv;
+    } catch {
+      return {};
+    }
+  }
+
   /**
    * Create unique server key: tenantId:userId:projectId:feature
    */
@@ -471,8 +515,9 @@ export class PreviewService {
       
       // 2. Install dependencies for all packages
       const logCallback = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
+      const credentialEnv = await this.getCredentialEnv(tenantId, userId, projectId, localPath);
       for (const pkg of structure.packages) {
-        await this.dependencyInstaller.installIfNeeded(pkg.path, pkg.name, logCallback, pkg.projectProfile);
+        await this.dependencyInstaller.installIfNeeded(pkg.path, pkg.name, logCallback, pkg.projectProfile, credentialEnv);
       }
       
       this.installingProjects.delete(serverKey);

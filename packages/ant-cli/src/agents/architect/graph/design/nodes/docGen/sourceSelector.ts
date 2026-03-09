@@ -407,6 +407,14 @@ export async function decomposeWithToolLoop(
       enableThinking: options.enableThinking,
       thinkingBudget: options.thinkingBudget,
     })) {
+      if (event.type === 'retry') {
+        response = '';
+        thinking = '';
+        thinkingSignature = '';
+        toolCalls.length = 0;
+        roundUsage = undefined;
+        continue;
+      }
       if (event.text) response += event.text;
       if (event.thinking) thinking += event.thinking;
       if (event.signature) thinkingSignature = event.signature;

@@ -76,11 +76,9 @@ export async function callLLMForDecompose(
   const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
   const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
   
-  const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined);
-  const orchestrator = new StreamOrchestrator({
-    parser,
-    renderStrategy,
+  let orchestrator = new StreamOrchestrator({
+    parser: new XMLStreamParser(),
+    renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined),
     existingFiles: new Set()
   });
   
@@ -93,6 +91,18 @@ export async function callLLMForDecompose(
     enableThinking: true,
     thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
   })) {
+    if (event.type === 'retry') {
+      console.log('🔄 [Decompose] Stream retry detected, resetting accumulated state');
+      response = '';
+      capturedUsage = undefined;
+      orchestrator = new StreamOrchestrator({
+        parser: new XMLStreamParser(),
+        renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined),
+        existingFiles: new Set()
+      });
+      continue;
+    }
+    
     await orchestrator.processEvent(event);
     
     if (event.text) {

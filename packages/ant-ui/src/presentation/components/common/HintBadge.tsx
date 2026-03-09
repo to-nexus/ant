@@ -2,7 +2,7 @@ import React from 'react';
 import { Info } from 'lucide-react';
 import { Tooltip } from './Tooltip';
 
-type ColorScheme = 'gray' | 'purple' | 'amber';
+type ColorScheme = 'gray' | 'purple' | 'amber' | 'blue';
 
 const colorStyles: Record<ColorScheme, { badge: string; icon: string }> = {
   gray: {
@@ -16,6 +16,10 @@ const colorStyles: Record<ColorScheme, { badge: string; icon: string }> = {
   amber: {
     badge: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
     icon: 'text-amber-500 dark:text-amber-400',
+  },
+  blue: {
+    badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300',
+    icon: 'text-blue-400 dark:text-blue-400',
   },
 };
 

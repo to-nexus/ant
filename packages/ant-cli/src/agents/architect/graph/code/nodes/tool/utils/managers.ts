@@ -9,5 +9,6 @@ import { ToolResultManager } from '../../../../../../../core/utils/toolResultMan
 export const tokenManager = new TokenBudgetManager();
 export const toolResultManager = new ToolResultManager(tokenManager, {
   maxReadFileTokens: 8000,
+  maxRunCommandTokens: 5000,
 });
 

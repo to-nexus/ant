@@ -67,6 +67,7 @@ export type LLMStreamEventType =
   | 'tool_use'
   | 'error'
   | 'done'
+  | 'retry'
   // UI events (for file operations, commands)
   | 'file_creating'
   | 'file_create'
