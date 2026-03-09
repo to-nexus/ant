@@ -136,7 +136,7 @@ go {same-version-as-go.work}
 
 **Key points:**
 - Module path should match the intended repository path
-- If the task description requires declaring dependencies, list them in the `require` block — but only if you know the exact version. Omit dependencies with unknown versions (see Dependency Classification below)
+- If the task description requires declaring dependencies, list them in the `require` block — but only if you know the exact version. For dependencies with unknown versions, use `go get package@latest` to resolve them (see Dependency Classification below)
 - The `go` version directive in `go.work` and every `go.mod` MUST be identical. A mismatch causes toolchain resolution failures that are invisible until build time
 
 ### Dependency Classification Protocol
@@ -150,9 +150,9 @@ For each dependency, two decisions must be made in order: (1) local vs external,
 | **YES** — listed in `go.work` or confirmed as sibling directory | REQUIRED — relative path to local directory |
 | **NO** — not in workspace filesystem | FORBIDDEN — do NOT add |
 
-**Constraint**: Do NOT infer workspace-local status from module path prefix, organization name, or terminology in the design document ("shared packages", "common libraries", "internal packages"). A module is workspace-local ONLY if its source directory is physically present in this workspace.
-
-**Constraint**: A `replace` directive pointing to a non-existent directory always causes build failure. If the target directory does not exist, the module is external.
+**Constraints**:
+- Do NOT infer workspace-local status from module path prefix, organization name, or terminology in the design document ("shared packages", "common libraries", "internal packages"). A module is workspace-local ONLY if its source directory is physically present in this workspace.
+- A `replace` directive pointing to a non-existent directory always causes build failure. If the target directory does not exist, the module is external.
 
 ⚠️ **Blind spot**: Packages published by the same organization (e.g., `github.com/{org}/other-repo`) are easily confused with workspace-local sibling modules. They are external dependencies — treat them identically to any third-party package unless their source directory is confirmed present.
 
@@ -162,9 +162,9 @@ For each dependency, two decisions must be made in order: (1) local vs external,
 |----------|---------------|--------|
 | **Workspace-local** (Step 1 = YES) | N/A | `v0.0.0` (Go workspace resolves locally) |
 | **External** — version in design doc or LLM training data | YES | Exact version (e.g., `v1.10.1`) |
-| **External** — version unknown | NO | **Omit from `require` block entirely** |
+| **External** — version unknown | NO | Run `go get package@latest` via `run_command` |
 
-**Principle**: Go `go.mod` does not support `latest` or `*`. The ONLY valid version is an exact semver tag. If you do not know the real version, do NOT guess or use `v0.0.0` — omit the module. The verification phase runs `go mod tidy`, which discovers missing modules from import statements in `.go` files and resolves them to the latest published version automatically.
+**Principle**: Go `go.mod` does not support `latest` or `*`. The ONLY valid version is an exact semver tag. `go get package@latest` resolves the module's latest published version, downloads the source, and updates `go.mod` + `go.sum` automatically.
 
 **Constraint**: `v0.0.0` in `require` is reserved exclusively for workspace-local modules (where `go.work` or `replace` resolves the path locally). Using `v0.0.0` for an external module locks it to the oldest tag — `go mod tidy` does NOT upgrade existing versions.
 
@@ -172,16 +172,57 @@ For each dependency, two decisions must be made in order: (1) local vs external,
 
 #### Setup Command Restriction
 
-**⛔ Do NOT run any `go` commands (`go mod tidy`, `go mod download`, `go get`, `go get ./...`) during setup.**
+**⛔ Do NOT run bulk dependency commands during setup:**
+- `go mod tidy` — scans imports → finds none (no `.go` files yet) → **deletes all require entries**
+- `go mod download` — with an empty require block → "no module dependencies to download"
+- `go get ./...` — resolves package imports → finds none → "matched no packages"
 
-**Principle**: All Go dependency commands resolve against `.go` source files or the `require` block. Setup creates no `.go` files, so:
-- `go mod tidy` scans imports → finds none → **deletes all require entries**
-- `go mod download` with an empty require block → "no module dependencies to download"
-- `go get ./...` resolves package imports → finds none → "matched no packages"
+**✅ ALLOWED exceptions** (targeted, per-package commands — always use `working_directory: "codebase"`):
 
-Each of these produces a warning or destructive side-effect that triggers unnecessary file re-creation.
+| Command | Purpose | When to use |
+|---------|---------|-------------|
+| `go get package@latest` | Resolve unknown version + download source + update `go.mod` | External dependency with unknown version (Step 2 above) |
+| `go doc -all package` | Read exported API signatures (read-only, no side effects) | Unfamiliar package — need to understand available functions/types before writing code |
+| `go doc package.TypeOrFunc` | Read specific type/function documentation | `go doc -all` output was truncated — narrow the scope and re-query |
 
-**What to do instead**: Declare dependencies with known versions in go.mod's `require` block. Omit dependencies with unknown versions — the verification phase handles them.
+**Principle**: `go get package@latest` and `go doc` operate on a single named package. They do not scan `.go` files, so they are safe to run before source code exists.
+
+**Constraints**:
+- All `go` commands MUST use `working_directory: "codebase"`. The default working directory is the feature root (parent of `codebase/`), where no `go.mod` exists. Do NOT use `cd codebase &&` — use the `working_directory` parameter.
+- `go get` requires `go.mod` to exist in `codebase/`. Create `go.mod` first (via `<file>` tag), THEN run `go get` for packages with unknown versions.
+
+#### Unknown Package API Discovery
+
+**Principle**: If the design document specifies a dependency, the execution environment is expected to have the necessary access credentials. A package appearing in the design document is evidence that the user has — or intends to have — access to it. Do NOT preemptively assume authentication will fail.
+
+**Constraint**: For EVERY external dependency with an unknown version — including private or organization-scoped packages — you MUST attempt `go get package@latest`. Do NOT skip based on assumptions about package accessibility, authentication requirements, or registry configuration. Observe the actual result.
+
+**Protocol** (via `run_command` with `working_directory: "codebase"`):
+
+1. Create `go.mod` via `<file>` tag with ONLY packages whose version you know (from training data or design doc). Do NOT include packages with unknown versions — `go get` will add them with the correct version automatically.
+2. For each package with an unknown version:
+   a. **Observe**: Search the design document for the literal import path — look for `import "github.com/..."` statements or backtick-quoted module paths in usage examples.
+   b. **Extract**: Quote the observed import path verbatim. If the import contains subpackages (e.g., `github.com/org/lib/sub/pkg`), the base Go module is the path up to the repository name (e.g., `github.com/org/lib`).
+   c. **Execute**: Run `go get {extracted-base-module}@latest` — one package per command. A single unresolvable entry poisons subsequent calls if batched.
+
+   **Constraint**: Do NOT infer or reconstruct module paths from project names, organization names, or reference project names. The module path MUST come from a literal import or module declaration observed in the design document or task description.
+3. `go doc package` — package overview with one-line summary of each exported symbol (index)
+4. `go doc package.TypeName` — drill into specific types referenced by the design document or needed for the task
+5. `go doc package.TypeName.Method` — drill into specific methods when signatures are needed
+6. Repeat steps 4-5 for each type/function you need until you have sufficient API knowledge to write correct code
+
+**Constraint**: Do NOT start with `go doc -all` — it outputs the entire package documentation and is easily truncated. Start with the package index (step 3) and drill into specific symbols.
+
+**Constraint — go get failure terminal state**: If `go get` fails (authentication error, module not found, network issue):
+1. Report the failure to the user: which package, the error message, likely cause, suggested resolution
+2. Do NOT manually add the package to `go.mod` with any version (`v0.0.0`, pseudo-versions, placeholders). Go requires an exact resolvable semver — manual insertion causes cascading build failures.
+3. Do NOT make further attempts to include the package (no `edit_file` on `go.mod`, no alternative `go get` with guessed paths)
+4. Complete the remaining config files normally and output `<done>true</done>`. The setup task is NOT blocked by an unresolvable dependency.
+5. Feature tasks will still write `import` statements for the package — the dependency intent is preserved in code even though `go.mod` cannot list it yet.
+
+⚠️ **Blind spot — pre-failure**: Private or organization-scoped packages are easily skipped with the assumption "this will fail without auth." The execution environment often has credentials pre-configured (GOPRIVATE, GOAUTH, netrc, git credential helpers). Always attempt first — only report failure after an actual failed attempt.
+
+⚠️ **Blind spot — post-failure spiraling**: After `go get` fails, the instinct to "fix" `go.mod` by manually inserting the package with an invented version creates a worse problem than leaving it out. Every manual insertion (`v0.0.0`, `v0.0.0-latest`, etc.) poisons subsequent `go get` calls for other packages and triggers a cascade of fix attempts. The correct terminal state is: report → stop → continue with other files.
 
 ---
 
@@ -215,9 +256,9 @@ clean:
 	rm -rf bin/
 ```
 
-**Constraint**: `run` target MUST use `go run ./cmd/...` — NOT a pre-built binary path. The `build` target produces binaries for deployment; the `run` target compiles and executes in one step for development.
-
-**Constraint**: `make run` must be the standard way to start the dev server. Adjust the entry point path in `build` and `run` targets to match `cmd/` structure.
+**Constraints**:
+- `run` target MUST use `go run ./cmd/...` — NOT a pre-built binary path. The `build` target produces binaries for deployment; the `run` target compiles and executes in one step for development.
+- `make run` must be the standard way to start the dev server. Adjust the entry point path in `build` and `run` targets to match `cmd/` structure.
 
 **Multi-service — root Makefile (orchestration):**
 
@@ -261,9 +302,9 @@ clean:
 	rm -rf bin/
 ```
 
-**Constraint**: In MSA, `make run-{svc}` at the root must start a specific service. Each service Makefile must be self-contained with `build`, `run`, `test`, `clean` targets.
-
-**Constraint**: Each service `run` target MUST use `go run ./cmd/...` — NOT a pre-built binary path. Parallel setup tasks generate Makefiles independently; `go run` ensures consistent behavior without requiring a prior `build` step.
+**Constraints**:
+- In MSA, `make run-{svc}` at the root must start a specific service. Each service Makefile must be self-contained with `build`, `run`, `test`, `clean` targets.
+- Each service `run` target MUST use `go run ./cmd/...` — NOT a pre-built binary path. Parallel setup tasks generate Makefiles independently; `go run` ensures consistent behavior without requiring a prior `build` step.
 
 ---
 
@@ -369,7 +410,12 @@ ENV=development
 ❌ MSA: Using a single `go.mod` for all services (each service needs its own module)
 ❌ MSA: Adding `require` for a workspace-local sibling module without a `replace` directive (build fails with "module not found")
 ❌ Adding `replace` for modules not physically present in this workspace (same-org packages are external dependencies, not workspace siblings — `replace` to a non-existent path causes build failure)
-❌ Using `v0.0.0` for external packages whose version is unknown (locks to oldest tag; `go mod tidy` never upgrades — omit from `require` instead and let verify resolve from imports)
+❌ Using `v0.0.0` for external packages whose version is unknown (locks to oldest tag; `go mod tidy` never upgrades — use `go get package@latest` to resolve the real version)
+❌ Guessing function names or type signatures for unfamiliar packages (use `go doc` to observe the actual API first)
+❌ Skipping `go get` for private/organization packages based on assumptions about authentication (always attempt — the environment may have credentials configured)
+❌ Running `go get` before `go.mod` exists (create `go.mod` first, then resolve unknown versions)
+❌ Running `go` commands without `working_directory: "codebase"` (default cwd is feature root, not codebase — `go.mod` not found)
+❌ Using `cd codebase &&` in commands instead of the `working_directory` parameter
 ❌ MSA: Mismatched `go` version between `go.work` and `go.mod` files (causes toolchain resolution failure)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

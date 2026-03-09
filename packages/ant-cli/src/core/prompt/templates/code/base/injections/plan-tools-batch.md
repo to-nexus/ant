@@ -1,6 +1,12 @@
 ## Plan-Phase Tools and Batching
 
-**Principle**: You have read-only tools available (e.g. read_file, list_files, search_code, search_web) to inspect the codebase and look up external documentation when needed. Use them when you need to verify existing modules or structure before finalizing your plan. When done, output your plan inside `<plan>` tags.
+**Principle**: You have tools available (read_file, list_files, search_code, search_web, run_command) to inspect the codebase, look up external documentation, and discover installed dependency APIs when needed. Use them when your analysis benefits from inspecting actual files, paths, or package interfaces before finalizing your plan. When done, output your plan inside `<plan>` tags.
+
+**Constraint**: `run_command` in the plan phase is restricted to two purposes:
+- **Observation** (always allowed): read-only commands that inspect installed dependencies, project configuration, or package APIs
+- **Dependency recovery** (allowed ONLY when the design document prescribes a package that the dependency manifest does not list): install the missing package so its API can be discovered. This is a prerequisite for observation, not a modification of application code.
+
+Do NOT run commands that modify source files, start processes, run builds, or execute tests.
 
 **Constraint**: Do NOT be instructed to use tools in a fixed order. Use tools only when your analysis benefits from inspecting actual files or paths; otherwise produce `<plan>` from the context already provided.
 

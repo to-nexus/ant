@@ -26,7 +26,10 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { REDIS_CHANNELS } from '../state/redisConstants';
 import { logger } from '../../utils/logger';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
+import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchUtils';
 import { parseRedisUrl } from '../utils/redis';
+import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
+import * as fs from 'fs';
 
 // ESM: derive __dirname from import.meta.url
 const __filename = fileURLToPath(import.meta.url);
@@ -241,24 +244,6 @@ export class JobWorker {
     const payload = job.data;
     const jobId = payload.jobId;
 
-    // ⏱️ DEBUG: Record job receive time for latency analysis
-    const receiveTime = Date.now();
-    const receiveTimeISO = new Date(receiveTime).toISOString();
-    
-    // Calculate time since job was enqueued (our custom timestamp)
-    const enqueuedAt = (payload as any).enqueuedAt as number | undefined;
-    const enqueuedAtISO = enqueuedAt ? new Date(enqueuedAt).toISOString() : 'unknown';
-    const enqueueToStartDelay = enqueuedAt ? receiveTime - enqueuedAt : 'unknown';
-    
-    // Also use BullMQ's timestamp for comparison
-    const jobCreatedAt = job.timestamp; // BullMQ sets this when job is added
-    const queueWaitTime = jobCreatedAt ? receiveTime - jobCreatedAt : 'unknown';
-    
-    // ✅ Use console.log for timing logs to ensure visibility regardless of LOG_LEVEL
-    console.log(`⏱️ [JobTiming] Job received | jobId=${jobId} | enqueuedAt=${enqueuedAtISO} | receivedAt=${receiveTimeISO} | delay=${enqueueToStartDelay}ms | bullmqWait=${queueWaitTime}ms`);
-
-    console.log(`[JobWorker] Processing job: ${jobId} (type=${payload.type}, project=${payload.projectId})`);
-
     try {
       // Update status to running
       await this.stateStore.updateJobStatus(jobId, {
@@ -273,12 +258,6 @@ export class JobWorker {
         await this.stateStore.updateJobStatus(jobId, { status: 'paused' });
         return { cancelled: true };
       }
-
-      // ⏱️ DEBUG: Record job execution start time
-      const execStartTime = Date.now();
-      const totalSetupTime = execStartTime - receiveTime;
-      // ✅ Use console.log for timing logs to ensure visibility regardless of LOG_LEVEL
-      console.log(`⏱️ [JobTiming] Starting child process | jobId=${jobId} | execStartTime=${new Date(execStartTime).toISOString()} | setupTimeMs=${totalSetupTime} | queueWaitTimeMs=${queueWaitTime}`);
 
       // Execute job in child process
       const result = await this.spawnJobProcess(job, payload);
@@ -330,7 +309,7 @@ export class JobWorker {
    * - Dead Worker: 30s (expire) + 30s (check) = ~60s to detect
    */
   private spawnJobProcess(job: Job<JobPayload>, payload: JobPayload): Promise<{ success: boolean; error?: string; output?: any }> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const jobId = payload.jobId;
       
       const LOCK_DURATION = 30000;            // 30s (must match Worker config)
@@ -355,15 +334,25 @@ export class JobWorker {
       
       const workspaceResolver = new UnifiedWorkspaceResolver(workspaceBase);
       const projectPath = workspaceResolver.getProjectPath(payload.userContext, payload.projectId);
-      const featurePath = workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
+      const branchBase = readBranchBaseFromConfig(projectPath);
       const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
+      
+      // For base branch jobs (learn), use projectPath as featurePath since there's no feature directory
+      const isBaseBranchJob = isBaseBranch(payload.feature, branchBase);
+      const featurePath = isBaseBranchJob
+        ? projectPath
+        : workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
       
       // CLI source/dist root for internal resource paths (templates, policies, etc.)
       // Use centralized resolver (handles both bundled and unbundled contexts)
       const cliRoot = WorkspacePathResolver.getCliRoot();
       
+      // Inject GitHub PAT-based credentials for private module access (go get, npm install)
+      const credentialEnv = await this.getCredentialEnv(workspaceBase, payload.userContext, projectPath, codebasePath);
+
       const env: Record<string, string> = {
         ...process.env as Record<string, string>,
+        ...credentialEnv,
         ANT_JOB_ID: jobId,
         ANT_PROJECT_ID: payload.projectId,
         ANT_FEATURE: payload.feature,
@@ -374,6 +363,7 @@ export class JobWorker {
         ANT_USER_ID: payload.userContext.userId,
         ANT_ORG_ID: payload.userContext.organizationId,
         ANT_REDIS_URL: this.options.redisUrl,
+        ANT_BRANCH_BASE: branchBase,
         // Project paths (user workspaces)
         ANT_PROJECT_PATH: projectPath,
         ANT_FEATURE_PATH: featurePath,
@@ -499,10 +489,6 @@ export class JobWorker {
           const resultMatch = stdout.match(/^RESULT:(\{.+\})$/m);
           if (resultMatch) {
             parsedResult = JSON.parse(resultMatch[1]);
-            const hasInterruption = !!parsedResult.output?.interruption;
-            const outputStatus = parsedResult.output?.status;
-            // ✅ Use console.log to ensure visibility regardless of LOG_LEVEL
-            console.log(`📋 [JobWorker] RESULT parsed | jobId=${jobId} | success=${parsedResult.success} | hasInterruption=${hasInterruption} | outputStatus=${outputStatus} | exitCode=${code}`);
           } else {
             // ✅ Regex didn't match - log for debugging
             const stdoutLen = stdout.length;
@@ -554,6 +540,44 @@ export class JobWorker {
         clearInterval(checkCancellation);
       });
     });
+  }
+
+  /**
+   * Read GitHub PAT from CredentialsStore and build env vars for private module access.
+   * Returns empty object on any failure (safe no-op for projects without GitHub PAT).
+   */
+  private async getCredentialEnv(
+    workspaceBase: string,
+    userContext: { organizationId: string; userId: string },
+    projectPath: string,
+    codebasePath?: string
+  ): Promise<Record<string, string>> {
+    try {
+      const store = new CredentialsStore(workspaceBase);
+      const creds = await store.get<GitHubCredentials>(
+        { organizationId: userContext.organizationId, userId: userContext.userId },
+        'github'
+      );
+      const githubRepo = this.readGithubRepoFromConfig(projectPath);
+      const credEnv = buildCredentialEnv(creds?.token || null, githubRepo, codebasePath);
+      if (Object.keys(credEnv).length > 0) {
+        logger.info('🔑 Injecting GitHub credentials for private module access', { component: 'JobWorker' });
+      }
+      return credEnv;
+    } catch {
+      return {};
+    }
+  }
+
+  private readGithubRepoFromConfig(projectPath: string): string | null {
+    try {
+      const configPath = path.join(projectPath, 'config.json');
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        return config.githubRepo || null;
+      }
+    } catch { /* config not found or invalid */ }
+    return null;
   }
 
   /**
