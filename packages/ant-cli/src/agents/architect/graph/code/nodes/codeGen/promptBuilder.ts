@@ -464,6 +464,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             taskType: state.currentTask?.type,
             detectedEnvironment: state.detectionReport?.environment,
             projectCodeContextFiles: codeGenProjectCodeContext?.files?.length || 0,
+            projectCodeContextFilePaths: codeGenProjectCodeContext?.filePaths?.length || 0,
             referenceCodeContexts: state.referenceCodeContexts?.length || 0,
             uiImageBlocksCount: uiImageBlocks.filter(b => (b as any).type === 'image').length,
             hasViolations: !!(state.violations?.length),
@@ -623,8 +624,10 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
   const filePaths = state.projectCodeContext?.filePaths || [];
 
   if (filePaths.length === 0) {
+    console.log(`📊 [PromptBuilder] generateFileTree: null (filePaths empty)`);
     return null;
   }
+  console.log(`📊 [PromptBuilder] generateFileTree: ${filePaths.length} filePaths`);
 
   const loadedFiles = state.projectCodeContext?.files || [];
   const contentLoadedSet = new Set(
@@ -656,10 +659,10 @@ export function generateFileTree(state: ArchitectGraphState): string | null {
 
   if (pathOnly.length > 0) {
     lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('📂 Files Available (path only — read_file when needed)');
+    lines.push('📂 Existing Files (DO NOT recreate — use read_file + <edit> to modify)');
     lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('These files exist in the codebase but are NOT loaded above.');
-    lines.push('Use read_file ONLY when you need to modify them.');
+    lines.push('These files already exist on disk. Do NOT output <file> tags for these paths.');
+    lines.push('To change them, use read_file first, then <edit>.');
     lines.push('');
     appendTree(lines, pathOnly);
   }

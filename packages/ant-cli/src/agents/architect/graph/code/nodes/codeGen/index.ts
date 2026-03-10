@@ -302,6 +302,8 @@ export async function codeGen(
     }
   }
   
+  console.log(`📊 [CodeGen] existingFiles from projectCodeContext: filePaths=${state.projectCodeContext?.filePaths?.length ?? 0}, files=${state.projectCodeContext?.files?.length ?? 0}, existingFilesSet=${existingFiles.size}`);
+
   // Add files from referenceCodeContexts
   if (state.referenceCodeContexts) {
     for (const refContext of state.referenceCodeContexts) {
@@ -462,7 +464,22 @@ export async function codeGen(
         console.error(`   - ${error}`);
       }
     }
-    
+
+    // ✅ Reliable projectCodeContext update from streamedFiles.
+    // streamedFiles always contains written file paths regardless of registry state.
+    // Used as the base for ALL return paths (conflict, tool-call, no-done, normal)
+    // to guarantee filePaths propagation to the next codeGen turn.
+    const earlyStreamedPaths = (finalizeResult?.streamedFiles || [])
+      .map((fp: string) => normalizeToCodebasePath(fp, codebaseRel).normalized);
+    let earlyUpdatedProjectCodeContext = state.projectCodeContext;
+    if (earlyStreamedPaths.length > 0) {
+      const prevPaths = state.projectCodeContext?.filePaths || [];
+      const merged = Array.from(new Set([...prevPaths, ...earlyStreamedPaths]));
+      earlyUpdatedProjectCodeContext = state.projectCodeContext
+        ? { ...state.projectCodeContext, filePaths: merged }
+        : { source: 'codeGen' as const, filePaths: merged, files: [], stats: { filesLoaded: merged.length, estimatedTokens: 0 } };
+    }
+
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
     // Instead of: codeGen → checkTaskStatus → enforce → plan → codeGen → read_file → tool → codeGen (4-5 LLM calls)
     // Optimized:  codeGen → codeGen with merge instruction (1 LLM call)
@@ -596,7 +613,7 @@ export async function codeGen(
         },
         conversationHistory: newHistory,
         fileErrors: undefined,
-        projectCodeContext: state.projectCodeContext,
+        projectCodeContext: earlyUpdatedProjectCodeContext,
         _codeGenCallIndex: newCallIndex,
         _finalTaskLoopCount: 0,
         recursionCount: state.recursionCount,
@@ -644,24 +661,24 @@ export async function codeGen(
     // ✅ Return LLM response (state에 저장)
     
     // ✅ CRITICAL: Accumulate created/modified files to projectCodeContext
-    // This ensures subsequent codeGen turns know about files created in this session
+    // Uses earlyUpdatedProjectCodeContext (from finalizeResult.streamedFiles) as the
+    // reliable base. The `files` array from registry.getFileInfo may be empty when
+    // the registry loses content tracking, but streamedFiles always has the paths.
     // Without this, existingFiles Set is empty on each turn, causing:
-    // - Duplicate file creation (Hero.tsx AND HeroSection.tsx for same component)
-    // - LLM not recognizing files it created in previous turns
-    //
-    // Paths are normalized to ensure consistency with existingFiles Set format.
+    // - Duplicate file creation (same files recreated 3-4 times in setup tasks)
+    // - generateFileTree returning null (LLM doesn't see existing files)
     const newFilePaths = files
       .filter(f => f.actionType === 'create' || f.actionType === 'edit')
       .map(f => normalizeToCodebasePath(f.path, codebaseRel).normalized);
     
-    let updatedProjectCodeContext = state.projectCodeContext;
+    let updatedProjectCodeContext = earlyUpdatedProjectCodeContext;
     
     if (newFilePaths.length > 0) {
-      const existingPaths = state.projectCodeContext?.filePaths || [];
+      const existingPaths = earlyUpdatedProjectCodeContext?.filePaths || [];
       const combinedPaths = Array.from(new Set([...existingPaths, ...newFilePaths]));
       
-      updatedProjectCodeContext = state.projectCodeContext ? {
-        ...state.projectCodeContext,
+      updatedProjectCodeContext = earlyUpdatedProjectCodeContext ? {
+        ...earlyUpdatedProjectCodeContext,
         filePaths: combinedPaths
       } : {
         source: 'codeGen' as const,
@@ -669,9 +686,10 @@ export async function codeGen(
         files: [],
         stats: { filesLoaded: combinedPaths.length, estimatedTokens: 0 }
       };
-      
     }
     
+    console.log(`📊 [CodeGen] projectCodeContext update: early=${earlyUpdatedProjectCodeContext?.filePaths?.length ?? 0}, registryFiles=${newFilePaths.length}, final=${updatedProjectCodeContext?.filePaths?.length ?? 0}`);
+
     // ✅ CRITICAL: Only mark done if LLM explicitly output <done>true</done>
     // Use explicitDone from streaming pipeline (detected by SpecialTagTransformer)
     // Previously: done = toolCalls.length === 0 (caused premature completion on truncated responses)
