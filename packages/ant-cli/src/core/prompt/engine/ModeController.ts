@@ -156,12 +156,12 @@ export class ModeController {
       }
     }
     
-    // ✅ Verification, testgen, doc, and error tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
+    // ✅ Verification, testgen, doc tasks skip design context injections (designDoc, prdSpec, uiDoc).
+    // Error tasks allow design-doc injection so spec-driven designDoc can pass through.
     const isVerification = taskType === 'verification';
     const isTestgen = taskType === 'testgen';
     const isDoc = taskType === 'doc';
-    const isError = taskType === 'error';
-    const skipDesignContext = isVerification || isTestgen || isDoc || isError;
+    const skipDesignContext = isVerification || isTestgen || isDoc;
     const detectedEnv = (context as any).detectedEnvironment as string | undefined;
 
     // ✅ Common injections (used by ALL jobs - code, design, learn)
