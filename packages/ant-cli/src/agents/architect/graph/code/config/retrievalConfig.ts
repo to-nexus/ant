@@ -24,6 +24,20 @@ export const RETRIEVAL_CONFIG = {
    * are loaded with FULL content (no truncation), selected by relevance.
    */
   INTEGRATION_TOTAL_MAX: 30,
+
+  /**
+   * Maximum total characters for all file content in projectCodeContext.
+   * 200K chars ≈ ~70K tokens at 2.8 chars/token ratio.
+   * Files exceeding this cumulative limit are excluded from content loading
+   * (paths still retained). Acts as a safety net alongside file-count limits.
+   */
+  MAX_CONTEXT_CHARS: 200_000,
+
+  /**
+   * Maximum lines per individual file. Files larger than this are truncated
+   * to the first MAX_FILE_LINES lines when loaded into projectCodeContext.
+   */
+  MAX_FILE_LINES: 500,
   
   /**
    * Calculate semantic quota based on already-loaded file count.
