@@ -89,15 +89,17 @@ export async function buildPlanPrompt(
 
   const unknownPackages = state.designDocUnknownPackages;
   if (unknownPackages && unknownPackages.length > 0) {
-    prompt += '\n\n────────────────────────────────────────────────────────────────────────────────\n';
-    prompt += '## Design-Prescribed Dependencies\n\n';
-    prompt += 'The design document mandates the following packages. When your task requires\n';
-    prompt += 'functionality these packages provide, you MUST discover their API via tools and\n';
-    prompt += 'include them in `prescribedPackages`. Do NOT substitute with well-known alternatives.\n\n';
-    for (const pkg of unknownPackages) {
-      prompt += `- \`${pkg}\`\n`;
-    }
-    console.log(`📦 [Plan] Injected ${unknownPackages.length} design-prescribed dependencies from decompose into plan prompt`);
+    const prescribedSection =
+      '────────────────────────────────────────────────────────────────────────────────\n' +
+      '## MANDATORY: Design-Prescribed Dependencies\n\n' +
+      'These private packages are already installed in go.mod. They REPLACE well-known alternatives.\n' +
+      'For EVERY file you plan to create, check if any of these packages should be imported.\n' +
+      'If a package provides relevant functionality, you MUST discover its API via tools\n' +
+      'and include it in `prescribedPackages`. Do NOT substitute with public alternatives.\n\n' +
+      unknownPackages.map(pkg => `- \`${pkg}\``).join('\n') + '\n' +
+      '────────────────────────────────────────────────────────────────────────────────\n\n';
+    prompt = prescribedSection + prompt;
+    console.log(`📦 [Plan] Injected ${unknownPackages.length} design-prescribed dependencies at TOP of plan prompt`);
   }
 
   return prompt;
