@@ -19,6 +19,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
+import { generateFileOutline } from "../../../../../../core/utils/fileOutline";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -103,18 +104,17 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     detectionReportProfile: state.detectionReport?.profile,
   };
   
-  // ✅ Verification and error tasks skip designDoc entirely (irrelevant to build/runtime fixes)
-  const isLightContextTask = state.currentTask.type === 'verification'
-    || state.currentTask.type === 'error';
+  const isVerificationTask = state.currentTask.type === 'verification';
+  const isErrorTask = state.currentTask.type === 'error';
   
   // ✅ Select design doc based on task.packages (split injection)
   // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
   // If missing, fall back to state.design but warn — this indicates a decompose bug.
   let designDocForTask: string | undefined;
   
-  if (isLightContextTask) {
+  if (isVerificationTask || isErrorTask) {
     designDocForTask = undefined;
-    console.log(`📄 [CodeGen] ${state.currentTask.type} task — skipping designDoc injection`);
+    console.log(`📄 [CodeGen] ${state.currentTask.type} task — skipping designDoc (architecture) injection`);
   } else if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
     // Package-based split injection (fe, fe-*, be, be-*, shared)
     designDocForTask = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
@@ -126,15 +126,33 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     console.warn(`   task.id=${state.currentTask?.id}, task.packages=${JSON.stringify(state.currentTask?.packages)}, hasDesignDocs=${!!state.designDocs}`);
     designDocForTask = state.design;
   }
+
+  // For error tasks with a selected spec doc, inject the spec as the "designDoc".
+  // Follows the same pattern as Plan's resolveDesignDoc() spec branch.
+  if (isErrorTask && state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
+    const specContent = state.specDocs[state.selectedSpec];
+    const parts: string[] = [];
+    parts.push(`# Feature Specification (Primary)\n\n${specContent}`);
+    if (state.designDocs?.apiContracts) {
+      for (const [name, content] of Object.entries(state.designDocs.apiContracts)) {
+        parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
+      }
+    }
+    designDocForTask = condenseSpecDoc(
+      parts.join('\n\n────────────────────────────────────────\n\n'),
+      state.selectedSpec,
+    );
+    console.log(`📋 [CodeGen] Error task with spec "${state.selectedSpec}" — injecting specDoc (${designDocForTask.length} chars)`);
+  }
   
   const promptResult = await promptEngine.buildExecutePrompt(
     'code',
     contextWithProfile,
     {
-      directive: isLightContextTask ? undefined : state.directive,
+      directive: isVerificationTask ? undefined : state.directive,
       designDoc: designDocForTask,
-      prdSpec: isLightContextTask ? undefined : state.prd,
-      uiDoc: isLightContextTask ? undefined : uiDocForTask,
+      prdSpec: (isVerificationTask || isErrorTask) ? undefined : state.prd,
+      uiDoc: (isVerificationTask || isErrorTask) ? undefined : uiDocForTask,
       projectCodeContext: codeGenProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
@@ -174,8 +192,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // Block 2: Project Context (CACHED - changes per task)
   // Verification tasks skip prdSpec and designDoc (irrelevant to build checks)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const foundationContract = isLightContextTask ? null : await buildFoundationContract(state);
-  const schemaAnchor = isLightContextTask ? null : await buildSchemaAnchor(state);
+  const foundationContract = isVerificationTask ? null : await buildFoundationContract(state);
+  const schemaAnchor = isVerificationTask ? null : await buildSchemaAnchor(state);
 
   const projectContextParts = [
     composed.injections,
@@ -1078,4 +1096,32 @@ function extractTableSchemas(sql: string): string[] {
   }
 
   return results;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Spec Document Condensation
+// For large spec docs, replace full content with a heading-based TOC
+// and instruct the LLM to read specific sections via read_file.
+// Reuses generateFileOutline() from core/utils/fileOutline.ts.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const SPEC_CONDENSE_THRESHOLD = 30_000; // ~10.7K tokens at 2.8 ratio
+
+function condenseSpecDoc(specContent: string, specFilename: string): string {
+  if (specContent.length <= SPEC_CONDENSE_THRESHOLD) return specContent;
+
+  const specPath = `outputs/design/${specFilename}`;
+  const outline = generateFileOutline(specContent, specPath);
+  const lineCount = specContent.split('\n').length;
+
+  console.log(`📦 [CodeGen] Condensing spec doc "${specFilename}": ${specContent.length.toLocaleString()} chars → outline (${lineCount} lines)`);
+
+  return [
+    `# Spec Document: ${specFilename} (${lineCount} lines, condensed)`,
+    '',
+    '> Full content exceeds token budget. Section outline below.',
+    `> Use read_file("${specPath}", startLine=N, endLine=M) to read specific sections.`,
+    '',
+    outline || '(no headings found)',
+  ].join('\n');
 }
