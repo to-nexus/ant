@@ -23,6 +23,8 @@ export interface TokenBudgetConfig {
   maxTokens: number;           // 최대 허용 토큰 (Anthropic limit: 200K)
   safetyMargin: number;         // 안전 마진 (기본: 10%)
   warningThreshold: number;     // 경고 임계값 (기본: 80%)
+  toolOverheadTokens: number;   // Tool definitions overhead (not in messages)
+  perMessageOverhead: number;   // Per-message format overhead (role markers, etc.)
   areaBudgets: TokenAreaBudgets;
 }
 
@@ -32,6 +34,7 @@ export interface TokenEstimation {
     systemPrompt: number;
     conversationHistory: number;
     currentMessage: number;
+    overhead: number;
   };
   isOverBudget: boolean;
   isNearLimit: boolean;
@@ -46,6 +49,8 @@ export class TokenBudgetManager {
       maxTokens: config?.maxTokens || 200000,  // Anthropic limit
       safetyMargin: config?.safetyMargin || 0.10,  // 10% margin
       warningThreshold: config?.warningThreshold || 0.80,  // 80% threshold
+      toolOverheadTokens: config?.toolOverheadTokens || 2000,  // ~7-8 tools × ~250 tokens each
+      perMessageOverhead: config?.perMessageOverhead || 10,  // role markers, separators
       areaBudgets: config?.areaBudgets || {
         systemPrompt: 30000,        // ~15% — base.md + rules.md + profile
         projectContext: 30000,      // ~15% — PRD, design doc, codebase context
@@ -66,11 +71,13 @@ export class TokenBudgetManager {
   
   /**
    * 문자열의 토큰 수 추정
-   * 보수적 추정: 1 token ≈ 3.5 chars (실제는 ~4, 안전하게 3.5 사용)
+   * Conservative: 1 token ≈ 2.8 chars for code/markdown mixed content.
+   * Measured from actual Anthropic API: 410K chars → 210K tokens ≈ 1.95 ratio,
+   * but that includes API overhead. 2.8 balances accuracy with avoiding false alarms.
    */
   estimateTokens(text: string): number {
     if (!text) return 0;
-    return Math.ceil(text.length / 3.5);
+    return Math.ceil(text.length / 2.8);
   }
   
   /**
@@ -95,11 +102,9 @@ export class TokenBudgetManager {
       if (block.type === 'text' && block.text) {
         total += this.estimateTokens(block.text);
       } else if (block.type === 'tool_use') {
-        // tool_use: name + input (JSON)
         total += this.estimateTokens(block.name || '');
         total += this.estimateTokens(JSON.stringify(block.input || {}));
       } else if (block.type === 'tool_result') {
-        // tool_result: content (can be very large!)
         total += this.estimateTokens(block.content || '');
       }
     }
@@ -122,24 +127,23 @@ export class TokenBudgetManager {
     
     // Rest are conversation history
     if (messages.length > 1) {
-      // Last message is current (if it's a continuation)
       const lastMsg = messages[messages.length - 1];
       if (lastMsg.role === 'user') {
         currentMessage = this.estimateMessageContent(lastMsg.content);
       }
       
-      // Middle messages are history
       for (let i = 1; i < messages.length - 1; i++) {
         conversationHistory += this.estimateMessageContent(messages[i].content);
       }
       
-      // If last message is assistant, it's also history
       if (lastMsg.role === 'assistant') {
         conversationHistory += this.estimateMessageContent(lastMsg.content);
       }
     }
     
-    const totalTokens = systemPrompt + conversationHistory + currentMessage;
+    const overhead = this.config.toolOverheadTokens
+      + (messages.length * this.config.perMessageOverhead);
+    const totalTokens = systemPrompt + conversationHistory + currentMessage + overhead;
     const effectiveLimit = this.config.maxTokens * (1 - this.config.safetyMargin);
     const warningLimit = this.config.maxTokens * this.config.warningThreshold;
     
@@ -149,6 +153,7 @@ export class TokenBudgetManager {
         systemPrompt,
         conversationHistory,
         currentMessage,
+        overhead,
       },
       isOverBudget: totalTokens > effectiveLimit,
       isNearLimit: totalTokens > warningLimit,
@@ -166,6 +171,7 @@ export class TokenBudgetManager {
     console.log(`   System Prompt: ${estimation.breakdown.systemPrompt.toLocaleString()} tokens`);
     console.log(`   Conversation History: ${estimation.breakdown.conversationHistory.toLocaleString()} tokens`);
     console.log(`   Current Message: ${estimation.breakdown.currentMessage.toLocaleString()} tokens`);
+    console.log(`   Overhead (tools+format): ${estimation.breakdown.overhead.toLocaleString()} tokens`);
     console.log(`   Total: ${estimation.totalTokens.toLocaleString()} / ${this.config.maxTokens.toLocaleString()} tokens (${estimation.budgetUsagePercent.toFixed(1)}%)`);
     
     if (estimation.isOverBudget) {
@@ -189,4 +195,3 @@ export class TokenBudgetManager {
     return estimation;
   }
 }
-

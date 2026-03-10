@@ -38,14 +38,15 @@ export async function loadSemanticFiles(
   git: GitPort,
   extractFilesFromCode: (code: string) => Array<{path: string; content: string}>,
   excludePaths: string[] = [],
-  isIntegration: boolean = false
+  isIntegration: boolean = false,
+  overrideTotalMax?: number
 ): Promise<SemanticSearchResult> {
   const chatAPI = getChatAPIClient();
   
   if (keywords.length === 0) return { files: [], lessons: [] };
   
-  const semanticQuota = RETRIEVAL_CONFIG.getSemanticQuota(excludePaths.length, isIntegration);
-  const totalMax = isIntegration ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX;
+  const totalMax = overrideTotalMax ?? (isIntegration ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX);
+  const semanticQuota = Math.max(0, totalMax - excludePaths.length);
   
   if (semanticQuota === 0) {
     console.log(`   ⚠️  Semantic search skipped: quota exhausted (${excludePaths.length}/${totalMax} files already loaded)`);

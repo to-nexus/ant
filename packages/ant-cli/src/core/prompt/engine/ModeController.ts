@@ -114,7 +114,8 @@ export class ModeController {
     const llmParams = this.getLLMParams(job, phase, mode);
     
     // Feature flags
-    const skipHeavyContext = isVerification || isTestgen || isDoc;
+    const isError = taskType === 'error';
+    const skipHeavyContext = isVerification || isTestgen || isDoc || isError;
     const flags = {
       includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !skipHeavyContext,
       includeProfiles: phase === 'execute' && job === 'code',
@@ -155,11 +156,12 @@ export class ModeController {
       }
     }
     
-    // ✅ Verification, testgen, and doc tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
+    // ✅ Verification, testgen, doc, and error tasks skip heavy context injections (designDoc, prdSpec, uiDoc)
     const isVerification = taskType === 'verification';
     const isTestgen = taskType === 'testgen';
     const isDoc = taskType === 'doc';
-    const skipDesignContext = isVerification || isTestgen || isDoc;
+    const isError = taskType === 'error';
+    const skipDesignContext = isVerification || isTestgen || isDoc || isError;
     const detectedEnv = (context as any).detectedEnvironment as string | undefined;
 
     // ✅ Common injections (used by ALL jobs - code, design, learn)
