@@ -191,7 +191,7 @@ For each dependency, two decisions must be made in order: (1) local vs external,
 - All `go` commands MUST use `working_directory: "codebase"`. The default working directory is the feature root (parent of `codebase/`), where no `go.mod` exists. Do NOT use `cd codebase &&` — use the `working_directory` parameter.
 - `go get` requires `go.mod` to exist in `codebase/`. Create `go.mod` first (via `<file>` tag), THEN run `go get` for packages with unknown versions.
 
-#### Unknown Package API Discovery
+#### Design-Prescribed Dependency API Discovery
 
 **Principle**: If the design document specifies a dependency, the execution environment is expected to have the necessary access credentials. A package appearing in the design document is evidence that the user has — or intends to have — access to it. Do NOT preemptively assume authentication will fail.
 

@@ -146,6 +146,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       checkpointInterval: config?.checkpointInterval ?? 60_000,
       testgenBarrier: config?.testgenBarrier,
       docBarrier: config?.docBarrier,
+      featureBarrier: config?.featureBarrier,
     };
 
     console.log(`[Orchestrator] Initialized with maxWorkers=${this.maxWorkers}, queueSize=${taskQueue.size()}, previouslyCompleted=${this.completedTasks.length}`);
@@ -436,6 +437,14 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
+    // Feature barrier: feature tasks (priority >= 300) wait until all
+    // foundation tasks (priority 200-299) complete.
+    const isFoundationPriority = (t: T) => t.priority >= 200 && t.priority <= 299;
+    const hasPreFeatureWork = this.config.featureBarrier && (
+      Array.from(this.runningTasks.values()).some(isFoundationPriority) ||
+      this.taskQueue.getAll().some(isFoundationPriority)
+    );
+
     // Testgen barrier: testgen tasks wait until all feature/setup tasks complete.
     const hasPreTestgenWork = this.config.testgenBarrier && (
       Array.from(this.runningTasks.values()).some(t => t.type === 'feature' || t.type === 'setup') ||
@@ -451,6 +460,11 @@ export class TaskOrchestrator<T extends BaseTask> {
     for (const task of this.taskQueue.getAll()) {
       // Exclusive task acts as a barrier
       if (task.exclusive) break;
+
+      // Feature barrier: don't assign feature/integration tasks while foundation work exists
+      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'testgen' && task.type !== 'doc') {
+        break;
+      }
 
       // Testgen barrier: don't assign testgen tasks while feature/setup work exists
       if (hasPreTestgenWork && task.type === 'testgen') {
@@ -512,6 +526,13 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
+    // Feature barrier (same logic as findAndAssignNonConflictingTask)
+    const isFoundationPriority = (t: T) => t.priority >= 200 && t.priority <= 299;
+    const hasPreFeatureWork = this.config.featureBarrier && (
+      Array.from(this.runningTasks.values()).some(isFoundationPriority) ||
+      this.taskQueue.getAll().some(isFoundationPriority)
+    );
+
     // Testgen barrier (same logic as findAndAssignNonConflictingTask)
     const hasPreTestgenWork = this.config.testgenBarrier && (
       Array.from(this.runningTasks.values()).some(t => t.type === 'feature' || t.type === 'setup') ||
@@ -527,6 +548,7 @@ export class TaskOrchestrator<T extends BaseTask> {
     let potentialTasks = 0;
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
+      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'testgen' && task.type !== 'doc') break;
       if (hasPreTestgenWork && task.type === 'testgen') break;
       if (hasPreDocWork && task.type === 'doc') break;
       if (!task.parallelGroup) {

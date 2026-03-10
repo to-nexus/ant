@@ -526,6 +526,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       checkpointInterval: 60000,
       testgenBarrier: true,
       docBarrier: true,
+      featureBarrier: true,
     },
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );
@@ -842,7 +843,7 @@ export function buildCodeGraph() {
       // Reference Projects (for cross-project tool calling)
       referenceRequests: null as any,
       
-      // Unknown Packages (extracted by decompose LLM, injected into plan prompts)
+      // Design-prescribed dependencies (extracted by decompose LLM, injected into plan prompts)
       designDocUnknownPackages: null as any,
       
       // Results

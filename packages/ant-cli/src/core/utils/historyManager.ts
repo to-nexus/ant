@@ -472,10 +472,14 @@ function buildSummaryText(facts: ExtractedFact, turnCount: number): string {
   sections.push('');
 
   if (facts.filesWritten.length > 0) {
-    sections.push(`Files created: ${facts.filesWritten.join(', ')}`);
+    for (const f of facts.filesWritten) {
+      sections.push(`[file written to disk: ${f}]`);
+    }
   }
   if (facts.filesEdited.length > 0) {
-    sections.push(`Files edited: ${facts.filesEdited.join(', ')}`);
+    for (const f of facts.filesEdited) {
+      sections.push(`[file edited: ${f}]`);
+    }
   }
   if (facts.filesRead.length > 0) {
     sections.push(`Files read: ${facts.filesRead.join(', ')}`);
@@ -502,7 +506,7 @@ function buildSummaryText(facts: ExtractedFact, turnCount: number): string {
   }
 
   sections.push('');
-  sections.push('Note: File contents from compacted turns are no longer available.');
+  sections.push('Note: File contents from compacted turns are no longer available. Files marked [file written to disk: ...] are already saved — do NOT regenerate.');
 
   return sections.join('\n');
 }

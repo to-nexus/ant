@@ -686,16 +686,43 @@ export async function codeGen(
     if (toolCalls.length === 0 && !explicitDone) {
       console.warn(`⚠️  [CodeGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
       
-      // ✅ FIX: Preserve LLM response in conversationHistory to prevent amnesia
+      // Preserve LLM response in conversationHistory to prevent amnesia.
       // Without this, codeGen→codeGen loop loses all memory of previous response,
       // causing the LLM to repeat the same work indefinitely.
-      const cleanedResponse = cleanFileContentFromResponse(textResponse);
+      let cleanedResponse = cleanFileContentFromResponse(textResponse);
+      
+      // Defensive: if textResponse cleaning yields empty but files were streamed,
+      // synthesize markers so the LLM knows which files exist on disk.
+      const streamedFilePaths = finalizeResult?.streamedFiles || [];
+      if (!cleanedResponse && streamedFilePaths.length > 0) {
+        cleanedResponse = streamedFilePaths
+          .map(fp => `[file written to disk: ${fp}]`)
+          .join('\n');
+      }
       
       if (cleanedResponse) {
+        // Build re-entry message with specific file list so the LLM doesn't
+        // have to search through history to find which files already exist.
+        const reentryParts = [
+          'Your previous response did not include <done>true</done>.',
+        ];
+        if (streamedFilePaths.length > 0) {
+          reentryParts.push(
+            '',
+            `The following ${streamedFilePaths.length} file(s) are already saved to disk — do NOT recreate them:`,
+            ...streamedFilePaths.map(fp => `  - ${fp}`),
+          );
+        }
+        reentryParts.push(
+          '',
+          'If you have completed all work for this task, output <done>true</done> now.',
+          'If there is remaining work, continue with NEW files only.',
+        );
+
         const newHistory = [
           ...(state.conversationHistory || []),
           { role: 'assistant' as const, content: cleanedResponse },
-          { role: 'user' as const, content: 'Your previous response did not include <done>true</done>. If you have completed all work for this task, output <done>true</done> now. If there is remaining work, continue. Files marked [file written to disk: ...] are already saved — do NOT regenerate them.' },
+          { role: 'user' as const, content: reentryParts.join('\n') },
         ];
         
         return {

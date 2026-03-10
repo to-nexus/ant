@@ -90,14 +90,14 @@ export async function buildPlanPrompt(
   const unknownPackages = state.designDocUnknownPackages;
   if (unknownPackages && unknownPackages.length > 0) {
     prompt += '\n\n────────────────────────────────────────────────────────────────────────────────\n';
-    prompt += '## Design Document Unknown Packages\n\n';
-    prompt += 'The following packages were identified as unknown (not in LLM training data)\n';
-    prompt += 'from the design document. For each one relevant to YOUR task, discover its API\n';
-    prompt += 'via tools and include it in `prescribedPackages`.\n\n';
+    prompt += '## Design-Prescribed Dependencies\n\n';
+    prompt += 'The design document mandates the following packages. When your task requires\n';
+    prompt += 'functionality these packages provide, you MUST discover their API via tools and\n';
+    prompt += 'include them in `prescribedPackages`. Do NOT substitute with well-known alternatives.\n\n';
     for (const pkg of unknownPackages) {
       prompt += `- \`${pkg}\`\n`;
     }
-    console.log(`📦 [Plan] Injected ${unknownPackages.length} unknown packages from decompose into plan prompt`);
+    console.log(`📦 [Plan] Injected ${unknownPackages.length} design-prescribed dependencies from decompose into plan prompt`);
   }
 
   return prompt;
@@ -397,7 +397,7 @@ function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): vo
       !prescribedPaths.has(dp) && !prescribed.some((pp: any) => dp.startsWith(pp.package + '/') || pp.package.startsWith(dp + '/'))
     );
     if (missing.length > 0) {
-      console.warn(`⚠️  [Plan] Unknown packages NOT in prescribedPackages: ${missing.join(', ')}`);
+      console.warn(`⚠️  [Plan] Design-prescribed dependencies NOT in prescribedPackages: ${missing.join(', ')}`);
     }
   }
 }

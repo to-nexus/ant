@@ -55,9 +55,9 @@
 
 **Constraint**: Before writing code that imports a design-document-prescribed package, verify it exists in `go.mod`. If missing, add the module to the `require` block via `edit_file`. If the exact version is unknown, add the import in the `.go` file — the verification phase's `go mod tidy` resolves missing modules from imports automatically.
 
-### Unknown Package API Discovery
+### Design-Prescribed Dependency API Discovery
 
-**Principle**: If a package's API is not in your training data, observe it before writing code — do NOT guess function names or type signatures.
+**Principle**: If a design-prescribed dependency's API is not in your training data, observe it before writing code — do NOT guess function names or type signatures.
 
 **Protocol** (via `run_command`):
 

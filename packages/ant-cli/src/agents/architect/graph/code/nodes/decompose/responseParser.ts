@@ -127,22 +127,24 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
 
-    // ✅ Extract unknown packages from <unknownPackages> tag (OPTIONAL)
+    // Extract design-prescribed dependencies from <prescribedDependencies> tag (OPTIONAL)
+    // Also accepts legacy <unknownPackages> tag for backward compatibility with cached sessions.
     let unknownPackages: string[] | undefined;
-    const unknownPkgsMatch = rawResponse.match(/<unknownPackages>\s*([\s\S]*?)\s*<\/unknownPackages>/);
-    if (unknownPkgsMatch) {
+    const prescribedDepsMatch = rawResponse.match(/<prescribedDependencies>\s*([\s\S]*?)\s*<\/prescribedDependencies>/)
+      || rawResponse.match(/<unknownPackages>\s*([\s\S]*?)\s*<\/unknownPackages>/);
+    if (prescribedDepsMatch) {
       try {
-        const parsed = JSON.parse(sanitizeJsonControlChars(unknownPkgsMatch[1]));
+        const parsed = JSON.parse(sanitizeJsonControlChars(prescribedDepsMatch[1]));
         if (Array.isArray(parsed)) {
           unknownPackages = parsed.length > 0 ? parsed.filter((p: unknown) => typeof p === 'string' && p.length > 0) : undefined;
           if (unknownPackages && unknownPackages.length > 0) {
-            console.log(`📦 [Decompose] Unknown packages extracted: ${unknownPackages.join(', ')}`);
+            console.log(`📦 [Decompose] Design-prescribed dependencies extracted: ${unknownPackages.join(', ')}`);
           }
         } else {
-          console.warn('⚠️  [Decompose] <unknownPackages> tag content is not an array, ignoring');
+          console.warn('⚠️  [Decompose] <prescribedDependencies> tag content is not an array, ignoring');
         }
       } catch (error) {
-        console.warn('⚠️  [Decompose] Failed to parse <unknownPackages> tag content:', error);
+        console.warn('⚠️  [Decompose] Failed to parse <prescribedDependencies> tag content:', error);
       }
     }
 

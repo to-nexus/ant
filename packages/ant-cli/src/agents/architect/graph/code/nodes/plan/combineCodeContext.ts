@@ -231,9 +231,13 @@ export async function combineCodeContext(
     return { context: projectCodeContext, lessons: [] };
   }
 
-  // Determine if this is an integration exclusive task (higher file quota)
-  const isIntegrationExclusive = state.currentTask?.exclusive === true
-    && state.currentTask?.type !== 'verification';
+  // Determine if this task needs an extended file quota (integration exclusive
+  // tasks and foundation tasks both need broader codebase visibility).
+  const isIntegrationExclusive = (state.currentTask?.exclusive === true
+      && state.currentTask?.type !== 'verification')
+    || (state.currentTask?.priority != null
+      && state.currentTask.priority >= 200
+      && state.currentTask.priority <= 299);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // NORMAL TASK PATH: Three-tier RAG search
