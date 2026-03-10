@@ -80,9 +80,9 @@ project/
 
 ---
 
-### Unknown Package API Discovery
+### Design-Prescribed Dependency API Discovery
 
-**Principle**: If a package's API is not in your training data, observe it before writing code — do NOT guess function names or type signatures.
+**Principle**: If a design-prescribed dependency's API is not in your training data, observe it before writing code — do NOT guess function names or type signatures.
 
 **Protocol** (via `read_file` — index then drill-down):
 

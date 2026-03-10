@@ -82,7 +82,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.referenceRequests = (session.state as any).referenceRequests;
         }
         
-        // ✅ Restore unknown packages (for plan prompt injection)
+        // Restore design-prescribed dependencies (for plan prompt injection)
         if ((session.state as any).designDocUnknownPackages) {
           initial.designDocUnknownPackages = (session.state as any).designDocUnknownPackages;
         }

@@ -696,7 +696,7 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
   if (!otherWorkerFiles || otherWorkerFiles.length === 0) return null;
 
   const completedTasks = state.completedTasksDetails || [];
-  const foundationTasks = completedTasks.filter(t => t.priority >= 150 && t.priority <= 199);
+  const foundationTasks = completedTasks.filter(t => t.priority >= 200 && t.priority <= 299);
   if (foundationTasks.length === 0) return null;
 
   const foundationTaskNames = new Set(foundationTasks.map(t => t.name));

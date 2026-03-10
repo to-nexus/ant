@@ -165,7 +165,7 @@ existing modules, design specs, dependencies, etc.)
 - ❌ DO NOT create new module if similar functionality already exists
 - ✅ If similar module exists, use MODIFY instead of CREATE
 
-**Constraint**: Files created by a prior exclusive task (e.g., shared foundation) are a stable contract. Do NOT plan MODIFY on them. If the established types or interfaces are insufficient for your needs, define supplementary types within YOUR module's scope.
+**Constraint**: Files created by a prior foundation task (priority 200-299) are a stable contract. Do NOT plan MODIFY on them. If the established types or interfaces are insufficient for your needs, define supplementary types within YOUR module's scope.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🔗 CROSS-BOUNDARY DEPENDENCIES (Parallel Execution)
@@ -242,22 +242,22 @@ In your `<analysis>` section, cover:
 
 3. **📦 DEPENDENCY ANALYSIS**
 
-**Observation target**: Does the design document reference specific packages or libraries? Are any of them unknown to your training data (organization-internal, private, unfamiliar)?
+**Observation target**: Does the design document reference specific packages or libraries that are NOT part of the standard library and NOT widely-known open-source packages? These are **design-prescribed dependencies** — packages the design document mandates for this project.
 
 **Protocol**:
 1. Identify packages referenced in the design document (import statements, backtick-quoted paths, code examples)
-2. Classify each: well-known (in training data) vs unknown (private, org-internal, unfamiliar)
-3. For unknown packages present in the dependency manifest, discover their exported API via tools before finalizing the plan
-4. For unknown packages NOT in the manifest, attempt installation via `run_command`, then discover the API
+2. Classify each: well-known (in training data) vs design-prescribed (organization-internal, private, project-specific)
+3. For design-prescribed dependencies present in the dependency manifest, discover their exported API via tools before finalizing the plan
+4. For design-prescribed dependencies NOT in the manifest, attempt installation via `run_command`, then discover the API
 5. Record every discovered package in `prescribedPackages` with concrete API details and map to modules via `usedBy`
 
-**Constraint**: Design-prescribed packages MUST appear in `prescribedPackages` and be used by the modules listed in `usedBy`. Do NOT substitute with standard library or alternative packages.
+**Constraint**: Design-prescribed dependencies MUST appear in `prescribedPackages` and be used by the modules listed in `usedBy`. Do NOT substitute with standard library or alternative packages.
 
-**Constraint**: Do NOT assume or guess unknown package APIs from naming conventions. Observe the actual exported API via tools first.
+**Constraint**: Do NOT assume or guess design-prescribed dependency APIs from naming conventions. Observe the actual exported API via tools first.
 
 **Constraint**: If installation fails, use the design document's code examples and usage patterns as the API reference — include the prescribed import paths in `prescribedPackages` so CodeGen writes the correct imports.
 
-⚠️ **Blind spot**: The instinct is to skip unknown packages and use familiar alternatives — especially when they are absent from the dependency manifest. Design-prescribed packages exist for a reason. Attempt installation first; if that fails, the design document's own code examples are the authoritative API reference.
+⚠️ **Blind spot**: The instinct is to skip design-prescribed dependencies and use familiar alternatives — especially when they are absent from the dependency manifest. Design-prescribed packages exist for a reason. Attempt installation first; if that fails, the design document's own code examples are the authoritative API reference.
 {{/unless}}
 
 ────────────────────────────────────────────────────────────────────────────────

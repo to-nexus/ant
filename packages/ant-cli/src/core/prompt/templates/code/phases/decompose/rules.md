@@ -19,7 +19,7 @@ First, analyze step by step (think through):
 - Does testgen apply? (setup task exists OR codebase has test files → MUST include testgen tasks)
 - Does doc apply? (setup task exists OR 3+ feature tasks → MUST include doc tasks)
 
-Then output the results in order: `<profile>`, `<tasks>`, `<references>`, `<unknownPackages>`.
+Then output the results in order: `<profile>`, `<tasks>`, `<references>`, `<prescribedDependencies>`.
 
 ---
 
@@ -212,24 +212,41 @@ across packages.
 Without explicit version specification in root Setup, each may pick different versions
 of the same dependency.
 
-### Unknown Package Extraction
+### Design-Document-Prescribed Package Paths
 
-**Observation target**: Does the design document reference packages whose API is NOT in your training data (organization-internal, private, unfamiliar)?
+**Observation target**: Does the design document contain literal import paths or
+module declarations for organization-internal or private packages?
+
+**Constraint**: When the design document contains explicit import paths for packages
+whose version is NOT known from public registries or training data, the Setup task
+description MUST include the VERBATIM fully-qualified module path as it appears in
+the design document. Do NOT abbreviate, paraphrase, or reconstruct the path.
+
+**Constraint**: If the design document references subpackages of a single module
+(e.g., `org/lib/sub-a`, `org/lib/sub-b`), the Setup description MUST include the
+base module path that encompasses all subpackages — not each subpackage individually.
+
+⚠️ **Blind spot**: Setup descriptions that mention only the short name or alias of
+a private package (without the fully-qualified module path) force the Setup executor
+to reconstruct the path — a frequent source of hallucinated module names. Include
+the full path so the executor can copy it directly into the install command.
+
+### Design-Prescribed Dependency Extraction
+
+**Observation target**: Does the design document reference packages that are NOT part of the language standard library and NOT widely-known open-source packages? These are **design-prescribed dependencies** — packages the design document mandates for this project (organization-internal repos, private packages, project-specific libraries).
 
 **Protocol**:
 1. Scan the design document for import paths, module declarations, backtick-quoted package references, and section headings that name packages
-2. For each package you do NOT recognize from training data, include its fully-qualified import path in the `<unknownPackages>` output
+2. For each design-prescribed dependency (not standard library, not widely-known open-source), include its fully-qualified import path in the `<prescribedDependencies>` output
 3. If only a shorthand is given (e.g., `packages/router`), reconstruct the full import path from context (e.g., nearby full-path references, module path prefix, or org prefix in the design document)
 
-**Constraint**: Include ONLY packages not in your training data. Do NOT include well-known open-source packages or standard library packages.
+**Constraint**: Include ONLY design-prescribed dependencies. Do NOT include well-known open-source packages or standard library packages.
 
 **Constraint**: Output the fully-qualified import path (e.g., `github.com/org/repo/sub/pkg`), not shorthand.
 
-**Constraint**: If the design document references subpackages of a single module, list each subpackage individually — the plan phase needs to know which specific subpackages to discover via tools.
+**Constraint**: List each subpackage individually — the plan phase needs to know which specific subpackages to discover via tools.
 
-**Constraint**: If no unknown packages exist, output an empty array `[]`.
-
-⚠️ **Blind spot**: The Setup task description MUST also include the base module path of unknown packages so the executor can install them directly. Do NOT use shorthand or alias — include the fully-qualified path verbatim.
+**Constraint**: If no design-prescribed dependencies exist, output an empty array `[]`.
 
 ---
 
@@ -355,7 +372,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 | **Shared schema types** | Are there domain types (models, entities, response DTOs, input structs) referenced by 2+ feature tasks? |
 | **Cross-boundary coordination** | Will 2+ feature tasks need atomic operations spanning multiple persistence boundaries? |
 
-**Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create a dedicated exclusive task (priority 200-299, after setup, before features) that defines ALL shared symbols for that scope.
+**Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create dedicated foundation tasks (priority 200-299, after setup, before features) following the Shared Foundation Splitting rules below. Foundation tasks complete before any feature task begins (enforced by a runtime barrier).
 
 **Constraint**: This task defines types, interfaces, response DTOs, and shared utility functions ONLY. It does NOT implement business logic, API handlers, or data access queries.
 
@@ -369,19 +386,46 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 ### Shared Foundation Splitting
 
+#### Step 1: Split by concern group
+
 **Observation target**: Does the shared foundation scope span more than one functional concern group?
 
-| Group | Principle |
-|-------|-----------|
-| **Declarations** | Symbols with no executable behavior (types, interfaces, constants, contracts) |
-| **Implementations** | Symbols with executable behavior (adapters, utilities, handlers) |
-| **Schema** | Persistence structure definitions (not runtime code) |
+| Group | Principle | Priority |
+|-------|-----------|----------|
+| **Declarations** | Symbols with no executable behavior (types, interfaces, constants, contracts) | 200 |
+| **Schema** | Persistence structure definitions (not runtime code) | 201 |
+| **Implementations** | Symbols with executable behavior (adapters, utilities, handlers) | 202 |
 
-**Constraint**: If the shared foundation scope spans 2+ groups from the table above, split into separate exclusive sub-tasks — one per group — at sequential priorities (200, 201, 202, ...). Each sub-task follows all other shared foundation rules. Later sub-tasks may import from earlier ones.
-
-**Constraint**: Do NOT split within a single group unless that group alone contains symbols with independent, complex behavioral implementations that would produce a plan too broad for a single execution cycle.
+**Constraint**: If the shared foundation scope spans 2+ groups from the table above, split into sub-tasks at the listed priorities. Each sub-task follows all other shared foundation rules. Later sub-tasks may import from earlier ones.
 
 ⚠️ **Blind spot**: Persistence structure definitions (migrations, DDL scripts) appear to be "just files" and are easily merged into a declarations task. They are persistence structure — a separate concern from runtime type declarations. If both exist, split them.
+
+#### Step 2: Split within a group by independent output scope
+
+**Observation target**: For each concern group from Step 1, count the number of independent output directory scopes.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Independent directories** | Does the group span multiple distinct output directories that share no files? Count them: `domain/` = 1, `repository/` = 2, `adapter/` = 3, `cache/` = 4, `ws/` = 5, etc. |
+| **Scope size** | Does the group define symbols across 3+ persistence boundaries or adapter types? |
+
+**Constraint**: When a single concern group spans 3+ independent output directory scopes, it MUST be split into sub-tasks — one per scope cluster — at the SAME priority as the group. Each sub-task receives a distinct `parallelGroup` (NOT `exclusive`).
+
+**Constraint**: Do NOT split a concern group into more than 4 sub-tasks. When many small scopes exist, cluster related scopes (e.g., all adapter and cache interfaces into one sub-task, all repository interfaces into another).
+
+**Constraint**: Do NOT split below the output-directory level. A single directory scope is the minimum foundation sub-task unit.
+
+⚠️ **Blind spot**: Declarations groups that define domain models + repository interfaces + adapter interfaces + cache interfaces span 4+ independent directories — this is ALWAYS above the 3-directory threshold and MUST be split. A single Declarations task covering ALL shared interfaces is the most common violation. Count the output directories before deciding.
+
+#### Inter-group and intra-group ordering
+
+**Principle**: Concern groups execute in priority order (Declarations 200 → Schema 201 → Implementations 202). Within each group, sub-tasks with different `parallelGroup` values execute in parallel.
+
+**Constraint — Declarations/Implementations sub-tasks use parallelGroup, NOT exclusive**: Sub-tasks within the Declarations group or the Implementations group MUST have `parallelGroup` (NOT `exclusive: true`). Use naming convention `"sf-<group>-<scope>"` (e.g., `"sf-decl-domain"`, `"sf-decl-repo"`, `"sf-impl-cache"`, `"sf-impl-adapter"`). ONLY the Schema group sub-task uses `exclusive: true`.
+
+**Constraint — inter-group barrier via Schema**: Between concern groups, the Schema group sub-task with `exclusive: true` naturally blocks until all Declarations sub-tasks complete, then blocks Implementations until Schema finishes. If Schema group does NOT exist: the first Implementations sub-task MUST be `exclusive: true` to serve as the inter-group barrier; remaining Implementations sub-tasks use `parallelGroup`.
+
+⚠️ **Blind spot**: Defaulting to `exclusive: true` for ALL foundation sub-tasks eliminates parallelism entirely — this defeats the purpose of splitting. Only Schema needs `exclusive` (as a barrier). Declarations and Implementations sub-tasks MUST use `parallelGroup`.
 
 ---
 
@@ -436,8 +480,13 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "testgen"` (single package) -> exclusive
 - `type: "testgen"` (multiple packages) -> distinct `parallelGroup` per package
 - `type: "doc"` -> always `exclusive: false`, distinct `parallelGroup` per task (root and each package)
+- **Shared foundation** (priority 200-299) -> see "Shared Foundation Splitting" section for `exclusive` vs `parallelGroup` rules. Schema sub-tasks are exclusive (inter-group barrier); other sub-tasks within the same concern group use distinct `parallelGroup` values.
 
 **Constraint**: Root setup (priority 100) establishes workspace configuration that subsequent tasks depend on — it MUST be exclusive. Package-level setup tasks (priority 101+) operate on independent directory scopes — assign `exclusive: false` with a distinct `parallelGroup` per package.
+
+**Constraint**: Shared foundation tasks (priority 200-299) always complete before any feature task (priority 300+) begins — enforced by a runtime barrier. Within the foundation, inter-group ordering uses an `exclusive` Schema sub-task as a barrier; intra-group parallelism uses distinct `parallelGroup` values. ONLY the Schema sub-task is `exclusive`; Declarations and Implementations sub-tasks MUST use `parallelGroup`.
+
+⚠️ **Blind spot**: Setting ALL foundation sub-tasks to `exclusive: true` is a common mistake. This eliminates all parallelism within the foundation and makes execution very slow. Only Schema needs `exclusive` — verify that Declarations and Implementations sub-tasks use `parallelGroup`.
 
 ⚠️ **Blind spot**: Package-level setup tasks with the SAME `parallelGroup` are serialized. Each package-level setup MUST have a DIFFERENT `parallelGroup`.
 
@@ -526,13 +575,13 @@ Output in this exact order:
 
 **Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
 
-**3. `<unknownPackages>` tag** (REQUIRED, even if empty):
+**3. `<prescribedDependencies>` tag** (REQUIRED, even if empty):
 
-<unknownPackages>
+<prescribedDependencies>
 ["github.com/org/repo/sub/pkg-a", "github.com/org/repo/sub/pkg-b"]
-</unknownPackages>
+</prescribedDependencies>
 
-**Constraint**: ALWAYS output `<unknownPackages>` tag, even if the array is empty. See "Unknown Package Extraction" section above for extraction rules.
+**Constraint**: ALWAYS output `<prescribedDependencies>` tag, even if the array is empty. See "Design-Prescribed Dependency Extraction" section above for extraction rules.
 
 **CRITICAL:**
 - Use XML tags directly, NOT inside markdown code blocks

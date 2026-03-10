@@ -85,7 +85,7 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 
 **Constraint**: Do NOT invent version numbers for packages you do not know. Use `"latest"` — the package manager resolves it correctly. Guessing a wrong version causes `pnpm install` failure.
 
-#### Unknown Package API Discovery
+#### Design-Prescribed Dependency API Discovery
 
 **Principle**: If the design document specifies a dependency, the execution environment is expected to have the necessary access credentials. A package appearing in the design document is evidence that the user has — or intends to have — access to it. Do NOT preemptively assume authentication will fail.
 
@@ -198,7 +198,7 @@ Configure as needed for project (Tailwind, ESLint, etc).
 ❌ Using npm workspaces instead of pnpm for monorepos
 ❌ Using `"*"` instead of `"workspace:*"` for monorepo package refs
 ❌ Using `"workspace:*"` for external packages not present in `pnpm-workspace.yaml` (same-org scope does NOT mean workspace-local)
-❌ Inventing version numbers for unknown packages (use `"latest"` — the package manager resolves it; a wrong guess causes install failure)
+❌ Inventing version numbers for design-prescribed packages (use `"latest"` — the package manager resolves it; a wrong guess causes install failure)
 ❌ Guessing function names or type signatures for unfamiliar packages (read `.d.ts` files from `node_modules` to observe the actual API first)
 ❌ Omitting private/organization packages from `package.json` based on assumptions about authentication (always include — the environment may have credentials configured)
 ❌ Running `pnpm` / `npm` commands without `working_directory: "codebase"` (default cwd is feature root, not codebase — `package.json` not found)
