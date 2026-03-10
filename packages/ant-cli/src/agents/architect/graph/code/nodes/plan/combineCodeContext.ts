@@ -239,6 +239,13 @@ export async function combineCodeContext(
       && state.currentTask.priority >= 200
       && state.currentTask.priority <= 299);
 
+  // Error tasks need fewer files — focus on error-related code only.
+  // Mirrors analyzer.ts ContextStrategy.maxFilesToRead = 5 for error tasks.
+  const isErrorTask = state.currentTask?.type === 'error';
+  const effectiveTotalMax = isErrorTask
+    ? Math.min(RETRIEVAL_CONFIG.TOTAL_MAX, 5)
+    : (isIntegrationExclusive ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX);
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // NORMAL TASK PATH: Three-tier RAG search
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -315,7 +322,8 @@ export async function combineCodeContext(
     git,
     extractFilesFromCode,
     excludePaths,
-    isIntegrationExclusive
+    isIntegrationExclusive,
+    effectiveTotalMax
   );
   
   const semanticFiles = semanticResult.files;
@@ -329,18 +337,45 @@ export async function combineCodeContext(
   const uniqueFiles = Array.from(
     new Map(allFiles.map(f => [f.path, f])).values()
   );
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Enforce character budget + per-file line limit
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let totalChars = 0;
+  const budgetedFiles: typeof uniqueFiles = [];
+  for (const file of uniqueFiles) {
+    // Per-file line truncation
+    if (file.content) {
+      const lines = file.content.split('\n');
+      if (lines.length > RETRIEVAL_CONFIG.MAX_FILE_LINES) {
+        file.content = lines.slice(0, RETRIEVAL_CONFIG.MAX_FILE_LINES).join('\n')
+          + `\n\n[... truncated at ${RETRIEVAL_CONFIG.MAX_FILE_LINES} lines (${lines.length} total)]`;
+        console.log(`   ✂️  [RAG] Truncated ${file.path}: ${lines.length} → ${RETRIEVAL_CONFIG.MAX_FILE_LINES} lines`);
+      }
+    }
+
+    const fileChars = file.content?.length || 0;
+    if (totalChars + fileChars > RETRIEVAL_CONFIG.MAX_CONTEXT_CHARS && budgetedFiles.length > 0) {
+      console.log(`   ⚠️  [RAG] Char budget reached (${totalChars.toLocaleString()}/${RETRIEVAL_CONFIG.MAX_CONTEXT_CHARS.toLocaleString()}) — dropping ${file.path} content, keeping path`);
+      budgetedFiles.push({ ...file, content: '' });
+      continue;
+    }
+    totalChars += fileChars;
+    budgetedFiles.push(file);
+  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Create context object
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const projectCodeContext: ProjectCodeContext = {
-    filePaths: uniqueFiles.map(f => f.path),
-    files: uniqueFiles,
+    filePaths: budgetedFiles.map(f => f.path),
+    files: budgetedFiles,
     stats: {
-      filesLoaded: uniqueFiles.length,
+      filesLoaded: budgetedFiles.length,
       errorFilesCount: errorFiles.length,
       semanticCount: semanticFiles.length,
-      deduplicatedCount: allFiles.length - uniqueFiles.length
+      deduplicatedCount: allFiles.length - uniqueFiles.length,
+      estimatedTokens: Math.ceil(totalChars / 2.8),
     },
     source: 'plan' as const
   };

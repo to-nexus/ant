@@ -18,6 +18,7 @@ import { collectResolvedPartials } from "../../../../../../periphery/adapters/pr
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
+import { ProjectCodeContext } from "../plan/combineCodeContext";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -61,7 +62,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // Staleness is handled by edit_file's search/replace validation against disk.
   // System prompt content is cached (cache_control: ephemeral), making this
   // more token-efficient than stripping content and forcing read_file tool calls.
-  const codeGenProjectCodeContext = state.projectCodeContext ?? undefined;
+  // When total content exceeds CODE_CONTEXT_THRESHOLD, condense to skeleton mode.
+  const codeGenProjectCodeContext = state.projectCodeContext
+    ? condenseProjectCodeContext(
+        state.projectCodeContext as ProjectCodeContext,
+        state.profile?.language || state.detectionReport?.profile?.language,
+      )
+    : undefined;
 
   // ✅ UI doc injection: Always inject if available, unless explicitly disabled
   // Decompose sets task.ui flag - only skip if explicitly false
@@ -96,17 +103,18 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     detectionReportProfile: state.detectionReport?.profile,
   };
   
-  // ✅ Verification tasks skip designDoc entirely (irrelevant to build/runtime verification)
-  const isVerificationTask = state.currentTask.type === 'verification';
+  // ✅ Verification and error tasks skip designDoc entirely (irrelevant to build/runtime fixes)
+  const isLightContextTask = state.currentTask.type === 'verification'
+    || state.currentTask.type === 'error';
   
   // ✅ Select design doc based on task.packages (split injection)
   // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
   // If missing, fall back to state.design but warn — this indicates a decompose bug.
   let designDocForTask: string | undefined;
   
-  if (isVerificationTask) {
+  if (isLightContextTask) {
     designDocForTask = undefined;
-    console.log(`📄 [CodeGen] Verification task — skipping designDoc injection`);
+    console.log(`📄 [CodeGen] ${state.currentTask.type} task — skipping designDoc injection`);
   } else if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
     // Package-based split injection (fe, fe-*, be, be-*, shared)
     designDocForTask = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
@@ -123,10 +131,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     'code',
     contextWithProfile,
     {
-      directive: isVerificationTask ? undefined : state.directive,
+      directive: isLightContextTask ? undefined : state.directive,
       designDoc: designDocForTask,
-      prdSpec: isVerificationTask ? undefined : state.prd,
-      uiDoc: isVerificationTask ? undefined : uiDocForTask,
+      prdSpec: isLightContextTask ? undefined : state.prd,
+      uiDoc: isLightContextTask ? undefined : uiDocForTask,
       projectCodeContext: codeGenProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
@@ -166,8 +174,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // Block 2: Project Context (CACHED - changes per task)
   // Verification tasks skip prdSpec and designDoc (irrelevant to build checks)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const foundationContract = isVerificationTask ? null : await buildFoundationContract(state);
-  const schemaAnchor = isVerificationTask ? null : await buildSchemaAnchor(state);
+  const foundationContract = isLightContextTask ? null : await buildFoundationContract(state);
+  const schemaAnchor = isLightContextTask ? null : await buildSchemaAnchor(state);
 
   const projectContextParts = [
     composed.injections,
@@ -207,6 +215,40 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       console.log(`🔑 [CacheStability] New task → Block1=${b1Hash}(${b1Len}) Block2=${b2Hash}(${b2Len})`);
     }
     _lastCacheBlockHashes = { block1: b1Hash, block2: b2Hash, taskId: currentTaskId };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Area Budget Preflight: enforce per-area token limits
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    const preflightManager = new TokenBudgetManager();
+    const budgets = preflightManager.getAreaBudgets();
+
+    const block1Tokens = preflightManager.estimateTokens(systemPromptBlock.text);
+    const block2Tokens = preflightManager.estimateTokens(projectContextBlock.text);
+
+    console.log(`📐 [Preflight] Block1(system)=${block1Tokens.toLocaleString()} Block2(project)=${block2Tokens.toLocaleString()} / projectBudget=${budgets.projectContext.toLocaleString()}`);
+
+    if (block2Tokens > budgets.projectContext) {
+      const overBy = block2Tokens - budgets.projectContext;
+      console.warn(`⚠️  [Preflight] Block2 (projectContext) over budget by ${overBy.toLocaleString()} tokens — trimming injections`);
+
+      const trimmedParts = projectContextParts.map(part => {
+        if (!part || typeof part !== 'string') return part;
+        const partTokens = preflightManager.estimateTokens(part);
+        if (partTokens > budgets.projectContext * 0.6) {
+          const maxChars = Math.floor(budgets.projectContext * 0.6 * 2.8);
+          const truncated = part.slice(0, maxChars);
+          const lastNewline = truncated.lastIndexOf('\n');
+          const cleanCut = lastNewline > maxChars * 0.5 ? truncated.slice(0, lastNewline) : truncated;
+          console.log(`   ✂️  Truncated large injection: ${partTokens.toLocaleString()} → ~${preflightManager.estimateTokens(cleanCut).toLocaleString()} tokens`);
+          return cleanCut + `\n\n[... truncated (${(part.length - cleanCut.length).toLocaleString()} chars omitted to fit budget)]`;
+        }
+        return part;
+      });
+
+      projectContextBlock.text = trimmedParts.filter(Boolean).join('\n\n');
+    }
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -406,19 +448,89 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     }
     
     // Check final token budget
-    const estimation = tokenManager.checkBudget(messages as any);
+    let estimation = tokenManager.checkBudget(messages as any);
     
     if (estimation.isOverBudget) {
-      throw new Error(
-        `[CodeGen] Token budget exceeded after pruning! ` +
-        `${estimation.totalTokens.toLocaleString()} tokens > ` +
-        `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
-      );
+      console.warn(`⚠️  [CodeGen] Over budget after standard pruning (${estimation.totalTokens.toLocaleString()} tokens). Attempting aggressive reduction...`);
+
+      // Aggressive step 1: re-prune history with minimal hot tail (1 turn)
+      const { result: aggressiveHistory } = compactAndPruneHistory(filteredHistory, tokenManager, {
+        microcompactHotTail: 1,
+        autoCompactThreshold: 20000,
+        autoCompactHotTail: 1,
+      });
+
+      // Rebuild messages: keep first message (system+context), replace history
+      const firstMsg = messages[0];
+      messages.length = 0;
+      messages.push(firstMsg);
+
+      for (const msg of aggressiveHistory) {
+        if (typeof msg.content === 'string') {
+          messages.push({
+            role: msg.role as 'user' | 'assistant',
+            content: [{ type: 'text', text: msg.content }]
+          });
+        } else {
+          messages.push({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content
+          });
+        }
+      }
+
+      estimation = tokenManager.checkBudget(messages as any);
+
+      // Aggressive step 2: strip project context content blocks if still over
+      if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
+        console.warn(`⚠️  [CodeGen] Still over budget (${estimation.totalTokens.toLocaleString()}). Stripping project context block...`);
+        const contentBlocks = messages[0].content as CacheableContent[];
+        // Block 2 (index 1) is project context — replace with minimal stub
+        if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
+          const original = contentBlocks[1].text;
+          contentBlocks[1] = {
+            ...contentBlocks[1],
+            text: `[Project context omitted to fit token budget — use read_file and search_code tools to access codebase. Original size: ${original.length.toLocaleString()} chars]`
+          };
+        }
+        estimation = tokenManager.checkBudget(messages as any);
+      }
+
+      if (estimation.isOverBudget) {
+        throw new Error(
+          `[CodeGen] Token budget exceeded after aggressive reduction! ` +
+          `${estimation.totalTokens.toLocaleString()} tokens > ` +
+          `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
+        );
+      }
+
+      console.log(`✅ [CodeGen] Budget recovered after aggressive reduction: ${estimation.totalTokens.toLocaleString()} tokens`);
     }
   } else {
     // No history - just check base prompt tokens
     const tokenManager = new TokenBudgetManager();
-    tokenManager.checkBudget(messages as any);
+    const estimation = tokenManager.checkBudget(messages as any);
+
+    if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
+      console.warn(`⚠️  [CodeGen] First message over budget (no history). Stripping project context...`);
+      const contentBlocks = messages[0].content as CacheableContent[];
+      if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
+        const original = contentBlocks[1].text;
+        contentBlocks[1] = {
+          ...contentBlocks[1],
+          text: `[Project context omitted to fit token budget — use read_file and search_code tools to access codebase. Original size: ${original.length.toLocaleString()} chars]`
+        };
+      }
+      const retryEstimation = tokenManager.checkBudget(messages as any);
+      if (retryEstimation.isOverBudget) {
+        throw new Error(
+          `[CodeGen] Token budget exceeded even without project context! ` +
+          `${retryEstimation.totalTokens.toLocaleString()} tokens > ` +
+          `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
+        );
+      }
+      console.log(`✅ [CodeGen] Budget recovered: ${retryEstimation.totalTokens.toLocaleString()} tokens`);
+    }
   }
   
   // ✅ Log prompt structure (not content)
@@ -443,7 +555,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           callIndex: state._codeGenCallIndex,
-          templatePath: isVerificationTask ? 'code/phases/verify/base' : 'code/phases/execute/base',
+          templatePath: state.currentTask?.type === 'verification' ? 'code/phases/verify/base' : 'code/phases/execute/base',
           usedTemplates: [
             promptResult.modeConfig.templates.base,
             promptResult.modeConfig.templates.rules,
@@ -744,6 +856,104 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
   const result = sections.join('\n');
   console.log(`📋 [CodeGen] Foundation contract: ${foundationFiles.length} file(s), ${symbolCount} symbol(s), ${result.length} chars`);
   return result;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Project Code Context Condensation
+// Mirrors Design job's buildCondensedSourceDocs pattern:
+// when total content exceeds threshold, switch to skeleton mode
+// (signatures + line counts) and let LLM use read_file on demand.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const CODE_CONTEXT_THRESHOLD = 200_000; // chars (~70K tokens at 2.8 ratio)
+
+/**
+ * Condense projectCodeContext when total content exceeds threshold.
+ * Priority-based: error-source files keep full content, others get skeleton.
+ * Two-pass budget redistribution inspired by sourceSelector.ts.
+ */
+function condenseProjectCodeContext(
+  context: ProjectCodeContext,
+  language?: string,
+): ProjectCodeContext {
+  if (!context.files || context.files.length === 0) return context;
+
+  const totalChars = context.files.reduce((sum, f) => sum + (f.content?.length || 0), 0);
+  if (totalChars <= CODE_CONTEXT_THRESHOLD) return context;
+
+  console.log(`📦 [CodeContext] Condensing: ${totalChars.toLocaleString()} chars > ${CODE_CONTEXT_THRESHOLD.toLocaleString()} threshold (${context.files.length} files)`);
+
+  const errorSourcePaths = new Set<string>();
+  if (context.stats.errorFilesCount > 0) {
+    for (const f of context.files.slice(0, context.stats.errorFilesCount)) {
+      errorSourcePaths.add(f.path);
+    }
+  }
+
+  let usedChars = 0;
+  const condensedFiles: typeof context.files = [];
+
+  // Pass 1: error-source files keep full content (highest priority)
+  for (const file of context.files) {
+    if (errorSourcePaths.has(file.path)) {
+      condensedFiles.push(file);
+      usedChars += file.content?.length || 0;
+    }
+  }
+
+  // Pass 2: remaining budget distributed to non-error files
+  const remainingBudget = CODE_CONTEXT_THRESHOLD - usedChars;
+  const nonErrorFiles = context.files.filter(f => !errorSourcePaths.has(f.path));
+
+  if (remainingBudget > 0 && nonErrorFiles.length > 0) {
+    const perFileBudget = Math.floor(remainingBudget / nonErrorFiles.length);
+
+    for (const file of nonErrorFiles) {
+      const contentLen = file.content?.length || 0;
+      if (contentLen <= perFileBudget) {
+        condensedFiles.push(file);
+        usedChars += contentLen;
+      } else {
+        const skeleton = buildFileSkeleton(file.path, file.content || '', language);
+        condensedFiles.push({ ...file, content: skeleton });
+        usedChars += skeleton.length;
+      }
+    }
+  } else {
+    for (const file of nonErrorFiles) {
+      const skeleton = buildFileSkeleton(file.path, file.content || '', language);
+      condensedFiles.push({ ...file, content: skeleton });
+      usedChars += skeleton.length;
+    }
+  }
+
+  const skeletonCount = condensedFiles.filter(f =>
+    f.content?.startsWith('[skeleton]')
+  ).length;
+  console.log(`   ✅ Condensed: ${usedChars.toLocaleString()} chars (${skeletonCount} skeleton, ${condensedFiles.length - skeletonCount} full)`);
+
+  return {
+    ...context,
+    files: condensedFiles,
+    stats: {
+      ...context.stats,
+      estimatedTokens: Math.ceil(usedChars / 2.8),
+    },
+  };
+}
+
+/**
+ * Build a skeleton representation of a file: line count + exported symbols.
+ * LLM can use read_file to access full content when needed.
+ */
+function buildFileSkeleton(filePath: string, content: string, language?: string): string {
+  const lineCount = content.split('\n').length;
+  const symbols = extractExportedSymbols(content, language);
+  const symbolsStr = symbols.length > 0 && symbols[0] !== '(symbol extraction not available — use read_file to inspect)'
+    ? `\nExports: ${symbols.slice(0, 15).join(', ')}${symbols.length > 15 ? ` (+${symbols.length - 15} more)` : ''}`
+    : '';
+
+  return `[skeleton — use read_file for full content]\nLines: ${lineCount}${symbolsStr}`;
 }
 
 /**
