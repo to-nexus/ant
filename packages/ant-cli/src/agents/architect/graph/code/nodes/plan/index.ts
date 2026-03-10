@@ -28,7 +28,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { generateTaskKeywords, displayKeywords, logKeywords, updateKeywordsWithRetrieval } from "./keywordGeneration";
 import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
-import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, PLAN_TOOL_LOOP_MAX, taskRequiresPlan, finalizePlanFromExploration } from "./planGeneration";
+import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, buildPlanPromptBlocks, PLAN_TOOL_LOOP_MAX, taskRequiresPlan, finalizePlanFromExploration } from "./planGeneration";
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
@@ -511,8 +511,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
   if (tryToolsFirst) {
     const violationsText = state.violations?.length ? formatViolations(state.violations) : undefined;
-    const prompt = await buildPlanPrompt(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true });
-    const messages = [{ role: 'user' as const, content: prompt }];
+    const contentBlocks = await buildPlanPromptBlocks(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true });
+    const messages = [{ role: 'user' as const, content: contentBlocks }];
     const result = await runPlanLLMWithTools(state, messages, nextTask);
     if (result && '_planExploring' in result) {
       if (state.deps?.workflowUpdate && state._httpJobId) {

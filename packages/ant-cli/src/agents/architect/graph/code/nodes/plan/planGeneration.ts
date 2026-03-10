@@ -8,6 +8,7 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
+import { TextContentBlock } from "../../../../../../core/ports/llm";
 import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
@@ -43,6 +44,29 @@ async function selectLLMForTask(
 }
 
 /**
+ * Resolve the designDoc string for a given task from state.
+ * Shared by buildPlanPrompt and buildPlanPromptBlocks to guarantee identical output.
+ */
+function resolveDesignDoc(state: ArchitectGraphState, task: CodeTask): string {
+  if (state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
+    const parts: string[] = [];
+    parts.push(`# Feature Specification (Primary)\n\n${state.specDocs[state.selectedSpec]}`);
+    if (state.designDocs?.apiContracts) {
+      for (const [name, content] of Object.entries(state.designDocs.apiContracts)) {
+        parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
+      }
+    }
+    const designDoc = parts.join('\n\n────────────────────────────────────────\n\n');
+    console.log(`📋 [Plan] Using spec doc "${state.selectedSpec}" as primary (${designDoc.length} chars)`);
+    return designDoc;
+  } else if (task.packages && task.packages.length > 0 && state.designDocs) {
+    return buildDesignDocForTask(task.packages, state.designDocs);
+  } else {
+    return state.design || '';
+  }
+}
+
+/**
  * Build plan prompt (shared by generatePlanText and plan-with-tools path).
  */
 export async function buildPlanPrompt(
@@ -57,23 +81,7 @@ export async function buildPlanPrompt(
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) throw new Error('[Plan] PromptEngine not available');
 
-  let designDoc: string;
-  if (state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
-    // Spec-driven mode: use spec as primary, api-contracts as supplementary
-    const parts: string[] = [];
-    parts.push(`# Feature Specification (Primary)\n\n${state.specDocs[state.selectedSpec]}`);
-    if (state.designDocs?.apiContracts) {
-      for (const [name, content] of Object.entries(state.designDocs.apiContracts)) {
-        parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
-      }
-    }
-    designDoc = parts.join('\n\n────────────────────────────────────────\n\n');
-    console.log(`📋 [Plan] Using spec doc "${state.selectedSpec}" as primary (${designDoc.length} chars)`);
-  } else if (task.packages && task.packages.length > 0 && state.designDocs) {
-    designDoc = buildDesignDocForTask(task.packages, state.designDocs);
-  } else {
-    designDoc = state.design || '';
-  }
+  const designDoc = resolveDesignDoc(state, task);
 
   let prompt = await promptEngine.buildTaskPlanPrompt(
     task,
@@ -103,6 +111,54 @@ export async function buildPlanPrompt(
   }
 
   return prompt;
+}
+
+/**
+ * Build plan prompt as CacheableContent blocks for Anthropic prompt caching.
+ *
+ * The designDoc (typically 36K-126K chars) is stable within a plan-toolLoop
+ * session, so placing it in a separate block with cache_control enables
+ * Anthropic to cache it across successive tool-loop rounds.
+ *
+ * Used only by the plan-with-tools path (plan-toolLoop). The generatePlanText
+ * path (single-shot, no tools) continues to use buildPlanPrompt directly.
+ */
+export async function buildPlanPromptBlocks(
+  state: ArchitectGraphState,
+  task: CodeTask,
+  projectCodeContext: any,
+  violationsText: string | undefined,
+  uiDoc: string | undefined,
+  remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
+  options?: { hasTools?: boolean },
+): Promise<TextContentBlock[]> {
+  const designDoc = resolveDesignDoc(state, task);
+  const fullPrompt = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks, options);
+
+  const blocks: TextContentBlock[] = [];
+
+  // Anthropic requires ~1024 tokens minimum for caching; 3000 chars is a safe threshold
+  if (designDoc && designDoc.length > 3000) {
+    blocks.push({
+      type: 'text',
+      text: designDoc,
+      cache_control: { type: 'ephemeral' },
+    });
+    const promptWithoutDesign = fullPrompt.replace(designDoc, '[See design document in previous block]');
+    blocks.push({
+      type: 'text',
+      text: promptWithoutDesign,
+    });
+    console.log(`🔥 [Plan] Split prompt into cached designDoc (${designDoc.length} chars) + prompt (${promptWithoutDesign.length} chars)`);
+  } else {
+    blocks.push({
+      type: 'text',
+      text: fullPrompt,
+      cache_control: { type: 'ephemeral' },
+    });
+  }
+
+  return blocks;
 }
 
 /**
