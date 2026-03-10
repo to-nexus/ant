@@ -84,7 +84,7 @@ describe('generateFileTree', () => {
     expect(result).toContain('index.ts');
   });
 
-  it('includes Files Available section for path-only files', () => {
+  it('includes Existing Files section for path-only files', () => {
     const result = generateFileTree(makeCodeState({
       projectCodeContext: {
         filePaths: ['src/utils.ts'],
@@ -92,7 +92,8 @@ describe('generateFileTree', () => {
       },
     }));
     expect(result).not.toBeNull();
-    expect(result).toContain('Files Available');
+    expect(result).toContain('Existing Files');
+    expect(result).toContain('DO NOT recreate');
     expect(result).toContain('utils.ts');
   });
 });

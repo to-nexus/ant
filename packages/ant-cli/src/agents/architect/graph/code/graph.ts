@@ -487,6 +487,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   jobId: (state as any).jobId,
                   jobTiming: (state as any).jobTiming,
                   parallelMode: true,
+                  // ✅ FIX: Preserve decompose-phase context in checkpoint.
+                  // onCheckpoint does a full replace of session.state, so any field
+                  // not listed here is lost on session reload / resume.
+                  designDocUnknownPackages: state.designDocUnknownPackages,
+                  profile: state.profile,
+                  detectionReport: (state as any).detectionReport,
+                  referenceRequests: state.referenceRequests,
                   // ✅ FIX: Preserve interruption details in checkpoint.
                   // onCheckpoint does a full replace of session.state. Without this,
                   // interruption info set by cleanupJobState would be lost when the

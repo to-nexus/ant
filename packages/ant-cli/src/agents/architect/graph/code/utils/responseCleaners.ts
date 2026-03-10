@@ -17,10 +17,21 @@ export function cleanFileContentFromResponse(text: string): string {
   cleaned = cleaned.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file written to disk: $1]');
   cleaned = cleaned.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
   cleaned = cleaned.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-  // Pass 2: Safety net for malformed tags that Pass 1 didn't match
-  cleaned = cleaned.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
-  cleaned = cleaned.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
-  cleaned = cleaned.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
+  // Pass 2: Safety net for malformed tags that Pass 1 didn't match.
+  // Try to salvage path from partially malformed tags (e.g. single-quoted path attr)
+  // before falling back to a pathless marker.
+  cleaned = cleaned.replace(/<file[^>]*>[\s\S]*?<\/file>/g, (match) => {
+    const pathMatch = match.match(/path=["']([^"']+)["']/);
+    return pathMatch ? `[file written to disk: ${pathMatch[1]}]` : '[file creation removed]';
+  });
+  cleaned = cleaned.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, (match) => {
+    const pathMatch = match.match(/path=["']([^"']+)["']/);
+    return pathMatch ? `[file edited: ${pathMatch[1]}]` : '[code edit removed]';
+  });
+  cleaned = cleaned.replace(/<append[^>]*>[\s\S]*?<\/append>/g, (match) => {
+    const pathMatch = match.match(/path=["']([^"']+)["']/);
+    return pathMatch ? `[file appended: ${pathMatch[1]}]` : '[code append removed]';
+  });
   return cleaned.trim();
 }
 
@@ -36,8 +47,17 @@ export function cleanFileContentWithConflicts(text: string, conflictPaths: Set<s
   );
   cleaned = cleaned.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
   cleaned = cleaned.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-  cleaned = cleaned.replace(/<file[^>]*>[\s\S]*?<\/file>/g, '[file creation removed]');
-  cleaned = cleaned.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, '[code edit removed]');
-  cleaned = cleaned.replace(/<append[^>]*>[\s\S]*?<\/append>/g, '[code append removed]');
+  cleaned = cleaned.replace(/<file[^>]*>[\s\S]*?<\/file>/g, (match) => {
+    const pathMatch = match.match(/path=["']([^"']+)["']/);
+    return pathMatch ? `[file written to disk: ${pathMatch[1]}]` : '[file creation removed]';
+  });
+  cleaned = cleaned.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, (match) => {
+    const pathMatch = match.match(/path=["']([^"']+)["']/);
+    return pathMatch ? `[file edited: ${pathMatch[1]}]` : '[code edit removed]';
+  });
+  cleaned = cleaned.replace(/<append[^>]*>[\s\S]*?<\/append>/g, (match) => {
+    const pathMatch = match.match(/path=["']([^"']+)["']/);
+    return pathMatch ? `[file appended: ${pathMatch[1]}]` : '[code append removed]';
+  });
   return cleaned.trim();
 }

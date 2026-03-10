@@ -116,7 +116,7 @@ export class AnthropicLLMClient implements LLMClient {
         maxAttempts: 4,
         initialDelayMs: 2000,
         backoffMultiplier: 2,
-        retryableErrors: ['overloaded_error', 'api_error'],
+        retryableErrors: ['overloaded_error', 'api_error', 'rate_limit_error'],
       }
     );
 
@@ -165,7 +165,7 @@ export class AnthropicLLMClient implements LLMClient {
         maxAttempts: 4,
         initialDelayMs: 2000,
         backoffMultiplier: 2,
-        retryableErrors: ['overloaded_error', 'api_error'],
+        retryableErrors: ['overloaded_error', 'api_error', 'rate_limit_error'],
         retryMarker: { type: 'retry' as const },
       }
     );
