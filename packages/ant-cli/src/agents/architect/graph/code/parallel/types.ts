@@ -57,6 +57,12 @@ export interface OrchestratorConfig {
    * Ensures documentation observes the complete codebase including tests.
    */
   docBarrier?: boolean;
+  /**
+   * When true, feature-type tasks (priority >= 300) will NOT be assigned
+   * while any foundation task (priority 200-299) is still running or queued.
+   * Ensures shared foundation outputs are available before features start.
+   */
+  featureBarrier?: boolean;
 }
 
 /**

@@ -260,6 +260,22 @@ This command typically requires interactive input, which will cause the process 
 
 Or use a different approach that doesn't require initialization.`;
   }
+
+  // 🚨 SAFEGUARD: Block Go build/test/run/vet during non-verification tasks.
+  // Go projects cannot build during feature tasks because go.mod is incomplete
+  // until the final verification phase runs go mod tidy. Allowing intermediate
+  // builds causes cascading failures: build error → LLM "fixes" → file recreation loop.
+  const GO_BUILD_PATTERNS = /\bgo\s+(build|test|run|vet)\b/;
+  const taskType = state.currentTask?.type;
+  const isAllowedBuildTask = taskType === 'verification' || taskType === 'error';
+  if (GO_BUILD_PATTERNS.test(command) && !isAllowedBuildTask) {
+    console.warn(`   ⛔ [RunCommand] Blocked Go build command in ${taskType} task: ${command}`);
+    return `⛔ BLOCKED: ${command}
+
+Go build/test/run/vet commands are only allowed in verification and error tasks.
+Feature tasks produce source files only — build verification happens in the final verification task.
+Continue writing code files and output <done>true</done> when complete.`;
+  }
   
   const chatAPI = getChatAPIClient();
   
