@@ -53,6 +53,7 @@ export type ViolationType =
   | 'file_operation_failed' // 파일 작업 실패 (edit search block not found 등)
   | 'cross_worker_conflict' // 병렬 작업 간 파일 충돌 (다른 워커가 이미 생성/수정)
   | 'budget_exhausted'      // codeGen call limit 도달 (LLM이 <done> 없이 budget 소진)
+  | 'verification_incomplete' // verification 태스크가 done 신호를 보냈으나 성공한 빌드 커맨드가 없음
   | 'other';                // 기타
 
 /**

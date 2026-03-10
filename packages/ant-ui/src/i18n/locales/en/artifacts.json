@@ -34,11 +34,6 @@
     "delete": "Delete",
     "openInNewTab": "Open in new tab"
   },
-  "confirm": {
-    "deleteItem": "Delete {{type}} \"{{name}}\"?",
-    "clearContents": "Clear all contents in \"{{name}}\"?",
-    "clearContentsDetail": "Clear all contents in \"{{name}}\"? This will delete all files and subdirectories."
-  },
   "upload": {
     "dropHint": "Drop files here",
     "uploading": "Uploading {{count}} file(s) to {{dir}}",

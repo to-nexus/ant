@@ -92,17 +92,46 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   // ✅ Budget exhaustion guard: <done> tag is the ONLY completion signal.
   // If checkTaskStatus is reached without LLM explicitly signaling done,
   // the task hit its call budget — this is a failure, not a success.
+  // Applies to ALL task types including verification and error.
   const llmExplicitlyDone = state.llmResponse?.done === true;
   if (violations.length === 0 && state.currentTask && !llmExplicitlyDone) {
     const taskType = state.currentTask.type;
-    if (taskType !== 'verification' && taskType !== 'error') {
-      console.warn(`⚠️  [checkTaskStatus] Task "${state.currentTask.name}" reached checkTaskStatus without <done> tag — budget exhausted`);
+    console.warn(`⚠️  [checkTaskStatus] Task "${state.currentTask.name}" (type=${taskType}) reached checkTaskStatus without <done> tag — budget exhausted`);
+    violations.push({
+      type: 'budget_exhausted' as ViolationType,
+      severity: 'critical',
+      message: `Task reached checkTaskStatus without LLM signaling completion via <done> tag. The LLM could not complete within the call budget.`,
+      isRetryable: true,
+      suggestedFix: taskType === 'verification'
+        ? 'Verification task did not complete — build may have failed. Will retry with remaining budget.'
+        : 'Break down the task scope or provide clearer implementation direction.',
+    });
+  }
+
+  // ✅ Verification build-success guard: even when LLM explicitly says done,
+  // a verification task MUST have its last run_command succeed.
+  // Language/framework-agnostic: checks exit code of the most recent command,
+  // not a regex-matched subset. The verification task's purpose is to run
+  // a build/test and confirm it passes — if the last command failed, it didn't.
+  if (violations.length === 0 && llmExplicitlyDone && state.currentTask?.type === 'verification') {
+    const history = state.commandHistory || [];
+    const lastCommand = history[history.length - 1];
+
+    if (!lastCommand || !lastCommand.success) {
+      console.warn(`⚠️  [checkTaskStatus] Verification task signaled done but last command was not successful`);
+      if (lastCommand) {
+        console.warn(`   Last command: "${lastCommand.command}" → exit ${lastCommand.exitCode}`);
+      } else {
+        console.warn(`   No commands found in commandHistory`);
+      }
       violations.push({
-        type: 'budget_exhausted' as ViolationType,
+        type: 'verification_incomplete' as ViolationType,
         severity: 'critical',
-        message: `Task reached codeGen call limit without LLM signaling completion via <done> tag. The LLM could not complete within the call budget.`,
+        message: lastCommand
+          ? `Last command failed (exit ${lastCommand.exitCode}): ${lastCommand.command}`
+          : 'Verification task completed without executing any command.',
         isRetryable: true,
-        suggestedFix: 'Break down the task scope or provide clearer implementation direction.',
+        suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
       });
     }
   }
