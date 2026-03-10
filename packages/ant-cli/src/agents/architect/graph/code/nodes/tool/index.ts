@@ -155,6 +155,26 @@ async function executeToolByName(
         error = error + warningMessage;
       }
     }
+
+    if (!commandExecuted.success) {
+      try {
+        const { diagnoseError } = await import('../diagnostics');
+        const { errorStatsCollector } = await import('../diagnostics/errorStats');
+        const errorOutput = error || (typeof result === 'string' ? result : '') || '';
+        const diagnosis = diagnoseError(errorOutput, {
+          command: commandExecuted.command,
+          workDir: state.context?.featurePath,
+        });
+        if (diagnosis) {
+          errorStatsCollector.recordError(diagnosis, {
+            command: commandExecuted.command,
+            workDir: state.context?.featurePath,
+          });
+        }
+      } catch (diagErr) {
+        console.warn(`⚠️  [Tool] Error diagnostics failed:`, (diagErr as Error).message);
+      }
+    }
   }
 
   return { result, error, commandExecuted };
