@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   createFile, 
@@ -5,8 +6,11 @@ import {
   uploadFiles, 
   deleteFileOrDirectory 
 } from '@/infrastructure/http/api';
+import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import type { ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
+import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
 
 export function useFileOperations(
   selectedProject: string | undefined,
@@ -15,9 +19,17 @@ export function useFileOperations(
 ) {
   const selectFile = useStore((state) => state.selectFile);
   const selectedFile = useStore((state) => state.selectedFile);
+  const fileTree = useStore((state) => state.fileTree);
   const triggerFileReload = useStore((state) => state.triggerFileReload);
   const { showError } = useAlertModalContext();
   const { t } = useTranslation('artifacts');
+
+  const [conflictModal, setConflictModal] = useState<{
+    isOpen: boolean;
+    conflictingFiles: string[];
+    dirPath: string;
+    entries: UploadFileEntry[];
+  }>({ isOpen: false, conflictingFiles: [], dirPath: '', entries: [] });
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
     if (!selectedProject || !selectedFeature) return;
@@ -52,7 +64,6 @@ export function useFileOperations(
       await deleteFileOrDirectory(selectedProject, selectedFeature, itemPath);
       await refreshFileTree();
       
-      // If the deleted item was selected, clear the selection
       if (selectedFile === itemPath) {
         selectFile('');
       }
@@ -62,17 +73,15 @@ export function useFileOperations(
     }
   };
 
-  const handleUploadFiles = async (dirPath: string, files: FileList) => {
+  const doUpload = useCallback(async (dirPath: string, entries: UploadFileEntry[]) => {
     if (!selectedProject || !selectedFeature) return;
     
     try {
-      const result = await uploadFiles(selectedProject, selectedFeature, dirPath, files);
+      const result = await uploadFiles(selectedProject, selectedFeature, dirPath, entries);
       await refreshFileTree();
 
-      // ✅ If upload overwrote the currently selected file, immediately refresh editor/preview.
-      // Backend returns base filenames; we reconstruct full paths under dirPath.
       const normalizedDir = dirPath && dirPath.length > 0 ? dirPath.replace(/\/+$/, '') : '';
-      const uploadedPaths = (result.uploadedFiles || []).map((name) =>
+      const uploadedPaths = (result.uploadedFiles || []).map((name: string) =>
         normalizedDir ? `${normalizedDir}/${name}` : name
       );
 
@@ -83,12 +92,40 @@ export function useFileOperations(
       console.error('Failed to upload files:', error);
       showError(t('error.uploadFailed'));
     }
-  };
+  }, [selectedProject, selectedFeature, refreshFileTree, selectedFile, triggerFileReload, showError, t]);
+
+  const handleUploadFiles = useCallback((dirPath: string, files: FileList) => {
+    const entries = fileListToEntries(files);
+    if (!fileTree) {
+      doUpload(dirPath, entries);
+      return;
+    }
+    const conflicts = findConflicts(fileTree, dirPath, entries);
+    if (conflicts.length === 0) {
+      doUpload(dirPath, entries);
+      return;
+    }
+    setConflictModal({ isOpen: true, conflictingFiles: conflicts, dirPath, entries });
+  }, [fileTree, doUpload]);
+
+  const handleConflictResolve = useCallback((resolution: ConflictResolution) => {
+    const { dirPath, entries } = conflictModal;
+    setConflictModal(prev => ({ ...prev, isOpen: false }));
+
+    if (resolution === 'cancel') return;
+
+    const existingNames = fileTree ? getAllExistingNames(fileTree, dirPath) : [];
+    const finalEntries = applyPerFileResolutions(entries, resolution.perFile, existingNames);
+    doUpload(dirPath, finalEntries);
+  }, [conflictModal, doUpload, fileTree]);
 
   return {
     handleCreateFile,
     handleCreateDirectory,
     handleDelete,
-    handleUploadFiles
+    handleUploadFiles,
+    conflictModal,
+    setConflictModal,
+    handleConflictResolve,
   };
 }
