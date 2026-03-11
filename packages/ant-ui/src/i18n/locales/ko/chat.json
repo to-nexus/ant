@@ -22,6 +22,25 @@
   "inlineAsk": {
     "failed": "Inline ask 실패"
   },
+  "card": {
+    "unknownFile": "알 수 없는 파일",
+    "created": "생성됨",
+    "modified": "수정됨",
+    "deleted": "삭제됨",
+    "failed": "실패",
+    "cancelled": "취소됨",
+    "creating": "생성 중...",
+    "writing": "작성 중...",
+    "editing": "편집 중...",
+    "updating": "업데이트 중...",
+    "deleting": "삭제 중...",
+    "completed": "완료",
+    "running": "실행 중...",
+    "collapseCommand": "명령어 접기",
+    "expandCommand": "명령어 펼치기",
+    "error": "오류:",
+    "resumeFailed": "재개 실패: {{message}}"
+  },
   "agent": {
     "architect": "코딩 작업에 최적화",
     "planner": "PRD(제품 요구사항 정의서) 작성 및 개선",

@@ -24,8 +24,17 @@
     "title": "오류",
     "unknown": "알 수 없는 오류가 발생했습니다."
   },
+  "success": {
+    "title": "성공"
+  },
+  "info": {
+    "title": "알림"
+  },
   "warning": {
     "title": "경고"
+  },
+  "confirm": {
+    "title": "확인"
   },
   "label": {
     "optional": "선택 사항",

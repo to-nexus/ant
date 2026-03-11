@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   commitGitChanges, 
   pushToGitHub, 
@@ -17,6 +18,7 @@ export function useGitActions(
 ) {
   const setGitStatusPhase = useStore((state) => state.setGitStatusPhase);
   const { showError } = useAlertModalContext();
+  const { t } = useTranslation('explorer');
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
@@ -33,10 +35,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        showError(result.error || 'Commit failed');
+        showError(result.error || t('git.commitFailed'));
       }
     } catch (error: any) {
-      showError(error.message || 'Commit failed');
+      showError(error.message || t('git.commitFailed'));
     } finally {
       setIsCommitting(false);
       setGitStatusPhase(null);
@@ -54,10 +56,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        showError(result.error || 'Push failed');
+        showError(result.error || t('git.pushFailed'));
       }
     } catch (error: any) {
-      showError(error.message || 'Push failed');
+      showError(error.message || t('git.pushFailed'));
     } finally {
       setIsPushing(false);
       setGitStatusPhase(null);
@@ -75,10 +77,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        showError(result.error || 'Pull failed');
+        showError(result.error || t('git.pullFailed'));
       }
     } catch (error: any) {
-      showError(error.message || 'Pull failed');
+      showError(error.message || t('git.pullFailed'));
     } finally {
       setIsPulling(false);
       setGitStatusPhase(null);
@@ -96,10 +98,10 @@ export function useGitActions(
       if (result.success) {
         setGitChanges(null);
       } else {
-        showError(result.error || 'Sync failed');
+        showError(result.error || t('git.syncFailed'));
       }
     } catch (error: any) {
-      showError(error.message || 'Sync failed');
+      showError(error.message || t('git.syncFailed'));
     } finally {
       setIsSyncing(false);
       setGitStatusPhase(null);

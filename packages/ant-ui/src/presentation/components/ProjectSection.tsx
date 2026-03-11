@@ -124,6 +124,18 @@ export function ProjectSection() {
     openMainPanelTab('projectConfig');
   };
 
+  const isPATError = (msg: string) =>
+    /pat/i.test(msg) && /(not configured|not set|missing|없|설정)/i.test(msg);
+
+  const showPATError = () => {
+    showError(t('git.patNotConfigured'), {
+      confirmText: t('git.configurePat'),
+      onConfirm: () => {
+        openMainPanelTab('accountConfig');
+      },
+    });
+  };
+
   // Git handlers
   const handleGitAction = async (
     action: () => Promise<any>, 
@@ -166,11 +178,20 @@ export function ProjectSection() {
           useStore.getState().refreshGitStatus();
         }
       } else {
-        // ✅ Errors still shown via popup (important to see)
-        showError(result.error || t('git.actionFailed', { action: actionType }));
+        const errMsg = result.error || t('git.actionFailed', { action: actionType });
+        if (isPATError(errMsg)) {
+          showPATError();
+        } else {
+          showError(errMsg);
+        }
       }
     } catch (error: any) {
-      showError(error.message || t('git.actionFailed', { action: actionType }));
+      const errMsg = error.message || t('git.actionFailed', { action: actionType });
+      if (isPATError(errMsg)) {
+        showPATError();
+      } else {
+        showError(errMsg);
+      }
     } finally {
       setIsGitProcessing(false);
       setGitStatusPhase(null);

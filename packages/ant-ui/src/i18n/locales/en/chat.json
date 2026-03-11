@@ -22,6 +22,25 @@
   "inlineAsk": {
     "failed": "Inline ask failed"
   },
+  "card": {
+    "unknownFile": "Unknown file",
+    "created": "Created",
+    "modified": "Modified",
+    "deleted": "Deleted",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "creating": "Creating...",
+    "writing": "Writing...",
+    "editing": "Editing...",
+    "updating": "Updating...",
+    "deleting": "Deleting...",
+    "completed": "Completed",
+    "running": "Running...",
+    "collapseCommand": "Collapse command",
+    "expandCommand": "Expand command",
+    "error": "Error:",
+    "resumeFailed": "Resume failed: {{message}}"
+  },
   "agent": {
     "architect": "Optimized for coding tasks",
     "planner": "Creates & refines PRDs (product requirements)",

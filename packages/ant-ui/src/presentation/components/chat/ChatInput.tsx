@@ -329,7 +329,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         useStore.getState().setRunning(false);
         useStore.getState().setInlineAskContext(null);
         showError(
-          `${t('inlineAsk.failed')}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `${t('inlineAsk.failed')}: ${error instanceof Error ? error.message : t('common:error.unknown')}`,
           { title: t('common:error.title') }
         );
       }

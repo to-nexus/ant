@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { 
   createFile, 
   createDirectory, 
@@ -16,6 +17,7 @@ export function useFileOperations(
   const selectedFile = useStore((state) => state.selectedFile);
   const triggerFileReload = useStore((state) => state.triggerFileReload);
   const { showError } = useAlertModalContext();
+  const { t } = useTranslation('artifacts');
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
     if (!selectedProject || !selectedFeature) return;
@@ -26,7 +28,7 @@ export function useFileOperations(
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create file:', error);
-      showError('파일 생성에 실패했습니다.', { title: '오류' });
+      showError(t('error.fileCreateFailed'));
     }
   };
 
@@ -39,7 +41,7 @@ export function useFileOperations(
       await refreshFileTree();
     } catch (error) {
       console.error('Failed to create directory:', error);
-      showError('폴더 생성에 실패했습니다.', { title: '오류' });
+      showError(t('error.dirCreateFailed'));
     }
   };
 
@@ -56,7 +58,7 @@ export function useFileOperations(
       }
     } catch (error) {
       console.error('Failed to delete item:', error);
-      showError('삭제에 실패했습니다.', { title: '오류' });
+      showError(t('error.deleteFailed'));
     }
   };
 
@@ -79,7 +81,7 @@ export function useFileOperations(
       }
     } catch (error) {
       console.error('Failed to upload files:', error);
-      showError('업로드에 실패했습니다. 잠시 후 다시 시도해주세요.', { title: '오류' });
+      showError(t('error.uploadFailed'));
     }
   };
 

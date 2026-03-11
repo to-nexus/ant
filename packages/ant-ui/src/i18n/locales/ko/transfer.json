@@ -35,6 +35,8 @@
     "moveDesc": "원본을 삭제하고 대상으로 이동합니다"
   },
   "action": {
+    "exclude": "제외",
+    "restore": "되돌리기",
     "transfer": "전송",
     "transferring": "전송 중...",
     "approve": "승인",
