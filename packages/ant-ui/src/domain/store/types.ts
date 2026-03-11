@@ -99,6 +99,11 @@ export interface UIState {
   onboardingSkipped: boolean;
   // ✅ QuickStart with existing project (non-null triggers QuickStart for that project)
   quickStartProjectId: string | undefined;
+  // ✅ ProjectWizard modal (design/code wizard)
+  projectSetupConfig: {
+    mode: 'design' | 'code';
+    existingProjectId?: string;
+  } | undefined;
 }
 
 export interface GitStatus {

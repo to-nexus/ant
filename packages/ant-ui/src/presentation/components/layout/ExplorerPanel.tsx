@@ -74,12 +74,24 @@ export function ExplorerPanel({
             <ArtifactsPanel explorerWidth={width} />
 
             {onboardingSkipped && projects.length === 0 && (
-              <div className="mt-4 mx-1">
+              <div className="mt-4 mx-1 space-y-2">
                 <QuickStartCTA
-                  variant="project"
-                  title={t('onboarding:quickstart.goToOnboarding')}
-                  hint={t('onboarding:quickstart.goToOnboardingHint')}
+                  variant="plan"
+                  title={t('onboarding:quickstart.fleshOutIdea')}
+                  hint={t('onboarding:quickstart.fleshOutIdeaHint')}
                   onClick={() => setOnboardingSkipped(false)}
+                />
+                <QuickStartCTA
+                  variant="design"
+                  title={t('onboarding:quickstart.designSystem')}
+                  hint={t('onboarding:quickstart.designSystemHint')}
+                  onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'design' })}
+                />
+                <QuickStartCTA
+                  variant="code"
+                  title={t('onboarding:quickstart.codeFromDesign')}
+                  hint={t('onboarding:quickstart.codeFromDesignHint')}
+                  onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'code' })}
                 />
               </div>
             )}
