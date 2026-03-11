@@ -131,19 +131,29 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       }
     } else if (!tracker.buildPassed) {
       console.warn(`⚠️  [checkTaskStatus] Verification: build objective not met`);
+      const history = state.commandHistory || [];
+      const lastFailed = [...history].reverse().find(h => !h.success);
+      const buildErrorDetail = lastFailed?.errorSnippet
+        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
+        : '';
       violations.push({
         type: 'verification_incomplete' as ViolationType,
         severity: 'critical',
-        message: 'Build has not succeeded. A build command must exit 0 with no file modifications after it.',
+        message: 'Build has not succeeded. A build command must exit 0 with no file modifications after it.' + buildErrorDetail,
         isRetryable: true,
         suggestedFix: 'Run the build command and ensure it passes. If you edited files after the last build, re-run the build.',
       });
     } else if (tracker.testsRequired && !tracker.testPassed) {
       console.warn(`⚠️  [checkTaskStatus] Verification: test objective not met`);
+      const history = state.commandHistory || [];
+      const lastFailed = [...history].reverse().find(h => !h.success);
+      const testErrorDetail = lastFailed?.errorSnippet
+        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
+        : '';
       violations.push({
         type: 'verification_incomplete' as ViolationType,
         severity: 'critical',
-        message: 'Tests have not passed. Test files exist in this project — run tests and ensure they pass.',
+        message: 'Tests have not passed. Test files exist in this project — run tests and ensure they pass.' + testErrorDetail,
         isRetryable: true,
         suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
       });
@@ -618,6 +628,39 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   console.log(`   Remaining: ${result.remainingQueue.length}`);
   console.log(`   Interrupted: ${result.hasInterruptedTasks}`);
 
+  // Post-job: design-prescribed package coverage report
+  if (state.designDocUnknownPackages?.length && state.context?.featurePath && state._httpJobId) {
+    try {
+      const { getSessionDebugDir } = await import('../../../../core/utils/sessionPaths');
+      const planFilePath = path.join(
+        getSessionDebugDir(state.context.featurePath, 'architect', 'plans'),
+        `plan-${state._httpJobId}.json`,
+      );
+      const planFileContent = await import('fs/promises').then(fs => fs.readFile(planFilePath, 'utf-8'));
+      const planEntries: any[] = JSON.parse(planFileContent);
+      const depManifestNames = new Set(['go-mod', 'package-json', 'requirements-txt', 'cargo-toml', 'pubspec-yaml']);
+      const usedInCode = new Set<string>();
+      for (const entry of planEntries) {
+        for (const pp of entry.plan?.prescribedPackages || []) {
+          if (pp.usedBy?.some((u: string) => !depManifestNames.has(u))) {
+            usedInCode.add(pp.package);
+          }
+        }
+      }
+      const missing = state.designDocUnknownPackages.filter(p => !usedInCode.has(p));
+      if (missing.length > 0) {
+        console.warn(
+          `⚠️  [PackageCoverage] Design-prescribed packages with no code usage across all tasks: ${missing.join(', ')}\n` +
+          `   These packages were declared in dependency manifests but no feature task included them in prescribedPackages with actual code modules.`,
+        );
+      } else {
+        console.log(`✅ [PackageCoverage] All ${state.designDocUnknownPackages.length} design-prescribed packages have code usage`);
+      }
+    } catch {
+      // Plan file may not exist (e.g., resumed job with pre-existing plans)
+    }
+  }
+
   // ✅ Log parallel_complete event to debug/logs/
   if (state.context?.featurePath && state._httpJobId) {
     const { getExecutionLogger: getExecLog } = await import('../../../../core/utils/executionLogger');
@@ -944,6 +987,10 @@ export function buildCodeGraph() {
       recursionCount: null as any,  // ✅ Current iteration count
       recursionLimit: null as any,  // ✅ Maximum allowed iterations
       
+      // Verification & command tracking
+      _verificationTracker: null as any,
+      commandHistory: null as any,
+
       // ✅ NEW: Tool Calling support
       llmResponse: null as any,     // LLM response (thinking, text, tool calls)
       toolResults: null as any,     // Tool execution results
@@ -1114,16 +1161,20 @@ export function buildCodeGraph() {
       const hasViolations = (s.violations && s.violations.length > 0);
       
       if (!hasViolations) {
-  // ✅ Task succeeded - ALWAYS go to learn for incremental lesson extraction
-      return "learn";
-    }
+        return "learn";
+      }
     
-    // Has violations - check if we should retry
+      // Has violations - check recursion budget before allowing retry
+      const remaining = (s.recursionLimit || 200) - (s.recursionCount || 0);
+      if (remaining < 20) {
+        console.warn(`⚠️  Insufficient recursion budget (${remaining}) for retry — moving to learn`);
+        return "learn";
+      }
+
       if (s.retries < s.maxRetries) {
         return "enforce";
       }
       
-      // Exceeded retries — stop looping, complete task with unresolved violations
       console.log(`⚠️  Task "${s.currentTask?.name}" exhausted retries (${s.retries}/${s.maxRetries})`);
       console.log(`   Unresolved violations remain — moving on to prevent infinite loop.\n`);
       return "learn";

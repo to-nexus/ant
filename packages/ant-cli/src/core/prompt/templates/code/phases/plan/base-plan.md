@@ -32,6 +32,32 @@ You are the **ARCHITECT** planning HOW to implement a specific task.
 
 **Constraint**: Do NOT plan work outside your task description's scope, even if design documents describe it. Other tasks handle other scopes.
 
+{{#if hasDesignDocUnknownPackages}}
+────────────────────────────────────────────────────────────────────────────────
+## MANDATORY: Design-Prescribed Dependencies
+
+**Observation target**: Does this task's scope overlap with any listed package's
+usage pattern described in the design document?
+
+**Constraint**: Each package below MUST appear in `prescribedPackages` when the
+design document associates it with functionality within this task's scope.
+Do NOT substitute with standard library or well-known alternatives.
+
+**Constraint**: Do NOT judge relevance from the import path name alone.
+The design document describes each package's intended role and usage boundary.
+
+⚠️ **Blind spot**: Packages with abstract or abbreviated names are easily dismissed
+as irrelevant when their design-document-prescribed usage pattern actually matches
+the task scope. Cross-reference every package against the design document before
+excluding it from `prescribedPackages`.
+
+{{#each designDocUnknownPackages}}
+- `{{this}}`
+{{/each}}
+
+────────────────────────────────────────────────────────────────────────────────
+{{/if}}
+
 ────────────────────────────────────────────────────────────────────────────────
 
 ## Task (Starting Point)

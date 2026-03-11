@@ -90,8 +90,6 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     }
   }
 
-  const hasViolations = violations.length > 0;
-
   // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
   // Without this check, a task can be marked "completed" even when the user cancelled
   // the job mid-execution, because checkTaskStatus only looked at violations.
@@ -113,6 +111,75 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
       recursionLimit: state.recursionLimit,
     } as any;
   }
+
+  // Budget exhaustion guard: if checkTaskStatus is reached without LLM explicitly
+  // signaling done via <done> tag, the task hit its call budget — treat as failure.
+  const llmExplicitlyDone = state.llmResponse?.done === true;
+  if (violations.length === 0 && state.currentTask && !llmExplicitlyDone) {
+    const taskType = state.currentTask.type;
+    console.warn(`⚠️  [Worker checkTaskStatus] Task "${state.currentTask.name}" (type=${taskType}) reached checkTaskStatus without <done> tag — budget exhausted`);
+    violations.push({
+      type: 'budget_exhausted' as ViolationType,
+      severity: 'critical',
+      message: `Task reached checkTaskStatus without LLM signaling completion via <done> tag. The LLM could not complete within the call budget.`,
+      isRetryable: true,
+      suggestedFix: taskType === 'verification'
+        ? 'Verification task did not complete — build may have failed. Will retry with remaining budget.'
+        : 'Break down the task scope or provide clearer implementation direction.',
+    });
+  }
+
+  // Verification objective guard: build must pass, and tests must pass if they exist.
+  if (violations.length === 0 && llmExplicitlyDone && state.currentTask?.type === 'verification') {
+    const tracker = state._verificationTracker;
+
+    if (!tracker) {
+      const history = state.commandHistory || [];
+      const lastCommand = history[history.length - 1];
+      if (!lastCommand || !lastCommand.success) {
+        console.warn(`⚠️  [Worker checkTaskStatus] Verification: no tracker, falling back to commandHistory`);
+        violations.push({
+          type: 'verification_incomplete' as ViolationType,
+          severity: 'critical',
+          message: lastCommand
+            ? `Last command failed (exit ${lastCommand.exitCode}): ${lastCommand.command}`
+            : 'Verification task completed without executing any command.',
+          isRetryable: true,
+          suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
+        });
+      }
+    } else if (!tracker.buildPassed) {
+      console.warn(`⚠️  [Worker checkTaskStatus] Verification: build objective not met`);
+      const history = state.commandHistory || [];
+      const lastFailed = [...history].reverse().find(h => !h.success);
+      const buildErrorDetail = lastFailed?.errorSnippet
+        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
+        : '';
+      violations.push({
+        type: 'verification_incomplete' as ViolationType,
+        severity: 'critical',
+        message: 'Build has not succeeded. A build command must exit 0 with no file modifications after it.' + buildErrorDetail,
+        isRetryable: true,
+        suggestedFix: 'Run the build command and ensure it passes. If you edited files after the last build, re-run the build.',
+      });
+    } else if (tracker.testsRequired && !tracker.testPassed) {
+      console.warn(`⚠️  [Worker checkTaskStatus] Verification: test objective not met`);
+      const history = state.commandHistory || [];
+      const lastFailed = [...history].reverse().find(h => !h.success);
+      const testErrorDetail = lastFailed?.errorSnippet
+        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
+        : '';
+      violations.push({
+        type: 'verification_incomplete' as ViolationType,
+        severity: 'critical',
+        message: 'Tests have not passed. Test files exist in this project — run tests and ensure they pass.' + testErrorDetail,
+        isRetryable: true,
+        suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
+      });
+    }
+  }
+
+  const hasViolations = violations.length > 0;
 
   // Workflow exit (await to ensure broadcast completes before next node's enterNode)
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -279,6 +346,10 @@ function buildWorkerSubgraph() {
       _planExploring: null as any,
       planConversationHistory: null as any,
 
+      // Verification & command tracking
+      _verificationTracker: null as any,
+      commandHistory: null as any,
+
       // Worker-specific
       workerId: null as any,
       _taskCompleted: null as any,
@@ -335,6 +406,11 @@ function buildWorkerSubgraph() {
       }
 
       if (hasViolations) {
+        const remaining = (s.recursionLimit || 200) - (s.recursionCount || 0);
+        if (remaining < 20) {
+          console.warn(`⚠️  Worker: insufficient recursion budget (${remaining}) for retry — moving to learn`);
+          return 'learn';
+        }
         if ((s.retries || 0) < (s.maxRetries || 3)) {
           return 'enforce';
         }

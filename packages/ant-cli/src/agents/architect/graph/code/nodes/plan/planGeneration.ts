@@ -83,7 +83,7 @@ export async function buildPlanPrompt(
 
   const designDoc = resolveDesignDoc(state, task);
 
-  let prompt = await promptEngine.buildTaskPlanPrompt(
+  const prompt = await promptEngine.buildTaskPlanPrompt(
     task,
     state.directive || '',
     designDoc,
@@ -93,22 +93,8 @@ export async function buildPlanPrompt(
     state.profile,
     remainingTasks,
     { hasTools: options?.hasTools ?? false },
+    state.designDocUnknownPackages,
   );
-
-  const unknownPackages = state.designDocUnknownPackages;
-  if (unknownPackages && unknownPackages.length > 0) {
-    const prescribedSection =
-      '────────────────────────────────────────────────────────────────────────────────\n' +
-      '## MANDATORY: Design-Prescribed Dependencies\n\n' +
-      'These private packages are listed in the dependency manifest. They REPLACE well-known alternatives.\n' +
-      'For EVERY file you plan to create, check if any of these packages should be imported.\n' +
-      'If a package provides relevant functionality, you MUST discover its API via tools\n' +
-      'and include it in `prescribedPackages`. Do NOT substitute with public alternatives.\n\n' +
-      unknownPackages.map(pkg => `- \`${pkg}\``).join('\n') + '\n' +
-      '────────────────────────────────────────────────────────────────────────────────\n\n';
-    prompt = prescribedSection + prompt;
-    console.log(`📦 [Plan] Injected ${unknownPackages.length} design-prescribed dependencies at TOP of plan prompt`);
-  }
 
   return prompt;
 }
@@ -427,9 +413,8 @@ async function savePlanTextForDebug(
 }
 
 /**
- * Validate prescribedPackages against design doc references.
- * Cross-references the auto-extracted package list with what the Plan LLM
- * actually included in prescribedPackages, logging discrepancies.
+ * Validate prescribedPackages structure within a single task plan.
+ * Checks for missing field and declared-but-unused packages (empty usedBy).
  */
 function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): void {
   if (!state.designDocs || Object.keys(state.designDocs).length === 0) return;
@@ -448,16 +433,6 @@ function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): vo
     console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
   }
 
-  const unknownPackages = state.designDocUnknownPackages;
-  if (unknownPackages && unknownPackages.length > 0) {
-    const prescribedPaths = new Set(prescribed.map((p: any) => p.package));
-    const missing = unknownPackages.filter(dp =>
-      !prescribedPaths.has(dp) && !prescribed.some((pp: any) => dp.startsWith(pp.package + '/') || pp.package.startsWith(dp + '/'))
-    );
-    if (missing.length > 0) {
-      console.warn(`⚠️  [Plan] Design-prescribed dependencies NOT in prescribedPackages: ${missing.join(', ')}`);
-    }
-  }
 }
 
 /** Max plan↔tool round-trips before forcing plan finalization.

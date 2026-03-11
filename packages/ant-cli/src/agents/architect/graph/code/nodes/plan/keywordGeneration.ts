@@ -42,10 +42,10 @@ export async function generateTaskKeywords(
   directoryTree?: string
 ): Promise<TaskKeywords> {
   if (keywordDedup.isDuplicate(task.id)) {
-    console.warn(`⚠️  [Plan-Keyword] Duplicate call for task "${task.id}" (call #${keywordDedup.getCallCount(task.id)}), using fallback keywords`);
+    console.warn(`⚠️  [Plan-Keyword] Duplicate call for task "${task.id}" (call #${keywordDedup.getCallCount(task.id)}), skipping keyword generation`);
     return {
       errorFiles: [],
-      keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
+      keywords: [],
       requiredFiles: [],
       references: new Map()
     };
@@ -53,10 +53,10 @@ export async function generateTaskKeywords(
 
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
-    console.warn('[Plan] PromptEngine not available, using fallback keywords');
+    console.warn('[Plan] PromptEngine not available, skipping keyword generation');
     return {
       errorFiles: [],
-      keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
+      keywords: [],
       requiredFiles: [],
       references: new Map()
     };
@@ -178,7 +178,7 @@ export async function generateTaskKeywords(
 
   return {
     errorFiles: [],
-    keywords: task.name.toLowerCase().split(' ').filter(w => w.length > 3),
+    keywords: [],
     requiredFiles: [],
     references: new Map()
   };
