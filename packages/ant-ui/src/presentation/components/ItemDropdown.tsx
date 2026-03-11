@@ -347,7 +347,7 @@ export function ItemDropdown({
           </div>
           
           {isOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-md shadow-lg z-10 max-h-48 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-md shadow-lg z-10 overflow-y-auto" style={{ maxHeight: 'min(calc(100vh - 200px), 400px)' }}>
               {/* Deselect option at the top */}
               <div
                 className={`flex items-center px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#30363d] transition-colors border-b border-gray-200 dark:border-[#30363d] ${
