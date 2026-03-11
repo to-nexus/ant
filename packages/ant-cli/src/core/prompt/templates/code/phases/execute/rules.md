@@ -56,7 +56,7 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 
 ### prescribedPackages Compliance
 
-**Constraint**: If the plan contains a `prescribedPackages` array, those packages MUST be imported and used in the modules listed in `usedBy`. Do NOT substitute with alternative packages. Use the `apis` list as the authoritative reference for available functions and types.
+**Constraint**: If the plan contains a `prescribedPackages` array, those packages MUST be imported and used in the modules listed in `usedBy`. Do NOT substitute with alternative packages. The `apis` list contains function signatures observed during planning. Use these for correct parameter types and return types. If a signature seems incomplete or you need APIs beyond what is listed, observe the actual package source before guessing.
 
 **Constraint**: This applies to both `create` and `modify` operations. If a `modify` entry adds new functionality that a prescribed package covers, use the prescribed package.
 

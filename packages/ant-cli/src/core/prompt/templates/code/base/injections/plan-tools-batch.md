@@ -16,18 +16,22 @@ Do NOT run commands that modify source files, start processes, run builds, or ex
 
 **Observation target**: Does the design document reference packages that are NOT part of the language standard library and NOT widely-known open-source packages? These are **design-prescribed dependencies** — packages the design document mandates for this project (organization-internal repos, private packages, project-specific libraries).
 
+**Principle**: Observe the actual exported API signatures of each prescribed dependency before recording them. The implementation phase cannot see your tool output — it relies entirely on what you record in `prescribedPackages.apis`.
+
+**Constraint**: Do NOT record function/type names without full signatures. Record parameter types and return types exactly as observed.
+
 **Protocol**:
 1. Scan the design document for import paths and package references
 2. For each design-prescribed dependency, check the dependency manifest (e.g., `go.mod`, `package.json`)
-3. If present in the manifest, use documentation commands to discover its exported API (e.g., `go doc <module>/<subpackage>`)
-4. If NOT present in the manifest, install it first (`run_command`), then discover the API
-5. Include **concrete import paths and function/type names** from the discovered API in your plan
+3. If present in the manifest, observe its exported API:
+   - Go: `run_command("go doc <module>/<subpackage>")`
+   - TypeScript/JavaScript: `read_file("codebase/node_modules/{package}/package.json")` to find the `types`/`typings` entry, then `read_file` the entry `.d.ts`
+4. If NOT present in the manifest, install it first (`run_command`), then observe the API
+5. Record **full signatures** (parameter types, return types) in `prescribedPackages.apis`
 
-**Constraint**: Do NOT substitute a design-prescribed dependency with standard library or alternative packages. The design document mandates these packages for a reason. Discover the actual API first; plan with the prescribed package.
+**Constraint**: Do NOT substitute a design-prescribed dependency with standard library or alternative packages. Discover the actual API first; plan with the prescribed package.
 
-**Constraint**: Plan entries that reference a discovered dependency MUST include specific API details (import path, function names, type names). Vague references like "use package X or internal alternative" are insufficient.
-
-**Constraint**: Every design-prescribed dependency whose API was discovered via tools MUST appear in `prescribedPackages` with concrete API details. A discovered package omitted from `prescribedPackages` will not be used by the implementation phase.
+**Constraint**: Every design-prescribed dependency whose API was observed via tools MUST appear in `prescribedPackages` with full signatures. A discovered package omitted from `prescribedPackages` will not be used by the implementation phase.
 
 ### Priority 2 — Codebase Observation
 
