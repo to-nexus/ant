@@ -39,11 +39,8 @@ export function ConnectionStatus({ status }: ConnectionStatusProps) {
   const display = getStatusDisplay();
 
   return (
-    <div className="flex items-center space-x-2">
-      <span className="text-lg">{display.emoji}</span>
-      <span className={`text-sm font-medium ${display.className}`}>
-        {display.text}
-      </span>
+    <div className="flex items-center" title={display.text}>
+      <span className="text-sm">{display.emoji}</span>
     </div>
   );
 }

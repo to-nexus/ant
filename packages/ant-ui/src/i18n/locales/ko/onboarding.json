@@ -50,7 +50,7 @@
       "title": "시작 도우미",
       "step1Title": "프로젝트 설정",
       "step2Title": "Git 연동",
-      "step3Title": "파일 & 시작",
+      "step3Title": "아티팩트 등록 & 지시",
       "modeDesign": "시스템 설계하기",
       "modeDesignDesc": "기획서나 요구사항을 바탕으로 시스템을 설계합니다",
       "modeCode": "설계대로 코딩하기",

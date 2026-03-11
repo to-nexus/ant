@@ -327,6 +327,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
   };
 
   return (
+    <>
     <div
       className={`min-h-screen bg-gradient-to-br from-gray-50 via-white to-indigo-50/30 dark:from-[#0d1117] dark:via-[#0d1117] dark:to-[#110d20] pt-16 flex flex-col relative overflow-hidden
         transition-opacity duration-300 ${isExiting ? 'opacity-0' : 'opacity-100'}`}
@@ -406,107 +407,6 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           to { transform: translate(-50%, -50%) rotate(360deg); }
         }
       `}</style>
-
-      {/* === Left-top project/feature name inputs === */}
-      {!isSubmitting && (
-        <div
-          className="fixed top-20 left-6 z-20 flex flex-col gap-3 w-56
-            bg-white/70 dark:bg-white/5 backdrop-blur-sm
-            border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm
-            p-4"
-          style={{ animation: 'qsFadeInUp 0.5s ease-out 0.1s both' }}
-        >
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('quickstart.projectNameLabel')}
-            </span>
-            <div className="relative">
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                disabled={!!existingProjectId}
-                readOnly={!!existingProjectId}
-                className={cn(
-                  'w-full px-3 py-1.5 pr-7 text-sm rounded-lg border',
-                  'bg-white/80 dark:bg-white/5',
-                  'text-gray-900 dark:text-white',
-                  'placeholder-gray-400 dark:placeholder-gray-500',
-                  'focus:outline-none focus:ring-1',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'transition-all',
-                  existingProjectId && 'bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed',
-                  projectNameError
-                    ? 'border-red-300 dark:border-red-700 focus:ring-red-500/50'
-                    : 'border-gray-200 dark:border-gray-700 focus:ring-emerald-500/50',
-                )}
-                placeholder="project-1"
-              />
-              {!existingProjectId && projectName.trim() && (
-                <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                  {projectNameError
-                    ? <X className="w-3.5 h-3.5 text-red-500" />
-                    : <Check className="w-3.5 h-3.5 text-emerald-500" />}
-                </span>
-              )}
-            </div>
-            {projectNameExists && (
-              <span className="text-[11px] text-red-500 dark:text-red-400">
-                {t('quickstart.projectWizard.nameExists')}
-              </span>
-            )}
-            {projectNameInvalid && (
-              <span className="text-[11px] text-red-500 dark:text-red-400">
-                {t('quickstart.projectWizard.nameInvalid')}
-              </span>
-            )}
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {t('quickstart.featureNameLabel')}
-            </span>
-            <div className="relative">
-              <input
-                type="text"
-                value={featureName}
-                onChange={(e) => setFeatureName(e.target.value)}
-                className={cn(
-                  'w-full px-3 py-1.5 pr-7 text-sm rounded-lg border',
-                  'bg-white/80 dark:bg-white/5',
-                  'text-gray-900 dark:text-white',
-                  'placeholder-gray-400 dark:placeholder-gray-500',
-                  'focus:outline-none focus:ring-1',
-                  'transition-all',
-                  featureNameError
-                    ? 'border-red-300 dark:border-red-700 focus:ring-red-500/50'
-                    : 'border-gray-200 dark:border-gray-700 focus:ring-emerald-500/50',
-                )}
-                placeholder="ant-1"
-              />
-              {featureName.trim() && (
-                <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                  {featureNameError
-                    ? <X className="w-3.5 h-3.5 text-red-500" />
-                    : <Check className="w-3.5 h-3.5 text-emerald-500" />}
-                </span>
-              )}
-            </div>
-            {featureNameExists ? (
-              <span className="text-[11px] text-red-500 dark:text-red-400">
-                {t('quickstart.projectWizard.nameExists')}
-              </span>
-            ) : featureNameInvalid ? (
-              <span className="text-[11px] text-red-500 dark:text-red-400">
-                {t('quickstart.projectWizard.nameInvalid')}
-              </span>
-            ) : (
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                feature/{featureName || '...'}
-              </span>
-            )}
-          </label>
-        </div>
-      )}
 
       {/* === Centered content === */}
       <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-24 z-10">
@@ -727,5 +627,105 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
         </button>
       )}
     </div>
+
+    {/* === Left-top project/feature name inputs === */}
+    {/* Rendered outside overflow-hidden div to prevent focus border clipping */}
+    {!isSubmitting && (
+      <div
+        className="fixed top-14 sm:top-16 left-3 sm:left-5 z-20 p-1"
+        style={{ animation: 'qsFadeInUp 0.5s ease-out 0.1s both' }}
+      >
+        <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
+          {/* Project name */}
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center">
+              {t('quickstart.projectNameLabel')}
+            </span>
+            <div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  disabled={!!existingProjectId}
+                  readOnly={!!existingProjectId}
+                  className={cn(
+                    'w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
+                    'bg-white/80 dark:bg-white/5 backdrop-blur-sm',
+                    'text-gray-900 dark:text-white',
+                    'placeholder-gray-400 dark:placeholder-gray-500',
+                    'focus:outline-none',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                    'transition-colors',
+                    existingProjectId && 'bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed',
+                    projectNameError
+                      ? 'border-red-300 dark:border-red-700 focus:border-red-500'
+                      : 'border-gray-200 dark:border-gray-700 focus:border-emerald-500',
+                  )}
+                  placeholder="project-1"
+                />
+                {!existingProjectId && projectName.trim() && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                    {projectNameError
+                      ? <X className="w-3.5 h-3.5 text-red-500" />
+                      : <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                  </span>
+                )}
+              </div>
+              {projectNameExists && (
+                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameExists')}</p>
+              )}
+              {projectNameInvalid && (
+                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameInvalid')}</p>
+              )}
+            </div>
+          </div>
+          {/* Feature name */}
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center">
+              {t('quickstart.featureNameLabel')}
+            </span>
+            <div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={featureName}
+                  onChange={(e) => setFeatureName(e.target.value)}
+                  className={cn(
+                    'w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
+                    'bg-white/80 dark:bg-white/5 backdrop-blur-sm',
+                    'text-gray-900 dark:text-white',
+                    'placeholder-gray-400 dark:placeholder-gray-500',
+                    'focus:outline-none',
+                    'transition-colors',
+                    featureNameError
+                      ? 'border-red-300 dark:border-red-700 focus:border-red-500'
+                      : 'border-gray-200 dark:border-gray-700 focus:border-emerald-500',
+                  )}
+                  placeholder="ant-1"
+                />
+                {featureName.trim() && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                    {featureNameError
+                      ? <X className="w-3.5 h-3.5 text-red-500" />
+                      : <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                  </span>
+                )}
+              </div>
+              {featureNameExists ? (
+                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameExists')}</p>
+              ) : featureNameInvalid ? (
+                <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameInvalid')}</p>
+              ) : (
+                <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                  Git branch: feature/{featureName || '...'}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

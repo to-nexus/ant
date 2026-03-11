@@ -18,6 +18,7 @@ interface StepFilesAndStartProps {
   onDirectiveChange: (v: string) => void;
   showDirective: boolean;
   onShowDirectiveToggle: () => void;
+  canSubmit: boolean;
 }
 
 export function StepFilesAndStart({
@@ -28,6 +29,7 @@ export function StepFilesAndStart({
   designDocsFiles, onDesignDocsChange,
   directive, onDirectiveChange,
   showDirective, onShowDirectiveToggle,
+  canSubmit,
 }: StepFilesAndStartProps) {
   const validDesignDocs = designDocsFiles.filter((f) => isCanonicalDesignDoc(f.name));
 
@@ -98,49 +100,57 @@ export function StepFilesAndStart({
 
       {/* Directive section */}
       <div>
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {t('quickstart.projectWizard.directive')}
-        </label>
-
-        {/* Auto-directive preview (always visible) */}
-        <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
-          {t('quickstart.projectWizard.autoDirectiveHint')}
-        </p>
-        <div className="mt-1.5 rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2">
-          <p className="text-xs italic text-gray-600 dark:text-gray-300">
-            &ldquo;{t(mode === 'design' ? 'quickstart.projectWizard.defaultDirectiveDesign' : 'quickstart.projectWizard.defaultDirectiveCode')}&rdquo;
-          </p>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {t('quickstart.projectWizard.directive')}
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {t('quickstart.projectWizard.directiveEditToggle')}
+            </span>
+            <button
+              type="button"
+              onClick={onShowDirectiveToggle}
+              className={cn(
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200',
+                showDirective ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-gray-200 dark:bg-gray-600',
+              )}
+            >
+              <span className={cn(
+                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200',
+                showDirective ? 'translate-x-4' : 'translate-x-0',
+              )} />
+            </button>
+          </div>
         </div>
 
-        {/* "직접 수정하기" toggle */}
-        <div className="flex items-center justify-between mt-3 mb-1.5">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {t('quickstart.projectWizard.directiveEditToggle')}
-          </span>
-          <button
-            type="button"
-            onClick={onShowDirectiveToggle}
-            className={cn(
-              'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200',
-              showDirective ? 'bg-indigo-500 dark:bg-indigo-400' : 'bg-gray-200 dark:bg-gray-600',
-            )}
-          >
-            <span className={cn(
-              'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200',
-              showDirective ? 'translate-x-4' : 'translate-x-0',
-            )} />
-          </button>
-        </div>
-        {showDirective && (
+        {showDirective ? (
           <textarea
             value={directive}
             onChange={(e) => onDirectiveChange(e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent outline-none resize-none"
+            className="w-full px-3 py-2 text-sm border-2 border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-indigo-500 dark:focus:border-indigo-400 outline-none resize-none"
             placeholder={t('quickstart.projectWizard.directivePlaceholder')}
           />
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 px-3 py-2">
+            <p className="text-xs italic text-gray-600 dark:text-gray-300">
+              &ldquo;{t(mode === 'design' ? 'quickstart.projectWizard.defaultDirectiveDesign' : 'quickstart.projectWizard.defaultDirectiveCode')}&rdquo;
+            </p>
+          </div>
         )}
+        <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+          {t('quickstart.projectWizard.autoDirectiveHint')}
+        </p>
       </div>
+
+      {!canSubmit && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 text-right">
+          {t(mode === 'design'
+            ? 'quickstart.projectWizard.startRequiresDesignInput'
+            : 'quickstart.projectWizard.startRequiresCodeInput')}
+        </p>
+      )}
     </>
   );
 }

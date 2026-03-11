@@ -18,8 +18,9 @@ import { WizardStepIndicator } from './WizardStepIndicator';
 import { StepProjectSetup } from './StepProjectSetup';
 import { StepGitIntegration } from './StepGitIntegration';
 import { StepFilesAndStart } from './StepFilesAndStart';
-import { Info } from 'lucide-react';
+
 import { ExecutionProgress } from './ExecutionProgress';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
 interface ProjectWizardModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ interface ProjectWizardModalProps {
 
 export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProjectId }: ProjectWizardModalProps) {
   const { t } = useTranslation('onboarding');
+  const { showConfirm } = useAlertModalContext();
 
   // ── Wizard navigation ──
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
@@ -207,13 +209,18 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
   const handleModeChange = (newMode: 'design' | 'code') => {
     if (newMode === mode) return;
-    if (hasModeDepData) {
-      if (!window.confirm(t('quickstart.projectWizard.modeChangeConfirm'))) return;
+    const apply = () => {
       setSourcesFiles([]); setAssetsFiles([]); setReferencesFiles([]);
       setDesignDocsFiles([]); setDirective(''); setShowDirective(false);
+      setMode(newMode);
+      setCurrentStep(1);
+    };
+    if (hasModeDepData) {
+      showConfirm(t('quickstart.projectWizard.modeChangeConfirm'), { onConfirm: apply });
+    } else {
+      setMode(newMode);
+      setCurrentStep(1);
     }
-    setMode(newMode);
-    setCurrentStep(1);
   };
 
   const goToStep = (step: WizardStep) => {
@@ -343,7 +350,8 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
       }
 
       updateExecStep('feature', 'active');
-      await createFeature(projectId, featureName.trim(), language);
+      const hasSources = sourcesFiles.length > 0;
+      await createFeature(projectId, featureName.trim(), language, hasSources ? { skipPrdTemplate: true } : undefined);
       useStore.getState().addFeatureOptimistic(featureName.trim());
       await delay(500);
       updateExecStep('feature', 'done');
@@ -485,17 +493,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 onDirectiveChange={setDirective}
                 showDirective={showDirective}
                 onShowDirectiveToggle={() => {
-                  if (!showDirective && !directive.trim()) {
-                    const defaultDir = mode === 'design'
-                      ? t('quickstart.projectWizard.defaultDirectiveDesign')
-                      : t('quickstart.projectWizard.defaultDirectiveCode');
-                    setDirective(defaultDir);
-                  }
-                  if (showDirective) {
-                    setDirective('');
-                  }
+                  setDirective('');
                   setShowDirective(!showDirective);
                 }}
+                canSubmit={canSubmit}
               />
             )}
           </div>
@@ -525,19 +526,6 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 </button>
               ) : (
                 <div className="flex items-center gap-2 sm:gap-3">
-                  {!canSubmit && (
-                    <>
-                      <span className="hidden md:inline text-xs text-amber-600 dark:text-amber-400 max-w-[260px]">
-                        {t(mode === 'design' ? 'quickstart.projectWizard.startRequiresDesignInput' : 'quickstart.projectWizard.startRequiresCodeInput')}
-                      </span>
-                      <div className="md:hidden relative group">
-                        <Info className="w-4 h-4 text-amber-500 cursor-help" />
-                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 p-2 text-xs text-gray-200 bg-gray-800 dark:bg-gray-900 rounded-lg shadow-lg z-50 pointer-events-none">
-                          {t(mode === 'design' ? 'quickstart.projectWizard.startRequiresDesignInput' : 'quickstart.projectWizard.startRequiresCodeInput')}
-                        </div>
-                      </div>
-                    </>
-                  )}
                   <button
                     onClick={() => handleSubmit(false)}
                     className={cn(

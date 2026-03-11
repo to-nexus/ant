@@ -50,7 +50,7 @@
       "title": "Setup Wizard",
       "step1Title": "Project Setup",
       "step2Title": "Git Integration",
-      "step3Title": "Files & Start",
+      "step3Title": "Artifacts & Directive",
       "modeDesign": "Design the system",
       "modeDesignDesc": "Design the system based on your spec or requirements",
       "modeCode": "Code from design",

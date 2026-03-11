@@ -40,7 +40,7 @@ export function createFeaturesRoutes(deps: {
   router.post('/projects/:id/features', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const { featureName, language } = req.body;
+      const { featureName, language, skipPrdTemplate } = req.body;
       
       if (!featureName) {
         res.status(400).json({ error: 'featureName is required' });
@@ -53,7 +53,7 @@ export function createFeaturesRoutes(deps: {
       // Users can publish to Git later via POST /projects/:id/publish.
       // Branch creation is silently skipped when Git is not initialized.
       
-      await deps.projectService.createFeature(projectId, featureName, userContext, language);
+      await deps.projectService.createFeature(projectId, featureName, userContext, language, { skipPrdTemplate: !!skipPrdTemplate });
       
       if (req.user) {
         logger.debug(`[Features] Created feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);
