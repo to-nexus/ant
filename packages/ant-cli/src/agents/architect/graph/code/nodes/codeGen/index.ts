@@ -164,10 +164,9 @@ export async function codeGen(
   // LLM must know its remaining budget to prioritize file output over analysis.
   {
     const currentCall = (state._codeGenCallIndex || 0) + 1;
-    const isVerifyType = state.currentTask?.type === 'verification';
     const isErrorType = state.currentTask?.type === 'error';
     const isFinalType = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
-    const maxCalls = isVerifyType ? 22 : (isFinalType || isErrorType) ? 0 : 20;
+    const maxCalls = (isFinalType || isErrorType) ? 0 : 20;
     
     if (maxCalls > 0 && currentCall >= 3) {
       const remaining = maxCalls - currentCall;
@@ -745,9 +744,12 @@ export async function codeGen(
             ...streamedFilePaths.map(fp => `  - ${fp}`),
           );
         }
+        const doneHint = state.currentTask?.type === 'verification'
+          ? 'If build (and tests if any) have passed with exit code 0, output <done>true</done> now.'
+          : 'If you have completed all work for this task, output <done>true</done> now.';
         reentryParts.push(
           '',
-          'If you have completed all work for this task, output <done>true</done> now.',
+          doneHint,
           'If there is remaining work, continue with NEW files only.',
         );
 

@@ -46,7 +46,6 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   
   const currentTask = state.currentTask;
   const isFinalTask = currentTask ? isFinalVerificationTask(currentTask) : false;
-  const isVerifyTask = currentTask?.type === 'verification';
   const isErrorTask = currentTask?.type === 'error';
   
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -55,7 +54,6 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   console.log(`   Type: ${currentTask?.type || 'none'}`);
   console.log(`   Priority: ${currentTask?.priority || 'none'}`);
   console.log(`   isFinalTask: ${isFinalTask}`);
-  console.log(`   isVerifyTask: ${isVerifyTask}`);
   console.log(`   isErrorTask: ${isErrorTask}`);
   console.log(`   response.done: ${response.done}`);
   console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
@@ -83,19 +81,8 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     }
   }
   
-  // Safety Net D: Verification task codeGen call budget
-  if (isVerifyTask) {
-    const callIndex = state._codeGenCallIndex || 0;
-    const maxVerificationCalls = 22;
-    if (callIndex >= maxVerificationCalls) {
-      console.warn(`⚠️  [Router] Verification codeGen call limit reached (${callIndex}/${maxVerificationCalls})`);
-      console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
-      return 'checkTaskStatus';
-    }
-  }
-
   // Safety Net E: Feature/general task codeGen call budget
-  if (!isFinalTask && !isVerifyTask && !isErrorTask) {
+  if (!isFinalTask && !isErrorTask) {
     const callIndex = state._codeGenCallIndex || 0;
     const maxFeatureCalls = 20;
     const warningThreshold = Math.floor(maxFeatureCalls * 0.8); // 16

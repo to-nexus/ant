@@ -30,6 +30,7 @@ import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
 import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, buildPlanPromptBlocks, PLAN_TOOL_LOOP_MAX, taskRequiresPlan, finalizePlanFromExploration } from "./planGeneration";
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
+import { detectTestFiles } from "./testFileDetector";
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   
@@ -104,7 +105,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
     // ✅ Initialize verification tracker for verification tasks
     if (nextTask.type === 'verification') {
-      const { detectTestFiles } = await import('./testFileDetector');
       state._verificationTracker = {
         buildPassed: false,
         testPassed: false,
@@ -221,6 +221,35 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
       // conversationHistory is preserved in state (not cleared)
+    };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 0.7: Verification retry lightweight path
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // On verification retry with existing planText, skip keyword/RAG/planText regeneration.
+  // The plan itself doesn't change — only the violation context matters for the next codeGen attempt.
+  // violations are preserved in state and injected into codeGen prompt by buildMessages.
+  const canSkipRetryPlan = isRetry && nextTask.type === 'verification'
+    && state.planText && state.planText.length > 50;
+  if (canSkipRetryPlan) {
+    console.log(`\n⚡ [Plan] Verification retry lightweight path — reusing planText (${state.planText!.length} chars)`);
+    console.log(`   Skipping: keywords, RAG, planText generation`);
+    console.log(`   Violations: ${state.violations?.length || 0} carried forward to codeGen prompt`);
+    
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+    }
+    
+    return {
+      ...state,
+      currentTask: nextTask,
+      planText: state.planText,
+      retries: state.retries,
+      completedTasksDetails: state.completedTasksDetails || [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      workspaceConfig: state.workspaceConfig,
     };
   }
 
@@ -368,11 +397,27 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let taskKeywords: TaskKeywords;
   
-  if (llm) {
+  if (isRetry) {
+    // On retry: skip LLM keyword generation entirely.
+    // Only extract error files from violations for targeted RAG.
+    const errorFilesFromViolations = extractFilesFromViolations(state.violations);
+    taskKeywords = {
+      errorFiles: errorFilesFromViolations,
+      keywords: [],
+      requiredFiles: [],
+      references: new Map<string, string[]>()
+    };
+    if (errorFilesFromViolations.length > 0) {
+      console.log(`🔄 [Plan] Retry: extracted ${errorFilesFromViolations.length} error file(s) from violations`);
+      errorFilesFromViolations.forEach(f => console.log(`   - ${f}`));
+    } else {
+      console.log(`🔄 [Plan] Retry: no error files in violations, skipping keyword generation`);
+    }
+  } else if (llm) {
     console.log(`🔑 [Plan] Generating search keywords...`);
     const generatedKeywords = await generateTaskKeywords(llm, nextTask, state, directoryTree);
     
-    // ✅ STEP 1.5: Merge with violation files (after LLM response)
+    // Merge with violation files (after LLM response)
     const errorFilesFromViolations = extractFilesFromViolations(state.violations);
     
     if (errorFilesFromViolations.length > 0) {
@@ -387,7 +432,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       references: generatedKeywords.references
     };
     
-    // ✅ Display merged keywords to UI
+    // Display merged keywords to UI
     await displayKeywords(taskKeywords);
     logKeywords(taskKeywords);
   } else {
