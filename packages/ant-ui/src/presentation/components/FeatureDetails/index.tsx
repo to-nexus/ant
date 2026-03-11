@@ -7,6 +7,7 @@ import { useFileEditor } from './hooks/useFileEditor';
 import { useFileOperations } from './hooks/useFileOperations';
 import { ArtifactsPanel } from './components/ArtifactsPanel';
 import { FileEditor } from './components/FileEditor';
+import { UploadConflictModal } from '../common/UploadConflictModal';
 
 export function FeatureDetails() {
   const { t } = useTranslation('artifacts');
@@ -32,7 +33,10 @@ export function FeatureDetails() {
     handleCreateFile,
     handleCreateDirectory,
     handleDelete,
-    handleUploadFiles
+    handleUploadFiles,
+    conflictModal,
+    setConflictModal,
+    handleConflictResolve,
   } = useFileOperations(selectedProject, selectedFeature, refreshFileTree);
 
   if (!selectedProject || !selectedFeature) {
@@ -87,6 +91,13 @@ export function FeatureDetails() {
           onRevert={loadFileContent}
         />
       )}
+
+      <UploadConflictModal
+        isOpen={conflictModal.isOpen}
+        onClose={() => setConflictModal(prev => ({ ...prev, isOpen: false }))}
+        conflictingFiles={conflictModal.conflictingFiles}
+        onResolve={handleConflictResolve}
+      />
     </div>
   );
 }

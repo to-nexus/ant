@@ -80,6 +80,15 @@
     "folderPlaceholder": "폴더명",
     "filePlaceholder": "파일명.md"
   },
+  "conflict": {
+    "title": "동일한 파일이 존재합니다",
+    "messageSingle": "동일한 이름의 파일이 이미 존재합니다. 어떻게 할까요?",
+    "messageMulti": "동일한 이름의 파일이 {{count}}개 있습니다. 어떻게 할까요?",
+    "applyToAll": "나머지 파일에도 모두 적용 ({{count}}개)",
+    "overwrite": "덮어쓰기",
+    "keepCopy": "사본 유지",
+    "cancel": "취소"
+  },
   "confirm": {
     "deleteItem": "{{type}} \"{{name}}\"을(를) 삭제할까요?",
     "deleteTitle": "삭제할까요?",

@@ -14,6 +14,8 @@ import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
 import { isCanonicalDir, isStructuralCanonicalDir } from '@/shared/utils/canonical-dirs';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
 import { HintBadge } from '@/presentation/components/common/HintBadge';
+import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
+import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -164,10 +166,12 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isRenaming = renamingPath === node.path;
 
     return (
-      <div key={node.path}>
+      <div
+        key={node.path}
+        data-drop-dir={isDirectory && onDropFiles ? node.path : undefined}
+        data-drop-blocked={isDirectory && onDropFiles && isStructural ? '' : undefined}
+      >
         <div
-          data-drop-dir={isDirectory && onDropFiles ? node.path : undefined}
-          data-drop-blocked={isDirectory && onDropFiles && isStructural ? '' : undefined}
           className={cn(
             'flex items-center justify-between group py-1.5 px-2 rounded transition-colors',
             isSelected 
@@ -629,6 +633,14 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const abortRef = useRef<AbortController | null>(null);
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Upload conflict modal state ────────────────────────────────
+  const [conflictModal, setConflictModal] = useState<{
+    isOpen: boolean;
+    conflictingFiles: string[];
+    dirPath: string;
+    entries: UploadFileEntry[];
+  }>({ isOpen: false, conflictingFiles: [], dirPath: '', entries: [] });
+
   const dismissUpload = useCallback(() => {
     if (lingerTimerRef.current) { clearTimeout(lingerTimerRef.current); lingerTimerRef.current = null; }
     setUploadState(null);
@@ -636,11 +648,11 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
 
   const doUpload = useCallback(async (
     dirPath: string,
-    files: FileList | UploadFileEntry[],
+    files: UploadFileEntry[],
   ) => {
     if (!selectedProject || !selectedFeature) return;
 
-    const count = Array.isArray(files) ? files.length : files.length;
+    const count = files.length;
     const controller = new AbortController();
     abortRef.current = controller;
     dismissUpload();
@@ -667,13 +679,40 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     }
   }, [selectedProject, selectedFeature, refreshFileTree, showError, t, dismissUpload]);
 
-  const handleUploadFiles = useCallback(async (dirPath: string, files: FileList) => {
-    await doUpload(dirPath, files);
-  }, [doUpload]);
+  const checkConflictsAndUpload = useCallback((
+    dirPath: string,
+    entries: UploadFileEntry[],
+  ) => {
+    if (!fileTree) {
+      doUpload(dirPath, entries);
+      return;
+    }
+    const conflicts = findConflicts(fileTree, dirPath, entries);
+    if (conflicts.length === 0) {
+      doUpload(dirPath, entries);
+      return;
+    }
+    setConflictModal({ isOpen: true, conflictingFiles: conflicts, dirPath, entries });
+  }, [fileTree, doUpload]);
 
-  const handleDropFiles = useCallback(async (dirPath: string, entries: UploadFileEntry[]) => {
-    await doUpload(dirPath, entries);
-  }, [doUpload]);
+  const handleConflictResolve = useCallback((resolution: ConflictResolution) => {
+    const { dirPath, entries } = conflictModal;
+    setConflictModal(prev => ({ ...prev, isOpen: false }));
+
+    if (resolution === 'cancel') return;
+
+    const existingNames = fileTree ? getAllExistingNames(fileTree, dirPath) : [];
+    const finalEntries = applyPerFileResolutions(entries, resolution.perFile, existingNames);
+    doUpload(dirPath, finalEntries);
+  }, [conflictModal, doUpload, fileTree]);
+
+  const handleUploadFiles = useCallback((dirPath: string, files: FileList) => {
+    checkConflictsAndUpload(dirPath, fileListToEntries(files));
+  }, [checkConflictsAndUpload]);
+
+  const handleDropFiles = useCallback((dirPath: string, entries: UploadFileEntry[]) => {
+    checkConflictsAndUpload(dirPath, entries);
+  }, [checkConflictsAndUpload]);
 
   const handleCancelUpload = useCallback(() => {
     if (uploadState?.completed) {
@@ -804,6 +843,14 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         />
 
       </div>
+
+      {/* Upload conflict modal */}
+      <UploadConflictModal
+        isOpen={conflictModal.isOpen}
+        onClose={() => setConflictModal(prev => ({ ...prev, isOpen: false }))}
+        conflictingFiles={conflictModal.conflictingFiles}
+        onResolve={handleConflictResolve}
+      />
 
       {/* Upload progress toast – fixed bottom-center via portal */}
       {/* Bottom-center portal: upload progress OR drop error */}

@@ -80,6 +80,15 @@
     "folderPlaceholder": "folder-name",
     "filePlaceholder": "filename.md"
   },
+  "conflict": {
+    "title": "File Already Exists",
+    "messageSingle": "A file with the same name already exists. What would you like to do?",
+    "messageMulti": "{{count}} files with the same names already exist. What would you like to do?",
+    "applyToAll": "Apply to all remaining files ({{count}})",
+    "overwrite": "Overwrite",
+    "keepCopy": "Keep Both",
+    "cancel": "Cancel"
+  },
   "confirm": {
     "deleteItem": "Delete {{type}} \"{{name}}\"?",
     "deleteTitle": "Delete?",
