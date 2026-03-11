@@ -73,7 +73,7 @@ existing modules, design specs, dependencies, etc.)
   "prescribedPackages": [
     {
       "package": "[import path from design document]",
-      "apis": ["[function/type discovered via tools]"],
+      "apis": ["[full function/type signature as observed — include parameter types and return types]"],
       "usedBy": ["[name of create entry that uses this package]"]
     }
   ],
@@ -112,7 +112,7 @@ existing modules, design specs, dependencies, etc.)
 |-------|----------|-------------|
 | `prescribedPackages` | Yes | Design-document-referenced packages discovered via tools. Empty array `[]` if none. |
 | `prescribedPackages[].package` | Yes | Exact import path from design document |
-| `prescribedPackages[].apis` | Yes | Concrete functions/types discovered via tools |
+| `prescribedPackages[].apis` | Yes | Full function/type signatures observed via tools. Include parameter types and return types — names alone are insufficient. |
 | `prescribedPackages[].usedBy` | Yes | Names of `create` entries that use this package |
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ existing modules, design specs, dependencies, etc.)
 
 **Constraint**: `prescribedPackages` MUST list every design-document-referenced package whose API was discovered via tools during analysis. If no prescribed packages exist, use an empty array.
 
-**Constraint**: Each `prescribedPackages` entry MUST include concrete `apis` (discovered via tools) and `usedBy` (which create modules use it). Vague entries without API details are insufficient.
+**Constraint**: Each `prescribedPackages` entry MUST include `apis` with full signatures (discovered via tools). Copy signatures exactly as observed — do NOT abbreviate to names only. The implementation phase relies on these for correct parameter usage. `usedBy` must list which create modules use this package.
 
 **Constraint**: If a prescribed package provides the functionality a module needs, that module MUST use the prescribed package. Do NOT substitute with well-known alternatives.
 

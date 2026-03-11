@@ -100,7 +100,7 @@ export async function buildPlanPrompt(
     const prescribedSection =
       '────────────────────────────────────────────────────────────────────────────────\n' +
       '## MANDATORY: Design-Prescribed Dependencies\n\n' +
-      'These private packages are already installed in go.mod. They REPLACE well-known alternatives.\n' +
+      'These private packages are listed in the dependency manifest. They REPLACE well-known alternatives.\n' +
       'For EVERY file you plan to create, check if any of these packages should be imported.\n' +
       'If a package provides relevant functionality, you MUST discover its API via tools\n' +
       'and include it in `prescribedPackages`. Do NOT substitute with public alternatives.\n\n' +
