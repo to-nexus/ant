@@ -638,7 +638,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
         <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
           {/* Project name */}
           <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center min-w-[3.5rem]">
               {t('quickstart.projectNameLabel')}
             </span>
             <div>
@@ -683,7 +683,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           </div>
           {/* Feature name */}
           <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center min-w-[3.5rem]">
               {t('quickstart.featureNameLabel')}
             </span>
             <div>
