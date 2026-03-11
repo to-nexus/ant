@@ -1,11 +1,14 @@
 import { KeyRound } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
+import { normalizeRepoUrl } from '@/shared/utils/git-utils';
+import type { GitStatus } from '@/domain/store/types';
 
 interface StepGitIntegrationProps {
   t: (key: string, opts?: Record<string, unknown>) => string;
   gitEnabled: boolean;
   onGitEnabledChange: (v: boolean) => void;
   readOnly?: boolean;
+  gitStatus?: GitStatus | null;
   patStatus: { configured: boolean; username?: string } | null;
   showPatInput: boolean;
   onShowPatInput: () => void;
@@ -28,7 +31,7 @@ interface StepGitIntegrationProps {
 }
 
 export function StepGitIntegration({
-  t, gitEnabled, onGitEnabledChange, readOnly,
+  t, gitEnabled, onGitEnabledChange, readOnly, gitStatus,
   patStatus, showPatInput, onShowPatInput,
   patInput, onPatInputChange, patSaving, patError, onSavePat,
   repositoryName, onRepositoryNameChange, onRepoManualEdit,
@@ -38,6 +41,21 @@ export function StepGitIntegration({
 }: StepGitIntegrationProps) {
   const fieldDisabled = readOnly || !patStatus?.configured;
 
+  // Only derive badge from gitStatus when readOnly (existing project with config URL).
+  // For new projects, gitStatus in the store belongs to a different project.
+  const badgeState: 'none' | 'not-connected' | 'connected' | 'error' = (() => {
+    if (!gitEnabled || !gitUrl) return 'none';
+    if (!readOnly) return 'none';
+    if (!gitStatus || gitStatus.hasGit === undefined) return 'none';
+    if (!gitStatus.hasGit) return 'not-connected';
+    const hasRemote = !!gitStatus.remoteUrl;
+    if (hasRemote) {
+      const match = normalizeRepoUrl(gitUrl) === normalizeRepoUrl(gitStatus.remoteUrl!);
+      return match ? 'connected' : 'error';
+    }
+    return 'error';
+  })();
+
   return (
     <>
       {/* Git toggle */}
@@ -46,9 +64,19 @@ export function StepGitIntegration({
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {t('quickstart.projectWizard.gitEnable')}
           </label>
-          {gitEnabled && (readOnly || gitUrlFromConfig) && (
+          {badgeState === 'not-connected' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 font-medium">
+              {t('quickstart.projectWizard.gitNotConnected')}
+            </span>
+          )}
+          {badgeState === 'connected' && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-medium">
               {t('quickstart.projectWizard.gitConnected')}
+            </span>
+          )}
+          {badgeState === 'error' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium">
+              {t('quickstart.projectWizard.gitError')}
             </span>
           )}
         </div>

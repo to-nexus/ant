@@ -8,35 +8,56 @@ import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+let modalStack: number[] = [];
+let nextModalId = 0;
+
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** If provided, called instead of onClose when backdrop is clicked */
+  onBackdropClick?: () => void;
 }
 
-export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size = 'md', onBackdropClick }: ModalProps) {
   const { t } = useTranslation('common');
   const modalRef = useRef<HTMLDivElement>(null);
-  
-  // Close on ESC key
+  const modalId = useRef(nextModalId++).current;
+
+  // Track modal in stack (topmost = last)
+  useEffect(() => {
+    if (isOpen) {
+      modalStack.push(modalId);
+      return () => {
+        modalStack = modalStack.filter(id => id !== modalId);
+      };
+    }
+  }, [isOpen, modalId]);
+
+  // Close on ESC key — only if this is the topmost modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && isOpen && modalStack[modalStack.length - 1] === modalId) {
         onClose();
       }
     };
     
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, modalId]);
   
-  // Close on backdrop click
+  // Track where mousedown started to prevent text-drag from triggering backdrop close
+  const mouseDownTarget = useRef<EventTarget | null>(null);
+  const handleMouseDown = (e: React.MouseEvent) => {
+    mouseDownTarget.current = e.target;
+  };
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onClose();
+    if (e.target === e.currentTarget && mouseDownTarget.current === e.currentTarget) {
+      (onBackdropClick ?? onClose)();
     }
+    mouseDownTarget.current = null;
   };
   
   if (!isOpen) return null;
@@ -51,6 +72,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
   return (
     <div 
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onMouseDown={handleMouseDown}
       onClick={handleBackdropClick}
     >
       <div 

@@ -172,8 +172,12 @@ export function createProjectsRoutes(deps: {
       
       if (error.message.includes('not configured') || error.message.includes('not found')) {
         res.status(400).json({ success: false, error: error.message });
-      } else if (error.message.includes('already cloned')) {
+      } else if (error.message.includes('Cannot clone') || error.message.includes('clean workspace') || error.message.includes('Features already exist')) {
+        res.status(400).json({ success: false, error: error.message });
+      } else if (error.message.includes('Repository already') || error.message.includes('already cloned')) {
         res.status(409).json({ success: false, error: error.message });
+      } else if (error.message.includes('authentication failed') || error.message.includes('Authentication failed')) {
+        res.status(401).json({ success: false, error: error.message });
       } else {
         sendErrorResponse(res, 500, error, 'Projects');
       }
@@ -209,7 +213,9 @@ export function createProjectsRoutes(deps: {
       
       if (error.message.includes('not configured') || error.message.includes('not found')) {
         res.status(400).json({ success: false, error: error.message });
-      } else if (error.message.includes('already initialized') || error.message.includes('already exists')) {
+      } else if (error.message.includes('Cannot initialize') || (error.message.includes('feature') && error.message.includes('already exist'))) {
+        res.status(400).json({ success: false, error: error.message });
+      } else if (error.message.includes('already initialized') || error.message.includes('already exist')) {
         res.status(409).json({ success: false, error: error.message });
       } else {
         sendErrorResponse(res, 500, error, 'Projects');
@@ -236,7 +242,7 @@ export function createProjectsRoutes(deps: {
         res.status(400).json({ success: false, error: error.message });
       } else if (error.message.includes('already initialized') || error.message.includes('already exists')) {
         res.status(409).json({ success: false, error: error.message });
-      } else if (error.message.includes('authentication failed')) {
+      } else if (error.message.includes('authentication failed') || error.message.includes('Authentication failed')) {
         res.status(401).json({ success: false, error: error.message });
       } else {
         sendErrorResponse(res, 500, error, 'Projects');

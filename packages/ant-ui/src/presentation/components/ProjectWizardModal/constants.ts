@@ -4,6 +4,8 @@ const DESIGN_DOC_PATTERNS = [
   /^be-system-.+\.md$/,
   /^spec-.+\.md$/,
   /^ui-tokens\.json$/,
+  /^ui-assets\.json$/,
+  /^ui-spec\.json$/,
 ];
 
 export function isCanonicalDesignDoc(filename: string): boolean {

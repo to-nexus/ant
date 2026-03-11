@@ -227,6 +227,28 @@ export function createFeaturesRoutes(deps: {
         }
       }
       
+      // ✅ CRITICAL: Broadcast kanban update so frontend clears stale interruption state
+      if (deps.kanbanService && deps.stateStore && userContext?.organizationId && userContext?.userId) {
+        try {
+          const kanbanData = await deps.kanbanService.getKanbanData(
+            projectId, featureName, jobType,
+            undefined, undefined, undefined,
+            userContext
+          );
+          const { getRealtimeBroadcastChannel } = await import('../../../../infrastructure/state/redisConstants');
+          const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
+          await deps.stateStore.publish(channel, {
+            projectId, featureName,
+            type: 'kanban',
+            data: kanbanData,
+            userContext
+          });
+          logger.debug(`[Session] ✅ Broadcast kanban update after session clear`);
+        } catch (broadcastError) {
+          logger.warn('Failed to broadcast kanban update after session clear', { component: 'Features' }, broadcastError);
+        }
+      }
+      
       res.json({ success: true, message: 'Session data cleared' });
     } catch (error: any) {
       logger.error('Error clearing session', { component: 'Features' }, error);
