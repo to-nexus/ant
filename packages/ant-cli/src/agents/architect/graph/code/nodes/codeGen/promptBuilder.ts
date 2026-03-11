@@ -992,6 +992,8 @@ function buildFileSkeleton(filePath: string, content: string, language?: string)
 /**
  * Extract exported symbol signatures from source code.
  * Captures only top-level exported declarations (types, functions, constants).
+ * For TS/JS: preserves function signatures (parameters + return type) to prevent
+ * import hallucination — LLM sees exact names and signatures without read_file.
  */
 function extractExportedSymbols(content: string, language?: string): string[] {
   const lines = content.split('\n');
@@ -1011,8 +1013,34 @@ function extractExportedSymbols(content: string, language?: string): string[] {
   } else if (language === 'typescript' || language === 'javascript') {
     for (const line of lines) {
       const trimmed = line.trim();
-      if (/^export\s+(function|class|interface|type|const|let|var|enum|abstract)\s/.test(trimmed)) {
+      if (!trimmed.startsWith('export ')) continue;
+
+      // export function name(params): ReturnType { ... }
+      const fnMatch = trimmed.match(/^export\s+(?:async\s+)?function\s+(\w+)\s*(\([^)]*\))\s*(?::\s*([^{]+))?\s*\{?/);
+      if (fnMatch) {
+        const retType = fnMatch[3]?.trim() || '';
+        symbols.push(`export function ${fnMatch[1]}${fnMatch[2]}${retType ? ': ' + retType : ''}`);
+        continue;
+      }
+
+      // export class/interface/type/enum/abstract
+      if (/^export\s+(class|interface|type|enum|abstract)\s/.test(trimmed)) {
         symbols.push(trimmed.replace(/\s*[{=].*$/, ''));
+        continue;
+      }
+
+      // export const name = (params): ReturnType => ...  (arrow function)
+      const arrowMatch = trimmed.match(/^export\s+const\s+(\w+)\s*=\s*(?:async\s+)?(\([^)]*\))\s*(?::\s*([^=>{]+))?\s*=>/);
+      if (arrowMatch) {
+        const retType = arrowMatch[3]?.trim() || '';
+        symbols.push(`export const ${arrowMatch[1]} = ${arrowMatch[2]}${retType ? ': ' + retType : ''} => ...`);
+        continue;
+      }
+
+      // export const/let/var name (non-function)
+      if (/^export\s+(const|let|var)\s/.test(trimmed)) {
+        symbols.push(trimmed.replace(/\s*=.*$/, ''));
+        continue;
       }
     }
   } else {

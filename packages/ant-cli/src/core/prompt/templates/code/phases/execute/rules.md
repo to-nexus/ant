@@ -273,6 +273,14 @@ Existing files: `edit_file` or `<append>`. New files only: `<file>`.
 
 If your plan references a component that another task owns, define a **minimal local interface** describing only what your module consumes. Do NOT create the implementation.
 
+**Principle**: The source of truth for a module's exported symbols is the module file itself, not memory of what was previously generated.
+
+**Observation target**: Are you creating a file that re-exports symbols from modules generated earlier in this session?
+
+**Constraint**: Before writing re-export statements, use `read_file` on each source module to observe the actual exported names. Do NOT rely on recall of earlier output.
+
+⚠️ **Blind spot**: As more files are generated within a single task, earlier symbol names are easily misremembered. A re-export referencing a non-existent name causes build failure.
+
 ────────────────────────────────────────────────────────────────────────────────
 {{> code/base/injections/batch-execution}}
 

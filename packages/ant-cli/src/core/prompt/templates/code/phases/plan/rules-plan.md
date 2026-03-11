@@ -195,6 +195,18 @@ If two tasks independently create the same type, struct, class, or function in a
 shared namespace scope, the build fails with duplicate symbol errors. Define ONLY
 what YOU own; depend on interfaces for what others own.
 
+────────────────────────────────────────────────────────────────────────────────
+## 🔌 INTERFACE CONTRACT CONFORMANCE
+────────────────────────────────────────────────────────────────────────────────
+
+**Principle**: An implementation must conform to its interface contract. The interface definition is the single source of truth for method names, parameter types, and return types.
+
+**Observation target**: Does this task create implementations for interfaces defined by a foundation task or another module?
+
+**Constraint**: When the plan includes implementation files, the corresponding interface definition files MUST be listed in `requiredFiles`. Do NOT implement from memory or inferred naming — observe the actual interface first.
+
+⚠️ **Blind spot**: When interface and implementation are created by different tasks (or at different times within the same task), method names and signatures easily drift. The implementation author assumes a name like `subscribe(symbol, callback)` while the interface defines `subscribe(symbol)` + `onUpdate(callback)` separately.
+
 {{> code/base/injections/secure-coding}}
 
 ────────────────────────────────────────────────────────────────────────────────

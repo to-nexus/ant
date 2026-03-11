@@ -266,6 +266,26 @@ export class SharedFileBuffer {
   }
 
   /**
+   * Get files written by tasks OTHER than the current task.
+   * Unlike getWrittenFilesByOtherWorkers (which filters by workerId),
+   * this filters by taskName — so files written by earlier tasks on the
+   * SAME worker are included. This is critical when Worker 0 handles
+   * setup → foundation → feature sequentially: the feature task must
+   * see foundation files even though they share the same workerId.
+   */
+  getWrittenByOtherTasks(
+    currentTaskName: string,
+  ): Array<{ path: string; taskName?: string }> {
+    const result: Array<{ path: string; taskName?: string }> = [];
+    for (const [path, entry] of this.files) {
+      if (entry.taskName !== currentTaskName) {
+        result.push({ path, taskName: entry.taskName });
+      }
+    }
+    return result;
+  }
+
+  /**
    * Get all written file paths (for existingFiles Set expansion).
    */
   getAllWrittenPaths(): string[] {
