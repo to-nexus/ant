@@ -222,9 +222,23 @@ export class ModeController {
       // already included via Handlebars partial in verify/rules.md.
       if (!isVerification && !isTestgen && !isDoc) {
         if (language && job === 'code') {
-          const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
-          injections.push(envPath);
-          console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
+          if (environment === 'fullstack') {
+            // Fullstack = browser + backend + fullstack-specific rules.
+            // Inject all three so the LLM has actual rules for both contexts,
+            // not just verbal pointers saying "follow browser/backend rules".
+            const backendEnv = language === 'go' ? 'go-api' : 'node-api';
+            const browserPath = `${job}/phases/execute/languages/${language}/environments/browser/rules`;
+            const backendPath = `${job}/phases/execute/languages/${language}/environments/${backendEnv}/rules`;
+            const fullstackPath = `${job}/phases/execute/languages/${language}/environments/fullstack/rules`;
+            injections.push(browserPath);
+            injections.push(backendPath);
+            injections.push(fullstackPath);
+            console.log(`[ModeController] Adding fullstack composite injection: ${browserPath}, ${backendPath}, ${fullstackPath}`);
+          } else {
+            const envPath = `${job}/phases/execute/languages/${language}/environments/${environment}/rules`;
+            injections.push(envPath);
+            console.log(`[ModeController] Adding environment-specific injection: ${envPath}`);
+          }
           
           if (environment === 'browser' || environment === 'fullstack') {
             injections.push(`${jobPrefix}/preview-setup`);
@@ -426,22 +440,24 @@ export class ModeController {
     if (context.designDoc) {
       const doc = context.designDoc.toLowerCase();
       
-      // Fullstack frameworks (highest priority)
+      // SSR frameworks — these are "browser" environment (frontend with optional server-side rendering),
+      // NOT "fullstack" (which is reserved for separate BE + FE monorepos like Express + React).
+      // browser/rules.md already covers SSR dual-context (Server Components, API Routes, etc.).
       if (doc.includes('next.js') || doc.includes('nextjs') || doc.includes('next app router')) {
-        console.log('[ModeController] Inferred environment from design doc: fullstack (Next.js)');
-        return 'fullstack';
+        console.log('[ModeController] Inferred environment from design doc: browser (Next.js SSR)');
+        return 'browser';
       }
       if (doc.includes('remix') || doc.includes('@remix-run')) {
-        console.log('[ModeController] Inferred environment from design doc: fullstack (Remix)');
-        return 'fullstack';
+        console.log('[ModeController] Inferred environment from design doc: browser (Remix SSR)');
+        return 'browser';
       }
       if (doc.includes('sveltekit') || doc.includes('svelte kit')) {
-        console.log('[ModeController] Inferred environment from design doc: fullstack (SvelteKit)');
-        return 'fullstack';
+        console.log('[ModeController] Inferred environment from design doc: browser (SvelteKit SSR)');
+        return 'browser';
       }
       if (doc.includes('nuxt')) {
-        console.log('[ModeController] Inferred environment from design doc: fullstack (Nuxt)');
-        return 'fullstack';
+        console.log('[ModeController] Inferred environment from design doc: browser (Nuxt SSR)');
+        return 'browser';
       }
       
       // Backend API indicators
