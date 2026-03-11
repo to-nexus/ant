@@ -1,8 +1,9 @@
-import { ChevronLeft, LogIn, Sparkles } from 'lucide-react';
+import { ChevronLeft, LogIn } from 'lucide-react';
 import { Bar } from '../Bar';
 import { ProjectSection } from '../ProjectSection';
 import { FeatureSection } from '../FeatureSection';
 import { ArtifactsPanel } from '../ArtifactsPanel';
+import { QuickStartCTA } from '../common/QuickStartCTA';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
 
@@ -72,28 +73,14 @@ export function ExplorerPanel({
             <FeatureSection />
             <ArtifactsPanel explorerWidth={width} />
 
-            {/* ✅ Onboarding return card — when workspace is empty and user skipped onboarding */}
             {onboardingSkipped && projects.length === 0 && (
               <div className="mt-4 mx-1">
-                <button
+                <QuickStartCTA
+                  variant="project"
+                  title={t('onboarding:quickstart.goToOnboarding')}
+                  hint={t('onboarding:quickstart.goToOnboardingHint')}
                   onClick={() => setOnboardingSkipped(false)}
-                  className="w-full flex items-center gap-3 px-3 py-3
-                             bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30
-                             border border-emerald-200 dark:border-emerald-800/50 rounded-xl
-                             text-sm text-emerald-700 dark:text-emerald-300
-                             hover:from-emerald-100 hover:to-teal-100 dark:hover:from-emerald-950/50 dark:hover:to-teal-950/50
-                             hover:shadow-sm transition-all duration-200 group"
-                >
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 group-hover:scale-105 transition-transform">
-                    <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-medium">{t('onboarding:quickstart.goToOnboarding')}</div>
-                    <div className="text-xs text-emerald-600/70 dark:text-emerald-400/70 mt-0.5">
-                      {t('onboarding:quickstart.goToOnboardingHint')}
-                    </div>
-                  </div>
-                </button>
+                />
               </div>
             )}
           </>

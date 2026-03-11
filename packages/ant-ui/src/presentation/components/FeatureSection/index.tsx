@@ -9,8 +9,8 @@ import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
 import { PreviewStatusPanel } from './components/PreviewStatusPanel';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
-import { useState, useEffect } from 'react';  // ✅ Add useEffect
-import { Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { QuickStartCTA } from '../common/QuickStartCTA';
 
 export function FeatureSection() {
   const { 
@@ -20,7 +20,7 @@ export function FeatureSection() {
     fetchFeatures,
   } = useStore();
   
-  const { t } = useTranslation(['artifacts', 'nav']);
+  const { t } = useTranslation(['artifacts', 'nav', 'onboarding']);
   const policy = useUIActionPolicy();
   const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
   const { showConfirm, showError } = useAlertModalContext();
@@ -133,26 +133,14 @@ export function FeatureSection() {
         }}
       />
 
-      {/* QuickStart CTA — shown when project exists but has no features */}
       {features.length === 0 && selectedProject && (
-        <button
+        <QuickStartCTA
+          variant="feature"
+          title={t('onboarding:quickstart.addFirstFeature')}
+          hint={t('onboarding:quickstart.addFirstFeatureHint')}
           onClick={() => setQuickStartProjectId(selectedProject)}
-          className="mt-2 w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left
-                     bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30
-                     border border-indigo-200/60 dark:border-indigo-800/40
-                     hover:border-indigo-300 dark:hover:border-indigo-700
-                     hover:shadow-sm transition-all duration-200 group"
-        >
-          <Sparkles className="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0 group-hover:scale-110 transition-transform" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-              {t('onboarding:quickstart.goToOnboarding')}
-            </div>
-            <div className="text-xs text-indigo-500/70 dark:text-indigo-400/60 truncate">
-              {t('onboarding:quickstart.goToOnboardingHint')}
-            </div>
-          </div>
-        </button>
+          className="mt-2"
+        />
       )}
       
       {/* Status Panel - show for all non-idle states */}
