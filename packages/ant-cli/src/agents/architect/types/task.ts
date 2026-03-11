@@ -176,8 +176,13 @@ export class TaskQueue<T extends BaseTask> {
   private tasks: T[] = [];
   
   push(task: T): void {
-    this.tasks.push(task);
-    // Sort by priority (lower number = higher priority)
+    const existingIndex = this.tasks.findIndex(t => t.id === task.id);
+    if (existingIndex !== -1) {
+      console.warn(`[TaskQueue] Duplicate taskId "${task.id}" — replacing existing entry`);
+      this.tasks[existingIndex] = task;
+    } else {
+      this.tasks.push(task);
+    }
     this.tasks.sort((a, b) => a.priority - b.priority);
   }
   

@@ -507,6 +507,7 @@ export class PromptEngine {
     profile?: { language: string; [key: string]: any },  // ✅ Codebase profile for language-specific injection
     remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,  // ✅ Remaining tasks for task boundary awareness
     options?: { hasTools?: boolean },
+    designDocUnknownPackages?: string[],
   ): Promise<string> {
     // ✅ Format projectCodeContext as FILE PATHS ONLY (not full content)
     // Plan node is a strategic planner — CodeGen reads actual files via tools.
@@ -555,6 +556,8 @@ export class PromptEngine {
       remainingTasks: remainingTasks,  // ✅ Remaining tasks for task boundary awareness
       hasRemainingTasks: remainingTasks && remainingTasks.length > 0,  // ✅ Flag for template conditional
       hasTools: options?.hasTools ?? false,
+      designDocUnknownPackages: designDocUnknownPackages,
+      hasDesignDocUnknownPackages: designDocUnknownPackages && designDocUnknownPackages.length > 0,
     });
   }
   
