@@ -8,6 +8,8 @@
  * - Preview: org:user:project:feature (4 parts) - feature-level
  */
 
+import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
+
 // ============================================
 // IDE Keys (4 parts: org:user:project:feature)
 // ============================================
@@ -29,7 +31,7 @@ export function createIDEKey(
   tenantId: string,
   userId: string,
   projectId: string,
-  feature: string = 'main'
+  feature: string = RESERVED_FEATURE_NAME
 ): string {
   // Validate all parts are non-empty
   if (!tenantId || !userId || !projectId) {
@@ -37,7 +39,7 @@ export function createIDEKey(
     console.error(`[createIDEKey] ERROR: ${error}`);
     throw new Error(error);
   }
-  return `${tenantId}:${userId}:${projectId}:${feature || 'main'}`;
+  return `${tenantId}:${userId}:${projectId}:${feature || RESERVED_FEATURE_NAME}`;
 }
 
 /**
@@ -53,7 +55,7 @@ export function parseIDEKey(key: string): IDEKeyComponents | null {
   }
   
   const [tenantId, userId, projectId, ...featureParts] = parts;
-  const feature = featureParts.join(':') || 'main';
+  const feature = featureParts.join(':') || RESERVED_FEATURE_NAME;
   
   if (!tenantId || !userId || !projectId) {
     return null;

@@ -59,7 +59,7 @@
     "noChangesToSave": "No changes to save",
     "saveChanges": "Save Changes",
     "projectName": "Project Name",
-    "projectNameDesc": "The unique identifier for this project (used as directory name)",
+    "projectNameDesc": "The name used to identify this project in Ant",
     "renameProject": "Rename",
     "renameConfirm": "Are you sure you want to rename the project from \"{{oldName}}\" to \"{{newName}}\"?",
     "renameSuccess": "Project renamed successfully!",
@@ -76,19 +76,22 @@
     "selectModel": "-- Select Model --",
     "useJobDefault": "-- Use Job Default --",
     "jobTitle": "{{name}} Job",
-    "llmDescription": "Configure models for different jobs and nodes. Each job requires a default model. Nodes can optionally use a different model, otherwise they use the job default."
+    "llmDescription": "Configure models for different jobs and nodes. Each job requires a default model. Nodes can optionally use a different model, otherwise they use the job default.",
+    "repoConnected": "Connected",
+    "repoSyncNeeded": "Sync needed",
+    "repoSyncWarning": "The configured URL differs from the actual Git remote. Re-clone or update the remote to sync."
   },
   "schema": {
     "repositoryName": "Repository Name",
-    "repositoryNameDesc": "Name of the codebase/repository",
+    "repositoryNameDesc": "Repository name to be used on GitHub",
     "repositoryType": "Repository Type",
     "repositoryTypeDesc": "Type of repository (local, cloud, or GitHub)",
     "localPath": "Local Path",
     "localPathDesc": "Path to local repository. Supports: absolute (/Users/...), home (~/ ), or relative from ant-cli (../../../my-repo)",
     "githubRepo": "GitHub Repository",
-    "githubRepoDesc": "GitHub repository URL (for github repo type)",
     "baseBranch": "Base Branch",
-    "baseBranchDesc": "Base branch name (e.g., main, master)"
+    "baseBranchDesc": "Auto-detected from git repository",
+    "baseBranchEditable": "Set the default branch name for initialization (e.g., main, master)"
   },
   "llmModels": {
     "title": "LLM Models by Job and Node",

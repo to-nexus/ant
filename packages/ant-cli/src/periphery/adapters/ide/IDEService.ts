@@ -15,6 +15,7 @@ import * as net from 'net';
 import { logger } from '../../../utils/logger';
 import { WorkspacePathResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
 import { GitHelper } from '../http/services/GitService/helper/GitHelper';
+import { RESERVED_FEATURE_NAME } from '../../../core/utils/branchUtils';
 
 export interface IDEInstance {
   containerId: string;
@@ -58,7 +59,7 @@ export class IDEService {
     for (const key of trackedKeys) {
       const parts = key.split(':');
       const [orgId, userId, projId, ...featureParts] = parts;
-      const feat = featureParts.join(':') || 'main';
+      const feat = featureParts.join(':') || RESERVED_FEATURE_NAME;
       await this.stopIDE(`${orgId}:${userId}`, projId, feat).catch((e) => {
         logger.warn(`Failed to stop tracked IDE during project cleanup`, { component: 'IDEService', organizationId: orgId, userId, projectId: projId, featureName: feat }, e);
       });
@@ -234,7 +235,7 @@ export class IDEService {
    * IDE is feature-level: each feature gets its own isolated IDE container
    * with its own worktree-based codebase.
    */
-  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, feature: string = 'main'): Promise<IDEInstance> {
+  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, feature: string = RESERVED_FEATURE_NAME): Promise<IDEInstance> {
     const tenantId = `${userContext.organizationId}:${userContext.userId}`;
     const key = `${tenantId}:${projectId}:${feature}`;
 
@@ -470,7 +471,7 @@ export class IDEService {
   /**
    * Stop IDE
    */
-  async stopIDE(tenantId: string, projectId: string, feature: string = 'main'): Promise<void> {
+  async stopIDE(tenantId: string, projectId: string, feature: string = RESERVED_FEATURE_NAME): Promise<void> {
     const key = `${tenantId}:${projectId}:${feature}`;
     const instance = this.instances.get(key);
     
@@ -526,7 +527,7 @@ export class IDEService {
   /**
    * Get IDE status
    */
-  async getIDEStatus(tenantId: string, projectId: string, feature: string = 'main'): Promise<IDEInstance | null> {
+  async getIDEStatus(tenantId: string, projectId: string, feature: string = RESERVED_FEATURE_NAME): Promise<IDEInstance | null> {
     const key = `${tenantId}:${projectId}:${feature}`;
     const instance = this.instances.get(key);
     
@@ -594,7 +595,7 @@ export class IDEService {
           if (parts.length >= 3) {
             const [orgId, userId, projId, ...featureParts] = parts;
             const tenantId = `${orgId}:${userId}`;
-            const feat = featureParts.join(':') || 'main';
+            const feat = featureParts.join(':') || RESERVED_FEATURE_NAME;
             await this.stopIDE(tenantId, projId, feat);
           }
         } catch (error) {
@@ -619,7 +620,7 @@ export class IDEService {
       if (parts.length >= 3) {
         const [orgId, userId, projectId, ...featureParts] = parts;
         const tenantId = `${orgId}:${userId}`;
-        const feature = featureParts.join(':') || 'main';
+        const feature = featureParts.join(':') || RESERVED_FEATURE_NAME;
         
         try {
           await this.stopIDE(tenantId, projectId, feature);

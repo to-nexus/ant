@@ -4,6 +4,7 @@ import { WorkspaceResolver } from '../../../../../infrastructure/workspace/Works
 import { UserContext } from '../../../../../core/types/user';
 import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/orgConfig';
 import { logger } from '../../../../../utils/logger';
+import { detectGitDefaultBranch } from '../../../../../core/utils/branchUtils';
 
 /**
  * ProjectCrudService
@@ -119,14 +120,13 @@ export class ProjectCrudService {
     });
     
     // ✅ Create config based on mode
-    const config = {
-      repositoryName: sanitizedName,  // ✅ Repository/codebase name
+    // branchBase is intentionally omitted — it will be auto-detected at clone/init time.
+    // All runtime reads already fall back to 'main' when branchBase is absent.
+    const config: Record<string, any> = {
+      repositoryName: sanitizedName,
       repoType: isCloudMode ? 'cloud' : 'local',
-      // ✅ Only include localPath for local mode
       ...(isCloudMode ? {} : { localPath: `../${sanitizedName}` }),
-      // ✅ Auto-set githubRepo from org config (if GitHub owner is configured)
       ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
-      branchBase: 'main',
       llmModels: {
         design: {
           default: modelOpus,
@@ -142,6 +142,18 @@ export class ProjectCrudService {
         }
       }
     };
+
+    // Auto-detect default branch from existing git repo at codebase path
+    try {
+      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, id);
+      const detected = await detectGitDefaultBranch(codebasePath);
+      if (detected) {
+        config.branchBase = detected;
+        logger.debug(`Auto-detected default branch: ${detected}`, { component: 'ProjectCrudService' });
+      }
+    } catch {
+      // Codebase doesn't exist yet — branchBase stays absent
+    }
     
     await fs.promises.writeFile(
       configPath,
@@ -289,7 +301,6 @@ export class ProjectCrudService {
       return {
         repositoryName: this.sanitizeProjectName(id),
         repoType: isCloudMode ? 'cloud' : 'local',
-        branchBase: 'main',
         llmModels: {
           design: {
             default: fallbackOpus,

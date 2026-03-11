@@ -30,6 +30,7 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { UserContext } from '../../core/types/user';
 import { createIDEKey, parseIDEKey } from '../state/redisKeyUtils';
 import { logger } from '../../utils/logger';
+import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 
 // ============================================
 // Kubernetes Types (simplified, avoid @kubernetes/client-node dependency)
@@ -394,7 +395,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   // ============================================
 
   async start(params: IDEParams): Promise<IDEStartResult> {
-    const { userContext, projectId, workspacePath, feature = 'main' } = params;
+    const { userContext, projectId, workspacePath, feature = RESERVED_FEATURE_NAME } = params;
     // Use centralized function for IDE instance key (org:user:project:feature)
     const instanceKey = createIDEKey(userContext.organizationId, userContext.userId, projectId, feature);
     const resourceName = this.createResourceName(instanceKey);
@@ -742,7 +743,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   async stop(
     tenantId: string,
     projectId: string,
-    feature: string = 'main'
+    feature: string = RESERVED_FEATURE_NAME
   ): Promise<{ success: boolean; message?: string }> {
     // tenantId is in format org:user, parse it
     const tenantParts = tenantId.split(':');
@@ -775,7 +776,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   async getStatus(
     tenantId: string,
     projectId: string,
-    feature: string = 'main'
+    feature: string = RESERVED_FEATURE_NAME
   ): Promise<IDEInstance | null> {
     // tenantId is in format org:user, parse it
     const tenantParts = tenantId.split(':');
@@ -852,7 +853,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           tenantId: parsed.tenantId,
           userId: parsed.userId,
           projectId: parsed.projectId,
-          feature: parsed.feature || 'main'
+          feature: parsed.feature || RESERVED_FEATURE_NAME
         };
       });
     } catch (error: any) {
@@ -885,7 +886,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             tenantId: userContext.organizationId,
             userId: userContext.userId,
             projectId: instanceKey,
-            feature: 'main'
+            feature: RESERVED_FEATURE_NAME
           };
         }
 
@@ -899,7 +900,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           tenantId: parsed.tenantId,
           userId: parsed.userId,
           projectId: parsed.projectId,
-          feature: parsed.feature || 'main'
+          feature: parsed.feature || RESERVED_FEATURE_NAME
         };
       });
     } catch (error: any) {
@@ -925,7 +926,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const projectInstances = instances.filter(i => i.projectId === projectId);
 
     for (const instance of projectInstances) {
-      await this.stop(tenantId, projectId, instance.feature || 'main');
+      await this.stop(tenantId, projectId, instance.feature || RESERVED_FEATURE_NAME);
     }
   }
 
@@ -990,7 +991,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         instance.tenantId,
         instance.userId,
         instance.projectId,
-        instance.feature || 'main'
+        instance.feature || RESERVED_FEATURE_NAME
       );
 
       if (portMapping) {
@@ -1006,7 +1007,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           await this.stop(
             `${instance.tenantId}:${instance.userId}`,
             instance.projectId,
-            instance.feature || 'main'
+            instance.feature || RESERVED_FEATURE_NAME
           );
         }
       }

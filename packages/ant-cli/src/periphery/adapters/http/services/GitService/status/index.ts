@@ -24,6 +24,7 @@ export class StatusService {
     hasCodebase: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
+    remoteUrl?: string;
   }> {
     try {
       const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
@@ -39,21 +40,30 @@ export class StatusService {
         fs.readdirSync(featuresPath).filter(f => !f.startsWith('.')).length > 0;
 
       let currentBranch: string | undefined;
+      let remoteUrl: string | undefined;
       if (hasGit) {
         try {
-          // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
           await GitHelper.ensureSafeDirectory(codebasePath);
           
           const git = GitHelper.getGitInstanceSafe(codebasePath);
           if (git) {
             currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
+            
+            try {
+              const raw = await git.remote(['get-url', 'origin']);
+              if (raw) {
+                remoteUrl = raw.trim()
+                  .replace(/\/\/[^@]+@/, '//')
+                  .replace(/\.git$/, '');
+              }
+            } catch { /* no remote configured */ }
           }
         } catch (error) {
           console.warn('[GitStatusService] Failed to get current branch:', error);
         }
       }
 
-      return { hasGit, hasCodebase, hasFeatures, currentBranch };
+      return { hasGit, hasCodebase, hasFeatures, currentBranch, remoteUrl };
     } catch (error) {
       console.error('[GitStatusService] Error checking Git status:', error);
       return { hasGit: false, hasCodebase: false, hasFeatures: false };

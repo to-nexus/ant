@@ -35,6 +35,10 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
 
+  // Git status (determines if branchBase is editable)
+  const gitStatus = useStore((state) => state.gitStatus);
+  const isGitInitialized = gitStatus?.hasGit ?? false;
+
   // Project rename state
   const selectedProject = useStore((state) => state.selectedProject);
   const setSelectedProject = useStore((state) => state.setSelectedProject);
@@ -307,8 +311,39 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               onChange={handleChange}
               githubOwnerInfo={githubOwnerInfo}
               projectName={editedConfig.repositoryName}
+              gitStatus={gitStatus}
             />
           ))}
+
+          {/* Base Branch: editable before git init, read-only after */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t('schema.baseBranch')}
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {isGitInitialized
+                ? t('schema.baseBranchDesc')
+                : t('schema.baseBranchEditable')}
+            </p>
+            {isGitInitialized ? (
+              <div className="w-full px-3 py-2 border rounded-md text-sm bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 cursor-default">
+                {editedConfig.branchBase || 'main'}
+              </div>
+            ) : (
+              <input
+                type="text"
+                value={editedConfig.branchBase || ''}
+                onChange={(e) => handleChange('branchBase', e.target.value)}
+                placeholder="main"
+                className="w-full px-3 py-2 border rounded-md text-sm
+                  bg-white dark:bg-gray-800
+                  text-gray-900 dark:text-white
+                  border-gray-300 dark:border-gray-600
+                  focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+                  placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              />
+            )}
+          </div>
           
           {/* LLM Models Section */}
           <LLMModelsSection

@@ -163,6 +163,7 @@ export function ProjectSection() {
         // Refresh Git status after successful operation
         if (shouldRefreshGitStatus && selectedProject) {
           await fetchGitStatus(selectedProject, selectedFeature || undefined);
+          useStore.getState().refreshGitStatus();
         }
       } else {
         // ✅ Errors still shown via popup (important to see)

@@ -40,6 +40,7 @@ import {
 } from '../../core/ports/portRegistry';
 import type { PreviewStructureType } from '../../core/ports/preview';
 import { createIDEKey, createPreviewKey } from './redisKeyUtils';
+import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 import { APP_PREFIX, REDIS_KEYS, REDIS_TTL, getRealtimeWorkflowChannel } from './redisConstants';
 import { logger } from '../../utils/logger';
 
@@ -668,7 +669,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     port: number,
     host: string,
     podId: string,
-    feature: string = 'main'
+    feature: string = RESERVED_FEATURE_NAME
   ): Promise<void> {
     const portKey = createIDEKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
@@ -701,7 +702,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string = 'main'
+    feature: string = RESERVED_FEATURE_NAME
   ): Promise<IDEState | null> {
     // Validate all key components are present
     if (!tenantId || !userId || !projectId) {
@@ -732,7 +733,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string = 'main'
+    feature: string = RESERVED_FEATURE_NAME
   ): Promise<number | null> {
     const state = await this.getIDE(tenantId, userId, projectId, feature);
     return state?.port ?? null;
@@ -745,7 +746,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string = 'main'
+    feature: string = RESERVED_FEATURE_NAME
   ): Promise<void> {
     const portKey = createIDEKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
@@ -767,7 +768,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     tenantId: string,
     userId: string,
     projectId: string,
-    feature: string = 'main'
+    feature: string = RESERVED_FEATURE_NAME
   ): Promise<void> {
     const portKey = createIDEKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.IDE, portKey);
