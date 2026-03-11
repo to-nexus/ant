@@ -718,7 +718,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                 <p className="mt-0.5 text-[11px] text-red-500 dark:text-red-400">{t('quickstart.projectWizard.nameInvalid')}</p>
               ) : (
                 <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
-                  Git branch: feature/{featureName || '...'}
+                  {t('quickstart.gitBranchHint', { name: featureName || '...' })}
                 </p>
               )}
             </div>

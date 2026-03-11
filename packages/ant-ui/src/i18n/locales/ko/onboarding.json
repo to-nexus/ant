@@ -19,6 +19,7 @@
     "submit": "시작하기",
     "projectNameLabel": "프로젝트",
     "featureNameLabel": "피처",
+    "gitBranchHint": "Git 브랜치: feature/{{name}}",
     "creating": "프로젝트를 준비하고 있습니다...",
     "steps": {
       "workspace": "프로젝트 생성 중",

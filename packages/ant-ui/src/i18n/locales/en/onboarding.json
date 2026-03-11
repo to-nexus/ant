@@ -19,6 +19,7 @@
     "submit": "Start Building",
     "projectNameLabel": "Project",
     "featureNameLabel": "Feature",
+    "gitBranchHint": "Git branch: feature/{{name}}",
     "creating": "Setting up your project...",
     "steps": {
       "workspace": "Creating project",
