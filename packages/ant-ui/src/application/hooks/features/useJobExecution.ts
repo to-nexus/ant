@@ -12,6 +12,7 @@
  */
 
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
@@ -19,6 +20,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 
 export function useJobExecution() {
   const { showError } = useAlertModalContext();
+  const { t } = useTranslation('chat');
   const setRunning = useStore((state) => state.setRunning);
   const setStopping = useStore((state) => state.setStopping);
   const setCurrentJob = useStore((state) => state.setCurrentJob);
@@ -112,7 +114,7 @@ export function useJobExecution() {
         console.error('[useJobExecution] Failed to resume job:', error);
         console.error('[useJobExecution] Error details:', error);
         setRunning(false);
-        showError(`Resume 실패: ${error instanceof Error ? error.message : 'Unknown error'}`, { title: '오류' });
+        showError(t('card.resumeFailed', { message: error instanceof Error ? error.message : t('common:error.unknown') }));
       }
       return;
     }

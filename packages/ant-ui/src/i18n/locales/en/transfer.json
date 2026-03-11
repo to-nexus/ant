@@ -35,6 +35,8 @@
     "moveDesc": "Delete original and move to destination"
   },
   "action": {
+    "exclude": "Exclude",
+    "restore": "Restore",
     "transfer": "Transfer",
     "transferring": "Transferring...",
     "approve": "Approve",

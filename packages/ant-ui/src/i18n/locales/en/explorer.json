@@ -85,7 +85,13 @@
     "repoCloned": "Repository cloned",
     "repoInitialized": "Repository initialized",
     "repoPublished": "Codebase published to GitHub",
-    "actionFailed": "Failed to {{action}}"
+    "actionFailed": "Failed to {{action}}",
+    "patNotConfigured": "GitHub PAT is not configured. Please set up your PAT to proceed.",
+    "configurePat": "Set up PAT",
+    "commitFailed": "Commit failed",
+    "pushFailed": "Push failed",
+    "pullFailed": "Pull failed",
+    "syncFailed": "Sync failed"
   },
   "localSetup": {
     "heroTitle": "Connect to Your Local Backend",

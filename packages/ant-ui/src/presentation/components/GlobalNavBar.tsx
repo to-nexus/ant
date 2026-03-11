@@ -192,7 +192,7 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     } catch (error: any) {
       console.error('[GlobalNavBar] Failed to open IDE:', error);
       setEditorTooltip(t('viewMode.failedToOpenIde'));
-      useStore.getState().setIdeConnecting(false, error?.message || 'Failed to open IDE');
+      useStore.getState().setIdeConnecting(false, error?.message || t('viewMode.failedToOpenIde'));
       setTimeout(() => setEditorTooltip(null), 3000);
     }
   };

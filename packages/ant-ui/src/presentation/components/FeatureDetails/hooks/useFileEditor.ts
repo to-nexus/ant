@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, saveFileContent } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
@@ -16,6 +17,7 @@ export function useFileEditor(
   const [saving, setSaving] = useState(false);
   const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
   const { showError } = useAlertModalContext();
+  const { t } = useTranslation('artifacts');
 
   const isImageFile = isBinaryImageFilePath(selectedFile);
 
@@ -90,7 +92,7 @@ export function useFileEditor(
       setHasChanges(false);
     } catch (error) {
       console.error('Failed to save file:', error);
-      showError('저장에 실패했습니다.', { title: '오류' });
+      showError(t('error.saveFailed'));
     } finally {
       setSaving(false);
     }

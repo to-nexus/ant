@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Terminal, ChevronDown, ChevronRight, ChevronUp, Loader2 } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
 
@@ -13,6 +14,7 @@ interface TerminalCardProps {
 }
 
 export function TerminalCard({ content }: TerminalCardProps) {
+  const { t } = useTranslation('chat');
   const outputRef = useRef<HTMLDivElement>(null);
   const command = content.metadata?.command || content.content;
   const output = content.content;
@@ -54,7 +56,7 @@ export function TerminalCard({ content }: TerminalCardProps) {
         iconColor: 'text-green-500 dark:text-green-400',
         headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
         hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-        label: 'Completed'
+        label: t('card.completed')
       }
     : {
         bgColor: 'bg-white dark:bg-gray-800/50',
@@ -63,7 +65,7 @@ export function TerminalCard({ content }: TerminalCardProps) {
         iconColor: 'text-red-500 dark:text-red-400',
         headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
         hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-        label: 'Failed'
+        label: t('card.failed')
       };
   
   const activeConfig = {
@@ -73,7 +75,7 @@ export function TerminalCard({ content }: TerminalCardProps) {
     iconColor: 'text-blue-500 dark:text-blue-400',
     headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
     hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-    label: isRunning ? 'Running...' : 'Running...'
+    label: t('card.running')
   };
   
   const config = isActive ? activeConfig : statusConfig;
@@ -119,7 +121,7 @@ export function TerminalCard({ content }: TerminalCardProps) {
               type="button"
               onClick={(e) => { e.stopPropagation(); setIsCommandExpanded(!isCommandExpanded); }}
               className={`flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors`}
-              title={isCommandExpanded ? 'Collapse command' : 'Expand command'}
+              title={isCommandExpanded ? t('card.collapseCommand') : t('card.expandCommand')}
             >
               {isCommandExpanded
                 ? <ChevronUp className={`w-3 h-3 ${config.textColor} opacity-60`} />

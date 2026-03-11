@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Loader2, Ban } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
 import { FileIcon } from '@/shared/utils/file-icons';
@@ -16,8 +17,9 @@ interface FileCardProps {
 }
 
 export function FileCard({ content, operation }: FileCardProps) {
+  const { t } = useTranslation('chat');
   const contentRef = useRef<HTMLDivElement>(null);
-  const filePath = content.metadata?.filePath || 'Unknown file';
+  const filePath = content.metadata?.filePath || t('card.unknownFile');
   const fileContent = content.content || '';  // ✅ Ensure string, never undefined
   const diffBefore = content.metadata?.diffBefore;
   const diffAfter = content.metadata?.diffAfter;
@@ -129,8 +131,8 @@ export function FileCard({ content, operation }: FileCardProps) {
   // Determine operation details (Copilot/Cursor style - subtle, modern)
   const operationConfig = {
     create: {
-      labelCompleted: isFailed ? 'Failed' : 'Created',
-      labelActive: isCreating ? 'Creating...' : 'Writing...',
+      labelCompleted: isFailed ? t('card.failed') : t('card.created'),
+      labelActive: isCreating ? t('card.creating') : t('card.writing'),
       bgColor: isFailed ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-800/50',
       borderColor: isFailed ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-700',
       textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
@@ -139,8 +141,8 @@ export function FileCard({ content, operation }: FileCardProps) {
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     edit: {
-      labelCompleted: isFailed ? 'Failed' : 'Modified',
-      labelActive: isEditing ? 'Editing...' : 'Updating...',
+      labelCompleted: isFailed ? t('card.failed') : t('card.modified'),
+      labelActive: isEditing ? t('card.editing') : t('card.updating'),
       bgColor: isFailed ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-800/50',
       borderColor: isFailed ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-700',
       textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
@@ -149,8 +151,8 @@ export function FileCard({ content, operation }: FileCardProps) {
       hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
     },
     delete: {
-      labelCompleted: isFailed ? 'Failed' : 'Deleted',
-      labelActive: 'Deleting...',
+      labelCompleted: isFailed ? t('card.failed') : t('card.deleted'),
+      labelActive: t('card.deleting'),
       bgColor: isFailed ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-800/50',
       borderColor: isFailed ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-700',
       textColor: isFailed ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300',
@@ -193,14 +195,14 @@ export function FileCard({ content, operation }: FileCardProps) {
             <div className="flex items-center gap-1 flex-shrink-0">
               <Ban className="w-3 h-3 text-red-500 dark:text-red-400" />
               <span className="text-[10px] text-red-600 dark:text-red-400 font-medium">
-                Failed
+                {t('card.failed')}
               </span>
             </div>
           ) : isCompleted && content.metadata?.reason ? (
             <div className="flex items-center gap-1 flex-shrink-0">
               <Ban className="w-3 h-3 text-orange-500 dark:text-orange-400" />
               <span className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">
-                Cancelled
+                {t('card.cancelled')}
               </span>
             </div>
           ) : isCompleted && (
@@ -251,7 +253,7 @@ export function FileCard({ content, operation }: FileCardProps) {
           {isFailed && content.metadata?.reason ? (
             // Error message for failed operations
             <div className="px-4 py-3 text-xs bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
-              <div className="font-semibold mb-1">Error:</div>
+              <div className="font-semibold mb-1">{t('card.error')}</div>
               <div className="whitespace-pre-wrap break-words font-mono">
                 {content.metadata.reason}
               </div>

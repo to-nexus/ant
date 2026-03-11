@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertModal, AlertType, ButtonMode } from '@/presentation/components/common/AlertModal';
 
 interface AlertOptions {
@@ -14,6 +15,7 @@ interface AlertOptions {
   showIcon?: boolean;
   confirmText?: string;
   cancelText?: string;
+  onConfirm?: () => void | Promise<void>;
 }
 
 interface ConfirmOptions extends AlertOptions {
@@ -35,15 +37,17 @@ interface AlertState {
 }
 
 export function useAlertModal() {
+  const { t } = useTranslation('common');
+
   const [state, setState] = useState<AlertState>({
     isOpen: false,
     type: 'info',
-    title: 'Notice',
+    title: '',
     message: '',
     showIcon: true,
     buttonMode: 'confirm-only',
-    confirmText: 'OK',
-    cancelText: 'Cancel',
+    confirmText: '',
+    cancelText: '',
   });
 
   const close = () => {
@@ -57,12 +61,12 @@ export function useAlertModal() {
     setState({
       isOpen: true,
       type: options?.type || 'info',
-      title: options?.title || 'Notice',
+      title: options?.title || t('info.title'),
       message,
       showIcon: options?.showIcon ?? true,
       buttonMode: 'confirm-only',
-      confirmText: options?.confirmText || 'OK',
-      cancelText: options?.cancelText || 'Cancel',
+      confirmText: options?.confirmText || t('button.ok'),
+      cancelText: options?.cancelText || t('button.cancel'),
     });
   };
 
@@ -73,12 +77,12 @@ export function useAlertModal() {
     setState({
       isOpen: true,
       type: 'success',
-      title: options?.title || 'Success',
+      title: options?.title || t('success.title'),
       message,
       showIcon: options?.showIcon ?? true,
       buttonMode: 'confirm-only',
-      confirmText: options?.confirmText || 'OK',
-      cancelText: options?.cancelText || 'Cancel',
+      confirmText: options?.confirmText || t('button.ok'),
+      cancelText: options?.cancelText || t('button.cancel'),
     });
   };
 
@@ -89,12 +93,12 @@ export function useAlertModal() {
     setState({
       isOpen: true,
       type: 'warning',
-      title: options?.title || 'Warning',
+      title: options?.title || t('warning.title'),
       message,
       showIcon: options?.showIcon ?? true,
       buttonMode: 'confirm-only',
-      confirmText: options?.confirmText || 'OK',
-      cancelText: options?.cancelText || 'Cancel',
+      confirmText: options?.confirmText || t('button.ok'),
+      cancelText: options?.cancelText || t('button.cancel'),
     });
   };
 
@@ -105,12 +109,13 @@ export function useAlertModal() {
     setState({
       isOpen: true,
       type: 'error',
-      title: options?.title || 'Error',
+      title: options?.title || t('error.title'),
       message,
       showIcon: options?.showIcon ?? true,
       buttonMode: 'confirm-only',
-      confirmText: options?.confirmText || 'OK',
-      cancelText: options?.cancelText || 'Cancel',
+      confirmText: options?.confirmText || t('button.ok'),
+      cancelText: options?.cancelText || t('button.cancel'),
+      onConfirm: options?.onConfirm,
     });
   };
 
@@ -121,12 +126,12 @@ export function useAlertModal() {
     setState({
       isOpen: true,
       type: options?.type || 'warning',
-      title: options?.title || 'Confirm',
+      title: options?.title || t('confirm.title'),
       message,
       showIcon: options?.showIcon ?? true,
       buttonMode: 'confirm-cancel',
-      confirmText: options?.confirmText || 'Confirm',
-      cancelText: options?.cancelText || 'Cancel',
+      confirmText: options?.confirmText || t('button.confirm'),
+      cancelText: options?.cancelText || t('button.cancel'),
       onConfirm: options?.onConfirm,
       onCancel: options?.onCancel,
     });
