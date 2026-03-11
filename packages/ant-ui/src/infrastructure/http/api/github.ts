@@ -48,9 +48,10 @@ export async function saveGitHubPAT(pat: string): Promise<SavePATResult> {
       method: 'POST',
       body: JSON.stringify({ pat }),
     });
-    const result = await response.json();
+    const text = await response.text();
+    const result = text ? JSON.parse(text) : {};
     if (!response.ok) return { success: false, error: result.error || `HTTP ${response.status}` };
-    return result;
+    return { success: true, ...result };
   } catch (error: any) {
     return { success: false, error: error.message || 'Network error' };
   }

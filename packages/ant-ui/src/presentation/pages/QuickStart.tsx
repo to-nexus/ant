@@ -1,28 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Loader2, AlertCircle, Check, ArrowRight } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Check, X, ArrowRight, Compass, Code2 } from 'lucide-react';
 import { useStore } from '@/domain/store';
+import { cn } from '@/shared/utils/design-system';
 import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Extract a safe workspace name from email.
- * john.doe@gmail.com → john-doe
- */
-function extractNameFromEmail(email: string): string {
-  const prefix = email.split('@')[0] || 'user';
-  const sanitized = prefix
-    .replace(/[._]/g, '-')
-    .replace(/[^a-zA-Z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .toLowerCase();
-  return sanitized || 'user';
-}
+import { isValidName, delay, generateProjectName, generateFeatureName } from '@/presentation/components/ProjectWizardModal/constants';
 
 // ─── Ambient Canvas ─────────────────────────────────────────────────
 // Renders soft floating particles that drift upward — subtle "energy" feel.
@@ -197,6 +180,22 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
 
   const userEmail = useStore((state) => state.userEmail);
   const projects = useStore((state) => state.projects);
+  const features = useStore((state) => state.features);
+  const [projectName, setProjectName] = useState(() =>
+    existingProjectId ?? generateProjectName(useStore.getState().projects),
+  );
+  const [featureName, setFeatureName] = useState(() =>
+    generateFeatureName(useStore.getState().features.map((f) => f.name)),
+  );
+
+  const projectNameExists = !existingProjectId && !!projectName.trim() && projects.includes(projectName.trim());
+  const featureNameExists = !!existingProjectId && !!featureName.trim() && features.some((f) => f.name === featureName.trim());
+  const projectNameInvalid = !existingProjectId && !!projectName.trim() && !isValidName(projectName.trim());
+  const featureNameInvalid = !!featureName.trim() && !isValidName(featureName.trim());
+  const projectNameError = projectNameExists || projectNameInvalid;
+  const featureNameError = featureNameExists || featureNameInvalid;
+  const hasNameConflict = projectNameError || featureNameError;
+
   const setSelectedProject = useStore((state) => state.setSelectedProject);
   const setSelectedFeature = useStore((state) => state.setSelectedFeature);
   const setSelectedAgent = useStore((state) => state.setSelectedAgent);
@@ -235,63 +234,45 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
     setIsExiting(false);
 
     try {
-      let projectId: string;
+      const projectId = projectName.trim();
+      const feat = featureName.trim();
+      if (!projectId || !feat) return;
 
       if (existingProjectId) {
-        // ✅ Use existing project — skip workspace creation
-        projectId = existingProjectId;
         console.log(`[QuickStart] Using existing project: ${projectId}`);
       } else {
-        // ✅ Create new project
-        const name = extractNameFromEmail(userEmail);
-        projectId = `${name}-sketch`;
-
-        if (projects.includes(projectId)) {
-          let suffix = 1;
-          while (projects.includes(`${projectId}-${suffix}`)) {
-            suffix++;
-          }
-          projectId = `${projectId}-${suffix}`;
-        }
-
         setActiveStep('workspace');
         console.log(`[QuickStart] Creating project: ${projectId}`);
         await Promise.all([createProject(projectId), delay(1200)]);
       }
 
-      const featureName = 'skeleton';
-
       // Step: feature
       setActiveStep('feature');
-      console.log(`[QuickStart] Creating feature: ${featureName}`);
+      console.log(`[QuickStart] Creating feature: ${feat}`);
       const language = useStore.getState().language;
-      await Promise.all([createFeature(projectId, featureName, language), delay(1000)]);
+      await Promise.all([createFeature(projectId, feat, language), delay(1000)]);
 
-      // ✅ Optimistic update: immediately add feature to store (prevents empty features on transition)
-      useStore.getState().addFeatureOptimistic(featureName);
+      useStore.getState().addFeatureOptimistic(feat);
 
       // Step: plan
       setActiveStep('plan');
       setSelectedAgent('planner');
       setSelectedJobType('plan');
-      // ✅ Only call setSelectedProject if project changed (avoids destructive features reset)
       if (useStore.getState().selectedProject !== projectId) {
         setSelectedProject(projectId);
       }
       await delay(150);
-      setSelectedFeature(featureName);
+      setSelectedFeature(feat);
       await delay(200);
 
       console.log(`[QuickStart] Starting plan job with directive: ${trimmed.substring(0, 50)}...`);
       setRunning(true, undefined, 'generate');
       
-      // ✅ Add user message to chat history BEFORE starting job
-      // Without this, only the LLM response appears when transitioning to the main UI
-      await addChatUserMessage(projectId, featureName, trimmed);
+      await addChatUserMessage(projectId, feat, trimmed);
       
       const jobExecution = executeCodeJob({
         projectId,
-        featureName,
+        featureName: feat,
         jobType: 'plan',
         agent: 'planner',
         overrideDirective: trimmed,
@@ -336,7 +317,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       setIsSubmitting(false);
       setActiveStep('idle');
     }
-  }, [input, isSubmitting, userEmail, existingProjectId, projects, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
+  }, [input, isSubmitting, userEmail, existingProjectId, projectName, featureName, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -425,6 +406,107 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           to { transform: translate(-50%, -50%) rotate(360deg); }
         }
       `}</style>
+
+      {/* === Left-top project/feature name inputs === */}
+      {!isSubmitting && (
+        <div
+          className="fixed top-20 left-6 z-20 flex flex-col gap-3 w-56
+            bg-white/70 dark:bg-white/5 backdrop-blur-sm
+            border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm
+            p-4"
+          style={{ animation: 'qsFadeInUp 0.5s ease-out 0.1s both' }}
+        >
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {t('quickstart.projectNameLabel')}
+            </span>
+            <div className="relative">
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                disabled={!!existingProjectId}
+                readOnly={!!existingProjectId}
+                className={cn(
+                  'w-full px-3 py-1.5 pr-7 text-sm rounded-lg border',
+                  'bg-white/80 dark:bg-white/5',
+                  'text-gray-900 dark:text-white',
+                  'placeholder-gray-400 dark:placeholder-gray-500',
+                  'focus:outline-none focus:ring-1',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  'transition-all',
+                  existingProjectId && 'bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed',
+                  projectNameError
+                    ? 'border-red-300 dark:border-red-700 focus:ring-red-500/50'
+                    : 'border-gray-200 dark:border-gray-700 focus:ring-emerald-500/50',
+                )}
+                placeholder="project-1"
+              />
+              {!existingProjectId && projectName.trim() && (
+                <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                  {projectNameError
+                    ? <X className="w-3.5 h-3.5 text-red-500" />
+                    : <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                </span>
+              )}
+            </div>
+            {projectNameExists && (
+              <span className="text-[11px] text-red-500 dark:text-red-400">
+                {t('quickstart.projectWizard.nameExists')}
+              </span>
+            )}
+            {projectNameInvalid && (
+              <span className="text-[11px] text-red-500 dark:text-red-400">
+                {t('quickstart.projectWizard.nameInvalid')}
+              </span>
+            )}
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {t('quickstart.featureNameLabel')}
+            </span>
+            <div className="relative">
+              <input
+                type="text"
+                value={featureName}
+                onChange={(e) => setFeatureName(e.target.value)}
+                className={cn(
+                  'w-full px-3 py-1.5 pr-7 text-sm rounded-lg border',
+                  'bg-white/80 dark:bg-white/5',
+                  'text-gray-900 dark:text-white',
+                  'placeholder-gray-400 dark:placeholder-gray-500',
+                  'focus:outline-none focus:ring-1',
+                  'transition-all',
+                  featureNameError
+                    ? 'border-red-300 dark:border-red-700 focus:ring-red-500/50'
+                    : 'border-gray-200 dark:border-gray-700 focus:ring-emerald-500/50',
+                )}
+                placeholder="ant-1"
+              />
+              {featureName.trim() && (
+                <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                  {featureNameError
+                    ? <X className="w-3.5 h-3.5 text-red-500" />
+                    : <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                </span>
+              )}
+            </div>
+            {featureNameExists ? (
+              <span className="text-[11px] text-red-500 dark:text-red-400">
+                {t('quickstart.projectWizard.nameExists')}
+              </span>
+            ) : featureNameInvalid ? (
+              <span className="text-[11px] text-red-500 dark:text-red-400">
+                {t('quickstart.projectWizard.nameInvalid')}
+              </span>
+            ) : (
+              <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                feature/{featureName || '...'}
+              </span>
+            )}
+          </label>
+        </div>
+      )}
 
       {/* === Centered content === */}
       <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-24 z-10">
@@ -538,7 +620,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                 {/* Submit button */}
                 <button
                   onClick={handleSubmit}
-                  disabled={!input.trim() || isSubmitting}
+                  disabled={!input.trim() || isSubmitting || hasNameConflict || projectName.trim().length < 3 || featureName.trim().length < 3}
                   className="relative inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white
                            bg-gradient-to-r from-emerald-500 to-teal-600
                            hover:from-emerald-600 hover:to-teal-700
@@ -563,6 +645,49 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
               </div>
             </div>
           </div>
+
+          {/* Wizard shortcut cards */}
+          {!isSubmitting && (
+            <div
+              className="mt-4 flex gap-3"
+              style={{ animation: 'qsFadeInUp 0.5s ease-out 0.3s both' }}
+            >
+              <button
+                onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'design', ...(existingProjectId ? { existingProjectId } : {}) })}
+                className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl
+                  border border-indigo-200/60 dark:border-indigo-800/40
+                  bg-white/60 dark:bg-white/5 backdrop-blur-sm
+                  hover:bg-indigo-50/80 dark:hover:bg-indigo-950/20
+                  hover:border-indigo-300 dark:hover:border-indigo-700
+                  transition-all duration-200 group"
+              >
+                <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                  <Compass className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+                </div>
+                <span className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">
+                  {t('quickstart.altDesign')}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 ml-auto text-gray-300 dark:text-gray-600 group-hover:text-indigo-400 dark:group-hover:text-indigo-500 group-hover:translate-x-0.5 transition-all" />
+              </button>
+              <button
+                onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'code', ...(existingProjectId ? { existingProjectId } : {}) })}
+                className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl
+                  border border-amber-200/60 dark:border-amber-800/40
+                  bg-white/60 dark:bg-white/5 backdrop-blur-sm
+                  hover:bg-amber-50/80 dark:hover:bg-amber-950/20
+                  hover:border-amber-300 dark:hover:border-amber-700
+                  transition-all duration-200 group"
+              >
+                <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                  <Code2 className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                </div>
+                <span className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition-colors">
+                  {t('quickstart.altCode')}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 ml-auto text-gray-300 dark:text-gray-600 group-hover:text-amber-400 dark:group-hover:text-amber-500 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            </div>
+          )}
 
           {/* Progress step checklist */}
           {isSubmitting && activeStep !== 'idle' && (

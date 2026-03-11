@@ -21,6 +21,9 @@ interface FeatureDropdownProps {
   onPlayClick: () => void;
   onStopClick: () => void;
   onSettingsClick?: () => void;
+  onOpenWizard?: () => void;
+  forceInlineCreate?: boolean;
+  onForceInlineCreateHandled?: () => void;
 }
 
 export function FeatureDropdown({
@@ -41,7 +44,10 @@ export function FeatureDropdown({
   onItemCreated,
   onPlayClick,
   onStopClick,
-  onSettingsClick
+  onSettingsClick,
+  onOpenWizard,
+  forceInlineCreate,
+  onForceInlineCreateHandled,
 }: FeatureDropdownProps) {
   const { t } = useTranslation('explorer');
   // Filter out 'main' feature (internal use only)
@@ -73,6 +79,9 @@ export function FeatureDropdown({
       createDisabledReason={createDisabledReason}
       playButtonDisabled={!canStartPreview && !canStopPreview}
       playButtonLoading={isPreviewLoading}
+      onOpenWizard={onOpenWizard}
+      forceInlineCreate={forceInlineCreate}
+      onForceInlineCreateHandled={onForceInlineCreateHandled}
     />
   );
 }

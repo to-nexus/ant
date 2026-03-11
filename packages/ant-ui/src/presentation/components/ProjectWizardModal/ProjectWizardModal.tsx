@@ -1,0 +1,575 @@
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Modal } from '../common/Modal';
+import { useStore } from '@/domain/store';
+import {
+  createProject, createFeature, createProjectConfig, updateProjectConfig,
+  uploadFiles, type UploadFileEntry,
+  cloneGitHubRepo, checkCloneStatus, initializeGitHubRepo,
+  addChatUserMessage, fetchProjectConfig,
+  checkGitHubPATStatus, saveGitHubPAT, fetchOrgConfig, fetchUserConfig,
+} from '@/infrastructure/http/api';
+import { executeCodeJob } from '@/infrastructure/http/cli';
+import { cn } from '@/shared/utils/design-system';
+
+import type { WizardStep, ExecStepId, ExecStepStatus, ExecStepState } from './types';
+import { isCanonicalDesignDoc, isValidName, sanitizeRepoName, delay, generateProjectName, generateFeatureName } from './constants';
+import { WizardStepIndicator } from './WizardStepIndicator';
+import { StepProjectSetup } from './StepProjectSetup';
+import { StepGitIntegration } from './StepGitIntegration';
+import { StepFilesAndStart } from './StepFilesAndStart';
+import { Info } from 'lucide-react';
+import { ExecutionProgress } from './ExecutionProgress';
+
+interface ProjectWizardModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initialMode: 'design' | 'code';
+  existingProjectId?: string;
+}
+
+export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProjectId }: ProjectWizardModalProps) {
+  const { t } = useTranslation('onboarding');
+
+  // ── Wizard navigation ──
+  const [currentStep, setCurrentStep] = useState<WizardStep>(1);
+  const [maxVisited, setMaxVisited] = useState<WizardStep>(1);
+  const [isExecuting, setIsExecuting] = useState(false);
+
+  // ── Step 1 ──
+  const [mode, setMode] = useState<'design' | 'code'>(initialMode);
+  const [projectName, setProjectName] = useState(() =>
+    existingProjectId ?? generateProjectName(useStore.getState().projects),
+  );
+  const [featureName, setFeatureName] = useState(() =>
+    generateFeatureName(useStore.getState().features.map((f) => f.name)),
+  );
+
+  // ── Step 2 ──
+  const [gitEnabled, setGitEnabled] = useState(true);
+  const [repositoryName, setRepositoryName] = useState('');
+  const [repoNameManuallyEdited, setRepoNameManuallyEdited] = useState(false);
+  const [gitUrl, setGitUrl] = useState('');
+  const [gitUrlFromConfig, setGitUrlFromConfig] = useState(false);
+  const [gitAction, setGitAction] = useState<'none' | 'clone' | 'init'>('none');
+  const [patStatus, setPatStatus] = useState<{ configured: boolean; username?: string } | null>(null);
+  const [patInput, setPatInput] = useState('');
+  const [patSaving, setPatSaving] = useState(false);
+  const [patError, setPatError] = useState<string | null>(null);
+  const [showPatInput, setShowPatInput] = useState(false);
+  const [ownerInfo, setOwnerInfo] = useState<{ orgOwner?: string; personalOwner?: string }>({});
+
+  // ── Step 3 ──
+  const [sourcesFiles, setSourcesFiles] = useState<File[]>([]);
+  const [assetsFiles, setAssetsFiles] = useState<File[]>([]);
+  const [referencesFiles, setReferencesFiles] = useState<File[]>([]);
+  const [designDocsFiles, setDesignDocsFiles] = useState<File[]>([]);
+  const [directive, setDirective] = useState('');
+  const [showDirective, setShowDirective] = useState(false);
+
+  // ── Execution ──
+  const [execSteps, setExecSteps] = useState<ExecStepState[]>([]);
+  const [executionError, setExecutionError] = useState<string | null>(null);
+  const gitDecisionRef = useRef<{ resolve: (v: 'skip' | 'retry' | 'abort') => void } | null>(null);
+  const [gitDecisionPending, setGitDecisionPending] = useState(false);
+
+  // ── Store ──
+  const projects = useStore((s) => s.projects);
+  const features = useStore((s) => s.features);
+  const setSelectedProject = useStore((s) => s.setSelectedProject);
+  const setSelectedFeature = useStore((s) => s.setSelectedFeature);
+  const setSelectedAgent = useStore((s) => s.setSelectedAgent);
+  const setSelectedJobType = useStore((s) => s.setSelectedJobType);
+  const setRunning = useStore((s) => s.setRunning);
+  const setCurrentJob = useStore((s) => s.setCurrentJob);
+  const fetchProjects = useStore((s) => s.fetchProjects);
+  const setProjectSetupConfig = useStore((s) => s.setProjectSetupConfig);
+  const backendMode = useStore((s) => s.backendMode);
+  const language = useStore((s) => s.language);
+
+  const projectNameExists = !existingProjectId && !!projectName.trim() && projects.includes(projectName.trim());
+  const featureNameExists = !!existingProjectId && !!featureName.trim() && features.some((f) => f.name === featureName.trim());
+  const projectNameInvalid = !existingProjectId && !!projectName.trim() && !isValidName(projectName.trim());
+  const featureNameInvalid = !!featureName.trim() && !isValidName(featureName.trim());
+
+  // ── Effects ──
+
+  useEffect(() => {
+    if (!repoNameManuallyEdited && projectName) {
+      setRepositoryName(sanitizeRepoName(projectName));
+    }
+  }, [projectName, repoNameManuallyEdited]);
+
+  useEffect(() => {
+    if (gitUrlFromConfig) return;
+    if (!repositoryName) return;
+    setGitUrl((prev) => {
+      if (prev) {
+        const match = prev.match(/^(https:\/\/github\.com\/[^/]+\/)([^/]*)$/);
+        if (match) return `${match[1]}${sanitizeRepoName(repositoryName)}`;
+      }
+      const owner = ownerInfo.orgOwner || ownerInfo.personalOwner;
+      if (owner) return `https://github.com/${owner}/${sanitizeRepoName(repositoryName)}`;
+      return prev;
+    });
+  }, [repositoryName, ownerInfo, gitUrlFromConfig]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      const [pat, orgCfg, userCfg] = await Promise.all([
+        checkGitHubPATStatus(),
+        fetchOrgConfig().catch(() => ({} as any)),
+        fetchUserConfig().catch(() => ({} as any)),
+      ]);
+      if (cancelled) return;
+      setPatStatus({ configured: pat.configured, username: pat.username });
+      const orgOwner = userCfg?.github?.ownerOverride || orgCfg?.github?.owner;
+      const personalOwner = pat.username;
+      setOwnerInfo({ orgOwner, personalOwner });
+
+      // Auto-compose git URL with default owner (matches ConfigEditor behavior)
+      if (pat.configured && !gitUrlFromConfig) {
+        const defaultOwner = orgOwner || personalOwner;
+        if (defaultOwner) {
+          setGitUrl((prev) => {
+            if (prev) return prev;
+            const repo = repositoryName || sanitizeRepoName(projectName) || '';
+            if (!repo) return prev;
+            return `https://github.com/${defaultOwner}/${repo}`;
+          });
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!existingProjectId || !isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const config = await fetchProjectConfig(existingProjectId);
+        if (!cancelled && config?.githubRepo && !gitUrl) {
+          setGitUrl(config.githubRepo);
+          setGitUrlFromConfig(true);
+          setGitEnabled(true);
+          if (config.repositoryName) {
+            setRepositoryName(config.repositoryName);
+            setRepoNameManuallyEdited(true);
+          }
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [existingProjectId, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (gitUrl.trim() && patStatus?.configured && gitAction === 'none') {
+      setGitAction('clone');
+    }
+    if (!gitUrl.trim()) setGitAction('none');
+  }, [gitUrl, patStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Derived ──
+
+  const gitReadOnly = !!existingProjectId && gitUrlFromConfig;
+
+  const hasModeDepData = sourcesFiles.length + assetsFiles.length + referencesFiles.length + designDocsFiles.length > 0 || directive.trim().length > 0;
+
+  const hasDirective = showDirective && directive.trim().length > 0;
+  const hasDesignInputs = sourcesFiles.length > 0;
+  const hasCodeInputs = designDocsFiles.filter((f) => isCanonicalDesignDoc(f.name)).length > 0;
+  const canSubmit = mode === 'design'
+    ? (hasDirective || hasDesignInputs)
+    : (hasDirective || hasCodeInputs);
+
+  const canGoNext: Record<WizardStep, boolean> = {
+    1: featureName.trim().length >= 3 && isValidName(featureName.trim())
+      && (!!existingProjectId || (projectName.trim().length >= 3 && isValidName(projectName.trim())))
+      && !projectNameExists && !featureNameExists,
+    2: true,
+    3: true,
+  };
+
+  const activeOwner = ownerInfo.orgOwner && gitUrl.includes(`github.com/${ownerInfo.orgOwner}/`)
+    ? 'org' as const
+    : ownerInfo.personalOwner && gitUrl.includes(`github.com/${ownerInfo.personalOwner}/`)
+      ? 'personal' as const
+      : null;
+
+  // ── Handlers ──
+
+  const updateExecStep = (id: ExecStepId, status: ExecStepStatus, error?: string) => {
+    setExecSteps((prev) => prev.map((s) => (s.id === id ? { ...s, status, error } : s)));
+  };
+
+  const handleModeChange = (newMode: 'design' | 'code') => {
+    if (newMode === mode) return;
+    if (hasModeDepData) {
+      if (!window.confirm(t('quickstart.projectWizard.modeChangeConfirm'))) return;
+      setSourcesFiles([]); setAssetsFiles([]); setReferencesFiles([]);
+      setDesignDocsFiles([]); setDirective(''); setShowDirective(false);
+    }
+    setMode(newMode);
+    setCurrentStep(1);
+  };
+
+  const goToStep = (step: WizardStep) => {
+    setCurrentStep(step);
+    if (step > maxVisited) setMaxVisited(step);
+  };
+
+  const handleNext = () => {
+    if (currentStep < 3) goToStep((currentStep + 1) as WizardStep);
+  };
+
+  const handleSavePat = async () => {
+    if (!patInput.trim()) return;
+    setPatSaving(true);
+    setPatError(null);
+    const result = await saveGitHubPAT(patInput.trim());
+    setPatSaving(false);
+    if (result.success) {
+      setPatStatus({ configured: true, username: result.username });
+      setPatInput(''); setShowPatInput(false);
+      if (result.username) setOwnerInfo((prev) => ({ ...prev, personalOwner: result.username }));
+    } else {
+      setPatError(result.error || 'Unknown error');
+    }
+  };
+
+  const applyOwner = (owner: string) => {
+    const repo = repositoryName || sanitizeRepoName(projectName) || 'my-project';
+    setGitUrl(`https://github.com/${owner}/${repo}`);
+    setGitUrlFromConfig(false);
+  };
+
+  const handleClose = () => {
+    if (isExecuting) return;
+    setProjectSetupConfig(undefined);
+    onClose();
+  };
+
+  // ── Submit / Execute ──
+
+  const handleSubmit = useCallback(async (startJob: boolean = true) => {
+    if (isExecuting) return;
+    setIsExecuting(true);
+    setExecutionError(null);
+
+    const needsProject = !existingProjectId;
+    const hasGitAction = !gitReadOnly && gitEnabled && gitAction !== 'none' && gitUrl.trim().length > 0 && patStatus?.configured;
+    const uploadableDesignDocs = designDocsFiles.filter((f) => isCanonicalDesignDoc(f.name));
+    const hasFiles = sourcesFiles.length + assetsFiles.length + referencesFiles.length + (mode === 'code' ? uploadableDesignDocs.length : 0) > 0;
+
+    const userDirective = directive.trim();
+    const effectiveDirective = startJob
+      ? (userDirective || (mode === 'design'
+        ? t('quickstart.projectWizard.defaultDirectiveDesign')
+        : t('quickstart.projectWizard.defaultDirectiveCode')))
+      : '';
+    const shouldStartJob = startJob && effectiveDirective;
+
+    const steps: ExecStepState[] = [];
+    if (needsProject) steps.push({ id: 'project', status: 'pending' });
+    if (needsProject) steps.push({ id: 'config', status: 'pending' });
+    if (hasGitAction) steps.push({ id: gitAction === 'clone' ? 'gitClone' : 'gitInit', status: 'pending' });
+    steps.push({ id: 'feature', status: 'pending' });
+    if (hasFiles) steps.push({ id: 'upload', status: 'pending' });
+    if (shouldStartJob) steps.push({ id: 'job', status: 'pending' });
+    setExecSteps(steps);
+
+    try {
+      let projectId = existingProjectId || projectName.trim();
+
+      if (needsProject) {
+        updateExecStep('project', 'active');
+        await createProject(projectId);
+        await delay(500);
+        updateExecStep('project', 'done');
+      }
+
+      if (needsProject) {
+        updateExecStep('config', 'active');
+        const config = await createProjectConfig(projectId, backendMode);
+        const updates: Record<string, any> = {};
+        if (repositoryName) updates.repositoryName = repositoryName;
+        if (gitUrl.trim()) updates.githubRepo = gitUrl.trim();
+        if (Object.keys(updates).length > 0) {
+          await updateProjectConfig(projectId, { ...config, ...updates });
+        }
+        await delay(300);
+        updateExecStep('config', 'done');
+      }
+
+      if (hasGitAction) {
+        const gitStepId: ExecStepId = gitAction === 'clone' ? 'gitClone' : 'gitInit';
+        let gitDone = false;
+        while (!gitDone) {
+          try {
+            updateExecStep(gitStepId, 'active');
+            if (gitAction === 'clone') {
+              const cloneResult = await cloneGitHubRepo(projectId);
+              if (!cloneResult.success) throw new Error(cloneResult.error || 'Git clone failed');
+              let cloned = false;
+              for (let i = 0; i < 60; i++) {
+                await delay(2000);
+                const status = await checkCloneStatus(projectId);
+                if (status.error) throw new Error(status.error);
+                if (status.cloned) { cloned = true; break; }
+              }
+              if (!cloned) throw new Error('Git clone timed out');
+            } else {
+              const initResult = await initializeGitHubRepo(projectId);
+              if (!initResult.success) throw new Error(initResult.error || 'Git init failed');
+            }
+            updateExecStep(gitStepId, 'done');
+            gitDone = true;
+          } catch (gitErr) {
+            const msg = gitErr instanceof Error ? gitErr.message : 'Git operation failed';
+            updateExecStep(gitStepId, 'error', msg);
+            setGitDecisionPending(true);
+            const decision = await new Promise<'skip' | 'retry' | 'abort'>((resolve) => {
+              gitDecisionRef.current = { resolve };
+            });
+            setGitDecisionPending(false);
+            gitDecisionRef.current = null;
+            if (decision === 'abort') throw gitErr;
+            if (decision === 'skip') { updateExecStep(gitStepId, 'done'); gitDone = true; }
+          }
+        }
+      }
+
+      updateExecStep('feature', 'active');
+      await createFeature(projectId, featureName.trim(), language);
+      useStore.getState().addFeatureOptimistic(featureName.trim());
+      await delay(500);
+      updateExecStep('feature', 'done');
+
+      if (hasFiles) {
+        updateExecStep('upload', 'active');
+        const feat = featureName.trim();
+        const batch = async (files: File[], dir: string) => {
+          if (files.length === 0) return;
+          const entries: UploadFileEntry[] = files.map((f) => ({ file: f, relativePath: f.name }));
+          await uploadFiles(projectId, feat, dir, entries);
+        };
+        await batch(sourcesFiles, 'inputs/sources');
+        await batch(assetsFiles, 'inputs/assets');
+        await batch(referencesFiles, 'inputs/references');
+        if (mode === 'code' && uploadableDesignDocs.length > 0) {
+          await batch(uploadableDesignDocs, 'outputs/design');
+        }
+        updateExecStep('upload', 'done');
+      }
+
+      if (useStore.getState().selectedProject !== projectId) setSelectedProject(projectId);
+      await delay(150);
+      setSelectedFeature(featureName.trim());
+      await delay(200);
+
+      if (shouldStartJob) {
+        updateExecStep('job', 'active');
+        const jobType = mode === 'design' ? 'design' : 'code';
+        setSelectedAgent('architect');
+        setSelectedJobType(jobType);
+        await addChatUserMessage(projectId, featureName.trim(), effectiveDirective);
+        setRunning(true, undefined, 'generate');
+        const jobExec = executeCodeJob({
+          projectId, featureName: featureName.trim(), jobType, agent: 'architect',
+          overrideDirective: effectiveDirective, chatSource: true,
+        });
+        setCurrentJob(jobExec);
+        jobExec.onJobIdReady((jobId) => setRunning(true, jobId));
+        jobExec.on('exit', (code) => {
+          useStore.getState().setLastJobFailed(code !== 0 && code !== null);
+          setRunning(false);
+          setCurrentJob(null);
+        });
+        await delay(800);
+        updateExecStep('job', 'done');
+      }
+
+      await useStore.getState().fetchFeatures(projectId);
+      await fetchProjects();
+      setProjectSetupConfig(undefined);
+    } catch (err) {
+      console.error('[ProjectWizardModal] Error:', err);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setExecutionError(msg);
+      setExecSteps((prev) => prev.map((s) => s.status === 'active' ? { ...s, status: 'error', error: msg } : s));
+    }
+  }, [
+    isExecuting, existingProjectId, projectName, repositoryName, gitUrl, gitAction, patStatus,
+    featureName, directive, showDirective, sourcesFiles, assetsFiles, referencesFiles,
+    designDocsFiles, mode, backendMode, language, gitEnabled, gitReadOnly, t,
+    setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType,
+    setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig,
+  ]);
+
+  // ── Render ──
+
+  return (
+    <Modal isOpen={isOpen} onClose={handleClose} title={`${t('quickstart.projectWizard.title')} — ${mode === 'design' ? t('quickstart.projectWizard.modeDesign') : t('quickstart.projectWizard.modeCode')}`} size="xl">
+      {isExecuting ? (
+        <ExecutionProgress
+          t={t}
+          mode={mode}
+          execSteps={execSteps}
+          executionError={executionError}
+          gitDecisionPending={gitDecisionPending}
+          onGitDecision={(d) => gitDecisionRef.current?.resolve(d)}
+          onRetry={() => { setIsExecuting(false); setExecutionError(null); setExecSteps([]); }}
+        />
+      ) : (
+        <div className="flex flex-col" style={{ height: '70vh' }}>
+          <div className="flex-1 overflow-y-auto pr-1 space-y-5 pb-4">
+            {currentStep === 1 && (
+              <StepProjectSetup
+                t={t}
+                mode={mode}
+                onModeChange={handleModeChange}
+                existingProjectId={existingProjectId}
+                projectName={projectName}
+                onProjectNameChange={setProjectName}
+                featureName={featureName}
+                onFeatureNameChange={setFeatureName}
+                projectNameExists={projectNameExists}
+                featureNameExists={featureNameExists}
+                projectNameInvalid={projectNameInvalid}
+                featureNameInvalid={featureNameInvalid}
+              />
+            )}
+            {currentStep === 2 && (
+              <StepGitIntegration
+                t={t}
+                gitEnabled={gitEnabled}
+                onGitEnabledChange={setGitEnabled}
+                readOnly={gitReadOnly}
+                patStatus={patStatus}
+                showPatInput={showPatInput}
+                onShowPatInput={() => setShowPatInput(true)}
+                patInput={patInput}
+                onPatInputChange={setPatInput}
+                patSaving={patSaving}
+                patError={patError}
+                onSavePat={handleSavePat}
+                repositoryName={repositoryName}
+                onRepositoryNameChange={setRepositoryName}
+                onRepoManualEdit={() => { setRepoNameManuallyEdited(true); setGitUrlFromConfig(false); }}
+                gitUrl={gitUrl}
+                onGitUrlChange={(v) => { setGitUrl(v); setGitUrlFromConfig(false); }}
+                gitUrlFromConfig={gitUrlFromConfig}
+                ownerInfo={ownerInfo}
+                activeOwner={activeOwner}
+                onApplyOwner={applyOwner}
+                gitAction={gitAction}
+                onGitActionChange={setGitAction}
+              />
+            )}
+            {currentStep === 3 && (
+              <StepFilesAndStart
+                t={t}
+                mode={mode}
+                sourcesFiles={sourcesFiles}
+                onSourcesChange={setSourcesFiles}
+                assetsFiles={assetsFiles}
+                onAssetsChange={setAssetsFiles}
+                referencesFiles={referencesFiles}
+                onReferencesChange={setReferencesFiles}
+                designDocsFiles={designDocsFiles}
+                onDesignDocsChange={setDesignDocsFiles}
+                directive={directive}
+                onDirectiveChange={setDirective}
+                showDirective={showDirective}
+                onShowDirectiveToggle={() => {
+                  if (!showDirective && !directive.trim()) {
+                    const defaultDir = mode === 'design'
+                      ? t('quickstart.projectWizard.defaultDirectiveDesign')
+                      : t('quickstart.projectWizard.defaultDirectiveCode');
+                    setDirective(defaultDir);
+                  }
+                  if (showDirective) {
+                    setDirective('');
+                  }
+                  setShowDirective(!showDirective);
+                }}
+              />
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+            <WizardStepIndicator
+              currentStep={currentStep}
+              maxVisited={maxVisited}
+              onStepClick={goToStep}
+              t={t}
+            />
+            <div className="flex items-center gap-2">
+              {currentStep < 3 ? (
+                <button
+                  onClick={handleNext}
+                  disabled={!canGoNext[currentStep]}
+                  className={cn(
+                    'px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all',
+                    'disabled:opacity-40 disabled:cursor-not-allowed',
+                    canGoNext[currentStep]
+                      ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100'
+                      : '',
+                  )}
+                >
+                  {t('quickstart.projectWizard.nextStep')}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 sm:gap-3">
+                  {!canSubmit && (
+                    <>
+                      <span className="hidden md:inline text-xs text-amber-600 dark:text-amber-400 max-w-[260px]">
+                        {t(mode === 'design' ? 'quickstart.projectWizard.startRequiresDesignInput' : 'quickstart.projectWizard.startRequiresCodeInput')}
+                      </span>
+                      <div className="md:hidden relative group">
+                        <Info className="w-4 h-4 text-amber-500 cursor-help" />
+                        <div className="absolute bottom-full right-0 mb-2 hidden group-hover:block w-56 p-2 text-xs text-gray-200 bg-gray-800 dark:bg-gray-900 rounded-lg shadow-lg z-50 pointer-events-none">
+                          {t(mode === 'design' ? 'quickstart.projectWizard.startRequiresDesignInput' : 'quickstart.projectWizard.startRequiresCodeInput')}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <button
+                    onClick={() => handleSubmit(false)}
+                    className={cn(
+                      'px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all whitespace-nowrap',
+                      'border border-gray-300 dark:border-gray-600',
+                      'text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800',
+                      'hover:bg-gray-50 dark:hover:bg-gray-700',
+                    )}
+                  >
+                    {t('quickstart.projectWizard.createOnly')}
+                  </button>
+                  <button
+                    onClick={() => handleSubmit(true)}
+                    disabled={!canSubmit}
+                    className={cn(
+                      'inline-flex items-center gap-2 px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold text-white rounded-lg shadow-md whitespace-nowrap',
+                      'disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none',
+                      canSubmit && 'transform hover:scale-[1.02] active:scale-[0.98]',
+                      'transition-all duration-200',
+                      mode === 'design'
+                        ? 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 shadow-indigo-500/20'
+                        : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-amber-500/20',
+                    )}
+                  >
+                    {t('quickstart.projectWizard.submit')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}

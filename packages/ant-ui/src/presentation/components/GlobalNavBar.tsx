@@ -57,6 +57,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const backendMode = useStore((state) => state.backendMode);
   const setBackendMode = useStore((state) => state.setBackendMode);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
+  const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
+  const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
   
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -410,6 +412,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
                                     py-1 z-50">
                         <button
                           onClick={() => {
+                            setQuickStartProjectId(undefined);
+                            setOnboardingSkipped(true);
                             openMainPanelTab('accountConfig');
                             setShowUserMenu(false);
                           }}

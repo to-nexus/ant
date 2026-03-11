@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, Github, ChevronDown, Download, Plus, Upload, Download as DownloadIcon, RefreshCw } from 'lucide-react';
 import { useStore } from '@/domain/store';
@@ -20,6 +20,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { GitStatusButtons } from './GitStatusButtons';
 import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
+import { CreationWizardModal } from './CreationWizardModal';
 
 export function ProjectSection() {
   const { t } = useTranslation('explorer');
@@ -40,6 +41,15 @@ export function ProjectSection() {
   const [config, setConfig] = useState<ProjectConfig | null>(null);
   const [showGitMenu, setShowGitMenu] = useState(false);
   const [isGitProcessing, setIsGitProcessing] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
+  const [forceInlineCreate, setForceInlineCreate] = useState(false);
+  const handleOpenWizard = useCallback(() => setShowWizard(true), []);
+  const handleCloseWizard = useCallback(() => setShowWizard(false), []);
+  const handleCreateEmpty = useCallback(() => {
+    setShowWizard(false);
+    setForceInlineCreate(true);
+  }, []);
+  const handleForceInlineCreateHandled = useCallback(() => setForceInlineCreate(false), []);
   const gitMenuRef = useRef<HTMLDivElement>(null);
   const policy = useUIActionPolicy();
   const { showError, showSuccess } = useAlertModalContext();
@@ -258,6 +268,15 @@ export function ProjectSection() {
         onSettingsClick={handleConfigClick}
         disabled={!policy.canChangeProject}
         disabledReason={policy.disabledReason || undefined}
+        onOpenWizard={handleOpenWizard}
+        forceInlineCreate={forceInlineCreate}
+        onForceInlineCreateHandled={handleForceInlineCreateHandled}
+      />
+
+      <CreationWizardModal
+        isOpen={showWizard}
+        onClose={handleCloseWizard}
+        onCreateEmpty={handleCreateEmpty}
       />
       
       {/* Git Status Section */}

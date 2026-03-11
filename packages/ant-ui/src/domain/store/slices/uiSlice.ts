@@ -30,6 +30,8 @@ export interface UIActions {
   setOnboardingSkipped: (skipped: boolean) => void;
   // ✅ QuickStart with existing project
   setQuickStartProjectId: (projectId: string | undefined) => void;
+  // ✅ ProjectWizard modal (design/code wizard)
+  setProjectSetupConfig: (config: { mode: 'design' | 'code'; existingProjectId?: string } | undefined) => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -101,6 +103,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   pendingClarifyQuestions: [],
   onboardingSkipped: false,
   quickStartProjectId: undefined,
+  projectSetupConfig: undefined,
 
   // ==================
   // Actions
@@ -305,6 +308,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   setQuickStartProjectId: (projectId: string | undefined) => {
     set({ quickStartProjectId: projectId });
+  },
+
+  setProjectSetupConfig: (config: { mode: 'design' | 'code'; existingProjectId?: string } | undefined) => {
+    set({ projectSetupConfig: config });
   },
 });
 
