@@ -37,12 +37,18 @@ export async function handleSearchCode(
   
   return withErrorHandling('searchCode', async () => {
     // Use FileSystemPort to list files
+    const segments = resolvedRoot.fsPath.split('/');
+    const isInsideDeps = segments.includes('node_modules') || segments.includes('vendor');
+    const excludes = isInsideDeps
+      ? ['.git']
+      : ['node_modules', '.git', 'dist', 'build'];
+
     logFileOperation('searchCode', 'Listing files', resolvedRoot.displayPath, { 
       fsPath: resolvedRoot.fsPath,
-      excludes: ['node_modules', '.git', 'dist', 'build'] 
+      excludes 
     });
     
-    const files = await fileSystem.listFiles(resolvedRoot.fsPath, ['node_modules', '.git', 'dist', 'build']);
+    const files = await fileSystem.listFiles(resolvedRoot.fsPath, excludes);
     console.log(`[searchCode] Found ${files.length} files total`);
     
     // Filter by file pattern if provided (supports glob-like patterns from LLM)
