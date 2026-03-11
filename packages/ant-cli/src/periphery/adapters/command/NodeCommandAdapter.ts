@@ -200,7 +200,16 @@ export class NodeCommandAdapter implements CommandPort {
       // Example: `timeout 10 curl ...; echo done` → without set -e, exit code is 0 (echo)
       //          even though `timeout` failed with "command not found".
       // The LLM can still use `|| true` to explicitly ignore expected failures.
-      const shellCommand = (!isWindows && needsShell) ? `set -e; ${trimmed}` : trimmed;
+      //
+      // ✅ CRITICAL: `set -o pipefail` makes pipeline exit code reflect the rightmost
+      // non-zero exit code, not just the last command. Without this, `build | tail -80`
+      // reports exit 0 (tail) even when build fails. The `2>/dev/null || true` prefix
+      // is safe: pipefail is enabled on bash/zsh, silently skipped on dash/POSIX sh,
+      // and placed before set -e so the fallback doesn't trigger an early exit.
+      // SIGPIPE (exit 141) from `cmd | head` is handled separately in runCommand.ts.
+      const shellCommand = (!isWindows && needsShell)
+        ? `set -o pipefail 2>/dev/null || true; set -e; ${trimmed}`
+        : trimmed;
       const shellArgs = isWindows ? ['/c', trimmed] : ['-lc', shellCommand];
 
       const [cmd, ...args] = needsShell ? [shell, ...shellArgs] : trimmed.split(/\s+/);
