@@ -30,6 +30,6 @@
     "goToOnboarding": "Start a project",
     "goToOnboardingHint": "Create a new project with AI",
     "addFirstFeature": "Add your first feature",
-    "addFirstFeatureHint": "Describe what to build — AI will plan and start coding"
+    "addFirstFeatureHint": "Describe what to build"
   }
 }

@@ -28,8 +28,8 @@
     "errorRetry": "다시 시도",
     "skipToWorkspace": "프로젝트로 이동",
     "goToOnboarding": "프로젝트 시작하기",
-    "goToOnboardingHint": "AI와 함께 새 프로젝트를 만들어보세요",
+    "goToOnboardingHint": "AI와 함께 만들어보세요",
     "addFirstFeature": "첫 번째 기능 만들기",
-    "addFirstFeatureHint": "만들고 싶은 기능을 설명해주세요 — AI가 계획하고 코딩을 시작합니다"
+    "addFirstFeatureHint": "만들고 싶은 기능을 설명해주세요"
   }
 }
