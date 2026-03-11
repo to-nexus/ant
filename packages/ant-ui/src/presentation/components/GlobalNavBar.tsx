@@ -176,8 +176,8 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       useStore.getState().setIdeFrameLoaded(false);
       useStore.getState().switchToCodeIdeView(`/${selectedProject}`);
 
-      const { startCloudIDE, SERVER_BASE } = await import('@/infrastructure/http/api');
-      const featureName = selectedFeature || 'main';
+      const { startCloudIDE, SERVER_BASE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
+      const featureName = selectedFeature || RESERVED_FEATURE_NAME;
       const { instance } = await startCloudIDE(selectedProject, featureName);
 
       // ✅ Use proxy URL (instance.url) instead of directUrl for production

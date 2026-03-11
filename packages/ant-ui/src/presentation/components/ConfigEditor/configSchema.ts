@@ -37,13 +37,5 @@ export const CONFIG_SCHEMA: ConfigField[] = [
     label: 'schema.githubRepo',
     type: 'text',
     required: false,
-    description: 'schema.githubRepoDesc'
-  },
-  {
-    key: 'branchBase',
-    label: 'schema.baseBranch',
-    type: 'text',
-    required: true,
-    description: 'schema.baseBranchDesc'
   },
 ];

@@ -59,7 +59,7 @@
     "noChangesToSave": "저장할 변경사항 없음",
     "saveChanges": "변경사항 저장",
     "projectName": "프로젝트 이름",
-    "projectNameDesc": "프로젝트의 고유 식별자입니다 (디렉토리 이름으로 사용)",
+    "projectNameDesc": "Ant 내에서 사용되는 프로젝트 이름입니다",
     "renameProject": "이름 변경",
     "renameConfirm": "프로젝트 이름을 \"{{oldName}}\"에서 \"{{newName}}\"(으)로 변경할까요?",
     "renameSuccess": "프로젝트 이름이 변경되었습니다!",
@@ -76,19 +76,22 @@
     "selectModel": "-- 모델 선택 --",
     "useJobDefault": "-- 작업 기본값 사용 --",
     "jobTitle": "{{name}} 작업",
-    "llmDescription": "다양한 작업과 Node에 대한 모델을 설정합니다. 각 작업에는 기본 모델이 필요합니다. Node는 선택적으로 다른 모델을 사용할 수 있으며, 설정하지 않으면 작업 기본값을 사용합니다."
+    "llmDescription": "다양한 작업과 Node에 대한 모델을 설정합니다. 각 작업에는 기본 모델이 필요합니다. Node는 선택적으로 다른 모델을 사용할 수 있으며, 설정하지 않으면 작업 기본값을 사용합니다.",
+    "repoConnected": "연동 완료",
+    "repoSyncNeeded": "동기화 필요",
+    "repoSyncWarning": "설정된 URL과 실제 Git 원격 주소가 다릅니다. 다시 클론하거나 원격 주소를 업데이트하여 동기화하세요."
   },
   "schema": {
     "repositoryName": "리포지토리 이름",
-    "repositoryNameDesc": "코드베이스/리포지토리의 이름",
+    "repositoryNameDesc": "GitHub에서 사용될 리포지토리 이름입니다",
     "repositoryType": "리포지토리 유형",
     "repositoryTypeDesc": "리포지토리 유형 (로컬, 클라우드 또는 GitHub)",
     "localPath": "로컬 경로",
     "localPathDesc": "로컬 리포지토리 경로. 지원 형식: 절대 경로 (/Users/...), 홈 (~/ ), 또는 ant-cli 상대 경로 (../../../my-repo)",
     "githubRepo": "GitHub 리포지토리",
-    "githubRepoDesc": "GitHub 리포지토리 URL (github 리포지토리 유형용)",
     "baseBranch": "기본 브랜치",
-    "baseBranchDesc": "기본 브랜치 이름 (예: main, master)"
+    "baseBranchDesc": "Git 저장소에서 자동 감지됨",
+    "baseBranchEditable": "초기화 시 사용할 기본 브랜치 이름 (예: main, master)"
   },
   "llmModels": {
     "title": "작업 및 Node별 LLM 모델",

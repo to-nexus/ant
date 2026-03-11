@@ -131,6 +131,7 @@ export function getGitStatus(projectId: string, feature?: string): Promise<{
   hasCodebase: boolean;
   hasFeatures: boolean;
   currentBranch?: string;
+  remoteUrl?: string;
 }> {
   const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
   return apiGet<{
@@ -138,6 +139,7 @@ export function getGitStatus(projectId: string, feature?: string): Promise<{
     hasCodebase: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
+    remoteUrl?: string;
   }>(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/status${params}`).catch(() => ({
     hasGit: false,
     hasCodebase: false,

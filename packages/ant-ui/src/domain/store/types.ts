@@ -106,6 +106,7 @@ export interface GitStatus {
   hasCodebase: boolean;
   hasFeatures: boolean;
   currentBranch?: string;
+  remoteUrl?: string;
 }
 
 export interface GitState {

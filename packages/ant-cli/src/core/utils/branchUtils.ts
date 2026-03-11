@@ -1,12 +1,20 @@
 /**
  * Branch utility functions
  * 
- * Base branch is determined by project config (config.json -> branchBase).
- * No hardcoded branch name lists.
+ * Base branch is auto-detected from the git repository and recorded in
+ * project config (config.json -> branchBase). Detection happens at
+ * clone/init/project-creation time; afterwards everything reads from config.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
+
+/**
+ * Reserved feature name used as the IDE container/key identifier
+ * when no feature is selected (i.e., working on the base branch).
+ * Users are forbidden from creating a feature with this name.
+ */
+export const RESERVED_FEATURE_NAME = '_base';
 
 /**
  * Check if a feature name corresponds to the project's base branch.
@@ -19,7 +27,8 @@ import * as path from 'path';
  * @param branchBase - The project's configured base branch (from config.branchBase or ANT_BRANCH_BASE)
  */
 export function isBaseBranch(featureName: string, branchBase: string): boolean {
-  return featureName.toLowerCase() === branchBase.toLowerCase();
+  return featureName === RESERVED_FEATURE_NAME
+    || featureName.toLowerCase() === branchBase.toLowerCase();
 }
 
 /**
@@ -49,4 +58,48 @@ export function readBranchBaseFromConfig(projectPath: string): string {
     // config not found or invalid
   }
   return 'main';
+}
+
+/**
+ * Detect the default branch from an actual git repository.
+ *
+ * Resolution order:
+ * 1. Remote HEAD (refs/remotes/origin/HEAD) -- most reliable for cloned repos, no network needed
+ * 2. Well-known branch names (main, master) -- check if they exist locally
+ * 3. Current HEAD branch -- fallback for local-only repos
+ *
+ * Returns null when detection is not possible (no .git, detached HEAD, etc.).
+ */
+export async function detectGitDefaultBranch(codebasePath: string): Promise<string | null> {
+  try {
+    if (!fs.existsSync(path.join(codebasePath, '.git'))) return null;
+
+    const simpleGit = (await import('simple-git')).default;
+    const git = simpleGit({ baseDir: codebasePath });
+
+    // 1) Remote HEAD -- set automatically after clone
+    try {
+      const ref = await git.raw(['symbolic-ref', 'refs/remotes/origin/HEAD']);
+      const branch = ref.trim().replace('refs/remotes/origin/', '');
+      if (branch) return branch;
+    } catch { /* no remote or HEAD not set */ }
+
+    // 2) Well-known default branch names
+    for (const candidate of ['main', 'master']) {
+      try {
+        await git.raw(['show-ref', '--verify', `refs/heads/${candidate}`]);
+        return candidate;
+      } catch { /* branch doesn't exist */ }
+    }
+
+    // 3) Current branch as last resort
+    try {
+      const head = await git.raw(['symbolic-ref', '--short', 'HEAD']);
+      return head.trim() || null;
+    } catch { /* detached HEAD or no commits */ }
+
+    return null;
+  } catch {
+    return null;
+  }
 }

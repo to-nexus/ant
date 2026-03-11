@@ -14,6 +14,7 @@ import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import * as path from 'path';
 import { logger } from '../../../../utils/logger';
+import { RESERVED_FEATURE_NAME } from '../../../../core/utils/branchUtils';
 
 export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, workspaceResolver: any): Router {
   const router = Router();
@@ -47,7 +48,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       }
       
       // Get workspace path (feature-aware: worktree for features)
-      const workspacePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName || 'main');
+      const workspacePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName || RESERVED_FEATURE_NAME);
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
       
@@ -56,7 +57,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
         tenantId,
         userId: userContext.userId,
         projectId,
-        feature: featureName || 'main',
+        feature: featureName || RESERVED_FEATURE_NAME,
         workspacePath,
         userContext
       };
@@ -102,7 +103,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
   router.get('/open/:projectId', async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
-      const featureName = (req.query.feature as string) || 'main';
+      const featureName = (req.query.feature as string) || RESERVED_FEATURE_NAME;
       const userContext: UserContext = extractUserContext(req);
 
       const workspacePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName);
@@ -146,7 +147,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;
       
-      const result = await ideOrchestrator.stop(tenantId, projectId, featureName || 'main');
+      const result = await ideOrchestrator.stop(tenantId, projectId, featureName || RESERVED_FEATURE_NAME);
       
       res.json({ success: result.success, message: result.message });
       
@@ -163,7 +164,7 @@ export function createCloudIDERoutes(ideOrchestrator: IDEOrchestratorPort, works
   router.get('/status/:projectId', async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
-      const featureName = (req.query.feature as string) || 'main';
+      const featureName = (req.query.feature as string) || RESERVED_FEATURE_NAME;
       const userContext: UserContext = extractUserContext(req);
       
       const tenantId = `${userContext.organizationId}:${userContext.userId}`;

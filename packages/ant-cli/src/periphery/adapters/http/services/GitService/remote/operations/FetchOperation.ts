@@ -5,6 +5,7 @@ import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
 import { logger } from '../../../../../../../utils/logger';
+import { detectGitDefaultBranch } from '../../../../../../../core/utils/branchUtils';
 
 /**
  * FetchOperation
@@ -66,6 +67,39 @@ export class FetchOperation {
     }, {
       githubRepo: config.githubRepo
     });
+
+    // Re-detect default branch from remote HEAD (may have changed on GitHub)
+    await this.syncDefaultBranch(codebasePath, projectId, userContext, config);
+  }
+
+  private async syncDefaultBranch(
+    codebasePath: string,
+    projectId: string,
+    userContext: UserContext,
+    config: any,
+  ): Promise<void> {
+    try {
+      const detected = await detectGitDefaultBranch(codebasePath);
+      if (detected && detected !== config.branchBase) {
+        const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+        const configPath = path.join(projectPath, 'config.json');
+        config.branchBase = detected;
+        await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        logger.info(`[FetchOperation] Updated branchBase: ${detected}`, {
+          component: 'FetchOperation',
+          organizationId: userContext.organizationId,
+          userId: userContext.userId,
+          projectId
+        });
+      }
+    } catch (error) {
+      logger.warn('[FetchOperation] Could not re-detect default branch', {
+        component: 'FetchOperation',
+        organizationId: userContext.organizationId,
+        userId: userContext.userId,
+        projectId
+      });
+    }
   }
 
   private async loadGitHubConfig(projectId: string, userContext: UserContext) {

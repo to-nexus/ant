@@ -22,6 +22,7 @@ import {
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { parseIDEKey } from '../../../../infrastructure/state/redisKeyUtils';
+import { RESERVED_FEATURE_NAME } from '../../../../core/utils/branchUtils';
 
 export interface IDEProxyConfig {
   portRegistry: PortRegistryPort;
@@ -56,7 +57,7 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
       tenantId: parsed.tenantId,
       userId: parsed.userId,
       projectId: parsed.projectId,
-      feature: parsed.feature || 'main',
+      feature: parsed.feature || RESERVED_FEATURE_NAME,
       serverKey
     };
   }
@@ -175,7 +176,7 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     }
 
     const { tenantId, userId, projectId, feature } = parsed;
-    const featureName = feature || 'main';
+    const featureName = feature || RESERVED_FEATURE_NAME;
 
     // Lookup port and host (IDE is feature-level)
     const port = await portRegistry.getIDEPort(tenantId, userId, projectId, featureName);

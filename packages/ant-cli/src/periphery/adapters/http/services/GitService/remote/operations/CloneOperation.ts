@@ -6,6 +6,7 @@ import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
 import { SourceDetector } from '../helpers/SourceDetector';
+import { detectGitDefaultBranch } from '../../../../../../../core/utils/branchUtils';
 
 /**
  * CloneOperation
@@ -104,6 +105,9 @@ export class CloneOperation {
     // Set upstream for default branch
     await this.setupUpstream(codebasePath);
 
+    // Auto-detect default branch and persist to config.json
+    await this.syncDetectedBranchToConfig(codebasePath, configPath, config);
+
     console.log(`[CloneOperation] ✅ Repository cloned successfully`);
   }
 
@@ -177,6 +181,23 @@ export class CloneOperation {
     const finalGitDir = path.join(codebasePath, '.git');
     if (!fs.existsSync(finalGitDir)) {
       throw new Error('Clone completed but .git directory not found in final location');
+    }
+  }
+
+  private async syncDetectedBranchToConfig(
+    codebasePath: string,
+    configPath: string,
+    config: any,
+  ): Promise<void> {
+    try {
+      const detected = await detectGitDefaultBranch(codebasePath);
+      if (detected && detected !== config.branchBase) {
+        config.branchBase = detected;
+        await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        console.log(`[CloneOperation] 🔍 Auto-detected default branch: ${detected}`);
+      }
+    } catch (error) {
+      console.warn('[CloneOperation] Could not auto-detect default branch:', error);
     }
   }
 
