@@ -20,11 +20,6 @@ import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
 export async function revise(state: DesignGraphState): Promise<DesignGraphState> {
   const phaseStart = Date.now();
   
-  // ✅ Node activity banner
-  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('revise', state._uiLocale), 'revise');
-  }
-  
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ Increment recursion count (track node execution for UI gauge)
@@ -58,7 +53,9 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
   
   const overrideDirective = state.overrideDirective;
   
-  // If no new directive (just resume button), continue without changes
+  // If no new directive (just resume button), continue without changes.
+  // Skip activity banner — the fast path returns immediately and the next node
+  // (parallelOrchestrator) will broadcast actual tasks right away.
   if (!overrideDirective) {
     console.log('📋 [Design Revise] No new directive → CONTINUE (no task changes needed)\n');
     
@@ -69,6 +66,11 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     }
     
     return state;
+  }
+  
+  // New directive exists — show activity banner before LLM call
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('revise', state._uiLocale), 'revise');
   }
   
   // New directive exists - ask LLM for decision
