@@ -1,5 +1,9 @@
 # Go Language Profile
 
+## File Naming Conventions
+- **snake_case** for all source files: `user_handler.go`, `auth_middleware.go`, `order_service.go`
+- **Test files**: Match source file name with `_test` suffix: `user_handler_test.go`
+
 ## Naming Conventions
 - **PascalCase**: Exported identifiers (public)
   - `User`, `FetchData`, `HTTPClient`

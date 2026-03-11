@@ -1,5 +1,10 @@
 # JavaScript Language Profile
 
+## File Naming Conventions
+- **kebab-case** for all source files: `user-profile.jsx`, `api-client.js`, `use-auth.js`
+- **Framework-required exceptions**: Files mandated by frameworks keep their required names (`App.jsx`, `index.js`)
+- **Test files**: Match source file name with `.test` or `.spec` suffix: `user-profile.test.js`
+
 ## Modern JavaScript (ES6+)
 - **Use `const` by default**, `let` when reassignment needed
 - **Never use `var`** - block scoping is essential
