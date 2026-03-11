@@ -102,6 +102,17 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     resetTaskTokenUsage(state as any);
     state._codeGenCallIndex = 0;
 
+    // ✅ Initialize verification tracker for verification tasks
+    if (nextTask.type === 'verification') {
+      const { detectTestFiles } = await import('./testFileDetector');
+      state._verificationTracker = {
+        buildPassed: false,
+        testPassed: false,
+        testsRequired: detectTestFiles(state.projectCodeContext),
+      };
+      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}`);
+    }
+
     // ✅ Log task_start event to debug/logs/
     if (state.context?.featurePath && state._httpJobId) {
       const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
