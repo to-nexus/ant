@@ -64,7 +64,7 @@ export function generateFileOutline(content: string, filePath: string): string |
   return (lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated) + '\n...';
 }
 
-function extractMarkdownHeadings(content: string): string[] {
+export function extractMarkdownHeadings(content: string): string[] {
   const lines = content.split('\n');
   const entries: string[] = [];
 
@@ -119,7 +119,7 @@ function extractGoOutline(content: string): string[] {
   return entries;
 }
 
-function extractJsonOutline(content: string): string[] {
+export function extractJsonOutline(content: string): string[] {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(content);

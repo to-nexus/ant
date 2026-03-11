@@ -19,7 +19,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
-import { generateFileOutline } from "../../../../../../core/utils/fileOutline";
+import { condenseContent } from "../../../../../../core/utils/contentCondenser";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -117,8 +117,19 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     console.log(`📄 [CodeGen] ${state.currentTask.type} task — skipping designDoc (architecture) injection`);
   } else if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
     // Package-based split injection (fe, fe-*, be, be-*, shared)
-    designDocForTask = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
-    console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → ${designDocForTask.length} chars`);
+    const rawDesignDoc = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
+    // Condense large design docs. Outline preserves heading keywords
+    // (framework names etc.) so ModeController .includes() checks still work.
+    const designResult = condenseContent(rawDesignDoc, {
+      threshold: 30_000,
+      label: 'System Design',
+      filePath: state.currentTask.packages
+        .filter(p => p.startsWith('fe-') || p.startsWith('be-'))
+        .map(p => `outputs/design/${p.startsWith('fe') ? 'fe' : 'be'}-system-${p.slice(3)}.md`)
+        .join(', '),
+    });
+    designDocForTask = designResult.content;
+    console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → ${designDocForTask.length} chars${designResult.wasCondensed ? ' (condensed)' : ''}`);
   } else {
     // Fallback: all tasks should have packages set by decompose.
     // If this fires, it indicates a decompose bug (missing packages) or resolve bug (missing designDocs).
@@ -138,10 +149,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
       }
     }
-    designDocForTask = condenseSpecDoc(
+    designDocForTask = condenseContent(
       parts.join('\n\n────────────────────────────────────────\n\n'),
-      state.selectedSpec,
-    );
+      {
+        threshold: 30_000,
+        label: `Spec Document: ${state.selectedSpec}`,
+        filePath: `outputs/design/${state.selectedSpec}`,
+      },
+    ).content;
     console.log(`📋 [CodeGen] Error task with spec "${state.selectedSpec}" — injecting specDoc (${designDocForTask.length} chars)`);
   }
   
@@ -1099,29 +1114,6 @@ function extractTableSchemas(sql: string): string[] {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Spec Document Condensation
-// For large spec docs, replace full content with a heading-based TOC
-// and instruct the LLM to read specific sections via read_file.
-// Reuses generateFileOutline() from core/utils/fileOutline.ts.
+// Spec Document Condensation — now uses shared condenseContent()
+// from core/utils/contentCondenser.ts.  See call site above.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const SPEC_CONDENSE_THRESHOLD = 30_000; // ~10.7K tokens at 2.8 ratio
-
-function condenseSpecDoc(specContent: string, specFilename: string): string {
-  if (specContent.length <= SPEC_CONDENSE_THRESHOLD) return specContent;
-
-  const specPath = `outputs/design/${specFilename}`;
-  const outline = generateFileOutline(specContent, specPath);
-  const lineCount = specContent.split('\n').length;
-
-  console.log(`📦 [CodeGen] Condensing spec doc "${specFilename}": ${specContent.length.toLocaleString()} chars → outline (${lineCount} lines)`);
-
-  return [
-    `# Spec Document: ${specFilename} (${lineCount} lines, condensed)`,
-    '',
-    '> Full content exceeds token budget. Section outline below.',
-    `> Use read_file("${specPath}", startLine=N, endLine=M) to read specific sections.`,
-    '',
-    outline || '(no headings found)',
-  ].join('\n');
-}
