@@ -39,6 +39,9 @@ interface ItemDropdownProps {
   disabledReason?: string;  // ✅ 비활성화 이유 (tooltip)
   canCreate?: boolean;  // ✅ + New 가능 여부
   createDisabledReason?: string; // ✅ + New 비활성화 이유
+  onOpenWizard?: () => void;  // ✅ + New 클릭 시 위자드 모달 열기 (제공 시 인라인 폼 대신 사용)
+  forceInlineCreate?: boolean; // ✅ 외부에서 인라인 생성 폼을 강제로 열기
+  onForceInlineCreateHandled?: () => void; // ✅ forceInlineCreate 처리 후 콜백
 }
 
 export function ItemDropdown({
@@ -66,6 +69,9 @@ export function ItemDropdown({
   disabledReason,
   canCreate = true,
   createDisabledReason,
+  onOpenWizard,
+  forceInlineCreate = false,
+  onForceInlineCreateHandled,
 }: ItemDropdownProps) {
   const { t } = useTranslation('explorer');
   const resolvedPlaceholder = placeholder || t('item.selectPlaceholder');
@@ -75,6 +81,14 @@ export function ItemDropdown({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { showConfirm, showInfo } = useAlertModalContext();
   const { toast } = useToastContext();
+
+  // Force inline create from external trigger
+  useEffect(() => {
+    if (forceInlineCreate) {
+      setIsCreating(true);
+      onForceInlineCreateHandled?.();
+    }
+  }, [forceInlineCreate, onForceInlineCreateHandled]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -107,7 +121,11 @@ export function ItemDropdown({
     e.preventDefault();
     e.stopPropagation();
     if (disabled || !canCreate) return;
-    setIsCreating(true);
+    if (onOpenWizard) {
+      onOpenWizard();
+    } else {
+      setIsCreating(true);
+    }
   };
 
   const handleCloseCreate = (e: React.MouseEvent) => {

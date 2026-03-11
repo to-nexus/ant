@@ -19,6 +19,7 @@ import { LocalSetupGuide } from '@/presentation/pages/LocalSetupGuide';
 import { WelcomePage } from '@/presentation/pages/WelcomePage';
 import { QuickStart } from '@/presentation/pages/QuickStart';
 import { ChevronRight, Loader2 } from 'lucide-react';
+import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
 // STORAGE_KEYS/loadFromStorage no longer needed in App — QuickStart handles its own persistence
@@ -132,6 +133,8 @@ function App() {
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const quickStartProjectId = useStore((state) => state.quickStartProjectId);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
+  const projectSetupConfig = useStore((state) => state.projectSetupConfig);
+  const setProjectSetupConfig = useStore((state) => state.setProjectSetupConfig);
 
   const shouldShowWelcome = backendMode === 'cloud' && !userEmail;
   // ✅ QuickStart: zero projects (auto) OR opt-in with existing project (quickStartProjectId set)
@@ -421,13 +424,21 @@ function App() {
           <div className={`h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-all duration-350 ${viewOpacity}`}>
             <GlobalNavBar />
             <QuickStart
-              existingProjectId={quickStartProjectId}
+              existingProjectId={quickStartProjectId === '__new__' ? undefined : quickStartProjectId}
               onSkip={() => {
                 setQuickStartProjectId(undefined);
                 setOnboardingSkipped(true);
               }}
             />
           </div>
+          {projectSetupConfig && (
+            <ProjectWizardModal
+              isOpen={!!projectSetupConfig}
+              onClose={() => setProjectSetupConfig(undefined)}
+              initialMode={projectSetupConfig.mode}
+              existingProjectId={projectSetupConfig.existingProjectId}
+            />
+          )}
         </AlertModalProvider>
       </ToastProvider>
     );
@@ -531,6 +542,15 @@ function App() {
         </div>
         )}
       </div>
+      {/* ProjectWizardModal (design/code wizard) */}
+      {projectSetupConfig && (
+        <ProjectWizardModal
+          isOpen={!!projectSetupConfig}
+          onClose={() => setProjectSetupConfig(undefined)}
+          initialMode={projectSetupConfig.mode}
+          existingProjectId={projectSetupConfig.existingProjectId}
+        />
+      )}
     </AlertModalProvider>
     </ToastProvider>
   );

@@ -9,8 +9,9 @@ import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
 import { PreviewStatusPanel } from './components/PreviewStatusPanel';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { QuickStartCTA } from '../common/QuickStartCTA';
+import { CreationWizardModal } from '../CreationWizardModal';
 
 export function FeatureSection() {
   const { 
@@ -68,6 +69,17 @@ export function FeatureSection() {
   // Only run on mount and when selectedProject changes — not on every features update
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject]);
+
+  // ✅ CreationWizardModal state
+  const [showWizard, setShowWizard] = useState(false);
+  const [forceInlineCreate, setForceInlineCreate] = useState(false);
+  const handleOpenWizard = useCallback(() => setShowWizard(true), []);
+  const handleCloseWizard = useCallback(() => setShowWizard(false), []);
+  const handleCreateEmpty = useCallback(() => {
+    setShowWizard(false);
+    setForceInlineCreate(true);
+  }, []);
+  const handleForceInlineCreateHandled = useCallback(() => setForceInlineCreate(false), []);
 
   // ✅ Track fix button click state
   const [fixButtonClicked, setFixButtonClicked] = useState(false);
@@ -131,16 +143,39 @@ export function FeatureSection() {
         onSettingsClick={() => {
           useStore.getState().openMainPanelTab('previewConfig');
         }}
+        onOpenWizard={handleOpenWizard}
+        forceInlineCreate={forceInlineCreate}
+        onForceInlineCreateHandled={handleForceInlineCreateHandled}
+      />
+
+      <CreationWizardModal
+        isOpen={showWizard}
+        onClose={handleCloseWizard}
+        existingProjectId={selectedProject}
+        onCreateEmpty={handleCreateEmpty}
       />
 
       {features.length === 0 && selectedProject && (
-        <QuickStartCTA
-          variant="feature"
-          title={t('onboarding:quickstart.addFirstFeature')}
-          hint={t('onboarding:quickstart.addFirstFeatureHint')}
-          onClick={() => setQuickStartProjectId(selectedProject)}
-          className="mt-2"
-        />
+        <div className="mt-2 space-y-2">
+          <QuickStartCTA
+            variant="plan"
+            title={t('onboarding:quickstart.fleshOutIdea')}
+            hint={t('onboarding:quickstart.fleshOutIdeaHint')}
+            onClick={() => setQuickStartProjectId(selectedProject)}
+          />
+          <QuickStartCTA
+            variant="design"
+            title={t('onboarding:quickstart.designSystem')}
+            hint={t('onboarding:quickstart.designSystemHint')}
+            onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'design', existingProjectId: selectedProject })}
+          />
+          <QuickStartCTA
+            variant="code"
+            title={t('onboarding:quickstart.codeFromDesign')}
+            hint={t('onboarding:quickstart.codeFromDesignHint')}
+            onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'code', existingProjectId: selectedProject })}
+          />
+        </div>
       )}
       
       {/* Status Panel - show for all non-idle states */}
