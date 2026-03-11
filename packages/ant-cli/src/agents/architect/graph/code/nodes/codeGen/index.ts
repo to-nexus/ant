@@ -133,18 +133,27 @@ export async function codeGen(
     }
   }
 
-  // ✅ Collect other workers' files for Session File Manifest (cross-worker awareness)
+  // ✅ Collect other tasks' files for Session File Manifest (cross-task awareness)
   // In parallel mode, SharedFileBuffer tracks all files written by all workers.
-  // We inject other workers' file list into the prompt so the LLM knows what already exists.
-  // In sequential mode (no SharedFileBuffer), this is a no-op.
-  const currentWorkerId = (state as any).workerId ?? 0;
+  // We use getWrittenByOtherTasks (taskName-based) instead of getWrittenFilesByOtherWorkers
+  // (workerId-based) so that a feature task on Worker 0 can see foundation files also
+  // written by Worker 0 in an earlier task (same-worker blind spot fix).
+  const currentTaskName = state.currentTask?.name ?? '';
   const workerFSForManifest = state.deps?.fileSystem as any;
-  if (workerFSForManifest?.sharedBuffer?.getWrittenFilesByOtherWorkers) {
+  if (workerFSForManifest?.sharedBuffer?.getWrittenByOtherTasks) {
+    const otherTaskFiles: Array<{ path: string; taskName?: string }> =
+      workerFSForManifest.sharedBuffer.getWrittenByOtherTasks(currentTaskName);
+    if (otherTaskFiles.length > 0) {
+      (state as any)._otherWorkerFiles = otherTaskFiles;
+      console.log(`📋 [CodeGen] Session manifest: ${otherTaskFiles.length} file(s) from other tasks`);
+    }
+  } else if (workerFSForManifest?.sharedBuffer?.getWrittenFilesByOtherWorkers) {
+    const currentWorkerId = (state as any).workerId ?? 0;
     const otherWorkerFiles: Array<{ path: string; taskName?: string }> =
       workerFSForManifest.sharedBuffer.getWrittenFilesByOtherWorkers(currentWorkerId);
     if (otherWorkerFiles.length > 0) {
       (state as any)._otherWorkerFiles = otherWorkerFiles;
-      console.log(`📋 [CodeGen] Session manifest: ${otherWorkerFiles.length} file(s) from other workers`);
+      console.log(`📋 [CodeGen] Session manifest: ${otherWorkerFiles.length} file(s) from other workers (legacy fallback)`);
     }
   }
 
