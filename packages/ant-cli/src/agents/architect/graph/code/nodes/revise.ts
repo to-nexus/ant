@@ -19,11 +19,6 @@ import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLa
 export async function revise(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   const phaseStart = Date.now();
   
-  // ✅ Node activity banner
-  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('revise', state._uiLocale), 'revise');
-  }
-  
   state.recursionCount = (state.recursionCount || 0) + 1;
   
   const llm = state.deps?.llm as LLMClient;
@@ -57,7 +52,9 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
   const directives = state.directives || [];
   const overrideDirective = state.overrideDirective;
   
-  // If no new directive (just resume button), continue without changes
+  // If no new directive (just resume button), continue without changes.
+  // Skip activity banner — the fast path returns immediately and the next node
+  // (parallelOrchestrator) will broadcast actual tasks right away.
   if (!overrideDirective && directives.length < 2) {
     console.log('📋 [Revise] No new directive → CONTINUE (no task changes needed)\n');
     
@@ -68,6 +65,11 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     }
     
     return state;
+  }
+  
+  // New directive exists — show activity banner before LLM call
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('revise', state._uiLocale), 'revise');
   }
   
   // New directive exists - ask LLM for decision
