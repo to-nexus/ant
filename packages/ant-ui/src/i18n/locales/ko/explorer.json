@@ -85,7 +85,13 @@
     "repoCloned": "리포지토리가 Clone되었습니다",
     "repoInitialized": "리포지토리가 초기화되었습니다",
     "repoPublished": "코드베이스가 GitHub에 게시되었습니다",
-    "actionFailed": "{{action}}에 실패했습니다"
+    "actionFailed": "{{action}}에 실패했습니다",
+    "patNotConfigured": "GitHub PAT가 설정되지 않았습니다. PAT를 등록해주세요.",
+    "configurePat": "PAT 설정하기",
+    "commitFailed": "커밋 실패",
+    "pushFailed": "Push 실패",
+    "pullFailed": "Pull 실패",
+    "syncFailed": "동기화 실패"
   },
   "localSetup": {
     "heroTitle": "로컬 백엔드 연결",

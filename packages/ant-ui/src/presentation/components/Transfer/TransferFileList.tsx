@@ -5,6 +5,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { File, Folder, FolderOpen, X, ChevronRight, ChevronDown, Undo2 } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
 import type { FileNode } from '@/infrastructure/http/api';
@@ -38,6 +39,7 @@ export function TransferFileList({
   items, fileTree, payloadTree, onRemove,
   onExcludeFile, onRestoreFile, excludedPaths, borderless,
 }: TransferFileListProps) {
+  const { t } = useTranslation('transfer');
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
 
   const toggleExpand = useCallback((p: string) => {
@@ -190,7 +192,7 @@ function renderTreeNodes(
             <button
               className="shrink-0 p-0.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 opacity-0 group-hover:opacity-100 transition-all"
               onClick={() => onExcludeFile(node.path)}
-              title="제외"
+              title={t('action.exclude')}
             >
               <X className="w-3 h-3" />
             </button>
@@ -199,7 +201,7 @@ function renderTreeNodes(
             <button
               className="shrink-0 p-0.5 rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/50 opacity-100 transition-all"
               onClick={() => onRestoreFile(node.path)}
-              title="되돌리기"
+              title={t('action.restore')}
             >
               <Undo2 className="w-3 h-3" />
             </button>

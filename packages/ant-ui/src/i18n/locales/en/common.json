@@ -24,8 +24,17 @@
     "title": "Error",
     "unknown": "An unknown error occurred."
   },
+  "success": {
+    "title": "Success"
+  },
+  "info": {
+    "title": "Notice"
+  },
   "warning": {
     "title": "Warning"
+  },
+  "confirm": {
+    "title": "Confirm"
   },
   "label": {
     "optional": "Optional",
