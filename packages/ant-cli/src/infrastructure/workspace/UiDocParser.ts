@@ -15,6 +15,7 @@ import {
   UiSpecSection,
   UiSpecTocEntry,
 } from '../../core/types/uiDoc';
+import { condenseContent } from '../../core/utils/contentCondenser';
 
 /**
  * Estimate token count from text
@@ -232,14 +233,27 @@ ${parsedDocs.tokens}
     }
   }
   
-  // Add assets if requested
+  // Add assets if requested (condense if large)
   if (normalizedRequests.has('assets') && parsedDocs.assets) {
-    parts.push(`## 📦 ASSET MAPPING (JSON)
+    const assetsResult = condenseContent(parsedDocs.assets, {
+      threshold: 20_000,
+      label: 'ui-assets.json',
+      filePath: 'outputs/design/ui-assets.json',
+      contentType: 'json',
+    });
+    if (assetsResult.wasCondensed) {
+      parts.push(`## 📦 ASSET MAPPING (condensed — use read_file for details)
+> You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
+
+${assetsResult.content}`);
+    } else {
+      parts.push(`## 📦 ASSET MAPPING (JSON)
 > You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
 
 \`\`\`json
 ${parsedDocs.assets}
 \`\`\``);
+    }
   }
   
   // Add requested spec sections
@@ -294,12 +308,25 @@ ${parsedDocs.tokens}
   }
   
   if (parsedDocs.assets) {
-    parts.push(`## 📦 ASSET MAPPING (JSON)
+    const assetsResult = condenseContent(parsedDocs.assets, {
+      threshold: 20_000,
+      label: 'ui-assets.json',
+      filePath: 'outputs/design/ui-assets.json',
+      contentType: 'json',
+    });
+    if (assetsResult.wasCondensed) {
+      parts.push(`## 📦 ASSET MAPPING (condensed — use read_file for details)
+> You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
+
+${assetsResult.content}`);
+    } else {
+      parts.push(`## 📦 ASSET MAPPING (JSON)
 > You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
 
 \`\`\`json
 ${parsedDocs.assets}
 \`\`\``);
+    }
   }
   
   // Add all spec sections in document order
