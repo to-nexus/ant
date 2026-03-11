@@ -98,12 +98,12 @@ export function StepProjectSetup({
             disabled={!!existingProjectId}
             readOnly={!!existingProjectId}
             className={cn(
-              'w-full px-3 py-2 pr-9 text-sm border rounded-lg outline-none transition-colors',
+              'w-full px-3 py-2 pr-9 text-sm border-2 rounded-lg outline-none transition-colors',
               existingProjectId
                 ? 'bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed'
                 : projectNameError
-                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-red-300 dark:border-red-700 focus:ring-2 focus:ring-red-500/50'
-                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent',
+                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-red-300 dark:border-red-700 focus:border-red-500'
+                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400',
             )}
             placeholder="my-project"
           />
@@ -138,10 +138,10 @@ export function StepProjectSetup({
             value={featureName}
             onChange={(e) => onFeatureNameChange(e.target.value)}
             className={cn(
-              'w-full px-3 py-2 pr-9 text-sm border rounded-lg outline-none transition-colors',
+              'w-full px-3 py-2 pr-9 text-sm border-2 rounded-lg outline-none transition-colors',
               featureNameError
-                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-red-300 dark:border-red-700 focus:ring-2 focus:ring-red-500/50'
-                : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent',
+                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-red-300 dark:border-red-700 focus:border-red-500'
+                : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700 focus:border-indigo-500 dark:focus:border-indigo-400',
             )}
             placeholder="feature-name"
           />

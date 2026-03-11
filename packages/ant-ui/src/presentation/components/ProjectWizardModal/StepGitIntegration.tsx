@@ -100,7 +100,7 @@ export function StepGitIntegration({
                         value={patInput}
                         onChange={(e) => onPatInputChange(e.target.value)}
                         placeholder={t('quickstart.projectWizard.patPlaceholder')}
-                        className="w-full px-3 py-1.5 text-sm border border-amber-300 dark:border-amber-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-amber-400"
+                        className="w-full px-3 py-1.5 text-sm border-2 border-amber-300 dark:border-amber-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-amber-500"
                         onKeyDown={(e) => e.key === 'Enter' && onSavePat()}
                       />
                     </div>
@@ -141,10 +141,10 @@ export function StepGitIntegration({
               disabled={fieldDisabled}
               readOnly={readOnly}
               className={cn(
-                'w-full px-3 py-2 text-sm border rounded-lg outline-none transition-colors',
+                'w-full px-3 py-2 text-sm border-2 rounded-lg outline-none transition-colors',
                 fieldDisabled
                   ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500',
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-indigo-500',
               )}
               placeholder="my-project"
             />
@@ -204,10 +204,10 @@ export function StepGitIntegration({
               disabled={fieldDisabled}
               readOnly={readOnly}
               className={cn(
-                'w-full px-3 py-2 text-sm border rounded-lg outline-none transition-colors',
+                'w-full px-3 py-2 text-sm border-2 rounded-lg outline-none transition-colors',
                 fieldDisabled
                   ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500',
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-indigo-500',
               )}
               placeholder="https://github.com/owner/repo"
             />
