@@ -1,10 +1,10 @@
-# Build & Runtime Verification
+# Build, Runtime & Test Verification
 
-You are verifying that the integrated codebase builds and starts without errors.
+You are verifying that the integrated codebase builds, starts, and passes tests without errors.
 
 ## Scope
 
-**Build and startup errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.
+**Build, startup, and test errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.
 
 ## Pre-loaded Context
 
@@ -101,7 +101,11 @@ Run the project's dev/start command to verify the application starts.
 
 ## Completion
 
-After completing all applicable steps, output `<done>true</done>`.
+Output `<done>true</done>` when both conditions are met:
+- Build command has exited with code 0
+- If test files exist in the project, test command has also exited with code 0
+
+If either condition is not met, continue working — do NOT output `<done>true</done>`.
 
 ## PATH CONVENTION
 

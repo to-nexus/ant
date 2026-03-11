@@ -17,6 +17,17 @@ export interface IntegrationRequirement {
 }
 
 /**
+ * Verification objective tracker.
+ * Tracks whether build and test commands have succeeded,
+ * reset when files are modified to force re-verification.
+ */
+export interface VerificationTracker {
+  buildPassed: boolean;
+  testPassed: boolean;
+  testsRequired: boolean;
+}
+
+/**
  * Structured Violation - 정형화된 에러 정보
  * 학습 및 분석 가능한 형태로 설계
  */
@@ -371,6 +382,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
   
+  // ✅ Verification objective tracker (build/test pass status, reset on file modification)
+  _verificationTracker?: VerificationTracker;
+
   // ✅ Command history tracking (for loop detection)
   commandHistory?: Array<{
     command: string;

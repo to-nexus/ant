@@ -108,30 +108,44 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     });
   }
 
-  // ✅ Verification build-success guard: even when LLM explicitly says done,
-  // a verification task MUST have its last run_command succeed.
-  // Language/framework-agnostic: checks exit code of the most recent command,
-  // not a regex-matched subset. The verification task's purpose is to run
-  // a build/test and confirm it passes — if the last command failed, it didn't.
+  // ✅ Verification objective guard: build must pass, and tests must pass if they exist.
+  // Uses VerificationTracker (set by tool node on build/test commands, reset on file modification).
+  // Falls back to legacy commandHistory check when tracker is absent (backward compatibility).
   if (violations.length === 0 && llmExplicitlyDone && state.currentTask?.type === 'verification') {
-    const history = state.commandHistory || [];
-    const lastCommand = history[history.length - 1];
+    const tracker = state._verificationTracker;
 
-    if (!lastCommand || !lastCommand.success) {
-      console.warn(`⚠️  [checkTaskStatus] Verification task signaled done but last command was not successful`);
-      if (lastCommand) {
-        console.warn(`   Last command: "${lastCommand.command}" → exit ${lastCommand.exitCode}`);
-      } else {
-        console.warn(`   No commands found in commandHistory`);
+    if (!tracker) {
+      const history = state.commandHistory || [];
+      const lastCommand = history[history.length - 1];
+      if (!lastCommand || !lastCommand.success) {
+        console.warn(`⚠️  [checkTaskStatus] Verification: no tracker, falling back to commandHistory`);
+        violations.push({
+          type: 'verification_incomplete' as ViolationType,
+          severity: 'critical',
+          message: lastCommand
+            ? `Last command failed (exit ${lastCommand.exitCode}): ${lastCommand.command}`
+            : 'Verification task completed without executing any command.',
+          isRetryable: true,
+          suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
+        });
       }
+    } else if (!tracker.buildPassed) {
+      console.warn(`⚠️  [checkTaskStatus] Verification: build objective not met`);
       violations.push({
         type: 'verification_incomplete' as ViolationType,
         severity: 'critical',
-        message: lastCommand
-          ? `Last command failed (exit ${lastCommand.exitCode}): ${lastCommand.command}`
-          : 'Verification task completed without executing any command.',
+        message: 'Build has not succeeded. A build command must exit 0 with no file modifications after it.',
         isRetryable: true,
-        suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
+        suggestedFix: 'Run the build command and ensure it passes. If you edited files after the last build, re-run the build.',
+      });
+    } else if (tracker.testsRequired && !tracker.testPassed) {
+      console.warn(`⚠️  [checkTaskStatus] Verification: test objective not met`);
+      violations.push({
+        type: 'verification_incomplete' as ViolationType,
+        severity: 'critical',
+        message: 'Tests have not passed. Test files exist in this project — run tests and ensure they pass.',
+        isRetryable: true,
+        suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
       });
     }
   }

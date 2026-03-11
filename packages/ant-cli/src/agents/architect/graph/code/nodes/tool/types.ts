@@ -15,6 +15,16 @@ export interface CommandExecutionResult {
   exitCode?: number;
 }
 
+export interface RunCommandOutput {
+  displayText: string;
+  commandResult: {
+    success: boolean;
+    exitCode: number;
+    command: string;
+    hasWarnings: boolean;
+  };
+}
+
 export interface ServerProcess {
   pid: number;
   command: string;
