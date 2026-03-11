@@ -130,7 +130,7 @@ export class CloneOperation {
     if (fs.existsSync(featuresPath)) {
       const features = fs.readdirSync(featuresPath).filter(f => !f.startsWith('.'));
       if (features.length > 0) {
-        throw new Error('Cannot clone: Features already exist. Clone requires a clean workspace.');
+        throw new Error('Cannot clone: Features already exist. Delete features first and then Clone, or change the repository URL and use Publish to push to a new repository.');
       }
     }
 

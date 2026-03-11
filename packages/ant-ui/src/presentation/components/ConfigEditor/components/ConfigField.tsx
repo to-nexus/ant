@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { ConfigField as ConfigFieldType } from '../configSchema';
+import { Tooltip } from '@/presentation/components/common/Tooltip';
+import { normalizeRepoUrl } from '@/shared/utils/git-utils';
 import type { GitStatus } from '@/domain/store/types';
 
 export interface GitHubOwnerInfo {
@@ -22,15 +24,6 @@ interface ConfigFieldProps {
   projectName?: string;
   /** Git status for connection badge */
   gitStatus?: GitStatus | null;
-}
-
-function normalizeRepoUrl(url: string): string {
-  return url.trim()
-    .replace(/^https?:\/\//, '')
-    .replace(/\/\/[^@]+@/, '//')
-    .replace(/\.git$/, '')
-    .replace(/\/+$/, '')
-    .toLowerCase();
 }
 
 export function ConfigField({
@@ -57,13 +50,20 @@ export function ConfigField({
   const personalOwner = githubOwnerInfo?.personalOwner;
   const hasOwners = isGithubRepoField && (orgOwner || personalOwner);
 
-  // Git connection status for githubRepo field
-  const isGitConnected = isGithubRepoField && gitStatus?.hasGit && gitStatus?.remoteUrl;
+  // Git connection status for githubRepo field (3-state: not-connected / connected / error)
+  // gitStatus === null means still loading; skip badge to avoid flicker
   const configUrl = typeof value === 'string' ? value : '';
-  const isUrlMatch = isGitConnected && configUrl
-    ? normalizeRepoUrl(configUrl) === normalizeRepoUrl(gitStatus!.remoteUrl!)
+  const hasGitRepo = isGithubRepoField && !!configUrl;
+  const gitLoaded = hasGitRepo && gitStatus != null;
+  const hasGit = gitLoaded && gitStatus.hasGit;
+  const hasRemote = hasGit && !!gitStatus.remoteUrl;
+  const isUrlMatch = hasRemote
+    ? normalizeRepoUrl(configUrl) === normalizeRepoUrl(gitStatus.remoteUrl!)
     : false;
-  const needsSync = isGitConnected && configUrl && !isUrlMatch;
+
+  const isNotConnected = gitLoaded && !gitStatus.hasGit;
+  const isConnected = hasRemote && isUrlMatch;
+  const isError = hasGit && (!gitStatus.remoteUrl || !isUrlMatch);
 
   const applyOwner = (owner: string) => {
     const repoName = projectName || 'my-project';
@@ -86,15 +86,29 @@ export function ConfigField({
             {t(field.label)}
             {field.required && <span className="text-red-500 ml-1">*</span>}
           </label>
-          {isGitConnected && isUrlMatch && (
+          {isNotConnected && (
+            <Tooltip content={t('projectEditor.repoNotConnectedHint')} placement="bottom">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-600 cursor-help">
+                {t('projectEditor.repoNotConnected')}
+              </span>
+            </Tooltip>
+          )}
+          {isConnected && (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
               {t('projectEditor.repoConnected')}
             </span>
           )}
-          {needsSync && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-              {t('projectEditor.repoSyncNeeded')}
-            </span>
+          {isError && (
+            <Tooltip
+              content={hasRemote && !isUrlMatch
+                ? t('projectEditor.repoErrorUrlMismatch')
+                : t('projectEditor.repoErrorNoRemote')}
+              placement="bottom"
+            >
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 cursor-help">
+                {t('projectEditor.repoError')}
+              </span>
+            </Tooltip>
           )}
         </div>
         {!field.required && !hasOwners && (
@@ -108,9 +122,14 @@ export function ConfigField({
           {isRepoTypeDisabled && field.key === 'repoType' && ` ${t('projectEditor.fixedInCloudMode')}`}
         </p>
       )}
-      {needsSync && (
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          {t('projectEditor.repoSyncWarning')}
+      {isError && hasRemote && !isUrlMatch && (
+        <p className="text-xs text-red-600 dark:text-red-400">
+          {t('projectEditor.repoErrorUrlMismatch')}
+        </p>
+      )}
+      {isError && !hasRemote && (
+        <p className="text-xs text-red-600 dark:text-red-400">
+          {t('projectEditor.repoErrorNoRemote')}
         </p>
       )}
 

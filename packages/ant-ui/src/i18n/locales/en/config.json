@@ -77,9 +77,14 @@
     "useJobDefault": "-- Use Job Default --",
     "jobTitle": "{{name}} Job",
     "llmDescription": "Configure models for different jobs and nodes. Each job requires a default model. Nodes can optionally use a different model, otherwise they use the job default.",
+    "repoNotConnected": "Not connected",
+    "repoNotConnectedHint": "Use Clone, Initialize, or Publish via the GitHub button (left sidebar) to connect Git.",
     "repoConnected": "Connected",
+    "repoError": "Error",
     "repoSyncNeeded": "Sync needed",
-    "repoSyncWarning": "The configured URL differs from the actual Git remote. Re-clone or update the remote to sync."
+    "repoSyncWarning": "The configured URL differs from the actual Git remote. Re-clone or update the remote to sync.",
+    "repoErrorUrlMismatch": "The configured URL differs from the actual Git remote. Revert the URL to match the remote, or delete .git and re-clone.",
+    "repoErrorNoRemote": "Git is initialized but no remote repository is configured."
   },
   "schema": {
     "repositoryName": "Repository Name",
@@ -109,6 +114,13 @@
     "codeGenDesc": "Code generation and editing",
     "defaultLearnDesc": "Default model for learning tasks",
     "defaultPlanDesc": "Default model for PRD generation (Planner agent)"
+  },
+  "dangerZone": {
+    "deleteProject": "Delete Project",
+    "deleteProjectDesc": "Delete this project and all its features and sessions. Git repositories are preserved.",
+    "deleteProjectConfirm": "Delete project \"{{name}}\"?",
+    "deleteProjectConfirmMsg": "All features and sessions in this project will be deleted.\nGit repositories are preserved.\n\nThis action cannot be undone.",
+    "deleting": "Deleting..."
   },
   "account": {
     "patLabel": "Personal Access Token",
@@ -158,8 +170,10 @@
     "configureFirst": "Configure GitHub repo first",
     "clone": "Clone",
     "cloneDesc": "Pull existing repo",
+    "cloneDisabledHasFeatures": "Cannot Clone with existing features. Delete features first, or use Publish.",
     "initialize": "Initialize",
     "initializeDesc": "Create new repo & push",
+    "initDisabledHasFeatures": "Cannot Init with existing features. Use Publish instead.",
     "push": "Push",
     "pushDesc": "Upload changes",
     "pull": "Pull",
@@ -167,7 +181,12 @@
     "fetch": "Fetch",
     "fetchDesc": "Update remote refs",
     "publish": "Publish",
-    "publishDesc": "Push existing code to new repo",
+    "publishDesc": "Push code to new repo",
+    "publishWithFeaturesDesc": "Push code & features to new repo",
+    "confirmClone": "Clone this repository to your local workspace? This will download the remote codebase.",
+    "confirmInit": "Create a new GitHub repository and push the local code?",
+    "confirmPublish": "Create a new GitHub repository and publish the local code?",
+    "confirmPublishWithFeatures": "Create a new GitHub repository and publish the local code along with {{count}} feature(s)?",
     "repoPublished": "Codebase published to GitHub successfully!",
     "featuresExist": "Features exist",
     "deleteFeaturesFirst": "Delete features first to clone/initialize",

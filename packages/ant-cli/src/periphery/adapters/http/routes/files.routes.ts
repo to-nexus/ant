@@ -64,9 +64,11 @@ export function createFilesRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
+      const forceRefresh = req.query.force === 'true';
 
       // Redis cache first (bypasses EFS/NFS attribute caching in multi-pod cloud deployments)
-      if (deps.stateStore) {
+      // Skip cache when force=true (handles external filesystem changes not tracked by ANT)
+      if (deps.stateStore && !forceRefresh) {
         try {
           const cached = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
           if (cached) {
@@ -382,6 +384,27 @@ export function createFilesRoutes(deps: {
       
       if (deps.fileTreeNotifier) {
         try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
+      }
+
+      // Broadcast kanban reset when session files/directories are deleted via file tree
+      const isSessionRelated = itemPath === 'sessions' || itemPath.startsWith('sessions/');
+      if (isSessionRelated && deps.stateStore && userContext?.organizationId && userContext?.userId) {
+        try {
+          const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
+          await deps.stateStore.publish(channel, {
+            projectId, featureName,
+            type: 'kanban',
+            data: {
+              jobId: null, todo: [], inProgress: [], completed: [],
+              interruption: null, isEstimating: false, dataSource: 'session',
+              recursionCount: 0, recursionLimit: 200, jobTiming: null, tokenUsage: null,
+            },
+            userContext
+          });
+          logger.debug(`[Files] ✅ Broadcast kanban reset after session file delete: ${itemPath}`);
+        } catch (broadcastError) {
+          logger.warn('Failed to broadcast kanban reset after session file delete', { component: 'Files' }, broadcastError);
+        }
       }
 
       res.json({ success: true, path: itemPath });

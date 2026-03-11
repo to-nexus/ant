@@ -132,7 +132,13 @@ export async function orchestrator(params: {
         }
 
         if (!foundInterruptedSession) {
-          console.warn('⚠️ [Orchestrator:InlineAsk] No interrupted session found — session files may have been cleared');
+          console.warn('⚠️ [Orchestrator:InlineAsk] No interrupted session found — skip triage, return newJob');
+          return {
+            status: 'completed',
+            intent: 'work',
+            action: 'newJob',
+            noSession: true,
+          };
         }
 
         const result = await runInlineAsk({
