@@ -447,8 +447,17 @@ For verification: build success + server startup = task complete.`;
     
     // Normal completion path
     const result = raceResult.result;
-    const { stdout, stderr, exitCode, success } = result;
+    let { stdout, stderr, exitCode, success } = result;
     const output = stdout + stderr;
+
+    // ✅ SIGPIPE tolerance: with `set -o pipefail`, piped commands like `cmd | head -N`
+    // produce exit 141 (128 + SIGPIPE=13) when head closes early. This is normal pipe
+    // truncation behavior, not a command failure. Build tools never exit with 141.
+    if (!success && exitCode === 141 && /\|/.test(normalizedCommand)) {
+      console.log(`\n   ℹ️  SIGPIPE (exit 141) in piped command — treating as success (pipe truncation)\n`);
+      success = true;
+      exitCode = 0;
+    }
 
     invalidateBufferedFiles();
     
