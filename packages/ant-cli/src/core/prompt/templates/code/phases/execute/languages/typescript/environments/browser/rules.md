@@ -199,14 +199,18 @@ page.tsx (entry point)
         └── SectionNameCard.tsx (child component)
 ```
 
+**Principle**: Creating a component is INCOMPLETE until it is rendered by a parent within YOUR task's scope. Orphan components that exist but are never imported are a task failure.
+
 **Pattern:**
 | If You Create | You MUST Also Create | You MUST Also Do |
 |---------------|---------------------|------------------|
-| `XCard.tsx` | `X.tsx` (parent) | Import `<X />` in entry point |
+| `XCard.tsx` | `X.tsx` (parent) | Import `<X />` in the page/layout that YOUR task owns |
+
+**Scope clarification**: "Entry point" means the page or layout file that YOUR task description covers — NOT shared application-wide entry points (like root layout or router) that belong to setup or integration tasks. If your task says "Implement Hero section", the page file that displays the Hero section is within YOUR scope.
 
 **Anti-Pattern (TASK FAILURE):**
 ```tsx
-// ❌ WRONG: Created XCard.tsx but entry point still has placeholder
+// ❌ WRONG: Created XCard.tsx but page still has placeholder
 <section id="x-section">
   <h2>X Section</h2>  {/* ← PLACEHOLDER! */}
 </section>
@@ -219,8 +223,8 @@ import { X } from '@/components/X';
 **Verification Checklist:**
 - [ ] Child component created (`XCard.tsx`)
 - [ ] Parent section created (`X.tsx`) using children
-- [ ] Entry point imports parent
-- [ ] No `{/* ... Placeholder */}` comments remain
+- [ ] Page/layout within YOUR task scope imports and renders the parent
+- [ ] No `{/* ... Placeholder */}` comments remain in files YOU own
 
 ---
 

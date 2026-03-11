@@ -244,14 +244,17 @@ Existing files: `edit_file` or `<append>`. New files only: `<file>`.
 ────────────────────────────────────────────────────────────────────────────────
 ### 4. No Duplicates
 
-```
-❌ WRONG:
-   [area]/[name].ts         ← Created first
-   [area]/[Name]Service.ts  ← DUPLICATE! Same purpose, different naming
+**Principle**: One file per purpose. Before creating a file, verify no existing file serves the same purpose — including case variants.
 
-✅ CORRECT:
-   [area]/[name].ts         ← Single source of truth
-```
+**Observation target**: Use `list_files` to check the target directory for files with similar names.
+
+| Collision type | Example | Resolution |
+|---------------|---------|------------|
+| Same name, different case | `Pagination.tsx` vs `pagination.tsx` | Use the existing file's casing |
+| Same purpose, different convention | `UserCard.tsx` vs `user-card.tsx` | Use the existing file's convention |
+| Same purpose, different suffix | `[name].ts` vs `[Name]Service.ts` | Use the existing file |
+
+**Constraint**: If `list_files` reveals a file with the same base name in any casing, use the EXISTING file — do NOT create a new one.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 5. Symbol-Level Duplicate Prevention
@@ -372,6 +375,26 @@ const speed = PADDLE_SPEED;
 - Check existing file locations with `list_files`
 - Follow SAME directory pattern for similar files
 - NEVER create parallel/duplicate structures
+
+────────────────────────────────────────────────────────────────────────────────
+### 4. File Naming Consistency
+
+**Principle**: All source files within a project MUST follow a single, consistent naming convention. Mixed conventions within a project indicate a defect.
+
+**Observation target**: Before creating any file, check existing file names in the same directory with `list_files`.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Existing convention** | What casing do sibling files in this directory use? |
+| **Majority pattern** | If conventions are already mixed, follow the majority pattern. |
+
+**Constraint**: If the existing codebase uses a naming convention, follow it exactly — even if it differs from the language default.
+
+**Constraint**: For new projects (no existing files), follow the language profile's file naming convention.
+
+**Constraint**: NEVER mix naming conventions within the same directory or module scope.
+
+⚠️ **Blind spot**: Parallel tasks independently choose file names. Without observing existing conventions via `list_files`, two workers may create `UserCard.tsx` and `user-card.tsx` for the same concept. Always observe before creating.
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 Common Mistakes

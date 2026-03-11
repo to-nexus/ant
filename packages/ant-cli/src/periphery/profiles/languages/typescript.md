@@ -1,5 +1,10 @@
 # TypeScript Language Profile
 
+## File Naming Conventions
+- **kebab-case** for all source files: `user-profile.tsx`, `api-client.ts`, `use-auth.ts`
+- **Framework-required exceptions**: Files mandated by frameworks keep their required names (`App.tsx`, `page.tsx`, `layout.tsx`)
+- **Test files**: Match source file name with `.test` or `.spec` suffix: `user-profile.test.ts`
+
 ## Type Safety Rules
 - **Always use explicit return types** for functions
 - **Prefer `interface`** for object shapes and contracts
