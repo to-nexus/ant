@@ -649,8 +649,9 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   onChange={(e) => setProjectName(e.target.value)}
                   disabled={!!existingProjectId}
                   readOnly={!!existingProjectId}
+                  style={{ width: `${Math.max(9, Math.max(projectName.length, featureName.length) + 4)}ch` }}
                   className={cn(
-                    'w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
+                    'min-w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
                     'bg-white/80 dark:bg-white/5 backdrop-blur-sm',
                     'text-gray-900 dark:text-white',
                     'placeholder-gray-400 dark:placeholder-gray-500',
@@ -691,8 +692,9 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   type="text"
                   value={featureName}
                   onChange={(e) => setFeatureName(e.target.value)}
+                  style={{ width: `${Math.max(9, Math.max(projectName.length, featureName.length) + 4)}ch` }}
                   className={cn(
-                    'w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
+                    'min-w-36 px-2.5 py-1 pr-7 text-sm rounded-lg border-2',
                     'bg-white/80 dark:bg-white/5 backdrop-blur-sm',
                     'text-gray-900 dark:text-white',
                     'placeholder-gray-400 dark:placeholder-gray-500',
