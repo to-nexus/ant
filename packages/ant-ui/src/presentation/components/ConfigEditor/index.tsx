@@ -49,6 +49,8 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
   // Load GitHub owner info (user override > org > personal) for quick-fill
+  const gitStatusRefreshTrigger = useStore((state) => state.gitStatusRefreshTrigger);
+
   useEffect(() => {
     async function loadGithubOwners() {
       try {
@@ -60,15 +62,13 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         const orgOwner = orgConfig.github?.owner;
         const userOverride = userConfig.github?.ownerOverride;
         const personalOwner = patStatus.username;
-        // Org button shows effective org owner (user override > org config)
         const effectiveOrgOwner = userOverride || orgOwner;
         setGithubOwnerInfo({ orgOwner: effectiveOrgOwner, personalOwner });
 
-        // Auto-fill githubRepo if empty: effective org > personal
         const defaultOwner = effectiveOrgOwner || personalOwner;
         if (defaultOwner) {
           setEditedConfig(prev => {
-            if (prev.githubRepo) return prev; // already has a value
+            if (prev.githubRepo) return prev;
             const repoName = prev.repositoryName || 'my-project';
             return { ...prev, githubRepo: `https://github.com/${defaultOwner}/${repoName}` };
           });
@@ -78,7 +78,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       }
     }
     loadGithubOwners();
-  }, []);
+  }, [gitStatusRefreshTrigger]);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
     setEditedConfig(prev => {

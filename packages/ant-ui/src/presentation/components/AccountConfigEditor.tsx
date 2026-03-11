@@ -185,10 +185,11 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       const result = await saveGitHubPAT(githubPAT.trim());
       setGithubPATConfigured(true);
       setGithubUsername(result.username);
-      setGithubPAT(''); // Clear input after successful save
+      setGithubPAT('');
       showSuccess(result.username 
         ? t('account.patSavedWithUser', { username: result.username }) 
         : t('account.patSaved'));
+      useStore.getState().refreshGitStatus();
     } catch (error: any) {
       console.error('Failed to save GitHub PAT:', error);
       showError(error.message || t('github.saveFailed'));
@@ -230,6 +231,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           setGithubUsername(undefined);
           setGithubPAT('');
           showSuccess(t('github.deleteSuccess'));
+          useStore.getState().refreshGitStatus();
         } catch (error: any) {
           console.error('Failed to delete GitHub PAT:', error);
           showError(error.message || t('github.deleteFailed'));
