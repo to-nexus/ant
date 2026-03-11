@@ -4,7 +4,7 @@ import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
-  uploadFiles, type UploadFileEntry,
+  deleteProject, uploadFiles, type UploadFileEntry,
   cloneGitHubRepo, checkCloneStatus, initializeGitHubRepo,
   addChatUserMessage, fetchProjectConfig,
   checkGitHubPATStatus, saveGitHubPAT, fetchOrgConfig, fetchUserConfig,
@@ -53,6 +53,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const [repoNameManuallyEdited, setRepoNameManuallyEdited] = useState(false);
   const [gitUrl, setGitUrl] = useState('');
   const [gitUrlFromConfig, setGitUrlFromConfig] = useState(false);
+  const [gitUrlManuallyEdited, setGitUrlManuallyEdited] = useState(false);
   const [gitAction, setGitAction] = useState<'none' | 'clone' | 'init'>('none');
   const [patStatus, setPatStatus] = useState<{ configured: boolean; username?: string } | null>(null);
   const [patInput, setPatInput] = useState('');
@@ -78,6 +79,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   // ── Store ──
   const projects = useStore((s) => s.projects);
   const features = useStore((s) => s.features);
+  const gitStatus = useStore((s) => s.gitStatus);
   const setSelectedProject = useStore((s) => s.setSelectedProject);
   const setSelectedFeature = useStore((s) => s.setSelectedFeature);
   const setSelectedAgent = useStore((s) => s.setSelectedAgent);
@@ -103,7 +105,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   }, [projectName, repoNameManuallyEdited]);
 
   useEffect(() => {
-    if (gitUrlFromConfig) return;
+    if (gitUrlFromConfig || gitUrlManuallyEdited) return;
     if (!repositoryName) return;
     setGitUrl((prev) => {
       if (prev) {
@@ -114,7 +116,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
       if (owner) return `https://github.com/${owner}/${sanitizeRepoName(repositoryName)}`;
       return prev;
     });
-  }, [repositoryName, ownerInfo, gitUrlFromConfig]);
+  }, [repositoryName, ownerInfo, gitUrlFromConfig, gitUrlManuallyEdited]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -259,6 +261,16 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     onClose();
   };
 
+  const handleBackdropClick = () => {
+    if (isExecuting) return;
+    showConfirm(t('quickstart.projectWizard.closeConfirm'), {
+      type: 'warning',
+      confirmText: t('common:button.confirm'),
+      cancelText: t('common:button.cancel'),
+      onConfirm: handleClose,
+    });
+  };
+
   // ── Submit / Execute ──
 
   const handleSubmit = useCallback(async (startJob: boolean = true) => {
@@ -288,8 +300,8 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     if (shouldStartJob) steps.push({ id: 'job', status: 'pending' });
     setExecSteps(steps);
 
+    let projectId = existingProjectId || projectName.trim();
     try {
-      let projectId = existingProjectId || projectName.trim();
 
       if (needsProject) {
         updateExecStep('project', 'active');
@@ -300,12 +312,18 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
       if (needsProject) {
         updateExecStep('config', 'active');
-        const config = await createProjectConfig(projectId, backendMode);
+        // createProject already generates a full config.json on the server
+        // (including llmModels, githubRepo default, etc.).
+        // Fetch the server-created config and merge wizard overrides on top.
+        let serverConfig = await fetchProjectConfig(projectId);
+        if (!serverConfig) {
+          serverConfig = await createProjectConfig(projectId, backendMode);
+        }
         const updates: Record<string, any> = {};
         if (repositoryName) updates.repositoryName = repositoryName;
         if (gitUrl.trim()) updates.githubRepo = gitUrl.trim();
         if (Object.keys(updates).length > 0) {
-          await updateProjectConfig(projectId, { ...config, ...updates });
+          await updateProjectConfig(projectId, { ...serverConfig, ...updates });
         }
         await delay(300);
         updateExecStep('config', 'done');
@@ -408,6 +426,19 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setExecutionError(msg);
       setExecSteps((prev) => prev.map((s) => s.status === 'active' ? { ...s, status: 'error', error: msg } : s));
+
+      // Rollback: delete the newly created project if execution failed mid-way
+      if (needsProject && projectId) {
+        try {
+          console.log(`[ProjectWizardModal] Rolling back project: ${projectId}`);
+          await deleteProject(projectId);
+          await fetchProjects();
+        } catch (rollbackErr) {
+          console.error('[ProjectWizardModal] Rollback failed:', rollbackErr);
+        }
+      }
+
+      setIsExecuting(false);
     }
   }, [
     isExecuting, existingProjectId, projectName, repositoryName, gitUrl, gitAction, patStatus,
@@ -420,7 +451,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   // ── Render ──
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={`${t('quickstart.projectWizard.title')} — ${mode === 'design' ? t('quickstart.projectWizard.modeDesign') : t('quickstart.projectWizard.modeCode')}`} size="xl">
+    <Modal isOpen={isOpen} onClose={handleClose} onBackdropClick={handleBackdropClick} title={`${t('quickstart.projectWizard.title')} — ${mode === 'design' ? t('quickstart.projectWizard.modeDesign') : t('quickstart.projectWizard.modeCode')}`} size="xl">
       {isExecuting ? (
         <ExecutionProgress
           t={t}
@@ -456,6 +487,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 gitEnabled={gitEnabled}
                 onGitEnabledChange={setGitEnabled}
                 readOnly={gitReadOnly}
+                gitStatus={gitStatus}
                 patStatus={patStatus}
                 showPatInput={showPatInput}
                 onShowPatInput={() => setShowPatInput(true)}
@@ -468,7 +500,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 onRepositoryNameChange={setRepositoryName}
                 onRepoManualEdit={() => { setRepoNameManuallyEdited(true); setGitUrlFromConfig(false); }}
                 gitUrl={gitUrl}
-                onGitUrlChange={(v) => { setGitUrl(v); setGitUrlFromConfig(false); }}
+                onGitUrlChange={(v) => { setGitUrl(v); setGitUrlFromConfig(false); setGitUrlManuallyEdited(true); }}
                 gitUrlFromConfig={gitUrlFromConfig}
                 ownerInfo={ownerInfo}
                 activeOwner={activeOwner}

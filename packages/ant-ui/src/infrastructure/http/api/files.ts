@@ -57,9 +57,10 @@ export async function fetchFileBlob(
 
 // ── CRUD operations ─────────────────────────────────────────────────
 
-export function fetchFileTree(projectId: string, featureName: string): Promise<FileNode[]> {
+export function fetchFileTree(projectId: string, featureName: string, options?: { force?: boolean }): Promise<FileNode[]> {
+  const query = options?.force ? '?force=true' : '';
   return apiGet(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/files`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/files${query}`,
   );
 }
 

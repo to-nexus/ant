@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil } from 'lucide-react';
-import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus, renameProject } from '@/infrastructure/http/api';
+import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus, renameProject, deleteProject } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
 import { STORAGE_KEYS, loadFromStorage, saveToStorage } from '@/domain/store/storage';
@@ -11,6 +11,7 @@ import { CONFIG_SCHEMA } from './configSchema';
 import { ConfigEditorHeader } from './components/ConfigEditorHeader';
 import { ConfigField, GitHubOwnerInfo } from './components/ConfigField';
 import { LLMModelsSection } from './components/LLMModelsSection';
+import { DangerZoneSection } from '../common/DangerZoneSection';
 
 interface ConfigEditorProps {
   config: ProjectConfig;
@@ -33,7 +34,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   } = useConfigEditor(config, defaultModelId);
   
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
+  const [githubRepoManuallyEdited, setGithubRepoManuallyEdited] = useState(false);
 
   // Git status (determines if branchBase is editable)
   const gitStatus = useStore((state) => state.gitStatus);
@@ -81,13 +84,17 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   }, [gitStatusRefreshTrigger]);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
+    if (key === 'githubRepo') {
+      setGithubRepoManuallyEdited(true);
+    }
+
     setEditedConfig(prev => {
       const newConfig = {
         ...prev,
         [key]: value
       };
 
-      if (key === 'repositoryName' && typeof value === 'string' && prev.githubRepo) {
+      if (key === 'repositoryName' && typeof value === 'string' && prev.githubRepo && !githubRepoManuallyEdited) {
         const match = prev.githubRepo.match(/^(https:\/\/github\.com\/[^/]+\/)([^/]*)$/);
         if (match) {
           const sanitized = value.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
@@ -215,6 +222,34 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         }
       }
     });
+  };
+
+  const handleDeleteProject = () => {
+    if (!selectedProject) return;
+    showConfirm(
+      <>
+        <p className="text-sm">{t('dangerZone.deleteProjectConfirm', { name: selectedProject })}</p>
+        <p className="text-sm mt-2 text-gray-600 dark:text-gray-400 whitespace-pre-line">{t('dangerZone.deleteProjectConfirmMsg')}</p>
+      </>,
+      {
+        type: 'warning',
+        title: t('dangerZone.deleteProject'),
+        confirmText: t('dangerZone.deleteProject'),
+        onConfirm: async () => {
+          setIsDeleting(true);
+          try {
+            await deleteProject(selectedProject);
+            await fetchProjects();
+            setSelectedProject('');
+            useStore.getState().closeMainPanelTab('projectConfig');
+          } catch (error: any) {
+            showError(error.message || 'Failed to delete project');
+          } finally {
+            setIsDeleting(false);
+          }
+        },
+      }
+    );
   };
 
   return (
@@ -352,6 +387,20 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             isLoadingModels={isLoadingModels}
             onModelChange={handleModelChange}
           />
+
+          {/* Danger Zone — Delete Project */}
+          {selectedProject && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+              <DangerZoneSection
+                title={t('dangerZone.deleteProject')}
+                description={t('dangerZone.deleteProjectDesc')}
+                buttonText={t('dangerZone.deleteProject')}
+                loadingText={t('dangerZone.deleting')}
+                isLoading={isDeleting}
+                onAction={handleDeleteProject}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

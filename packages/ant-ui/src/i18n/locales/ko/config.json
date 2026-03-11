@@ -77,9 +77,14 @@
     "useJobDefault": "-- 작업 기본값 사용 --",
     "jobTitle": "{{name}} 작업",
     "llmDescription": "다양한 작업과 Node에 대한 모델을 설정합니다. 각 작업에는 기본 모델이 필요합니다. Node는 선택적으로 다른 모델을 사용할 수 있으며, 설정하지 않으면 작업 기본값을 사용합니다.",
-    "repoConnected": "연동 완료",
+    "repoNotConnected": "미연동",
+    "repoNotConnectedHint": "좌측 사이드바의 GitHub 버튼으로 Clone, Initialize, 또는 Publish하여 Git을 연결하세요.",
+    "repoConnected": "연동됨",
+    "repoError": "오류",
     "repoSyncNeeded": "동기화 필요",
-    "repoSyncWarning": "설정된 URL과 실제 Git 원격 주소가 다릅니다. 다시 클론하거나 원격 주소를 업데이트하여 동기화하세요."
+    "repoSyncWarning": "설정된 URL과 실제 Git 원격 주소가 다릅니다. 다시 클론하거나 원격 주소를 업데이트하여 동기화하세요.",
+    "repoErrorUrlMismatch": "설정 URL과 실제 Git 원격 주소가 다릅니다. URL을 실제 주소로 되돌리거나, .git을 삭제 후 다시 Clone하세요.",
+    "repoErrorNoRemote": "Git이 초기화되었지만 원격 저장소가 연결되지 않았습니다."
   },
   "schema": {
     "repositoryName": "리포지토리 이름",
@@ -109,6 +114,13 @@
     "codeGenDesc": "코드 생성 및 편집",
     "defaultLearnDesc": "학습 태스크의 기본 모델",
     "defaultPlanDesc": "PRD 생성의 기본 모델 (Planner 에이전트)"
+  },
+  "dangerZone": {
+    "deleteProject": "프로젝트 삭제",
+    "deleteProjectDesc": "이 프로젝트와 모든 피처, 세션을 삭제합니다. Git 리포지토리는 보존됩니다.",
+    "deleteProjectConfirm": "\"{{name}}\" 프로젝트를 삭제하시겠습니까?",
+    "deleteProjectConfirmMsg": "이 프로젝트의 모든 피처와 세션이 삭제됩니다.\nGit 리포지토리는 보존됩니다.\n\n이 작업은 되돌릴 수 없습니다.",
+    "deleting": "삭제 중..."
   },
   "account": {
     "patLabel": "Personal Access Token",
@@ -158,8 +170,10 @@
     "configureFirst": "GitHub 리포지토리를 먼저 설정하세요",
     "clone": "Clone",
     "cloneDesc": "기존 리포지토리 Pull",
+    "cloneDisabledHasFeatures": "피처가 존재하여 Clone 불가. 피처를 삭제하거나 Publish를 사용하세요.",
     "initialize": "Initialize",
     "initializeDesc": "새 리포지토리 생성 및 Push",
+    "initDisabledHasFeatures": "피처가 존재하여 Init 불가. Publish를 사용하세요.",
     "push": "Push",
     "pushDesc": "변경사항 업로드",
     "pull": "Pull",
@@ -167,7 +181,12 @@
     "fetch": "Fetch",
     "fetchDesc": "원격 참조 업데이트",
     "publish": "Publish",
-    "publishDesc": "기존 코드를 새 리포지토리에 Push",
+    "publishDesc": "코드를 새 리포지토리에 Push",
+    "publishWithFeaturesDesc": "코드 + 피처를 새 리포지토리에 Push",
+    "confirmClone": "원격 리포지토리를 로컬 워크스페이스에 Clone하시겠습니까? 원격 코드베이스가 다운로드됩니다.",
+    "confirmInit": "새 GitHub 리포지토리를 생성하고 로컬 코드를 Push하시겠습니까?",
+    "confirmPublish": "새 GitHub 리포지토리를 생성하고 로컬 코드를 Publish하시겠습니까?",
+    "confirmPublishWithFeatures": "새 GitHub 리포지토리를 생성하고 로컬 코드와 {{count}}개 피처를 함께 Publish하시겠습니까?",
     "repoPublished": "코드베이스가 GitHub에 성공적으로 게시되었습니다!",
     "featuresExist": "피처가 존재합니다",
     "deleteFeaturesFirst": "Clone/Initialize하려면 먼저 피처를 삭제하세요",
