@@ -13,7 +13,8 @@ interface UseConfigLoaderReturn {
 export function useConfigLoader(
   shouldLoad: boolean,
   selectedProject: string | null,
-  onSaveSuccess?: () => void  // ✅ NEW: Callback for save success
+  onSaveSuccess?: () => void,
+  refreshTrigger?: number
 ): UseConfigLoaderReturn {
   const [projectConfigData, setProjectConfigData] = useState<ProjectConfig | null>(null);
   const [isLoadingProjectConfig, setIsLoadingProjectConfig] = useState(false);
@@ -40,7 +41,7 @@ export function useConfigLoader(
     }
 
     loadProjectConfig();
-  }, [shouldLoad, selectedProject]);
+  }, [shouldLoad, selectedProject, refreshTrigger]);
 
   const handleSaveProjectConfig = async (config: ProjectConfig): Promise<{ success: boolean; error?: string }> => {
     if (!selectedProject) {

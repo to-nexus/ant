@@ -71,8 +71,8 @@ export interface WorkspaceConfig {
                                      //   - "/Users/user/projects/my-project" (absolute)
                                      //   - "~/projects/my-project" (home directory)
   
-  // Git settings
-  branchBase: string;               // Base branch for feature branches (e.g., 'main', 'develop')
+  // Git settings (branchBase is auto-detected at clone/init time; absent until then)
+  branchBase?: string;              // Base branch for feature branches (e.g., 'main', 'develop')
   owner?: string;                   // GitHub owner (for repoType='github')
   repo?: string;                    // GitHub repo name (for repoType='github')
   
@@ -88,10 +88,6 @@ export interface WorkspaceConfig {
 export function validateWorkspaceConfig(config: any): WorkspaceConfig {
   if (!config.projectName) {
     throw new Error('Config missing required field: projectName');
-  }
-  
-  if (!config.branchBase) {
-    throw new Error('Config missing required field: branchBase');
   }
   
   const repoType = config.repoType || 'local';
@@ -137,7 +133,6 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
   return {
     projectName,
     repoType: 'local',
-    branchBase: 'main',
     llmModels: {
       design: {
         default: modelOpus,

@@ -17,7 +17,7 @@ export interface ProjectConfig {
   repoType?: 'local' | 'cloud' | 'github';
   localPath?: string;
   githubRepo?: string;
-  branchBase: string;
+  branchBase?: string;
   llmModels?: {
     design?: JobLLMConfig;
     code?: JobLLMConfig;
@@ -55,7 +55,6 @@ export async function createProjectConfig(
     repositoryName: sanitizedName,
     repoType: mode === 'cloud' ? 'cloud' : 'local',
     ...(mode !== 'cloud' ? { localPath: `~/dev/${sanitizedName}` } : {}),
-    branchBase: 'main',
   };
   await apiPut(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/config`,

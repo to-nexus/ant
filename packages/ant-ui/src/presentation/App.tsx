@@ -240,8 +240,8 @@ function App() {
         useStore.getState().setIdeFrameLoaded(false);
         useStore.getState().setIdeWorkspacePath(`/${selectedProject}`);
 
-        const { startCloudIDE, SERVER_BASE } = await import('@/infrastructure/http/api');
-        const featureName = selectedFeature || 'main';
+        const { startCloudIDE, SERVER_BASE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
+        const featureName = selectedFeature || RESERVED_FEATURE_NAME;
         const { instance } = await startCloudIDE(selectedProject, featureName);
 
         // ✅ Use proxy URL instead of directUrl for production
@@ -296,15 +296,14 @@ function App() {
   });
 
   // ✅ Config loading (extracted to hook)
+  const gitStatusRefreshTrigger = useStore((state) => state.gitStatusRefreshTrigger);
   const { projectConfigData, isLoadingProjectConfig, handleSaveProjectConfig } = useConfigLoader(
     useStore((state) => state.mainPanelOpenTabs.projectConfig),
     selectedProject || null,
-    // ✅ Callback: Trigger Git status refresh in ProjectSection
     () => {
-      // Force Git status refresh by incrementing trigger
-      const currentTrigger = useStore.getState().gitStatusRefreshTrigger || 0;
-      useStore.setState({ gitStatusRefreshTrigger: currentTrigger + 1 });
-    }
+      useStore.getState().refreshGitStatus();
+    },
+    gitStatusRefreshTrigger
   );
 
   // ✅ Development: Render tracking for debugging

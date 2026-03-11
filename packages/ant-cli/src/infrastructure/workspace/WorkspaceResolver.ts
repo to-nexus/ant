@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { UserContext } from '../../core/types/user';
+import { isBaseBranch } from '../../core/utils/branchUtils';
 
 export interface WorkspaceResolver {
   /**
@@ -287,7 +288,7 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
     }
     
     // Cloud mode: base branch → projectPath/codebase, feature → featurePath/codebase
-    if (!featureId || featureId.toLowerCase() === branchBase.toLowerCase()) {
+    if (!featureId || isBaseBranch(featureId, branchBase)) {
       return path.join(projectPath, 'codebase');
     }
     return path.join(this.getFeaturePath(userContext, projectId, featureId), 'codebase');

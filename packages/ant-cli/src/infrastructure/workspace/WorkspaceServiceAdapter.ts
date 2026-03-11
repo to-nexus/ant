@@ -10,6 +10,7 @@ import * as path from 'path';
 import { WorkspaceResolver, resolveLocalPath } from './WorkspaceResolver';
 import { WorkspaceServicePort } from '../../core/ports/workspace';
 import { UserContext } from '../../core/types/user';
+import { isBaseBranch } from '../../core/utils/branchUtils';
 
 export class WorkspaceServiceAdapter implements WorkspaceResolver {
   constructor(
@@ -55,7 +56,7 @@ export class WorkspaceServiceAdapter implements WorkspaceResolver {
     }
     
     // For features (not base branch), return the feature's worktree codebase path
-    if (featureId && featureId.toLowerCase() !== branchBase.toLowerCase()) {
+    if (featureId && !isBaseBranch(featureId, branchBase)) {
       const featurePath = this.getFeaturePath(userContext, projectId, featureId);
       return path.join(featurePath, 'codebase');
     }

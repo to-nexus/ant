@@ -98,6 +98,14 @@ export class PublishOperation extends BaseGitSetupOperation {
       // Ensure on default branch
       const defaultBranch = await this.ensureDefaultBranch(git, baseBranch);
 
+      // Sync detected branch back to config if it differs
+      if (defaultBranch !== config.branchBase) {
+        config.branchBase = defaultBranch;
+        const configPath = path.join(projectPath, 'config.json');
+        await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        console.log(`[PublishOperation] 🔍 Updated branchBase in config: ${defaultBranch}`);
+      }
+
       // Create GitHub repo
       await this.createGitHubRepo(config.githubRepo, projectId, userContext);
 

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { getSessionFilePathByJob, getInitFeatureDirs } from '../../../../../core/utils/sessionPaths';
-import { isBaseBranch, readBranchBaseFromConfig } from '../../../../../core/utils/branchUtils';
+import { isBaseBranch, readBranchBaseFromConfig, RESERVED_FEATURE_NAME } from '../../../../../core/utils/branchUtils';
 import { WorktreeService } from '../GitService/worktree';
 
 /**
@@ -150,6 +150,10 @@ export class FeatureCrudService {
    * Create a new feature
    */
   async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string): Promise<void> {
+    if (featureName === RESERVED_FEATURE_NAME) {
+      throw new Error(`"${RESERVED_FEATURE_NAME}" is a reserved name and cannot be used as a feature name`);
+    }
+
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     
     // Create all canonical directories (single source of truth: CANONICAL_FEATURE_DIRS)
