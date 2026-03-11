@@ -17,7 +17,7 @@
 
 import { ArchitectGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
-import { RunCommandArgs, ServerProcess } from '../types';
+import { RunCommandArgs, ServerProcess, RunCommandOutput } from '../types';
 import { checkOrchestratorPortSafeguard } from '../utils/helpers';
 import { terminateProcessTree } from '../../../../../../../periphery/adapters/command/processTree';
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../../../../core/utils/pathNormalizer';
@@ -205,7 +205,7 @@ function detectWritePathViolations(
 export async function handleRunCommand(
   state: ArchitectGraphState,
   args: RunCommandArgs
-): Promise<string> {
+): Promise<RunCommandOutput> {
   const isInstall = PACKAGE_MANAGER_INSTALL_PATTERNS.some(p => p.test(args.command));
   if (isInstall) {
     console.log(`🔒 [RunCommand] Package manager command detected — acquiring mutex: ${args.command}`);
@@ -214,10 +214,17 @@ export async function handleRunCommand(
   return executeCommandLogic(state, args);
 }
 
+function makeRejectionOutput(command: string, displayText: string): RunCommandOutput {
+  return {
+    displayText,
+    commandResult: { success: false, exitCode: -1, command, hasWarnings: false },
+  };
+}
+
 async function executeCommandLogic(
   state: ArchitectGraphState,
   args: RunCommandArgs
-): Promise<string> {
+): Promise<RunCommandOutput> {
   const { command, working_directory, keep_running } = args;
   const commandPort = state.deps?.command;
   const fileSystem = state.deps?.fileSystem;
@@ -250,7 +257,7 @@ async function executeCommandLogic(
     console.warn(`\n   ⚠️ [WARNING] Potentially interactive command detected: ${command}`);
     console.warn(`   This command may require user input. Consider adding -y or --yes flag.\n`);
     
-    return `⚠️ COMMAND MAY HANG: ${command}
+    return makeRejectionOutput(command, `⚠️ COMMAND MAY HANG: ${command}
 
 This command typically requires interactive input, which will cause the process to hang.
 
@@ -258,7 +265,7 @@ This command typically requires interactive input, which will cause the process 
 - \`npm init -y\` instead of \`npm init\`
 - \`yarn init -y\` instead of \`yarn init\`
 
-Or use a different approach that doesn't require initialization.`;
+Or use a different approach that doesn't require initialization.`);
   }
 
   // 🚨 SAFEGUARD: Block Go build/test/run/vet during non-verification tasks.
@@ -270,11 +277,11 @@ Or use a different approach that doesn't require initialization.`;
   const isAllowedBuildTask = taskType === 'verification' || taskType === 'error';
   if (GO_BUILD_PATTERNS.test(command) && !isAllowedBuildTask) {
     console.warn(`   ⛔ [RunCommand] Blocked Go build command in ${taskType} task: ${command}`);
-    return `⛔ BLOCKED: ${command}
+    return makeRejectionOutput(command, `⛔ BLOCKED: ${command}
 
 Go build/test/run/vet commands are only allowed in verification and error tasks.
 Feature tasks produce source files only — build verification happens in the final verification task.
-Continue writing code files and output <done>true</done> when complete.`;
+Continue writing code files and output <done>true</done> when complete.`);
   }
   
   const chatAPI = getChatAPIClient();
@@ -336,10 +343,10 @@ Continue writing code files and output <done>true</done> when complete.`;
   if (writeViolations.length > 0) {
     const msg = writeViolations.map(v => `  - "${v.path}" → ${v.reason}`).join('\n');
     console.error(`\n   ❌ [run_command] Write path violation detected:\n${msg}\n`);
-    return `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\n` +
+    return makeRejectionOutput(normalizedCommand, `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\n` +
       `Violations:\n${msg}\n\n` +
       `All file writes must target paths under codebase/. ` +
-      `Use the <file> tag for new file creation, or edit_file tool for modifying existing files.`;
+      `Use the <file> tag for new file creation, or edit_file tool for modifying existing files.`);
   }
   
   console.log(`\n   🔧 Running command: ${normalizedCommand}`);
@@ -358,7 +365,7 @@ Continue writing code files and output <done>true</done> when complete.`;
     // Long-running command: verify startup, then terminate (default)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (isLongRunning) {
-      return await handleLongRunningCommand(
+      const displayText = await handleLongRunningCommand(
         state,
         normalizedCommand,
         workingDir,
@@ -366,6 +373,16 @@ Continue writing code files and output <done>true</done> when complete.`;
         chatAPI,
         Boolean(keep_running)
       );
+      const longRunSuccess = displayText.startsWith('✅');
+      return {
+        displayText,
+        commandResult: {
+          success: longRunSuccess,
+          exitCode: longRunSuccess ? 0 : 1,
+          command: normalizedCommand,
+          hasWarnings: false,
+        },
+      };
     }
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -432,7 +449,7 @@ Continue writing code files and output <done>true</done> when complete.`;
       await chatAPI.commandComplete(normalizedCommand, true, 0,
         `Server detected (auto-terminated)\n\nOutput:\n${allOutput}`, mergeIndex);
       
-      return `⚠️ LONG-RUNNING SERVER DETECTED: ${normalizedCommand}
+      const displayText = `⚠️ LONG-RUNNING SERVER DETECTED: ${normalizedCommand}
 
 The command appears to be a long-running server process (did not exit after ${SERVER_DETECTION_TIMEOUT / 1000}s).
 It was auto-terminated to prevent blocking.
@@ -443,6 +460,10 @@ ${allOutput.slice(0, 3000)}${allOutput.length > 3000 ? '\n...(truncated)' : ''}
 ✅ The server started successfully (startup output observed).
 If you need the server to keep running, use run_command with keep_running=true.
 For verification: build success + server startup = task complete.`;
+      return {
+        displayText,
+        commandResult: { success: true, exitCode: 0, command: normalizedCommand, hasWarnings: true },
+      };
     }
     
     // Normal completion path
@@ -472,8 +493,7 @@ For verification: build success + server startup = task complete.`;
     
     // ✅ Format result - emphasize errors for LLM attention
     if (!success) {
-      // ❌ BUILD FAILED - Return error-first format
-      return `❌ COMMAND FAILED: ${normalizedCommand}
+      const displayText = `❌ COMMAND FAILED: ${normalizedCommand}
 Exit Code: ${exitCode}
 
 📋 ERROR OUTPUT:
@@ -481,12 +501,13 @@ ${output}
 
 ⚠️  You MUST read the error above and fix the specific issue mentioned.
 DO NOT guess - the error tells you exactly what's wrong.`;
+      return {
+        displayText,
+        commandResult: { success: false, exitCode: exitCode ?? 1, command: normalizedCommand, hasWarnings: false },
+      };
     }
     
     // ✅ CRITICAL: Detect false-positive success — exit code 0 but stderr contains critical errors.
-    // Compound shell commands can mask intermediate failures (e.g., background process crash,
-    // "command not found" followed by a succeeding command). Warn the LLM so it doesn't
-    // falsely assume the entire operation succeeded.
     const criticalErrorPatterns: Array<{ pattern: RegExp; label: string }> = [
       { pattern: /command not found/i, label: 'command not found' },
       { pattern: /EADDRINUSE|address already in use/i, label: 'port already in use' },
@@ -501,9 +522,11 @@ DO NOT guess - the error tells you exactly what's wrong.`;
       .filter(({ pattern }) => pattern.test(stderr) || pattern.test(stdout))
       .map(({ label }) => label);
     
-    if (detectedIssues.length > 0) {
+    const hasWarnings = detectedIssues.length > 0;
+    
+    if (hasWarnings) {
       console.warn(`\n   ⚠️  Command exit code 0 but output contains errors: ${detectedIssues.join(', ')}\n`);
-      return `⚠️ COMMAND SUCCEEDED (exit code 0) BUT OUTPUT CONTAINS ERRORS: ${normalizedCommand}
+      const displayText = `⚠️ COMMAND SUCCEEDED (exit code 0) BUT OUTPUT CONTAINS ERRORS: ${normalizedCommand}
 
 ⚠️ DETECTED ISSUES IN OUTPUT:
 ${detectedIssues.map(issue => `- ${issue}`).join('\n')}
@@ -514,33 +537,29 @@ ${output}
 WARNING: Exit code was 0 but the output contains error indicators.
 The command may have PARTIALLY FAILED. You MUST check the output carefully
 and verify that the intended operation actually succeeded.`;
+      return {
+        displayText,
+        commandResult: { success: true, exitCode: 0, command: normalizedCommand, hasWarnings: true },
+      };
     }
     
     // ✅ SUCCESS - Return with output (may contain useful warnings/info)
     const hasOutput = output.trim().length > 0;
-    
-    if (hasOutput) {
-      return `✅ COMMAND SUCCEEDED: ${normalizedCommand}
-Exit Code: 0
-
-Output:
-${output}`;
-    } else {
-      return `✅ COMMAND SUCCEEDED: ${normalizedCommand}
-Exit Code: 0
-(No output)`;
-    }
+    const displayText = hasOutput
+      ? `✅ COMMAND SUCCEEDED: ${normalizedCommand}\nExit Code: 0\n\nOutput:\n${output}`
+      : `✅ COMMAND SUCCEEDED: ${normalizedCommand}\nExit Code: 0\n(No output)`;
+    return {
+      displayText,
+      commandResult: { success: true, exitCode: 0, command: normalizedCommand, hasWarnings: false },
+    };
   } catch (error) {
     invalidateBufferedFiles();
-    // ✅ Handle timeout or execution errors
     const errorMessage = (error as Error).message;
     console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);
     
-    // ✅ UI notification: command failed
     await chatAPI.commandComplete(normalizedCommand, false, -1, errorMessage, mergeIndex);
     
-    // ✅ Timeout/execution error - Return error-first format
-    return `❌ COMMAND EXECUTION ERROR: ${normalizedCommand}
+    const displayText = `❌ COMMAND EXECUTION ERROR: ${normalizedCommand}
 Error: ${errorMessage}
 
 Captured output:
@@ -548,6 +567,10 @@ ${streamedStdout}
 ${streamedStderr}
 
 ⚠️  The command timed out or failed to execute. Check the error above.`;
+    return {
+      displayText,
+      commandResult: { success: false, exitCode: -1, command: normalizedCommand, hasWarnings: false },
+    };
   }
 }
 

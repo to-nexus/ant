@@ -47,7 +47,7 @@ import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient'
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
 import { cleanFileContentFromResponse } from '../../utils/responseCleaners';
-import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY } from './constants';
+import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY, isBuildCommand, isTestCommand } from './constants';
 import { CommandExecutionResult } from './types';
 import {
   handleReadFile,
@@ -87,24 +87,42 @@ async function executeToolByName(
         break;
       case 'delete_file':
         result = await handleDeleteFile(state, args as any);
+        if (state._verificationTracker) {
+          state._verificationTracker.buildPassed = false;
+          state._verificationTracker.testPassed = false;
+        }
         break;
       case 'edit_file':
         result = await handleEditFile(state, args as any);
+        if (state._verificationTracker) {
+          state._verificationTracker.buildPassed = false;
+          state._verificationTracker.testPassed = false;
+        }
         break;
       case 'mkdir':
         result = await handleMkdir(state, args as any);
         break;
-      case 'run_command':
-        result = await handleRunCommand(state, args as any);
-        const cmdArgs = args as { command: string; working_directory?: string };
-        const isSuccess = typeof result === 'string' && result.includes('✅ COMMAND SUCCEEDED');
-        const exitCodeMatch = result.match(/Exit Code: (\d+)/);
+      case 'run_command': {
+        const output = await handleRunCommand(state, args as any);
+        result = output.displayText;
+        const { commandResult } = output;
         commandExecuted = {
-          command: cmdArgs.command,
-          success: isSuccess,
-          exitCode: exitCodeMatch ? parseInt(exitCodeMatch[1], 10) : undefined
+          command: commandResult.command,
+          success: commandResult.success,
+          exitCode: commandResult.exitCode,
         };
+
+        const tracker = state._verificationTracker;
+        if (tracker) {
+          if (isBuildCommand(commandResult.command)) {
+            tracker.buildPassed = commandResult.success;
+          }
+          if (isTestCommand(commandResult.command)) {
+            tracker.testPassed = commandResult.success;
+          }
+        }
         break;
+      }
       case 'search_reference_code':
         result = await handleSearchReferenceCode(state, args as any);
         break;
@@ -115,6 +133,10 @@ async function executeToolByName(
       case 'write_file':
       case 'create_file':
         result = await handleCreateFile(state, args as any);
+        if (state._verificationTracker) {
+          state._verificationTracker.buildPassed = false;
+          state._verificationTracker.testPassed = false;
+        }
         break;
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -136,6 +158,10 @@ async function executeToolByName(
         success: false,
         exitCode: -1
       };
+      if (state._verificationTracker) {
+        if (isBuildCommand(cmdArgs.command)) state._verificationTracker.buildPassed = false;
+        if (isTestCommand(cmdArgs.command)) state._verificationTracker.testPassed = false;
+      }
     }
   }
 

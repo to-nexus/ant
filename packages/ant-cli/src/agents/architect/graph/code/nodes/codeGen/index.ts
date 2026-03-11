@@ -487,6 +487,11 @@ export async function codeGen(
       earlyUpdatedProjectCodeContext = state.projectCodeContext
         ? { ...state.projectCodeContext, filePaths: merged }
         : { source: 'codeGen' as const, filePaths: merged, files: [], stats: { filesLoaded: merged.length, estimatedTokens: 0 } };
+
+      if (state._verificationTracker) {
+        state._verificationTracker.buildPassed = false;
+        state._verificationTracker.testPassed = false;
+      }
     }
 
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file

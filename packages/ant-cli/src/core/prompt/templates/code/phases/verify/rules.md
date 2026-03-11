@@ -97,8 +97,8 @@ Do NOT read any source file before attempting a build.
 ```
 
 **Rules:**
-1. Output `<done>true</done>` ONLY after ALL applicable verification steps (Build → Runtime → Test) are complete and passing
+1. Output `<done>true</done>` ONLY after: build command exited with code 0, AND if test files exist, test command also exited with code 0
 2. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
-3. If you edited ANY file after the last successful `run_command`, you MUST re-run the last applicable verification step (build, runtime start, or test) and confirm it passes before marking done
+3. If you edited ANY file after the last successful build or test command, you MUST re-run the build command (and test command if test files exist) and confirm they pass before marking done
 
 **Follow these rules for successful verification.**
