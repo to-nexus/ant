@@ -635,10 +635,10 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
         className="fixed top-14 sm:top-16 left-3 sm:left-5 z-20 p-1"
         style={{ animation: 'qsFadeInUp 0.5s ease-out 0.1s both' }}
       >
-        <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
+        <div className="flex flex-col items-end sm:items-start sm:flex-row gap-1 sm:gap-4">
           {/* Project name */}
-          <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center min-w-[3.5rem]">
+          <div className="flex items-start gap-1.5">
+            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 whitespace-nowrap h-[30px] px-2.5 flex items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40">
               {t('quickstart.projectNameLabel')}
             </span>
             <div>
@@ -682,8 +682,8 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
             </div>
           </div>
           {/* Feature name */}
-          <div className="flex items-start gap-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap h-[30px] flex items-center min-w-[3.5rem]">
+          <div className="flex items-start gap-1.5">
+            <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400 whitespace-nowrap h-[30px] px-2.5 flex items-center justify-center rounded-full bg-sky-50 dark:bg-sky-950/40 border border-sky-200/60 dark:border-sky-800/40">
               {t('quickstart.featureNameLabel')}
             </span>
             <div>
