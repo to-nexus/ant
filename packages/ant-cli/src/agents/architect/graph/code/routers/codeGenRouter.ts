@@ -17,6 +17,7 @@
  */
 
 import { ArchitectGraphState } from '../state';
+import type { CodeTask } from '../../../types/task';
 import { isFinalVerificationTask } from '../utils/taskClassification';
 
 /**
@@ -81,6 +82,23 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     }
   }
   
+  // Safety Net D: Pre-planned error task codeGen call budget
+  // Pre-planned tasks have a focused scope from batch splitting, so they get a bounded budget.
+  const isPrePlannedTask = !!(currentTask as CodeTask)?.prePlanText;
+  if (isPrePlannedTask) {
+    const callIndex = state._codeGenCallIndex || 0;
+    const maxPrePlannedCalls = 25;
+    const warningThreshold = Math.floor(maxPrePlannedCalls * 0.8); // 20
+    if (callIndex >= maxPrePlannedCalls) {
+      console.warn(`⚠️  [Router] Pre-planned error task codeGen call limit reached (${callIndex}/${maxPrePlannedCalls})`);
+      console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
+      return 'checkTaskStatus';
+    }
+    if (callIndex === warningThreshold) {
+      console.warn(`⚠️  [Router] Pre-planned error task approaching codeGen limit (${callIndex}/${maxPrePlannedCalls}) — ${maxPrePlannedCalls - callIndex} calls remaining`);
+    }
+  }
+
   // Safety Net E: Feature/general task codeGen call budget
   if (!isFinalTask && !isErrorTask) {
     const callIndex = state._codeGenCallIndex || 0;

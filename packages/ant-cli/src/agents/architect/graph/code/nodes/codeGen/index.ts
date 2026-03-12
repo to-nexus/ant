@@ -32,6 +32,7 @@ import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormal
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { isFinalVerificationTask } from '../../utils/taskClassification';
+import type { CodeTask } from '../../../../types/task';
 
 export async function codeGen(
   state: ArchitectGraphState
@@ -166,7 +167,10 @@ export async function codeGen(
     const currentCall = (state._codeGenCallIndex || 0) + 1;
     const isErrorType = state.currentTask?.type === 'error';
     const isFinalType = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
-    const maxCalls = (isFinalType || isErrorType) ? 0 : 20;
+    const isPrePlanned = !!(state.currentTask as CodeTask)?.prePlanText;
+    // Pre-planned error tasks get a bounded budget (25) since their scope is limited by batch split.
+    // Regular error/verification tasks have no budget (0) — they rely on recursion limit.
+    const maxCalls = isPrePlanned ? 25 : (isFinalType || isErrorType) ? 0 : 20;
     
     if (maxCalls > 0 && currentCall >= 3) {
       const remaining = maxCalls - currentCall;

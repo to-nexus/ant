@@ -48,12 +48,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.isResume = true;
         
         // Reconstruct TaskQueue from saved array
-        const { TaskQueue } = await import('./state');
-        const taskQueue = new TaskQueue<CodeTask>();
-        session.state.taskQueue?.forEach((task: any) => taskQueue.push(task));
-        
-        // ✅ Restore ALL state from checkpoint
-        initial.taskQueue = taskQueue;
+        initial.taskQueue = TaskQueue.from<CodeTask>(session.state.taskQueue);
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
@@ -85,6 +80,13 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         // Restore design-prescribed dependencies (for plan prompt injection)
         if ((session.state as any).designDocUnknownPackages) {
           initial.designDocUnknownPackages = (session.state as any).designDocUnknownPackages;
+        }
+        
+        // Restore profile (language/framework detection for diagnostic hints)
+        const restoredProfile = (session.state as any).profile
+          ?? (session.state as any).detectionReport?.profile;
+        if (restoredProfile) {
+          initial.profile = restoredProfile;
         }
         
         // ✅ Restore projectCodeContext (filePaths for existingFiles detection in codeGen)
@@ -224,29 +226,27 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         );
         
         if (session.state && session.state.taskQueue) {
-          // Reconstruct TaskQueue from saved array
-          const { TaskQueue } = await import('./state');
-          const taskQueue = new TaskQueue<CodeTask>();
-          session.state.taskQueue.forEach((task: any) => taskQueue.push(task));
-          
           state = {
             ...initial,
-            taskQueue,
-            currentTask: session.state.currentTask,  // ✅ CRITICAL: Restore currentTask (will be moved to queue below)
+            taskQueue: TaskQueue.from<CodeTask>(session.state.taskQueue),
+            currentTask: session.state.currentTask,
             completedTasks: session.state.completedTasks || [],
-            completedTasksDetails: session.state.completedTasksDetails || [], // ✅ NEW: Restore full task details
-            retries: 0,  // Resume = user's fresh attempt, reset counter
+            completedTasksDetails: session.state.completedTasksDetails || [],
+            retries: 0,
             maxRetries: session.state.maxRetries || 3,
             previousAttempts: session.state.previousAttempts || [],
             enforcementHistory: session.state.enforcementHistory || [],
             lastViolations: session.state.lastViolations || [],
             previousFileCount: session.state.previousFileCount,
             resolvedCategories: (session.state.resolvedCategories || []) as any,
-            recursionCount: session.state.recursionCount || 0,  // Restore from checkpoint (accumulated during this invoke)
-            recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),  // ✅ Use higher of session vs env
-            ...(session.state as any).jobId && { jobId: (session.state as any).jobId },  // ✅ CRITICAL: Restore jobId
-            ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },  // ✅ CRITICAL: Restore jobTiming
-            ...(session.state as any).detectionReport && { detectionReport: (session.state as any).detectionReport },  // ✅ Restore for tool enabling
+            recursionCount: session.state.recursionCount || 0,
+            recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),
+            ...((session.state as any).profile || (session.state as any).detectionReport?.profile) && {
+              profile: (session.state as any).profile ?? (session.state as any).detectionReport?.profile
+            },
+            ...(session.state as any).jobId && { jobId: (session.state as any).jobId },
+            ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },
+            ...(session.state as any).detectionReport && { detectionReport: (session.state as any).detectionReport },
             ...(session.state as any).referenceRequests && { referenceRequests: (session.state as any).referenceRequests },
             ...(session.state as any).designDocUnknownPackages && { designDocUnknownPackages: (session.state as any).designDocUnknownPackages },
             ...(session.state as any).projectCodeContext && { projectCodeContext: (session.state as any).projectCodeContext },
@@ -300,15 +300,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
       pausedTask.interrupted = true;
       
-      const { TaskQueue } = await import('./state');
-      const newQueue = new TaskQueue<CodeTask>();
-      newQueue.push(pausedTask);
-      state.taskQueue.getAll().forEach((task: any) => {
-        if (task.id !== state.currentTask!.id) {
-          newQueue.push(task);
-        }
-      });
-      state.taskQueue = newQueue;
+      const remaining = state.taskQueue.getAll().filter((t: any) => t.id !== state.currentTask!.id);
+      state.taskQueue = TaskQueue.from<CodeTask>([pausedTask, ...remaining]);
       state.currentTask = undefined;
     }
     

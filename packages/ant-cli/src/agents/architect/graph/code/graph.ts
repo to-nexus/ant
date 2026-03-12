@@ -111,8 +111,10 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   // ✅ Diagnostic objective guard: build must pass for verification and error tasks.
   // Verification tasks additionally require tests to pass (if test files exist).
   // Error tasks only require build pass — tests are deferred to Final Verification.
+  // Pre-planned error tasks (from batch split) are exempt — Final Verification handles build check.
   const isDiagnosticTask = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
-  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
+  const isPrePlannedTask = !!(state.currentTask as CodeTask)?.prePlanText;
+  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask && !isPrePlannedTask) {
     const tracker = state._verificationTracker;
 
     if (!tracker) {
@@ -177,6 +179,25 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     }
     return {
       violations: [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    };
+  }
+
+  // Batch split: original task was re-enqueued — skip completion marking entirely
+  if (state._batchSplitRequeued === true) {
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
+    }
+    return {
+      currentTask: undefined,
+      retries: 0,
+      violations: [],
+      _batchSplitRequeued: false,
+      _codeGenCallIndex: 0,
+      _finalTaskLoopCount: 0,
+      planText: '',
+      projectCodeContext: undefined,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     };
@@ -265,12 +286,11 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       }
     }
     
-    // If error task completed, remove remaining error tasks and guarantee Final Verification
+    // If error task completed, guarantee Final Verification exists
     if (state.currentTask.type === 'error' && state.taskQueue) {
-      const errorCount = state.taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
-      if (errorCount > 0) {
-        console.log(`🧹 Removing ${errorCount} remaining error task(s) from queue (likely auto-resolved)`);
-        state.taskQueue.removeType('error');
+      const remaining = state.taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
+      if (remaining > 0) {
+        console.log(`📋 [checkTaskStatus] ${remaining} error task(s) still in queue — will run independently`);
       }
       
       const hasFinalTask = state.taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
@@ -448,6 +468,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     referenceRequests: state.referenceRequests,
     designDocUnknownPackages: state.designDocUnknownPackages,
     _sharedFileBuffer: sharedFileBuffer,
+    taskQueue: state.taskQueue,
   };
 
   const graphBuilder = createCodeWorkerGraphBuilder();
@@ -460,10 +481,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         console.log(`[ParallelOrchestrator] Worker ${workerId} completed: ${task.name}`);
         if (task.type === 'error') {
           const remaining = taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
-          if (remaining > 0) {
-            console.log(`🧹 [ParallelOrchestrator] Removing ${remaining} remaining error task(s) (likely auto-resolved)`);
-            taskQueue.removeType('error');
-          }
+          console.log(`📋 [ParallelOrchestrator] Error task done. ${remaining} error task(s) remain — will run independently`);
           const hasFinal = taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
           if (!hasFinal) {
             const finalTask: CodeTask = {
@@ -1147,11 +1165,11 @@ export function buildCodeGraph() {
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   
-  // Plan → Router (tool_calls then tool, else codeGen)
+  // Plan → Router (batch split → checkTaskStatus, tool_calls → tool, else → codeGen)
   graph.addConditionalEdges(
     "plan" as any,
     routeAfterPlan as any,
-    { tool: "tool", codeGen: "codeGen" } as any
+    { tool: "tool", codeGen: "codeGen", checkTaskStatus: "checkTaskStatus" } as any
   );
 
   // CodeGen → Router (tool / checkTaskStatus / codeGen)
