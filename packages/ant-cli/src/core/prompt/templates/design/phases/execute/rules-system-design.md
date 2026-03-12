@@ -462,24 +462,24 @@ Before generating output, verify:
 
 **Scope clarification**: Local infrastructure provisioned by the project itself (databases, caches, message queues via docker-compose) is NOT a mock target — these run as real instances locally. Mock adapters apply ONLY to services outside the project boundary that may be unavailable during development.
 
-- **Observation target**: Does the design identify which infrastructure ports depend on external services, and does each specify a development-mode implementation strategy?
+- **Observation target**: Does the design identify which infrastructure ports depend on external services, and does each specify a mock implementation strategy?
 
 | Checkpoint | What to observe |
 |-----------|----------------|
 | **External dependency ports** | Which infrastructure contracts depend on services outside the project boundary (unconstructed backend, third-party APIs, cross-project services)? |
-| **Implementation multiplicity** | Does each external-dependency port define at least two implementation strategies — production and development-mode? |
+| **Implementation multiplicity** | Does each external-dependency port define at least two implementation strategies — production and mock? |
 | **Switching architecture** | Is the mechanism for selecting the active implementation owned by the infrastructure boundary, invisible to domain and application? |
-| **Data contract compliance** | Do development-mode implementations state that responses follow the same DTO contracts as production? |
+| **Data contract compliance** | Do mock implementations state that responses follow the same DTO contracts as production? |
 
 - **Constraints**:
   - Domain and application boundaries MUST NOT import or reference concrete infrastructure implementations — only the abstract contracts
-  - Each infrastructure contract with external dependencies MUST support at least two implementation strategies: one for the target runtime environment and one for development without external service availability
+  - Each infrastructure contract with external dependencies MUST support at least two implementation strategies: production (real external service) and mock (local substitute when the service is unavailable)
   - The selection of which implementation to activate is an infrastructure boundary concern — domain and application boundaries are unaware of the active implementation
   - The design document MUST list which ports have external dependencies and their implementation strategies when external services exist
   - Do NOT include implementation details: class names, in-memory store mechanisms, delay simulation, environment variable names, or concrete switching code
   - Local infrastructure (databases, caches, queues managed by docker-compose) MUST NOT be replaced by mock adapters — they run as real local instances
 
-- ⚠️ **Blind spot**: In frontend projects where the backend service does not yet exist, development-mode API adapters are essential. Without them the frontend CANNOT function at all — this is easily missed because the PRD describes API consumption as if the backend is available.
+- ⚠️ **Blind spot**: In frontend projects where the backend service does not yet exist, mock API adapters are essential. Without them the frontend CANNOT function at all — this is easily missed because the PRD describes API consumption as if the backend is available.
 
 - ⚠️ **Blind spot**: Cross-project dependencies (e.g., `ant-project:` references) may point to services still under construction. These require the same adapter isolation as any unavailable external service.
 

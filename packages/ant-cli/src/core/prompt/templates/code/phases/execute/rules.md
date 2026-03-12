@@ -129,6 +129,8 @@ Your modularization:
 
 {{> code/base/injections/secure-coding}}
 
+{{> code/base/injections/mock-adapter-contract}}
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 🔧 Interaction Methods
 ════════════════════════════════════════════════════════════════════════════════
