@@ -209,6 +209,8 @@ what YOU own; depend on interfaces for what others own.
 
 {{> code/base/injections/secure-coding}}
 
+{{> code/base/injections/mock-adapter-contract}}
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 📝 ANALYSIS SECTION GUIDE
 ────────────────────────────────────────────────────────────────────────────────
@@ -289,6 +291,7 @@ Before outputting, verify:
 - [ ] For UI: assets are listed if needed
 - [ ] For UI: design tokens are specified
 - [ ] Security: input validation boundaries, secrets management, error exposure considered
+- [ ] Mock adapters: if task creates adapter switching logic, plan includes `.env.example`/`.env` modification with mock switching variable
 
 ────────────────────────────────────────────────────────────────────────────────
 ## ⚠️ OUTPUT CONSTRAINTS
