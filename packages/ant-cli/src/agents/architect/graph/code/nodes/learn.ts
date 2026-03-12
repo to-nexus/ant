@@ -268,9 +268,18 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // Clear stale orchestrator interruption when all remaining tasks completed
   // after an earlier parallel failure. Without this, runner.ts propagates the
   // old interruption → JobWorker reports hasInterruption=true → failed choice card.
+  // CRITICAL: Only clear when failedTasks is empty (genuinely stale). If failedTasks
+  // exist, the interruption reflects a real failure and must be preserved so that
+  // hasOrchestratorFailure=true → learn skips session write → orchestrator's saved
+  // state (with correct interruption + no completedAt) is kept intact.
   if (isLastTask && (state as any).interruption?.reason === 'tasks_failed') {
-    console.log(`✅ [Learn] All tasks completed despite earlier parallel failure — clearing stale interruption`);
-    (state as any).interruption = undefined;
+    const failedTasks = (state as any).failedTasks;
+    if (failedTasks && failedTasks.length > 0) {
+      console.log(`⚠️  [Learn] ${failedTasks.length} task(s) failed — preserving tasks_failed interruption`);
+    } else {
+      console.log(`✅ [Learn] All tasks completed despite earlier parallel failure — clearing stale interruption`);
+      (state as any).interruption = undefined;
+    }
   }
 
   // ✅ FIX: Skip session write when parallelOrchestrator already saved
