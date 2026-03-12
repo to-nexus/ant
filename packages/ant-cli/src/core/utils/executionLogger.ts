@@ -27,7 +27,8 @@ export type ExecutionEventType =
   | 'parallel_complete'
   | 'violation_detected'
   | 'phase_complete'
-  | 'tool_call';
+  | 'tool_call'
+  | 'thinking_only';
 
 export interface ExecutionEvent {
   /** ISO timestamp */
