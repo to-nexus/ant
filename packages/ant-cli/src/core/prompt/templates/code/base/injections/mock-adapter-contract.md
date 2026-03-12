@@ -5,9 +5,9 @@
 third-party services, cross-project dependencies), ALWAYS include mock
 implementations alongside production implementations.**
 
-This is a default code job behavior. External service dependencies imply mock
-adapters — mock support does not need to be explicitly requested in the design
-document.
+This is a default code job behavior. The design document defines the
+architectural contracts (ports/adapters); the coding phase provides both
+production and mock implementations for any port with external dependencies.
 
 ### Switching Contract
 
