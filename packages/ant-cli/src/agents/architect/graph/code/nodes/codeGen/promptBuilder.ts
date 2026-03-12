@@ -43,7 +43,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   } else {
     const taskType = state.currentTask?.type || 'unknown';
     const priority = state.currentTask?.priority;
-    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'testgen' || taskType === 'doc' || taskType === 'explain';
+    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'error' || taskType === 'testgen' || taskType === 'doc' || taskType === 'explain';
     if (!isExpected) {
       console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
     }
@@ -649,18 +649,23 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     
     // ✅ CRITICAL: Inject planText (structured JSON from Plan node)
     // planText is already structured - no parsing needed
+    const isDiagnosticTask = state.currentTask.type === 'verification' || state.currentTask.type === 'error';
     if (state.planText) {
       lines.push(`**Goal**: ${state.currentTask.description}`);
       lines.push(``);
       
+      const planLabel = isDiagnosticTask
+        ? `📋 REMEDIATION PLAN (Structured JSON - FOLLOW EXACTLY)`
+        : `📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)`;
+      const planDescription = isDiagnosticTask
+        ? `The following JSON contains the diagnostic analysis and fix instructions.\n- \`diagnostics\`: Build/test error analysis\n- \`modify\`: Files to modify with specific fixes\n- \`create\`: Files to create (if any)\n- \`delete\`: Files to delete (if any)`
+        : `The following JSON contains the exact implementation instructions.\n- \`create\`: Files to create with integration points\n- \`modify\`: Files to modify with specific changes\n- \`assets\`: Asset copy operations (source → destination)`;
+      
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-      lines.push(`📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)`);
+      lines.push(planLabel);
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(``);
-      lines.push(`The following JSON contains the exact implementation instructions.`);
-      lines.push(`- \`create\`: Files to create with integration points`);
-      lines.push(`- \`modify\`: Files to modify with specific changes`);
-      lines.push(`- \`assets\`: Asset copy operations (source → destination)`);
+      lines.push(planDescription);
       lines.push(``);
       lines.push('```json');
       lines.push(state.planText);
@@ -668,8 +673,14 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
       lines.push(``);
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(``);
+    } else if (isDiagnosticTask) {
+      // Diagnostic task with empty planText = build/test passed, no fixes needed
+      lines.push(state.currentTask.description);
+      lines.push(``);
+      lines.push(`**Build/test passed successfully. No code changes needed. Output \`<done>true</done>\` immediately.**`);
+      lines.push(``);
     } else {
-      // No plan available (explain/final-verification tasks OR state propagation failure)
+      // No plan available (explain tasks OR state propagation failure)
       lines.push(state.currentTask.description);
       lines.push(``);
     }

@@ -108,10 +108,11 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     });
   }
 
-  // ✅ Verification objective guard: build must pass, and tests must pass if they exist.
-  // Uses VerificationTracker (set by tool node on build/test commands, reset on file modification).
-  // Falls back to legacy commandHistory check when tracker is absent (backward compatibility).
-  if (violations.length === 0 && llmExplicitlyDone && state.currentTask?.type === 'verification') {
+  // ✅ Diagnostic objective guard: build must pass for verification and error tasks.
+  // Verification tasks additionally require tests to pass (if test files exist).
+  // Error tasks only require build pass — tests are deferred to Final Verification.
+  const isDiagnosticTask = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
+  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
     const tracker = state._verificationTracker;
 
     if (!tracker) {
@@ -264,29 +265,28 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       }
     }
     
-    // If error task completed, remove remaining error tasks (likely auto-resolved)
+    // If error task completed, remove remaining error tasks and guarantee Final Verification
     if (state.currentTask.type === 'error' && state.taskQueue) {
       const errorCount = state.taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
       if (errorCount > 0) {
         console.log(`🧹 Removing ${errorCount} remaining error task(s) from queue (likely auto-resolved)`);
         state.taskQueue.removeType('error');
-        
-        // Check if Final Verification already exists in queue
-        const hasFinalTask = state.taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-        
-        if (!hasFinalTask) {
-          const finalTask: CodeTask = {
-            id: `final-verification-recheck-${Date.now()}`,
-            name: 'Final Verification (Recheck)',
-            type: 'verification' as const,
-            priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-            description: 'Re-verify all errors are resolved after error fixes',
-          };
-          state.taskQueue.push(finalTask);
-          console.log(`📋 Re-added Final Verification to confirm all errors resolved\n`);
-        } else {
-          console.log(`📋 Final Verification already in queue - will execute after error tasks\n`);
-        }
+      }
+      
+      const hasFinalTask = state.taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+      
+      if (!hasFinalTask) {
+        const finalTask: CodeTask = {
+          id: `final-verification-recheck-${Date.now()}`,
+          name: 'Final Verification (Recheck)',
+          type: 'verification' as const,
+          priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+          description: 'Re-verify all errors are resolved after error fixes',
+        };
+        state.taskQueue.push(finalTask);
+        console.log(`📋 Added Final Verification to confirm all errors resolved\n`);
+      } else {
+        console.log(`📋 Final Verification already in queue\n`);
       }
     }
     
@@ -458,6 +458,25 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     {
       onTaskComplete: (task, workerId) => {
         console.log(`[ParallelOrchestrator] Worker ${workerId} completed: ${task.name}`);
+        if (task.type === 'error') {
+          const remaining = taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
+          if (remaining > 0) {
+            console.log(`🧹 [ParallelOrchestrator] Removing ${remaining} remaining error task(s) (likely auto-resolved)`);
+            taskQueue.removeType('error');
+          }
+          const hasFinal = taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+          if (!hasFinal) {
+            const finalTask: CodeTask = {
+              id: `final-verification-recheck-${Date.now()}`,
+              name: 'Final Verification (Recheck)',
+              type: 'verification' as const,
+              priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+              description: 'Re-verify all errors are resolved after error fixes',
+            };
+            taskQueue.push(finalTask);
+            console.log(`📋 [ParallelOrchestrator] Added Final Verification to confirm all errors resolved`);
+          }
+        }
       },
       onTaskFailure: (task, error, workerId) => {
         console.error(`[ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);

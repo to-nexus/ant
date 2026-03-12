@@ -62,7 +62,7 @@ export function updateCommandHistory(
     timestamp: Date.now(),
     success: commandExecuted.success,
     exitCode: commandExecuted.exitCode,
-    errorSnippet: commandExecuted.success ? undefined : (error || result || '').toString().slice(0, 200)
+    errorSnippet: commandExecuted.success ? undefined : (error || result || '').toString().slice(0, 3000)
   };
   
   state.commandHistory.push(historyEntry);

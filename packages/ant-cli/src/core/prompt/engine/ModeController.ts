@@ -78,11 +78,13 @@ export class ModeController {
     // Base templates
     // ✅ design job uses explicit base-system-design.md and rules-system-design.md
     // ui-design has separate loading logic in docGen.ts (base-ui-design.md, rules-ui-design.md)
-    // ✅ verification and testgen tasks use dedicated templates (lean, focused)
+    // ✅ verification, error, and testgen tasks use dedicated templates (lean, focused)
     const isVerification = taskType === 'verification';
+    const isError = taskType === 'error';
     const isTestgen = taskType === 'testgen';
     const isDoc = taskType === 'doc';
     const verifyPhasePrefix = `${job}/phases/verify`;
+    const errorPhasePrefix = `${job}/phases/error`;
     const testgenPhasePrefix = `${job}/phases/testgen`;
     const docgenPhasePrefix = `${job}/phases/docgen`;
     const baseTemplateName = job === 'design' ? 'base-system-design' : 'base';
@@ -93,6 +95,9 @@ export class ModeController {
     if (isVerification) {
       templateBase = `${verifyPhasePrefix}/base`;
       templateRules = `${verifyPhasePrefix}/rules`;
+    } else if (isError) {
+      templateBase = `${errorPhasePrefix}/base`;
+      templateRules = `${errorPhasePrefix}/rules`;
     } else if (isTestgen) {
       templateBase = `${testgenPhasePrefix}/base`;
       templateRules = `${testgenPhasePrefix}/rules`;
@@ -114,7 +119,6 @@ export class ModeController {
     const llmParams = this.getLLMParams(job, phase, mode);
     
     // Feature flags
-    const isError = taskType === 'error';
     const skipHeavyContext = isVerification || isTestgen || isDoc || isError;
     const flags = {
       includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !skipHeavyContext,
@@ -159,6 +163,7 @@ export class ModeController {
     // ✅ Verification, testgen, doc tasks skip design context injections (designDoc, prdSpec, uiDoc).
     // Error tasks allow design-doc injection so spec-driven designDoc can pass through.
     const isVerification = taskType === 'verification';
+    const isError = taskType === 'error';
     const isTestgen = taskType === 'testgen';
     const isDoc = taskType === 'doc';
     const skipDesignContext = isVerification || isTestgen || isDoc;
@@ -216,11 +221,11 @@ export class ModeController {
       const language = this.detectLanguage(context);
       const environment = this.detectEnvironment(context, language);
       
-      // Verification and testgen tasks use dedicated templates (base + rules).
+      // Diagnostic (verification/error) and testgen tasks use dedicated templates.
       // Environment-specific rules (e.g. go-api/rules.md) contain "Do NOT run build commands"
-      // which contradicts verification's purpose. tool-calling-rules-compact is
-      // already included via Handlebars partial in verify/rules.md.
-      if (!isVerification && !isTestgen && !isDoc) {
+      // which contradicts diagnostic tasks' purpose. tool-calling-rules-compact is
+      // already included via Handlebars partial in verify/rules.md and error/rules.md.
+      if (!isVerification && !isError && !isTestgen && !isDoc) {
         if (language && job === 'code') {
           if (environment === 'fullstack') {
             // Fullstack = browser + backend + fullstack-specific rules.
@@ -252,12 +257,9 @@ export class ModeController {
         }
       }
       
-      // Verification: inject language-specific hints (build/module/strict-mode guidance)
-      if (isVerification && language && job === 'code') {
-        const hintsPath = `${job}/phases/verify/languages/${language}/hints`;
-        injections.push(hintsPath);
-        console.log(`[ModeController] Adding verification language hints: ${hintsPath}`);
-      }
+      // Verification language hints are now injected into the plan diagnostic prompt
+      // (buildDiagnosticPlanPrompt) where build/test execution actually happens.
+      // codeGen only applies code fixes — it doesn't need build system hints.
       
       // Testgen: inject language-specific hints (test frameworks, mock patterns)
       if (isTestgen && language && job === 'code') {

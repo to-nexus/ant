@@ -22,7 +22,8 @@
     "preview-setup": [],
     "preview-env-contract": [],
     "behavioral-debugging": [],
-    "secure-coding": []
+    "secure-coding": [],
+    "mock-adapter-contract": []
   },
   "code/phases/execute/injections": {
     "lessons": ["lessons"],

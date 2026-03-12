@@ -116,14 +116,17 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     resetTaskTokenUsage(state as any);
     state._codeGenCallIndex = 0;
 
-    // ✅ Initialize verification tracker for verification tasks
-    if (nextTask.type === 'verification') {
+    // ✅ Initialize verification tracker for diagnostic tasks (verification + error)
+    if (nextTask.type === 'verification' || nextTask.type === 'error') {
+      const testsRequired = nextTask.type === 'verification'
+        ? detectTestFiles(state.projectCodeContext)
+        : false; // error tasks: build only, tests deferred to Final Verification
       state._verificationTracker = {
         buildPassed: false,
         testPassed: false,
-        testsRequired: detectTestFiles(state.projectCodeContext),
+        testsRequired,
       };
-      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}`);
+      console.log(`🔍 [Plan] VerificationTracker initialized: type=${nextTask.type}, testsRequired=${testsRequired}`);
     }
 
     // ✅ Log task_start event to debug/logs/
@@ -238,32 +241,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 0.7: Verification retry lightweight path
+  // STEP 0.7: Diagnostic task retry — always re-diagnose
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // On verification retry with existing planText, skip keyword/RAG/planText regeneration.
-  // The plan itself doesn't change — only the violation context matters for the next codeGen attempt.
-  // violations are preserved in state and injected into codeGen prompt by buildMessages.
-  const canSkipRetryPlan = isRetry && nextTask.type === 'verification'
-    && state.planText && state.planText.length > 50;
-  if (canSkipRetryPlan) {
-    console.log(`\n⚡ [Plan] Verification retry lightweight path — reusing planText (${state.planText!.length} chars)`);
-    console.log(`   Skipping: keywords, RAG, planText generation`);
-    console.log(`   Violations: ${state.violations?.length || 0} carried forward to codeGen prompt`);
-    
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
-    }
-    
-    return {
-      ...state,
-      currentTask: nextTask,
-      planText: state.planText,
-      retries: state.retries,
-      completedTasksDetails: state.completedTasksDetails || [],
-      recursionCount: state.recursionCount,
-      recursionLimit: state.recursionLimit,
-      workspaceConfig: state.workspaceConfig,
-    };
+  // Diagnostic tasks (verification/error) must re-run build/test on retry to get
+  // fresh error state. Never skip to reuse old planText — the codebase has changed.
+  if (isRetry && (nextTask.type === 'verification' || nextTask.type === 'error')) {
+    console.log(`\n🔄 [Plan] Diagnostic retry — will re-run build/test via tool loop for fresh error analysis`);
+    console.log(`   Violations from previous attempt: ${state.violations?.length || 0}`);
+    // Fall through to full plan flow (keyword/RAG/tool-loop/planText generation)
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -575,8 +560,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
   let planText: string | undefined;
   const requiresPlan = taskRequiresPlan(nextTask);
+  const isDiagnosticTask = nextTask.type === 'verification' || nextTask.type === 'error';
   const planToolRounds = (state.planConversationHistory?.length ?? 0) / 2;
-  const tryToolsFirst = llm && requiresPlan && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
+  const tryToolsFirst = llm && (requiresPlan || isDiagnosticTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
   if (tryToolsFirst) {
     const violationsText = state.violations?.length ? formatViolations(state.violations) : undefined;
@@ -604,16 +590,24 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
 
   if (planText === undefined) {
-    planText = await generatePlanText(
-      llm,
-      nextTask,
-      state,
-      projectCodeContext,
-      referenceCodeContexts,
-      state.violations,
-      uiDocForPlan,
-      remainingTasks
-    );
+    if (isDiagnosticTask) {
+      // Diagnostic tasks (verification/error): tool loop didn't produce a plan,
+      // meaning build/test wasn't run in exploration. Generate empty plan —
+      // codeGen will handle via its diagnostic template.
+      planText = '';
+      console.log(`📋 [Plan] Diagnostic task "${nextTask.name}": tool loop did not produce plan, proceeding with empty planText`);
+    } else {
+      planText = await generatePlanText(
+        llm,
+        nextTask,
+        state,
+        projectCodeContext,
+        referenceCodeContexts,
+        state.violations,
+        uiDocForPlan,
+        remainingTasks
+      );
+    }
   }
   
   // ✅ DO NOT clear violations here! They need to be passed to CodeGen node for retry context
