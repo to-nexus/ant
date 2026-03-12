@@ -63,9 +63,9 @@
 | **External service adapters** | Does PRD specify third-party APIs or cross-project service dependencies? |
 | **Local infrastructure** | Does the project use databases, caches, or queues provisioned locally (e.g., via docker-compose)? |
 
-**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and development-mode implementation strategies in the catalog section where that adapter is introduced.
+**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies in the catalog section where that adapter is introduced.
 
-**Constraint**: State ONLY the port name, its role, and the two strategy labels (production + development-mode). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
+**Constraint**: State ONLY the port name, its role, and the two strategy labels (production + mock). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
 
 **Constraint**: Local infrastructure (databases, caches, queues managed by docker-compose) is NOT a mock target — they run as real local instances.
 
@@ -95,7 +95,7 @@
 
 **§ Real-time & Connection State**: If horizontal scaling expected with stateful connections, state externalization and broadcast strategy MUST be documented.
 
-**§ External Integrations**: When external service adapters exist, each port's development-mode implementation strategy MUST be documented per Infrastructure Independence Guardrail. Do NOT specify implementation details. Local infrastructure is NOT a mock target.
+**§ External Integrations**: When external service adapters exist, each port's mock implementation strategy MUST be documented per Infrastructure Independence Guardrail. Do NOT specify implementation details. Local infrastructure is NOT a mock target.
 
 **§ Architecture Style**: Do NOT default to MSA. Complexity must match requirements.
 

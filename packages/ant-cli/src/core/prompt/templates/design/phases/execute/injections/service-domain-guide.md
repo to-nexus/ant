@@ -89,7 +89,7 @@ For each major external dependency (APIs, storage, queues), document:
 | **Idempotency** | Which operations must be safe to retry and how this is enforced at contract level |
 | **Error propagation** | Which errors map to domain failures, which become user-visible, which are logged only |
 
-- **Development independence**: Each external-dependency contract MUST define production and development-mode implementation strategies per Infrastructure Independence Guardrail. State the contract name and two strategy labels — do NOT specify mock implementation details. Local infrastructure (DB, cache, queue via docker-compose) is NOT a mock target.
+- **Development independence**: Each external-dependency contract MUST define production and mock implementation strategies per Infrastructure Independence Guardrail. State the contract name and two strategy labels — do NOT specify mock implementation details. Local infrastructure (DB, cache, queue via docker-compose) is NOT a mock target.
 
 **Constraint**: Do NOT specify exact timeout values, retry counts, backoff formulas, concrete HTTP client libraries, SDK configuration, or monitoring/tooling setup.
 

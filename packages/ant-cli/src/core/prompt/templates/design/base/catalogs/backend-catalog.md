@@ -33,7 +33,7 @@
 
 ### § External Integrations (conditional: if applicable)
 - Third-party APIs, file storage, external authentication providers
-- Adapter isolation & development independence (which contracts have external dependencies, production + development-mode implementation strategies per Infrastructure Independence Guardrail)
+- Adapter isolation & development independence (which contracts have external dependencies, production + mock implementation strategies per Infrastructure Independence Guardrail)
 
 ### § Technology Stack (mandatory)
 - Framework, database, cache/queue/real-time technologies
