@@ -113,10 +113,16 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     } as any;
   }
 
-  // Batch split: original task was re-enqueued — skip completion marking
+  // Batch split: original task was re-enqueued — skip completion marking.
+  // Sub-tasks and re-enqueued verification are already in the shared taskQueue
+  // (pushed by processDiagnosticBatchSplit). The orchestrator's broadcastKanban
+  // in reportCompletion will pick them up once the worker graph finishes.
   if (state._batchSplitRequeued === true) {
+    const workerId = (state as any).workerId ?? 0;
+    const newTasks = state.taskQueue?.getAll().filter((t: any) => t.type === 'error' && !t.completed) || [];
+    console.log(`📋 [Worker ${workerId} checkTaskStatus] Batch split completed: ${newTasks.length} error sub-task(s) created, original task re-enqueued`);
+
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      const workerId = (state as any).workerId ?? 0;
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
     return {
