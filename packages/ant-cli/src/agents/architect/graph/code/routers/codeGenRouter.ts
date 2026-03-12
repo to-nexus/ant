@@ -97,9 +97,12 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   }
 
   // Safety Net C: Final task without progress (computed by codeGen node, read-only here)
+  // Verification tasks use threshold=1: if the LLM produced only thinking once,
+  // route to checkTaskStatus immediately instead of retrying the same empty call.
   const finalTaskLoopCount = state._finalTaskLoopCount || 0;
-  if (finalTaskLoopCount >= 3) {
-    console.warn(`⚠️  [Router] Final task stuck in loop (${finalTaskLoopCount} iterations, no tools, no done)`);
+  const loopThreshold = currentTask?.type === 'verification' ? 1 : 3;
+  if (finalTaskLoopCount >= loopThreshold) {
+    console.warn(`⚠️  [Router] Task stuck in loop (${finalTaskLoopCount}/${loopThreshold} iterations, no tools, no done)`);
     console.warn(`   🚨 Forcing checkTaskStatus to break the loop`);
     return 'checkTaskStatus';
   }
