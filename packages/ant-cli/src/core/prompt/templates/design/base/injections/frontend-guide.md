@@ -75,11 +75,11 @@
 | **Backend API consumption** | Does the PRD describe backend API consumption where the backend may not yet exist? |
 | **External service adapters** | Does PRD specify third-party APIs or cross-project service dependencies? |
 
-**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and development-mode implementation strategies in the catalog section where that adapter is introduced.
+**Principle**: When the implementing service is unavailable, each infrastructure port consuming that service MUST define production and mock implementation strategies in the catalog section where that adapter is introduced.
 
-**Constraint**: State ONLY the port name, its role, and the two strategy labels (production + development-mode). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
+**Constraint**: State ONLY the port name, its role, and the two strategy labels (production + mock). Do NOT specify implementation details (class names, in-memory data structures, environment variable names, mock libraries).
 
-**Constraint**: Development-mode implementations MUST follow the same DTO contracts as production (as derived from PRD requirements).
+**Constraint**: Mock implementations MUST follow the same DTO contracts as production (as derived from PRD requirements).
 
 ---
 

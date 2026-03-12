@@ -11,7 +11,7 @@
 
 ### § API Integration & Error Strategy
 - Infrastructure adapter role (single adapter wrapping external communication)
-- Adapter isolation & development independence (which contracts have external dependencies, production + development-mode implementation strategies, switching mechanism per Infrastructure Independence Guardrail)
+- Adapter isolation & development independence (which contracts have external dependencies, production + mock implementation strategies, switching mechanism per Infrastructure Independence Guardrail)
 - Auth lifecycle POLICY (which boundary owns each auth phase; NOT step-by-step procedure like "get X → call Y → store Z")
 - Error propagation POLICY (how errors flow across boundaries; NOT HTTP status code enumerations like 401/400/500)
 
@@ -31,7 +31,7 @@
 - Each external service adapter: which boundary owns it, what it exposes inward
 - Connection lifecycle policy (initialization, reconnection, teardown ownership)
 - Adapter isolation principle (external SDK details do not leak into domain/orchestration boundaries)
-- Development independence per adapter with external dependencies (production + development-mode implementation strategies per Infrastructure Independence Guardrail)
+- Development independence per adapter with external dependencies (production + mock implementation strategies per Infrastructure Independence Guardrail)
 
 ### § Directory Structure & Boundary Mapping (conditional: if framework augmentation injected)
 - Boundary-to-directory mapping principle
