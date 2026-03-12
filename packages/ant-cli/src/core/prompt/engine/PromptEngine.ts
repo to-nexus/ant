@@ -562,6 +562,57 @@ export class PromptEngine {
   }
   
   /**
+   * Build prompt for diagnostic plan (verification/error tasks).
+   * Unlike feature plans, this focuses on build/test execution and error analysis.
+   */
+  async buildDiagnosticPlanPrompt(
+    task: { id: string; name: string; description: string; type: string },
+    directive: string,
+    projectCodeContext: any,
+    violationsText?: string,
+    options?: { hasTools?: boolean },
+    profile?: { language: string; [key: string]: any },
+  ): Promise<string> {
+    let formattedCodeContext = '';
+    if (projectCodeContext?.files && Array.isArray(projectCodeContext.files) && projectCodeContext.files.length > 0) {
+      const pathList = projectCodeContext.files.map((f: any) => `- \`${f.path}\``).join('\n');
+      formattedCodeContext = `**Retrieved Files** (${projectCodeContext.files.length} files):\n\n${pathList}`;
+    }
+    
+    const directoryTree = projectCodeContext?.directoryTree || '';
+    const isErrorTask = task.type === 'error';
+    const runTests = task.type === 'verification';
+    
+    // Load language-specific hints for build/test execution guidance
+    let languageHints = '';
+    if (profile?.language) {
+      const language = this.mapLanguageToTemplatePath(profile.language);
+      try {
+        languageHints = await this.deps.promptPort.render(`code/phases/verify/languages/${language}/hints`, {});
+        console.log(`📋 [PromptEngine] Injected diagnostic language hints for: ${language}`);
+      } catch {
+        // No hints template for this language — skip
+      }
+    }
+    
+    return await this.deps.promptPort.render('code/phases/plan/base-diagnostic', {
+      taskId: task.id,
+      taskName: task.name,
+      taskDescription: task.description,
+      directive: directive,
+      isErrorTask,
+      runTests,
+      projectCodeContext: formattedCodeContext,
+      directoryTree: directoryTree,
+      violationsText: violationsText,
+      isRetry: !!violationsText,
+      hasTools: options?.hasTools ?? false,
+      languageHints: languageHints,
+      hasLanguageHints: !!languageHints,
+    });
+  }
+
+  /**
    * Map profile language string to template directory name.
    * Mirrors ModeController.detectLanguage() mapping logic.
    */
