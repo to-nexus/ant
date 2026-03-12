@@ -10,6 +10,7 @@
 
 import { StateGraph, END } from '@langchain/langgraph';
 import type { ArchitectGraphState, ViolationType } from '../state';
+import type { CodeTask } from '../../../types/task';
 import { plan } from '../nodes/plan';
 import { codeGen } from '../nodes/codeGen/index';
 import { tool } from '../nodes/tool';
@@ -112,6 +113,25 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     } as any;
   }
 
+  // Batch split: original task was re-enqueued — skip completion marking
+  if (state._batchSplitRequeued === true) {
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      const workerId = (state as any).workerId ?? 0;
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+    }
+    return {
+      _taskCompleted: true,
+      currentTask: undefined,
+      violations: [],
+      _batchSplitRequeued: false,
+      _codeGenCallIndex: 0,
+      planText: '',
+      projectCodeContext: undefined,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    } as any;
+  }
+
   // Budget exhaustion guard: if checkTaskStatus is reached without LLM explicitly
   // signaling done via <done> tag, the task hit its call budget — treat as failure.
   const llmExplicitlyDone = state.llmResponse?.done === true;
@@ -132,8 +152,10 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
   // Diagnostic objective guard: build must pass for verification and error tasks.
   // Verification tasks additionally require tests to pass (if test files exist).
   // Error tasks only require build pass — tests are deferred to Final Verification.
+  // Pre-planned error tasks (from batch split) are exempt — Final Verification handles build check.
   const isDiagnosticTask = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
-  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
+  const isPrePlannedTask = !!(state.currentTask as CodeTask)?.prePlanText;
+  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask && !isPrePlannedTask) {
     const tracker = state._verificationTracker;
 
     if (!tracker) {
@@ -372,11 +394,11 @@ function buildWorkerSubgraph() {
   // Edges
   graph.addEdge('__start__' as any, 'plan' as any);
 
-  // Plan → tool (if tool_calls) or codeGen
+  // Plan → tool (if tool_calls), checkTaskStatus (if batch split), or codeGen
   graph.addConditionalEdges(
     'plan' as any,
     routeAfterPlan as any,
-    { tool: 'tool', codeGen: 'codeGen' } as any,
+    { tool: 'tool', codeGen: 'codeGen', checkTaskStatus: 'checkTaskStatus' } as any,
   );
 
   // CodeGen → Router (tool / checkTaskStatus / codeGen)

@@ -381,6 +381,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
+
+  /** Batch split occurred: original task was re-enqueued, skip completed marking in checkTaskStatus */
+  _batchSplitRequeued?: boolean;
   
   // ✅ Verification objective tracker (build/test pass status, reset on file modification)
   _verificationTracker?: VerificationTracker;

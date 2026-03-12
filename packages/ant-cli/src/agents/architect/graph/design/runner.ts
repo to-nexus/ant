@@ -47,11 +47,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
         
         // Reconstruct TaskQueue from saved array
         const { TaskQueue } = await import('../code/state');
-        const taskQueue = new TaskQueue<DesignTask>();
-        session.state.taskQueue?.forEach((task: any) => taskQueue.push(task));
-        
-        // ✅ Restore ALL state from checkpoint
-        initial.taskQueue = taskQueue;
+        initial.taskQueue = TaskQueue.from<DesignTask>(session.state.taskQueue);
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
@@ -236,12 +232,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
           
           if (session.state?.taskQueue) {
             const { TaskQueue } = await import('../code/state');
-            const taskQueue = new TaskQueue<DesignTask>();
-            session.state.taskQueue.forEach((task: any) => taskQueue.push(task));
-            
             state = {
               ...initial,
-              taskQueue,
+              taskQueue: TaskQueue.from<DesignTask>(session.state.taskQueue),
               currentTask: session.state.currentTask,
               completedTasks: session.state.completedTasks || [],
               completedTasksDetails: session.state.completedTasksDetails || [],
@@ -266,14 +259,8 @@ export async function runDesignGraph(initial: DesignGraphState) {
         pausedTask.interrupted = true;
         
         const { TaskQueue } = await import('../code/state');
-        const newQueue = new TaskQueue<DesignTask>();
-        newQueue.push(pausedTask);
-        state.taskQueue.getAll().forEach((task: any) => {
-          if (task.id !== state.currentTask!.id) {
-            newQueue.push(task);
-          }
-        });
-        state.taskQueue = newQueue;
+        const remaining = state.taskQueue.getAll().filter((t: any) => t.id !== state.currentTask!.id);
+        state.taskQueue = TaskQueue.from<DesignTask>([pausedTask, ...remaining]);
         state.currentTask = undefined;
       }
       

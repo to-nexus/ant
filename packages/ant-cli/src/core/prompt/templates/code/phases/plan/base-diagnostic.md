@@ -75,6 +75,10 @@ The previous fix attempt did not resolve all issues. Your new plan MUST:
 
 ## Output Format
 
+Choose the format based on error volume:
+
+### Format A: Single Plan (fewer than 15 files to modify)
+
 ```
 <analysis>
 (Your reasoning: what errors exist, how they group, what root causes you identified,
@@ -114,7 +118,61 @@ which files need changes, in what order)
 </plan>
 ```
 
-**Constraint**: List ALL files that need modification. Do not fix one error and leave others — the execution phase will apply all fixes in a single batch.
+### Format B: Batched Plan (15 or more files to modify)
+
+When the remediation scope is large, group fixes into batches by root cause. Each batch becomes an independent fix task executed separately.
+
+```
+<analysis>
+(Your reasoning: what errors exist, how they group, what root causes you identified.
+Explain WHY you grouped them this way — related errors that share a root cause
+or have cross-file dependencies MUST be in the same batch.)
+</analysis>
+
+<plan>
+{
+  "task": {
+    "id": "{{taskId}}",
+    "goal": "Fix N build errors (M root causes) — batched"
+  },
+  "diagnostics": {
+    "command": "[build/test command that was run]",
+    "totalErrors": N,
+    "rootCauses": [
+      {
+        "cause": "[description of root cause]",
+        "affectedFiles": ["file1.ts", "file2.ts"],
+        "errorCount": N
+      }
+    ]
+  },
+  "batches": [
+    {
+      "name": "[short descriptive name for this batch]",
+      "rationale": "[why these errors are grouped together]",
+      "modify": [
+        {
+          "target": "[file path]",
+          "action": "[what to fix]",
+          "changes": ["[specific change 1]", "[specific change 2]"],
+          "rootCause": "[which root cause this addresses]"
+        }
+      ],
+      "create": [],
+      "delete": []
+    }
+  ]
+}
+</plan>
+```
+
+**Principle**: Batch grouping must reflect dependency relationships. If modifying file A requires understanding the change in file B, both MUST be in the same batch.
+
+**Constraint**: Each batch should target no more than ~10 files. Prefer fewer, focused batches over many single-file batches.
+
+**Constraint**: Order batches so that foundational changes (shared types, interfaces, configs) come first and consumers come later.
+
+**Constraint**: List ALL files that need modification across all batches. Do not fix one error and leave others.
 
 **Constraint**: If build{{#if runTests}}/test{{/if}} succeeds with no errors, output an empty plan:
 

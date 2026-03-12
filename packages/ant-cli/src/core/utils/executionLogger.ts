@@ -28,7 +28,8 @@ export type ExecutionEventType =
   | 'violation_detected'
   | 'phase_complete'
   | 'tool_call'
-  | 'thinking_only';
+  | 'thinking_only'
+  | 'batch_split';
 
 export interface ExecutionEvent {
   /** ISO timestamp */

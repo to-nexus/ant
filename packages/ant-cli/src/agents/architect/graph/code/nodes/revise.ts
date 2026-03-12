@@ -1,7 +1,7 @@
 import { LLMClient } from "../../../../../core/ports";
 import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
 import { ArchitectGraphState } from "../state";
-import { CodeTask } from "../../../types/task";
+import { CodeTask, TaskQueue } from "../../../types/task";
 import { saveCheckpoint } from "./checkpoint";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 
@@ -343,14 +343,7 @@ function applyTaskModifications(
   }
   
   // 3. Rebuild task queue
-  const TaskQueueClass = taskQueue.constructor as any;
-  const newTaskQueue = new TaskQueueClass();
-  
-  // Add remaining tasks
-  modifiedTasks.forEach(task => newTaskQueue.push(task));
-  
-  // Add new tasks (priority-based insertion is handled by TaskQueue itself)
-  newTasks.forEach(task => newTaskQueue.push(task));
+  const newTaskQueue = TaskQueue.from<CodeTask>([...modifiedTasks, ...newTasks]);
   
   // 4. Update featureTasks map
   const featureTasks = new Map(state.featureTasks || new Map());

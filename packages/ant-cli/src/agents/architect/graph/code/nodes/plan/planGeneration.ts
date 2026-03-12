@@ -83,13 +83,19 @@ export async function buildPlanPrompt(
 
   const isDiagnosticTask = task.type === 'verification' || task.type === 'error';
   if (isDiagnosticTask) {
+    const profile = state.profile || (state as any).detectionReport?.profile;
+    if (!profile) {
+      console.warn(`⚠️ [Plan] Diagnostic task "${task.name}": profile is null (state.profile=${!!state.profile}, detectionReport.profile=${!!(state as any).detectionReport?.profile})`);
+    } else {
+      console.log(`🔧 [Plan] Diagnostic profile: language=${profile.language}, framework=${profile.framework || 'none'}`);
+    }
     return await promptEngine.buildDiagnosticPlanPrompt(
       task,
       state.directive || '',
       projectCodeContext,
       violationsText,
       { hasTools: options?.hasTools ?? false },
-      state.profile,
+      profile,
     );
   }
 
@@ -571,6 +577,7 @@ export async function runPlanLLMWithTools(
   }
 
   // Log prompt for plan-toolLoop so it appears in prompt-*.md debug files
+  const isDiagnostic = task.type === 'verification' || task.type === 'error';
   const planRound = Math.floor((messages.length - 1) / 2);
   const jobId = state._httpJobId || 'unknown';
   if (state.context?.featurePath) {
@@ -588,8 +595,8 @@ export async function runPlanLLMWithTools(
           taskId: task.id,
           taskName: task.name,
           templatePath: 'plan-toolLoop (with tools)',
-          usedTemplates: ['code/base/injections/plan-tools-batch'],
-          resolvedPartials: collectResolvedPartials(['code/base/injections/plan-tools-batch']),
+          usedTemplates: [isDiagnostic ? 'code/phases/plan/rules-plan-diagnostic' : 'code/base/injections/plan-tools-batch'],
+          resolvedPartials: collectResolvedPartials([isDiagnostic ? 'code/phases/plan/rules-plan-diagnostic' : 'code/base/injections/plan-tools-batch']),
           injectedVariables: {
             round: planRound,
             historyMessages: messages.length,
@@ -621,7 +628,6 @@ export async function runPlanLLMWithTools(
     if (planText.length >= 50) {
       // Diagnostic shortcut: if plan indicates no errors, return empty planText
       // so codeGen can immediately mark done without LLM interpretation
-      const isDiagnostic = task.type === 'verification' || task.type === 'error';
       if (isDiagnostic) {
         try {
           const parsed = JSON.parse(planText);
@@ -665,6 +671,9 @@ export async function finalizePlanFromExploration(
     ? 'You have finished running build/test commands and exploring. Based on ALL the tool results above, ' +
       'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
       'and output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+      'If 15 or more files need modification, use the BATCHED format: the JSON must contain a top-level "batches" array ' +
+      'where each batch groups related fixes by root cause (with "name", "rationale", "modify", "create", "delete" fields). ' +
+      'Otherwise use the single-plan format with an "implementation" object containing "modify", "create", "delete" arrays. ' +
       'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.'
     : 'You have finished exploring. Based on ALL the tool results above, ' +
       'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +

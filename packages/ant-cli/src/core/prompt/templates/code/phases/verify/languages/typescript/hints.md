@@ -41,3 +41,18 @@
 **Constraint**: Do NOT attempt to build a package that imports from another workspace package until that dependency package compiles successfully.
 
 ⚠️ **Blind spot**: TypeScript project references (`references` in tsconfig) require `composite: true` in referenced projects. A missing `composite` flag causes silent build failures with unhelpful error messages.
+
+---
+
+### Full Type Error Discovery
+
+**Principle**: Many build tools (Next.js, CRA, Vite with tsc plugin) stop type checking at the first error or first few errors. To plan comprehensive fixes, ALL type errors must be collected in a single run.
+
+| Checkpoint | Observation Target |
+|-----------|-------------------|
+| **tsconfig.json exists** | If present, `npx tsc --noEmit` (or `pnpm tsc --noEmit`, etc.) reports all type errors across the entire project in one pass. |
+| **Build tool behavior** | Does the project's build command truncate error output? If only 1-3 errors appear, suspect truncation. |
+
+**Constraint**: Before running the project's build command, run the type checker directly (`tsc --noEmit` with the appropriate package manager) to collect the complete set of type errors. Plan fixes for ALL reported errors, then confirm with the project's build command.
+
+⚠️ **Blind spot**: `next build`, `react-scripts build`, and similar framework CLIs embed type checking but often abort on the first error. Relying solely on them causes a fix-one-discover-next loop that wastes iteration cycles.

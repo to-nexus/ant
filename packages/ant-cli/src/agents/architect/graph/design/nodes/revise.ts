@@ -1,6 +1,6 @@
 import { LLMClient } from "../../../../../core/ports";
 import { DesignGraphState } from "../state";
-import { DesignTask } from "../../../types/task";
+import { DesignTask, TaskQueue } from "../../../types/task";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
 
@@ -360,14 +360,7 @@ function applyDesignTaskModifications(
   }
   
   // 3. Rebuild task queue
-  const TaskQueueClass = taskQueue.constructor as any;
-  const newTaskQueue = new TaskQueueClass();
-  
-  // Add remaining tasks
-  modifiedTasks.forEach(task => newTaskQueue.push(task));
-  
-  // Add new tasks (priority-based insertion is handled by TaskQueue itself)
-  newTasks.forEach(task => newTaskQueue.push(task));
+  const newTaskQueue = TaskQueue.from<DesignTask>([...modifiedTasks, ...newTasks]);
   
   console.log(`   📊 Queue: ${initialCount} → ${newTaskQueue.size()} tasks (${tasksToRemove.length} removed, ${newTasks.length} added)`);
   

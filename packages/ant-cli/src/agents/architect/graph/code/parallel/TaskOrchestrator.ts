@@ -495,16 +495,12 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   private assignTask(workerId: number, task: T): T {
-    // ✅ Initialize timing.startedAt so in-progress tasks show elapsed time in Kanban
-    // TaskTimingHelper.startTask() in plan node will see existing timing and skip (no-op)
-    if (!task.timing) {
-      task.timing = {
-        startedAt: new Date().toISOString(),
-        totalPausedDuration: 0,
-      };
-    } else if (!task.timing.startedAt) {
-      task.timing.startedAt = new Date().toISOString();
-    }
+    // Always reset timing — stale startedAt from failed/checkpoint-restored tasks
+    // would cause cumulative elapsed time across sequential tasks.
+    task.timing = {
+      startedAt: new Date().toISOString(),
+      totalPausedDuration: 0,
+    };
 
     this.runningTasks.set(workerId, task);
     // Broadcast kanban immediately when task starts (not just on completion)

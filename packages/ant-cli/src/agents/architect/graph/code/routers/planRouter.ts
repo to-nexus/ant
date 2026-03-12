@@ -1,18 +1,23 @@
 /**
  * Plan Router - Plan node exit routing
  *
- * If plan left tool calls (_planExploring + llmResponse.toolCalls) -> tool
- * Otherwise (planText ready) -> codeGen
+ * Priority:
+ * 1. Batch split completed (plan set done=true) -> checkTaskStatus (skip codeGen entirely)
+ * 2. Plan exploring with tool calls -> tool
+ * 3. Otherwise (planText ready) -> codeGen
  */
 
 import { ArchitectGraphState } from '../state';
 
 export function routeAfterPlan(state: ArchitectGraphState): string {
-  const exploring = state._planExploring === true;
-  const hasToolCalls = (state.llmResponse?.toolCalls?.length ?? 0) > 0;
+  if (state.llmResponse?.done === true && !state._planExploring) {
+    console.log(`[planRouter] Batch split completed (done=true from plan) → checkTaskStatus`);
+    return 'checkTaskStatus';
+  }
 
-  if (exploring && hasToolCalls) {
+  if (state._planExploring === true && (state.llmResponse?.toolCalls?.length ?? 0) > 0) {
     return 'tool';
   }
+
   return 'codeGen';
 }
