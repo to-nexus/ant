@@ -42,9 +42,17 @@ Priority ordering:
 3. Logic/runtime errors (unblock execution)
 4. Test failures (verify correctness)
 
+### Complete Error Discovery
+
+**Principle**: Some build tools abort after the first error or first few errors. If the build output shows only 1-3 errors, a dedicated type checker or linter may reveal more.
+
+**Constraint**: When language-specific hints are provided (below), follow their guidance on running a comprehensive error check BEFORE the project's build command. This prevents a fix-one-discover-next loop.
+
+**Constraint**: If the first build run shows errors and a comprehensive type check command is available, run it to surface ALL errors before producing the remediation plan.
+
 ### Plan Completeness
 
-**Constraint**: The plan must account for ALL errors in the build output.
+**Constraint**: The plan must account for ALL errors discovered across all diagnostic commands.
 Do not plan a fix for only the first error — the execution phase expects a comprehensive plan.
 
 **Constraint**: If the same file needs multiple changes, consolidate them into a single `modify` entry with multiple `changes`.

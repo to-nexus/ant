@@ -32,6 +32,147 @@ import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, buildPlanPrompt
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
 import { detectTestFiles } from "./testFileDetector";
 
+/**
+ * Strip markdown code fences from a string if present.
+ * Handles: ```json\n...\n```, ```\n...\n```, etc.
+ */
+function stripMarkdownFences(text: string): string {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n\s*```$/);
+  if (fenceMatch) return fenceMatch[1].trim();
+  return trimmed;
+}
+
+/**
+ * Check whether any two batches share files in their modify/create/delete lists.
+ * When overlap exists, error sub-tasks must run exclusively (sequential).
+ * When no overlap, they can safely run in parallel.
+ */
+function computeBatchFileOverlap(batches: any[]): boolean {
+  const extractFiles = (b: any): Set<string> => {
+    const files = new Set<string>();
+    for (const m of (b.modify || [])) files.add(typeof m === 'string' ? m : m.file);
+    for (const c of (b.create || [])) files.add(typeof c === 'string' ? c : c.file);
+    for (const d of (b.delete || [])) files.add(typeof d === 'string' ? d : d);
+    return files;
+  };
+  const allFiles = batches.map(extractFiles);
+  for (let i = 0; i < allFiles.length; i++) {
+    for (let j = i + 1; j < allFiles.length; j++) {
+      for (const file of allFiles[i]) {
+        if (allFiles[j].has(file)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Detect batched diagnostic plan and split into sub-tasks.
+ * Called from every path that produces a planText for diagnostic tasks.
+ *
+ * When the plan JSON contains a `batches` array with >1 entries,
+ * each batch becomes an independent error sub-task with prePlanText.
+ * The original task is re-enqueued (not completed) so it re-runs after all error fixes.
+ *
+ * @returns updated planText (empty string if split occurred, original otherwise)
+ */
+function processDiagnosticBatchSplit(
+  state: ArchitectGraphState,
+  planText: string,
+  nextTask: CodeTask,
+): string {
+  const isDiagnosticTask = nextTask.type === 'verification' || nextTask.type === 'error';
+
+  const logBatchSplit = (data: Record<string, any>) => {
+    if (state.context?.featurePath && state._httpJobId) {
+      import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+        getExecutionLogger({
+          featurePath: state.context!.featurePath!,
+          jobId: state._httpJobId!,
+          jobType: 'code',
+        }).log('batch_split', data, nextTask.id);
+      }).catch(() => {});
+    }
+  };
+
+  if (!isDiagnosticTask) {
+    return planText;
+  }
+  if (!planText || planText.length <= 50) {
+    logBatchSplit({ action: 'skipped', reason: 'plan_too_short', planTextLen: planText?.length ?? 0, taskName: nextTask.name });
+    return planText;
+  }
+  if (!state.taskQueue || typeof state.taskQueue.push !== 'function' || typeof state.taskQueue.getAll !== 'function') {
+    logBatchSplit({ action: 'skipped', reason: 'taskQueue_missing', taskQueueType: typeof state.taskQueue, constructor: state.taskQueue?.constructor?.name ?? 'N/A', taskName: nextTask.name });
+    return planText;
+  }
+
+  try {
+    const jsonStr = stripMarkdownFences(planText);
+    const parsed = JSON.parse(jsonStr);
+    if (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1) {
+      logBatchSplit({ action: 'skipped', reason: 'no_batches', batchCount: parsed.batches?.length ?? 0, taskName: nextTask.name });
+      return planText;
+    }
+
+    const hasFileOverlap = computeBatchFileOverlap(parsed.batches);
+    const parallelGroup = hasFileOverlap ? undefined : `error-batch-${Date.now()}`;
+
+    const subTaskIds: string[] = [];
+    for (let i = 0; i < parsed.batches.length; i++) {
+      const batch = parsed.batches[i];
+      const batchPlanText = JSON.stringify({
+        task: { id: `batch-${i}`, goal: batch.name },
+        diagnostics: parsed.diagnostics,
+        implementation: {
+          modify: batch.modify || [],
+          create: batch.create || [],
+          delete: batch.delete || [],
+        },
+      });
+
+      const subTask: CodeTask = {
+        id: `error-fix-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        name: `Fix: ${batch.name}`,
+        description: batch.rationale || batch.name,
+        type: 'error',
+        priority: (nextTask.priority || 500) - 1,
+        prePlanText: batchPlanText,
+        exclusive: hasFileOverlap,
+        parallelGroup,
+      };
+      state.taskQueue.push(subTask);
+      subTaskIds.push(subTask.id);
+    }
+
+    // Re-enqueue the original task (clean state) instead of creating a new one.
+    // Priority FINAL_VERIFICATION(1000) > error priority(999) ensures it runs last.
+    const requeuedTask: CodeTask = {
+      ...nextTask,
+      timing: undefined,
+      interrupted: undefined,
+    };
+    state.taskQueue.push(requeuedTask);
+    state._batchSplitRequeued = true;
+
+    logBatchSplit({
+      action: 'created',
+      batchCount: parsed.batches.length,
+      totalErrors: parsed.diagnostics?.totalErrors ?? 0,
+      rootCauses: parsed.diagnostics?.rootCauses?.length ?? 0,
+      subTaskIds,
+      taskQueueSize: state.taskQueue.size(),
+      taskName: nextTask.name,
+      hasFileOverlap,
+    });
+    return '';
+  } catch (err) {
+    logBatchSplit({ action: 'skipped', reason: 'json_parse_error', error: (err as Error).message, planTextPreview: planText.substring(0, 120), taskName: nextTask.name });
+    return planText;
+  }
+}
+
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   
   state.recursionCount = (state.recursionCount || 0) + 1;
@@ -241,6 +382,41 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 0.6: Pre-planned error task — skip plan generation entirely
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // When a diagnostic task splits into batches, each batch becomes an error task
+  // with prePlanText already set. Skip all plan generation and go straight to codeGen.
+  const hasPrePlanText = !isRetry && (nextTask as CodeTask).prePlanText && (nextTask as CodeTask).prePlanText!.length > 50;
+  
+  if (hasPrePlanText) {
+    console.log(`\n⚡ [Plan] Pre-planned error task "${nextTask.name}" — using prePlanText (${(nextTask as CodeTask).prePlanText!.length} chars)`);
+    console.log(`   Skipping: keywords, RAG, diagnostic tool loop, planText generation`);
+    console.log(`   Build guard: disabled (deferred to Final Verification)`);
+    
+    // Clear verificationTracker — build guard is handled by Final Verification
+    state._verificationTracker = undefined;
+    
+    // Exit node for workflow tracking
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+    }
+    
+    return {
+      ...state,
+      currentTask: nextTask,
+      planText: (nextTask as CodeTask).prePlanText!,
+      retries: 0,
+      completedTasksDetails: state.completedTasksDetails || [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      workspaceConfig: state.workspaceConfig,
+      conversationHistory: [],
+      _planExploring: false,
+      planConversationHistory: undefined,
+    };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0.7: Diagnostic task retry — always re-diagnose
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Diagnostic tasks (verification/error) must re-run build/test on retry to get
@@ -258,8 +434,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const overLimit = state.planConversationHistory.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
     if (overLimit) {
       console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; finalizing plan from exploration context`);
-      const finalizedPlan = await finalizePlanFromExploration(state, state.planConversationHistory, nextTask);
+      let finalizedPlan = await finalizePlanFromExploration(state, state.planConversationHistory, nextTask);
       if (finalizedPlan) {
+        const preSplitPlan = finalizedPlan;
+        finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
+        const batchSplitOccurred = preSplitPlan.length > 50 && finalizedPlan === '';
         state._planExploring = false;
         state.planConversationHistory = undefined;
         if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -279,6 +458,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           workspaceConfig: state.workspaceConfig,
+          ...(batchSplitOccurred ? {
+            llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
+          } : {}),
         };
       }
       console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
@@ -302,7 +484,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         };
       }
       if (result && 'planText' in result) {
-        const planText = result.planText;
+        const preSplitPlan = result.planText;
+        const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
+        const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
         const updatedState = {
           ...state,
           currentTask: nextTask,
@@ -317,6 +501,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           workspaceConfig: state.workspaceConfig,
+          ...(batchSplitOccurred ? {
+            llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
+          } : {}),
         };
         if (state.deps?.workflowUpdate && state._httpJobId) {
           await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
@@ -616,6 +803,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   if (state.violations && state.violations.length > 0) {
     console.log(`📋 [Plan] Passing ${state.violations.length} violation(s) to CodeGen for prompt injection`);
   }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 3.5: Diagnostic batch split — large error sets become sub-tasks
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const preSplitPlanText = planText ?? '';
+  planText = processDiagnosticBatchSplit(state, preSplitPlanText, nextTask);
+  const batchSplitOccurred = preSplitPlanText.length > 50 && planText === '';
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Update state
@@ -626,16 +820,18 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       currentTask: nextTask,
       projectCodeContext,
       referenceCodeContexts,
-      lessons,  // ✅ Include lessons from RAG for prompt injection
-      planText,  // ✅ Store in state.planText (single source of truth)
-      retries: isRetry ? state.retries : 0,  // ✅ Clear retries for new task
+      lessons,
+      planText,
+      retries: isRetry ? state.retries : 0,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
-      workspaceConfig: state.workspaceConfig,  // ✅ CRITICAL: Explicitly preserve workspaceConfig
+      workspaceConfig: state.workspaceConfig,
       _planExploring: false,
       planConversationHistory: undefined,
-      // ✅ violations and violationMessage are preserved in state (not cleared)
+      ...(batchSplitOccurred ? {
+        llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
+      } : {}),
     };
     
     // ✅ DEBUG: Verify planText is properly stored

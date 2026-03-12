@@ -6,7 +6,15 @@
 
 {{> code/base/injections/tool-calling-rules-compact}}
 
-{{> code/base/injections/batch-execution}}
+## Tool Call Batching
+
+**Principle**: The system processes ALL tool calls from a single response as one batch.
+
+**Constraint**: When you have identified multiple independent actions (reads, edits), issue ALL in ONE response.
+
+**Constraint**: NEVER issue a single tool call when you can already identify additional needed tool calls from prior results.
+
+---
 
 ## MANDATORY: Follow Remediation Plan
 

@@ -48,6 +48,12 @@ export interface CodeTask extends BaseTask {
   errors?: string[];               // Error messages (for error tasks)
   category?: string;               // Error category (for error tasks)
   /**
+   * Pre-built planText from diagnostic batch split.
+   * When present, plan node skips diagnostic generation and uses this directly as planText.
+   * Created when a diagnostic task detects many errors and splits into sub-tasks.
+   */
+  prePlanText?: string;
+  /**
    * UI task hint (set by decompose LLM).
    * When true, UI docs/assets (Figma-derived) may be injected into prompts.
    */
@@ -174,7 +180,20 @@ export interface DesignTask extends BaseTask {
  */
 export class TaskQueue<T extends BaseTask> {
   private tasks: T[] = [];
-  
+
+  /**
+   * Unified factory: Array, TaskQueue instance, or undefined/null → TaskQueue instance.
+   * Use at every serialization boundary (checkpoint restore, worker state, session resume).
+   */
+  static from<T extends BaseTask>(data: T[] | TaskQueue<T> | undefined | null): TaskQueue<T> {
+    if (data instanceof TaskQueue) return data;
+    const q = new TaskQueue<T>();
+    if (Array.isArray(data)) {
+      data.forEach(t => q.push(t));
+    }
+    return q;
+  }
+
   push(task: T): void {
     const existingIndex = this.tasks.findIndex(t => t.id === task.id);
     if (existingIndex !== -1) {

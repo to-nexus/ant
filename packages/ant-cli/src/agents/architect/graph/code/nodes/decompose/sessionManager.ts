@@ -114,10 +114,7 @@ export function restoreFromSession(
   state: ArchitectGraphState,
   session: SessionData
 ): ArchitectGraphState {
-  const taskQueue = new TaskQueue<CodeTask>();
-  session.state.taskQueue.forEach((task: CodeTask) => {
-    taskQueue.push(task);
-  });
+  const taskQueue = TaskQueue.from<CodeTask>(session.state.taskQueue);
   
   const featureTasks = new Map<string, CodeTask>();
   session.state.taskQueue.forEach((task: CodeTask) => {

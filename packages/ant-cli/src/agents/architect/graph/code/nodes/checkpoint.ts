@@ -73,6 +73,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       chatSource: state.chatSource,  // ✅ Save chat source flag
       referenceRequests: state.referenceRequests || [],  // ✅ Save reference requests for tool calling
       designDocUnknownPackages: state.designDocUnknownPackages,  // Save design-prescribed dependencies for plan injection
+      profile: state.profile,  // Save profile directly (also in detectionReport, but direct access simplifies restore)
       // ✅ Save DetectionReport (unified detection result)
       detectionReport: state.detectionReport,
       // ✅ CRITICAL: Save artifacts for CodeGen validation on resume

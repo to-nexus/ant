@@ -588,7 +588,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           callIndex: state._codeGenCallIndex,
-          templatePath: state.currentTask?.type === 'verification' ? 'code/phases/verify/base' : 'code/phases/execute/base',
+          templatePath: state.currentTask?.type === 'verification' ? 'code/phases/verify/base'
+            : state.currentTask?.type === 'error' ? 'code/phases/error/base'
+            : 'code/phases/execute/base',
           usedTemplates: [
             promptResult.modeConfig.templates.base,
             promptResult.modeConfig.templates.rules,
@@ -647,9 +649,21 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(`**${state.currentTask.name}**`);
     lines.push(``);
     
-    // ✅ CRITICAL: Inject planText (structured JSON from Plan node)
-    // planText is already structured - no parsing needed
     const isDiagnosticTask = state.currentTask.type === 'verification' || state.currentTask.type === 'error';
+
+    // Safety guard: detect batched planText that leaked through processDiagnosticBatchSplit failure.
+    // If the plan contains a `batches` array, it was meant to be split into sub-tasks, not executed directly.
+    // Log INVARIANT VIOLATION but do NOT modify the planText — silent fallbacks mask bugs.
+    if (state.planText && isDiagnosticTask) {
+      try {
+        const stripped = state.planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+        const parsed = JSON.parse(stripped);
+        if (parsed.batches && Array.isArray(parsed.batches) && parsed.batches.length > 1) {
+          console.error(`❌ [CodeGen] INVARIANT VIOLATION: Batched planText leaked to codeGen (${parsed.batches.length} batches). processDiagnosticBatchSplit should have split this. planRouter should have routed to checkTaskStatus. This is a system bug.`);
+        }
+      } catch { /* not valid JSON — proceed normally */ }
+    }
+
     if (state.planText) {
       lines.push(`**Goal**: ${state.currentTask.description}`);
       lines.push(``);
