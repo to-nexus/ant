@@ -291,7 +291,7 @@ Before outputting, verify:
 - [ ] For UI: assets are listed if needed
 - [ ] For UI: design tokens are specified
 - [ ] Security: input validation boundaries, secrets management, error exposure considered
-- [ ] Mock adapters: if task creates adapter switching logic, plan includes `.env.example`/`.env` modification with mock switching variable
+- [ ] Mock adapters: external service adapters include mock implementations with env var switching
 
 ────────────────────────────────────────────────────────────────────────────────
 ## ⚠️ OUTPUT CONSTRAINTS
