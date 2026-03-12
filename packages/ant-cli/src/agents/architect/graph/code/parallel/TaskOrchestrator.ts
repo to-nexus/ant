@@ -671,7 +671,11 @@ export class TaskOrchestrator<T extends BaseTask> {
         interrupted: true,
       } as T);
     }
-    const fullQueue = [...runningAsTasks, ...this.taskQueue.getAll()];
+    // Deduplicate: if batch-split re-enqueued a task that is still in runningTasks,
+    // the running version (with latest timing/tokenUsage) takes precedence.
+    const runningIds = new Set(runningAsTasks.map(t => t.id));
+    const queueTasks = this.taskQueue.getAll().filter(t => !runningIds.has(t.id));
+    const fullQueue = [...runningAsTasks, ...queueTasks];
 
     const checkpoint: ParallelCheckpoint<T> = {
       taskQueue: fullQueue,
@@ -742,6 +746,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.drain();
       this.signalWorkersToStop();
       await this.saveCheckpoint({ reason, canResume: true });
+      this.broadcastKanban();
       this.checkAllDone();
     });
   }

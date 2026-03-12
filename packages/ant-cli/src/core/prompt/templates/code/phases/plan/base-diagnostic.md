@@ -75,9 +75,9 @@ The previous fix attempt did not resolve all issues. Your new plan MUST:
 
 ## Output Format
 
-Choose the format based on error volume:
+Choose the format based on remediation scope:
 
-### Format A: Single Plan (fewer than 15 files to modify)
+### Format A: Single Plan (fewer than 5 files to modify AND only 1 root cause)
 
 ```
 <analysis>
@@ -118,9 +118,9 @@ which files need changes, in what order)
 </plan>
 ```
 
-### Format B: Batched Plan (15 or more files to modify)
+### Format B: Batched Plan (5 or more files to modify OR 2 or more root causes)
 
-When the remediation scope is large, group fixes into batches by root cause. Each batch becomes an independent fix task executed separately.
+When multiple independent root causes exist or many files need changes, group fixes into batches by root cause. Each batch becomes an independent fix task executed separately.
 
 ```
 <analysis>
