@@ -44,6 +44,25 @@ function stripMarkdownFences(text: string): string {
 }
 
 /**
+ * When a diagnostic task (verification/error) finishes its plan tool-loop with
+ * build/test already passing and no plan to execute, codeGen would only ask the
+ * LLM to output `<done>true</done>` — a wasted call.  Detect this and let the
+ * plan node set `done: true` directly so planRouter skips codeGen entirely.
+ */
+function isDiagnosticPassWithoutCodeGen(
+  state: ArchitectGraphState, planText: string, batchSplitOccurred: boolean,
+): boolean {
+  if (batchSplitOccurred) return false;
+  if (planText !== '') return false;
+  const task = state.currentTask;
+  if (task?.type !== 'verification' && task?.type !== 'error') return false;
+  const tracker = state._verificationTracker;
+  if (!tracker || !tracker.buildPassed) return false;
+  if (tracker.testsRequired && !tracker.testPassed) return false;
+  return true;
+}
+
+/**
  * Check whether any two batches share files in their modify/create/delete lists.
  * When overlap exists, error sub-tasks must run exclusively (sequential).
  * When no overlap, they can safely run in parallel.
@@ -439,6 +458,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         const preSplitPlan = finalizedPlan;
         finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
         const batchSplitOccurred = preSplitPlan.length > 50 && finalizedPlan === '';
+        const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
         state._planExploring = false;
         state.planConversationHistory = undefined;
         if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -458,7 +478,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           workspaceConfig: state.workspaceConfig,
-          ...(batchSplitOccurred ? {
+          ...((batchSplitOccurred || diagnosticPass) ? {
             llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
           } : {}),
         };
@@ -487,6 +507,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         const preSplitPlan = result.planText;
         const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
         const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
+        const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, planText, batchSplitOccurred);
         const updatedState = {
           ...state,
           currentTask: nextTask,
@@ -501,7 +522,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           workspaceConfig: state.workspaceConfig,
-          ...(batchSplitOccurred ? {
+          ...((batchSplitOccurred || diagnosticPass) ? {
             llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
           } : {}),
         };
@@ -810,6 +831,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const preSplitPlanText = planText ?? '';
   planText = processDiagnosticBatchSplit(state, preSplitPlanText, nextTask);
   const batchSplitOccurred = preSplitPlanText.length > 50 && planText === '';
+  const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, planText, batchSplitOccurred);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Update state
@@ -829,7 +851,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       workspaceConfig: state.workspaceConfig,
       _planExploring: false,
       planConversationHistory: undefined,
-      ...(batchSplitOccurred ? {
+      ...((batchSplitOccurred || diagnosticPass) ? {
         llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
       } : {}),
     };
