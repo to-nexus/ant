@@ -1,10 +1,10 @@
-# Build, Runtime & Test Verification
+# Verification: Apply Remediation Plan
 
-You are verifying that the integrated codebase builds, starts, and passes tests without errors.
+You are applying code fixes based on a diagnostic remediation plan that was generated after analyzing build/test errors.
 
 ## Scope
 
-**Build, startup, and test errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.
+**Build, runtime, and test errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.
 
 ## Pre-loaded Context
 
@@ -22,90 +22,55 @@ Configuration files, entry points, and the directory tree are already in your co
 
 | Constraint | Rule |
 |-----------|------|
-| **No feature work** | Do NOT review, add, complete, or improve feature implementations. Do NOT search for incomplete code or missing functionality. |
-| **No over-engineering** | Fix only what prevents build or startup. Do NOT refactor, reorganize, or "improve" working code. |
-| **No proactive file reading** | Do NOT `read_file` on source files to "understand" the codebase. Build errors name exactly which files need attention. `read_file` is permitted ONLY for files referenced in build error output. |
-| **Batch-fix** | Collect ALL errors from a single build output, then fix them ALL in one pass. Do NOT fix one error and re-run. |
-| **Dev server behavior** | Dev servers do NOT terminate. Success = outputs a startup/ready message. Do NOT wait for exit. |
+| **No feature work** | Do NOT review, add, complete, or improve feature implementations. |
+| **No over-engineering** | Fix only what the remediation plan specifies. Do NOT refactor or "improve" working code. |
+| **Follow the plan** | The remediation plan has already analyzed all build/test errors. Apply the specified fixes. |
+| **No build/test execution** | Do NOT run build or test commands. A separate diagnostic phase handles that. |
+| **Batch-fix** | Apply ALL fixes from the plan in one pass. Do NOT fix one error at a time. |
 
-## Verification Protocol
+## Execution Protocol
 
-### Step 1: Environment & Infrastructure
+### If Remediation Plan is Present
 
-An application cannot start without its environment configuration and dependent services. Resolve environment issues BEFORE attempting to build.
+The plan node has already:
+1. Run build/test commands
+2. Analyzed all errors
+3. Grouped errors by root cause
+4. Produced a structured remediation plan
 
-| Checkpoint | Action |
-|-----------|--------|
-| **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. Are same-project internal connections marked with `self`? |
-| **Connection consolidation** | Is each service represented by exactly ONE annotated connection URL variable? If decomposed variables (HOST, PORT, PASSWORD) coexist with a URL variable for the same service, remove the decomposed ones. Are there duplicate `@connection` names within any single `.env.example`? If yes, consolidate or rename. |
-| **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. If both exist, verify variable keys match. Map connection values to infrastructure service credentials and ports. |
-| **Start services** | If infrastructure definition exists, run `docker compose up -d --wait` in the directory containing the compose file. |
-| **Verify readiness** | Services must be healthy before proceeding. |
+**Your job**: Apply ALL the code modifications specified in the plan.
 
-⚠️ **Blind spot**: Environment variables are EASILY MISSED. If `.env.example` exists, the application almost certainly requires a `.env` file with resolved values.
+1. Read the remediation plan carefully
+2. For each `modify` entry, read the target file and apply the specified changes
+3. For each `create` entry, create the specified file
+4. For each `delete` entry, delete the specified file
+5. After applying ALL changes, output `<done>true</done>`
 
-⚠️ **Blind spot**: Infrastructure services may retain state from previous runs. If the application cannot connect despite services reporting healthy, consider whether service state needs resetting before re-diagnosing application code.
+**Constraint**: Apply fixes in the order specified by the plan (root causes first, then cascading issues).
 
-### Step 2: Build
+### If No Remediation Plan (Empty Plan)
 
-Run the project's build/compile command.
+The plan node has already verified that build and tests pass. No code changes are needed.
 
-**Principle**: Build errors are concrete and finite. When the build fails:
-1. Read the COMPLETE error output — scroll through ALL of it
-2. List EVERY distinct error (file, line, message) before writing any fix
-3. Fix ALL errors across ALL files in a single batch of edit_file calls
-4. Only THEN re-run the build
+Output `<done>true</done>` immediately.
 
-**Constraint**: Do NOT fix-and-rebuild after each individual error. If the build reports 8 errors, fix all 8 before rebuilding.
+### Environment & Infrastructure (First Run Only)
 
-**Constraint**: Minimize total build cycles. Target: 2-3 build attempts maximum for the entire verification. Before each rebuild, confirm ALL known errors from the previous output are addressed.
-
-### Common Build Error: Duplicate Symbols
-
-**Principle**: When parallel tasks independently create the same type, function, or variable in a shared namespace, the compiler reports duplicate/redeclared symbol errors. These are NOT independent errors — they share a single root cause: the symbol exists in multiple files.
-
-**Resolution strategy**:
-1. Identify ALL files that declare the duplicated symbol (`search_code`)
-2. Choose the ONE file that is the most complete or most appropriate owner
-3. Delete or remove the duplicate declarations from all other files
-4. Update imports in files that referenced the deleted declarations
-5. Repeat for ALL duplicate symbols before rebuilding
-
-**Constraint**: Resolve ALL duplicate symbols in a single batch before rebuilding. Each duplicate symbol may cascade into multiple compiler errors (unused imports, missing references). Fixing the root cause (removing duplicate declarations) resolves the cascading errors together.
-
-⚠️ **Blind spot**: A single duplicate struct/type can produce 5-10 compiler errors (redeclaration + each method/usage). Count unique duplicate symbols, not error lines.
-
-### Step 3: Runtime (if build succeeds)
-
-Run the project's dev/start command to verify the application starts.
-
-**Principle**: Runtime validates the full stack — build artifacts, infrastructure, and environment configuration. If startup fails due to environment or configuration issues, fix and retry.
-
-**Constraint**: If `docker compose up` fails, still attempt build. Skip runtime.
-
-### Step 4: Test Execution (if test files exist)
-
-**Principle**: If the project contains test files, run them to verify functional correctness beyond build success.
+On the initial run (not a retry), check and set up environment before applying fixes:
 
 | Checkpoint | Action |
 |-----------|--------|
-| **Detect test files** | Observe the directory tree (already in context) for test file naming conventions (`*_test.go`, `*.test.ts`, `*.spec.ts`, `test_*.py`). Use `list_files` on source directories if the tree is truncated. If NONE exist, skip this step entirely. |
-| **Run tests** | Execute the project's test command (observed from config: `go test ./...`, `npm test`, `pytest`, etc.). For multi-package projects, run tests per package. |
-| **Fix failures** | If tests fail: fix test code first. Modify source code ONLY if the test correctly identifies a genuine bug. |
-
-**Constraint**: Do NOT create new test files. Only run and fix existing tests.
-**Constraint**: If test infrastructure is missing (no test runner configured), skip this step.
-**Constraint**: Do NOT use `search_code` for finding test files by name — it searches file **content**, not filenames.
-
-⚠️ **Blind spot**: Test failures caused by environment configuration (missing env vars, unavailable services) rather than code bugs. Verify environment is correctly configured before debugging test code.
+| **Connection annotations** | Does `.env.example` annotate connection variables with `@connection`? If not, add them. |
+| **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. |
+| **Start services** | If infrastructure definition exists, run `docker compose up -d --wait`. |
 
 ## Completion
 
-Output `<done>true</done>` when both conditions are met:
-- Build command has exited with code 0
-- If test files exist in the project, test command has also exited with code 0
+Output `<done>true</done>` when:
+- All remediation plan fixes have been applied, OR
+- The remediation plan is empty (build/tests already pass)
 
-If either condition is not met, continue working — do NOT output `<done>true</done>`.
+Do NOT run build/test commands to verify your fixes. The diagnostic phase will re-verify after your changes.
 
 ## PATH CONVENTION
 

@@ -81,6 +81,18 @@ export async function buildPlanPrompt(
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) throw new Error('[Plan] PromptEngine not available');
 
+  const isDiagnosticTask = task.type === 'verification' || task.type === 'error';
+  if (isDiagnosticTask) {
+    return await promptEngine.buildDiagnosticPlanPrompt(
+      task,
+      state.directive || '',
+      projectCodeContext,
+      violationsText,
+      { hasTools: options?.hasTools ?? false },
+      state.profile,
+    );
+  }
+
   const designDoc = resolveDesignDoc(state, task);
 
   const prompt = await promptEngine.buildTaskPlanPrompt(
@@ -607,6 +619,19 @@ export async function runPlanLLMWithTools(
   if (planMatch) {
     const planText = planMatch[1].trim();
     if (planText.length >= 50) {
+      // Diagnostic shortcut: if plan indicates no errors, return empty planText
+      // so codeGen can immediately mark done without LLM interpretation
+      const isDiagnostic = task.type === 'verification' || task.type === 'error';
+      if (isDiagnostic) {
+        try {
+          const parsed = JSON.parse(planText);
+          if (parsed.diagnostics?.totalErrors === 0 ||
+              (parsed.implementation?.modify?.length === 0 && parsed.implementation?.create?.length === 0)) {
+            console.log(`✅ [Plan] Diagnostic plan shows no errors — returning empty planText for immediate done`);
+            return { planText: '' };
+          }
+        } catch { /* non-blocking parse error, use plan as-is */ }
+      }
       return { planText };
     }
   }
@@ -635,14 +660,21 @@ export async function finalizePlanFromExploration(
   const llmToUse = await selectLLMForTask(llm, task, state);
   if (!llmToUse?.stream) return null;
 
+  const isDiagnostic = task.type === 'verification' || task.type === 'error';
+  const finalizePrompt = isDiagnostic
+    ? 'You have finished running build/test commands and exploring. Based on ALL the tool results above, ' +
+      'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
+      'and output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.'
+    : 'You have finished exploring. Based on ALL the tool results above, ' +
+      'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.';
+
   const finalizeMessage: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [
     ...history,
     {
       role: 'user' as const,
-      content:
-        'You have finished exploring. Based on ALL the tool results above, ' +
-        'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
-        'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.',
+      content: finalizePrompt,
     },
   ];
 
@@ -752,6 +784,16 @@ export async function finalizePlanFromExploration(
       try {
         const parsed = JSON.parse(planText);
         validatePrescribedPackages(parsed, state);
+
+        // Diagnostic shortcut: no errors → empty planText for immediate done
+        const isDiagnostic = task.type === 'verification' || task.type === 'error';
+        if (isDiagnostic &&
+            (parsed.diagnostics?.totalErrors === 0 ||
+             (parsed.implementation?.modify?.length === 0 && parsed.implementation?.create?.length === 0))) {
+          console.log(`✅ [Plan] Diagnostic plan shows no errors — returning empty planText for immediate done`);
+          await savePlanTextForDebug(state, task, planText);
+          return '';
+        }
       } catch { /* non-blocking */ }
 
       await savePlanTextForDebug(state, task, planText);
