@@ -171,7 +171,10 @@ function processDiagnosticBatchSplit(
       ...nextTask,
       timing: undefined,
       interrupted: undefined,
-    };
+      _failedAttempts: undefined,
+      _failed: undefined,
+      _failureReason: undefined,
+    } as CodeTask;
     state.taskQueue.push(requeuedTask);
     state._batchSplitRequeued = true;
 
