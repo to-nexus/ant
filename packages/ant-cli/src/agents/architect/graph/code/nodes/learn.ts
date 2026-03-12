@@ -341,13 +341,29 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       'code'  // ✅ Specify job type
     );
     
-    // ✨ Mark job as completed — ONLY set completedAt on the LAST task.
-    // Setting it after every task contaminates the session, causing SSE reconnects
-    // to serve stale completedAt → frontend isRunning=false → badge freezes.
+    // ✨ Mark job as completed — ONLY set completedAt on the LAST task
+    // AND only if the task succeeded (no unresolved violations).
+    // Without the violation check, a failed verification task gets
+    // completedAt set → frontend shows "completed" despite build failure.
+    const taskFailed = state.violations && state.violations.length > 0;
     const completedJobTiming = (state as any).jobTiming ? {
       ...(state as any).jobTiming,
-      ...(isLastTask && { completedAt: new Date().toISOString() })
+      ...(isLastTask && !taskFailed && { completedAt: new Date().toISOString() })
     } : undefined;
+    
+    // If the last task failed, set interruption so the frontend shows failure
+    if (isLastTask && taskFailed) {
+      (state as any).interruption = {
+        reason: 'verification_failed',
+        message: `Task "${state.currentTask?.name}" failed after ${state.retries} retries with unresolved violations`,
+        failedTask: state.currentTask?.name,
+        violations: (state.violations || []).slice(0, 3).map(v => ({
+          type: v.type,
+          message: typeof v.message === 'string' ? v.message.substring(0, 200) : String(v.message),
+        })),
+      };
+      console.warn(`⚠️  [Learn] Last task failed with ${state.violations!.length} violation(s) — NOT marking job as completed`);
+    }
     
     // ✅ Build directives array from state.directive (split by separator)
     let directivesArray: string[] = [];
@@ -383,7 +399,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           resolvedCategories: state.resolvedCategories || [],
           recursionCount: state.recursionCount,  // ✅ Preserve recursion tracking
           recursionLimit: state.recursionLimit,
-          interruption: isLastTask ? null : (existingSession.state?.interruption || (state as any).interruption),
+          interruption: isLastTask
+            ? (taskFailed ? (state as any).interruption : null)
+            : (existingSession.state?.interruption || (state as any).interruption),
           jobId: (state as any).jobId,  // ✨ Preserve jobId
           jobTiming: completedJobTiming,  // ✨ Mark as completed
           tokenUsage: (state as any).tokenUsage,  // ✅ Preserve token usage
@@ -492,27 +510,35 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   // ✅ Chat UI: Show learning → learned status (must be consecutive for proper merge!)
   // NOTE: This node extracts/stores "lessons" (vector DB), not full codebase indexing.
-  const chatAPI = getChatAPIClient();
-  
-  try {
-    // ✅ Send learning first and get index
-    const learningIndex = await chatAPI.showChatStatus('learning', {
-      taskName: state.currentTask?.name || 'Unknown task',
-      filesWritten: 0,  // ✅ Initialize with 0 for progress
-      branch: null
-    });
+  // Only show in main context: worker learn should NOT emit chat status (causes duplicates).
+  // Also skip when orchestrator reported failure — "Lessons learned" on a failed job is misleading.
+  if (!isWorkerContext && !hasOrchestratorFailure) {
+    const chatAPI = getChatAPIClient();
     
-    // Then send learned with _mergeIndex
-    await chatAPI.showChatStatus('learned', {
-      filesWritten: filesWritten,
-      branch: branch,
-      content: `Lessons learned!`,
-      _mergeIndex: learningIndex
-    });
-    console.log(`   ✅ Chat UI update successful (learning → learned)\n`);
-  } catch (error: any) {
-    console.error(`   ❌ Chat UI update FAILED:`, error.message);
-    // Continue execution even if chat update fails
+    try {
+      // ✅ Send learning first and get index
+      const learningIndex = await chatAPI.showChatStatus('learning', {
+        taskName: state.currentTask?.name || 'Unknown task',
+        filesWritten: 0,  // ✅ Initialize with 0 for progress
+        branch: null
+      });
+      
+      // Then send learned with _mergeIndex
+      await chatAPI.showChatStatus('learned', {
+        filesWritten: filesWritten,
+        branch: branch,
+        content: `Lessons learned!`,
+        _mergeIndex: learningIndex
+      });
+      console.log(`   ✅ Chat UI update successful (learning → learned)\n`);
+    } catch (error: any) {
+      console.error(`   ❌ Chat UI update FAILED:`, error.message);
+      // Continue execution even if chat update fails
+    }
+  } else if (isWorkerContext) {
+    console.log(`   ℹ️  [Learn] Skipping chat status in worker context (worker ${(state as any).workerId})\n`);
+  } else if (hasOrchestratorFailure) {
+    console.log(`   ℹ️  [Learn] Skipping chat status — orchestrator reported failure\n`);
   }
   
   // ✅ Workflow instrumentation: Exit node (success path)

@@ -658,7 +658,6 @@ export async function codeGen(
     
     console.log(`✅ [CodeGen] Complete: ${toolCalls.length} tools, ${files.length} files${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
 
-    
     // ✅ Explain mode validation
     if (isExplainMode && toolCalls.length > 0) {
       console.error('⚠️  [CodeGen] Explain mode should NOT use tools!');
@@ -714,6 +713,29 @@ export async function codeGen(
     const isStuckLooping = isFinalTask && !explicitDone && toolCalls.length === 0;
     const newFinalTaskLoopCount = isStuckLooping ? prevLoopCount + 1 : 0;
     
+    // Thinking-only detection: log when LLM produces thinking but no text/tools
+    if (toolCalls.length === 0 && !textResponse.trim() && thinking) {
+      console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${!isAfterToolCall}, history=${state.conversationHistory?.length ?? 0}, violations=${state.violations?.length ?? 0}`);
+      if (state.context?.featurePath && state._httpJobId) {
+        const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
+        getExecutionLogger({
+          featurePath: state.context.featurePath,
+          jobId: state._httpJobId,
+          jobType: 'code',
+        }).log('thinking_only', {
+          thinkingLength: thinking.length,
+          thinkingPreview: thinking.substring(0, 300),
+          textResponse: textResponse.substring(0, 100),
+          enableThinking: !isAfterToolCall,
+          toolsAvailable: tools?.length ?? 0,
+          conversationHistoryLength: state.conversationHistory?.length ?? 0,
+          violationsCount: state.violations?.length ?? 0,
+          callIndex: newCallIndex,
+          finalTaskLoopCount: newFinalTaskLoopCount,
+        }, state.currentTask?.id).catch(() => {});
+      }
+    }
+
     if (toolCalls.length === 0 && !explicitDone) {
       console.warn(`⚠️  [CodeGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
       
@@ -731,17 +753,32 @@ export async function codeGen(
           .join('\n');
       }
       
+      // Thinking-only response: LLM produced a thinking block but no text/tools.
+      // Preserve the thinking content so the next call has context and
+      // enableThinking switches to false (isAfterToolCall becomes true).
+      if (!cleanedResponse && thinking) {
+        cleanedResponse = `[Previous reasoning (no action taken): ${thinking.substring(0, 500)}]`;
+      }
+      
       if (cleanedResponse) {
         // Build re-entry message with specific file list so the LLM doesn't
         // have to search through history to find which files already exist.
         const reentryParts = [
-          'Your previous response did not include <done>true</done>.',
+          'Your previous response did not include any tool calls or <done>true</done>.',
         ];
         if (streamedFilePaths.length > 0) {
           reentryParts.push(
             '',
             `The following ${streamedFilePaths.length} file(s) are already saved to disk — do NOT recreate them:`,
             ...streamedFilePaths.map(fp => `  - ${fp}`),
+          );
+        }
+        // Verification tasks: force immediate tool call instead of more thinking
+        if (state.currentTask?.type === 'verification') {
+          reentryParts.push(
+            '',
+            'You MUST call run_command NOW to execute the build command.',
+            'Do NOT describe what you plan to do — call the tool immediately.',
           );
         }
         const doneHint = state.currentTask?.type === 'verification'

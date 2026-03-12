@@ -66,11 +66,24 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // previous attempt's call index, progressively shrinking the available
     // budget until the safety-net fires on the very first call.
     const prevCallIndex = state._codeGenCallIndex || 0;
-    state._codeGenCallIndex = 0;
-    state._finalTaskLoopCount = 0;
-    state.conversationHistory = [];
-    console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-    console.log(`   ♻️  Reset: _codeGenCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
+    const isVerificationRetry = nextTask.type === 'verification';
+    
+    if (isVerificationRetry) {
+      // Verification retry: preserve conversationHistory and callIndex.
+      // Clearing these causes enableThinking=true on every retry (because
+      // isAfterToolCall checks history length), which triggers a thinking-only
+      // loop where the LLM produces only a thinking block with no tool calls.
+      state._finalTaskLoopCount = 0;
+      console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
+      console.log(`   ♻️  Preserved: conversationHistory (${state.conversationHistory?.length ?? 0}), _codeGenCallIndex (${prevCallIndex})`);
+      console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
+    } else {
+      state._codeGenCallIndex = 0;
+      state._finalTaskLoopCount = 0;
+      state.conversationHistory = [];
+      console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
+      console.log(`   ♻️  Reset: _codeGenCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
+    }
   } else if (state._planExploring === true && state.currentTask) {
     nextTask = state.currentTask;
     console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);

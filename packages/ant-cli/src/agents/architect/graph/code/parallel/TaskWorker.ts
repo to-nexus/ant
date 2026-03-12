@@ -71,7 +71,23 @@ export class TaskWorker<T extends BaseTask> {
         // ✅ Use the enriched task from graph result (has timing + tokenUsage from workerCheckTaskStatus)
         // The original `task` reference lacks timing.completedAt/elapsedTime and tokenUsage
         const completedTask = result?.currentTask || task;
-        await this.orchestrator.reportCompletion(this.workerId, completedTask, tokenUsage);
+
+        // Worker subgraph exits normally even when task failed (retries exhausted,
+        // violations exist but graph reaches learn → __end__ without throwing).
+        // Check _taskCompleted to distinguish actual success from exhaustion.
+        const hasUnresolvedViolations = result?._taskCompleted !== true
+          && result?.violations?.length > 0;
+
+        if (hasUnresolvedViolations) {
+          const violationTypes = result.violations.map((v: any) => v.type || 'unknown').join(', ');
+          const err = new Error(
+            `Task "${task.name}" exhausted call budget with ${result.violations.length} unresolved violation(s): ${violationTypes}`
+          );
+          console.warn(`[Worker ${this.workerId}] Task "${task.name}" ended with unresolved violations → reporting as failure`);
+          await this.orchestrator.reportFailure(this.workerId, completedTask, err);
+        } else {
+          await this.orchestrator.reportCompletion(this.workerId, completedTask, tokenUsage);
+        }
       } catch (error: any) {
         console.error(`[Worker ${this.workerId}] Task "${task.name}" failed:`, error.message);
         await this.orchestrator.reportFailure(this.workerId, task, error);
