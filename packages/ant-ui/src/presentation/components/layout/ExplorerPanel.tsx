@@ -69,8 +69,8 @@ export function ExplorerPanel({
           </div>
         ) : connectionStatus === 'connected' ? (
           <>
-            <ProjectSection />
-            <FeatureSection />
+            <ProjectSection explorerWidth={width} />
+            <FeatureSection explorerWidth={width} />
             <ArtifactsPanel explorerWidth={width} />
 
             {onboardingSkipped && projects.length === 0 && (

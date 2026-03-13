@@ -42,6 +42,7 @@ interface ItemDropdownProps {
   onOpenWizard?: () => void;  // ✅ + New 클릭 시 위자드 모달 열기 (제공 시 인라인 폼 대신 사용)
   forceInlineCreate?: boolean; // ✅ 외부에서 인라인 생성 폼을 강제로 열기
   onForceInlineCreateHandled?: () => void; // ✅ forceInlineCreate 처리 후 콜백
+  isNarrow?: boolean;
 }
 
 export function ItemDropdown({
@@ -72,6 +73,7 @@ export function ItemDropdown({
   onOpenWizard,
   forceInlineCreate = false,
   onForceInlineCreateHandled,
+  isNarrow = false,
 }: ItemDropdownProps) {
   const { t } = useTranslation('explorer');
   const resolvedPlaceholder = placeholder || t('item.selectPlaceholder');
@@ -194,9 +196,9 @@ export function ItemDropdown({
               size="sm" 
               onClick={handleOpenCreate}
               disabled={createDisabled}
-              title={createDisabled ? (createDisabledReason || disabledReason || undefined) : undefined}
+              title={createDisabled ? (createDisabledReason || disabledReason || undefined) : (isNarrow ? t('feature.new') : undefined)}
             >
-              {t('feature.new')}
+              {isNarrow ? '+' : t('feature.new')}
             </Button>
           )}
           {isCreating && (
@@ -253,9 +255,9 @@ export function ItemDropdown({
             size="sm" 
             onClick={handleOpenCreate}
             disabled={createDisabled}
-            title={createDisabled ? (createDisabledReason || disabledReason || undefined) : undefined}
+            title={createDisabled ? (createDisabledReason || disabledReason || undefined) : (isNarrow ? t('feature.new') : undefined)}
           >
-            {t('feature.new')}
+            {isNarrow ? '+' : t('feature.new')}
           </Button>
         )}
         {isCreating && (

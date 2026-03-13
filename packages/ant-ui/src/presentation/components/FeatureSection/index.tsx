@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { CreationWizardModal } from '../CreationWizardModal';
 
-export function FeatureSection() {
+export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
   const { 
     features, 
     selectedProject, 
@@ -146,6 +146,7 @@ export function FeatureSection() {
         onOpenWizard={handleOpenWizard}
         forceInlineCreate={forceInlineCreate}
         onForceInlineCreateHandled={handleForceInlineCreateHandled}
+        isNarrow={explorerWidth < 260}
       />
 
       <CreationWizardModal

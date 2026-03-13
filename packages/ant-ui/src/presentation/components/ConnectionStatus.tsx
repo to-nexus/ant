@@ -39,8 +39,9 @@ export function ConnectionStatus({ status }: ConnectionStatusProps) {
   const display = getStatusDisplay();
 
   return (
-    <div className="flex items-center" title={display.text}>
+    <div className="flex items-center gap-1.5" title={display.text}>
       <span className="text-sm">{display.emoji}</span>
+      <span className={`hidden sm:inline text-xs font-medium ${display.className}`}>{display.text}</span>
     </div>
   );
 }
