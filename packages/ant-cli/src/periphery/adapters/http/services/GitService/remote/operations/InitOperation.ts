@@ -6,131 +6,145 @@ import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
 import { RemoteChecker } from '../helpers/RemoteChecker';
 import { BaseGitSetupOperation } from './BaseGitSetupOperation';
+import { WorktreeService } from '../../worktree';
+import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
+import { GitOperationError, GitConflictError } from '../../errors';
 
 /**
  * InitOperation
  * 
- * Handles initialization of a new Git repository and pushing to GitHub.
- * Requires workspace to be clean (no features).
- * 
- * For initializing Git on a codebase that already has features,
- * use PublishOperation instead.
- * 
- * Key features:
- * - Validates workspace is clean (no features)
- * - Checks remote repository doesn't already exist
- * - Creates .gitignore based on project type
- * - Initializes Git with configured base branch
- * - Creates initial commit
- * - Creates GitHub repository
- * - Pushes to GitHub
- * - Clears Vector DB and triggers indexing
+ * Initializes a new Git repository and pushes to GitHub.
+ * Supports existing features: creates LOCAL worktrees for them after init.
  */
 export class InitOperation extends BaseGitSetupOperation {
+  private readonly worktreeService: WorktreeService;
+  private readonly featureBackup: FeatureCodebaseBackup;
+
   protected get operationName(): string {
     return 'InitOperation';
   }
 
   constructor(
     workspaceResolver: WorkspaceResolver,
+    worktreeService: WorktreeService,
     githubAuthService?: GitHubAuthService,
     onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
   ) {
     super(workspaceResolver, githubAuthService, onIndexingTrigger);
+    this.worktreeService = worktreeService;
+    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
   }
 
-  async execute(projectId: string, userContext: UserContext): Promise<void> {
+  async execute(projectId: string, userContext: UserContext, activeFeature?: string): Promise<{ warnings?: string[] }> {
     if (!this.githubAuthService) {
-      throw new Error('GitHub integration not configured');
+      throw new GitOperationError('GitHub integration not configured');
     }
 
     const { config, projectPath, codebasePath } = await this.loadConfig(projectId, userContext);
 
-    // Validate workspace (requires no features for init)
-    await this.validateWorkspace(projectPath, codebasePath, config.githubRepo, userContext);
+    await this.validateWorkspace(codebasePath, config.githubRepo, userContext);
+
+    const existingFeatures = await this.readExistingFeatures(projectPath);
+    const featureBackups = existingFeatures.length > 0
+      ? await this.featureBackup.backup(projectId, existingFeatures, userContext)
+      : new Map<string, string>();
+
+    const seedFeature = activeFeature && existingFeatures.includes(activeFeature)
+      ? activeFeature
+      : existingFeatures[0] || null;
+
+    if (seedFeature) {
+      await this.seedMainCodebase(projectId, seedFeature, codebasePath, userContext);
+    }
 
     let gitInitialized = false;
 
     try {
-      // Prepare codebase
       const hasFiles = await this.prepareCodebase(codebasePath, projectId);
 
       console.log(`[InitOperation] Initializing new Git repository at ${codebasePath}...`);
 
-      // Get base branch from config
       const baseBranch = config.branchBase || 'main';
-      
-      // Initialize Git
       const git = await this.initializeGit(codebasePath, baseBranch, userContext);
       gitInitialized = true;
 
-      // Create .gitignore
       await this.createGitignore(codebasePath);
-
-      // Create initial commit
       await this.createInitialCommit(git, codebasePath, hasFiles);
 
-      // Ensure on default branch
       const defaultBranch = await this.ensureDefaultBranch(git, baseBranch);
 
-      // Sync detected branch back to config if it differs
       if (defaultBranch !== config.branchBase) {
         config.branchBase = defaultBranch;
         const configPath = path.join(projectPath, 'config.json');
         await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-        console.log(`[InitOperation] 🔍 Updated branchBase in config: ${defaultBranch}`);
+        console.log(`[InitOperation] Updated branchBase in config: ${defaultBranch}`);
       }
 
-      // Create GitHub repo
       await this.createGitHubRepo(config.githubRepo, projectId, userContext);
-
-      // Add remote and push
       await this.addRemoteAndPush(git, defaultBranch, config, userContext);
 
-      // Trigger indexing
+      let warnings: string[] | undefined;
+      if (existingFeatures.length > 0) {
+        warnings = await this.createFeatureWorktrees(projectId, existingFeatures, featureBackups, userContext);
+      }
+
       await this.triggerIndexing(projectId, codebasePath, userContext);
-      
+      return { warnings };
     } catch (error) {
-      // Rollback: Remove Git initialization if it was created
       if (gitInitialized) {
-        console.error('[InitOperation] ❌ Initialization failed, rolling back Git setup...');
+        console.error('[InitOperation] Initialization failed, rolling back Git setup...');
         await this.rollback(codebasePath);
       }
       throw error;
+    } finally {
+      await this.featureBackup.cleanup(featureBackups);
     }
   }
 
   private async validateWorkspace(
-    projectPath: string,
     codebasePath: string,
     githubRepo: string,
     userContext: UserContext
   ): Promise<void> {
-    // Check if features already exist
-    const featuresPath = path.join(projectPath, 'features');
-    if (fs.existsSync(featuresPath)) {
-      const features = fs.readdirSync(featuresPath).filter(f => !f.startsWith('.'));
-      if (features.length > 0) {
-        throw new Error(
-          `Cannot initialize: ${features.length} feature(s) already exist. ` +
-          `Git initialization must be done before creating features. ` +
-          `Please delete features and re-initialize, or use Publish to push existing work to Git.`
-        );
-      }
-    }
-
-    // Check if Git is already initialized
     const existingGit = GitHelper.getGitInstanceSafe(codebasePath);
     if (existingGit) {
-      throw new Error('Git repository already initialized. Use push/pull instead.');
+      throw new GitConflictError('Git repository already initialized. Use push/pull instead.');
     }
 
-    // Check if remote repository already exists
     console.log(`[InitOperation] Checking if remote repository already exists...`);
     const repoExists = await RemoteChecker.exists(githubRepo, userContext, this.githubAuthService);
     
     if (repoExists) {
-      throw new Error(`Remote repository already exists at ${githubRepo}. Please use Clone instead to download the existing repository.`);
+      throw new GitConflictError(`Remote repository already exists at ${githubRepo}. Please use Clone instead to download the existing repository.`);
     }
+  }
+
+  private async createFeatureWorktrees(
+    projectId: string,
+    features: string[],
+    featureBackups: Map<string, string>,
+    userContext: UserContext
+  ): Promise<string[] | undefined> {
+    console.log(`[InitOperation] Creating ${features.length} feature worktree(s)...`);
+    const warnings: string[] = [];
+
+    for (const featureName of features) {
+      try {
+        await this.worktreeService.createWorktree(projectId, featureName, userContext);
+
+        const backupPath = featureBackups.get(featureName);
+        if (backupPath && fs.existsSync(backupPath)) {
+          const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+          await this.featureBackup.restoreToWorktree(backupPath, worktreePath);
+          console.log(`[InitOperation] Restored code for feature: ${featureName}`);
+        }
+      } catch (error: any) {
+        const msg = `Failed to create worktree for feature "${featureName}": ${error.message}`;
+        console.error(`[InitOperation] ${msg}`);
+        warnings.push(msg);
+      }
+    }
+
+    return warnings.length > 0 ? warnings : undefined;
   }
 }

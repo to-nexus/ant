@@ -4,6 +4,11 @@ import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/Wo
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHelper } from '../helper/GitHelper';
 
+export interface FileChange {
+  path: string;
+  status: 'modified' | 'deleted' | 'new' | 'renamed';
+}
+
 /**
  * StatusService
  * 
@@ -75,22 +80,21 @@ export class StatusService {
    */
   async getGitChanges(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasChanges: boolean;
-    staged: string[];
-    unstaged: string[];
-    untracked: string[];
+    staged: FileChange[];
+    unstaged: FileChange[];
+    untracked: FileChange[];
     ahead: number;
     behind: number;
     currentBranch?: string;
     isGitInitialized?: boolean;
+    hasUpstream?: boolean;
     error?: string;
   }> {
     try {
       const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 
-      // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
       await GitHelper.ensureSafeDirectory(codebasePath);
 
-      // Use GitHelper to safely get Git instance
       const git = GitHelper.getGitInstanceSafe(codebasePath);
       if (!git) {
         return {
@@ -105,36 +109,48 @@ export class StatusService {
       }
 
       const status = await git.status();
-      
-      const staged = status.staged || [];
-      const modified = status.modified || [];
-      const deleted = status.deleted || [];
-      const untracked = status.not_added || [];
-      
-      const unstaged = [...modified, ...deleted];
+
+      const staged: FileChange[] = [];
+      const unstaged: FileChange[] = [];
+      const untracked: FileChange[] = [];
+
+      for (const file of status.files) {
+        if (file.index === '?' && file.working_dir === '?') {
+          untracked.push({ path: file.path, status: 'new' });
+          continue;
+        }
+        if (file.index && file.index !== ' ' && file.index !== '?') {
+          const st = file.index === 'A' ? 'new' as const
+            : file.index === 'D' ? 'deleted' as const
+            : file.index === 'R' ? 'renamed' as const
+            : 'modified' as const;
+          staged.push({ path: file.path, status: st });
+        }
+        if (file.working_dir && file.working_dir !== ' ' && file.working_dir !== '?') {
+          const st = file.working_dir === 'D' ? 'deleted' as const : 'modified' as const;
+          unstaged.push({ path: file.path, status: st });
+        }
+      }
+
+      const totalChanges = staged.length + unstaged.length + untracked.length;
       
       const hasChanges = 
-        staged.length > 0 || 
-        modified.length > 0 || 
-        deleted.length > 0 || 
-        untracked.length > 0 ||
+        totalChanges > 0 ||
         status.ahead > 0 ||
         status.behind > 0;
 
       let ahead = status.ahead || 0;
       let behind = status.behind || 0;
+      let hasUpstream = true;
       
-      // Get current branch
       let currentBranch: string | undefined;
       try {
         currentBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
         
-        // Check if upstream is set
         try {
           await git.revparse(['--abbrev-ref', `${currentBranch}@{upstream}`]);
-        } catch (upstreamError) {
-          console.log(`[GitStatusService] ⚠️  No upstream detected for ${currentBranch}`);
-          console.log(`[GitStatusService] No upstream - resetting ahead/behind to 0 (data unreliable)`);
+        } catch {
+          hasUpstream = false;
           ahead = 0;
           behind = 0;
         }
@@ -150,7 +166,8 @@ export class StatusService {
         ahead,
         behind,
         currentBranch,
-        isGitInitialized: true
+        isGitInitialized: true,
+        hasUpstream
       };
     } catch (error) {
       console.error('[GitStatusService] Error getting Git changes:', error);

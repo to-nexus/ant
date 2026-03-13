@@ -8,7 +8,7 @@ import { PullOperation } from './operations/PullOperation';
 import { FetchOperation } from './operations/FetchOperation';
 import { SyncOperation } from './operations/SyncOperation';
 import { CommitOperation } from './operations/CommitOperation';
-import { PublishOperation } from './operations/PublishOperation';
+import { DiscardOperation } from './operations/DiscardOperation';
 import { WorktreeService } from '../worktree';
 
 /**
@@ -18,7 +18,6 @@ import { WorktreeService } from '../worktree';
  * Delegates to specific operation classes.
  */
 export class RemoteService {
-  // ✅ In-flight dedupe to prevent redundant concurrent fetches (e.g., multiple UI effects)
   private readonly inFlightFetch = new Map<string, Promise<void>>();
 
   private readonly cloneOp: CloneOperation;
@@ -28,7 +27,7 @@ export class RemoteService {
   private readonly fetchOp: FetchOperation;
   private readonly syncOp: SyncOperation;
   private readonly commitOp: CommitOperation;
-  private readonly publishOp: PublishOperation;
+  private readonly discardOp: DiscardOperation;
 
   constructor(
     workspaceResolver: WorkspaceResolver,
@@ -37,47 +36,32 @@ export class RemoteService {
   ) {
     const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
 
-    this.cloneOp = new CloneOperation(workspaceResolver, githubAuthService);
-    this.initOp = new InitOperation(workspaceResolver, githubAuthService, onIndexingTrigger);
-    this.pushOp = new PushOperation(workspaceResolver, githubAuthService);
+    this.cloneOp = new CloneOperation(workspaceResolver, worktreeService, githubAuthService);
+    this.initOp = new InitOperation(workspaceResolver, worktreeService, githubAuthService, onIndexingTrigger);
+    this.pushOp = new PushOperation(workspaceResolver, worktreeService, githubAuthService);
     this.pullOp = new PullOperation(workspaceResolver, githubAuthService);
     this.fetchOp = new FetchOperation(workspaceResolver, githubAuthService);
     this.syncOp = new SyncOperation(workspaceResolver, githubAuthService);
-    this.commitOp = new CommitOperation(workspaceResolver);
-    this.publishOp = new PublishOperation(workspaceResolver, worktreeService, githubAuthService, onIndexingTrigger);
+    this.commitOp = new CommitOperation(workspaceResolver, worktreeService);
+    this.discardOp = new DiscardOperation(workspaceResolver);
   }
 
-  /**
-   * Clone GitHub repository
-   */
-  async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<void> {
+  async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
     return this.cloneOp.execute(projectId, userContext);
   }
 
-  /**
-   * Initialize GitHub repository
-   */
-  async initializeGitHubRepo(projectId: string, userContext: UserContext): Promise<void> {
-    return this.initOp.execute(projectId, userContext);
+  async initializeGitHubRepo(projectId: string, userContext: UserContext, activeFeature?: string): Promise<{ warnings?: string[] }> {
+    return this.initOp.execute(projectId, userContext, activeFeature);
   }
 
-  /**
-   * Push to GitHub
-   */
   async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     return this.pushOp.execute(projectId, userContext, featureName);
   }
 
-  /**
-   * Pull from GitHub
-   */
   async pullFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     return this.pullOp.execute(projectId, userContext, featureName);
   }
 
-  /**
-   * Fetch from GitHub
-   */
   async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     const key = `${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName || 'main'}`;
     const existing = this.inFlightFetch.get(key);
@@ -94,9 +78,6 @@ export class RemoteService {
     return promise;
   }
 
-  /**
-   * Sync with GitHub (fetch + pull + push)
-   */
   async syncWithRemote(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     success: boolean;
     pulledChanges?: boolean;
@@ -105,24 +86,22 @@ export class RemoteService {
     return this.syncOp.execute(projectId, userContext, featureName);
   }
 
-  /**
-   * Commit changes
-   */
   async commitChanges(
     projectId: string,
     userContext: UserContext,
     message?: string,
-    featureName?: string
+    featureName?: string,
+    files?: string[]
   ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.commitOp.execute(projectId, userContext, message, featureName);
+    return this.commitOp.execute(projectId, userContext, message, featureName, files);
   }
 
-  /**
-   * Publish existing codebase to a new GitHub repository.
-   * Unlike init, this allows features to already exist and creates branches for them.
-   */
-  async publishToGitHub(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {
-    return this.publishOp.execute(projectId, userContext, activeFeature);
+  async discardChanges(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    files?: string[]
+  ): Promise<{ success: boolean; discardedFiles: number }> {
+    return this.discardOp.execute(projectId, userContext, featureName, files);
   }
 }
-

@@ -116,7 +116,7 @@ export interface GitStatus {
 
 export interface GitState {
   isGitStatusLoading: boolean;
-  gitStatusPhase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | 'publishing' | null;
+  gitStatusPhase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | 'discarding' | null;
   gitStatus: GitStatus | null;  // ✅ Single source of truth for Git state
   gitStatusRefreshTrigger: number;
   bypassFetchTimer: boolean;  // ✅ Flag to bypass timer for next fetch

@@ -1,9 +1,9 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
+import { GitOperationError } from '../../errors';
+import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
 
 /**
  * SyncOperation
@@ -22,18 +22,17 @@ export class SyncOperation {
     pushedChanges?: boolean;
   }> {
     if (!this.githubAuthService) {
-      throw new Error('GitHub integration not configured');
+      throw new GitOperationError('GitHub integration not configured');
     }
 
     const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
-    const config = await this.loadGitHubConfig(projectId, userContext);
+    const config = await loadGitHubConfig(this.workspaceResolver, projectId, userContext);
 
-    // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
     await GitHelper.ensureSafeDirectory(codebasePath);
 
     const git = GitHelper.getGitInstanceSafe(codebasePath);
     if (!git) {
-      throw new Error('Repository not initialized. Please clone or initialize first.');
+      throw new GitOperationError('Repository not initialized. Please clone or initialize first.');
     }
 
     // Update remote URL
@@ -46,37 +45,48 @@ export class SyncOperation {
       config.githubRepo
     );
     
-    await git.remote(['set-url', 'origin', authenticatedUrl]).catch(() => {});
+    await ensureRemote(git, authenticatedUrl);
 
-    // Get current branch
     const status = await git.status();
     const currentBranch = status.current;
     
     if (!currentBranch) {
-      throw new Error('No branch to sync');
+      throw new GitOperationError('No branch to sync');
+    }
+
+    // Check upstream — sync is meaningless without one
+    let hasUpstream = true;
+    try {
+      await git.revparse(['--abbrev-ref', `${currentBranch}@{upstream}`]);
+    } catch {
+      hasUpstream = false;
+    }
+
+    if (!hasUpstream) {
+      throw new GitOperationError(
+        `Branch "${currentBranch}" has no upstream. Use "Publish Branch" to push it to remote first.`
+      );
     }
 
     let pulledChanges = false;
     let pushedChanges = false;
 
-    // Fetch
     console.log(`[SyncOperation] Fetching from origin...`);
     await git.fetch('origin');
+    const freshStatus = await git.status();
 
-    // Pull if behind
-    if (status.behind > 0) {
+    if (freshStatus.behind > 0) {
       console.log(`[SyncOperation] Pulling from origin/${currentBranch}...`);
       await git.pull('origin', currentBranch);
       pulledChanges = true;
-      console.log('[SyncOperation] ✅ Pull completed');
+      console.log('[SyncOperation] Pull completed');
     }
 
-    // Push if ahead
-    if (status.ahead > 0) {
+    if (freshStatus.ahead > 0) {
       console.log(`[SyncOperation] Pushing ${currentBranch} to origin...`);
       await git.push('origin', currentBranch);
       pushedChanges = true;
-      console.log('[SyncOperation] ✅ Push completed');
+      console.log('[SyncOperation] Push completed');
     }
 
     if (!pulledChanges && !pushedChanges) {
@@ -86,21 +96,5 @@ export class SyncOperation {
     return { success: true, pulledChanges, pushedChanges };
   }
 
-  private async loadGitHubConfig(projectId: string, userContext: UserContext) {
-    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-    const configPath = path.join(projectPath, 'config.json');
-    
-    if (!fs.existsSync(configPath)) {
-      throw new Error('Project config not found');
-    }
-
-    const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
-    
-    if (!config.githubRepo) {
-      throw new Error('GitHub repository not configured in project config');
-    }
-
-    return config;
-  }
 }
 

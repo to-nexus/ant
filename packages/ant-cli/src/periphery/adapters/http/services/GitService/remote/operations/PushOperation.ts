@@ -1,38 +1,62 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
+import { WorktreeService } from '../../worktree';
+import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
+import { GitOperationError } from '../../errors';
+import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
 
 /**
  * PushOperation
  * 
  * Handles pushing changes to GitHub.
+ * Includes lazy worktree creation and automatic upstream setup ("Publish Branch").
  */
 export class PushOperation {
+  private readonly featureBackup: FeatureCodebaseBackup;
+
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
+    private readonly worktreeService: WorktreeService,
     private readonly githubAuthService?: GitHubAuthService
-  ) {}
+  ) {
+    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
+  }
 
   async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     if (!this.githubAuthService) {
-      throw new Error('GitHub integration not configured');
+      throw new GitOperationError('GitHub integration not configured');
     }
 
     const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
-    const config = await this.loadGitHubConfig(projectId, userContext);
+    const config = await loadGitHubConfig(this.workspaceResolver, projectId, userContext);
 
-    // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
     await GitHelper.ensureSafeDirectory(codebasePath);
 
-    const git = GitHelper.getGitInstanceSafe(codebasePath);
+    let git = GitHelper.getGitInstanceSafe(codebasePath);
+    
+    if (!git && featureName) {
+      console.log(`[PushOperation] No git found for feature ${featureName}, creating worktree lazily...`);
+      const backups = await this.featureBackup.backup(projectId, [featureName], userContext);
+      try {
+        await this.worktreeService.createWorktree(projectId, featureName, userContext);
+        const backupPath = backups.get(featureName);
+        if (backupPath && fs.existsSync(backupPath)) {
+          await this.featureBackup.restoreToWorktree(backupPath, codebasePath);
+        }
+      } finally {
+        await this.featureBackup.cleanup(backups);
+      }
+      await GitHelper.ensureSafeDirectory(codebasePath);
+      git = GitHelper.getGitInstanceSafe(codebasePath);
+    }
+    
     if (!git) {
-      throw new Error('Repository not initialized. Please clone or initialize first.');
+      throw new GitOperationError('Repository not initialized. Please clone or initialize first.');
     }
 
-    // Update remote URL
     const credentialContext = {
       org: userContext.organizationId,
       user: userContext.userId
@@ -42,43 +66,37 @@ export class PushOperation {
       config.githubRepo
     );
     
-    await git.remote(['set-url', 'origin', authenticatedUrl]).catch(() => {});
+    await ensureRemote(git, authenticatedUrl);
 
-    // Get current branch
     const status = await git.status();
     const currentBranch = status.current;
     
     if (!currentBranch) {
-      throw new Error('No branch to push');
+      throw new GitOperationError('No branch to push');
     }
 
-    // Check if there's anything to push
-    if (status.ahead === 0) {
-      console.log('[PushOperation] Nothing to push');
-      return;
+    // Check upstream and push accordingly
+    let hasUpstream = true;
+    try {
+      await git.revparse(['--abbrev-ref', `${currentBranch}@{upstream}`]);
+    } catch {
+      hasUpstream = false;
     }
 
-    // Push
-    console.log(`[PushOperation] Pushing ${currentBranch} to origin...`);
-    await git.push('origin', currentBranch);
-    console.log('[PushOperation] ✅ Push completed');
+    if (!hasUpstream) {
+      // "Publish Branch" — first push with upstream setup
+      console.log(`[PushOperation] Publishing branch ${currentBranch} to origin...`);
+      await git.push(['-u', 'origin', currentBranch]);
+      console.log('[PushOperation] Branch published successfully');
+    } else {
+      if (status.ahead === 0) {
+        console.log('[PushOperation] Nothing to push');
+        return;
+      }
+      console.log(`[PushOperation] Pushing ${currentBranch} to origin...`);
+      await git.push('origin', currentBranch);
+      console.log('[PushOperation] Push completed');
+    }
   }
 
-  private async loadGitHubConfig(projectId: string, userContext: UserContext) {
-    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-    const configPath = path.join(projectPath, 'config.json');
-    
-    if (!fs.existsSync(configPath)) {
-      throw new Error('Project config not found');
-    }
-
-    const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
-    
-    if (!config.githubRepo) {
-      throw new Error('GitHub repository not configured in project config');
-    }
-
-    return config;
-  }
 }
-
