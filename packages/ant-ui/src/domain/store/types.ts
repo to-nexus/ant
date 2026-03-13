@@ -112,6 +112,10 @@ export interface GitStatus {
   hasFeatures: boolean;
   currentBranch?: string;
   remoteUrl?: string;
+  hasUpstream?: boolean;
+  ahead?: number;
+  behind?: number;
+  hasUncommittedChanges?: boolean;
 }
 
 export interface GitState {

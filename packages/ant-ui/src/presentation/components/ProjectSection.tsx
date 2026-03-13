@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Folder, Github, ChevronDown, Download, Plus, Upload, Download as DownloadIcon, RefreshCw } from 'lucide-react';
+import { Folder, Github, ChevronDown, Download, Plus, Upload, Download as DownloadIcon, RefreshCw, Globe } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { 
   createProject, 
@@ -15,7 +15,7 @@ import {
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { GitStatusButtons } from './GitStatusButtons';
+import { GitStatusButton } from './GitStatusButton';
 import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { CreationWizardModal } from './CreationWizardModal';
@@ -29,10 +29,11 @@ export function ProjectSection() {
     setSelectedProject, 
     fetchProjects, 
     openMainPanelTab,
-    gitStatus,  // ✅ Use unified Git status from store
-    fetchGitStatus,  // ✅ Fetch Git status action
-    setGitStatusPhase,  // ✅ Git status phase setter
-    gitStatusRefreshTrigger,  // ✅ Git status refresh trigger
+    gitStatus,
+    fetchGitStatus,
+    setGitStatusPhase,
+    gitStatusPhase,
+    gitStatusRefreshTrigger,
     backendMode
   } = useStore();
   const [configExists, setConfigExists] = useState<boolean | null>(null);
@@ -278,12 +279,12 @@ export function ProjectSection() {
       {selectedProject && (
         <div className="mt-2 space-y-1">
           <div className="flex gap-2 items-start">
-            {/* Git Status Buttons (Commit/Push/Pull/Sync) - Takes most space */}
+            {/* Git Status Button */}
             <div className="flex-1 min-w-0">
-              <GitStatusButtons />
+              <GitStatusButton />
             </div>
             
-            {/* Git Management Button - Compact */}
+            {/* Git Control Button */}
             <div className="relative" ref={gitMenuRef}>
               {!config?.githubRepo ? (
                 // ✅ Disabled state: Show tooltip on click
@@ -322,7 +323,7 @@ export function ProjectSection() {
                   variant="outline"
                   size="sm"
                   className="px-2.5 py-1.5"
-                  disabled={isGitProcessing}
+                  disabled={isGitProcessing || gitStatusPhase !== null}
                   title={t('config:git.management')}
                 >
                   <Github className="w-4 h-4" />
@@ -334,7 +335,7 @@ export function ProjectSection() {
               {showGitMenu && (
                 <div className="absolute top-full right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[9999]">
                   {!gitStatus?.hasGit ? (
-                    // Setup Mode: Clone / Init / Publish
+                    // State 1: No .git — Setup: Clone / Init
                     <>
                       <button
                         onClick={handleClone}
@@ -348,7 +349,7 @@ export function ProjectSection() {
                       </button>
                       <button
                         onClick={handleInitialize}
-                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
                         <Plus className="w-4 h-4" />
                         <div>
@@ -357,12 +358,30 @@ export function ProjectSection() {
                         </div>
                       </button>
                     </>
-                  ) : (
-                    // Connected Mode: Push / Pull / Fetch
+                  ) : gitStatus?.hasUpstream === false ? (
+                    // State 2: .git + no upstream — Publish only
+                    <button
+                      onClick={handlePush}
+                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <Globe className="w-4 h-4" />
+                      <div>
+                        <div className="font-medium">{t('config:git.publish')}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.publishDesc')}</div>
+                      </div>
+                    </button>
+                  ) : (() => {
+                    const pushDisabled = !gitStatus?.ahead || gitStatus.ahead === 0;
+                    const pullDisabled = (!gitStatus?.behind || gitStatus.behind === 0) || gitStatus?.hasUncommittedChanges === true;
+                    const disabledClass = 'opacity-40 cursor-not-allowed';
+                    const enabledClass = 'hover:bg-gray-100 dark:hover:bg-gray-700';
+                    return (
+                    // State 3: .git + upstream — Push / Pull / Fetch
                     <>
                       <button
-                        onClick={handlePush}
-                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        onClick={pushDisabled ? undefined : handlePush}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 ${pushDisabled ? disabledClass : enabledClass}`}
+                        disabled={pushDisabled}
                       >
                         <Upload className="w-4 h-4" />
                         <div>
@@ -371,18 +390,22 @@ export function ProjectSection() {
                         </div>
                       </button>
                       <button
-                        onClick={handlePull}
-                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        onClick={pullDisabled ? undefined : handlePull}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 ${pullDisabled ? disabledClass : enabledClass}`}
+                        disabled={pullDisabled}
+                        title={gitStatus?.hasUncommittedChanges ? t('git.commitFirstToPull') : undefined}
                       >
                         <DownloadIcon className="w-4 h-4" />
                         <div>
                           <div className="font-medium">{t('config:git.pull')}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.pullDesc')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {gitStatus?.hasUncommittedChanges ? t('git.commitFirstToPull') : t('config:git.pullDesc')}
+                          </div>
                         </div>
                       </button>
                       <button
                         onClick={handleFetch}
-                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 ${enabledClass}`}
                       >
                         <RefreshCw className="w-4 h-4" />
                         <div>
@@ -391,7 +414,8 @@ export function ProjectSection() {
                         </div>
                       </button>
                     </>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
             </div>

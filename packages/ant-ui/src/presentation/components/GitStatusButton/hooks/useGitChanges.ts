@@ -105,9 +105,9 @@ export function useGitChanges(
       console.log('[useGitChanges] Cached data:', cached);
       if (cached) {
         console.log('[useGitChanges] Loading cached data for project/feature:', selectedProject, selectedFeature);
-        // ✅ Inject currentBranch from store
-        if (gitStatus?.currentBranch) {
-          cached.currentBranch = gitStatus.currentBranch;
+        const currentBranch = useStore.getState().gitStatus?.currentBranch;
+        if (currentBranch) {
+          cached.currentBranch = currentBranch;
         }
         setGitChanges(cached);
         setIsGitInitialized(cached.isGitInitialized ?? null);
@@ -199,8 +199,27 @@ export function useGitChanges(
         setGitChanges(changes);
         setIsGitInitialized(changes.isGitInitialized ?? true);
         setCachedChanges(changes);
+
+        // Sync git details to global store for Git Control Button dropdown
+        const currentGitStatus = useStore.getState().gitStatus;
+        if (currentGitStatus) {
+          const totalChanges = changes.staged.length + changes.unstaged.length + changes.untracked.length;
+          const needsUpdate =
+            currentGitStatus.hasUpstream !== changes.hasUpstream ||
+            currentGitStatus.ahead !== changes.ahead ||
+            currentGitStatus.behind !== changes.behind ||
+            currentGitStatus.hasUncommittedChanges !== (totalChanges > 0);
+          if (needsUpdate) {
+            useStore.getState().setGitStatus({
+              ...currentGitStatus,
+              hasUpstream: changes.hasUpstream,
+              ahead: changes.ahead,
+              behind: changes.behind,
+              hasUncommittedChanges: totalChanges > 0,
+            });
+          }
+        }
         
-        // ✅ CRITICAL: Only record fetch time AFTER successful completion
         setLastFetchTime(Date.now());
       } catch (error: any) {
         console.warn('[useGitChanges] Fetch failed:', error);

@@ -40,17 +40,21 @@ export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, _get) =
   
   fetchGitStatus: async (projectId: string, feature?: string) => {
     if (!projectId) {
-      set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
+      set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false }, isGitStatusLoading: false });
       return;
     }
     
+    set({ isGitStatusLoading: true });
     try {
       const status = await getGitStatus(projectId, feature);
-      set({ gitStatus: status });
+      const prev = _get().gitStatus;
+      set({ gitStatus: prev ? { ...prev, ...status } : status });
       console.log('[GitSlice] Git status loaded:', status);
     } catch (error) {
       console.error('[GitSlice] Failed to get Git status:', error);
       set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
+    } finally {
+      set({ isGitStatusLoading: false });
     }
   },
   

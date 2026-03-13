@@ -1,31 +1,12 @@
-import { useTranslation } from 'react-i18next';
-import { AlertTriangle } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { 
   createFeature, 
   deleteFeature, 
-  getGitChanges
 } from '@/infrastructure/http/api';
-import type { ReactNode } from 'react';
-
-export type ShowConfirmFn = (
-  message: string | ReactNode,
-  options?: {
-    title?: string;
-    confirmText?: string;
-    cancelText?: string;
-    onConfirm?: () => void | Promise<void>;
-    onCancel?: () => void;
-  }
-) => void;
 
 export function useFeatureActions(
   selectedProject: string | undefined,
-  _selectedFeature: string | undefined,  // Used by parent
-  baseBranch: string,
-  showConfirm: ShowConfirmFn,
 ) {
-  const { t } = useTranslation('explorer');
   const setSelectedFeature = useStore((state) => state.setSelectedFeature);
   const fetchFeatures = useStore((state) => state.fetchFeatures);
   const addFeatureOptimistic = useStore((state) => state.addFeatureOptimistic);
@@ -88,76 +69,17 @@ export function useFeatureActions(
     }
   };
 
-  const handleFeatureChange = async (featureName: string | null) => {
-    // ✅ FIXED: Always use latest selectedProject from store
-    const currentProject = useStore.getState().selectedProject;
+  const handleFeatureChange = (featureName: string | null) => {
     const currentFeature = useStore.getState().selectedFeature;
     
-    // ✅ FIXED: Handle empty string as null
     const normalizedFeatureName = featureName === '' ? null : featureName;
     
-    if (!currentProject) {
-      return;
-    }
-    
-    // Same feature selected - do nothing
     if (normalizedFeatureName === currentFeature) {
       return;
     }
     
-    // Convert null to undefined for setSelectedFeature
     const targetFeature = normalizedFeatureName === null ? undefined : normalizedFeatureName;
-    
-    try {
-      // Check for uncommitted changes in current branch
-      const changes = await getGitChanges(currentProject, currentFeature);
-      
-      // ✅ FIXED: Only check staged/unstaged (untracked files are safe to ignore)
-      const hasRelevantChanges = changes.staged.length > 0 || changes.unstaged.length > 0;
-      
-      if (hasRelevantChanges) {
-        const totalChanges = changes.staged.length + changes.unstaged.length;
-        const targetBranch = normalizedFeatureName ? `feature/${normalizedFeatureName}` : baseBranch;
-        
-        // Show confirmation dialog
-        showConfirm(
-          <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                  {t('git.uncommittedTitle')}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  {t('git.uncommittedDesc', { count: totalChanges })}
-                </p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {t('git.uncommittedStash', { name: targetBranch })}
-                </p>
-              </div>
-            </div>
-          </div>,
-          {
-            title: t('common:warning.title'),
-            confirmText: t('git.switchAnyway'),
-            cancelText: t('common:button.cancel'),
-            onConfirm: () => {
-              setSelectedFeature(targetFeature);
-            },
-            onCancel: () => {
-              // User cancelled
-            }
-          }
-        );
-      } else {
-        // No changes - safe to switch
-        setSelectedFeature(targetFeature);
-      }
-    } catch (error) {
-      // If we can't check changes (e.g., Git not initialized), allow the switch
-      console.warn('[useFeatureActions] Could not check Git changes:', error);
-      setSelectedFeature(targetFeature);
-    }
+    setSelectedFeature(targetFeature);
   };
 
   return {
