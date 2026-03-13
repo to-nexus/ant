@@ -169,9 +169,9 @@
     "notInitialized": "Git 초기화되지 않음",
     "configureFirst": "GitHub 리포지토리를 먼저 설정하세요",
     "clone": "Clone",
-    "cloneDesc": "기존 리포지토리 Pull",
+    "cloneDesc": "기존 리포지토리 가져오기",
     "initialize": "Initialize",
-    "initializeDesc": "새 GitHub 리포지토리 생성",
+    "initializeDesc": "새 GitHub 리포지토리 생성 및 Git 초기화",
     "push": "Push",
     "pushDesc": "변경사항 업로드",
     "pull": "Pull",
@@ -182,7 +182,7 @@
     "publishDesc": "이 브랜치를 원격에 게시",
     
     "confirmClone": "원격 리포지토리를 로컬 워크스페이스에 Clone하시겠습니까? 원격 코드베이스가 다운로드됩니다.",
-    "confirmInit": "새 GitHub 리포지토리를 생성하시겠습니까? 현재 코드베이스로 초기화됩니다.",
+    "confirmInit": "새 GitHub 리포지토리를 생성하시겠습니까? 빈 리포지토리가 생성됩니다.",
     
     "currentBranch": "현재 브랜치:",
     "configRequired": "설정이 필요합니다. 위의 ⚙️ 아이콘을 클릭하여 설정을 생성하세요.",
