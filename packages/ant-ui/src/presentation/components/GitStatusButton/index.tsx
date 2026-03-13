@@ -88,8 +88,8 @@ export function GitStatusButton() {
   const totalChanges = gitChanges.staged.length + gitChanges.unstaged.length + gitChanges.untracked.length;
 
   return (
-    <div>
-      <div className="flex gap-1.5 items-center">
+    <>
+      <div className="flex-1 min-w-0 flex gap-1.5 items-center">
         <ActionButton
           gitChanges={gitChanges}
           isCommitting={isCommitting}
@@ -119,14 +119,16 @@ export function GitStatusButton() {
         </Button>
       </div>
       {totalChanges > 0 && (
-        <GitChangesPanel
-          gitChanges={gitChanges}
-          selectedFiles={selectedFiles}
-          onSelectedFilesChange={setSelectedFiles}
-          onDiscardFiles={(files) => handleDiscard(files)}
-          isDiscarding={isDiscarding}
-        />
+        <div className="w-full order-last">
+          <GitChangesPanel
+            gitChanges={gitChanges}
+            selectedFiles={selectedFiles}
+            onSelectedFilesChange={setSelectedFiles}
+            onDiscardFiles={(files) => handleDiscard(files)}
+            isDiscarding={isDiscarding}
+          />
+        </div>
       )}
-    </div>
+    </>
   );
 }
