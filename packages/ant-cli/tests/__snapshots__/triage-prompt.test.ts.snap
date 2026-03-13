@@ -6,11 +6,11 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 
 ## CLASSIFICATION PROTOCOL
 
-### Step 0.5: Continuation Assessment (when existing task context is present)
+### Step 1: Continuation Assessment (when existing task context is present)
 
 **Applies when**: EXISTING TASK CONTEXT section is present in the input.
 
-**Principle**: Determine whether the directive addresses the same scope as existing tasks or introduces an independent scope. This classification is independent of intent — perform it BEFORE Step 1.
+**Principle**: Determine whether the directive addresses the same scope as existing tasks or introduces an independent scope. This classification is independent of intent — perform it BEFORE Step 2.
 
 **Observation target**: Compare the directive's subject matter with the scope described in existing tasks.
 
@@ -25,7 +25,7 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 
 **Constraint**: When the EXISTING TASK CONTEXT section is NOT present, omit \`continuationType\` from the response entirely.
 
-### Step 1: Observe Intent
+### Step 2: Intent Classification
 
 **Principle**: Classify by **what the request produces**, not by the action verb.
 
@@ -52,7 +52,22 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 - Modify or create artifacts → \`work\`
 - Prior evaluation mentioned as context does NOT change the expected output type
 
-### Step 2.1: Explicit Artifact Match (for work intent)
+### Step 3: Route by Requested Output (for work intent)
+
+**Applies to**: plan and design jobs only. Code job skips directly to Step 4.
+
+**Principle**: The current job type is the default interpretation context. Route by what OUTPUT the user wants to PRODUCE, not by the TOPIC the message touches.
+
+| Observation | Action |
+|-------------|--------|
+| No different artifact type requested as output | \`proceed\` — skip Steps 4–8 |
+| Explicitly requests to produce a different artifact type | Continue to Step 4 |
+
+**Constraint**: Mentioning technologies, architecture patterns, design constraints, or domain concepts that overlap with another job's scope is NOT requesting that job's artifact. These are inputs to the current job's output.
+
+**Constraint**: "Explicitly requests" means the directive's intent is to produce a different artifact type as its primary output. Observe the REQUESTED OUTPUT, not keywords or domain vocabulary.
+
+### Step 4: Artifact Match (for work intent)
 
 **Principle**: When the directive explicitly names an artifact type as the target output, route to the job that produces that artifact.
 
@@ -63,39 +78,35 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 | System architecture, API design document | \`design\` |
 | Spec document (feature-scoped planning) | \`design\` |
 | Codebase indexing | \`learn\` |
-| No specific artifact named | → Step 2.2 |
+| No specific artifact named | → Step 5 |
 
 **Constraint**: Only match when the user EXPLICITLY names the artifact type as the output to produce. Do NOT infer artifact type from action verbs alone.
 
-**Constraint — Design ↔ Plan mutual boundary**: Design and Plan jobs share overlapping context. When either is the current job, do NOT redirect to the other UNLESS the user explicitly names the other job's artifact type:
-- Current=\`design\`: only redirect to \`plan\` when user explicitly names PRD
-- Current=\`plan\`: only redirect to \`design\` when user explicitly names a design artifact (UI spec, system design doc, spec document)
-- General/ambiguous commands without naming a specific artifact → ALWAYS belong to the current job
+### Step 5: Implementation Readiness
 
-**Constraint**: When the Design ↔ Plan boundary applies, the response JSON MUST NOT contain \`suggestedJob\` or \`suggestedAgent\` fields.
+**Applies when**: Step 4 found no explicit artifact.
 
-### Step 2.2: Design-Ready Implementation Check
-
-**Applies when**: Step 2.1 found no explicit artifact.
-
-**Principle**: When design documents exist and the directive clearly requests implementation, code production is the target — scope analysis is unnecessary.
+**Principle**: Implementation requires design artifacts. Redirect to code job is valid only when design documents exist.
 
 **Observation targets**:
 1. Do design documents (system design, UI specification) exist in WORKSPACE STATE?
-2. Does the directive **clearly** request implementation or development?
+2. Does the directive request implementation as the output?
 
-Both conditions met → target = \`code\` (new-development)
-Either condition not met → Step 2.3
+| Design docs exist | Implementation requested | Action |
+|-------------------|------------------------|--------|
+| Yes | Yes | target = \`code\` |
+| No | Yes | target = \`design\` (design artifacts needed first) |
+| Any | No | → Step 6 |
 
-**Constraint (conservative)**: Only explicit development/implementation directives qualify as "implementation request" — develop, implement, code, build, "start development". Analysis, investigation, bug diagnosis, modification, explanation do NOT qualify. **When uncertain, always pass to Step 2.3.**
+**Constraint (conservative)**: Only explicit development/implementation directives qualify as "implementation request" — develop, implement, code, build, "start development". Analysis, investigation, bug diagnosis, modification, explanation do NOT qualify. **When uncertain, always pass to Step 6.**
 
-### Step 2.3: Scope Routing
+### Step 6: Scope Routing
 
-**Applies when**: No explicit artifact (Step 2.1) AND not design-ready implementation (Step 2.2).
+**Applies when**: No explicit artifact (Step 4) AND not implementation request (Step 5).
 
 **Observation targets** (in order):
 
-#### 2.3a: Modification Intent Check
+#### 6.1: Modification Intent Check
 
 Observe whether the directive's content implies changes will result:
 
@@ -105,12 +116,12 @@ Observe whether the directive's content implies changes will result:
 | Requests to fix, modify, add, refactor, implement | Yes — direct modification |
 | Pure understanding: "how does X work?", "explain Y", "describe Z" | No — explanation only |
 
-- **Modification intent = No** → target = \`code\` (explain mode, any boundary). **STOP — skip 2.3b.**
-- **Modification intent = Yes** → proceed to 2.3b.
+- **Modification intent = No** → target = \`code\` (explain mode, any boundary). **STOP — skip 6.2.**
+- **Modification intent = Yes** → proceed to 6.2.
 
 **Constraint**: Observe the CONTENT of the request, not just the verb. "Why doesn't X work?" describes broken behavior (modification intent). "How does X work?" asks for understanding (no modification intent).
 
-#### 2.3b: Scope Breadth + Spec Check (modification intent only)
+#### 6.2: Scope Breadth + Spec Check (modification intent only)
 
 1. **Scope breadth** — observe the specificity of the directive's target:
    - **Single-boundary**: directive names a specific, narrow target (one file, one function, one UI element, one API endpoint). The change is self-contained.
@@ -136,26 +147,24 @@ Compare target vs current job:
 
 ⚠️ **Blind spot — scope underestimation**: Bugs that manifest in one place but originate across multiple layers (UI, data, API, state management) span multiple boundaries. Observe the FULL scope of affected subsystems, not just where the symptom appears.
 
-### Step 2.4: Agent Match (for work intent)
+### Step 7: Agent Match (for work intent)
 
 **Principle**: Each job definition in AVAILABLE JOBS includes its \`agent\`. Compare the target job's agent with the current agent (shown in SESSION).
 
 | Observation | Action |
 |-------------|--------|
-| Target job's agent matches current agent | Continue to Step 3 |
+| Target job's agent matches current agent | Continue to Step 8 |
 | Target job's agent differs from current agent | Set \`redirect\` with \`suggestedAgent\` + \`suggestedJob\` |
 
-**Constraint**: The Design ↔ Plan mutual boundary (Step 2.1) also applies here. When that boundary applies, do NOT set \`suggestedAgent\`.
-
-### Step 3: Determine Status
+### Step 8: Determine Status
 
 | Observation | Status |
 |-------------|--------|
 | Request matches current job capability AND prerequisites present | \`proceed\` |
-| Steps 2.1–2.3 determined a different job or agent than current | \`redirect\` |
+| Steps 4–6 determined a different job or agent than current | \`redirect\` |
 | Request matches current job BUT REQUIRED prerequisites missing | \`blocked\` |
 
-**Constraint**: If Steps 2.1–2.3 set \`redirect\`, Step 3 MUST NOT override it.
+**Constraint**: If Steps 4–6 set \`redirect\`, Step 8 MUST NOT override it.
 
 **Constraint**: Only missing REQUIRED prerequisites trigger \`blocked\`. Missing RECOMMENDED prerequisites do NOT affect status.
 
@@ -196,13 +205,14 @@ When user input appears to be:
 
 ## CRITICAL REMINDERS
 
+⚠️ **Route by output, not topic**: The current job type is the default context. Mentioning technologies or design concepts is INPUT to the current job, not a request for another job's artifact. (Step 3)
+⚠️ **Implementation requires design artifacts**: Code redirect is valid only when design documents exist. No design docs + implementation request → redirect to design, not code. (Step 5)
 ⚠️ **Artifact output = WORK**: Producing or modifying artifacts → \`work\`
 ⚠️ **Artifact/codebase explanation = WORK**: Explaining project codebase, architecture, or any artifacts → \`work\`. This includes questions about existing code that Ant did NOT generate.
 ⚠️ **Ask = Ant system ONLY**: \`ask\` is EXCLUSIVELY for questions about the Ant tool itself. Project code questions → ALWAYS \`work\`.
 ⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → \`ask\`
 ⚠️ **Reference source ≠ Requested output**: When evaluation is mentioned as a BASIS for the request (not the requested output), intent is determined by the actual expected output.
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → \`ask\` + \`inScope: false\`
-⚠️ **Workspace state ≠ User intent**: The presence of a document type does NOT mean the user wants to create MORE of that type. Route by what the user REQUESTS. Exception: Step 2.2 intentionally combines workspace state (design docs exist) with request target (implementation directive) — this is a prerequisite check, not intent inference.
 ⚠️ **Redirect prerequisite principle**: Redirect validity depends on whether the target job's PREREQUISITES exist — not on whether its OUTPUT documents already exist.
 ⚠️ **Required vs. Recommended**: Only REQUIRED prerequisites affect routing. Missing RECOMMENDED prerequisites are informational only.
 ⚠️ **MANDATORY**: Always wrap response in <triage>...</triage> tags
@@ -303,7 +313,7 @@ Has full codebase analysis capability — equivalent to code job's analysis powe
 - Task decomposition for complex modifications
 
 **Redirect signals:**
-- → to_code: Request is pure explanation/analysis without modification intent (any boundary), OR single-boundary implementation/modification that does not require upfront specification, OR design documents already exist AND the request explicitly asks to start implementation/development
+- → to_code: Design documents already exist AND the directive requests implementation as the output. Design job handles explanation, analysis, and investigation directly (has code reading tools).
 - → to_learn: Request target is codebase analysis or indexing output
 - → to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
 

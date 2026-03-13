@@ -48,11 +48,11 @@ describe('hasTargetJobPrerequisites', () => {
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Target: code
-  // Needs: hasPrd || hasDesignDoc || hasCodebase
+  // Needs: hasDesignDoc || hasCodebase
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   describe('target = code', () => {
-    it('returns true when PRD exists', () => {
-      expect(hasTargetJobPrerequisites('code', makeWs({ hasPrd: true }))).toBe(true);
+    it('returns false when only PRD exists (design artifacts required)', () => {
+      expect(hasTargetJobPrerequisites('code', makeWs({ hasPrd: true }))).toBe(false);
     });
 
     it('returns true when design doc exists', () => {

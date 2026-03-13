@@ -317,6 +317,9 @@ export const TOOL_SETS = {
   // Design explain mode: read-only exploration (no writes, no run_command)
   designExplain: ['read_file', 'list_files', 'search_code', 'search_web'] as ToolName[],
 
+  // Code explain mode: read-only exploration (identical to designExplain)
+  codeExplain: ['read_file', 'list_files', 'search_code', 'search_web'] as ToolName[],
+
   // Full set for design job (no run_command, no reference)
   design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir', 'search_web'] as ToolName[],
   
