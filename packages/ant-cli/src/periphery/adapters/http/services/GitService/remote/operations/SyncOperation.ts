@@ -1,8 +1,11 @@
+import * as fs from 'fs';
 import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
-import { GitOperationError } from '../../errors';
+import { WorktreeService } from '../../worktree';
+import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
+import { GitOperationError, GitConflictError } from '../../errors';
 import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
 
 /**
@@ -11,10 +14,15 @@ import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
  * Handles syncing with GitHub (fetch + pull + push).
  */
 export class SyncOperation {
+  private readonly featureBackup: FeatureCodebaseBackup;
+
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
+    private readonly worktreeService: WorktreeService,
     private readonly githubAuthService?: GitHubAuthService
-  ) {}
+  ) {
+    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
+  }
 
   async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     success: boolean;
@@ -30,12 +38,27 @@ export class SyncOperation {
 
     await GitHelper.ensureSafeDirectory(codebasePath);
 
-    const git = GitHelper.getGitInstanceSafe(codebasePath);
+    let git = GitHelper.getGitInstanceSafe(codebasePath);
+
+    if (!git && featureName) {
+      const backups = await this.featureBackup.backup(projectId, [featureName], userContext);
+      try {
+        await this.worktreeService.createWorktree(projectId, featureName, userContext);
+        const backupPath = backups.get(featureName);
+        if (backupPath && fs.existsSync(backupPath)) {
+          await this.featureBackup.restoreToWorktree(backupPath, codebasePath);
+        }
+      } finally {
+        await this.featureBackup.cleanup(backups);
+      }
+      await GitHelper.ensureSafeDirectory(codebasePath);
+      git = GitHelper.getGitInstanceSafe(codebasePath);
+    }
+
     if (!git) {
       throw new GitOperationError('Repository not initialized. Please clone or initialize first.');
     }
 
-    // Update remote URL
     const credentialContext = {
       org: userContext.organizationId,
       user: userContext.userId
@@ -54,7 +77,6 @@ export class SyncOperation {
       throw new GitOperationError('No branch to sync');
     }
 
-    // Check upstream — sync is meaningless without one
     let hasUpstream = true;
     try {
       await git.revparse(['--abbrev-ref', `${currentBranch}@{upstream}`]);
@@ -77,7 +99,17 @@ export class SyncOperation {
 
     if (freshStatus.behind > 0) {
       console.log(`[SyncOperation] Pulling from origin/${currentBranch}...`);
-      await git.pull('origin', currentBranch);
+      try {
+        await git.pull('origin', currentBranch);
+      } catch (error: any) {
+        const msg = error?.message || String(error);
+        if (msg.includes('CONFLICT') || msg.includes('Merge conflict') || msg.includes('merge conflict')) {
+          throw new GitConflictError(
+            `Merge conflict detected while syncing. Please resolve conflicts in the IDE.`
+          );
+        }
+        throw error;
+      }
       pulledChanges = true;
       console.log('[SyncOperation] Pull completed');
     }
@@ -97,4 +129,3 @@ export class SyncOperation {
   }
 
 }
-

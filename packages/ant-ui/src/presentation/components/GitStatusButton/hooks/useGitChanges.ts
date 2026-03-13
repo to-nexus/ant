@@ -75,10 +75,7 @@ export function useGitChanges(
   
   const setLastFetchTime = (time: number) => {
     try {
-      const timeString = new Date(time).toLocaleTimeString('ko-KR');
-      const featureKey = selectedFeature || 'base';
       sessionStorage.setItem(getStorageKey('git-fetch-time'), time.toString());
-      console.log(`[Timer] ⏰ Fetch timer set for ${selectedProject}/${featureKey} at ${timeString}`);
     } catch {}
   };
   
@@ -99,12 +96,9 @@ export function useGitChanges(
 
   // Load cache when project or feature changes
   useEffect(() => {
-    console.log('[useGitChanges] Context changed, project:', selectedProject, 'feature:', selectedFeature);
     if (selectedProject) {
       const cached = getCachedChanges();
-      console.log('[useGitChanges] Cached data:', cached);
       if (cached) {
-        console.log('[useGitChanges] Loading cached data for project/feature:', selectedProject, selectedFeature);
         const currentBranch = useStore.getState().gitStatus?.currentBranch;
         if (currentBranch) {
           cached.currentBranch = currentBranch;
@@ -112,8 +106,12 @@ export function useGitChanges(
         setGitChanges(cached);
         setIsGitInitialized(cached.isGitInitialized ?? null);
       } else {
-        console.log('[useGitChanges] No cached data found for project/feature:', selectedProject, selectedFeature);
+        setGitChanges(null);
+        setIsGitInitialized(null);
       }
+    } else {
+      setGitChanges(null);
+      setIsGitInitialized(null);
     }
   }, [selectedProject, selectedFeature]);
 
@@ -146,36 +144,32 @@ export function useGitChanges(
     }
   }, [gitStatusRefreshTrigger]);
 
-  // ✅ NEW: Listen to Git change events from SSE
+  // Listen to Git change events from SSE
   useEffect(() => {
     if (!selectedProject || !selectedFeature) {
       return;
     }
 
-    // Dynamic import to avoid SSR issues
-    const setupGitChangeListener = async () => {
+    let cancelled = false;
+    let unregister: (() => void) | undefined;
+
+    (async () => {
       const { sseManager } = await import('@/infrastructure/sse/SSEManager');
-      
+      if (cancelled) return;
+
       const handleGitChange = (data: any) => {
-        // Only handle events for current project/feature
         if (data.project === selectedProject && data.feature === selectedFeature) {
-          console.log('[useGitChanges] 🔄 Git changes detected from SSE, triggering immediate fetch');
           setTriggerFetch(prev => prev + 1);
         }
       };
-      
+
       sseManager.registerHandler('gitChange', handleGitChange);
-      
-      return () => {
-        sseManager.unregisterHandler('gitChange', handleGitChange);
-      };
-    };
-    
-    let cleanup: (() => void) | undefined;
-    setupGitChangeListener().then(fn => { cleanup = fn; });
-    
+      unregister = () => sseManager.unregisterHandler('gitChange', handleGitChange);
+    })();
+
     return () => {
-      cleanup?.();
+      cancelled = true;
+      unregister?.();
     };
   }, [selectedProject, selectedFeature]);
 
@@ -222,7 +216,6 @@ export function useGitChanges(
         
         setLastFetchTime(Date.now());
       } catch (error: any) {
-        console.warn('[useGitChanges] Fetch failed:', error);
         if (error.message?.includes('not initialized')) {
           setGitChanges(null);
           setIsGitInitialized(false);

@@ -49,10 +49,12 @@ export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, _get) =
       const status = await getGitStatus(projectId, feature);
       const prev = _get().gitStatus;
       set({ gitStatus: prev ? { ...prev, ...status } : status });
-      console.log('[GitSlice] Git status loaded:', status);
-    } catch (error) {
-      console.error('[GitSlice] Failed to get Git status:', error);
-      set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
+    } catch {
+      // Transient errors (network, timeout) should not reset git status.
+      // Only clear if there was no previous status at all.
+      if (!_get().gitStatus) {
+        set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
+      }
     } finally {
       set({ isGitStatusLoading: false });
     }
