@@ -27,6 +27,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 // Import submodules
 import { buildMessages } from './promptBuilder';
 import { getAvailableTools } from './toolDefinitions';
+import { getToolsByNamesWithTemplates, TOOL_SETS } from '../../../../tools/definitions';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
@@ -218,15 +219,16 @@ export async function codeGen(
   // using structured tool_use blocks. This happened when detectionReport was
   // not properly restored on resume.
   const isExplainMode = state.detectionReport?.jobMode === 'explain';
-  const enableTools = !isExplainMode;
-  const tools = enableTools ? await getAvailableTools(state) : undefined;
+  const tools = isExplainMode
+    ? await getToolsByNamesWithTemplates(TOOL_SETS.codeExplain, state.deps?.prompt)
+    : await getAvailableTools(state);
   
   if (!state.detectionReport?.jobMode) {
     console.warn(`⚠️ [CodeGen] detectionReport.jobMode is missing — defaulting to tools enabled`);
   }
   
   if (isExplainMode) {
-    console.log(`💡 [CodeGen] Explain mode - tools disabled (explanation only)`);
+    console.log(`💡 [CodeGen] Explain mode - read-only tools enabled`);
   } else {
     console.log(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.detectionReport?.jobMode || 'unknown'})`);
   }
@@ -661,13 +663,6 @@ export async function codeGen(
     }
     
     console.log(`✅ [CodeGen] Complete: ${toolCalls.length} tools, ${files.length} files${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
-
-    // ✅ Explain mode validation
-    if (isExplainMode && toolCalls.length > 0) {
-      console.error('⚠️  [CodeGen] Explain mode should NOT use tools!');
-      console.error('   Tool calls detected:', toolCalls.map(t => t.name).join(', '));
-      throw new Error('[CodeGen] Explain mode should not generate tool calls. Response must be pure text explanation.');
-    }
     
     // ✅ Workflow instrumentation: Exit node (success path)
     if (state.deps?.workflowUpdate && state._httpJobId) {

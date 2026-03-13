@@ -15,7 +15,7 @@
  * - Only streams chat responses via ChatAPIClient
  */
 
-import { analyzeWorkspace, AgentRegistry, parseTriageResponse, buildTriagePrompt } from '../../../common/nodes/triage/index.js';
+import { analyzeWorkspace, AgentRegistry, parseTriageResponse, buildTriagePrompt, hasTargetJobPrerequisites } from '../../../common/nodes/triage/index.js';
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
 import { runAskGraph } from './runner.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
@@ -162,6 +162,20 @@ export async function runInlineAsk(params: InlineAskParams): Promise<InlineAskRe
         response: displayMessage,
         status: 'completed',
       };
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 4.5: Prerequisite guard (mirroring main triage guard)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (triageResult.workStatus === 'redirect' && triageResult.suggestedJob) {
+    if (!hasTargetJobPrerequisites(triageResult.suggestedJob, workspaceState)) {
+      console.log(`🛡️ [InlineAsk] Guard: redirect to ${triageResult.suggestedJob} blocked — no prerequisites`);
+      triageResult.workStatus = 'proceed';
+      triageResult.suggestedJob = undefined;
+      triageResult.suggestedAgent = undefined;
+      triageResult.needsChoice = undefined;
+      triageResult.choiceOptions = undefined;
     }
   }
 
