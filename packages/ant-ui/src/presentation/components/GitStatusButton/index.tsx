@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Undo2 } from 'lucide-react';
 import { useStore } from '@/domain/store';
@@ -11,21 +11,16 @@ import { ActionButton } from './components/ActionButton';
 import { GitChangesPanel } from './components/GitChangesPanel';
 import { Button } from '../common/button';
 
-export function GitStatusButtons() {
+export function GitStatusButton() {
   const { t } = useTranslation('explorer');
   const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase } = useStore();
   
   const hasGitHubRepo = useGitHubRepoConfig(selectedProject);
   const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges(selectedProject, selectedFeature, hasGitHubRepo);
-  const [localGitChanges, setLocalGitChanges] = useState(gitChanges);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
-  
-  // Sync local state with hook state
-  if (gitChanges !== localGitChanges) {
-    setLocalGitChanges(gitChanges);
-  }
+  const prevPathsRef = useRef<string>('');
 
-  // Auto-select all files when changes arrive
+  // Smart sync: preserve user selections, only update when file list actually changes
   useEffect(() => {
     if (gitChanges) {
       const allPaths = [
@@ -33,9 +28,23 @@ export function GitStatusButtons() {
         ...gitChanges.unstaged.map(f => f.path),
         ...gitChanges.untracked.map(f => f.path),
       ];
-      setSelectedFiles(allPaths);
+      const pathsKey = allPaths.sort().join('\n');
+      if (prevPathsRef.current !== pathsKey) {
+        const prevPaths = new Set(prevPathsRef.current.split('\n').filter(Boolean));
+        if (prevPaths.size === 0) {
+          setSelectedFiles(allPaths);
+        } else {
+          const newPaths = allPaths.filter(p => !prevPaths.has(p));
+          setSelectedFiles(prev => [
+            ...prev.filter(p => allPaths.includes(p)),
+            ...newPaths,
+          ]);
+        }
+        prevPathsRef.current = pathsKey;
+      }
     } else {
       setSelectedFiles([]);
+      prevPathsRef.current = '';
     }
   }, [gitChanges]);
   
@@ -50,7 +59,7 @@ export function GitStatusButtons() {
     handlePull,
     handleSync,
     handleDiscard
-  } = useGitActions(selectedProject, selectedFeature, gitChanges, setLocalGitChanges);
+  } = useGitActions(selectedProject, selectedFeature, gitChanges);
 
   if (!selectedProject) {
     return null;
@@ -94,7 +103,7 @@ export function GitStatusButtons() {
           selectedFiles={selectedFiles}
         />
         <Button
-          onClick={() => handleDiscard()}
+          onClick={() => handleDiscard(selectedFiles.length < totalChanges ? selectedFiles : undefined)}
           variant="outline"
           size="sm"
           className="px-2 py-1.5 text-xs

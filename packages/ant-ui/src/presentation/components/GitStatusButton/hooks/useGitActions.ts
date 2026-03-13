@@ -9,16 +9,17 @@ import {
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { GitChanges } from './useGitChanges';
 
 export function useGitActions(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
-  gitChanges: GitChanges | null,
-  setGitChanges: (changes: GitChanges | null) => void
+  gitChanges: GitChanges | null
 ) {
   const setGitStatusPhase = useStore((state) => state.setGitStatusPhase);
   const { showError, showConfirm } = useAlertModalContext();
+  const { toast } = useToastContext();
   const { t } = useTranslation('explorer');
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
@@ -35,7 +36,7 @@ export function useGitActions(
     try {
       const result = await commitGitChanges(selectedProject, undefined, selectedFeature, files);
       if (result.success) {
-        setGitChanges(null);
+        toast.success(t('git.commitSuccess'));
       } else {
         showError(result.error || t('git.commitFailed'));
       }
@@ -56,7 +57,7 @@ export function useGitActions(
     try {
       const result = await pushToGitHub(selectedProject, selectedFeature);
       if (result.success) {
-        setGitChanges(null);
+        toast.success(t('git.pushSuccess'));
       } else {
         showError(result.error || t('git.pushFailed'));
       }
@@ -77,7 +78,7 @@ export function useGitActions(
     try {
       const result = await pullFromGitHub(selectedProject, selectedFeature);
       if (result.success) {
-        setGitChanges(null);
+        toast.success(t('git.pullSuccess'));
       } else {
         showError(result.error || t('git.pullFailed'));
       }
@@ -98,7 +99,7 @@ export function useGitActions(
     try {
       const result = await syncWithRemote(selectedProject, selectedFeature);
       if (result.success) {
-        setGitChanges(null);
+        toast.success(t('git.syncSuccess'));
       } else {
         showError(result.error || t('git.syncFailed'));
       }
@@ -127,7 +128,7 @@ export function useGitActions(
         try {
           const result = await discardGitChanges(selectedProject, selectedFeature, files);
           if (result.success) {
-            setGitChanges(null);
+            toast.success(t('git.discardSuccess'));
           } else {
             showError(result.error || t('git.discardFailed'));
           }

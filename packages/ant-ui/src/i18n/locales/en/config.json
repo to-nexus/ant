@@ -178,6 +178,8 @@
     "pullDesc": "Download changes",
     "fetch": "Fetch",
     "fetchDesc": "Update remote refs",
+    "publish": "Publish",
+    "publishDesc": "Publish this branch to remote",
     
     "confirmClone": "Clone this repository to your local workspace? This will download the remote codebase.",
     "confirmInit": "Create a new GitHub repository? Your current codebase will be used as the initial commit.",
