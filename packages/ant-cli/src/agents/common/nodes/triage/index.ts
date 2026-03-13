@@ -57,7 +57,7 @@ export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState)
     case 'design':
       return ws.hasPrd || ws.hasScreens || ws.hasComponents || ws.hasAssets;
     case 'code':
-      return ws.hasPrd || ws.hasDesignDoc || ws.hasCodebase;
+      return ws.hasDesignDoc || ws.hasCodebase;
     case 'learn':
       return ws.hasCodebase;
     default:
@@ -214,8 +214,10 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
       triageResult.needsChoice = undefined;
       triageResult.choiceOptions = undefined;
       triageResult.redirectReason = undefined;
-      triageResult.displayMessage = '작업을 시작합니다.';
-      triageResult._guardMessage = `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다. 먼저 PRD를 작성한 후 진행해주세요.`;
+      triageResult.displayMessage = undefined;
+      triageResult._guardMessage = targetJob === 'code'
+        ? '코드 작업을 시작하려면 디자인 문서가 필요합니다. 먼저 디자인 작업을 진행해주세요.'
+        : `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다.`;
     }
   }
 
