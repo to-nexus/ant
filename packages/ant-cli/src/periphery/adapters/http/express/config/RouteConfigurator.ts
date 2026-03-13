@@ -119,6 +119,7 @@ export class RouteConfigurator {
       fileTreeNotifier: this.workflowBridge,
       transferService: this.deps.transferService,
       stateStore: getInfrastructureFactory().getStateStore(),
+      gitWatcherService: this.deps.gitWatcherService,
     });
     app.use('/api', apiRoutes);
   }
