@@ -169,9 +169,9 @@
     "notInitialized": "Git not initialized",
     "configureFirst": "Configure GitHub repo first",
     "clone": "Clone",
-    "cloneDesc": "Pull existing repo",
+    "cloneDesc": "Clone existing repository",
     "initialize": "Initialize",
-    "initializeDesc": "Create new GitHub repository",
+    "initializeDesc": "Create new GitHub repository and initialize Git",
     "push": "Push",
     "pushDesc": "Upload changes",
     "pull": "Pull",
@@ -182,7 +182,7 @@
     "publishDesc": "Publish this branch to remote",
     
     "confirmClone": "Clone this repository to your local workspace? This will download the remote codebase.",
-    "confirmInit": "Create a new GitHub repository? Your current codebase will be used as the initial commit.",
+    "confirmInit": "Create a new GitHub repository? An empty repository will be created.",
     
     "currentBranch": "Current branch:",
     "configRequired": "Configuration required. Click the settings icon above to create one.",
