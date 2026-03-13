@@ -131,8 +131,7 @@ export function createSSERoutes(deps: {
     
     // ✅ Start watching Git changes
     if (deps.gitWatcherService && userContext) {
-      const sseClientChecker = () => deps.sseService.getClientCount(projectId, featureName, userContext) > 0;
-      deps.gitWatcherService.watchGitChanges(projectId, featureName, userContext, sseClientChecker);
+      deps.gitWatcherService.watchGitChanges(projectId, featureName, userContext);
     }
     
     // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic.
@@ -149,6 +148,9 @@ export function createSSERoutes(deps: {
     // Handle disconnect
     res.on('close', () => {
       clearInterval(keepAliveInterval);
+      if (deps.gitWatcherService && userContext) {
+        deps.gitWatcherService.stopWatchingGitChanges(userContext, projectId, featureName);
+      }
       logger.debug(`Client disconnected`, { component: 'SSE', projectId, featureName });
     });
   });

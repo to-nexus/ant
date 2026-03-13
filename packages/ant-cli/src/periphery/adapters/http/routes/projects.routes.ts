@@ -22,6 +22,7 @@ function handleGitError(res: Response, error: any, context: string, projectId: s
  */
 export function createProjectsRoutes(deps: {
   projectService: ProjectService;
+  gitWatcherService?: { retryDeferredWatchers(projectId: string): void };
 }): Router {
   const router = Router();
   
@@ -178,6 +179,7 @@ export function createProjectsRoutes(deps: {
       logger.info(`Clone request`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
       const result = await deps.projectService.cloneGitHubRepo(projectId, userContext);
+      deps.gitWatcherService?.retryDeferredWatchers(projectId);
       res.json({ success: true, message: 'Repository cloned successfully', warnings: result.warnings });
     } catch (error: any) {
       handleGitError(res, error, 'Clone', projectId);
@@ -207,6 +209,7 @@ export function createProjectsRoutes(deps: {
       
       const { activeFeature } = req.body || {};
       const result = await deps.projectService.initializeGitHubRepo(projectId, userContext, activeFeature);
+      deps.gitWatcherService?.retryDeferredWatchers(projectId);
       res.json({ success: true, message: 'Repository initialized and pushed successfully', warnings: result.warnings });
     } catch (error: any) {
       handleGitError(res, error, 'Initialize', projectId);

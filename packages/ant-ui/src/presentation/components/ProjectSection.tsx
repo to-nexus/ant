@@ -169,6 +169,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
             'init': t('git.repoInitialized')
           } as const;
           showSuccess(successMessages[actionType]);
+          useStore.getState().reloadIdeFrame();
         }
         
         if (shouldRefreshGitStatus && selectedProject) {

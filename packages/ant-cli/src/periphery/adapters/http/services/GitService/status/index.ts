@@ -69,9 +69,13 @@ export class StatusService {
       }
 
       return { hasGit, hasCodebase, hasFeatures, currentBranch, remoteUrl };
-    } catch (error) {
+    } catch (error: any) {
+      // ENOENT/EACCES are expected when project path doesn't exist yet
+      if (error?.code === 'ENOENT' || error?.code === 'EACCES') {
+        return { hasGit: false, hasCodebase: false, hasFeatures: false };
+      }
       console.error('[GitStatusService] Error checking Git status:', error);
-      return { hasGit: false, hasCodebase: false, hasFeatures: false };
+      throw error;
     }
   }
   

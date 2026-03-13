@@ -39,9 +39,9 @@ export class RemoteService {
     this.cloneOp = new CloneOperation(workspaceResolver, worktreeService, githubAuthService);
     this.initOp = new InitOperation(workspaceResolver, worktreeService, githubAuthService, onIndexingTrigger);
     this.pushOp = new PushOperation(workspaceResolver, worktreeService, githubAuthService);
-    this.pullOp = new PullOperation(workspaceResolver, githubAuthService);
+    this.pullOp = new PullOperation(workspaceResolver, worktreeService, githubAuthService);
     this.fetchOp = new FetchOperation(workspaceResolver, githubAuthService);
-    this.syncOp = new SyncOperation(workspaceResolver, githubAuthService);
+    this.syncOp = new SyncOperation(workspaceResolver, worktreeService, githubAuthService);
     this.commitOp = new CommitOperation(workspaceResolver, worktreeService);
     this.discardOp = new DiscardOperation(workspaceResolver);
   }

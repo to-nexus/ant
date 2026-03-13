@@ -45,7 +45,7 @@ export class DiscardOperation {
         await git.checkout(['--', ...trackedFiles]);
       }
       if (untrackedFiles.length > 0) {
-        await git.clean('f', untrackedFiles);
+        await git.raw(['clean', '-f', '--', ...untrackedFiles]);
       }
 
       const total = trackedFiles.length + untrackedFiles.length;
@@ -55,7 +55,7 @@ export class DiscardOperation {
       // Discard all changes
       const totalBefore = status.files.length;
       await git.checkout(['--', '.']);
-      await git.clean('f', ['-d']);
+      await git.raw(['clean', '-fd']);
 
       console.log(`[DiscardOperation] Discarded all changes (${totalBefore} files)`);
       return { success: true, discardedFiles: totalBefore };

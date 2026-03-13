@@ -38,6 +38,7 @@ export interface RoutesDeps {
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };  // ✅ For file tree updates after file writes
   transferService?: any;  // ArtifactTransferService for transfer operations
   stateStore?: any;  // RedisStateStore for transfer state management
+  gitWatcherService?: any;  // GitWatcherService for retrying deferred watchers after init/clone
 }
 
 /**
@@ -52,7 +53,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   
   // Project CRUD
   router.use(createProjectsRoutes({
-    projectService: deps.projectService
+    projectService: deps.projectService,
+    gitWatcherService: deps.gitWatcherService,
   }));
   
   // Feature CRUD
