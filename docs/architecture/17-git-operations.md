@@ -2,18 +2,20 @@
 
 ## 개요
 
-ANT는 GitHub를 통한 Git 연동을 지원한다. 프로젝트 생성 후 Git을 연결하는 3가지 Operation(Clone, Init, Publish)과 연결 후 사용하는 3가지 Operation(Push, Pull, Fetch)이 있다.
+ANT는 GitHub를 통한 Git 연동을 지원한다. 프로젝트 생성 후 Git을 연결하는 2가지 Setup Operation(Clone, Init)과 연결 후 사용하는 6가지 Operation(Push, Pull, Fetch, Commit, Sync, Discard)이 있다.
 
 ## Operation 정의
 
 | Operation | 역할 | 원격 레포 | 로컬 .git | Feature |
 |-----------|------|:---------:|:---------:|:-------:|
-| **Clone** | 기존 원격 레포를 로컬로 다운로드 | 있어야 함 | 없어야 함 | 없어야 함 |
-| **Init** | 로컬 코드로 새 원격 레포 생성 후 push | 없어야 함 | 없어야 함 | 없어야 함 |
-| **Publish** | 로컬 코드 + feature로 새 원격 레포 생성 후 push | 없어야 함 | 없어야 함 | OK |
-| **Push** | 로컬 변경사항을 원격에 업로드 | 연결됨 | 있어야 함 | - |
+| **Clone** | 기존 원격 레포를 로컬로 다운로드 | 있어야 함 | 없어야 함 | OK (worktree 자동 생성) |
+| **Init** | 로컬 코드로 새 원격 레포 생성 후 push | 없어야 함 | 없어야 함 | OK (worktree 자동 생성) |
+| **Commit** | 변경사항을 로컬 커밋 | 연결됨 | 있어야 함 | - |
+| **Push** | 로컬 커밋을 원격에 업로드 (upstream 없으면 자동 설정) | 연결됨 | 있어야 함 | - |
 | **Pull** | 원격 변경사항을 로컬로 다운로드 | 연결됨 | 있어야 함 | - |
 | **Fetch** | 원격 refs 업데이트 (코드 변경 없음) | 연결됨 | 있어야 함 | - |
+| **Sync** | Fetch + Pull + Push 순차 실행 | 연결됨 | 있어야 함 | - |
+| **Discard** | 커밋되지 않은 변경사항 되돌리기 | - | 있어야 함 | - |
 
 ## 상황별 가능 여부
 
@@ -22,38 +24,97 @@ ANT는 GitHub를 통한 Git 연동을 지원한다. 프로젝트 생성 후 Git�
               +----------------------+   +------------------------+
 Feature 없음  |  Clone  X (레포없음)  |   |  Clone  O              |
               |  Init   O            |   |  Init   X (레포존재)    |
-              |  Publish O           |   |  Publish X (레포존재)   |
               +----------------------+   +------------------------+
-Feature 있음  |  Clone  X (레포없음)  |   |  Clone  X (feat존재)   |
-              |  Init   X (feat존재) |   |  Init   X (둘다불가)    |
-              |  Publish O           |   |  Publish X (레포존재)   |
+Feature 있음  |  Clone  X (레포없음)  |   |  Clone  O              |
+              |  Init   O            |   |  Init   X (레포존재)    |
               +----------------------+   +------------------------+
 
-.git 이미 존재 → 3개 모두 불필요, Push/Pull/Fetch 사용
+.git 이미 존재 → Clone/Init 불필요, Push/Pull/Fetch/Commit/Sync/Discard 사용
 ```
 
-### 사용자 가이드: "어떤 것을 써야 하나?"
+### UI 메뉴 구조
 
-| 상황 | 올바른 선택 | 비고 |
-|------|-----------|------|
-| 원격 없음 + Feature 없음 | **Init** 또는 Publish | 새 레포 생성 |
-| 원격 없음 + Feature 있음 | **Publish** (유일한 선택) | feature 브랜치도 함께 push |
-| 원격 있음 + Feature 없음 | **Clone** (유일한 선택) | 기존 레포 다운로드 |
-| 원격 있음 + Feature 있음 | **막힘** | feature 삭제 후 Clone, 또는 원격 주소 변경 후 Publish |
+| 상태 | Git 메뉴 항목 |
+|------|--------------|
+| Setup Mode (`!hasGit`) | Clone / Initialize |
+| Connected Mode (`hasGit`) | Push / Pull / Fetch |
 
-## Clone이 Feature를 허용하지 않는 이유
+Connected Mode에서 ActionButton이 상황에 따라 Commit / Publish Branch / Push / Pull / Sync / No Changes를 자동 표시한다.
 
-Feature 코드는 Git base 없이 AI가 PRD 기반으로 독립 생성한 코드이다. 원격 레포를 clone하면 base branch는 원격의 코드인데, feature 코드는 이 base와 무관하다.
+## Worktree 생명주기
 
-이 둘을 git 브랜치 관계로 엮으면 diff가 "기존 파일 전체 삭제 + 새 파일 전체 추가"가 되어 의미없는 feature branch가 생성된다.
+### .git 파일 vs .git 디렉터리
 
-반면 Publish에서는 feature 코드 자체를 base branch의 seed로 사용하므로, base와 feature가 같은 출발점을 공유하여 diff가 의미있다.
+- `projectPath/codebase/.git/` (디렉터리) — main worktree, 실제 git 데이터 저장
+- `features/{name}/codebase/.git` (파일) — worktree 참조 파일, `gitdir: ../../codebase/.git/worktrees/{name}` 형태
+
+### Feature의 Git 상태 전이
+
+```
+[Feature 생성] → NoGit (codebase 디렉터리만 존재, .git 없음)
+                    │
+                    ├── Init/Clone 성공 → Worktree (.git 파일 생성)
+                    │                       │
+                    │                       ├── 코드 변경 → Uncommitted Changes
+                    │                       ├── Commit → Local Commits
+                    │                       ├── Push → Synced with Remote
+                    │                       ├── Publish Branch → upstream 설정됨
+                    │                       └── Discard → Clean State
+                    │
+                    └── Push/Commit 시도 → Lazy Worktree Creation (자동 생성)
+                                            └── backup → create worktree → restore → 계속
+```
+
+### Clone/Init 시 Feature Worktree 자동 생성
+
+Clone 또는 Init 수행 시 기존 feature를 모두 순회하며 worktree를 생성한다:
+- 원격에 `origin/feature/{name}` 브랜치가 존재 → `--track`으로 생성 (hasUpstream=true, Push/Pull 가능)
+- 원격에 해당 브랜치 없음 → 새 로컬 브랜치 생성 (hasUpstream=false, "Publish Branch" 가능)
+- 기존 로컬 코드는 backup → worktree 생성 → restore 과정을 거쳐 uncommitted changes로 복원
+
+### Lazy Worktree Creation
+
+Push 또는 Commit 시 feature codebase에 유효한 `.git`이 없으면:
+1. 기존 코드를 backup
+2. WorktreeService로 worktree 생성
+3. backup에서 코드 복원
+4. 원래 작업 (push/commit) 계속 진행
+
+### Worktree 안전성
+
+WorktreeService.createWorktree는 기존 디렉터리 발견 시:
+1. `.git` 파일이 존재하면 gitdir 경로의 유효성 검증
+2. 유효한 worktree → early return (재생성 불필요)
+3. 손상/누락 → `git worktree remove` → `git worktree prune` → 재생성
+
+## Publish Branch
+
+Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
+- `git push -u origin {branchName}` 실행 (Publish Branch)
+- UI에서는 ActionButton에 "Publish Branch" 버튼으로 표시
+- 이후 Push는 일반 `git push origin {branchName}`
+
+> 참고: "Publish Branch"는 per-branch 작업으로, Setup Mode의 Init/Clone과는 별개이다.
+> Init/Clone은 프로젝트 수준의 Git 연결이고, Publish Branch는 개별 feature 브랜치를 원격에 처음 push하는 작업이다.
+
+## 선택적 커밋
+
+- Commit API는 `files` 파라미터를 지원
+- 파일 지정 시 해당 파일만 `git add` 후 커밋
+- 미지정 시 전체 `git add .` 후 커밋
+
+## Discard Operation
+
+변경사항 되돌리기:
+1. `git reset HEAD` — staged 변경사항 unstage
+2. 파일 지정 시: tracked 파일은 `git checkout -- {files}`, untracked는 `git clean -f {files}`
+3. 전체 discard: `git checkout -- .` + `git clean -fd`
 
 ## 공통 전제 조건
 
 - `config.json`의 `githubRepo` 필드 설정 필수
 - GitHub PAT 설정 필수 (Account Configuration)
-- `.git` 이미 존재 시 Clone/Init/Publish 모두 불가 (이미 연결됨)
+- `.git` 이미 존재 시 Clone/Init 모두 불가 (이미 연결됨)
 
 ## 상태 전이
 
@@ -62,11 +123,13 @@ Feature 코드는 Git base 없이 AI가 PRD 기반으로 독립 생성한 코드
                     │
                     ├── feature 생성 → NoGit + HasFeatures
                     │
-                    ├── Clone 성공 ──→ Connected (연동됨)
-                    ├── Init 성공 ──→ Connected (연동됨)
-                    └── Publish 성공 → Connected (연동됨)
+                    ├── Clone 성공 ──→ Connected (연동됨, feature worktree 자동 생성)
+                    └── Init 성공 ──→ Connected (연동됨, feature worktree 자동 생성)
                                         │
-                                        ├── Push/Pull/Fetch → Connected
+                                        ├── Commit → Local Changes
+                                        ├── Push/Pull/Fetch/Sync → Connected
+                                        ├── Publish Branch → upstream 설정
+                                        ├── Discard → Clean State
                                         │
                                         └── config URL 임의 변경 → Error (오류)
                                                                     │
@@ -93,17 +156,25 @@ Feature 코드는 Git base 없이 AI가 PRD 기반으로 독립 생성한 코드
 {projectPath}/
 ├── config.json           ← githubRepo, branchBase 등
 ├── codebase/             ← main worktree (base branch)
-│   └── .git/             ← Clone/Init/Publish 후 생성
+│   └── .git/             ← Clone/Init 후 생성 (디렉터리)
 └── features/
     └── {featureName}/
-        ├── codebase/     ← git worktree (feature branch) 또는 일반 디렉터리
+        ├── codebase/     ← git worktree (feature branch)
+        │   └── .git      ← worktree 참조 파일 (gitdir 포인터)
         ├── inputs/
         ├── outputs/
         └── sessions/
 ```
 
-- Git 연결 전: `features/{name}/codebase/`는 일반 디렉터리
-- Git 연결 후 feature 생성: `features/{name}/codebase/`는 `feature/{name}` 브랜치의 git worktree
+- Git 연결 전: `features/{name}/codebase/`는 일반 디렉터리 (.git 없음)
+- Git 연결 후: `features/{name}/codebase/.git`은 main worktree를 가리키는 참조 파일
+- Lazy creation: Push/Commit 시 .git 없으면 자동으로 worktree 생성
+
+## .git 보호
+
+LLM 코드 생성 시 `.git` 파일/디렉터리 손상 방지:
+- `runCommand` 핸들러의 `detectWritePathViolations`에서 `.git` 경로 쓰기 차단
+- `rm`, `mv`, `cp`, `touch` 등 명령이 `.git`을 타겟으로 하면 violation 발생
 
 ## 에러 분류 기준
 
@@ -111,9 +182,9 @@ Feature 코드는 Git base 없이 AI가 PRD 기반으로 독립 생성한 코드
 
 | 상태 코드 | 의미 | 예시 |
 |-----------|------|------|
-| 400 | 사전 조건 불충족 | feature 존재, config 미설정, 레포 not found |
+| 400 | 사전 조건 불충족 | config 미설정, 레포 not found |
 | 401 | 인증 실패 | PAT 만료, 권한 부족 |
-| 409 | 충돌 | 이미 clone됨, 원격 레포 이미 존재 |
+| 409 | 충돌 | 이미 clone됨, 원격 레포 이미 존재, feature 이미 존재 |
 | 500 | 서버 에러 | 예상치 못한 git 명령 실패 |
 
 프론트엔드는 400/401/409 응답의 `error` 필드를 모달로 표시한다. 500은 "Internal Server Error"로 대체되므로, known 에러는 반드시 400/401/409으로 분류해야 한다.
@@ -124,12 +195,19 @@ Feature 코드는 Git base 없이 AI가 PRD 기반으로 독립 생성한 코드
 |------|------|
 | Clone | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/CloneOperation.ts` |
 | Init | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/InitOperation.ts` |
-| Publish | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/PublishOperation.ts` |
-| 라우트 | `packages/ant-cli/src/periphery/adapters/http/routes/projects.routes.ts` |
+| Push | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/PushOperation.ts` |
+| Commit | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/CommitOperation.ts` |
+| Discard | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/DiscardOperation.ts` |
+| Sync | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/SyncOperation.ts` |
+| Worktree | `packages/ant-cli/src/periphery/adapters/http/services/GitService/worktree/index.ts` |
+| Backup/Restore | `packages/ant-cli/src/periphery/adapters/http/services/GitService/worktree/FeatureCodebaseBackup.ts` |
+| Feature CRUD | `packages/ant-cli/src/periphery/adapters/http/services/ProjectService/FeatureCrudService.ts` |
 | Git 상태 조회 | `packages/ant-cli/src/periphery/adapters/http/services/GitService/status/index.ts` |
+| 라우트 | `packages/ant-cli/src/periphery/adapters/http/routes/projects.routes.ts` |
 | UI 드롭다운 | `packages/ant-ui/src/presentation/components/ProjectSection.tsx` |
-| UI 설정 뱃지 | `packages/ant-ui/src/presentation/components/ConfigEditor/components/ConfigField.tsx` |
-| UI 위저드 뱃지 | `packages/ant-ui/src/presentation/components/ProjectWizardModal/StepGitIntegration.tsx` |
+| UI Git 버튼 | `packages/ant-ui/src/presentation/components/GitStatusButtons/index.tsx` |
+| UI 변경 패널 | `packages/ant-ui/src/presentation/components/GitStatusButtons/components/GitChangesPanel.tsx` |
+| UI API 클라이언트 | `packages/ant-ui/src/infrastructure/http/api/github.ts` |
 
 ## 경계
 

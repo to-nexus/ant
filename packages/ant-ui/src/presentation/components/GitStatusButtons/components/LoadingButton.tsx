@@ -26,8 +26,6 @@ export function LoadingButton({ isFetchingChanges }: LoadingButtonProps) {
     loadingMessage = t('git.syncing');
   } else if (gitStatusPhase === 'switching') {
     loadingMessage = t('git.switching');
-  } else if (gitStatusPhase === 'publishing') {
-    loadingMessage = t('git.publishing');
   } else if (gitStatusPhase === 'initializing') {
     loadingMessage = t('git.initializing');
   } else if (gitStatusPhase === 'cloning') {

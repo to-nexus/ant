@@ -175,23 +175,30 @@ function detectWritePathViolations(
   const targets = extractWriteTargets(command);
   const violations: WriteViolation[] = [];
 
+  // Block commands that directly target .git files/directories
+  if (/\b(rm|mv|cp|touch|chmod)\b.*\.git\b/.test(command) || />\s*[^\s]*\.git/.test(command)) {
+    violations.push({ path: '.git', reason: 'modifying .git files/directories is forbidden' });
+  }
+
   for (const target of targets) {
-    // Resolve target path to absolute, then to project-relative
     const absTarget = path.isAbsolute(target)
       ? target
       : path.resolve(workingDir, target);
     const relToProject = normalizeRelPath(path.relative(projectPath, absTarget));
 
-    // Escapes project root entirely (../ traversal)
+    // Block any write targeting .git path segments
+    if (relToProject === '.git' || relToProject.startsWith('.git/') || relToProject.includes('/.git/') || relToProject.includes('/.git')) {
+      violations.push({ path: target, reason: 'writing to .git files/directories is forbidden' });
+      continue;
+    }
+
     if (relToProject.startsWith('..')) {
       violations.push({ path: target, reason: 'escapes project root via ../ traversal' });
       continue;
     }
 
-    // Check if path is under codebase/ or allowed sibling dirs
     const { normalized, wasFixed } = normalizeToCodebasePath(relToProject);
     if (wasFixed && normalized !== relToProject) {
-      // normalizeToCodebasePath wanted to fix this path — it's outside codebase
       violations.push({
         path: target,
         reason: `resolves to "${relToProject}" which is outside codebase/ (would be auto-corrected to "${normalized}")`,

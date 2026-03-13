@@ -6,16 +6,16 @@ import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
 import { GitignoreGenerator } from '../helpers/GitignoreGenerator';
+import { GitNotFoundError, GitOperationError } from '../../errors';
 
 /**
  * BaseGitSetupOperation
  * 
- * Shared logic for InitOperation and PublishOperation.
+ * Base class for InitOperation.
  * Provides common methods for Git initialization, commit creation,
  * GitHub repository creation, and rollback.
  * 
- * Both operations initialize Git in projectPath/codebase/ (the main worktree).
- * PublishOperation additionally creates per-feature worktrees via WorktreeService.
+ * Initializes Git in projectPath/codebase/ (the main worktree).
  * No branch checkout is performed in the main worktree — it always stays on the base branch.
  */
 export abstract class BaseGitSetupOperation {
@@ -30,13 +30,13 @@ export abstract class BaseGitSetupOperation {
     const configPath = path.join(projectPath, 'config.json');
     
     if (!fs.existsSync(configPath)) {
-      throw new Error('Project config not found');
+      throw new GitNotFoundError('Project config not found');
     }
 
     const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
     
     if (!config.githubRepo) {
-      throw new Error('GitHub repository not configured in project config');
+      throw new GitOperationError('GitHub repository not configured in project config');
     }
 
     // Use centralized codebase path resolution (main worktree for init/publish operations)
@@ -73,7 +73,7 @@ export abstract class BaseGitSetupOperation {
     
     const gitDir = path.join(codebasePath, '.git');
     if (!fs.existsSync(gitDir)) {
-      throw new Error(`Git initialization failed: .git not found in ${codebasePath}`);
+      throw new GitOperationError(`Git initialization failed: .git not found in ${codebasePath}`);
     }
 
     await GitHelper.ensureSafeDirectory(codebasePath);
@@ -206,6 +206,48 @@ export abstract class BaseGitSetupOperation {
     }
   }
 
+  protected async readExistingFeatures(projectPath: string): Promise<string[]> {
+    const { FeatureCodebaseBackup } = await import('../../worktree/FeatureCodebaseBackup');
+    const features = await FeatureCodebaseBackup.readExistingFeatures(projectPath);
+    if (features.length > 0) {
+      console.log(`[${this.operationName}] Found ${features.length} existing feature(s): ${features.join(', ')}`);
+    }
+    return features;
+  }
+
+  protected async seedMainCodebase(
+    projectId: string,
+    seedFeature: string,
+    codebasePath: string,
+    userContext: UserContext
+  ): Promise<void> {
+    if (fs.existsSync(codebasePath)) {
+      const existingFiles = await fs.promises.readdir(codebasePath);
+      if (existingFiles.length > 0) {
+        console.log(`[${this.operationName}] Main codebase already has files, skipping seed`);
+        return;
+      }
+    }
+
+    const featureCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, seedFeature);
+    if (!fs.existsSync(featureCodebasePath)) return;
+
+    const files = await fs.promises.readdir(featureCodebasePath);
+    const nonGitFiles = files.filter(f => f !== '.git');
+    if (nonGitFiles.length === 0) return;
+
+    await fs.promises.mkdir(codebasePath, { recursive: true });
+    console.log(`[${this.operationName}] Seeding main codebase from feature: ${seedFeature}`);
+    for (const item of nonGitFiles) {
+      await fs.promises.cp(
+        path.join(featureCodebasePath, item),
+        path.join(codebasePath, item),
+        { recursive: true }
+      );
+    }
+    console.log(`[${this.operationName}] Main codebase seeded with ${nonGitFiles.length} items from ${seedFeature}`);
+  }
+
   protected async rollback(codebasePath: string): Promise<void> {
     try {
       const gitDir = path.join(codebasePath, '.git');
@@ -230,5 +272,5 @@ export abstract class BaseGitSetupOperation {
   protected abstract get operationName(): string;
 
   /** Main execution method */
-  abstract execute(projectId: string, userContext: UserContext, ...args: any[]): Promise<void>;
+  abstract execute(projectId: string, userContext: UserContext, ...args: any[]): Promise<any>;
 }

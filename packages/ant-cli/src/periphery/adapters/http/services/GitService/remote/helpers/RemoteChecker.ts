@@ -1,6 +1,7 @@
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { UserContext } from '../../../../../../../core/types/user';
 import { Octokit } from '@octokit/rest';
+import { GitAuthError, GitOperationError } from '../../errors';
 
 /**
  * RemoteChecker
@@ -60,23 +61,22 @@ export class RemoteChecker {
         }
 
         if (error?.status === 401 || error?.status === 403) {
-          // Do not "assume exists" (that causes false positives). Fail with actionable error instead.
-          throw new Error(
+          throw new GitAuthError(
             `GitHub authentication failed while verifying repository existence (${error.status}). ` +
             `Please check your GitHub PAT (and scopes) in Configuration.`
           );
         }
 
-        throw new Error(
+        throw new GitOperationError(
           `Could not verify repository existence (${error?.status || 'unknown'}): ${owner}/${repo}. ` +
           `${error?.message || ''}`.trim()
         );
       }
     } catch (error: any) {
       // Bubble up with a clean error message; callers can decide how to handle this.
-      const msg = error?.message || String(error);
-      console.error('[RemoteChecker] Error checking repository:', msg);
-      throw new Error(msg);
+      console.error('[RemoteChecker] Error checking repository:', error?.message || error);
+      if (error instanceof GitOperationError) throw error;
+      throw new GitOperationError(error?.message || String(error));
     }
   }
 }

@@ -89,15 +89,11 @@ export async function checkCloneStatus(
   }
 }
 
-export function initializeGitHubRepo(projectId: string) {
-  return gitAction(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/initialize`);
-}
-
-export function publishToGitHub(projectId: string, activeFeature?: string) {
+export function initializeGitHubRepo(projectId: string, activeFeature?: string) {
   return gitAction(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/publish`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/initialize`,
     'POST',
-    { activeFeature },
+    activeFeature ? { activeFeature } : undefined,
   );
 }
 
@@ -148,38 +144,55 @@ export function getGitStatus(projectId: string, feature?: string): Promise<{
   }));
 }
 
+export interface FileChange {
+  path: string;
+  status: 'modified' | 'deleted' | 'new' | 'renamed';
+}
+
 export function getGitChanges(projectId: string, feature?: string): Promise<{
   hasChanges: boolean;
-  staged: string[];
-  unstaged: string[];
-  untracked: string[];
+  staged: FileChange[];
+  unstaged: FileChange[];
+  untracked: FileChange[];
   ahead: number;
   behind: number;
   currentBranch?: string;
   isGitInitialized?: boolean;
+  hasUpstream?: boolean;
 }> {
   const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
   return apiGet(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes${params}`);
 }
 
-/**
- * Commit changes. Returns result via body (does not throw on error).
- */
 export async function commitGitChanges(
   projectId: string,
   message?: string,
   feature?: string,
+  files?: string[],
 ): Promise<{ success: boolean; commitHash?: string; error?: string }> {
   const response = await authFetch(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/commit`,
-    { method: 'POST', body: JSON.stringify({ message, feature }) },
+    { method: 'POST', body: JSON.stringify({ message, feature, files }) },
   );
-  return response.json();
+  const result = await response.json();
+  if (!response.ok) return { success: false, error: result.error || `HTTP ${response.status}` };
+  return result;
 }
 
-/**
- * Sync with remote (pull then push). Returns result via body.
- */
+export async function discardGitChanges(
+  projectId: string,
+  feature?: string,
+  files?: string[],
+): Promise<{ success: boolean; discardedFiles?: number; error?: string }> {
+  const response = await authFetch(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/discard`,
+    { method: 'POST', body: JSON.stringify({ feature, files }) },
+  );
+  const result = await response.json();
+  if (!response.ok) return { success: false, error: result.error || `HTTP ${response.status}` };
+  return result;
+}
+
 export async function syncWithRemote(projectId: string, feature?: string): Promise<{
   success: boolean;
   pulledChanges?: boolean;
@@ -190,5 +203,7 @@ export async function syncWithRemote(projectId: string, feature?: string): Promi
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/sync`,
     { method: 'POST', body: JSON.stringify(feature ? { feature } : {}) },
   );
-  return response.json();
+  const result = await response.json();
+  if (!response.ok) return { success: false, error: result.error || `HTTP ${response.status}` };
+  return result;
 }

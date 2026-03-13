@@ -155,6 +155,10 @@ export class FeatureCrudService {
     }
 
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+
+    if (fs.existsSync(featurePath)) {
+      throw new Error('Feature already exists');
+    }
     
     // Create all canonical directories (single source of truth: CANONICAL_FEATURE_DIRS)
     for (const dir of getInitFeatureDirs(featurePath)) {

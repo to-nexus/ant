@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import simpleGit, { SimpleGit } from 'simple-git';
+import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
@@ -86,9 +86,29 @@ export class WorktreeService {
     // Ensure worktree parent directory exists
     await fs.promises.mkdir(path.dirname(worktreePath), { recursive: true });
 
-    // Remove stale worktree if path already exists but isn't registered
+    // Handle existing directory at worktree path
     if (fs.existsSync(worktreePath)) {
-      await fs.promises.rm(worktreePath, { recursive: true, force: true });
+      const gitFile = path.join(worktreePath, '.git');
+      if (fs.existsSync(gitFile)) {
+        // Validate .git file points to a real gitdir
+        try {
+          const content = await fs.promises.readFile(gitFile, 'utf-8');
+          const gitdirRel = content.replace('gitdir:', '').trim();
+          const gitdirAbs = path.resolve(worktreePath, gitdirRel);
+          if (fs.existsSync(gitdirAbs)) {
+            logger.info(`Valid worktree already exists, skipping creation`, {
+              component: 'WorktreeService', projectId, featureName
+            });
+            return { path: worktreePath, branch: branchName, isMain: false };
+          }
+        } catch { /* corrupted .git file - fall through to cleanup */ }
+      }
+      // Directory exists without valid .git - clean up properly
+      try { await git.raw(['worktree', 'remove', worktreePath, '--force']); } catch { /* may not be registered */ }
+      try { await git.raw(['worktree', 'prune']); } catch { /* non-critical */ }
+      if (fs.existsSync(worktreePath)) {
+        await fs.promises.rm(worktreePath, { recursive: true, force: true });
+      }
     }
 
     // Check if remote branch exists
@@ -141,27 +161,6 @@ export class WorktreeService {
         projectId,
         featureName
       });
-
-      // Push new branch to remote if GitHub is configured
-      if (this.githubAuthService) {
-        try {
-          const worktreeGit = simpleGit({ baseDir: worktreePath });
-          await GitHelper.ensureSafeDirectory(worktreePath);
-          await GitHelper.ensureUserConfig(worktreeGit, userContext);
-          await worktreeGit.push(['-u', 'origin', branchName]);
-          logger.info(`Pushed new branch to remote: ${branchName}`, {
-            component: 'WorktreeService',
-            projectId,
-            featureName
-          });
-        } catch (pushErr: any) {
-          logger.warn(`Could not push new branch (non-critical): ${pushErr.message}`, {
-            component: 'WorktreeService',
-            projectId,
-            featureName
-          });
-        }
-      }
     }
 
     // Ensure safe.directory for the worktree

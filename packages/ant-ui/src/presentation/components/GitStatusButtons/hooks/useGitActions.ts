@@ -4,7 +4,8 @@ import {
   commitGitChanges, 
   pushToGitHub, 
   pullFromGitHub, 
-  syncWithRemote
+  syncWithRemote,
+  discardGitChanges
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -17,21 +18,22 @@ export function useGitActions(
   setGitChanges: (changes: GitChanges | null) => void
 ) {
   const setGitStatusPhase = useStore((state) => state.setGitStatusPhase);
-  const { showError } = useAlertModalContext();
+  const { showError, showConfirm } = useAlertModalContext();
   const { t } = useTranslation('explorer');
   const [isCommitting, setIsCommitting] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
 
-  const handleCommit = async () => {
+  const handleCommit = async (files?: string[]) => {
     if (!selectedProject || !gitChanges) return;
 
     setIsCommitting(true);
     setGitStatusPhase('committing');
     
     try {
-      const result = await commitGitChanges(selectedProject, undefined, selectedFeature);
+      const result = await commitGitChanges(selectedProject, undefined, selectedFeature, files);
       if (result.success) {
         setGitChanges(null);
       } else {
@@ -108,14 +110,47 @@ export function useGitActions(
     }
   };
 
+  const handleDiscard = async (files?: string[]) => {
+    if (!selectedProject) return;
+
+    const confirmMsg = files && files.length > 0
+      ? t('git.confirmDiscardFiles', { count: files.length })
+      : t('git.confirmDiscardAll');
+
+    showConfirm(confirmMsg, {
+      title: t('git.discard'),
+      type: 'warning',
+      confirmText: t('git.discard'),
+      onConfirm: async () => {
+        setIsDiscarding(true);
+        setGitStatusPhase('discarding');
+        try {
+          const result = await discardGitChanges(selectedProject, selectedFeature, files);
+          if (result.success) {
+            setGitChanges(null);
+          } else {
+            showError(result.error || t('git.discardFailed'));
+          }
+        } catch (error: any) {
+          showError(error.message || t('git.discardFailed'));
+        } finally {
+          setIsDiscarding(false);
+          setGitStatusPhase(null);
+        }
+      }
+    });
+  };
+
   return {
     isCommitting,
     isPushing,
     isPulling,
     isSyncing,
+    isDiscarding,
     handleCommit,
     handlePush,
     handlePull,
-    handleSync
+    handleSync,
+    handleDiscard
   };
 }

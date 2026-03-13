@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { getGitChanges } from '@/infrastructure/http/api';
+import { getGitChanges, FileChange } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { GIT_FETCH_INTERVAL } from '@/shared/utils/constants';
 
+export type { FileChange } from '@/infrastructure/http/api';
+
 export interface GitChanges {
   hasChanges: boolean;
-  staged: string[];
-  unstaged: string[];
-  untracked: string[];
+  staged: FileChange[];
+  unstaged: FileChange[];
+  untracked: FileChange[];
   ahead: number;
   behind: number;
   currentBranch?: string;
   isGitInitialized?: boolean;
+  hasUpstream?: boolean;
 }
 
 export function useGitChanges(
