@@ -178,6 +178,8 @@
     "pullDesc": "변경사항 다운로드",
     "fetch": "Fetch",
     "fetchDesc": "원격 참조 업데이트",
+    "publish": "Publish",
+    "publishDesc": "이 브랜치를 원격에 게시",
     
     "confirmClone": "원격 리포지토리를 로컬 워크스페이스에 Clone하시겠습니까? 원격 코드베이스가 다운로드됩니다.",
     "confirmInit": "새 GitHub 리포지토리를 생성하시겠습니까? 현재 코드베이스로 초기화됩니다.",

@@ -17,6 +17,12 @@ interface ActionButtonProps {
   selectedFiles?: string[];
 }
 
+const CONTAINER_QUERY_STYLE = `
+@container action-btn (max-width: 80px) {
+  .action-label { display: none; }
+}
+`;
+
 export function ActionButton({
   gitChanges,
   isCommitting,
@@ -33,7 +39,7 @@ export function ActionButton({
   const isGitStatusLoading = useStore((state) => state.isGitStatusLoading);
   const totalChanges = gitChanges.staged.length + gitChanges.unstaged.length + gitChanges.untracked.length;
 
-  const actionButtonClass = `flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium
+  const actionButtonClass = `flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden
                      bg-emerald-500/10 dark:bg-emerald-500/10 
                      border-emerald-500/30 dark:border-emerald-500/30
                      hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
@@ -44,12 +50,13 @@ export function ActionButton({
   if (totalChanges > 0) {
     const commitCount = selectedFiles ? selectedFiles.length : totalChanges;
     return (
-      <div className="flex items-center flex-1 min-w-0">
+      <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
+        <style>{CONTAINER_QUERY_STYLE}</style>
         <Button
           onClick={() => onCommit(selectedFiles)}
           variant="outline"
           size="sm"
-          className="flex-1 flex items-center gap-2 px-3 py-1.5 text-xs font-medium min-w-0
+          className="flex-1 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden
                      bg-emerald-500/10 dark:bg-emerald-500/10 
                      border-emerald-500/30 dark:border-emerald-500/30
                      hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
@@ -60,10 +67,10 @@ export function ActionButton({
         >
           <GitCommit className="w-3.5 h-3.5 flex-shrink-0" />
           {isCommitting ? (
-            <span className="truncate">{t('git.committing')}</span>
+            <span className="action-label truncate">{t('git.committing')}</span>
           ) : (
             <>
-              <span className="truncate">{t('git.commitAction')}</span>
+              <span className="action-label truncate">{t('git.commitAction')}</span>
               <span className="flex-shrink-0 tabular-nums">{commitCount}</span>
             </>
           )}
@@ -75,7 +82,8 @@ export function ActionButton({
   // Priority 2: Publish Branch (no upstream set)
   if (gitChanges.hasUpstream === false) {
     return (
-      <div className="flex items-center flex-1">
+      <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
+        <style>{CONTAINER_QUERY_STYLE}</style>
         <Button
           onClick={onPush}
           variant="outline"
@@ -84,8 +92,10 @@ export function ActionButton({
           disabled={isPushing || isGitStatusLoading}
           title={t('git.publishBranchDesc')}
         >
-          <Globe className="w-3.5 h-3.5" />
-          {isPushing ? t('git.publishing') : t('git.publishBranch')}
+          <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="action-label truncate">
+            {isPushing ? t('git.publishing') : t('git.publishBranch')}
+          </span>
         </Button>
       </div>
     );
@@ -94,7 +104,8 @@ export function ActionButton({
   // Priority 3: Sync (ahead and behind)
   if (gitChanges.ahead > 0 && gitChanges.behind > 0) {
     return (
-      <div className="flex items-center flex-1">
+      <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
+        <style>{CONTAINER_QUERY_STYLE}</style>
         <Button
           onClick={onSync}
           variant="outline"
@@ -103,21 +114,21 @@ export function ActionButton({
           disabled={isSyncing || isGitStatusLoading}
           title={isGitStatusLoading ? t('git.updatingStatus') : t('git.pullThenPush')}
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 flex-shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
           {isSyncing ? (
-            t('git.syncingFromRemote')
+            <span className="action-label truncate">{t('git.syncingFromRemote')}</span>
           ) : (
-            <span className="flex items-center gap-2">
-              {t('git.sync')}
-              <span className="flex items-center gap-1">
+            <>
+              <span className="action-label truncate">{t('git.sync')}</span>
+              <span className="flex-shrink-0 flex items-center gap-1">
                 <Upload className="w-3 h-3" />
                 {gitChanges.ahead}
               </span>
-              <span className="flex items-center gap-1">
+              <span className="flex-shrink-0 flex items-center gap-1">
                 <Download className="w-3 h-3" />
                 {gitChanges.behind}
               </span>
-            </span>
+            </>
           )}
         </Button>
       </div>
@@ -127,7 +138,8 @@ export function ActionButton({
   // Priority 4: Push
   if (gitChanges.ahead > 0) {
     return (
-      <div className="flex items-center flex-1">
+      <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
+        <style>{CONTAINER_QUERY_STYLE}</style>
         <Button
           onClick={onPush}
           variant="outline"
@@ -136,17 +148,14 @@ export function ActionButton({
           disabled={isPushing || isGitStatusLoading}
           title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
         >
+          <Upload className="w-3.5 h-3.5 flex-shrink-0" />
           {isPushing ? (
-            <span className="flex items-center gap-1.5">
-              <Upload className="w-3.5 h-3.5" />
-              {t('git.pushingCommits', { count: gitChanges.ahead, commits: gitChanges.ahead === 1 ? t('git.commit') : t('git.commits') })}
-            </span>
+            <span className="action-label truncate">{t('git.pushing')}</span>
           ) : (
-            <span className="flex items-center gap-1.5">
-              {t('config:git.push')}
-              <Upload className="w-3 h-3" />
-              {gitChanges.ahead}
-            </span>
+            <>
+              <span className="action-label truncate">{t('config:git.push')}</span>
+              <span className="flex-shrink-0 tabular-nums">{gitChanges.ahead}</span>
+            </>
           )}
         </Button>
       </div>
@@ -156,7 +165,8 @@ export function ActionButton({
   // Priority 5: Pull
   if (gitChanges.behind > 0) {
     return (
-      <div className="flex items-center flex-1">
+      <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
+        <style>{CONTAINER_QUERY_STYLE}</style>
         <Button
           onClick={onPull}
           variant="outline"
@@ -165,17 +175,14 @@ export function ActionButton({
           disabled={isPulling || isGitStatusLoading}
           title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
         >
+          <Download className="w-3.5 h-3.5 flex-shrink-0" />
           {isPulling ? (
-            <span className="flex items-center gap-1.5">
-              <Download className="w-3.5 h-3.5" />
-              {t('git.pullingFromRemote')}
-            </span>
+            <span className="action-label truncate">{t('git.pulling')}</span>
           ) : (
-            <span className="flex items-center gap-1.5">
-              {t('config:git.pull')}
-              <Download className="w-3 h-3" />
-              {gitChanges.behind}
-            </span>
+            <>
+              <span className="action-label truncate">{t('config:git.pull')}</span>
+              <span className="flex-shrink-0 tabular-nums">{gitChanges.behind}</span>
+            </>
           )}
         </Button>
       </div>
@@ -184,19 +191,20 @@ export function ActionButton({
 
   // Priority 6: No changes
   return (
-    <div className="flex items-center flex-1">
+    <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
+      <style>{CONTAINER_QUERY_STYLE}</style>
       <Button
         variant="outline"
         size="sm"
         disabled
-        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium
+        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden
                    opacity-50 cursor-default
                    text-gray-600 dark:text-gray-400
                    border-gray-300 dark:border-gray-600
                    bg-gray-50 dark:bg-gray-800/50"
       >
-        <Check className="w-3.5 h-3.5" />
-        <span>{t('git.noChanges')}</span>
+        <Check className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="action-label truncate">{t('git.noChanges')}</span>
       </Button>
     </div>
   );

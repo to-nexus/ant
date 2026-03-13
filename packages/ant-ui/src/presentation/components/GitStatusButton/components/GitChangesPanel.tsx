@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Undo2, FileEdit, FilePlus, FileX, FileSymlink } from 'lucide-react';
 import { FileChange, GitChanges } from '../hooks/useGitChanges';
@@ -45,6 +45,14 @@ export function GitChangesPanel({
 
   const allPaths = allFiles.map(f => f.path);
   const allSelected = allPaths.every(p => selectedFiles.includes(p));
+  const someSelected = selectedFiles.length > 0 && !allSelected;
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
 
   const handleToggleAll = () => {
     if (allSelected) {
@@ -77,6 +85,7 @@ export function GitChangesPanel({
           {/* Select All / Deselect All */}
           <div className="flex items-center gap-1.5 px-1 py-0.5">
             <input
+              ref={selectAllRef}
               type="checkbox"
               checked={allSelected}
               onChange={handleToggleAll}

@@ -30,6 +30,8 @@ export function LoadingButton({ isFetchingChanges }: LoadingButtonProps) {
     loadingMessage = t('git.initializing');
   } else if (gitStatusPhase === 'cloning') {
     loadingMessage = t('git.cloning');
+  } else if (gitStatusPhase === 'discarding') {
+    loadingMessage = t('git.discarding');
   } else if (isFetchingChanges && !isGitStatusLoading) {
     loadingMessage = t('git.checking');
   }

@@ -24,7 +24,7 @@ export function FeatureSection() {
   const { t } = useTranslation(['artifacts', 'nav', 'onboarding']);
   const policy = useUIActionPolicy();
   const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
-  const { showConfirm, showError } = useAlertModalContext();
+  const { showError } = useAlertModalContext();
   
   // Custom hooks
   const baseBranch = useBaseBranch(selectedProject);
@@ -47,7 +47,7 @@ export function FeatureSection() {
     handleCreateFeature,
     handleDeleteFeature,
     handleFeatureChange
-  } = useFeatureActions(selectedProject, selectedFeature, baseBranch, showConfirm);
+  } = useFeatureActions(selectedProject);
   
   // Feature status manager (auto-fetch for worktree)
   useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);
