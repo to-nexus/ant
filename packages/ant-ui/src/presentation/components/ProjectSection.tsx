@@ -9,7 +9,6 @@ import {
   ProjectConfig,
   cloneGitHubRepo,
   initializeGitHubRepo,
-  publishToGitHub,
   pushToGitHub,
   pullFromGitHub
 } from '@/infrastructure/http/api';
@@ -139,10 +138,9 @@ export function ProjectSection() {
     });
   };
 
-  // Git handlers
   const handleGitAction = async (
     action: () => Promise<any>, 
-    actionType: 'fetch' | 'push' | 'pull' | 'clone' | 'init' | 'publish',
+    actionType: 'fetch' | 'push' | 'pull' | 'clone' | 'init',
     shouldRefreshGitStatus = true
   ) => {
     if (!selectedProject) return;
@@ -150,32 +148,28 @@ export function ProjectSection() {
     setShowGitMenu(false);
     setIsGitProcessing(true);
     
-    // ✅ Set Git operation phase
     const phaseMap = {
       'fetch': 'fetching',
       'push': 'pushing',
       'pull': 'pulling',
       'clone': 'cloning',
-      'init': 'initializing',
-      'publish': 'publishing'
+      'init': 'initializing'
     } as const;
     
     setGitStatusPhase(phaseMap[actionType]);
     
+    let failed: Error | null = null;
     try {
       const result = await action();
       if (result.success) {
-        // ✅ For clone/init/publish, show success popup (one-time operations)
-        if (actionType === 'clone' || actionType === 'init' || actionType === 'publish') {
+        if (actionType === 'clone' || actionType === 'init') {
           const successMessages = {
             'clone': t('git.repoCloned'),
-            'init': t('git.repoInitialized'),
-            'publish': t('git.repoPublished')
+            'init': t('git.repoInitialized')
           } as const;
           showSuccess(successMessages[actionType]);
         }
         
-        // Refresh Git status after successful operation
         if (shouldRefreshGitStatus && selectedProject) {
           await fetchGitStatus(selectedProject, selectedFeature || undefined);
           useStore.getState().refreshGitStatus();
@@ -187,6 +181,7 @@ export function ProjectSection() {
         } else {
           showError(errMsg);
         }
+        failed = new Error(errMsg);
       }
     } catch (error: any) {
       const errMsg = error.message || t('git.actionFailed', { action: actionType });
@@ -195,10 +190,12 @@ export function ProjectSection() {
       } else {
         showError(errMsg);
       }
+      failed = error;
     } finally {
       setIsGitProcessing(false);
       setGitStatusPhase(null);
     }
+    if (failed) throw failed;
   };
 
   const handleClone = () => {
@@ -220,25 +217,7 @@ export function ProjectSection() {
       type: 'info',
       confirmText: t('config:git.initialize'),
       onConfirm: () => handleGitAction(
-        () => initializeGitHubRepo(selectedProject!), 'init', true
-      ),
-    });
-  };
-
-  const handlePublish = () => {
-    setShowGitMenu(false);
-    const featureCount = gitStatus?.hasFeatures
-      ? (useStore.getState().features?.length || 0)
-      : 0;
-    const msg = featureCount > 0
-      ? t('config:git.confirmPublishWithFeatures', { count: featureCount })
-      : t('config:git.confirmPublish');
-    showConfirm(msg, {
-      title: t('config:git.publish'),
-      type: 'info',
-      confirmText: t('config:git.publish'),
-      onConfirm: () => handleGitAction(
-        () => publishToGitHub(selectedProject!, selectedFeature || undefined), 'publish', true
+        () => initializeGitHubRepo(selectedProject!, selectedFeature || undefined), 'init', true
       ),
     });
   };
@@ -298,7 +277,7 @@ export function ProjectSection() {
       {/* Git Status Section */}
       {selectedProject && (
         <div className="mt-2 space-y-1">
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-start">
             {/* Git Status Buttons (Commit/Push/Pull/Sync) - Takes most space */}
             <div className="flex-1 min-w-0">
               <GitStatusButtons />
@@ -355,68 +334,29 @@ export function ProjectSection() {
               {showGitMenu && (
                 <div className="absolute top-full right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[9999]">
                   {!gitStatus?.hasGit ? (
-                    // Setup Mode: Clone / Init / Publish (always show all 3)
-                    (() => {
-                      const hasFeatures = !!gitStatus?.hasFeatures;
-                      const cloneButton = (
-                        <button
-                          onClick={hasFeatures ? undefined : handleClone}
-                          className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 ${
-                            hasFeatures
-                              ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500'
-                              : 'text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
-                          }`}
-                        >
-                          <Download className="w-4 h-4" />
-                          <div>
-                            <div className="font-medium">{t('config:git.clone')}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.cloneDesc')}</div>
-                          </div>
-                        </button>
-                      );
-                      const initButton = (
-                        <button
-                          onClick={hasFeatures ? undefined : handleInitialize}
-                          className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 ${
-                            hasFeatures
-                              ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-500'
-                              : 'text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'
-                          }`}
-                        >
-                          <Plus className="w-4 h-4" />
-                          <div>
-                            <div className="font-medium">{t('config:git.initialize')}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.initializeDesc')}</div>
-                          </div>
-                        </button>
-                      );
-                      return (
-                        <>
-                          {hasFeatures ? (
-                            <Tooltip content={t('config:git.cloneDisabledHasFeatures')} placement="left">
-                              {cloneButton}
-                            </Tooltip>
-                          ) : cloneButton}
-                          {hasFeatures ? (
-                            <Tooltip content={t('config:git.initDisabledHasFeatures')} placement="left">
-                              {initButton}
-                            </Tooltip>
-                          ) : initButton}
-                          <button
-                            onClick={handlePublish}
-                            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
-                          >
-                            <Upload className="w-4 h-4" />
-                            <div>
-                              <div className="font-medium">{t('config:git.publish')}</div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {hasFeatures ? t('config:git.publishWithFeaturesDesc') : t('config:git.publishDesc')}
-                              </div>
-                            </div>
-                          </button>
-                        </>
-                      );
-                    })()
+                    // Setup Mode: Clone / Init / Publish
+                    <>
+                      <button
+                        onClick={handleClone}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Download className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">{t('config:git.clone')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.cloneDesc')}</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={handleInitialize}
+                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium">{t('config:git.initialize')}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.initializeDesc')}</div>
+                        </div>
+                      </button>
+                    </>
                   ) : (
                     // Connected Mode: Push / Pull / Fetch
                     <>

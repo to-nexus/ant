@@ -4,6 +4,18 @@ import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { validateBody, createProjectSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
+import { GitOperationError } from '../services/GitService/errors';
+
+function handleGitError(res: Response, error: any, context: string, projectId: string) {
+  const message = error instanceof Error ? error.message : String(error);
+  logger.warn(`${context} failed: ${message}`, { component: 'Projects', projectId }, error);
+
+  if (error instanceof GitOperationError) {
+    res.status(error.statusCode).json({ success: false, error: message });
+  } else {
+    res.status(500).json({ success: false, error: message });
+  }
+}
 
 /**
  * Project CRUD operations
@@ -165,22 +177,10 @@ export function createProjectsRoutes(deps: {
       const userContext = extractUserContext(req);
       logger.info(`Clone request`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
-      await deps.projectService.cloneGitHubRepo(projectId, userContext);
-      res.json({ success: true, message: 'Repository cloned successfully' });
+      const result = await deps.projectService.cloneGitHubRepo(projectId, userContext);
+      res.json({ success: true, message: 'Repository cloned successfully', warnings: result.warnings });
     } catch (error: any) {
-      logger.warn(`Clone failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      
-      if (error.message.includes('not configured') || error.message.includes('not found')) {
-        res.status(400).json({ success: false, error: error.message });
-      } else if (error.message.includes('Cannot clone') || error.message.includes('clean workspace') || error.message.includes('Features already exist')) {
-        res.status(400).json({ success: false, error: error.message });
-      } else if (error.message.includes('Repository already') || error.message.includes('already cloned')) {
-        res.status(409).json({ success: false, error: error.message });
-      } else if (error.message.includes('authentication failed') || error.message.includes('Authentication failed')) {
-        res.status(401).json({ success: false, error: error.message });
-      } else {
-        sendErrorResponse(res, 500, error, 'Projects');
-      }
+      handleGitError(res, error, 'Clone', projectId);
     }
   });
   
@@ -193,8 +193,7 @@ export function createProjectsRoutes(deps: {
       const cloned = await deps.projectService.checkCloneStatus(projectId, userContext);
       res.json({ cloned });
     } catch (error: any) {
-      logger.warn(`Clone status check failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      sendErrorResponse(res, 500, error, 'Projects');
+      handleGitError(res, error, 'Clone status check', projectId);
     }
   });
   
@@ -206,47 +205,11 @@ export function createProjectsRoutes(deps: {
       
       logger.info(`Initializing GitHub repo`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
-      await deps.projectService.initializeGitHubRepo(projectId, userContext);
-      res.json({ success: true, message: 'Repository initialized and pushed successfully' });
-    } catch (error: any) {
-      logger.warn(`Initialize failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      
-      if (error.message.includes('not configured') || error.message.includes('not found')) {
-        res.status(400).json({ success: false, error: error.message });
-      } else if (error.message.includes('Cannot initialize') || (error.message.includes('feature') && error.message.includes('already exist'))) {
-        res.status(400).json({ success: false, error: error.message });
-      } else if (error.message.includes('already initialized') || error.message.includes('already exist')) {
-        res.status(409).json({ success: false, error: error.message });
-      } else {
-        sendErrorResponse(res, 500, error, 'Projects');
-      }
-    }
-  });
-
-  // Publish existing codebase to a new GitHub repository
-  // Unlike initialize, this allows features to already exist and creates branches for them.
-  router.post('/projects/:id/publish', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
       const { activeFeature } = req.body || {};
-      
-      logger.info(`Publishing codebase to GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      await deps.projectService.publishToGitHub(projectId, userContext, activeFeature);
-      res.json({ success: true, message: 'Codebase published to GitHub successfully' });
+      const result = await deps.projectService.initializeGitHubRepo(projectId, userContext, activeFeature);
+      res.json({ success: true, message: 'Repository initialized and pushed successfully', warnings: result.warnings });
     } catch (error: any) {
-      logger.warn(`Publish failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      
-      if (error.message.includes('not configured') || error.message.includes('not found')) {
-        res.status(400).json({ success: false, error: error.message });
-      } else if (error.message.includes('already initialized') || error.message.includes('already exists')) {
-        res.status(409).json({ success: false, error: error.message });
-      } else if (error.message.includes('authentication failed') || error.message.includes('Authentication failed')) {
-        res.status(401).json({ success: false, error: error.message });
-      } else {
-        sendErrorResponse(res, 500, error, 'Projects');
-      }
+      handleGitError(res, error, 'Initialize', projectId);
     }
   });
 
@@ -262,10 +225,7 @@ export function createProjectsRoutes(deps: {
       await deps.projectService.pushToGitHub(projectId, userContext, featureName);
       res.json({ success: true, message: 'Changes pushed successfully' });
     } catch (error: any) {
-      logger.warn(`Push failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      
-      // Return user-friendly error message
-      res.status(400).json({ success: false, error: error.message });
+      handleGitError(res, error, 'Push', projectId);
     }
   });
 
@@ -281,10 +241,7 @@ export function createProjectsRoutes(deps: {
       await deps.projectService.pullFromGitHub(projectId, userContext, featureName);
       res.json({ success: true, message: 'Changes pulled successfully' });
     } catch (error: any) {
-      logger.warn(`Pull failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      
-      // Return user-friendly error message (including conflict info)
-      res.status(400).json({ success: false, error: error.message });
+      handleGitError(res, error, 'Pull', projectId);
     }
   });
 
@@ -300,9 +257,7 @@ export function createProjectsRoutes(deps: {
       await deps.projectService.fetchFromGitHub(projectId, userContext, featureName);
       res.json({ success: true, message: 'Remote refs updated successfully' });
     } catch (error: any) {
-      logger.warn(`Fetch failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      
-      res.status(400).json({ success: false, error: error.message });
+      handleGitError(res, error, 'Fetch', projectId);
     }
   });
 
@@ -316,8 +271,7 @@ export function createProjectsRoutes(deps: {
       const status = await deps.projectService.getGitStatus(projectId, userContext, featureName);
       res.json(status);
     } catch (error: any) {
-      logger.warn(`Get Git status failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      sendErrorResponse(res, 500, error, 'Projects');
+      handleGitError(res, error, 'Git status', projectId);
     }
   });
 
@@ -331,8 +285,7 @@ export function createProjectsRoutes(deps: {
       const changes = await deps.projectService.getGitChanges(projectId, userContext, featureName);
       res.json(changes);
     } catch (error: any) {
-      logger.warn(`Get Git changes failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      sendErrorResponse(res, 500, error, 'Projects');
+      handleGitError(res, error, 'Git changes', projectId);
     }
   });
 
@@ -341,15 +294,30 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
-      const { message, feature: featureName } = req.body;
+      const { message, feature: featureName, files } = req.body;
       
       logger.info(`Committing changes`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
       
-      const result = await deps.projectService.commitChanges(projectId, userContext, message, featureName);
+      const result = await deps.projectService.commitChanges(projectId, userContext, message, featureName, files);
       res.json(result);
     } catch (error: any) {
-      logger.warn(`Commit failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      res.status(400).json({ success: false, error: error.message });
+      handleGitError(res, error, 'Commit', projectId);
+    }
+  });
+
+  // Discard changes
+  router.post('/projects/:id/git/discard', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    try {
+      const userContext = extractUserContext(req);
+      const { feature: featureName, files } = req.body || {};
+      
+      logger.info(`Discarding changes`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
+      
+      const result = await deps.projectService.discardChanges(projectId, userContext, featureName, files);
+      res.json(result);
+    } catch (error: any) {
+      handleGitError(res, error, 'Discard', projectId);
     }
   });
 
@@ -365,8 +333,7 @@ export function createProjectsRoutes(deps: {
       const result = await deps.projectService.syncWithRemote(projectId, userContext, featureName);
       res.json(result);
     } catch (error: any) {
-      logger.warn(`Sync failed: ${error.message}`, { component: 'Projects', projectId }, error);
-      res.status(400).json({ success: false, error: error.message });
+      handleGitError(res, error, 'Sync', projectId);
     }
   });
 

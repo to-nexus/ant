@@ -1,37 +1,62 @@
+import * as fs from 'fs';
 import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHelper } from '../../helper/GitHelper';
+import { WorktreeService } from '../../worktree';
+import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
+import { GitOperationError } from '../../errors';
 
 /**
  * CommitOperation
  * 
  * Handles committing changes to Git.
+ * Supports selective file staging and lazy worktree creation.
  */
 export class CommitOperation {
+  private readonly featureBackup: FeatureCodebaseBackup;
+
   constructor(
-    private readonly workspaceResolver: WorkspaceResolver
-  ) {}
+    private readonly workspaceResolver: WorkspaceResolver,
+    private readonly worktreeService: WorktreeService
+  ) {
+    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
+  }
 
   async execute(
     projectId: string,
     userContext: UserContext,
     message?: string,
-    featureName?: string
+    featureName?: string,
+    files?: string[]
   ): Promise<{ success: boolean; commitHash?: string }> {
     const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 
-    // ✅ Ensure safe.directory is set (prevents "dubious ownership" error in cloud environments)
     await GitHelper.ensureSafeDirectory(codebasePath);
 
-    const git = GitHelper.getGitInstanceSafe(codebasePath);
-    if (!git) {
-      throw new Error('Repository not initialized. Please clone or initialize first.');
+    let git = GitHelper.getGitInstanceSafe(codebasePath);
+
+    if (!git && featureName) {
+      console.log(`[CommitOperation] No git found for feature ${featureName}, creating worktree lazily...`);
+      const backups = await this.featureBackup.backup(projectId, [featureName], userContext);
+      try {
+        await this.worktreeService.createWorktree(projectId, featureName, userContext);
+        const backupPath = backups.get(featureName);
+        if (backupPath && fs.existsSync(backupPath)) {
+          await this.featureBackup.restoreToWorktree(backupPath, codebasePath);
+        }
+      } finally {
+        await this.featureBackup.cleanup(backups);
+      }
+      await GitHelper.ensureSafeDirectory(codebasePath);
+      git = GitHelper.getGitInstanceSafe(codebasePath);
     }
 
-    // Ensure git user config is set (essential for cloud environments)
+    if (!git) {
+      throw new GitOperationError('Repository not initialized. Please clone or initialize first.');
+    }
+
     await GitHelper.ensureUserConfig(git, userContext);
 
-    // Check if there are changes to commit
     const status = await git.status();
     
     if (status.files.length === 0) {
@@ -39,14 +64,17 @@ export class CommitOperation {
       return { success: true };
     }
 
-    // Stage all changes
-    await git.add('.');
+    // Selective or full staging
+    if (files && files.length > 0) {
+      await git.add(files);
+    } else {
+      await git.add('.');
+    }
     
-    // Commit with provided message or default
     const commitMessage = message || `Update: ${new Date().toISOString()}`;
     const result = await git.commit(commitMessage);
     
-    console.log(`[CommitOperation] ✅ Committed: ${commitMessage}`);
+    console.log(`[CommitOperation] Committed: ${commitMessage}`);
     
     return {
       success: true,
@@ -54,4 +82,3 @@ export class CommitOperation {
     };
   }
 }
-

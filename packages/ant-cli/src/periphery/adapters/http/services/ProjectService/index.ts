@@ -197,12 +197,12 @@ export class ProjectService {
   // Git Remote Operations (delegated to GitService)
   // =====================================
   
-  async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<void> {
+  async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
     return this.git.cloneGitHubRepo(projectId, userContext);
   }
   
-  async initializeGitHubRepo(projectId: string, userContext: UserContext): Promise<void> {
-    return this.git.initializeGitHubRepo(projectId, userContext);
+  async initializeGitHubRepo(projectId: string, userContext: UserContext, activeFeature?: string): Promise<{ warnings?: string[] }> {
+    return this.git.initializeGitHubRepo(projectId, userContext, activeFeature);
   }
   
   async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
@@ -229,13 +229,19 @@ export class ProjectService {
     projectId: string,
     userContext: UserContext,
     message?: string,
-    featureName?: string
+    featureName?: string,
+    files?: string[]
   ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.git.commitChanges(projectId, userContext, message, featureName);
+    return this.git.commitChanges(projectId, userContext, message, featureName, files);
   }
   
-  async publishToGitHub(projectId: string, userContext: UserContext, activeFeature?: string): Promise<void> {
-    return this.git.publishToGitHub(projectId, userContext, activeFeature);
+  async discardChanges(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    files?: string[]
+  ): Promise<{ success: boolean; discardedFiles: number }> {
+    return this.git.discardChanges(projectId, userContext, featureName, files);
   }
 }
 
