@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Folder, Github, ChevronDown, Download, Plus, Upload, Download as DownloadIcon, RefreshCw, Globe } from 'lucide-react';
+import { Folder, Github, Download, Plus, Upload, Download as DownloadIcon, RefreshCw, Globe } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { 
   createProject, 
@@ -20,7 +20,7 @@ import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { CreationWizardModal } from './CreationWizardModal';
 
-export function ProjectSection() {
+export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const { t } = useTranslation('explorer');
   const { 
     projects, 
@@ -267,6 +267,7 @@ export function ProjectSection() {
         onOpenWizard={handleOpenWizard}
         forceInlineCreate={forceInlineCreate}
         onForceInlineCreateHandled={handleForceInlineCreateHandled}
+        isNarrow={explorerWidth < 260}
       />
 
       <CreationWizardModal
@@ -277,12 +278,10 @@ export function ProjectSection() {
       
       {/* Git Status Section */}
       {selectedProject && (
-        <div className="mt-2 space-y-1">
-          <div className="flex gap-2 items-start">
-            {/* Git Status Button */}
-            <div className="flex-1 min-w-0">
-              <GitStatusButton />
-            </div>
+        <div className="mt-2">
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {/* Git Status Button (Fragment: buttons row + changes panel with order-last) */}
+            <GitStatusButton />
             
             {/* Git Control Button */}
             <div className="relative" ref={gitMenuRef}>
@@ -310,10 +309,9 @@ export function ProjectSection() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="px-2.5 py-1.5 opacity-50 cursor-pointer"
+                    className="px-2 py-1.5 opacity-50 cursor-pointer"
                   >
                     <Github className="w-4 h-4" />
-                    <ChevronDown className="w-3 h-3 ml-1" />
                   </Button>
                 </Tooltip>
               ) : (
@@ -322,12 +320,11 @@ export function ProjectSection() {
                   onClick={() => setShowGitMenu(!showGitMenu)}
                   variant="outline"
                   size="sm"
-                  className="px-2.5 py-1.5"
+                  className="px-2 py-1.5"
                   disabled={isGitProcessing || gitStatusPhase !== null}
                   title={t('config:git.management')}
                 >
                   <Github className="w-4 h-4" />
-                  <ChevronDown className="w-3 h-3 ml-1" />
                 </Button>
               )}
               
@@ -423,8 +420,9 @@ export function ProjectSection() {
           
           {/* Current Branch Display */}
           {gitStatus?.currentBranch && (
-            <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400">
-              {t('config:git.currentBranch')} <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
+            <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400 truncate">
+              {explorerWidth >= 260 && <>{t('config:git.currentBranch')}{' '}</>}
+              <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
             </div>
           )}
           

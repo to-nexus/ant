@@ -24,6 +24,7 @@ interface FeatureDropdownProps {
   onOpenWizard?: () => void;
   forceInlineCreate?: boolean;
   onForceInlineCreateHandled?: () => void;
+  isNarrow?: boolean;
 }
 
 export function FeatureDropdown({
@@ -48,6 +49,7 @@ export function FeatureDropdown({
   onOpenWizard,
   forceInlineCreate,
   onForceInlineCreateHandled,
+  isNarrow,
 }: FeatureDropdownProps) {
   const { t } = useTranslation('explorer');
   // Filter out 'main' feature (internal use only)
@@ -82,6 +84,7 @@ export function FeatureDropdown({
       onOpenWizard={onOpenWizard}
       forceInlineCreate={forceInlineCreate}
       onForceInlineCreateHandled={onForceInlineCreateHandled}
+      isNarrow={isNarrow}
     />
   );
 }
