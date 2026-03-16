@@ -4,7 +4,7 @@
  * Logs per-LLM-call token usage for debugging and cost analysis.
  * Each line is a self-contained JSON object (JSONL / newline-delimited JSON).
  *
- * File location: sessions/debug/tokens/token-{jobId}.jsonl
+ * File location: sessions/debug/tokens/token-{jobId}.json
  *
  * Entry types:
  *   - "call"           Per-LLM-call token usage (default)
@@ -107,7 +107,7 @@ export class TokenLogger {
   constructor(private options: TokenLoggerOptions) {
     this.jobId = options.jobId;
     this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'tokens');
-    this.logFilePath = path.join(this.logDirPath, `token-${options.jobId}.jsonl`);
+    this.logFilePath = path.join(this.logDirPath, `token-${options.jobId}.json`);
   }
 
   /**
