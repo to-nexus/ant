@@ -15,6 +15,7 @@ import {
 import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { GitStatusButton } from './GitStatusButton';
 import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
@@ -51,7 +52,8 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const handleForceInlineCreateHandled = useCallback(() => setForceInlineCreate(false), []);
   const gitMenuRef = useRef<HTMLDivElement>(null);
   const policy = useUIActionPolicy();
-  const { showError, showSuccess, showWarning, showConfirm } = useAlertModalContext();
+  const { showError, showWarning, showConfirm } = useAlertModalContext();
+  const { toast } = useToastContext();
   
   // Click outside to close Git menu
   useEffect(() => {
@@ -174,14 +176,25 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
               `${successMessages[actionType]}\n\n${t('git.partialWarnings')}:\n${result.warnings.join('\n')}`
             );
           } else {
-            showSuccess(successMessages[actionType]);
+            toast.success(successMessages[actionType]);
           }
           useStore.getState().reloadIdeFrame();
+        } else if (actionType === 'push') {
+          toast.success(t('git.pushSuccess'));
+        } else if (actionType === 'pull') {
+          toast.success(t('git.pullSuccess'));
         }
-        
+
         if (shouldRefreshGitStatus && selectedProject) {
           await fetchGitStatus(selectedProject, selectedFeature || undefined);
           useStore.getState().refreshGitStatus();
+          // Show fetch toast only when new remote commits were found
+          if (actionType === 'fetch') {
+            const behind = useStore.getState().gitStatus?.behind ?? 0;
+            if (behind > 0) {
+              toast.success(t('git.fetchSuccess'));
+            }
+          }
         }
       } else {
         const errMsg = result.error || t('git.actionFailed', { action: actionType });

@@ -92,6 +92,7 @@
     "pushFailed": "Push failed",
     "pullSuccess": "Pulled successfully",
     "pullFailed": "Pull failed",
+    "fetchSuccess": "Fetched successfully",
     "syncSuccess": "Synced successfully",
     "syncFailed": "Sync failed",
     "discardSuccess": "Discarded successfully",
