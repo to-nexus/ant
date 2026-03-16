@@ -20,7 +20,6 @@ export interface GitChanges {
 export function useGitChanges(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
-  hasGitHubRepo: boolean | null
 ) {
   const { isGitStatusLoading, gitStatusPhase, gitStatusRefreshTrigger, gitStatus } = useStore();
   const prevLoadingRef = useRef(isGitStatusLoading);
@@ -175,14 +174,8 @@ export function useGitChanges(
 
   // Main fetch logic
   useEffect(() => {
-    if (!selectedProject || hasGitHubRepo === null) {
+    if (!selectedProject) {
       // DON'T reset gitChanges here - keep cached data visible
-      return;
-    }
-
-    if (hasGitHubRepo === false) {
-      setGitChanges(null);
-      setIsGitInitialized(false);
       return;
     }
 
@@ -281,7 +274,7 @@ export function useGitChanges(
     return () => {
       clearTimeout(delayTimer);
     };
-  }, [selectedProject, selectedFeature, hasGitHubRepo, isGitStatusLoading, gitStatusPhase, triggerFetch]);
+  }, [selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase, triggerFetch]);
 
   return {
     gitChanges,
