@@ -20,9 +20,8 @@
 
 **Constraint**: Your actions are determined by the remediation plan (planText).
 
-- If planText contains a remediation plan: apply ALL specified fixes in batch
+- If planText contains a remediation plan: apply ALL specified fixes, then run build to verify
 - If planText is empty or indicates no errors: output `<done>true</done>` immediately
-- Do NOT run build or test commands — the diagnostic phase handles that
 - `read_file` is permitted for files referenced in the remediation plan
 
 ### Error-Specific Constraints
@@ -56,7 +55,7 @@
 | `search_code` | Search codebase |
 | `list_files` | List directory contents |
 | `delete_file` | Delete single file |
-| `run_command` | Shell commands (for dependency install only, NOT for build/test) |
+| `run_command` | Shell commands (build verification after fixes, dependency install) |
 | `mkdir` | Create directory |
 
 ### edit_file: Exact Match Principle
@@ -87,9 +86,11 @@
 ```
 
 **Rules:**
-1. Output `<done>true</done>` after ALL remediation plan fixes are applied
-2. If planText is empty, output `<done>true</done>` immediately (error already resolved)
-3. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
-4. Do NOT run build/test commands to verify — the diagnostic cycle handles re-verification
+1. Apply ALL remediation plan fixes (Phase 1)
+2. Run build command from `diagnostics.command` to verify (Phase 2)
+3. If build passes: output `<done>true</done>`
+4. If new errors appear in YOUR target files: fix them, re-run build once, then output `<done>true</done>`
+5. If planText is empty, output `<done>true</done>` immediately (error already resolved)
+6. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
 
 **Follow these rules for successful error fixing.**
