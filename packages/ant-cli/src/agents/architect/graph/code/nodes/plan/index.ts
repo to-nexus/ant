@@ -116,6 +116,8 @@ function computeBatchFileOverlap(batches: any[]): boolean {
   return false;
 }
 
+const MAX_BATCH_SPLIT_CYCLES = 3;
+
 /**
  * Detect batched diagnostic plan and split into sub-tasks.
  * Called from every path that produces a planText for diagnostic tasks.
@@ -123,6 +125,10 @@ function computeBatchFileOverlap(batches: any[]): boolean {
  * When the plan JSON contains a `batches` array with >1 entries,
  * each batch becomes an independent error sub-task with prePlanText.
  * The original task is re-enqueued (not completed) so it re-runs after all error fixes.
+ *
+ * Hard limit: after MAX_BATCH_SPLIT_CYCLES cycles, batch splitting is aborted and
+ * planText is returned as-is (single consolidated task). This prevents infinite loops
+ * from cascading compiler errors that reveal new layers after each fix cycle.
  *
  * @returns updated planText (empty string if split occurred, original otherwise)
  */
@@ -165,6 +171,19 @@ function processDiagnosticBatchSplit(
       return planText;
     }
 
+    // ── Hard limit: cap batch split cycles to prevent infinite loops ──
+    const splitCount = (nextTask._batchSplitCount || 0) + 1;
+
+    if (splitCount > MAX_BATCH_SPLIT_CYCLES) {
+      logBatchSplit({
+        action: 'cycle_limit_reached',
+        splitCount,
+        taskName: nextTask.name,
+      });
+      console.warn(`⚠️  [BatchSplit] Cycle limit (${MAX_BATCH_SPLIT_CYCLES}) reached for "${nextTask.name}". Proceeding as single task.`);
+      return planText;
+    }
+
     const hasFileOverlap = computeBatchFileOverlap(parsed.batches);
     const parallelGroup = hasFileOverlap ? undefined : `error-batch-${Date.now()}`;
 
@@ -197,6 +216,8 @@ function processDiagnosticBatchSplit(
 
     // Re-enqueue the original task (clean state) instead of creating a new one.
     // Priority FINAL_VERIFICATION(1000) > error priority(999) ensures it runs last.
+    // Batch split tracking fields are preserved so the re-enqueued task can detect
+    // repeated errors and break the loop on subsequent cycles.
     const requeuedTask: CodeTask = {
       ...nextTask,
       timing: undefined,
@@ -204,6 +225,14 @@ function processDiagnosticBatchSplit(
       _failedAttempts: undefined,
       _failed: undefined,
       _failureReason: undefined,
+      // Preserve batch split cycle counter for hard limit
+      _batchSplitCount: splitCount,
+      _previousBatchDiagnostics: JSON.stringify({
+        cycle: splitCount,
+        totalErrors: parsed.diagnostics?.totalErrors ?? 0,
+        rootCauses: parsed.diagnostics?.rootCauses ?? [],
+        batchNames: parsed.batches.map((b: any) => b.name),
+      }),
     } as CodeTask;
     state.taskQueue.push(requeuedTask);
     state._batchSplitRequeued = true;
@@ -217,6 +246,7 @@ function processDiagnosticBatchSplit(
       taskQueueSize: state.taskQueue.size(),
       taskName: nextTask.name,
       hasFileOverlap,
+      splitCount,
     });
     return '';
   } catch (err) {
@@ -829,8 +859,60 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const planToolRounds = (state.planConversationHistory?.length ?? 0) / 2;
   const tryToolsFirst = llm && (requiresPlan || isDiagnosticTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
+  // ── Inject previous batch split context for re-enqueued diagnostic tasks ──
+  // When a diagnostic task was previously batch-split and re-enqueued, attach
+  // the history of previous attempts so the LLM can try a different strategy.
+  let diagnosticRetryContext: string | undefined;
+  if (isDiagnosticTask && nextTask._previousBatchDiagnostics) {
+    const cycle = nextTask._batchSplitCount || 0;
+    diagnosticRetryContext =
+      `\n\n### PREVIOUS BATCH SPLIT ATTEMPT (Cycle ${cycle})\n` +
+      `Error sub-tasks were created and executed, but errors persist.\n` +
+      `Previous diagnostics: ${nextTask._previousBatchDiagnostics}\n` +
+      `Analyze whether these are NEW errors (cascading from compiler) or SAME errors (fix failed). ` +
+      `Adjust strategy accordingly.`;
+    console.log(`📋 [Plan] Injecting previous batch split context (cycle ${cycle}) into diagnostic prompt`);
+  }
+
+  // Inject completed error task details so the LLM knows what was already tried
+  if (isDiagnosticTask && nextTask._batchSplitCount && nextTask._batchSplitCount > 0) {
+    const completedErrorTasks = (state.completedTasksDetails || [])
+      .filter((t: any) => t.type === 'error' && (t as any).prePlanText);
+
+    if (completedErrorTasks.length > 0) {
+      const MAX_PLAN_CHARS = 2000;
+      const MAX_TOTAL_CHARS = 8000;
+      let totalChars = 0;
+      const attempts: string[] = [];
+      for (const [i, t] of completedErrorTasks.entries()) {
+        const plan = (t as any).prePlanText!;
+        const truncated = plan.length > MAX_PLAN_CHARS
+          ? plan.substring(0, MAX_PLAN_CHARS) + '... [truncated]'
+          : plan;
+        const entry = `#### Error Fix ${i + 1}: ${t.name}\n${t.description || ''}\n\`\`\`json\n${truncated}\n\`\`\``;
+        totalChars += entry.length;
+        if (totalChars > MAX_TOTAL_CHARS) {
+          attempts.push(`... and ${completedErrorTasks.length - i} more error tasks (truncated)`);
+          break;
+        }
+        attempts.push(entry);
+      }
+
+      const previousAttemptsContext =
+        `\n\n### COMPLETED ERROR FIX TASKS (${completedErrorTasks.length} tasks)\n` +
+        `These fixes were applied. Current errors may be cascading (new layer revealed) ` +
+        `or regression (fix introduced new issues). Use this context to plan accurately.\n\n` +
+        attempts.join('\n\n');
+
+      diagnosticRetryContext = (diagnosticRetryContext || '') + previousAttemptsContext;
+    }
+  }
+
   if (tryToolsFirst) {
-    const violationsText = state.violations?.length ? formatViolations(state.violations) : undefined;
+    const baseViolationsText = state.violations?.length ? formatViolations(state.violations) : undefined;
+    const violationsText = diagnosticRetryContext
+      ? (baseViolationsText || '') + diagnosticRetryContext
+      : baseViolationsText;
     const contentBlocks = await buildPlanPromptBlocks(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true });
     const messages = [{ role: 'user' as const, content: contentBlocks }];
     const result = await runPlanLLMWithTools(state, messages, nextTask);

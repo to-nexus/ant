@@ -186,6 +186,13 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
 
   // Batch split: original task was re-enqueued — skip completion marking entirely
   if (state._batchSplitRequeued === true) {
+    const requeuedTasks = state.taskQueue?.getAll().filter(t => (t as any)._batchSplitCount);
+    if (requeuedTasks?.length) {
+      for (const t of requeuedTasks) {
+        const ct = t as any;
+        console.log(`🔄 [BatchSplit] Re-enqueued task "${t.name}" (cycle ${ct._batchSplitCount || 1})`);
+      }
+    }
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
     }
