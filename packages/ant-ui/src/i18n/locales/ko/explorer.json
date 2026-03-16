@@ -92,6 +92,7 @@
     "pushFailed": "Push 실패",
     "pullSuccess": "Pull 완료",
     "pullFailed": "Pull 실패",
+    "fetchSuccess": "Fetch 완료",
     "syncSuccess": "동기화 완료",
     "syncFailed": "동기화 실패",
     "discardSuccess": "되돌리기 완료",
