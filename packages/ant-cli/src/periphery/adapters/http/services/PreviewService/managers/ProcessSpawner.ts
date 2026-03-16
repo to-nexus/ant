@@ -499,10 +499,22 @@ export class ProcessSpawner {
       try {
         const files = fs.readdirSync(dir);
         for (const file of files) {
-          if (!file.endsWith('.example')) continue;
-          if (file === '.env.example') continue;
+          let actualName: string | null = null;
 
-          const actualName = file.replace(/\.example$/, '');
+          // Pattern 1: *.example -> * (e.g. config.example -> config)
+          if (file.endsWith('.example')) {
+            if (file === '.env.example') continue;
+            actualName = file.replace(/\.example$/, '');
+          }
+
+          // Pattern 2: *.example.toml -> *.toml (e.g. config.example.toml -> config.toml)
+          const tomlExampleMatch = file.match(/^(.+)\.example\.toml$/);
+          if (tomlExampleMatch) {
+            actualName = `${tomlExampleMatch[1]}.toml`;
+          }
+
+          if (!actualName) continue;
+
           const examplePath = path.join(dir, file);
           const actualPath = path.join(dir, actualName);
 
