@@ -232,6 +232,7 @@ export class TaskOrchestrator<T extends BaseTask> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
       task.completed = true;
+      task.interrupted = false;  // Clear safety-checkpoint marker from periodic saveCheckpoint()
       this.completedTasks.push(task);
       this.consecutiveTimeouts = 0;
 
