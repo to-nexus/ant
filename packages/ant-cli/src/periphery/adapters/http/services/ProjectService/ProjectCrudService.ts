@@ -1,10 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import simpleGit from 'simple-git';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/orgConfig';
 import { logger } from '../../../../../utils/logger';
 import { detectGitDefaultBranch } from '../../../../../core/utils/branchUtils';
+import { GitHelper } from '../GitService/helper/GitHelper';
+import { GitignoreGenerator } from '../GitService/remote/helpers/GitignoreGenerator';
 
 /**
  * ProjectCrudService
@@ -160,8 +163,52 @@ export class ProjectCrudService {
       JSON.stringify(config, null, 2),
       'utf-8'
     );
+
+    // Initialize local git for managed codebases (cloud repos, not local-path repos).
+    // This ensures branch tracking works in the IDE even before GitHub is connected.
+    if (!config.localPath) {
+      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, id);
+      await this.initializeLocalGit(codebasePath, config.branchBase || 'main', userContext);
+    }
   }
-  
+
+  /**
+   * Initialize a local git repository for a new managed codebase.
+   * Non-fatal: errors are logged but do not fail project creation.
+   */
+  private async initializeLocalGit(codebasePath: string, baseBranch: string, userContext: UserContext): Promise<void> {
+    try {
+      await fs.promises.mkdir(codebasePath, { recursive: true });
+
+      const git = simpleGit({ baseDir: codebasePath, binary: 'git', maxConcurrentProcesses: 6 });
+      await git.init([`--initial-branch=${baseBranch}`]);
+
+      await GitHelper.ensureSafeDirectory(codebasePath);
+      await GitHelper.ensureUserConfig(git, userContext);
+
+      // Create .gitignore
+      const gitignorePath = path.join(codebasePath, '.gitignore');
+      const gitignoreContent = await GitignoreGenerator.generate(codebasePath);
+      await fs.promises.writeFile(gitignorePath, gitignoreContent, 'utf-8');
+
+      // Create initial commit
+      await git.add('.');
+      const status = await git.status();
+      if (status.files.length > 0) {
+        await git.commit('Initial commit');
+      } else {
+        const gitkeepPath = path.join(codebasePath, '.gitkeep');
+        await fs.promises.writeFile(gitkeepPath, '');
+        await git.add('.gitkeep');
+        await git.commit('Initial commit');
+      }
+
+      logger.info(`Local git initialized on branch '${baseBranch}'`, { component: 'ProjectCrudService' });
+    } catch (error) {
+      logger.warn('Failed to initialize local git (non-fatal)', { component: 'ProjectCrudService' }, { error });
+    }
+  }
+
   /**
    * Resolve effective GitHub owner: user override > org config
    */

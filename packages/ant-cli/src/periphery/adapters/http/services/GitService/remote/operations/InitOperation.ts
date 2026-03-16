@@ -3,6 +3,7 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
+import type { SimpleGit } from 'simple-git';
 import { GitHelper } from '../../helper/GitHelper';
 import { RemoteChecker } from '../helpers/RemoteChecker';
 import { BaseGitSetupOperation } from './BaseGitSetupOperation';
@@ -42,7 +43,9 @@ export class InitOperation extends BaseGitSetupOperation {
 
     const { config, projectPath, codebasePath } = await this.loadConfig(projectId, userContext);
 
-    await this.validateWorkspace(codebasePath, config.githubRepo, userContext);
+    // Check for existing local git before validation
+    const existingGit = GitHelper.getGitInstanceSafe(codebasePath);
+    await this.validateWorkspace(codebasePath, existingGit, config.githubRepo, userContext);
 
     const existingFeatures = await this.readExistingFeatures(projectPath);
     const featureBackups = existingFeatures.length > 0
@@ -53,23 +56,33 @@ export class InitOperation extends BaseGitSetupOperation {
       ? activeFeature
       : existingFeatures[0] || null;
 
-    if (seedFeature) {
+    // Only seed main codebase when there is no existing local git
+    // (if git exists, the codebase already has content and history)
+    if (seedFeature && !existingGit) {
       await this.seedMainCodebase(projectId, seedFeature, codebasePath, userContext);
     }
 
     let gitInitialized = false;
 
     try {
-      const hasFiles = await this.prepareCodebase(codebasePath, projectId);
-
-      console.log(`[InitOperation] Initializing new Git repository at ${codebasePath}...`);
-
       const baseBranch = config.branchBase || 'main';
-      const git = await this.initializeGit(codebasePath, baseBranch, userContext);
-      gitInitialized = true;
+      let git: SimpleGit;
 
-      await this.createGitignore(codebasePath);
-      await this.createInitialCommit(git, codebasePath, hasFiles);
+      if (existingGit) {
+        // Reuse existing local git (no remote yet) — skip git init and initial commit
+        console.log(`[InitOperation] Reusing existing local git, connecting to GitHub...`);
+        git = existingGit;
+        await GitHelper.ensureSafeDirectory(codebasePath);
+        await GitHelper.ensureUserConfig(git, userContext);
+        await this.createGitignore(codebasePath); // idempotent: skips if already exists
+      } else {
+        const hasFiles = await this.prepareCodebase(codebasePath, projectId);
+        console.log(`[InitOperation] Initializing new Git repository at ${codebasePath}...`);
+        git = await this.initializeGit(codebasePath, baseBranch, userContext);
+        gitInitialized = true;
+        await this.createGitignore(codebasePath);
+        await this.createInitialCommit(git, codebasePath, hasFiles);
+      }
 
       const defaultBranch = await this.ensureDefaultBranch(git, baseBranch);
 
@@ -103,17 +116,22 @@ export class InitOperation extends BaseGitSetupOperation {
 
   private async validateWorkspace(
     codebasePath: string,
+    existingGit: SimpleGit | null,
     githubRepo: string,
     userContext: UserContext
   ): Promise<void> {
-    const existingGit = GitHelper.getGitInstanceSafe(codebasePath);
     if (existingGit) {
-      throw new GitConflictError('Git repository already initialized. Use push/pull instead.');
+      // Local git exists — allow only if it has no remote (local-only repo from project creation)
+      const remotes = await existingGit.getRemotes();
+      if (remotes.length > 0) {
+        throw new GitConflictError('Git repository already initialized. Use push/pull instead.');
+      }
+      console.log(`[InitOperation] Local git found (no remote), will connect to GitHub.`);
     }
 
     console.log(`[InitOperation] Checking if remote repository already exists...`);
     const repoExists = await RemoteChecker.exists(githubRepo, userContext, this.githubAuthService);
-    
+
     if (repoExists) {
       throw new GitConflictError(`Remote repository already exists at ${githubRepo}. Please use Clone instead to download the existing repository.`);
     }
