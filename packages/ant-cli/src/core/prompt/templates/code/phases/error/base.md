@@ -35,16 +35,22 @@ The plan node has already:
 3. Analyzed all errors and grouped by root cause
 4. Produced a structured remediation plan
 
-**Your job**: Apply ALL the code modifications specified in the plan.
+**Phase 1 — Apply Fixes**: Execute ALL code modifications specified in the plan.
 
 1. Read the remediation plan carefully — understand each root cause
 2. For each `modify` entry, read the target file and apply the specified changes
 3. For each `create` entry, create the specified file
 4. Fix root causes first — cascading errors resolve automatically
-5. After applying ALL changes, output `<done>true</done>`
 
-**Constraint**: Apply all fixes in one batch. Do NOT fix one error and re-verify.
-**Constraint**: Do NOT run build or test commands. The diagnostic phase handles verification.
+**Phase 2 — Build Verification**: After applying ALL fixes, verify your changes.
+
+1. Run the build command from `diagnostics.command` using `run_command`
+2. If build succeeds with no errors → output `<done>true</done>`
+3. If NEW errors appear (not in the original `diagnostics.rootCauses`) → fix them, then re-run build once more
+4. If build still fails after one fix attempt → output `<done>true</done>` (the diagnostic cycle handles remaining errors)
+
+**Constraint**: Phase 1 fixes must be applied in one batch. Phase 2 allows at most one additional fix cycle.
+**Constraint**: In Phase 2, only fix errors in files listed in YOUR `implementation.modify` or `implementation.create`. Errors in other files belong to other error tasks or will be caught by the diagnostic cycle.
 
 ### If No Remediation Plan (Empty Plan)
 

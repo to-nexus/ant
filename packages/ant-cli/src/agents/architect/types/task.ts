@@ -120,6 +120,15 @@ export interface CodeTask extends BaseTask {
    * Contains the worker's execution context at the time of interruption.
    */
   resumeState?: TaskResumeState;
+
+  // ── Batch split loop detection ──────────────────────────────────
+  // These fields live on the task (not ArchitectGraphState) so they
+  // survive re-enqueue across checkTaskStatus state resets.
+
+  /** Total number of batch split cycles this task has triggered. */
+  _batchSplitCount?: number;
+  /** JSON summary of previous batch split diagnostics (injected into LLM prompt). */
+  _previousBatchDiagnostics?: string;
 }
 
 /**
