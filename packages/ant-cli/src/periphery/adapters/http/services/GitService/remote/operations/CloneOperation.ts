@@ -48,10 +48,17 @@ export class CloneOperation {
 
     const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
 
-    // Only check if git is already initialized
-    const gitDir = path.join(codebasePath, '.git');
-    if (fs.existsSync(gitDir)) {
-      throw new GitConflictError('Repository already cloned. Delete .git directory to re-clone.');
+    // Check if git already exists — allow local-only git (no remote), block if already cloned
+    const existingGit = GitHelper.getGitInstanceSafe(codebasePath);
+    if (existingGit) {
+      const remotes = await existingGit.getRemotes();
+      if (remotes.length > 0) {
+        throw new GitConflictError('Repository already cloned. Delete .git directory to re-clone.');
+      }
+      // Local-only git from project creation — remove it before cloning
+      console.log('[CloneOperation] Local-only git found, removing before clone...');
+      const gitDir = path.join(codebasePath, '.git');
+      await fs.promises.rm(gitDir, { recursive: true, force: true });
     }
 
     // Read existing features and backup their codebases
