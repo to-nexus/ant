@@ -19,7 +19,7 @@ async function gitAction(
   url: string,
   method: string = 'POST',
   body?: unknown,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; warnings?: string[] }> {
   try {
     const response = await authFetch(url, {
       method,
@@ -27,7 +27,7 @@ async function gitAction(
     });
     const result = await response.json();
     if (!response.ok) return { success: false, error: result.error || `HTTP ${response.status}` };
-    return { success: true };
+    return { success: true, warnings: result.warnings };
   } catch (error: any) {
     return { success: false, error: error.message || 'Network error' };
   }
