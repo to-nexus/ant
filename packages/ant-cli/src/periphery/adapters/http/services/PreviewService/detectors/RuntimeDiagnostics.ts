@@ -74,13 +74,16 @@ export class RuntimeDiagnostics {
           affectedConnections.push(affected.id);
         }
 
+        const configRef = affected?.configSource === 'toml'
+          ? 'config.example.toml'
+          : '.env.example';
         issues.push({
           reasoning: 'env-missing' as PreviewIssueReasoning,
           severity: 'fatal',
           reason: `Environment variable "${envVar}" is not set.`,
           suggestedFix: affected
             ? `.env 파일에 ${envVar}을 설정해주세요. 예: ${envVar}=${affected.value || 'YOUR_VALUE'}`
-            : `.env 파일에 ${envVar}을 설정해주세요. .env.example을 참고하여 적절한 값을 입력해주세요.`,
+            : `.env 파일에 ${envVar}을 설정해주세요. ${configRef}을 참고하여 적절한 값을 입력해주세요.`,
         });
       }
     }
@@ -106,11 +109,15 @@ export class RuntimeDiagnostics {
     // 4. Check for annotation-missing connections (non-log-based)
     const missingAnnotations = connections.filter(c => c.missingAnnotation);
     for (const conn of missingAnnotations) {
+      const targetFile = conn.configSource === 'toml' ? 'config.example.toml' : '.env.example';
+      const annotationHint = conn.configSource === 'toml'
+        ? `# @connection ${conn.category} ${conn.id} env:${conn.envVar}`
+        : `# @connection ${conn.category} ${conn.id}`;
       issues.push({
         reasoning: 'annotation-missing' as PreviewIssueReasoning,
         severity: 'warning',
-        reason: `Connection "${conn.name}" (${conn.envVar}) was detected via fallback. Add @connection annotation to .env.example.`,
-        suggestedFix: `.env.example 파일에서 ${conn.envVar} 위에 "# @connection ${conn.category} ${conn.id}" 어노테이션을 추가해주세요.`,
+        reason: `Connection "${conn.name}" (${conn.envVar}) was detected via fallback. Add @connection annotation to ${targetFile}.`,
+        suggestedFix: `${targetFile} 파일에서 ${conn.envVar}에 대한 "${annotationHint}" 어노테이션을 추가해주세요.`,
       });
     }
 

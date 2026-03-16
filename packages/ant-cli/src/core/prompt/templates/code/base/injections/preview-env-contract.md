@@ -201,6 +201,85 @@ Before completing any task that creates or modifies `.env.example`, verify:
 - Same-project internal connections use the `self` keyword
 - Cross-project connections use `ant-project:{projectId}:{feature}[:{serviceName}]` when the specification names a specific target project
 
+---
+
+## 5) TOML Configuration File Support
+
+### Principle
+**For Go projects using TOML configuration (viper, koanf), the platform also scans `config.example.toml` for `@connection` annotations.** This is an alternative to `.env.example` — the same annotation protocol applies, with one addition: TOML annotations require an explicit `env:VAR_NAME` mapping.
+
+### File Convention
+
+| File | Purpose | Committed? |
+|------|---------|-----------|
+| `config.example.toml` | Schema with annotations and placeholder values | YES |
+| `config.toml` | Active runtime config with resolved values | NO (gitignored) |
+
+The platform auto-creates `config.toml` from `config.example.toml` at startup if it does not exist.
+
+### Contract
+
+| Line | Format |
+|------|--------|
+| Annotation | `# @connection {category} {name} [modifier] env:{ENV_VAR_NAME}` |
+| TOML key | `key = "default_value"` |
+
+The `env:{ENV_VAR_NAME}` token is **REQUIRED** for TOML annotations. TOML keys (e.g., `database.url`) do not correspond to flat environment variable names, so the annotation must explicitly declare which env var the platform should inject.
+
+Examples:
+```toml
+# Plain configuration (no annotation)
+[server]
+port = 8080
+env = "development"
+
+# Infrastructure connection
+# @connection infrastructure postgres env:DATABASE_URL
+[database]
+url = "postgresql://localhost:5432/mydb"
+
+# Infrastructure connection
+# @connection infrastructure redis env:REDIS_URL
+[cache]
+url = "redis://localhost:6379/0"
+
+# Same-project internal connection (e.g., frontend → backend in fullstack)
+# @connection business backend-api self env:API_BASE_URL
+[api]
+base_url = ""
+
+# Cross-project connection
+# @connection business stats-api ant-project:sketch-be:skeleton env:STATS_API_URL
+[external]
+stats_url = ""
+```
+
+### Runtime Injection Mechanism
+
+The platform injects resolved values via **environment variables** (not by modifying the TOML file). The Go application MUST bind TOML keys to env vars so that injected values override file defaults:
+
+```go
+// viper example
+viper.SetConfigName("config")
+viper.SetConfigType("toml")
+viper.AddConfigPath(".")
+viper.AutomaticEnv()
+// Or explicit binding:
+viper.BindEnv("database.url", "DATABASE_URL")
+```
+
+### Constraint
+- `env:VAR_NAME` is REQUIRED in TOML annotations. Without it, the platform cannot inject the connection value and the annotation is ignored.
+- A project may use `.env.example` OR `config.example.toml` OR both. If both exist, the platform merges connections from both sources.
+- Do NOT declare the same connection in both `.env.example` and `config.example.toml`. Duplicate declarations cause the platform to detect phantom connections.
+- `config.example.toml` and `config.toml` MUST contain identical structure (same sections and keys). Modifying one without the other = inconsistency.
+
+### Blind Spot
+**`env:VAR_NAME` is EASILY FORGOTTEN in TOML annotations.**
+Before completing any task that creates `config.example.toml`, verify every `@connection` line includes `env:VAR_NAME` as the last token.
+
+**`config.toml` is EASILY FORGOTTEN** when `config.example.toml` is created. Both files MUST be created together.
+
 **Decomposed variables are EASILY ADDED alongside a connection URL.**
 If `DATABASE_URL` already has `@connection`, do NOT also add `DB_HOST`, `DB_PORT`, `DB_PASSWORD`, `DB_NAME` for the same service. The URL variable is the single source of truth. Decomposed variables cause the platform to detect duplicate connections for the same service.
 

@@ -93,6 +93,8 @@ When error occurs:
 - Modifying one without the other = inconsistency the platform cannot recover from
 - Variable names defined by setup are the canonical contract — do NOT rename in later tasks
 
+**If TOML config is used:** `config.example.toml` and `config.toml` MUST contain identical structure (same sections and keys). The same sync principle applies — modifying one without the other breaks the platform contract.
+
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if (eq currentTask.type "explain")}}

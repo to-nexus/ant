@@ -35,7 +35,8 @@ codebase/
 ├── go.sum
 ├── Makefile
 ├── .gitignore
-└── .env.example
+├── .env.example          # Environment config (default)
+└── config.example.toml   # TOML config (alternative, when design specifies TOML)
 ```
 
 **Principle**: `internal/` enforces Go's built-in access control — packages under `internal/` cannot be imported by external modules. Use this for application-specific code.
@@ -365,6 +366,52 @@ ENV=development
 ```
 
 **Constraint**: Do NOT hardcode connection URLs in application code. Use environment variables with `@connection` annotation.
+
+---
+
+## 4b. config.example.toml AND config.toml (TOML Alternative)
+
+**Principle**: Go projects MAY use `config.example.toml` instead of (or alongside) `.env.example` for service connections when the design document specifies TOML-based configuration (e.g., using viper or koanf).
+
+**Constraint**: If using `config.example.toml`, ALWAYS also create `config.toml` with the same structure and localhost default values. Add `config.toml` to `.gitignore`.
+
+**Constraint**: TOML annotations require `env:VAR_NAME` — the environment variable the platform injects at runtime. This is REQUIRED because TOML keys (e.g., `database.url`) don't map to flat env var names.
+
+```toml
+# Plain configuration (no annotation)
+[server]
+port = 8080
+env = "development"
+
+# @connection infrastructure postgres env:DATABASE_URL
+[database]
+url = "postgresql://localhost:5432/mydb"
+
+# @connection infrastructure redis env:REDIS_URL
+[cache]
+url = "redis://localhost:6379/0"
+
+# @connection business backend-api self env:API_BASE_URL
+[api]
+base_url = ""
+```
+
+**Constraint**: The Go application MUST bind TOML keys to env vars so that platform-injected values override file defaults:
+
+```go
+viper.SetConfigName("config")
+viper.SetConfigType("toml")
+viper.AddConfigPath(".")
+viper.AutomaticEnv()
+// Or explicit binding:
+viper.BindEnv("database.url", "DATABASE_URL")
+```
+
+**Constraint**: Do NOT declare the same connection in both `.env.example` and `config.example.toml`. Choose one format per project.
+
+**Blind spot**: `env:VAR_NAME` in TOML annotations is EASILY FORGOTTEN. Every `@connection` line in `config.example.toml` MUST include `env:VAR_NAME` as the last token.
+
+**Blind spot**: `config.toml` is EASILY FORGOTTEN when `config.example.toml` is created. Both files MUST be created together with identical structure.
 
 ---
 
