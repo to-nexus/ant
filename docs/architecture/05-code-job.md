@@ -15,13 +15,18 @@ __start__ -> resolve -> [4-way router]
     +-> plan (직행, plain resume)
     +-> decompose (detectEnv 이후 중단 resume)
 
-plan -> codeGen -> [router]
+plan -> [router]
+    +-> tool -> plan (plan exploring)
+    +-> codeGen (planText ready)
+    +-> checkTaskStatus (batch split 완료, done=true)
+
+codeGen -> [router]
     +-> tool -> codeGen (도구 호출 루프)
-    +-> checkTaskStatus (태스크 완료)
-    +-> installDeps -> runtimeValidate -> checkTaskStatus
+    +-> checkTaskStatus (done=true)
+    +-> codeGen (self-loop retry)
 
 checkTaskStatus -> [router]
-    +-> enforce -> plan (검증 실패, 재시도)
+    +-> enforce -> plan (violations + retries 남음)
     +-> learn -> [router]
         +-> plan (다음 태스크)
         +-> __end__
@@ -69,19 +74,11 @@ codeGen의 도구 호출을 실행하고 결과를 반환한다.
 
 ### enforce
 
-runtimeValidate에서 검증 실패 시 violation 정보와 함께 plan으로 재진입한다.
-
-### installDeps
-
-의존성 설치를 수행한다. final-verification 태스크(priority 1000)인 경우 인프라 기동 safety net을 포함한다 (후술).
-
-### runtimeValidate
-
-빌드, 린트, 타입체크를 프로그래밍 방식으로 검증한다. 실패 시 enforce 노드를 통해 plan으로 재진입한다.
+violations 목록과 함께 plan으로 재진입한다. `checkTaskStatus`에서 violation이 있고 retries가 남아 있을 때 활성화된다.
 
 ### learn
 
-태스크 완료 후 교훈을 추출하고 cleanup을 수행한다. 서버 프로세스 종료, 인프라 정리(stopInfrastructure) 등을 담당한다.
+태스크 완료 후 cleanup을 수행한다. 서버 프로세스 종료, 인프라 정리(`stopInfrastructure`) 등을 담당한다.
 
 ### revise
 
@@ -89,36 +86,26 @@ resume 시 새 directive(overrideDirective)가 있으면 기존 태스크 큐를
 
 ## 인프라 기동 (Final Verification)
 
-프로젝트가 외부 서비스(DB, Redis, MQ 등)에 의존하는 경우, final-verification 시 해당 인프라를 기동해야 빌드 및 런타임 검증이 가능하다. 이 시나리오는 언어/프레임워크에 무관하게 동일한 원칙으로 동작한다.
+프로젝트가 외부 서비스(DB, Redis, MQ 등)에 의존하는 경우, verification 태스크 실행 중 LLM이 `run_command` 도구를 사용하여 인프라를 직접 기동하는 것이 유일한 흐름이다.
 
-### Primary: LLM 자율 기동 (codeGen)
-
-LLM이 태스크 실행 중 `run_command` 도구를 사용하여 직접 인프라를 기동하는 것이 메인 흐름이다. LLM이 `<done>true</done>`을 출력하기 **전에** 인프라 기동, 빌드, 런타임 검증을 모두 완료하는 것이 정상 경로이다.
-
-프롬프트 가이드(`base.md` Step 2: Infrastructure)에 따라 LLM은 다음을 수행한다:
+LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
 
 1. **Discover**: 프로젝트 설정 파일을 읽어 빌드/실행 커맨드와 인프라 정의를 파악
-2. **Infrastructure**: `docker compose up -d --wait` 실행. compose 파일의 서비스 정의(포트, 자격 증명, DB명)를 읽어 앱이 필요로 하는 환경변수에 매핑
+2. **Infrastructure**: `docker compose up -d --wait` 실행. compose 파일의 서비스 정의를 읽어 앱 환경변수에 매핑
 3. **Build**: 빌드/컴파일 커맨드 실행 (PRIMARY 검증 기준)
 4. **Runtime**: 빌드 성공 시 dev/start 서버를 1회 실행하여 전체 스택 검증
 
-핵심: compose 파일에서 서비스 연결 정보를 읽어 앱 환경변수를 도출하는 것까지 LLM의 책임이다.
+`learn` 노드에서 `stopInfrastructure()`를 호출하여 기동된 Docker 서비스를 정리한다.
 
-### Safety Net: installDeps 프로그래밍 기동
+## Error Diagnostics System
 
-LLM이 인프라 기동을 놓쳤을 경우의 보험이다. `installDeps` 노드가 `isFinalTask` 가드에 의해 final-verification 태스크(priority 1000)에서만 작동한다.
+`diagnostics/` 디렉토리의 멀티언어 에러 파서가 빌드/테스트 실패 출력을 파싱하여 파일 단위로 분리한다.
 
-- `InfrastructureManager`를 사용하여 `docker-compose.yml`(또는 `compose.yml`) 감지
-- `startInfrastructure()` 호출
-- best-effort: 실패해도 워크플로우를 차단하지 않음
+- `error` 태스크: 검증 실패 시 오류를 파일별로 분리하여 독립 태스크로 재분해 (batch split)
+- `verification` 태스크: `VerificationTracker`가 build/test objective 완료를 추적. 모든 목표가 충족될 때까지 `checkTaskStatus -> enforce -> plan` 루프를 반복한다
+- `testgen` 태스크: 모든 feature 태스크 완료 후 테스트 코드 생성
 
-### Cleanup
-
-`learn` 노드에서 태스크 완료 후 `stopInfrastructure()`를 호출하여 기동된 Docker 서비스를 정리한다. 서버 프로세스 cleanup과 동일 위치에서 수행된다.
-
-### error task와의 관계
-
-error task도 `installDeps -> runtimeValidate` 경로를 타지만, 프로그래밍 인프라 기동은 `isFinalTask` 가드에 의해 **스킵**된다. error task에서 인프라가 필요한 behavioral bug 검증이 발생하면, LLM이 codeGen에서 직접 `run_command`로 기동한다.
+batch split은 단일 검증 실패를 여러 독립 error 태스크로 쪼개어 병렬 처리를 가능하게 한다. 분할된 태스크는 taskQueue에 삽입되고 `plan` 노드로 재진입한다.
 
 ## State 복원
 

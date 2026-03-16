@@ -24,18 +24,33 @@ ANT의 프롬프트 시스템은 WHAT/HOW 분리 원칙으로 설계된다. 템�
 core/prompt/templates/
     code/
         phases/
-            detect/         (base.md, rules.md)
             decompose/      (base.md, rules.md)
+            detect/         (base.md, rules.md)
+            docgen/         (base.md, rules.md)
+            enforce/        (base.md, rules.md)
+            error/          (base.md, rules.md)
             execute/        (base.md, rules.md)
             plan/           (base.md, rules.md)
             revise/         (base.md, rules.md)
+            testgen/        (base.md, rules.md)
+            tool/           (base.md, rules.md)
+            verify/         (base.md, rules.md)
         base/
-            injections/     (preview-setup.md, preview-env-contract.md)
+            system.md
+            examples.md
+            injections/     (각종 injection 파셜)
+            tools/          (도구별 파셜)
     design/
         phases/
             decompose/      (base.md, rules.md)
+            detect/         (base.md, rules.md)
             execute/        (base.md, rules.md)
+            plan/           (base.md, rules.md)
             revise/         (base.md, rules.md)
+    common/
+        architect-role.md
+        rules.md
+        injections/         (공통 injection 파셜)
     planner/
         plan/               (base.md, rules.md)
     triage/                 (base.md, rules.md)

@@ -10,8 +10,8 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 |------|----------|------------|
 | 실행 노드 | plan -> codeGen -> tool | plan -> docGen -> tool |
 | plan 역할 | LLM으로 planText 생성 | taskQueue 관리만 (LLM 호출 없음) |
-| 검증 루프 | validate -> enforce -> plan | 없음 |
-| 태스크 타입 | setup, feature | doc |
+| 검증 루프 | enforce -> plan (violations) | 없음 |
+| 태스크 타입 | setup, feature, testgen, error, verification | doc |
 | 출력물 | 소스 코드 파일 | 설계 문서 (MD, JSON) |
 | 고유 속성 | - | workType, documentType |
 
@@ -23,6 +23,7 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 |----------|------|----------|
 | `system-design` | PRD/directive만 있고 참조 이미지 없음 | system-design.md, api-contract.md 등 |
 | `ui-design` | `inputs/references/` 또는 `inputs/assets/`에 파일 존재 | ui-tokens.json, ui-assets.json, ui-spec.json |
+| `spec` | spec 모드로 명시적 지정 시 | spec 문서 |
 
 ## documentType (System Design)
 
@@ -35,6 +36,8 @@ decompose가 프로젝트 환경에 따라 문서 구조를 결정한다.
 | fullstack + MSA | msa-contract-first | `api-contract.md` + `fe-system-design.md` + `be-system-design-{service}.md` (서비스별) |
 
 ## 그래프 노드 흐름
+
+### 순차 실행 (ANT_TASK_CONCURRENCY = 1)
 
 ```
 __start__ -> resolve -> [4-way router]
@@ -51,6 +54,14 @@ plan -> docGen -> [router]
 checkTaskStatus -> [router]
     +-> plan (다음 태스크)
     +-> learn -> __end__
+```
+
+### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
+
+decompose 이후 `parallelOrchestrator` 노드로 분기한다. Code Job과 동일한 TaskOrchestrator/TaskWorker 패턴을 사용한다.
+
+```
+decompose -> parallelOrchestrator -> learn -> __end__
 ```
 
 ## 주요 노드 특성

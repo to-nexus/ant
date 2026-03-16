@@ -19,9 +19,9 @@ ANT는 AI 에이전트 기반 소프트웨어 개발 플랫폼이다. pnpm 모�
 | 프로세스 | 포트 (로컬) | 진입점 | 역할 |
 |----------|------------|--------|------|
 | ant-api | 4100 | `composition/server.ts` | REST API, IDE 프록시, 정적 파일 서빙 |
-| ant-realtime | 4101 | `infrastructure/realtime/RealtimeServer.ts` | SSE 연결 관리, Redis Pub/Sub 구독 |
-| ant-job | - | `infrastructure/worker/JobWorker.ts` | BullMQ Worker, 자식 프로세스(job-runner) 스폰 |
-| ant-preview | 4102 | `infrastructure/preview/PreviewServer.ts` | Dev Server 생명주기, Preview 프록시 |
+| ant-realtime | 4101 | `infrastructure/realtime/start-realtime-server.ts` | SSE 연결 관리, Redis Pub/Sub 구독 |
+| ant-job | - | `infrastructure/worker/start-job-worker.ts` | BullMQ Worker, 자식 프로세스(job-runner) 스폰 |
+| ant-preview | 4102 | `infrastructure/preview/start-preview-server.ts` | Dev Server 생명주기, Preview 프록시 |
 
 프로세스 간 통신은 Redis를 통해 이루어진다. 직접적인 프로세스 간 HTTP 호출은 없다.
 

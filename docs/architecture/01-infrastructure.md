@@ -39,7 +39,7 @@ ANT의 모든 프로세스 간 통신과 상태 관리는 Redis를 통해 이루
 | 키 | 타입 | 용도 |
 |----|------|------|
 | `ant:infra:preview:{portKey}` | String (JSON) | PreviewState (런타임 — stop 시 삭제) |
-| `ant:infra:preview:config:{portKey}` | String (JSON) | Preview 설정 (영속 — connections, structureType, projectProfile) |
+| `ant:infra:preview-config:{portKey}` | String (JSON) | Preview 설정 (영속 — connections, structureType, projectProfile) |
 | `ant:infra:preview:list` | Set | Preview 목록 |
 | `ant:infra:preview:byPod:{podId}` | Set | Pod별 Preview 인덱스 |
 | `ant:infra:ide:{portKey}` | String (JSON) | IDEState |
@@ -139,17 +139,28 @@ BullMQ에 enqueue되는 payload에는 agent, jobType, projectId, featureName, di
 |------|------|
 | `ANT_JOB_ID` | Job 식별자 |
 | `ANT_PROJECT_ID` | 프로젝트 ID |
-| `ANT_FEATURE` | Feature 이름 |
+| `ANT_FEATURE` | Feature 경로 식별자 |
+| `ANT_FEATURE_NAME` | Feature 이름 별칭 |
 | `ANT_JOB_TYPE` | Job 타입 |
-| `ANT_AGENT` | 에이전트 타입 |
+| `ANT_AGENT` | 에이전트 타입 (`architect \| planner \| reviewer \| doc`) |
+| `ANT_MODE` | 실행 모드 (`generate \| refactor \| explain`) |
 | `ANT_USER_ID` | 사용자 ID (인증 세션 기반) |
 | `ANT_ORG_ID` | 조직 ID (인증 세션 기반) |
+| `ANT_USER_EMAIL` | 사용자 이메일 |
 | `ANT_PROJECT_PATH` | 프로젝트 절대 경로 |
 | `ANT_FEATURE_PATH` | Feature 절대 경로 |
 | `ANT_REDIS_URL` | Redis URL |
 | `ANT_API_URL` | API Server URL |
+| `ANT_OVERRIDE_DIRECTIVE` | 재개 시 새 지시사항 |
+| `ANT_INPUT_FILE` | 입력 파일 경로 |
+| `ANT_IS_RESUME` | 재개 여부 |
+| `ANT_ORIGINAL_JOB_ID` | 원본 Job ID (재개용) |
+| `ANT_CHAT_SOURCE` | 채팅 소스 여부 |
+| `ANT_SERVER_MODE` | 서버 모드 (`local \| cloud`) |
+| `ANT_WORKSPACE_BASE_PATH` | 워크스페이스 기본 경로 |
+| `ANT_CLI_ROOT` | CLI 루트 경로 |
 
-`ANT_USER_ID`와 `ANT_ORG_ID`는 `.env`에 설정하지 않는다. 인증 세션에서 동적으로 결정된다.
+`ANT_USER_ID`, `ANT_ORG_ID`, `ANT_USER_EMAIL`은 `.env`에 설정하지 않는다. 인증 세션에서 동적으로 결정된다.
 
 ## 경계
 

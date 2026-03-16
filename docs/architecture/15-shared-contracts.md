@@ -23,12 +23,12 @@ Job 레벨 타입.
 
 | 타입 | 정의 |
 |------|------|
-| `TaskType` | `'setup' \| 'feature' \| 'error' \| 'explain' \| 'doc'` |
+| `TaskType` | `'setup' \| 'feature' \| 'testgen' \| 'error' \| 'verification' \| 'explain' \| 'doc'` |
 | `TaskStatus` | `'todo' \| 'in-progress' \| 'completed'` |
-| `BaseTask` | `id`, `name`, `type`, `priority`, `completed`, `exclusive`, `parallelGroup`, `packages` |
-| `TaskTiming` | 태스크 실행 시간 |
-| `TaskTokenUsage` | 태스크별 토큰 사용량 |
-| `KanbanData` | `todo`, `inProgress`, `completed`, `isEstimating`, `dataSource`, `recursionCount`, `jobTiming` |
+| `BaseTask` | `id`, `name`, `type`, `priority`, `description`, `completed`, `interrupted`, `exclusive`, `parallelGroup`, `packages`, `timing`, `tokenUsage` |
+| `TaskTiming` | 태스크 실행 시간 (startedAt, completedAt, pausedAt, resumedAt, totalPausedDuration) |
+| `TaskTokenUsage` | 태스크별 토큰 사용량 (inputTokens, outputTokens, totalTokens, cacheReadTokens, cacheCreationTokens) |
+| `KanbanData` | `todo`, `inProgress`, `completed`, `isEstimating`, `dataSource`, `recursionCount`, `jobTiming`, `tokenUsage`, `estimatingLabel`, `estimatingStartedAt`, `estimatingNodeId` |
 
 ### workflow.ts
 
@@ -47,7 +47,7 @@ Workflow SSE 타입.
 
 | 타입 | 정의 |
 |------|------|
-| `InterruptionReason` | `'recursion_limit' \| 'user_stopped' \| 'api_error' \| 'process_crash' \| 'timeout' \| ...` |
+| `InterruptionReason` | `'recursion_limit' \| 'user_stopped' \| 'api_error' \| 'process_crash' \| 'server_crash' \| 'timeout' \| 'server_shutdown' \| 'unknown'` |
 | `InterruptionDetails` | `reason`, `message`, `timestamp`, `canResume`, `metadata` |
 
 ### detection.ts
@@ -58,7 +58,7 @@ Workflow SSE 타입.
 |------|------|
 | `JobMode` | `'generate' \| 'refactor' \| 'explain'` |
 | `JobEnvironment` | `'frontend' \| 'backend' \| 'fullstack' \| 'unknown'` |
-| `DesignWorkType` | `'system-design' \| 'ui-design'` |
+| `DesignWorkType` | `'system-design' \| 'ui-design' \| 'spec'` |
 | `DesignDomain` | 설계 도메인 분류 |
 | `ProjectProfile` | 프로젝트 프로파일 |
 | `DetectionReport` | 코드/설계 통합 감지 결과 |
