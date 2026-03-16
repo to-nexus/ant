@@ -22,7 +22,7 @@ Preview 상태는 두 개의 독립된 Redis 키에 저장된다:
 | Redis 키 | 용도 | 수명 | 포함 데이터 |
 |----------|------|------|------------|
 | `PREVIEW` (`ant:infra:preview:{portKey}`) | 런타임 상태 | Preview 실행 중에만 존재. `stopPreview` 시 삭제 | running, phase, port, host, podId, packages, connections (w/ status), issues |
-| `PREVIEW_CONFIG` (`ant:infra:preview:config:{portKey}`) | 영속 설정 | Preview 중지 후에도 유지 (TTL) | connections (status 없음), structureType, projectProfile |
+| `PREVIEW_CONFIG` (`ant:infra:preview-config:{portKey}`) | 영속 설정 | Preview 중지 후에도 유지 (TTL) | connections (status 없음), structureType, projectProfile |
 
 설계 원칙:
 - `PREVIEW`: 런타임 전용. connection의 `status` (active/unreachable/not-started)는 여기에만 저장.

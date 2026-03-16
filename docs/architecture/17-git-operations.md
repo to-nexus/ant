@@ -9,7 +9,7 @@ ANT는 GitHub를 통한 Git 연동을 지원한다. 프로젝트 생성 후 Git�
 | Operation | 역할 | 원격 레포 | 로컬 .git | Feature |
 |-----------|------|:---------:|:---------:|:-------:|
 | **Clone** | 기존 원격 레포를 로컬로 다운로드 | 있어야 함 | 없어야 함 | OK (worktree 자동 생성) |
-| **Init** | 로컬 코드로 새 원격 레포 생성 후 push | 없어야 함 | 없어야 함 | OK (worktree 자동 생성) |
+| **Init** | 로컬 코드로 새 원격 레포 생성 후 push | 없어야 함 | 없거나 remote 없는 local-only 허용 | OK (worktree 자동 생성) |
 | **Commit** | 변경사항을 로컬 커밋 | 연결됨 | 있어야 함 | - |
 | **Push** | 로컬 커밋을 원격에 업로드 (upstream 없으면 자동 설정) | 연결됨 | 있어야 함 | - |
 | **Pull** | 원격 변경사항을 로컬로 다운로드 | 연결됨 | 있어야 함 | - |
@@ -29,7 +29,8 @@ Feature 있음  |  Clone  X (레포없음)  |   |  Clone  O              |
               |  Init   O            |   |  Init   X (레포존재)    |
               +----------------------+   +------------------------+
 
-.git 이미 존재 → Clone/Init 불필요, Push/Pull/Fetch/Commit/Sync/Discard 사용
+.git 이미 존재 + remote 있음 → Clone/Init 불필요, Push/Pull/Fetch/Commit/Sync/Discard 사용
+.git 이미 존재 + remote 없음 (local-only) → Init 허용 (프로젝트 생성 시 자동 초기화된 상태)
 ```
 
 ### UI 메뉴 구조
@@ -110,18 +111,33 @@ Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
 2. 파일 지정 시: tracked 파일은 `git checkout -- {files}`, untracked는 `git clean -f {files}`
 3. 전체 discard: `git checkout -- .` + `git clean -fd`
 
+## 프로젝트 생성 시 로컬 Git 자동 초기화
+
+프로젝트 생성(`ProjectCrudService.createProject`) 시 `initializeLocalGit()`을 자동 실행한다:
+
+1. codebase 디렉터리 생성
+2. `git init --initial-branch={branchBase}` 실행
+3. `.gitignore` 자동 생성 (`GitignoreGenerator`)
+4. Initial commit 생성
+
+이 과정은 non-fatal — 실패해도 프로젝트 생성은 계속된다. 결과로 remote 없는 local-only `.git`이 생성된다. 이 상태에서 Init이 허용되며, Init은 remote 설정 후 이 local git을 연결한다.
+
 ## 공통 전제 조건
 
-- `config.json`의 `githubRepo` 필드 설정 필수
+- `config.json`의 `githubRepo` 필드 설정 필수 (Clone/Init/Push/Pull/Fetch/Sync)
 - GitHub PAT 설정 필수 (Account Configuration)
-- `.git` 이미 존재 시 Clone/Init 모두 불가 (이미 연결됨)
+- `.git` + remote 이미 존재 시 Clone/Init 불가 (이미 연결됨)
+
+## isBaseBranch
+
+`core/utils/branchUtils.ts`의 `isBaseBranch(featureName, _branchBase?)` 함수는 `featureName === RESERVED_FEATURE_NAME('_base')`으로만 판단한다. `_branchBase` 파라미터는 시그니처에 남아 있으나 무시된다.
 
 ## 상태 전이
 
 ```
-[프로젝트 생성] → NoGit (미연동)
+[프로젝트 생성] → LocalGit (local-only, remote 없음, .git 자동 초기화)
                     │
-                    ├── feature 생성 → NoGit + HasFeatures
+                    ├── feature 생성 → LocalGit + HasFeatures
                     │
                     ├── Clone 성공 ──→ Connected (연동됨, feature worktree 자동 생성)
                     └── Init 성공 ──→ Connected (연동됨, feature worktree 자동 생성)
