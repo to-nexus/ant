@@ -41,6 +41,7 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 - Build: Makefile
 - Ignore: .gitignore
 - Environment: `.env.example` (template with `@connection` annotations) AND `.env` (active copy with localhost/docker defaults)
+- Environment (TOML alternative): `config.example.toml` (template with `@connection env:VAR` annotations) AND `config.toml` (active copy with localhost defaults). Use when design document specifies TOML-based configuration.
 - Infrastructure: docker-compose.yml (see Infrastructure Services below)
 - Documentation: README.md
 
@@ -76,6 +77,8 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 3. Next task will create ALL application code - don't do it now
 4. Include ALL infrastructure services in docker-compose.yml if design doc specifies them
 5. In MSA, every service `go.mod` that `require`s a workspace-local sibling module (source directory physically present in this workspace) MUST also have a `replace` directive pointing to its relative local path. Do NOT add `replace` for modules whose source is not in this workspace — regardless of organization name or module path prefix. For external modules whose version is unknown, use `go get package@latest` via `run_command` to resolve the real version — do NOT use `v0.0.0`. If `go get` fails (auth, network), output an error message to the user explaining the cause and suggested resolution
+
+**Constraint**: If using TOML config, `.gitignore` MUST include `config.toml` (the active runtime config file, similar to `.env`).
 
 **Constraint**: `docker-compose.yml` MUST contain ONLY infrastructure services (databases, caches, message queues). Do NOT add application services (API servers, web servers, redirect services) — even if the design document describes them as Docker containers. The platform manages application process lifecycle separately.
 

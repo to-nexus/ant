@@ -67,6 +67,7 @@ export interface ServiceConnection {
   source?: string;                    // Package requiring this ("backend", "frontend", "*")
   status?: 'active' | 'starting' | 'stopped' | 'error';
   missingAnnotation?: boolean;        // Detected via fallback = .env.example lacks @connection
+  configSource?: 'env' | 'toml';     // Which config file format this was detected from
 }
 
 export interface PreviewState {

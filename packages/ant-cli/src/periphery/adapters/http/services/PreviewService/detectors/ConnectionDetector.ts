@@ -11,17 +11,23 @@ import { logger } from '../../../../../../utils/logger';
  * Detects service connections from project files and constructs ServiceConnection[].
  * 
  * Detection flow:
- *   1. detectFromAnnotations()       -- @connection markers in .env.example (primary)
- *   2. detectFromKnownPatterns()     -- legacy fallback, sets missingAnnotation=true
- *   3. enrichWithCompose()           -- docker-compose.yml -> resolution upgrade
- *   4. enrichInternalConnections()   -- resolve `self` markers → ant-project with proxy path
- *   5. detect()                      -- merge + deduplicate (key: source:envVar)
- * 
- * Annotation format:
+ *   1. detectFromAnnotations()           -- @connection markers in .env.example (primary)
+ *   1b. detectFromTomlAnnotations()      -- @connection markers in config.example.toml
+ *   2. detectFromKnownPatterns()         -- legacy fallback, sets missingAnnotation=true
+ *   3. enrichWithCompose()               -- docker-compose.yml -> resolution upgrade
+ *   4. enrichInternalConnections()       -- resolve `self` markers → ant-project with proxy path
+ *   5. detect()                          -- merge + deduplicate (key: source:envVar)
+ *
+ * Annotation format (.env.example):
  *   # @connection {category} {name}                                → url resolution (default)
  *   # @connection {category} {name} self                           → ant-project:self (same-project internal)
  *   # @connection {category} {name} ant-project:{projectId}:{feature} → ant-project cross-project
- * 
+ *
+ * Annotation format (config.example.toml):
+ *   # @connection {category} {name} env:{ENV_VAR}                  → url resolution with explicit env var mapping
+ *   # @connection {category} {name} self env:{ENV_VAR}             → ant-project:self with env var mapping
+ *   # @connection {category} {name} ant-project:{id}:{feat} env:{ENV_VAR} → cross-project with env var mapping
+ *
  * Resolution type constraints (enforced at API layer):
  *   infrastructure → url | docker
  *   business       → url | ant-project
@@ -99,6 +105,7 @@ export class ConnectionDetector {
         value: value || '',
         resolution,
         source: subdir || '*',
+        configSource: 'env',
       });
     }
 
@@ -173,6 +180,137 @@ export class ConnectionDetector {
     this.overrideWithEnvFile(connections, projectPath, subdir);
 
     return connections;
+  }
+
+  /**
+   * TOML annotation detection: parse @connection annotations from config.example.toml
+   *
+   * Format:
+   *   # @connection {category} {name} env:{ENV_VAR}
+   *   # @connection {category} {name} self env:{ENV_VAR}
+   *   # @connection {category} {name} ant-project:{projectId}:{feature} env:{ENV_VAR}
+   *   [section]
+   *   key = "default_value"
+   *
+   * The `env:` token is REQUIRED for TOML annotations (TOML keys don't map to flat env var names).
+   */
+  detectFromTomlAnnotations(projectPath: string, subdir?: string): ServiceConnection[] {
+    const connections: ServiceConnection[] = [];
+    const tomlPath = subdir
+      ? path.join(projectPath, subdir, 'config.example.toml')
+      : path.join(projectPath, 'config.example.toml');
+
+    if (!fs.existsSync(tomlPath)) {
+      return connections;
+    }
+
+    const content = fs.readFileSync(tomlPath, 'utf-8');
+    const lines = content.split('\n');
+
+    const annotationRegex = /^#\s*@connection\s+(business|infrastructure)\s+(\S+)(?:\s+(.+))?/;
+
+    for (let i = 0; i < lines.length; i++) {
+      const match = lines[i].trim().match(annotationRegex);
+      if (!match) continue;
+
+      const category = match[1] as ServiceCategory;
+      const name = match[2];
+      const rest = match[3]?.trim();
+
+      // Parse rest-of-line to extract env:VAR_NAME and optional modifier
+      const { envVar, modifier } = this.parseTomlAnnotationRest(rest);
+      if (!envVar) {
+        logger.debug(
+          `[ConnectionDetector] Skipping TOML annotation without env: token at ${tomlPath}:${i + 1}`,
+          { component: 'ConnectionDetector' },
+        );
+        continue;
+      }
+
+      // Extract default value from next meaningful TOML line
+      const nextLine = this.findNextMeaningfulLine(lines, i + 1);
+      const defaultValue = nextLine ? this.parseTomlValue(nextLine) : '';
+
+      const resolution: ConnectionResolution = this.parseResolutionModifier(modifier, defaultValue);
+
+      connections.push({
+        id: name,
+        name: this.formatDisplayName(name),
+        category,
+        envVar,
+        value: defaultValue,
+        resolution,
+        source: subdir || '*',
+        configSource: 'toml',
+      });
+    }
+
+    // Override with actual .env values if present (env vars match by name)
+    this.overrideWithEnvFile(connections, projectPath, subdir);
+
+    return connections;
+  }
+
+  /**
+   * Parse the rest-of-line from a TOML @connection annotation.
+   * Extracts the required `env:VAR_NAME` token and optional modifier.
+   *
+   * Examples:
+   *   "env:DATABASE_URL"                            → { envVar: "DATABASE_URL", modifier: undefined }
+   *   "self env:API_BASE_URL"                       → { envVar: "API_BASE_URL", modifier: "self" }
+   *   "ant-project:be:main env:API_URL"             → { envVar: "API_URL", modifier: "ant-project:be:main" }
+   */
+  private parseTomlAnnotationRest(rest: string | undefined): { envVar?: string; modifier?: string } {
+    if (!rest) return {};
+
+    const tokens = rest.split(/\s+/);
+    const envToken = tokens.find(t => /^env:\w+$/.test(t));
+    if (!envToken) return {};
+
+    const envVar = envToken.substring(4); // strip "env:"
+    const modifierTokens = tokens.filter(t => t !== envToken);
+    const modifier = modifierTokens.length > 0 ? modifierTokens.join(' ') : undefined;
+
+    return { envVar, modifier };
+  }
+
+  /**
+   * Extract a simple value from a TOML line.
+   * Handles: key = "value", key = 'value', key = bare_value
+   * Returns empty string for section headers like [database] or unparseable lines.
+   */
+  private parseTomlValue(line: string): string {
+    // Skip section headers
+    if (/^\[/.test(line)) return '';
+
+    const eqIndex = line.indexOf('=');
+    if (eqIndex === -1) return '';
+
+    const rawValue = line.substring(eqIndex + 1).trim();
+
+    // Quoted string (double)
+    const doubleQuoteMatch = rawValue.match(/^"([^"]*)"$/);
+    if (doubleQuoteMatch) return doubleQuoteMatch[1];
+
+    // Quoted string (single / literal)
+    const singleQuoteMatch = rawValue.match(/^'([^']*)'$/);
+    if (singleQuoteMatch) return singleQuoteMatch[1];
+
+    // Bare value (number, boolean, or unquoted string)
+    const bareMatch = rawValue.match(/^(\S+)/);
+    return bareMatch ? bareMatch[1] : '';
+  }
+
+  /**
+   * Find next non-empty, non-comment line (shared by both .env and TOML scanning).
+   */
+  private findNextMeaningfulLine(lines: string[], startIndex: number): string | null {
+    for (let i = startIndex; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      return trimmed;
+    }
+    return null;
   }
 
   /**
@@ -265,14 +403,21 @@ export class ConnectionDetector {
       // Per-subdir tracking: prevents fallback from re-detecting annotated vars within same package
       const subdirDetected = new Set<string>();
 
-      // 1. Annotation-based detection (primary)
+      // 1. Annotation-based detection from .env.example (primary)
       const annotated = this.detectFromAnnotations(projectPath, subdir);
       for (const conn of annotated) {
         subdirDetected.add(conn.envVar);
       }
       allConnections.push(...annotated);
 
-      // 2. Known patterns fallback
+      // 1b. Annotation-based detection from config.example.toml
+      const tomlAnnotated = this.detectFromTomlAnnotations(projectPath, subdir);
+      for (const conn of tomlAnnotated) {
+        subdirDetected.add(conn.envVar);
+      }
+      allConnections.push(...tomlAnnotated);
+
+      // 2. Known patterns fallback (.env.example only — TOML keys are not flat env var names)
       const fallback = this.detectFromKnownPatterns(projectPath, subdirDetected, subdir);
       allConnections.push(...fallback);
     }
