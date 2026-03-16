@@ -56,12 +56,24 @@ export async function handleEditFile(
       }
       
       // Apply search/replace
-      modifiedContent = applySearchReplace(
-        originalContent,
-        old_str,
-        new_str,
-        resolved.displayPath
-      );
+      try {
+        modifiedContent = applySearchReplace(
+          originalContent,
+          old_str,
+          new_str,
+          resolved.displayPath
+        );
+      } catch (searchError) {
+        // Include current file content in error so CodeGen can retry without a separate read_file call
+        const preview = originalContent.length > 4000
+          ? originalContent.substring(0, 4000) + `\n... (truncated, ${originalContent.length} total chars)`
+          : originalContent;
+        throw new Error(
+          `${(searchError as Error).message}\n\n` +
+          `Current file content (use this to construct correct old_str):\n` +
+          `────────────────────────────────────────\n${preview}\n────────────────────────────────────────`
+        );
+      }
       
       try {
         // Write modified content (SharedFileBuffer checks version)

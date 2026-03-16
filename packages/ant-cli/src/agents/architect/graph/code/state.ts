@@ -301,6 +301,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   /** Per-task LLM call counter (reset on task transition, used for debug logging) */
   _codeGenCallIndex?: number;
 
+  /** Per-task CodeGen call budget computed from planText (create×1 + modify×3). Undefined = use default. */
+  _codeGenBudget?: number;
+
   /** Counter for consecutive final-task iterations with no done and no tool calls (Safety Net C) */
   _finalTaskLoopCount?: number;
 

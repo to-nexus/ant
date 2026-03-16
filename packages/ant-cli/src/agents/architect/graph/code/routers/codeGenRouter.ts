@@ -100,12 +100,13 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   }
 
   // Safety Net E: Feature/general task codeGen call budget
+  // Budget is computed from planText (create×1 + modify×3) when available, otherwise defaults to 20
   if (!isFinalTask && !isErrorTask) {
     const callIndex = state._codeGenCallIndex || 0;
-    const maxFeatureCalls = 20;
-    const warningThreshold = Math.floor(maxFeatureCalls * 0.8); // 16
+    const maxFeatureCalls = state._codeGenBudget ?? 20;
+    const warningThreshold = Math.floor(maxFeatureCalls * 0.8);
     if (callIndex >= maxFeatureCalls) {
-      console.warn(`⚠️  [Router] Feature task codeGen call limit reached (${callIndex}/${maxFeatureCalls})`);
+      console.warn(`⚠️  [Router] Feature task codeGen call limit reached (${callIndex}/${maxFeatureCalls}${state._codeGenBudget ? ' [plan-computed]' : ''})`);
       console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
       return 'checkTaskStatus';
     }

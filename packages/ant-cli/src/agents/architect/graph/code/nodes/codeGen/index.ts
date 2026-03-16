@@ -171,7 +171,8 @@ export async function codeGen(
     const isPrePlanned = !!(state.currentTask as CodeTask)?.prePlanText;
     // Pre-planned error tasks get a bounded budget (25) since their scope is limited by batch split.
     // Regular error/verification tasks have no budget (0) — they rely on recursion limit.
-    const maxCalls = isPrePlanned ? 25 : (isFinalType || isErrorType) ? 0 : 20;
+    // Feature tasks use plan-computed budget when available (create×1 + modify×3), otherwise default 20.
+    const maxCalls = isPrePlanned ? 25 : (isFinalType || isErrorType) ? 0 : (state._codeGenBudget ?? 20);
     
     if (maxCalls > 0 && currentCall >= 3) {
       const remaining = maxCalls - currentCall;
