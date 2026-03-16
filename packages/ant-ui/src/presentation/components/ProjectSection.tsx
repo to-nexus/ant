@@ -51,7 +51,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const handleForceInlineCreateHandled = useCallback(() => setForceInlineCreate(false), []);
   const gitMenuRef = useRef<HTMLDivElement>(null);
   const policy = useUIActionPolicy();
-  const { showError, showSuccess, showConfirm } = useAlertModalContext();
+  const { showError, showSuccess, showWarning, showConfirm } = useAlertModalContext();
   
   // Click outside to close Git menu
   useEffect(() => {
@@ -168,7 +168,13 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
             'clone': t('git.repoCloned'),
             'init': t('git.repoInitialized')
           } as const;
-          showSuccess(successMessages[actionType]);
+          if (result.warnings?.length) {
+            showWarning(
+              `${successMessages[actionType]}\n\n${t('git.partialWarnings')}:\n${result.warnings.join('\n')}`
+            );
+          } else {
+            showSuccess(successMessages[actionType]);
+          }
           useStore.getState().reloadIdeFrame();
         }
         
