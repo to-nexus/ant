@@ -162,6 +162,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     let failed: Error | null = null;
     try {
       const result = await action();
+      console.log('[git] handleGitAction result:', result);
       if (result.success) {
         if (actionType === 'clone' || actionType === 'init') {
           const successMessages = {
