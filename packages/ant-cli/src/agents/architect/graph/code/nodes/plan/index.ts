@@ -30,6 +30,7 @@ import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
 import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, buildPlanPromptBlocks, PLAN_TOOL_LOOP_MAX, taskRequiresPlan, finalizePlanFromExploration } from "./planGeneration";
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
+import { extractFilesFromPlanToolLoop, computeBudgetFromPlanText } from "./utils";
 import { detectTestFiles } from "./testFileDetector";
 
 /**
@@ -41,6 +42,35 @@ function stripMarkdownFences(text: string): string {
   const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n\s*```$/);
   if (fenceMatch) return fenceMatch[1].trim();
   return trimmed;
+}
+
+/**
+ * Enrich projectCodeContext with files discovered during Plan's tool loop.
+ * Extracts read_file results from planConversationHistory and merges them
+ * into projectCodeContext.files, deduplicating against existing RAG files.
+ */
+function enrichContextFromPlanToolLoop(
+  projectCodeContext: any,
+  planConversationHistory: Array<{ role: string; content: string | any[] }> | undefined,
+): any {
+  if (!projectCodeContext || !planConversationHistory?.length) return projectCodeContext;
+
+  const existingPaths = new Set<string>((projectCodeContext.files || []).map((f: any) => f.path));
+  const newFiles = extractFilesFromPlanToolLoop(planConversationHistory, existingPaths);
+
+  if (newFiles.length === 0) return projectCodeContext;
+
+  console.log(`📎 [Plan] Enriching CodeGen context with ${newFiles.length} file(s) from plan tool loop`);
+
+  return {
+    ...projectCodeContext,
+    files: [...(projectCodeContext.files || []), ...newFiles],
+    filePaths: [...(projectCodeContext.filePaths || []), ...newFiles.map(f => f.path)],
+    stats: {
+      ...projectCodeContext.stats,
+      filesLoaded: (projectCodeContext.stats?.filesLoaded || 0) + newFiles.length,
+    },
+  };
 }
 
 /**
@@ -427,6 +457,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       ...state,
       currentTask: nextTask,
       planText: (nextTask as CodeTask).prePlanText!,
+      _codeGenBudget: computeBudgetFromPlanText((nextTask as CodeTask).prePlanText!),
       retries: 0,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
@@ -462,6 +493,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
         const batchSplitOccurred = preSplitPlan.length > 50 && finalizedPlan === '';
         const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
+        const enrichedContext = enrichContextFromPlanToolLoop(
+          state.projectCodeContext ,
+          state.planConversationHistory,
+        );
         state._planExploring = false;
         state.planConversationHistory = undefined;
         if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -470,10 +505,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         return {
           ...state,
           currentTask: nextTask,
-          projectCodeContext: state.projectCodeContext,
+          projectCodeContext: enrichedContext,
           referenceCodeContexts: state.referenceCodeContexts,
           lessons: state.lessons ?? [],
           planText: finalizedPlan,
+          _codeGenBudget: computeBudgetFromPlanText(finalizedPlan),
           _planExploring: false,
           planConversationHistory: undefined,
           retries: isRetry ? state.retries : 0,
@@ -487,6 +523,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         };
       }
       console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
+      if (state.planConversationHistory?.length) {
+        state.projectCodeContext = enrichContextFromPlanToolLoop(
+          state.projectCodeContext ,
+          state.planConversationHistory,
+        );
+      }
       state._planExploring = false;
       state.planConversationHistory = undefined;
       forceNoTools = true;
@@ -511,13 +553,18 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
         const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
         const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, planText, batchSplitOccurred);
+        const enrichedContext = enrichContextFromPlanToolLoop(
+          state.projectCodeContext ,
+          state.planConversationHistory,
+        );
         const updatedState = {
           ...state,
           currentTask: nextTask,
-          projectCodeContext: state.projectCodeContext,
+          projectCodeContext: enrichedContext,
           referenceCodeContexts: state.referenceCodeContexts,
           lessons: state.lessons ?? [],
           planText,
+          _codeGenBudget: computeBudgetFromPlanText(planText),
           _planExploring: false,
           planConversationHistory: undefined,
           retries: isRetry ? state.retries : 0,
@@ -534,7 +581,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         }
         return updatedState;
       }
-      // null: fall through to normal flow
+      // null: fall through to normal flow — but first enrich context with any files read during tool loop
+      if (state.planConversationHistory?.length) {
+        state.projectCodeContext = enrichContextFromPlanToolLoop(
+          state.projectCodeContext ,
+          state.planConversationHistory,
+        );
+      }
       state._planExploring = false;
       state.planConversationHistory = undefined;
     }
@@ -574,6 +627,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       referenceCodeContexts: [],
       lessons: [],
       planText: setupPlanText,
+      _codeGenBudget: computeBudgetFromPlanText(setupPlanText ?? ''),
       retries: isRetry ? state.retries : 0,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
@@ -847,6 +901,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       referenceCodeContexts,
       lessons,
       planText,
+      _codeGenBudget: planText ? computeBudgetFromPlanText(planText) : undefined,
       retries: isRetry ? state.retries : 0,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,

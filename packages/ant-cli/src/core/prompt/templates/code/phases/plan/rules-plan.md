@@ -123,6 +123,12 @@ existing modules, design specs, dependencies, etc.)
 
 **Constraint**: Do NOT include tool execution instructions in MODIFY fields (e.g., "Read existing content first", "Use read_file to check", "Run list_files"). State only the intended change.
 
+**Principle**: When you have read the target file during tool exploration, `modify.action` and `modify.changes` MUST specify the modification point at function/class/block level. Vague descriptions force CodeGen to re-discover what you already know.
+
+**Constraint**: Do NOT describe the modification target more abstractly than what you observed. If you read a file and identified the specific function, name that function — do not generalize to the file level.
+
+⚠️ **Blind spot**: After tool exploration, the instinct is to write a short summary rather than preserving the specificity of what was observed. The observed specificity IS the value — losing it forces CodeGen into redundant exploration.
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 📦 PRESCRIBED PACKAGES AND PURPOSE SEPARATION
 ────────────────────────────────────────────────────────────────────────────────
