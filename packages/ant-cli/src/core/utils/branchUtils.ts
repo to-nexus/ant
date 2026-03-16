@@ -18,17 +18,16 @@ export const RESERVED_FEATURE_NAME = '_base';
 
 /**
  * Check if a feature name corresponds to the project's base branch.
- * 
- * In Ant, "no feature selected" = base branch. Base branches are not features.
- * The base branch name comes from config.json's `branchBase` field.
- * In child processes (job-runner), it's available via `ANT_BRANCH_BASE` env var.
- * 
+ *
+ * In Ant, "no feature selected" = base branch, identified by RESERVED_FEATURE_NAME ('_base').
+ * User-created ant features always use feature/{name} git branches, so a feature named
+ * "dev" is NOT the base branch even if the repo's default branch is also "dev".
+ *
  * @param featureName - The feature/branch name to check
- * @param branchBase - The project's configured base branch (from config.branchBase or ANT_BRANCH_BASE)
+ * @param _branchBase - Unused. Kept for call-site compatibility.
  */
-export function isBaseBranch(featureName: string, branchBase: string): boolean {
-  return featureName === RESERVED_FEATURE_NAME
-    || featureName.toLowerCase() === branchBase.toLowerCase();
+export function isBaseBranch(featureName: string, _branchBase?: string): boolean {
+  return featureName === RESERVED_FEATURE_NAME;
 }
 
 /**
