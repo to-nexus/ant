@@ -19,6 +19,8 @@ import { WorktreeService } from '../worktree';
  */
 export class RemoteService {
   private readonly inFlightFetch = new Map<string, Promise<void>>();
+  private readonly inFlightClone = new Map<string, Promise<{ warnings?: string[] }>>();
+  private readonly inFlightInit = new Map<string, Promise<{ warnings?: string[] }>>();
 
   private readonly cloneOp: CloneOperation;
   private readonly initOp: InitOperation;
@@ -47,11 +49,25 @@ export class RemoteService {
   }
 
   async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
-    return this.cloneOp.execute(projectId, userContext);
+    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
+    const existing = this.inFlightClone.get(key);
+    if (existing) return existing;
+
+    const promise = this.cloneOp.execute(projectId, userContext)
+      .finally(() => this.inFlightClone.delete(key));
+    this.inFlightClone.set(key, promise);
+    return promise;
   }
 
   async initializeGitHubRepo(projectId: string, userContext: UserContext, activeFeature?: string): Promise<{ warnings?: string[] }> {
-    return this.initOp.execute(projectId, userContext, activeFeature);
+    const key = `${userContext.organizationId}:${userContext.userId}:${projectId}`;
+    const existing = this.inFlightInit.get(key);
+    if (existing) return existing;
+
+    const promise = this.initOp.execute(projectId, userContext, activeFeature)
+      .finally(() => this.inFlightInit.delete(key));
+    this.inFlightInit.set(key, promise);
+    return promise;
   }
 
   async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {

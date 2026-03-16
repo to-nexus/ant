@@ -81,6 +81,7 @@
     "gitRepoRequired": "In Cloud mode, features can only be created after the Git repository is set up. Please Clone or Initialize from the project's Git menu first.",
     "gitRepoRequiredTitle": "Git Repository Required",
     "repoCloned": "Repository cloned",
+    "partialWarnings": "Some features could not be fully set up",
     "repoInitialized": "GitHub repository created. Publish your branch to upload code.",
     "actionFailed": "Failed to {{action}}",
     "patNotConfigured": "GitHub PAT is not configured. Please set up your PAT to proceed.",

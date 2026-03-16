@@ -169,6 +169,19 @@ export class CloneOperation {
         const msg = `Failed to create worktree for feature "${featureName}": ${error.message}`;
         console.error(`[CloneOperation] ${msg}`);
         warnings.push(msg);
+
+        // Worktree creation failed — restore backup to original location so code is not lost
+        const backupPath = featureBackups.get(featureName);
+        if (backupPath && fs.existsSync(backupPath)) {
+          try {
+            const originalPath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+            await fs.promises.mkdir(originalPath, { recursive: true });
+            await this.featureBackup.restoreToWorktree(backupPath, originalPath);
+            console.log(`[CloneOperation] Restored code to original location for feature: ${featureName}`);
+          } catch (restoreErr: any) {
+            console.error(`[CloneOperation] Failed to restore code for feature "${featureName}": ${restoreErr.message}`);
+          }
+        }
       }
     }
 
