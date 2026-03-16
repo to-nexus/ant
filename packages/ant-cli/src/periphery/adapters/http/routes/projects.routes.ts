@@ -172,17 +172,30 @@ export function createProjectsRoutes(deps: {
   });
   
   // Clone GitHub repository
+  // Uses chunked streaming with keep-alive heartbeat to survive proxy idle timeouts (e.g. AWS ALB 60s).
   router.post('/projects/:id/clone', async (req: Request, res: Response) => {
     const projectId = req.params.id;
+    let userContext;
     try {
-      const userContext = extractUserContext(req);
-      logger.info(`Clone request`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
+      userContext = extractUserContext(req);
+    } catch (error: any) {
+      return handleGitError(res, error, 'Clone', projectId);
+    }
+
+    logger.info(`Clone request`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
+
+    res.setHeader('Content-Type', 'application/json');
+    const heartbeat = setInterval(() => res.write(' '), 15000);
+    try {
       const result = await deps.projectService.cloneGitHubRepo(projectId, userContext);
       deps.gitWatcherService?.retryDeferredWatchers(projectId);
-      res.json({ success: true, message: 'Repository cloned successfully', warnings: result.warnings });
+      clearInterval(heartbeat);
+      res.end(JSON.stringify({ success: true, message: 'Repository cloned successfully', warnings: result.warnings }));
     } catch (error: any) {
-      handleGitError(res, error, 'Clone', projectId);
+      clearInterval(heartbeat);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`Clone failed: ${message}`, { component: 'Projects', projectId }, error);
+      res.end(JSON.stringify({ success: false, error: message }));
     }
   });
   
@@ -200,19 +213,31 @@ export function createProjectsRoutes(deps: {
   });
   
   // Initialize GitHub repository (create new repo and push)
+  // Uses chunked streaming with keep-alive heartbeat to survive proxy idle timeouts (e.g. AWS ALB 60s).
   router.post('/projects/:id/initialize', async (req: Request, res: Response) => {
     const projectId = req.params.id;
+    let userContext;
     try {
-      const userContext = extractUserContext(req);
-      
-      logger.info(`Initializing GitHub repo`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
+      userContext = extractUserContext(req);
+    } catch (error: any) {
+      return handleGitError(res, error, 'Initialize', projectId);
+    }
+
+    logger.info(`Initializing GitHub repo`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
+
+    res.setHeader('Content-Type', 'application/json');
+    const heartbeat = setInterval(() => res.write(' '), 15000);
+    try {
       const { activeFeature } = req.body || {};
       const result = await deps.projectService.initializeGitHubRepo(projectId, userContext, activeFeature);
       deps.gitWatcherService?.retryDeferredWatchers(projectId);
-      res.json({ success: true, message: 'Repository initialized and pushed successfully', warnings: result.warnings });
+      clearInterval(heartbeat);
+      res.end(JSON.stringify({ success: true, message: 'Repository initialized and pushed successfully', warnings: result.warnings }));
     } catch (error: any) {
-      handleGitError(res, error, 'Initialize', projectId);
+      clearInterval(heartbeat);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`Initialize failed: ${message}`, { component: 'Projects', projectId }, error);
+      res.end(JSON.stringify({ success: false, error: message }));
     }
   });
 

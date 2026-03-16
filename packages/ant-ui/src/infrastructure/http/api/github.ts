@@ -33,6 +33,26 @@ async function gitAction(
   }
 }
 
+// ── Streaming variant for long-running operations (clone, initialize) ──
+// Server sends keep-alive space bytes every 15s to prevent proxy idle timeout,
+// then ends with the final JSON result.
+async function streamingGitAction(
+  url: string,
+  body?: unknown,
+): Promise<{ success: boolean; error?: string; warnings?: string[] }> {
+  try {
+    const response = await authFetch(url, {
+      method: 'POST',
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    const text = await response.text();
+    const result = JSON.parse(text.trim());
+    return result;
+  } catch (error: any) {
+    return { success: false, error: error.message || 'Network error' };
+  }
+}
+
 // ── PAT Management ──────────────────────────────────────────────────
 
 export function checkGitHubPATStatus(): Promise<GitHubPATStatus> {
@@ -73,7 +93,7 @@ export async function deleteGitHubPAT(): Promise<{ success: boolean; error?: str
 // ── Repository Operations ───────────────────────────────────────────
 
 export function cloneGitHubRepo(projectId: string) {
-  return gitAction(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/clone`);
+  return streamingGitAction(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/clone`);
 }
 
 export async function checkCloneStatus(
@@ -90,9 +110,8 @@ export async function checkCloneStatus(
 }
 
 export function initializeGitHubRepo(projectId: string, activeFeature?: string) {
-  return gitAction(
+  return streamingGitAction(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/initialize`,
-    'POST',
     activeFeature ? { activeFeature } : undefined,
   );
 }
