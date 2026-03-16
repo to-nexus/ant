@@ -41,14 +41,18 @@ async function streamingGitAction(
   body?: unknown,
 ): Promise<{ success: boolean; error?: string; warnings?: string[] }> {
   try {
+    console.log('[git] streamingGitAction: start', url);
     const response = await authFetch(url, {
       method: 'POST',
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
     const text = await response.text();
+    console.log('[git] streamingGitAction: raw', JSON.stringify(text));
     const result = JSON.parse(text.trim());
+    console.log('[git] streamingGitAction: parsed', result);
     return result;
   } catch (error: any) {
+    console.error('[git] streamingGitAction: error', error);
     return { success: false, error: error.message || 'Network error' };
   }
 }

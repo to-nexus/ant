@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { UserContext } from '../../core/types/user';
-import { isBaseBranch } from '../../core/utils/branchUtils';
+import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 
 export interface WorkspaceResolver {
   /**
@@ -288,7 +288,11 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
     }
     
     // Cloud mode: base branch → projectPath/codebase, feature → featurePath/codebase
-    if (!featureId || isBaseBranch(featureId, branchBase)) {
+    // Only RESERVED_FEATURE_NAME ('_base') maps to the main codebase path.
+    // User-created ant features (e.g. 'dev') always get their own feature path,
+    // even if the feature name matches the git repo's default branch (branchBase).
+    // Ant features use feature/{name} git branches, so there is no path collision.
+    if (!featureId || featureId === RESERVED_FEATURE_NAME) {
       return path.join(projectPath, 'codebase');
     }
     return path.join(this.getFeaturePath(userContext, projectId, featureId), 'codebase');
