@@ -37,6 +37,8 @@ export function ActionButton({
 }: ActionButtonProps) {
   const { t } = useTranslation('explorer');
   const isGitStatusLoading = useStore((state) => state.isGitStatusLoading);
+  const gitStatus = useStore((state) => state.gitStatus);
+  const hasRemote = !!gitStatus?.remoteUrl;
   const totalChanges = gitChanges.staged.length + gitChanges.unstaged.length + gitChanges.untracked.length;
 
   const actionButtonClass = `flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium min-w-0 overflow-hidden
@@ -79,8 +81,8 @@ export function ActionButton({
     );
   }
 
-  // Priority 2: Publish Branch (no upstream set)
-  if (gitChanges.hasUpstream === false) {
+  // Priority 2: Publish Branch (remote exists but branch not pushed yet)
+  if (gitChanges.hasUpstream === false && hasRemote) {
     return (
       <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
         <style>{CONTAINER_QUERY_STYLE}</style>
