@@ -339,8 +339,8 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
               {/* Git Menu Dropdown */}
               {showGitMenu && (
                 <div className="absolute top-full right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[9999]">
-                  {!gitStatus?.hasGit ? (
-                    // State 1: No .git — Setup: Clone / Init
+                  {(!gitStatus?.hasGit || !gitStatus?.remoteUrl) ? (
+                    // State 1: No .git OR local-only git (no remote) — Setup: Clone / Init
                     <>
                       <button
                         onClick={handleClone}

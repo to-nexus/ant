@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Undo2 } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { useGitHubRepoConfig } from './hooks/useGitHubRepoConfig';
 import { useGitChanges } from './hooks/useGitChanges';
 import { useGitActions } from './hooks/useGitActions';
 import { PlaceholderButton } from './components/PlaceholderButton';
@@ -15,8 +14,7 @@ export function GitStatusButton() {
   const { t } = useTranslation('explorer');
   const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase } = useStore();
   
-  const hasGitHubRepo = useGitHubRepoConfig(selectedProject);
-  const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges(selectedProject, selectedFeature, hasGitHubRepo);
+  const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges(selectedProject, selectedFeature);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const prevPathsRef = useRef<string>('');
 
@@ -67,10 +65,6 @@ export function GitStatusButton() {
 
   if (gitStatusPhase !== null) {
     return <LoadingButton isFetchingChanges={isFetchingChanges} />;
-  }
-
-  if (hasGitHubRepo === false) {
-    return <PlaceholderButton message={t('config:git.configureFirst')} />;
   }
 
   if (isGitInitialized === false) {
