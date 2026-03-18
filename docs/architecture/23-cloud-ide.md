@@ -82,6 +82,6 @@ Local 모드에서는 Docker IDE 대신 로컬 IDE 앱(Cursor, VS Code)을 직�
 
 ## 경계
 
-- Redis 상태 규약: [01-infrastructure.md](01-infrastructure.md)
-- 워크스페이스 격리: [10-workspace-isolation.md](10-workspace-isolation.md)
-- Preview 시스템: [11-preview-system.md](11-preview-system.md)
+- Redis 상태 규약: [02-infrastructure.md](02-infrastructure.md)
+- 워크스페이스 격리: [20-workspace-isolation.md](20-workspace-isolation.md)
+- Preview 시스템: [22-preview-system.md](22-preview-system.md)

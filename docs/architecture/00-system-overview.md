@@ -98,6 +98,6 @@ Local과 Cloud의 코드 경로는 동일하다. 인프라가 실행되는 위�
 ## 경계
 
 - 각 프로세스의 내부 구조: 해당 프로세스별 문서 참조
-- Redis 키/채널 규약: [01-infrastructure.md](01-infrastructure.md)
-- Job 실행 흐름: [02-job-lifecycle.md](02-job-lifecycle.md)
-- 프론트엔드 아키텍처: [14-frontend-architecture.md](14-frontend-architecture.md)
+- Redis 키/채널 규약: [02-infrastructure.md](02-infrastructure.md)
+- Job 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
+- 프론트엔드 아키텍처: [30-frontend-architecture.md](30-frontend-architecture.md)

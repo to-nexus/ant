@@ -164,5 +164,5 @@ npm run start:cloud → dist/ 기반 실행 (이미 검증됨)
 
 ## 경계
 
-- 각 에이전트의 프롬프트 사용: [05-code-job.md](05-code-job.md), [06-design-job.md](06-design-job.md), [07-planner-job.md](07-planner-job.md)
-- Preview 관련 프롬프트: [11-preview-system.md](11-preview-system.md)
+- 각 에이전트의 프롬프트 사용: [14-code-job.md](14-code-job.md), [15-design-job.md](15-design-job.md), [16-planner-job.md](16-planner-job.md)
+- Preview 관련 프롬프트: [22-preview-system.md](22-preview-system.md)

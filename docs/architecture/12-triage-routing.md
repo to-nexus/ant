@@ -289,6 +289,6 @@ tests/
 
 ## 경계
 
-- Ask 의도 처리: [08-ask-system.md](08-ask-system.md)
-- Choice Card UI: [12-chat-system.md](12-chat-system.md)
+- Ask 의도 처리: [17-ask-system.md](17-ask-system.md)
+- Choice Card UI: [31-chat-system.md](31-chat-system.md)
 - 프롬프트 템플릿 구조: [13-prompt-system.md](13-prompt-system.md)

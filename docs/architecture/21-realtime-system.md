@@ -87,6 +87,6 @@ Multi-Pod 환경에서 재연결 시 다른 Pod에 연결되어도 동일한 use
 
 ## 경계
 
-- Redis Pub/Sub 채널 규약: [01-infrastructure.md](01-infrastructure.md)
-- 채팅 메시지 처리: [12-chat-system.md](12-chat-system.md)
-- 프론트엔드 SSE 통합: [14-frontend-architecture.md](14-frontend-architecture.md)
+- Redis Pub/Sub 채널 규약: [02-infrastructure.md](02-infrastructure.md)
+- 채팅 메시지 처리: [31-chat-system.md](31-chat-system.md)
+- 프론트엔드 SSE 통합: [30-frontend-architecture.md](30-frontend-architecture.md)

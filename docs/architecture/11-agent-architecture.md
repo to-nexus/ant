@@ -123,9 +123,9 @@ sessions/
 
 ## 경계
 
-- Job 큐와 실행 흐름: [02-job-lifecycle.md](02-job-lifecycle.md)
-- Triage 분류: [04-triage-routing.md](04-triage-routing.md)
-- Code Job 상세: [05-code-job.md](05-code-job.md)
-- Design Job 상세: [06-design-job.md](06-design-job.md)
-- Planner Job 상세: [07-planner-job.md](07-planner-job.md)
-- Ask 시스템: [08-ask-system.md](08-ask-system.md)
+- Job 큐와 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
+- Triage 분류: [12-triage-routing.md](12-triage-routing.md)
+- Code Job 상세: [14-code-job.md](14-code-job.md)
+- Design Job 상세: [15-design-job.md](15-design-job.md)
+- Planner Job 상세: [16-planner-job.md](16-planner-job.md)
+- Ask 시스템: [17-ask-system.md](17-ask-system.md)

@@ -103,6 +103,6 @@ PRD 생성과 평가는 별도 시스템이다. 생성은 planner agent (plan jo
 
 ## 경계
 
-- 에이전트 공통 패턴: [03-agent-architecture.md](03-agent-architecture.md)
-- Triage 분류: [04-triage-routing.md](04-triage-routing.md)
-- Chat/ChoiceCard UI: [12-chat-system.md](12-chat-system.md)
+- 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
+- Triage 분류: [12-triage-routing.md](12-triage-routing.md)
+- Chat/ChoiceCard UI: [31-chat-system.md](31-chat-system.md)

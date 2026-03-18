@@ -83,6 +83,6 @@ Ask 실행 중 Kanban, Workflow UI에는 변화가 없다. 채팅 응답만 스�
 
 ## 경계
 
-- Triage 분류: [04-triage-routing.md](04-triage-routing.md)
+- Triage 분류: [12-triage-routing.md](12-triage-routing.md)
 - 프롬프트 구조: [13-prompt-system.md](13-prompt-system.md)
-- 채팅 스트리밍: [12-chat-system.md](12-chat-system.md)
+- 채팅 스트리밍: [31-chat-system.md](31-chat-system.md)

@@ -128,6 +128,6 @@ plan 노드는 RAG 결과를 파일 경로 목록만 주입한다. 실제 파일
 
 ## 경계
 
-- 에이전트 공통 패턴: [03-agent-architecture.md](03-agent-architecture.md)
-- Job 실행/중단/재개: [02-job-lifecycle.md](02-job-lifecycle.md)
-- Design Job: [06-design-job.md](06-design-job.md)
+- 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
+- Job 실행/중단/재개: [10-job-lifecycle.md](10-job-lifecycle.md)
+- Design Job: [15-design-job.md](15-design-job.md)

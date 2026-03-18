@@ -227,5 +227,5 @@ LLM 코드 생성 시 `.git` 파일/디렉터리 손상 방지:
 
 ## 경계
 
-- 워크스페이스 격리: [10-workspace-isolation.md](10-workspace-isolation.md)
-- 인프라 (Redis, BullMQ): [01-infrastructure.md](01-infrastructure.md)
+- 워크스페이스 격리: [20-workspace-isolation.md](20-workspace-isolation.md)
+- 인프라 (Redis, BullMQ): [02-infrastructure.md](02-infrastructure.md)
