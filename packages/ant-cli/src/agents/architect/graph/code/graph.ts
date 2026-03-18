@@ -628,10 +628,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     {
       maxWorkers,
       checkpointInterval: 60000,
-      designSystemBarrier: true,
-      testgenBarrier: true,
-      docBarrier: true,
-      featureBarrier: true,
+      barriers: {
+        designSystem: true,
+        feature: true,
+        ui: true,
+        testgen: true,
+        doc: true,
+      },
     },
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );

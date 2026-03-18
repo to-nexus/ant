@@ -475,7 +475,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` and structural role:
 - `type: "setup"` (root, priority 100) -> `exclusive: true`
 - `type: "setup"` (package-level, priority 101+) -> `exclusive: false`, distinct `parallelGroup` per package
-- `type: "design-system"` (priority 190–199) -> `exclusive: false`, `parallelGroup` per task (designSystemBarrier ensures 200+ tasks wait until all 190–199 tasks complete)
+- `type: "design-system"` (priority 190–199) -> `exclusive: false`, `parallelGroup` per task (barriers.designSystem ensures 200+ tasks wait until all 190–199 tasks complete)
 - `type: "design-system"` (priority 200–299) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait)
 - `type: "ui"` (priority 650–699) -> `parallelGroup` (group with corresponding skeleton task)
 - `type: "error"` -> always exclusive

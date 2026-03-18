@@ -46,30 +46,30 @@ export interface OrchestratorConfig {
   /** Periodic checkpoint interval in ms (default 60000) */
   checkpointInterval: number;
   /**
-   * When true, testgen-type tasks will NOT be assigned while any
-   * feature or setup task is still running or queued.
-   * Only relevant for code jobs (design jobs don't have testgen tasks).
+   * Stage-gate barriers controlling task dispatch order.
+   *
+   * Barrier chain:
+   *   design-system (190–199) ──[designSystem]──▶ foundation (200–299)
+   *   foundation    (200–299) ──[feature]      ──▶ feature   (300–649)
+   *   feature       (300–649) ──[ui]           ──▶ ui        (650–699)
+   *   feature       (300–649) ──[testgen]      ──▶ testgen   (700)
+   *   testgen       (700)     ──[doc]          ──▶ doc       (800)
+   *
+   * Each flag, when true, prevents the downstream tier from starting
+   * while any upstream task is still running or queued.
    */
-  testgenBarrier?: boolean;
-  /**
-   * When true, doc-type tasks will NOT be assigned while any
-   * feature, setup, or testgen task is still running or queued.
-   * Ensures documentation observes the complete codebase including tests.
-   */
-  docBarrier?: boolean;
-  /**
-   * When true, feature-type tasks (priority >= 300) will NOT be assigned
-   * while any foundation task (priority 200-299) is still running or queued.
-   * Ensures shared foundation outputs are available before features start.
-   */
-  featureBarrier?: boolean;
-  /**
-   * When true, foundation tasks (priority >= 200) will NOT be assigned
-   * while any design-system task (priority 190-199) is still running or queued.
-   * Allows design-system tasks to run in parallel with each other,
-   * but ensures token infrastructure is complete before foundation/feature work starts.
-   */
-  designSystemBarrier?: boolean;
+  barriers?: {
+    /** Blocks foundation (200+) until all design-system (190–199) tasks complete. */
+    designSystem?: boolean;
+    /** Blocks feature (300+) until all foundation (200–299) tasks complete. */
+    feature?: boolean;
+    /** Blocks ui tasks until all feature/setup tasks complete. */
+    ui?: boolean;
+    /** Blocks testgen tasks until all feature/setup tasks complete. */
+    testgen?: boolean;
+    /** Blocks doc tasks until all feature/setup/testgen tasks complete. */
+    doc?: boolean;
+  };
 }
 
 /**

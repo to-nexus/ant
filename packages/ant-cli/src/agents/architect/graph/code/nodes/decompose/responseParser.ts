@@ -210,7 +210,7 @@ export function createTaskQueue(tasks: CodeTask[]): {
     // - Explicit from LLM takes precedence
     // - Fallback: setup, error, and final (priority 1000) are always exclusive
     const isExplicitExclusive = typeof (task as any).exclusive === 'boolean' ? (task as any).exclusive : undefined;
-    // design-system is NOT exclusive — designSystemBarrier handles ordering
+    // design-system is NOT exclusive — barriers.designSystem handles ordering
     const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.type === 'verification' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
     const exclusive = isExplicitExclusive ?? isTypeExclusive;
     
