@@ -69,5 +69,5 @@ ant-cli와 ant-ui 모두 `@ant/shared`에서 타입을 import한다. pnpm worksp
 
 ## 경계
 
-- 프론트엔드에서의 사용: [14-frontend-architecture.md](14-frontend-architecture.md)
-- 백엔드에서의 사용: [03-agent-architecture.md](03-agent-architecture.md)
+- 프론트엔드에서의 사용: [30-frontend-architecture.md](30-frontend-architecture.md)
+- 백엔드에서의 사용: [11-agent-architecture.md](11-agent-architecture.md)

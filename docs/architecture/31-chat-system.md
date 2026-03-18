@@ -92,7 +92,7 @@ N개 질문을 하나의 카드에 묶어 표시한다. 질문별 옵션 버튼�
 
 ## 경계
 
-- Redis Pub/Sub 채널: [01-infrastructure.md](01-infrastructure.md)
-- SSE 연결과 브로드캐스팅: [09-realtime-system.md](09-realtime-system.md)
-- Triage Choice: [04-triage-routing.md](04-triage-routing.md)
-- Planner Clarify: [07-planner-job.md](07-planner-job.md)
+- Redis Pub/Sub 채널: [02-infrastructure.md](02-infrastructure.md)
+- SSE 연결과 브로드캐스팅: [21-realtime-system.md](21-realtime-system.md)
+- Triage Choice: [12-triage-routing.md](12-triage-routing.md)
+- Planner Clarify: [16-planner-job.md](16-planner-job.md)

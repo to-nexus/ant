@@ -157,8 +157,8 @@ Resume 시 overrideDirective가 있으면 revise 노드에서 기존 태스크 �
 
 ## 경계
 
-- BullMQ/Redis 인프라 규약: [01-infrastructure.md](01-infrastructure.md)
-- 에이전트 그래프 구조: [03-agent-architecture.md](03-agent-architecture.md)
-- Code Job 상세: [05-code-job.md](05-code-job.md)
-- Design Job 상세: [06-design-job.md](06-design-job.md)
-- Planner Job 상세: [07-planner-job.md](07-planner-job.md)
+- BullMQ/Redis 인프라 규약: [02-infrastructure.md](02-infrastructure.md)
+- 에이전트 그래프 구조: [11-agent-architecture.md](11-agent-architecture.md)
+- Code Job 상세: [14-code-job.md](14-code-job.md)
+- Design Job 상세: [15-design-job.md](15-design-job.md)
+- Planner Job 상세: [16-planner-job.md](16-planner-job.md)

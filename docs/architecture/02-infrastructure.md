@@ -165,5 +165,5 @@ BullMQ에 enqueue되는 payload에는 agent, jobType, projectId, featureName, di
 ## 경계
 
 - 프로세스 토폴로지와 배포 모델: [00-system-overview.md](00-system-overview.md)
-- Job 큐의 실행 흐름: [02-job-lifecycle.md](02-job-lifecycle.md)
-- SSE 연결과 브로드캐스팅: [09-realtime-system.md](09-realtime-system.md)
+- Job 큐의 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
+- SSE 연결과 브로드캐스팅: [21-realtime-system.md](21-realtime-system.md)

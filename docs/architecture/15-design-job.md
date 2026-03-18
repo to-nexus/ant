@@ -92,6 +92,6 @@ ui-tokens.json (의존 없음)
 
 ## 경계
 
-- 에이전트 공통 패턴: [03-agent-architecture.md](03-agent-architecture.md)
-- Code Job: [05-code-job.md](05-code-job.md)
+- 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
+- Code Job: [14-code-job.md](14-code-job.md)
 - 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
