@@ -823,15 +823,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     if (!state.parsedUiDocs) return undefined;
     if (nextTask.type === 'doc') return undefined;
     
-    // Check if UI injection is needed
-    const needsUi = (() => {
-      if (nextTask.ui === true) return true;
-      if (nextTask.ui === false) return false;
-      
-      // Fallback: check task name/description for UI keywords
-      const text = `${nextTask.name}\n${nextTask.description}`.toLowerCase();
-      return /(ui|ux|header|footer|layout|component|section|hero|card|button|nav|style|css|token|theme)/.test(text);
-    })();
+    // UI injection needed for ui and design-system task types only
+    const needsUi = nextTask.type === 'ui' || nextTask.type === 'design-system';
     
     if (!needsUi) return undefined;
     

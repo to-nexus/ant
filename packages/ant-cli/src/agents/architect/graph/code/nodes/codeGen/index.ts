@@ -69,7 +69,7 @@ export async function codeGen(
   // - If UI docs EXIST in inputs/sources but are missing/unloaded, we must FAIL FAST to avoid silent drift.
   // - If UI docs truly do NOT exist for this feature, do NOT fail: proceed with defaults derived from PRD/design.
   // - Use the existing self-healing path: fileErrors → checkTaskStatus → enforce → plan.
-  if (state.currentTask?.ui === true) {
+  if (state.currentTask?.type === 'ui') {
     const path = await import('path');
 
     const fileSystemRoot = state.deps?.fileSystem?.getRootPath?.();

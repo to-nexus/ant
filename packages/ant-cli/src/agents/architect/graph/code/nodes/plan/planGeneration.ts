@@ -48,6 +48,20 @@ async function selectLLMForTask(
  * Shared by buildPlanPrompt and buildPlanPromptBlocks to guarantee identical output.
  */
 function resolveDesignDoc(state: ArchitectGraphState, task: CodeTask): string {
+  // design-system: token infrastructure doesn't need system design
+  if (task.type === 'design-system') return '';
+
+  // ui: ui-doc is the visual source. Only inject system design when ui-doc is absent,
+  // and then only for plan-time visual hints (codegen skips system design for ui tasks).
+  if (task.type === 'ui') {
+    if (state.parsedUiDocs) return '';           // ui-doc is the visual source
+    // No ui-doc: inject system design for visual hint extraction (plan-time only)
+    if (task.packages && task.packages.length > 0 && state.designDocs) {
+      return buildDesignDocForTask(task.packages, state.designDocs);
+    }
+    return state.design || '';                   // fallback
+  }
+
   if (state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
     const parts: string[] = [];
     parts.push(`# Feature Specification (Primary)\n\n${state.specDocs[state.selectedSpec]}`);

@@ -497,7 +497,6 @@ export class PromptEngine {
       name: string;
       description: string;
       type: string;
-      ui?: boolean;  // ✅ UI flag for determining uiDoc injection
     },
     directive: string,  // ✅ Original directive for ground truth
     designDoc: string | undefined,

@@ -147,6 +147,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       testgenBarrier: config?.testgenBarrier,
       docBarrier: config?.docBarrier,
       featureBarrier: config?.featureBarrier,
+      designSystemBarrier: config?.designSystemBarrier,
     };
 
     console.log(`[Orchestrator] Initialized with maxWorkers=${this.maxWorkers}, queueSize=${taskQueue.size()}, previouslyCompleted=${this.completedTasks.length}`);
@@ -438,6 +439,13 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
+    // Design-system barrier: 200+ tasks wait until all 190-199 tasks complete.
+    const isDesignSystemPriority = (t: T) => t.priority >= 190 && t.priority <= 199;
+    const hasDesignSystemWork = this.config.designSystemBarrier && (
+      Array.from(this.runningTasks.values()).some(isDesignSystemPriority) ||
+      this.taskQueue.getAll().some(isDesignSystemPriority)
+    );
+
     // Feature barrier: feature tasks (priority >= 300) wait until all
     // foundation tasks (priority 200-299) complete.
     const isFoundationPriority = (t: T) => t.priority >= 200 && t.priority <= 299;
@@ -461,6 +469,11 @@ export class TaskOrchestrator<T extends BaseTask> {
     for (const task of this.taskQueue.getAll()) {
       // Exclusive task acts as a barrier
       if (task.exclusive) break;
+
+      // Design-system barrier: don't assign 200+ tasks while design-system work exists
+      if (hasDesignSystemWork && task.priority >= 200) {
+        break;
+      }
 
       // Feature barrier: don't assign feature/integration tasks while foundation work exists
       if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'testgen' && task.type !== 'doc') {
@@ -523,6 +536,13 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
+    // Design-system barrier (same logic as findAndAssignNonConflictingTask)
+    const isDesignSystemPriority2 = (t: T) => t.priority >= 190 && t.priority <= 199;
+    const hasDesignSystemWork2 = this.config.designSystemBarrier && (
+      Array.from(this.runningTasks.values()).some(isDesignSystemPriority2) ||
+      this.taskQueue.getAll().some(isDesignSystemPriority2)
+    );
+
     // Feature barrier (same logic as findAndAssignNonConflictingTask)
     const isFoundationPriority = (t: T) => t.priority >= 200 && t.priority <= 299;
     const hasPreFeatureWork = this.config.featureBarrier && (
@@ -545,6 +565,7 @@ export class TaskOrchestrator<T extends BaseTask> {
     let potentialTasks = 0;
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
+      if (hasDesignSystemWork2 && task.priority >= 200) break;
       if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'testgen' && task.type !== 'doc') break;
       if (hasPreTestgenWork && task.type === 'testgen') break;
       if (hasPreDocWork && task.type === 'doc') break;
