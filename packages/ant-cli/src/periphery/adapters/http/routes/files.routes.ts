@@ -9,6 +9,7 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
+import { getArtifactDirPolicy, validateFileForDir } from '../../../../core/utils/artifact-dir-policy';
 
 /**
  * File operations (read, write, delete, upload)
@@ -189,10 +190,22 @@ export function createFilesRoutes(deps: {
       }
       
       const userContext = extractUserContext(req);
+
+      // Validate file extension against artifact dir policy
+      const parentDir = path.dirname(filePath).replace(/\\/g, '/');
+      const extCheck = validateFileForDir(parentDir, path.basename(filePath));
+      if (!extCheck.valid) {
+        return res.status(422).json({
+          code: 'INVALID_EXTENSION',
+          message: extCheck.reason,
+          allowed: extCheck.allowed,
+        });
+      }
+
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const fullPath = path.join(featurePath, filePath);
-      
+
       logger.debug(`[files.routes] Creating/updating file:`);
       logger.debug(`   Project: ${projectId}`);
       logger.debug(`   Feature: ${featureName}`);
@@ -239,12 +252,36 @@ export function createFilesRoutes(deps: {
       
       // relativePaths[] preserves folder structure from drag-and-drop uploads
       const rawRelPaths = req.body.relativePaths;
+
       const relativePaths: string[] = Array.isArray(rawRelPaths)
         ? rawRelPaths
         : typeof rawRelPaths === 'string'
           ? [rawRelPaths]
           : [];
-      
+
+      // Validate file extensions against artifact dir policy
+      const normalizedDirPath = dirPath.replace(/\\/g, '/').replace(/\/$/, '');
+      const uploadPolicy = getArtifactDirPolicy(normalizedDirPath);
+      if (uploadPolicy) {
+        for (let i = 0; i < files.length; i++) {
+          const relPath = (relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
+          if (!uploadPolicy.allowSubdirs && relPath.includes('/')) {
+            return res.status(422).json({
+              code: 'SUBDIRS_NOT_ALLOWED',
+              message: `Subdirectories are not allowed in ${normalizedDirPath}`,
+            });
+          }
+          const fileExtCheck = validateFileForDir(normalizedDirPath, path.basename(relPath));
+          if (!fileExtCheck.valid) {
+            return res.status(422).json({
+              code: 'INVALID_EXTENSION',
+              message: fileExtCheck.reason,
+              allowed: fileExtCheck.allowed,
+            });
+          }
+        }
+      }
+
       // Write all uploaded files
       const uploadedFiles: string[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -315,7 +352,21 @@ export function createFilesRoutes(deps: {
       if (!fullPath.startsWith(featurePath)) {
         return res.status(400).json({ error: 'Invalid directory path' });
       }
-      
+
+      // Validate subdirectory creation against artifact dir policy
+      const normalizedNewDir = dirPath.replace(/\\/g, '/').replace(/\/$/, '');
+      const lastSlash = normalizedNewDir.lastIndexOf('/');
+      if (lastSlash >= 0) {
+        const parentDir = normalizedNewDir.slice(0, lastSlash);
+        const parentPolicy = getArtifactDirPolicy(parentDir);
+        if (parentPolicy && !parentPolicy.allowSubdirs) {
+          return res.status(422).json({
+            code: 'SUBDIRS_NOT_ALLOWED',
+            message: `Subdirectories are not allowed in ${parentDir}`,
+          });
+        }
+      }
+
       // Create directory recursively
       await fs.promises.mkdir(fullPath, { recursive: true });
       

@@ -11,7 +11,8 @@ import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
-import { isCanonicalDir, isStructuralCanonicalDir } from '@/shared/utils/canonical-dirs';
+import { isCanonicalDir, isStructuralCanonicalDir, getArtifactDirPolicy, validateFileForDir } from '@/shared/utils/canonical-dirs';
+import { ApiError } from '@/infrastructure/http/api/client';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
 import { HintBadge } from '@/presentation/components/common/HintBadge';
 import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
@@ -266,6 +267,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
               multiple
               className="hidden"
               id={`upload-${node.path}`}
+              accept={getArtifactDirPolicy(node.path)?.acceptedExtensions?.join(',') || undefined}
               onChange={(e) => {
                 if (e.target.files && onUploadFiles) {
                   onUploadFiles(node.path, e.target.files);
@@ -301,7 +303,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                     setShowCreateForm(isCreatingInThisDir ? null : node.path);
                     setNewFileName('');
                   } : undefined}
-                  onCreateDirectory={node.type === 'directory' && onCreateDirectory && !isStructural ? () => {
+                  onCreateDirectory={node.type === 'directory' && onCreateDirectory && !isStructural && getArtifactDirPolicy(node.path)?.allowSubdirs !== false ? () => {
                     setCreateType('directory');
                     setShowCreateForm(isCreatingInThisDir ? null : node.path);
                     setNewFileName('');
@@ -409,7 +411,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                   className={cn('py-1 text-[11px] italic', textColors.tertiary)}
                   style={{ paddingLeft: `${(currentLevel + 1) * 12 + 8}px` }}
                 >
-                  {t('panel.emptyDir')}
+                  {t(`panel.dirAccepted.${node.name}`, { defaultValue: '' }) || t('panel.emptyDir')}
                 </div>
               )
             }
@@ -454,7 +456,37 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
           const dirPath = target?.getAttribute('data-drop-dir');
           if (dirPath) {
             const entries = await extractDroppedFiles(e.dataTransfer);
-            if (entries.length > 0) onDropFiles(dirPath, entries);
+            if (entries.length > 0) {
+              // Validate entries against artifact dir policy
+              const policy = getArtifactDirPolicy(dirPath);
+              if (policy) {
+                const valid: typeof entries = [];
+                const blocked: typeof entries = [];
+                for (const entry of entries) {
+                  const relPath = entry.relativePath.replace(/\\/g, '/');
+                  if (!policy.allowSubdirs && relPath.includes('/')) {
+                    blocked.push(entry);
+                    continue;
+                  }
+                  if (!validateFileForDir(dirPath, relPath.split('/').pop() || relPath).valid) {
+                    blocked.push(entry);
+                    continue;
+                  }
+                  valid.push(entry);
+                }
+                if (blocked.length > 0) {
+                  if (valid.length === 0) {
+                    const allowed = policy.acceptedExtensions?.join(', ') || '';
+                    onDropError?.(t('error.invalidExtension', { dir: dirPath, allowed }));
+                    return;
+                  }
+                  onDropError?.(t('error.uploadPartialBlocked', { blocked: blocked.length, total: entries.length }));
+                }
+                if (valid.length > 0) onDropFiles(dirPath, valid);
+              } else {
+                onDropFiles(dirPath, entries);
+              }
+            }
           }
         }}
       >
@@ -530,29 +562,45 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
 
   // Note: Real-time file tree updates are now handled by the unified SSE connection in the store
 
+  const format422Error = (error: ApiError, dirPath: string): string => {
+    if (error.code === 'INVALID_EXTENSION' && error.allowed)
+      return t('error.invalidExtension', { dir: dirPath, allowed: error.allowed.join(', ') });
+    if (error.code === 'SUBDIRS_NOT_ALLOWED')
+      return t('error.subdirsNotAllowed', { dir: dirPath });
+    return error.message;
+  };
+
   const handleCreateFile = async (dirPath: string, fileName: string) => {
     if (!selectedProject || !selectedFeature) return;
-    
+
     try {
       const fullPath = `${dirPath}/${fileName}`;
       await createFile(selectedProject, selectedFeature, fullPath, '');
       await refreshFileTree();
     } catch (error) {
-      console.error('Failed to create file:', error);
-      showError(t('error.fileCreateFailed'), { title: t('common:error.title') });
+      if (error instanceof ApiError && error.status === 422) {
+        showError(format422Error(error, dirPath), { title: t('common:error.title') });
+      } else {
+        console.error('Failed to create file:', error);
+        showError(t('error.fileCreateFailed'), { title: t('common:error.title') });
+      }
     }
   };
 
   const handleCreateDirectory = async (dirPath: string, dirName: string) => {
     if (!selectedProject || !selectedFeature) return;
-    
+
     try {
       const fullPath = `${dirPath}/${dirName}`;
       await createDirectory(selectedProject, selectedFeature, fullPath);
       await refreshFileTree();
     } catch (error) {
-      console.error('Failed to create directory:', error);
-      showError(t('error.dirCreateFailed'), { title: t('common:error.title') });
+      if (error instanceof ApiError && error.status === 422) {
+        showError(format422Error(error, dirPath), { title: t('common:error.title') });
+      } else {
+        console.error('Failed to create directory:', error);
+        showError(t('error.dirCreateFailed'), { title: t('common:error.title') });
+      }
     }
   };
 
@@ -669,6 +717,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     } catch (error) {
       if ((error as DOMException)?.name === 'AbortError') {
         console.log('[Upload] Cancelled by user');
+      } else if (error instanceof ApiError && error.status === 422) {
+        showError(format422Error(error, dirPath), { title: t('common:error.title') });
       } else {
         console.error('Failed to upload files:', error);
         showError(t('error.uploadFailed'), { title: t('common:error.title') });

@@ -8,6 +8,9 @@
  * only their contents are cleared ("내용 비우기") while preserving structure.
  */
 
+export { getArtifactDirPolicy, validateFileForDir } from './artifact-dir-policy';
+export type { ArtifactDirPolicy } from './artifact-dir-policy';
+
 const CANONICAL_FEATURE_DIRS: ReadonlySet<string> = new Set([
   'inputs',
   'inputs/sources',

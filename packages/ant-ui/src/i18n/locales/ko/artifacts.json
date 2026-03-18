@@ -15,11 +15,19 @@
       "evals": "평가 문서"
     },
     "dirHintTooltip": {
-      "references": "UI 디자인을 위한 참고 스크린샷/목업",
-      "assets": "UI 디자인을 위한 에셋 (이미지, 아이콘, SVG)",
-      "sources": "PRD, 스펙, 요구사항 등 기획 문서",
-      "design": "설계 단계에서 생성된 시스템 설계서, API 스펙, UI 스펙 문서. 코딩 시 이 문서들을 기반으로 구현합니다.",
-      "evals": "PRD, UI 디자인, 시스템 설계, 코드 등 각 단계별 결과물에 대한 자동 평가 리포트"
+      "references": "UI 디자인을 위한 참고 이미지 (PNG, JPG, WebP, GIF). Design Job 전용 — Code Job에서는 사용되지 않습니다. Figma 링크가 있는 경우 보조 자료로 활용됩니다. 허용: .png .jpg .jpeg .webp .gif",
+      "assets": "UI 에셋 (아이콘, 이미지, SVG). codebase/public/에 자동으로 복사되어 생성된 코드에서 참조됩니다. 아이콘, 이미지 등 서브디렉토리로 그룹화 가능합니다. 허용: .png .jpg .gif .svg .webp .ico",
+      "sources": "기획 문서를 여기에 배치하세요. 모든 파일이 Design, Code, Plan Job의 컨텍스트로 주입됩니다. 디자인 참고 이미지는 inputs/references/를 사용하세요. 허용: .md .txt .json .yaml .yml",
+      "design": "시스템 설계서, API 계약서, UI 스펙 문서 (MD, JSON). Design Job이 생성하며 Code Job의 입력으로도 사용됩니다. 파일을 직접 추가하거나 편집할 수 있습니다. 허용: .md .json",
+      "evals": "각 단계별 품질 평가 리포트 (PRD, UI 디자인, 시스템 설계, 코드). 평가 시스템이 자동으로 생성합니다."
+    },
+    "dirAccepted": {
+      "sources": "MD · TXT · JSON · YAML · YML",
+      "assets": "PNG · JPG · GIF · SVG · WebP · ICO",
+      "references": "PNG · JPG · WebP · GIF",
+      "design": "MD · JSON",
+      "plan": "MD",
+      "evals": "MD (자동 생성)"
     }
   },
   "actions": {
@@ -52,7 +60,10 @@
     "uploadFailed": "업로드에 실패했습니다. 잠시 후 다시 시도해주세요.",
     "createFailed": "생성에 실패했습니다. 이름을 확인하고 다시 시도해주세요.",
     "saveFailed": "저장에 실패했습니다.",
-    "fetchSuggestionsFailed": "수정 제안을 가져올 수 없습니다."
+    "fetchSuggestionsFailed": "수정 제안을 가져올 수 없습니다.",
+    "invalidExtension": "{{dir}}은(는) 다음 파일만 허용합니다: {{allowed}}",
+    "subdirsNotAllowed": "{{dir}}에는 하위 폴더를 생성할 수 없습니다",
+    "uploadPartialBlocked": "{{total}}개 중 {{blocked}}개 파일이 차단되었습니다 (허용되지 않는 형식)"
   },
   "editor": {
     "placeholder": "파일 내용...",
