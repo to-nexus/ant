@@ -1,5 +1,6 @@
 import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
+import type { TaskType } from '@ant/shared';
 import { DesignDocs, getDesignDocByPackage } from "../detectEnvironment/designSelector";
 
 /**
@@ -48,13 +49,16 @@ export function validateTasks(
   directive: string | undefined,
   designDocs?: DesignDocs
 ): void {
-  // ✅ STRICT: UI flag must be explicitly provided (decompose is the source of truth)
-  // Rationale: UI doc/image injection should be deterministic, not heuristic-driven.
+  // Validate task type is one of the known types
+  const VALID_TYPES: TaskType[] = [
+    'setup', 'feature', 'design-system', 'ui',
+    'testgen', 'error', 'verification', 'explain', 'doc'
+  ];
   for (const t of tasks) {
-    if (typeof (t as any).ui !== 'boolean') {
+    if (!VALID_TYPES.includes(t.type)) {
       throw new Error(
-        `❌ [Decompose Validation] Missing required field "ui" on task.\n` +
-        `Each task must include: "ui": true|false\n` +
+        `❌ [Decompose Validation] Invalid task type "${t.type}" on task.\n` +
+        `Valid types: ${VALID_TYPES.join(', ')}\n` +
         `Task: ${t.id || '(no id)'} / ${t.name}\n`
       );
     }

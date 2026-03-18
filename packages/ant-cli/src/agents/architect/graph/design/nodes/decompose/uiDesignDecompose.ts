@@ -163,7 +163,6 @@ export async function decomposeUiDesign(
         description: task.description,
         sourceFiles: Array.isArray((task as any).sourceFiles) ? (task as any).sourceFiles : undefined,
         completed: false,
-        ui: true,
         targetFile: task.targetFile,
         parallelGroup,
       } as DesignTask);

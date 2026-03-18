@@ -43,7 +43,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   } else {
     const taskType = state.currentTask?.type || 'unknown';
     const priority = state.currentTask?.priority;
-    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'error' || taskType === 'testgen' || taskType === 'doc' || taskType === 'explain';
+    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'error' || taskType === 'testgen' || taskType === 'doc' || taskType === 'explain' || taskType === 'ui' || taskType === 'design-system';
     if (!isExpected) {
       console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
     }
@@ -71,27 +71,21 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       )
     : undefined;
 
-  // ✅ UI doc injection: Always inject if available, unless explicitly disabled
-  // Decompose sets task.ui flag - only skip if explicitly false
-  // Verification tasks skip UI docs entirely (irrelevant to build/runtime checks)
+  // UI doc injection: only for 'ui' and 'design-system' task types
   const uiDocForTask = (() => {
-    if (!state.parsedUiDocs) return undefined;
-    if (!state.currentTask) return undefined;
-    if (state.currentTask.type === 'verification' || state.currentTask.type === 'testgen' || state.currentTask.type === 'doc') return undefined;
-    
-    // Only skip if explicitly disabled by decompose
-    if (state.currentTask.ui === false) return undefined;
-    
-    // ✅ Always inject if parsedUiDocs exists (use task.uiSections for filtering)
+    if (!state.parsedUiDocs || !state.currentTask) return undefined;
+    const t = state.currentTask.type;
+    if (t !== 'ui' && t !== 'design-system') return undefined;
+
     const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, state.currentTask.uiSections);
-    
+
     if (uiDoc) {
-      const sectionInfo = state.currentTask.uiSections?.length 
-        ? `sections: ${state.currentTask.uiSections.join(', ')}` 
+      const sectionInfo = state.currentTask.uiSections?.length
+        ? `sections: ${state.currentTask.uiSections.join(', ')}`
         : 'all sections';
       console.log(`   🎨 [CodeGen] UI doc injection: ${uiDoc.length} chars (${sectionInfo})`);
     }
-    
+
     return uiDoc;
   })();
   
@@ -112,9 +106,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // If missing, fall back to state.design but warn — this indicates a decompose bug.
   let designDocForTask: string | undefined;
   
-  if (isVerificationTask || isErrorTask) {
+  const isUiTask = state.currentTask.type === 'ui' || state.currentTask.type === 'design-system';
+
+  if (isVerificationTask || isErrorTask || isUiTask) {
     designDocForTask = undefined;
-    console.log(`📄 [CodeGen] ${state.currentTask.type} task — skipping designDoc (architecture) injection`);
+    if (!isUiTask) {
+      console.log(`📄 [CodeGen] ${state.currentTask.type} task — skipping designDoc (architecture) injection`);
+    }
   } else if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
     // Package-based split injection (fe, fe-*, be, be-*, shared)
     const rawDesignDoc = buildDesignDocForTask(state.currentTask.packages, state.designDocs);

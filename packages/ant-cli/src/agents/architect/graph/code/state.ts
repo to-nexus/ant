@@ -73,20 +73,30 @@ export type ViolationType =
  * Each phase occupies a 100-boundary for clean separation.
  */
 export const TASK_PRIORITIES = {
-  // Setup (100-199)
+  // Setup (100-189)
   SETUP_PROJECT: 100,
+  SETUP_MAX: 189,
 
-  // Shared Foundation (200-299) — shared types/interfaces before parallel features
+  // Design-System (190-299) — visual infrastructure before feature/ui tasks
+  DESIGN_SYSTEM_SETUP: 190,   // token infrastructure (exclusive range)
+  DESIGN_SYSTEM_MAX: 199,
+
+  // Shared Foundation (200-299) — shared types/interfaces + DS component library
   SHARED_FOUNDATION: 200,
+  FOUNDATION_MAX: 299,
 
-  // Feature (300-599)
+  // Feature (300-649) — headless skeleton implementation
   FEATURE_CRITICAL: 300,
   FEATURE_IMPORTANT: 350,
   FEATURE_NORMAL: 400,
   FEATURE_NICE_TO_HAVE: 500,
+  FEATURE_MAX: 649,
 
-  // Post-Feature (600-899) — observe completed feature code, barrier-enforced
-  INTEGRATION: 600,
+  // Visual Pass (650-699) — apply styles to skeleton
+  VISUAL_PASS: 650,
+  VISUAL_MAX: 699,
+
+  // Post-Feature (700-899) — observe completed feature code, barrier-enforced
   TEST_GENERATION: 700,
   DOCUMENTATION: 800,
 
@@ -343,7 +353,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   failedTasks?: Array<{
     taskId: string;
     taskName: string;
-    taskType: 'setup' | 'feature' | 'testgen' | 'verification' | 'doc';
+    taskType: 'setup' | 'feature' | 'design-system' | 'ui' | 'testgen' | 'verification' | 'doc';
     priority: number;
     violations: Violation[];
     timestamp: string;

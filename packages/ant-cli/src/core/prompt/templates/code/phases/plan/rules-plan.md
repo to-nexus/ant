@@ -101,9 +101,9 @@ existing modules, design specs, dependencies, etc.)
     ]
   },
   "tokens": {
-    "colors": ["[key color tokens to use]"],
-    "typography": ["[key typography tokens]"],
-    "spacing": ["[key spacing tokens]"]
+    "colors": ["--color-bg-default: #1a1a2e", "--color-text-primary: #ffffff"],
+    "typography": ["font-size-base: 16px"],
+    "spacing": ["spacing-md: 16px"]
   }
 }
 ```
@@ -231,25 +231,52 @@ In your `<analysis>` section, cover:
 
 **Constraint**: Do NOT use `search_web` for internal architecture decisions or standard language features.
 
-{{#if hasUiDoc}}
-**FOR UI TASKS:**
+{{#if (eq taskType "design-system")}}
+**FOR `design-system` TASKS:**
 
-1. **📂 DIRECTORY STRUCTURE ANALYSIS**
-   - Observe existing patterns from directory tree
-   - Identify existing similar modules (avoid duplicates)
-
-2. **📦 ASSET INVENTORY**
-   - Search ui-assets.json for assets related to this task
-   - List ALL assets with source → destination mappings
-   - If none found: note "No assets required"
-
-3. **📐 LAYOUT & COMPONENT SPECS**
-   - Extract layout intentions from ui-spec.json
-   - List visual properties, typography, interaction states
-   - Note design token references
+1. **TOKEN INVENTORY**
+   - Extract ALL token keys and values from ui-tokens.json
+   - Group by category (colors, typography, spacing, etc.)
+   - Identify target output: CSS custom properties or Tailwind config
+   - Record tokens with ACTUAL values (not just key names): `--color-bg-default: #1a1a2e`
 {{/if}}
 
-{{#unless hasUiDoc}}
+{{#if (eq taskType "ui")}}
+**FOR `ui` TASKS:**
+
+1. **SKELETON OBSERVATION** (required — regardless of ui-doc availability)
+   - Read skeleton files: component structure, element hierarchy, existing classNames
+   - Identify sections complex enough to warrant extraction into separate component files
+   - Identify repeating patterns (cards, list items) that should become reusable styled components
+   - The DOM elements in the skeleton are the contract — plan preserves them, only reorganizes by file
+
+2. **COMPONENT BREAKDOWN DECISION**
+   - **Principle**: Component extraction is a file organization choice — the same DOM elements move to a separate file. Extraction is warranted when inline styling would obscure code structure, or when a visual pattern repeats.
+   - **Constraint**: Each planned extraction MUST appear in `create` (with `purpose` naming the skeleton section it extracts). Each skeleton file that imports extracted components MUST appear in `modify`.
+
+{{#if hasUiDoc}}
+3. **ASSET INVENTORY**
+   - Search ui-assets.json for assets related to this task
+   - List ALL assets with source → destination mappings
+
+4. **LAYOUT & COMPONENT SPECS**
+   - Extract layout properties from ui-spec (flexDirection, alignItems, grid*)
+   - Record token references with ACTUAL values (not just key names)
+
+{{else}}
+3. **VISUAL HINTS FROM SYSTEM DESIGN**
+   - System design is provided as a **visual hint source only**
+   - Extract: page layouts, component sizing, color/typography mentions, spacing constraints
+   - IGNORE: functional requirements, API contracts, state management, business logic
+   - If no visual hints found, note explicitly — will use CSS framework conventions
+   - List extracted visual requirements in the analysis section
+
+{{/if}}
+
+**Constraint**: Any component files planned for extraction MUST appear in `create` (with `purpose` describing which skeleton section it extracts). Skeleton files that will import extracted components MUST appear in `modify`.
+{{/if}}
+
+{{#unless (or (eq taskType "ui") (eq taskType "design-system"))}}
 **FOR NON-UI TASKS:**
 
 1. **📂 DIRECTORY STRUCTURE ANALYSIS**
@@ -294,8 +321,10 @@ Before outputting, verify:
 - [ ] Shared utilities in dedicated files, not inlined in multiple modules
 - [ ] `prescribedPackages` lists all design-doc packages discovered via tools (empty array if none)
 - [ ] `purpose` fields contain behavior only — no import paths or package names
-- [ ] For UI: assets are listed if needed
-- [ ] For UI: design tokens are specified
+- [ ] For `design-system`: token inventory complete (keys + actual values)
+- [ ] For `ui`: skeleton files in `modify` (to update imports after component extraction); extracted component files in `create`
+- [ ] For `ui` (no ui-doc): visual hints extracted from system design (or noted as absent)
+- [ ] For `ui` (with ui-doc): assets listed if needed, design tokens specified with actual values
 - [ ] Security: input validation boundaries, secrets management, error exposure considered
 - [ ] Mock adapters: external service adapters include mock implementations with env var switching
 

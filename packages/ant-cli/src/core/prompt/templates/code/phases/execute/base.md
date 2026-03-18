@@ -278,6 +278,52 @@ MODIFY: app/page.tsx - Add import and render new component
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if currentTask}}
+{{#if (eq currentTask.type "design-system")}}
+## 🎨 DESIGN-SYSTEM TASK: Visual Infrastructure
+
+Sub-role is determined by priority:
+
+**priority 190–199 (Token Infrastructure)**
+- **Scope**: ui-tokens.json → CSS custom properties / Tailwind config
+- **Constraint**: Token infrastructure only. Do NOT create components.
+- **Execution**: Read tokens → generate `:root { --color-...: ...; }` → update config
+
+**priority 200–299 (Component Library)**
+- **Scope**: Reusable DS components OR external DS library configuration
+- **Constraint**: No page-specific logic. Reference 190–199 token infrastructure.
+- **Constraint**: Components must be generic and reusable.
+
+**Actions:** Read ui-doc → implement token/component infrastructure → Output `<done>true</done>`
+
+{{/if}}
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{#if currentTask}}
+{{#if (eq currentTask.type "ui")}}
+## 🖌️ UI TASK: Visual Styling Pass
+
+**Scope**: Apply visual styling to skeleton files. Create and modify only the files listed in the plan.
+
+**DOM contract**: Preserve the skeleton's element structure. Adding `className`/`style` is allowed. Adding, removing, or renaming DOM elements is NOT allowed.
+
+**File organization**: Component files extracted from skeleton sections are within scope — same DOM elements, different file. The plan's `create` list specifies which extractions to perform.
+
+{{#if hasUiDoc}}
+**Visual source**: Design tokens (ui-tokens.json) and layout properties (ui-spec.json). Follow both exactly.
+{{else}}
+**Visual source**: Visual hints recorded in the plan's analysis section. If the plan notes no hints found, apply CSS framework best practices.
+{{/if}}
+
+**Actions:** Read skeleton files → implement styles and component extractions per plan → Output `<done>true</done>`
+
+{{/if}}
+{{/if}}
+
+════════════════════════════════════════════════════════════════════════════════
+
+{{#if currentTask}}
 {{#if (eq currentTask.type "error")}}
 ## 🔧 ERROR TASK: Fix Specific Issues
 

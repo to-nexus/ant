@@ -293,7 +293,7 @@ ${sec.content}
 
 /**
  * Get all UI content
- * Used when task.uiSections is undefined but task.ui is true
+ * Used when task.uiSections is undefined (type is 'ui' or 'design-system' but no sections specified)
  */
 export function getAllUiContent(parsedDocs: ParsedUiDocs): string {
   const parts: string[] = [];
