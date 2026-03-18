@@ -17,7 +17,7 @@ EKS-based cloud deployment guide for DevOps teams.
 | **ant-job** | `start-job-worker.js` | AI Job Processing |
 | **ant-preview** | `start-preview-server.js` | Preview API + Proxy + Dev Server |
 
-> **Note**: `ant-api` and `ant-realtime` are separated for independent scaling. All services use **Round-robin** (Redis-based state management, no Sticky Session needed). See [10-cloud-architecture.md](../architecture/10-cloud-architecture.md) for details.
+> **Note**: `ant-api` and `ant-realtime` are separated for independent scaling. All services use **Round-robin** (Redis-based state management, no Sticky Session needed). See [23-cloud-ide.md](../architecture/23-cloud-ide.md) for details.
 
 ### 1.2 Deployment Modes
 
@@ -490,7 +490,7 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 
 > **Note**: Local and cloud use identical infrastructure components. Only authentication mode and IDE orchestration differ.
 > 
-> **Architecture Change**: SSE is now handled by dedicated `ant-realtime` server (separated from `ant-api`). See [10-cloud-architecture.md](../architecture/10-cloud-architecture.md) for details.
+> **Architecture Change**: SSE is now handled by dedicated `ant-realtime` server (separated from `ant-api`). See [23-cloud-ide.md](../architecture/23-cloud-ide.md) for details.
 
 ### Storage
 

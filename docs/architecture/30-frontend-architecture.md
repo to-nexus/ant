@@ -84,6 +84,6 @@ i18next 기반. `en/`, `ko/` 로케일 디렉토리에 JSON 파일로 관리. �
 
 ## 경계
 
-- SSE 연결 상세: [09-realtime-system.md](09-realtime-system.md)
-- Chat UI: [12-chat-system.md](12-chat-system.md)
-- 공유 타입: [15-shared-contracts.md](15-shared-contracts.md)
+- SSE 연결 상세: [21-realtime-system.md](21-realtime-system.md)
+- Chat UI: [31-chat-system.md](31-chat-system.md)
+- 공유 타입: [01-shared-contracts.md](01-shared-contracts.md)

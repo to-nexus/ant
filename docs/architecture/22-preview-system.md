@@ -292,6 +292,6 @@ ALB 라운드 로빈으로 인해 stop 요청이 start를 실행한 Pod가 아�
 
 ## 경계
 
-- Redis 상태 규약: [01-infrastructure.md](01-infrastructure.md)
+- Redis 상태 규약: [02-infrastructure.md](02-infrastructure.md)
 - 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
-- Cloud IDE: [16-cloud-ide.md](16-cloud-ide.md)
+- Cloud IDE: [23-cloud-ide.md](23-cloud-ide.md)

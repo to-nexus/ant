@@ -89,6 +89,6 @@ Job 실행 시 자식 프로세스에 화이트리스트 방식으로 환경변�
 
 ## 경계
 
-- 환경변수 상세: [01-infrastructure.md](01-infrastructure.md)
-- Job 실행 흐름: [02-job-lifecycle.md](02-job-lifecycle.md)
-- IDE 격리: [16-cloud-ide.md](16-cloud-ide.md)
+- 환경변수 상세: [02-infrastructure.md](02-infrastructure.md)
+- Job 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
+- IDE 격리: [23-cloud-ide.md](23-cloud-ide.md)
