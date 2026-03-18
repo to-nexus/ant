@@ -254,17 +254,22 @@ In your `<analysis>` section, cover:
    - **Principle**: Component extraction is a file organization choice — the same DOM elements move to a separate file. Extraction is warranted when inline styling would obscure code structure, or when a visual pattern repeats.
    - **Constraint**: Each planned extraction MUST appear in `create` (with `purpose` naming the skeleton section it extracts). Each skeleton file that imports extracted components MUST appear in `modify`.
 
+3. **PARALLEL GROUP ASSIGNMENT**
+   - **Principle**: ui tasks that modify disjoint file sets may run concurrently. Tasks with any file overlap must not.
+   - **Constraint**: Assign `parallelGroup` to a label that identifies this task's exclusive file set (e.g., the skeleton file name or route). Tasks that share any output file MUST have the same `parallelGroup`; tasks with entirely disjoint files MUST have different values.
+   - **Constraint**: When file ownership is ambiguous (e.g., a shared layout or barrel index), assign the same `parallelGroup` — conservative grouping reduces parallelism but prevents concurrent write conflicts.
+
 {{#if hasUiDoc}}
-3. **ASSET INVENTORY**
+4. **ASSET INVENTORY**
    - Search ui-assets.json for assets related to this task
    - List ALL assets with source → destination mappings
 
-4. **LAYOUT & COMPONENT SPECS**
+5. **LAYOUT & COMPONENT SPECS**
    - Extract layout properties from ui-spec (flexDirection, alignItems, grid*)
    - Record token references with ACTUAL values (not just key names)
 
 {{else}}
-3. **VISUAL HINTS FROM SYSTEM DESIGN**
+4. **VISUAL HINTS FROM SYSTEM DESIGN**
    - System design is provided as a **visual hint source only**
    - Extract: page layouts, component sizing, color/typography mentions, spacing constraints
    - IGNORE: functional requirements, API contracts, state management, business logic
@@ -272,8 +277,6 @@ In your `<analysis>` section, cover:
    - List extracted visual requirements in the analysis section
 
 {{/if}}
-
-**Constraint**: Any component files planned for extraction MUST appear in `create` (with `purpose` describing which skeleton section it extracts). Skeleton files that will import extracted components MUST appear in `modify`.
 {{/if}}
 
 {{#unless (or (eq taskType "ui") (eq taskType "design-system"))}}
@@ -323,6 +326,7 @@ Before outputting, verify:
 - [ ] `purpose` fields contain behavior only — no import paths or package names
 - [ ] For `design-system`: token inventory complete (keys + actual values)
 - [ ] For `ui`: skeleton files in `modify` (to update imports after component extraction); extracted component files in `create`
+- [ ] For `ui`: `parallelGroup` assigned — same value for tasks sharing files, different values for disjoint file sets
 - [ ] For `ui` (no ui-doc): visual hints extracted from system design (or noted as absent)
 - [ ] For `ui` (with ui-doc): assets listed if needed, design tokens specified with actual values
 - [ ] Security: input validation boundaries, secrets management, error exposure considered
