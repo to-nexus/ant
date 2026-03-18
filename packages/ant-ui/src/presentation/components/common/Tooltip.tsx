@@ -177,9 +177,9 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const tooltipContent = isVisible && (
     <div
       ref={tooltipRef}
-      className={`fixed z-[9999] px-3 py-2 text-sm rounded-lg shadow-2xl transition-opacity duration-200 ${className} 
-        bg-amber-50 dark:bg-slate-900 
-        text-gray-900 dark:text-gray-100 
+      className={`fixed z-[9999] px-3 py-2 text-sm rounded-lg shadow-2xl transition-opacity duration-200 max-w-xs whitespace-normal ${className}
+        bg-amber-50 dark:bg-slate-900
+        text-gray-900 dark:text-gray-100
         border-2 border-amber-300 dark:border-slate-600`}
       style={{
         top: `${position.top}px`,

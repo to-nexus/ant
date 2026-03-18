@@ -131,11 +131,37 @@ export async function authFetch(url: string, options?: RequestInit): Promise<Res
 // ── Generic API helpers ─────────────────────────────────────────────
 // These absorb the repetitive try/catch + authFetch + response.ok pattern.
 
+/**
+ * Structured API error that carries the HTTP status code and optional
+ * machine-readable `code` / `allowed` fields from the response body.
+ * Useful for policy validation errors (HTTP 422).
+ */
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  allowed?: string[];
+
+  constructor(message: string, status: number, data?: Record<string, unknown>) {
+    super(message);
+    // Fixes instanceof checks when transpiled to ES5 (TypeScript extends Error).
+    Object.setPrototypeOf(this, ApiError.prototype);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = data?.code as string | undefined;
+    this.allowed = data?.allowed as string[] | undefined;
+  }
+}
+
+function throwApiError(status: number, body: Record<string, unknown>): never {
+  const message = (body.error as string) || (body.message as string) || `HTTP ${status}`;
+  throw new ApiError(message, status, body);
+}
+
 export async function apiGet<T>(url: string): Promise<T> {
   const response = await authFetch(url);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error((body as any).error || (body as any).message || `HTTP ${response.status}`);
+    throwApiError(response.status, body);
   }
   return response.json();
 }
@@ -147,7 +173,7 @@ export async function apiPost<T = void>(url: string, body?: unknown): Promise<T>
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error((err as any).error || (err as any).message || `HTTP ${response.status}`);
+    throwApiError(response.status, err);
   }
   return response.json().catch(() => undefined as T);
 }
@@ -159,7 +185,7 @@ export async function apiPut<T = void>(url: string, body: unknown): Promise<T> {
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error((err as any).error || (err as any).message || `HTTP ${response.status}`);
+    throwApiError(response.status, err);
   }
   return response.json().catch(() => undefined as T);
 }
@@ -171,7 +197,7 @@ export async function apiPatch<T = void>(url: string, body: unknown): Promise<T>
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error((err as any).error || (err as any).message || `HTTP ${response.status}`);
+    throwApiError(response.status, err);
   }
   return response.json().catch(() => undefined as T);
 }
@@ -183,7 +209,7 @@ export async function apiDelete<T = void>(url: string, body?: unknown): Promise<
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error((err as any).error || (err as any).message || `HTTP ${response.status}`);
+    throwApiError(response.status, err);
   }
   return response.json().catch(() => undefined as T);
 }
