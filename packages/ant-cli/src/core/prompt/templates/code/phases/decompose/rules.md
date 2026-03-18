@@ -32,11 +32,10 @@ Each task object MUST follow this schema:
   {
     "id": "kebab-case-id",
     "name": "Human-readable task name",
-    "type": "setup" | "feature" | "testgen" | "doc" | "error",
+    "type": "setup" | "feature" | "design-system" | "ui" | "testgen" | "doc" | "error",
     "priority": 100,
     "packages": ["<tier>-<name>"],
     "exclusive": true,
-    "ui": false,
     "description": "What to do"
   },
   {
@@ -46,7 +45,6 @@ Each task object MUST follow this schema:
     "priority": 300,
     "packages": ["<tier>-<name>"],
     "parallelGroup": "scope-id",
-    "ui": false,
     "description": "What to do"
   }
 ]
@@ -58,14 +56,13 @@ Each task object MUST follow this schema:
 |-------|----------|-------------|
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
-| `type` | Yes | `"setup"`, `"feature"`, `"testgen"`, `"doc"`, `"error"`, or `"verification"` |
-| `priority` | Yes | 100: setup, 200: shared foundation, 300-500: feature, 600: integration, 700: testgen, 800: doc, 900-980: error, 1000: verification |
+| `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"testgen"`, `"doc"`, `"error"`, or `"verification"` |
+| `priority` | Yes | 100–189: setup, 190–199: design-system (token infra), 200–299: design-system/foundation, 300–649: feature, 650–699: ui, 700: testgen, 800: doc, 900–980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
-| `ui` | Yes | `true` if task involves the visual presentation layer |
-| `uiSections` | When ui=true | Array of UI doc section IDs to inject (see specification for available sections) |
-  | `description` | Yes | Scope boundary + design doc section reference. Prefix with `<ui>` when `ui: true` |
+| `uiSections` | When type is 'ui' or 'design-system' | Array of UI doc section IDs to inject (see specification for available sections) |
+| `description` | Yes | Scope boundary + design doc section reference |
 
 CRITICAL:
 - The JSON inside `<tasks>` tags MUST be valid JSON (no trailing commas, proper quotes)
@@ -75,17 +72,21 @@ CRITICAL:
 
 ## Task Type Rules
 
-**Principle**: `type` is determined by whether the directive describes broken behavior or new capability.
+**Principle**: `type` is determined by whether the directive describes broken behavior, new capability, or visual implementation.
 
 | Type | Principle | When to use |
 |------|-----------|-------------|
 | `"error"` | Something is **broken** | Directive contains error messages, crashes, build failures, or runtime exceptions |
-| `"feature"` | Something **new or improved** | Directive requests new functionality, optimization, or enhancement |
-| `"setup"` | Project **initialization** | New project needs infrastructure and configuration (generate mode only) |
+| `"feature"` | Something **new** — headless | Source code, logic, APIs. Always unstyled structure (skeleton only) |
+| `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
+| `"design-system"` | Visual **infrastructure** | ui-doc exists: token → CSS, DS component library (priority 190–299) |
+| `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
 
 **Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
 
 **Constraint**: Default to `"feature"` when ambiguous (e.g., "fix" without a clear error/crash).
+
+**Constraint**: `"feature"` tasks are ALWAYS headless — unstyled structure only. A corresponding `"ui"` task handles visual styling.
 
 **Blind spot**: First-time build failures ARE errors. A crash does not require "it worked before" to qualify as `"error"`.
 
@@ -250,21 +251,20 @@ the full path so the executor can copy it directly into the install command.
 
 ---
 
-## UI Flag
+## UI Sections (split injection)
 
-- Add `"ui": true|false` to EVERY task object.
+When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify which UI doc sections are needed. This enables split injection — only requested sections are loaded into the prompt.
+
+- `"design-system"` tasks (priority 190–199): `"uiSections": ["tokens"]` (always fixed)
+- `"ui"` tasks: `"uiSections": ["tokens", "<component-section>"]`
+  If omitted, ALL UI docs are injected (not recommended for large docs).
+
 {{#if hasUiDocs}}
-- **Setup tasks**: Frontend app/package setup that needs design tokens -> `ui: true` with `uiSections: ["tokens"]`. Backend or root workspace setup -> `ui: false`.
+**Constraint**: When ui-docs exist, create a separate `"design-system"` task (priority 190–199) for token infrastructure. Do NOT embed token setup in Setup or UI tasks.
 {{else}}
-- **Setup tasks** -> `ui: false` (no UI docs available)
+**Constraint**: ui-docs not available → do NOT create `"design-system"` tasks.
+`"ui"` tasks are still created — CSS framework + visual hints from system design provide styling guidance.
 {{/if}}
-
-**Principle**: Set `"ui": true` when the task involves the visual presentation layer (components, layout, styling, theming, screen implementation). Otherwise `"ui": false`.
-
-**Constraint**: When `"ui": true`, ALWAYS prefix the description with `<ui>`.
-
-**UI Sections (split injection):**
-When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections are needed. This enables split injection -- only requested sections are loaded into the prompt. Refer to the "Available UI Sections" in the specification above for valid section IDs. Always include `"tokens"` for UI tasks, then add sections relevant to the task scope. If `uiSections` is omitted, ALL UI docs are injected (not recommended for large docs).
 
 ---
 
@@ -355,7 +355,7 @@ When `"ui": true`, add `"uiSections": [...]` specifying which UI doc sections ar
 
 **Constraint**: Do NOT create a separate task for copying assets. UI tasks handle asset integration as part of their implementation.
 
-**Constraint**: Do NOT create a separate design tokens task. Include token configuration in the Setup task (new project) or the first UI task (existing project).
+**Constraint**: `"feature"` tasks (frontend components) MUST always be headless — unstyled structure only. Prefix description with `<skeleton>`. A corresponding `"ui"` task provides the visual pass.
 
 ---
 
@@ -475,6 +475,9 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` and structural role:
 - `type: "setup"` (root, priority 100) -> `exclusive: true`
 - `type: "setup"` (package-level, priority 101+) -> `exclusive: false`, distinct `parallelGroup` per package
+- `type: "design-system"` (priority 190–199) -> `exclusive: false`, `parallelGroup` per task (designSystemBarrier ensures 200+ tasks wait until all 190–199 tasks complete)
+- `type: "design-system"` (priority 200–299) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait)
+- `type: "ui"` (priority 650–699) -> `parallelGroup` (group with corresponding skeleton task)
 - `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
 - `type: "testgen"` (single package) -> exclusive

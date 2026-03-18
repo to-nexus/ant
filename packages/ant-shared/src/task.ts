@@ -15,14 +15,16 @@ import type { InterruptionDetails } from './interruption';
 /**
  * Task types used in decomposition
  * - setup: Environment/config setup (Code Job)
- * - feature: Feature implementation (Code Job)
+ * - feature: Feature implementation — headless skeleton (Code Job)
+ * - design-system: Visual infrastructure — token/CSS setup, DS component library (Code Job)
+ * - ui: Visual implementation — apply styles to skeleton (Code Job)
  * - testgen: Test code generation after features complete (Code Job)
  * - error: Error fixing (Code Job)
  * - verification: Build & runtime verification (Code Job)
  * - explain: Explanation task (Code Job)
  * - doc: Document generation (Design Job, Code Job)
  */
-export type TaskType = 'setup' | 'feature' | 'testgen' | 'error' | 'verification' | 'explain' | 'doc';
+export type TaskType = 'setup' | 'feature' | 'design-system' | 'ui' | 'testgen' | 'error' | 'verification' | 'explain' | 'doc';
 
 /** Task status in Kanban flow */
 export type TaskStatus = 'todo' | 'in-progress' | 'completed';

@@ -63,6 +63,13 @@ export interface OrchestratorConfig {
    * Ensures shared foundation outputs are available before features start.
    */
   featureBarrier?: boolean;
+  /**
+   * When true, foundation tasks (priority >= 200) will NOT be assigned
+   * while any design-system task (priority 190-199) is still running or queued.
+   * Allows design-system tasks to run in parallel with each other,
+   * but ensures token infrastructure is complete before foundation/feature work starts.
+   */
+  designSystemBarrier?: boolean;
 }
 
 /**

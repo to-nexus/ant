@@ -154,15 +154,14 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
       tasksToAdd: Array<{
         name: string;
         description: string;
-        type: 'setup' | 'feature' | 'testgen' | 'doc';
+        type: 'setup' | 'feature' | 'design-system' | 'ui' | 'testgen' | 'doc';
         priority: number;
         insertAfter?: string;
-        ui?: boolean;
         uiSections?: string[];
         packages?: string[];
       }>;
     };
-    
+
     try {
       let cleanResponse = response.trim();
       if (cleanResponse.startsWith('```json')) {
@@ -293,10 +292,9 @@ function applyTaskModifications(
     tasksToAdd: Array<{
       name: string;
       description: string;
-      type: 'setup' | 'feature' | 'testgen' | 'doc';
+      type: 'setup' | 'feature' | 'design-system' | 'ui' | 'testgen' | 'doc';
       priority: number;
       insertAfter?: string;
-      ui?: boolean;
       uiSections?: string[];
       packages?: string[];
     }>;
@@ -333,12 +331,11 @@ function applyTaskModifications(
         description: taskDef.description,
         type: taskDef.type,
         priority: taskDef.priority,
-        ui: taskDef.ui ?? false,
         ...(taskDef.uiSections && { uiSections: taskDef.uiSections }),
         ...(taskDef.packages && { packages: taskDef.packages }),
       };
       newTasks.push(newTask);
-      console.log(`   ➕ Added task: "${newTask.name}" (P${newTask.priority}, packages=${taskDef.packages?.join(',') || 'none'}, ui=${newTask.ui})`);
+      console.log(`   ➕ Added task: "${newTask.name}" (P${newTask.priority}, type=${newTask.type}, packages=${taskDef.packages?.join(',') || 'none'})`);
     }
   }
   

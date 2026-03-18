@@ -210,6 +210,7 @@ export function createTaskQueue(tasks: CodeTask[]): {
     // - Explicit from LLM takes precedence
     // - Fallback: setup, error, and final (priority 1000) are always exclusive
     const isExplicitExclusive = typeof (task as any).exclusive === 'boolean' ? (task as any).exclusive : undefined;
+    // design-system is NOT exclusive — designSystemBarrier handles ordering
     const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.type === 'verification' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
     const exclusive = isExplicitExclusive ?? isTypeExclusive;
     
@@ -232,8 +233,7 @@ export function createTaskQueue(tasks: CodeTask[]): {
       description: task.description,
       errors: task.errors,
       category: task.category,
-      // UI injection flags
-      ui: typeof (task as any).ui === 'boolean' ? (task as any).ui : undefined,
+      // UI sections for split injection (ui and design-system task types)
       uiSections: Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined,
       // Package-based design doc injection (fe, fe-*, be, be-*)
       packages: Array.isArray((task as any).packages) ? (task as any).packages : undefined,
@@ -261,19 +261,23 @@ export function logTaskSummary(
 ): void {
   console.log(`\n✅ Task breakdown complete:`);
   
-  // ✅ Count actual task types
+  // Count actual task types
   const tasksByType = {
     setup: tasks.filter(t => t.type === 'setup').length,
+    'design-system': tasks.filter(t => t.type === 'design-system').length,
     feature: tasks.filter(t => t.type === 'feature' && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION).length,
+    ui: tasks.filter(t => t.type === 'ui').length,
     testgen: tasks.filter(t => t.type === 'testgen').length,
     doc: tasks.filter(t => t.type === 'doc').length,
     error: tasks.filter(t => t.type === 'error').length,
     verification: tasks.filter(t => t.type === 'verification' || t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length,
   };
-  
+
   console.log(`   Total tasks: ${tasks.length}`);
   console.log(`   Setup: ${tasksByType.setup}`);
+  if (tasksByType['design-system']) console.log(`   Design-System: ${tasksByType['design-system']}`);
   console.log(`   Feature: ${tasksByType.feature}`);
+  if (tasksByType.ui) console.log(`   UI: ${tasksByType.ui}`);
   console.log(`   Testgen: ${tasksByType.testgen}`);
   console.log(`   Error: ${tasksByType.error}`);
   console.log(`   Verification: ${tasksByType.verification}`);
