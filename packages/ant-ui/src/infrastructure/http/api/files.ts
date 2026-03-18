@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, ApiError } from './client';
 
 export interface FileNode {
   name: string;
@@ -126,7 +126,14 @@ export async function uploadFiles(
   }
 
   const response = await authFetch(url, { method: 'POST', body: formData });
-  if (!response.ok) throw new Error(`Failed to upload files: ${response.statusText}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new ApiError(
+      (err as any).error || (err as any).message || `Failed to upload files: ${response.statusText}`,
+      response.status,
+      err,
+    );
+  }
   const data = await response.json();
   return { uploadedFiles: data?.uploadedFiles || [], count: data?.count || 0 };
 }
@@ -165,7 +172,10 @@ function xhrUpload(
           resolve({ uploadedFiles: [], count: 0 });
         }
       } else {
-        reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+        let errorData: Record<string, unknown> = {};
+        try { errorData = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+        const message = (errorData.error as string) || (errorData.message as string) || `Upload failed: HTTP ${xhr.status}`;
+        reject(new ApiError(message, xhr.status, errorData));
       }
     });
 
