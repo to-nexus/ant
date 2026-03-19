@@ -473,16 +473,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   if (hasPrePlanText) {
     console.log(`\n⚡ [Plan] Pre-planned error task "${nextTask.name}" — using prePlanText (${(nextTask as CodeTask).prePlanText!.length} chars)`);
     console.log(`   Skipping: keywords, RAG, diagnostic tool loop, planText generation`);
-    console.log(`   Build guard: disabled (deferred to Final Verification)`);
-    
-    // Clear verificationTracker — build guard is handled by Final Verification
-    state._verificationTracker = undefined;
-    
+
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
     }
-    
+
     return {
       ...state,
       currentTask: nextTask,
@@ -496,6 +492,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       conversationHistory: [],
       _planExploring: false,
       planConversationHistory: undefined,
+      // Initialize fresh tracker: workerCheckTaskStatus enforces that the LLM
+      // runs a build command before marking done (same guard as verification tasks).
+      _verificationTracker: { buildPassed: false, testPassed: false, testsRequired: false },
     };
   }
 

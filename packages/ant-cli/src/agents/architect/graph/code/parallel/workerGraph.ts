@@ -157,11 +157,9 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
 
   // Diagnostic objective guard: build must pass for verification and error tasks.
   // Verification tasks additionally require tests to pass (if test files exist).
-  // Error tasks only require build pass — tests are deferred to Final Verification.
-  // Pre-planned error tasks (from batch split) are exempt — Final Verification handles build check.
+  // Error tasks (including pre-planned batch-split tasks) require build pass.
   const isDiagnosticTask = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
-  const isPrePlannedTask = !!(state.currentTask as CodeTask)?.prePlanText;
-  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask && !isPrePlannedTask) {
+  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
     const tracker = state._verificationTracker;
 
     if (!tracker) {
@@ -386,6 +384,7 @@ function buildWorkerSubgraph() {
       _taskCompleted: null as any,
       _isStopRequested: null as any,
       isResume: null as any,
+      _batchSplitRequeued: null as any,
     } as any,
   } as any);
 
