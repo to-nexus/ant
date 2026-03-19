@@ -87,7 +87,7 @@ export const SessionStateSchema = z.object({
  * Session Schema
  */
 export const SessionSchema = z.object({
-  sessionId: z.string().regex(/^[a-z]+-[a-z]+-[a-z]+$/),
+  sessionId: z.string().min(1),
   project: z.string().min(1),
   feature: z.string().min(1),
   createdAt: z.string().datetime(),

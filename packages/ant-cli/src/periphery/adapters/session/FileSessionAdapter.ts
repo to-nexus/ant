@@ -1,6 +1,6 @@
 import { SessionPort, FileTreeUpdatePort } from "../../../core/ports";
 import { SessionableJobType } from '@ant/shared';
-import { generateHumanId } from "../../../utils/humanId";
+import * as crypto from "crypto";
 import { Session, SessionTurn, SessionArtifacts } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
@@ -171,7 +171,7 @@ export class FileSessionAdapter implements SessionPort {
    */
   private createNewSession(project: string, feature: string): Session {
     return {
-      sessionId: generateHumanId(),
+      sessionId: crypto.randomUUID(),
       project,
       feature,
       createdAt: new Date().toISOString(),
