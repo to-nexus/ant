@@ -113,8 +113,9 @@ export class AnthropicLLMClient implements LLMClient {
         return await stream.finalMessage();
       },
       {
-        maxAttempts: 4,
+        maxAttempts: 8,
         initialDelayMs: 2000,
+        maxDelayMs: 60000,
         backoffMultiplier: 2,
         retryableErrors: ['overloaded_error', 'api_error', 'rate_limit_error'],
       }
@@ -162,8 +163,9 @@ export class AnthropicLLMClient implements LLMClient {
     yield* withRetryStream(
       () => this._streamInternal(messages, options),
       {
-        maxAttempts: 4,
+        maxAttempts: 8,
         initialDelayMs: 2000,
+        maxDelayMs: 60000,
         backoffMultiplier: 2,
         retryableErrors: ['overloaded_error', 'api_error', 'rate_limit_error'],
         retryMarker: { type: 'retry' as const },
