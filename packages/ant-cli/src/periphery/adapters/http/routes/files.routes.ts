@@ -404,6 +404,17 @@ export function createFilesRoutes(deps: {
         return res.status(404).json({ error: 'Source file or directory not found' });
       }
 
+      // Validate extension policy for the new path
+      const newRelPath = newPath.replace(/\\/g, '/');
+      const extCheck = validateFileForDir(path.dirname(newRelPath), path.basename(newRelPath));
+      if (!extCheck.valid) {
+        return res.status(422).json({
+          code: 'INVALID_EXTENSION',
+          message: extCheck.reason,
+          allowed: extCheck.allowed,
+        });
+      }
+
       // Ensure parent directory of new path exists
       await fs.promises.mkdir(path.dirname(fullNewPath), { recursive: true });
       await fs.promises.rename(fullOldPath, fullNewPath);

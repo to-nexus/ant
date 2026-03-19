@@ -444,11 +444,12 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
             break;
           }
           // ✅ Layer 2b: Same jobId with unresolved cancelled already exists
-          // Even if server SETNX fails and creates multiple cancelled messages with different IDs,
-          // the client blocks duplicates for the same jobId (defense-in-depth)
+          // Auto-resolve the old cancelled message and add the new one.
+          // This handles the case where a job was resumed (via API, server restart, etc.)
+          // without the old choice card being explicitly resolved, and then interrupted again.
           const incomingJobId = event.message.contents?.[0]?.metadata?.jobId;
           if (incomingJobId) {
-            const hasUnresolved = get().chatMessages.some((m: ChatMessage) =>
+            const unresolvedMsgs = get().chatMessages.filter((m: ChatMessage) =>
               m.contents.some((c: MessageContent) =>
                 c.type === 'cancelled' &&
                 c.metadata?.jobId === incomingJobId &&
@@ -456,9 +457,23 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
                 !c.metadata?.resolved
               )
             );
-            if (hasUnresolved) {
-              console.log('[Store] 💬 Ignoring duplicate cancelled_message for same jobId:', incomingJobId);
-              break;
+            for (const oldMsg of unresolvedMsgs) {
+              const contentIndex = oldMsg.contents.findIndex((c: MessageContent) =>
+                c.type === 'cancelled' && c.metadata?.jobId === incomingJobId
+              );
+              if (contentIndex !== -1) {
+                const updatedContents = [...oldMsg.contents];
+                updatedContents[contentIndex] = {
+                  ...updatedContents[contentIndex],
+                  metadata: {
+                    ...updatedContents[contentIndex].metadata,
+                    choiceSelected: 'resume',
+                    resolvedLabel: 'Resumed',
+                  },
+                };
+                get().updateChatMessage(oldMsg.id, { contents: updatedContents });
+                console.log('[Store] 💬 Auto-resolved stale cancelled_message for jobId:', incomingJobId, 'msgId:', oldMsg.id);
+              }
             }
           }
           get().addChatMessage(event.message);

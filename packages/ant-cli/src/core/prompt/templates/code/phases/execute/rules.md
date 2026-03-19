@@ -104,6 +104,15 @@ When design tokens are provided in this prompt:
 > **Note:** For framework-specific configuration syntax (Tailwind, CSS Variables, etc.), see environment-specific rules.
 
 ────────────────────────────────────────────────────────────────────────────────
+### 3-1. UI Task Spec Fidelity (when ui-doc exists)
+
+**Constraint**: A token name in ui-spec IS the class name. `gap: "space-3"` means `gap-3`. Do NOT substitute with a visually similar alternative.
+
+**Constraint**: When ui-spec defines `visibleWhen` on a component, the parent MUST enforce that condition. Do NOT render unconditionally.
+
+**Constraint**: All interactive elements defined in ui-spec `interactionStates` (preset buttons, toggles, conditional content) MUST be implemented.
+
+────────────────────────────────────────────────────────────────────────────────
 ### 4. Additions Beyond Plan
 
 When Plan doesn't anticipate everything needed:
