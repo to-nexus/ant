@@ -43,7 +43,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   } else {
     const taskType = state.currentTask?.type || 'unknown';
     const priority = state.currentTask?.priority;
-    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'error' || taskType === 'testgen' || taskType === 'doc' || taskType === 'explain' || taskType === 'ui' || taskType === 'design-system';
+    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'error' || taskType === 'test-code' || taskType === 'doc' || taskType === 'explain' || taskType === 'ui' || taskType === 'design-system';
     if (!isExpected) {
       console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
     }

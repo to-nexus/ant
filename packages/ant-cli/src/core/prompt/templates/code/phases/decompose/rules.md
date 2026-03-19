@@ -16,7 +16,7 @@ First, analyze step by step (think through):
   - If ANY files exist, setup is already done
 - What are the main features to implement?
 - What is the optimal task breakdown?
-- Does testgen apply? (setup task exists OR codebase has test files → MUST include testgen tasks)
+- Does test-code apply? (setup task exists OR codebase has test files → MUST include test-code tasks)
 - Does doc apply? (setup task exists OR 3+ feature tasks → MUST include doc tasks)
 
 Then output the results in order: `<profile>`, `<tasks>`, `<references>`, `<prescribedDependencies>`.
@@ -32,7 +32,7 @@ Each task object MUST follow this schema:
   {
     "id": "kebab-case-id",
     "name": "Human-readable task name",
-    "type": "setup" | "feature" | "design-system" | "ui" | "testgen" | "doc" | "error",
+    "type": "setup" | "feature" | "design-system" | "ui" | "test-code" | "doc" | "error",
     "priority": 100,
     "packages": ["<tier>-<name>"],
     "exclusive": true,
@@ -56,8 +56,8 @@ Each task object MUST follow this schema:
 |-------|----------|-------------|
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
-| `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"testgen"`, `"doc"`, `"error"`, or `"verification"` |
-| `priority` | Yes | 100–189: setup, 190–199: design-system (token infra), 200–299: design-system/foundation, 300–649: feature, 650–699: ui, 700: testgen, 800: doc, 900–980: error, 1000: verification |
+| `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, or `"verification"` |
+| `priority` | Yes | 100–189: setup, 190–199: design-system (token infra), 200–299: design-system/foundation, 300–649: feature, 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
@@ -79,7 +79,7 @@ CRITICAL:
 | `"error"` | Something is **broken** | Directive contains error messages, crashes, build failures, or runtime exceptions |
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Always unstyled structure (skeleton only) |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
-| `"design-system"` | Visual **infrastructure** | ui-doc exists: token → CSS, DS component library (priority 190–299) |
+| `"design-system"` | Visual **infrastructure** | ui-doc exists: token → CSS + runtime integration (import chain, framework bridge), DS component library (priority 190–299) |
 | `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
 
 **Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
@@ -104,25 +104,25 @@ CRITICAL:
 
 ## Test Generation Task
 
-**Principle**: A test generation task (`type: "testgen"`, priority 700) creates or updates tests that verify implemented functionality. It runs after all feature and integration tasks, before documentation and verification.
+**Principle**: A test generation task (`type: "test-code"`, priority 700) creates or updates tests that verify implemented functionality. It runs after all feature and integration tasks, before documentation and verification.
 
 **Observation target**: Does the task set require test generation?
 
 | Checkpoint | Condition |
 |-----------|-----------|
-| **Existing test files observed in codebase** | Project maintains test coverage — testgen needed to cover new features |
-| **Setup task exists** | New project — testgen needed for initial coverage |
-| **No existing tests, no setup** | No established testing pattern — skip testgen |
+| **Existing test files observed in codebase** | Project maintains test coverage — test-code needed to cover new features |
+| **Setup task exists** | New project — test-code needed for initial coverage |
+| **No existing tests, no setup** | No established testing pattern — skip test-code |
 
-**Constraint**: When a setup task exists, testgen task(s) are MANDATORY — do NOT omit. When the codebase has existing test files, testgen task(s) are MANDATORY — do NOT omit.
+**Constraint**: When a setup task exists, test-code task(s) are MANDATORY — do NOT omit. When the codebase has existing test files, test-code task(s) are MANDATORY — do NOT omit.
 
-**Constraint**: Do NOT skip testgen solely based on feature task count. When the codebase already maintains tests, any feature addition warrants test updates to maintain coverage.
+**Constraint**: Do NOT skip test-code solely based on feature task count. When the codebase already maintains tests, any feature addition warrants test updates to maintain coverage.
 
-**Constraint**: Do NOT create a testgen task when no feature tasks exist (error-only jobs).
+**Constraint**: Do NOT create a test-code task when no feature tasks exist (error-only jobs).
 
 ⚠️ **Blind spot**: An existing codebase with test files indicates a testing practice that must be maintained. Adding functionality without updating tests breaks coverage consistency — easily missed when the feature count is small.
 
-**Constraint**: The testgen task writes test files ONLY. It does NOT execute tests — verification handles that.
+**Constraint**: The test-code task writes test files ONLY. It does NOT execute tests — verification handles that.
 
 **Constraint**: Description references the implemented features by scope (not by file path). The executor observes actual code to determine test targets.
 
@@ -132,18 +132,18 @@ CRITICAL:
 
 | Checkpoint | Strategy |
 |-----------|----------|
-| **Multiple packages/services observed** | Create one testgen task per package (same priority, distinct `parallelGroup` per package). Each task targets a single package scope. |
-| **Single package** | Create one testgen task (`exclusive: true`). |
+| **Multiple packages/services observed** | Create one test-code task per package (same priority, distinct `parallelGroup` per package). Each task targets a single package scope. |
+| **Single package** | Create one test-code task (`exclusive: true`). |
 
-**Principle**: Each testgen task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
+**Principle**: Each test-code task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
 
-**Constraint**: Per-package testgen tasks target independent scopes — assign them the same priority and a **distinct `parallelGroup` per package** so they can run in parallel.
+**Constraint**: Per-package test-code tasks target independent scopes — assign them the same priority and a **distinct `parallelGroup` per package** so they can run in parallel.
 
-⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package testgen tasks modify independent directories — they MUST have different group IDs.
+⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package test-code tasks modify independent directories — they MUST have different group IDs.
 
-**Constraint**: Each per-package testgen task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
+**Constraint**: Each per-package test-code task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
 
-**Constraint**: Do NOT create a single testgen task that spans all packages in a multi-package project.
+**Constraint**: Do NOT create a single test-code task that spans all packages in a multi-package project.
 
 ---
 
@@ -480,8 +480,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "ui"` (priority 650–699) -> `parallelGroup` (group with corresponding skeleton task)
 - `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
-- `type: "testgen"` (single package) -> exclusive
-- `type: "testgen"` (multiple packages) -> distinct `parallelGroup` per package
+- `type: "test-code"` (single package) -> exclusive
+- `type: "test-code"` (multiple packages) -> distinct `parallelGroup` per package
 - `type: "doc"` -> always `exclusive: false`, distinct `parallelGroup` per task (root and each package)
 - **Shared foundation** (priority 200-299) -> see "Shared Foundation Splitting" section for `exclusive` vs `parallelGroup` rules. Schema sub-tasks are exclusive (inter-group barrier); other sub-tasks within the same concern group use distinct `parallelGroup` values.
 
@@ -541,7 +541,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 | **Parallel conflict risk** | Are feature tasks in different `parallelGroup` IDs, meaning they run concurrently and cannot see each other's outputs? |
 
 **Constraint**: If multiple parallel feature tasks produce components for a shared entry point, create a dedicated integration task:
-- `type: "feature"`, `exclusive: true`, priority 600 (after all feature tasks, before testgen/doc/verification)
+- `type: "feature"`, `exclusive: true`, priority 600 (after all feature tasks, before test-code/doc/verification)
 - Description: wire all feature outputs into the application entry point
 - Feature tasks MUST NOT create or modify the entry point file themselves
 

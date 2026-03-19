@@ -92,9 +92,9 @@ export function analyzeContextNeeds(
     return strategy;
   }
   
-  // ===== TESTGEN TASK: Load existing source code for test target observation =====
-  if (task.type === 'testgen') {
-    console.log(`   🔍 [Context] Testgen task → loading source code for test targets`);
+  // ===== TEST-CODE TASK: Load existing source code for test target observation =====
+  if (task.type === 'test-code') {
+    console.log(`   🔍 [Context] Test-code task → loading source code for test targets`);
     
     strategy.needsGrep = true;
     strategy.needsRead = true;

@@ -353,7 +353,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   failedTasks?: Array<{
     taskId: string;
     taskName: string;
-    taskType: 'setup' | 'feature' | 'design-system' | 'ui' | 'testgen' | 'verification' | 'doc';
+    taskType: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'verification' | 'doc';
     priority: number;
     violations: Violation[];
     timestamp: string;
