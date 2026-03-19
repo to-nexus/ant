@@ -1,10 +1,10 @@
 import { SessionPort, FileTreeUpdatePort } from "../../../core/ports";
 import { SessionableJobType } from '@ant/shared';
+import { generateHumanId } from "../../../utils/humanId";
 import { Session, SessionTurn, SessionArtifacts } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { randomUUID } from "crypto";
 import { getSessionFilePath, getSessionsDir } from "../../../core/utils/sessionPaths";
 
 /**
@@ -171,7 +171,7 @@ export class FileSessionAdapter implements SessionPort {
    */
   private createNewSession(project: string, feature: string): Session {
     return {
-      sessionId: randomUUID(),
+      sessionId: generateHumanId(),
       project,
       feature,
       createdAt: new Date().toISOString(),

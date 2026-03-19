@@ -2,6 +2,7 @@ import { ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import { generateHumanId } from '../../../../../utils/humanId';
 import { 
   ExecuteJobParams, 
   JobResult, 
@@ -43,7 +44,7 @@ export class JobExecutionManager {
       : 'code';
     
     // Generate jobId
-    const jobId = params.jobId || `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
+    const jobId = params.jobId || generateHumanId();
     const isResume = !!params.jobId;
     
     logger.info(`executeJob`, {
