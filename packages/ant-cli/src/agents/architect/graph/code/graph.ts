@@ -110,11 +110,9 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
 
   // ✅ Diagnostic objective guard: build must pass for verification and error tasks.
   // Verification tasks additionally require tests to pass (if test files exist).
-  // Error tasks only require build pass — tests are deferred to Final Verification.
-  // Pre-planned error tasks (from batch split) are exempt — Final Verification handles build check.
+  // Error tasks (including pre-planned batch-split tasks) require build pass.
   const isDiagnosticTask = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
-  const isPrePlannedTask = !!(state.currentTask as CodeTask)?.prePlanText;
-  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask && !isPrePlannedTask) {
+  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
     const tracker = state._verificationTracker;
 
     if (!tracker) {
@@ -562,6 +560,12 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               _failed: true,
               _failureReason: f.error.message,
             }));
+            // Deduplicate: if a failed task was re-enqueued (e.g. verification after
+            // batch split), the re-enqueued version in checkpoint.taskQueue has the
+            // same id. Keep only the failed-record copy to avoid duplicate ids in the
+            // persisted taskQueue.
+            const failedIds = new Set(failedAsQueue.map((t: any) => t.id));
+            const dedupedQueue = checkpoint.taskQueue.filter(t => !failedIds.has(t.id));
 
             await state.deps.session.updateArtifacts(
               state.context.project,
@@ -569,7 +573,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               'code',
               {
                 state: {
-                  taskQueue: [...failedAsQueue, ...checkpoint.taskQueue],
+                  taskQueue: [...failedAsQueue, ...dedupedQueue],
                   completedTasks: checkpoint.completedTasks.map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
                   failedTasks: checkpoint.failedTasks.map(f => ({
@@ -632,7 +636,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         designSystem: true,
         feature: true,
         ui: true,
-        testgen: true,
+        'test-code': true,
         doc: true,
       },
     },
