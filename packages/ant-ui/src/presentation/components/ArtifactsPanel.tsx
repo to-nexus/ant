@@ -634,8 +634,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         selectFile(newPath);
       }
     } catch (error) {
-      console.error('Failed to rename:', error);
-      showError(t('error.renameFailed'), { title: t('common:error.title') });
+      if (error instanceof ApiError && error.status === 422) {
+        showError(format422Error(error, parentDir), { title: t('common:error.title') });
+      } else {
+        console.error('Failed to rename:', error);
+        showError(t('error.renameFailed'), { title: t('common:error.title') });
+      }
     }
   };
 

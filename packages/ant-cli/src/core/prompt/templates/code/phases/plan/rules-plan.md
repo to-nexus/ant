@@ -239,6 +239,12 @@ In your `<analysis>` section, cover:
    - Group by category (colors, typography, spacing, etc.)
    - Identify target output: CSS custom properties or Tailwind config
    - Record tokens with ACTUAL values (not just key names): `--color-bg-default: #1a1a2e`
+
+2. **INTEGRATION CHAIN**
+   - Identify the global CSS entry file and the CSS framework in use
+   - Plan the import chain: entry file → token files, typography files
+   - Plan the framework bridge: CSS vars → utility classes
+   - Each integration file must appear in `create` or `modify`
 {{/if}}
 
 {{#if (eq taskType "ui")}}
@@ -267,6 +273,8 @@ In your `<analysis>` section, cover:
 5. **LAYOUT & COMPONENT SPECS**
    - Extract layout properties from ui-spec (flexDirection, alignItems, grid*)
    - Record token references with ACTUAL values (not just key names)
+   - Record `visibleWhen` conditions and the parent component where enforcement is needed
+   - Record all interactive elements (preset buttons, toggles, conditional content) from `interactionStates`
 
 {{else}}
 4. **VISUAL HINTS FROM SYSTEM DESIGN**

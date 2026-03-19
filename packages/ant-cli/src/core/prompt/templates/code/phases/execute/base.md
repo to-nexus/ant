@@ -284,9 +284,14 @@ MODIFY: app/page.tsx - Add import and render new component
 Sub-role is determined by priority:
 
 **priority 190–199 (Token Infrastructure)**
-- **Scope**: ui-tokens.json → CSS custom properties / Tailwind config
+- **Scope**: ui-tokens.json → CSS custom properties / Tailwind config / **runtime integration**
 - **Constraint**: Token infrastructure only. Do NOT create components.
-- **Execution**: Read tokens → generate `:root { --color-...: ...; }` → update config
+- **Completeness**: Token files without import chain are incomplete. Scope includes:
+  1. Token CSS file generation (custom properties)
+  2. Typography utility file generation
+  3. Global CSS entry file: imports for token + typography files
+  4. Framework bridge: CSS vars → utility classes (Tailwind @theme or config extend)
+- **Execution**: Read tokens → generate files → wire imports → verify entry file imports all token sources
 
 **priority 200–299 (Component Library)**
 - **Scope**: Reusable DS components OR external DS library configuration
@@ -311,7 +316,7 @@ Sub-role is determined by priority:
 **File organization**: Component files extracted from skeleton sections are within scope — same DOM elements, different file. The plan's `create` list specifies which extractions to perform.
 
 {{#if hasUiDoc}}
-**Visual source**: Design tokens (ui-tokens.json) and layout properties (ui-spec.json). Follow both exactly.
+**Visual source**: Design tokens (ui-tokens.json) and layout properties (ui-spec.json). Token names, `visibleWhen` conditions, and `interactionStates` elements are all in scope.
 {{else}}
 **Visual source**: Visual hints recorded in the plan's analysis section. If the plan notes no hints found, apply CSS framework best practices.
 {{/if}}
