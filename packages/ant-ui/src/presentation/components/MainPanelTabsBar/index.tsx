@@ -30,15 +30,9 @@ export function MainPanelTabsBar() {
   const isRunning = useStore((state) => state.isRunning);
   const { showConfirm, showInfo } = useAlertModalContext();
 
-  // Job tab label: show full ID when active, abbreviated when inactive
   const getJobTabLabel = () => {
     if (!currentJobId || isJobTabCleared) return t('tabs.job');
-    
-    if (activeTab === 'job') {
-      return `${t('tabs.job')} (${currentJobId})`;
-    } else {
-      return `${t('tabs.job')} (${currentJobId.slice(0, 8)}...)`;
-    }
+    return `${t('tabs.job')} (${currentJobId})`;
   };
 
   const handleJobTabClose = () => {

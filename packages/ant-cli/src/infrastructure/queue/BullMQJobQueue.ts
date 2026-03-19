@@ -32,6 +32,7 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { logger } from '../../utils/logger';
 import { parseRedisUrl } from '../utils/redis';
 import { REDIS_CHANNELS } from '../state/redisConstants';
+import { generateHumanId } from '../../utils/humanId';
 
 // Queue configuration
 const QUEUE_NAME = 'ant-jobs';
@@ -550,9 +551,7 @@ export class BullMQJobQueue implements JobQueuePort {
   // ============================================
 
   private generateJobId(): string {
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substring(2, 8);
-    return `${timestamp}${random}`;
+    return generateHumanId();
   }
 
   // ============================================

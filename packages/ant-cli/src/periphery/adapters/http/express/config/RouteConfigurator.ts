@@ -398,7 +398,8 @@ export class RouteConfigurator {
       const stateStore = factory.getStateStore();
       
       // Generate jobId
-      const jobId = params.jobId || `${Date.now().toString(36)}${Math.random().toString(36).substr(2, 6)}`;
+      const { generateHumanId } = await import('../../../../../utils/humanId');
+      const jobId = params.jobId || generateHumanId();
       
       // ⏱️ DEBUG: Record enqueue start time for latency analysis
       const enqueueStartTime = Date.now();
