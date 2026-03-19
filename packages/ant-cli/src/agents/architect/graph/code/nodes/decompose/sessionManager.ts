@@ -127,7 +127,7 @@ export function restoreFromSession(
   const tasksByType = {
     setup: 0,
     feature: 0,
-    testgen: 0,
+    'test-code': 0,
     doc: 0,
     error: 0,
     verification: 0
@@ -136,8 +136,8 @@ export function restoreFromSession(
   const classifyTask = (task: { type: string; priority: number }) => {
     if (task.type === 'verification' || task.priority === 1000) {
       tasksByType.verification++;
-    } else if (task.type === 'testgen') {
-      tasksByType.testgen++;
+    } else if (task.type === 'test-code') {
+      tasksByType['test-code']++;
     } else if (task.type === 'doc') {
       tasksByType.doc++;
     } else if (task.type === 'error') {
@@ -164,7 +164,7 @@ export function restoreFromSession(
   console.log(`   `);
   console.log(`   Setup:   ${tasksByType.setup === 0 ? '✅' : '⬜'} ${tasksByType.setup} remaining`);
   console.log(`   Feature: ${tasksByType.feature === 0 ? '✅' : '⬜'} ${tasksByType.feature} remaining`);
-  console.log(`   Testgen: ${tasksByType.testgen === 0 ? '✅' : '⬜'} ${tasksByType.testgen} remaining`);
+  console.log(`   Test-Code: ${tasksByType['test-code'] === 0 ? '✅' : '⬜'} ${tasksByType['test-code']} remaining`);
   console.log(`   Doc:     ${tasksByType.doc === 0 ? '✅' : '⬜'} ${tasksByType.doc} remaining`);
   console.log(`   Error:   ${tasksByType.error === 0 ? '✅' : '⚠️ '} ${tasksByType.error} remaining`);
   console.log(`   Verify:  ${tasksByType.verification === 0 ? '✅' : '⬜'} ${tasksByType.verification} remaining`);

@@ -52,7 +52,7 @@ export function validateTasks(
   // Validate task type is one of the known types
   const VALID_TYPES: TaskType[] = [
     'setup', 'feature', 'design-system', 'ui',
-    'testgen', 'error', 'verification', 'explain', 'doc'
+    'test-code', 'error', 'verification', 'explain', 'doc'
   ];
   for (const t of tasks) {
     if (!VALID_TYPES.includes(t.type)) {

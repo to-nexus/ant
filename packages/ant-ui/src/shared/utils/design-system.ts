@@ -58,12 +58,18 @@ export const statusColors = {
   }
 } as const;
 
-// Badge Colors (for Task Types)
+// Badge Colors (for Task Types) — single source of truth
+// All canonical TaskTypes are covered. label has no emoji (consistent across all types).
 export const badgeColors = {
-  feature: 'bg-blue-500 dark:bg-blue-600 text-white',
-  setup: 'bg-purple-500 dark:bg-purple-600 text-white',
-  error: 'bg-red-500 dark:bg-red-600 text-white',
-  final: 'bg-green-600 dark:bg-green-700 text-white',
+  setup:           { color: 'bg-slate-500 dark:bg-slate-600 text-white',  label: 'SETUP' },
+  'design-system': { color: 'bg-purple-500 dark:bg-purple-600 text-white', label: 'DESIGN-SYS' },
+  feature:         { color: 'bg-blue-500 dark:bg-blue-600 text-white',    label: 'FEATURE' },
+  ui:              { color: 'bg-pink-500 dark:bg-pink-600 text-white',    label: 'UI' },
+  'test-code':     { color: 'bg-amber-500 dark:bg-amber-600 text-white',  label: 'TEST-CODE' },
+  doc:             { color: 'bg-teal-500 dark:bg-teal-600 text-white',    label: 'DOC' },
+  verification:    { color: 'bg-green-600 dark:bg-green-700 text-white',  label: 'VERIFY' },
+  error:           { color: 'bg-red-500 dark:bg-red-600 text-white',      label: 'ERROR' },
+  explain:         { color: 'bg-cyan-500 dark:bg-cyan-600 text-white',    label: 'EXPLAIN' },
 } as const;
 
 // Button Styles

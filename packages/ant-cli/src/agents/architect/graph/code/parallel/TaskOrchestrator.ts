@@ -96,7 +96,7 @@ function isFeatureOrSetupTask<T extends BaseTask>(t: T): boolean {
   return t.type === 'feature' || t.type === 'setup';
 }
 function isPreDocTask<T extends BaseTask>(t: T): boolean {
-  return t.type === 'feature' || t.type === 'setup' || t.type === 'testgen';
+  return t.type === 'feature' || t.type === 'setup' || t.type === 'test-code';
 }
 
 export class TaskOrchestrator<T extends BaseTask> {
@@ -458,7 +458,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       hasPreUiWork: !!b?.ui && (
         running.some(isFeatureOrSetupTask) || queued.some(isFeatureOrSetupTask)
       ),
-      hasPreTestgenWork: !!b?.testgen && (
+      hasPreTestgenWork: !!b?.['test-code'] && (
         running.some(isFeatureOrSetupTask) || queued.some(isFeatureOrSetupTask)
       ),
       hasPreDocWork: !!b?.doc && (
@@ -488,12 +488,12 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
 
       // Feature barrier: don't assign feature/integration tasks while foundation work exists
-      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'testgen' && task.type !== 'doc') {
+      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') {
         break;
       }
 
       // Testgen barrier: don't assign testgen tasks while feature/setup work exists
-      if (hasPreTestgenWork && task.type === 'testgen') {
+      if (hasPreTestgenWork && task.type === 'test-code') {
         break;
       }
 
@@ -558,8 +558,8 @@ export class TaskOrchestrator<T extends BaseTask> {
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
       if (hasDesignSystemWork && task.priority >= 200) break;
-      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'testgen' && task.type !== 'doc') break;
-      if (hasPreTestgenWork && task.type === 'testgen') break;
+      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') break;
+      if (hasPreTestgenWork && task.type === 'test-code') break;
       if (hasPreDocWork && task.type === 'doc') break;
       if (hasPreUiWork && task.type === 'ui') break;
       if (!task.parallelGroup) {
