@@ -267,7 +267,7 @@ export function logTaskSummary(
     'design-system': tasks.filter(t => t.type === 'design-system').length,
     feature: tasks.filter(t => t.type === 'feature' && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION).length,
     ui: tasks.filter(t => t.type === 'ui').length,
-    testgen: tasks.filter(t => t.type === 'testgen').length,
+    'test-code': tasks.filter(t => t.type === 'test-code').length,
     doc: tasks.filter(t => t.type === 'doc').length,
     error: tasks.filter(t => t.type === 'error').length,
     verification: tasks.filter(t => t.type === 'verification' || t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length,
@@ -278,7 +278,7 @@ export function logTaskSummary(
   if (tasksByType['design-system']) console.log(`   Design-System: ${tasksByType['design-system']}`);
   console.log(`   Feature: ${tasksByType.feature}`);
   if (tasksByType.ui) console.log(`   UI: ${tasksByType.ui}`);
-  console.log(`   Testgen: ${tasksByType.testgen}`);
+  console.log(`   Test-Code: ${tasksByType['test-code']}`);
   console.log(`   Error: ${tasksByType.error}`);
   console.log(`   Verification: ${tasksByType.verification}`);
   

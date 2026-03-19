@@ -58,21 +58,17 @@ export function TaskCard({
   // ✅ Determine display type from task type
   const displayType = task.type;
   
-  // Type badge styling
+  // Type badge styling — canonical types from design-system, legacy fallbacks below
   const typeBadgeMap: Record<string, {color: string, label: string}> = {
-    'feature': { color: badgeColors.feature, label: 'FEATURE' },
-    'setup': { color: badgeColors.setup, label: '⚙️ SETUP' },
-    'testgen': { color: 'bg-yellow-500 dark:bg-yellow-600 text-white', label: '🧪 TESTGEN' },
-    'error': { color: badgeColors.error, label: '🔧 ERROR' },
-    'verification': { color: badgeColors.final, label: '🎯 VERIFY' },
-    'implementation': { color: 'bg-indigo-500 dark:bg-indigo-600 text-white', label: 'IMPL' },
-    'testing': { color: 'bg-yellow-500 dark:bg-yellow-600 text-white', label: 'TEST' },
-    'doc': { color: 'bg-emerald-500 dark:bg-emerald-600 text-white', label: 'DOC' },
-    'documentation': { color: 'bg-emerald-500 dark:bg-emerald-600 text-white', label: 'DOC' },
-    'review': { color: 'bg-pink-500 dark:bg-pink-600 text-white', label: 'REVIEW' },
-    'deployment': { color: 'bg-teal-500 dark:bg-teal-600 text-white', label: 'DEPLOY' },
-    'bugfix': { color: 'bg-orange-500 dark:bg-orange-600 text-white', label: 'FIX' },
-    'refactor': { color: 'bg-cyan-500 dark:bg-cyan-600 text-white', label: 'REFACTOR' },
+    ...badgeColors,
+    // Legacy/non-canonical fallbacks (LLM may still emit these)
+    documentation:  badgeColors.doc,
+    implementation: { color: 'bg-indigo-500 dark:bg-indigo-600 text-white', label: 'IMPL' },
+    testing:        { color: 'bg-amber-500 dark:bg-amber-600 text-white',   label: 'TEST' },
+    review:         { color: 'bg-pink-400 dark:bg-pink-500 text-white',     label: 'REVIEW' },
+    deployment:     { color: 'bg-teal-600 dark:bg-teal-700 text-white',     label: 'DEPLOY' },
+    bugfix:         { color: 'bg-orange-500 dark:bg-orange-600 text-white', label: 'FIX' },
+    refactor:       { color: 'bg-violet-500 dark:bg-violet-600 text-white', label: 'REFACTOR' },
   };
   
   const typeBadge = typeBadgeMap[displayType.toLowerCase()] || { 

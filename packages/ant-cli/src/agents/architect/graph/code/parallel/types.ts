@@ -52,8 +52,8 @@ export interface OrchestratorConfig {
    *   design-system (190–199) ──[designSystem]──▶ foundation (200–299)
    *   foundation    (200–299) ──[feature]      ──▶ feature   (300–649)
    *   feature       (300–649) ──[ui]           ──▶ ui        (650–699)
-   *   feature       (300–649) ──[testgen]      ──▶ testgen   (700)
-   *   testgen       (700)     ──[doc]          ──▶ doc       (800)
+   *   feature       (300–649) ──[test-code]    ──▶ test-code (700)
+   *   test-code     (700)     ──[doc]          ──▶ doc       (800)
    *
    * Each flag, when true, prevents the downstream tier from starting
    * while any upstream task is still running or queued.
@@ -65,9 +65,9 @@ export interface OrchestratorConfig {
     feature?: boolean;
     /** Blocks ui tasks until all feature/setup tasks complete. */
     ui?: boolean;
-    /** Blocks testgen tasks until all feature/setup tasks complete. */
-    testgen?: boolean;
-    /** Blocks doc tasks until all feature/setup/testgen tasks complete. */
+    /** Blocks test-code tasks until all feature/setup tasks complete. */
+    'test-code'?: boolean;
+    /** Blocks doc tasks until all feature/setup/test-code tasks complete. */
     doc?: boolean;
   };
 }

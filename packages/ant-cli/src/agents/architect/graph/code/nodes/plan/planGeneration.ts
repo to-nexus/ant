@@ -181,13 +181,13 @@ export async function buildPlanPromptBlocks(
 
 /**
  * Determine whether a task requires plan text generation.
- * Tasks that skip planning: verification, testgen, doc, explain, and final verification.
+ * Tasks that skip planning: verification, test-code, doc, explain, and final verification.
  */
 export function taskRequiresPlan(task: CodeTask): boolean {
   return (
     task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&
     task.type !== 'verification' &&
-    task.type !== 'testgen' &&
+    task.type !== 'test-code' &&
     task.type !== 'doc' &&
     task.type !== 'explain'
   );
@@ -470,7 +470,7 @@ function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): vo
 /** Max plan↔tool round-trips before forcing plan finalization.
  * After this many rounds the LLM is called once more WITHOUT tools
  * so it must produce a <plan> from the gathered exploration context. */
-export const PLAN_TOOL_LOOP_MAX = 8;
+export const PLAN_TOOL_LOOP_MAX = 15;
 
 export type PlanWithToolsResult =
   | { planText: string }

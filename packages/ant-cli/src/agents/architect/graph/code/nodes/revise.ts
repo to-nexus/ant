@@ -154,7 +154,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
       tasksToAdd: Array<{
         name: string;
         description: string;
-        type: 'setup' | 'feature' | 'design-system' | 'ui' | 'testgen' | 'doc';
+        type: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'doc';
         priority: number;
         insertAfter?: string;
         uiSections?: string[];
@@ -292,7 +292,7 @@ function applyTaskModifications(
     tasksToAdd: Array<{
       name: string;
       description: string;
-      type: 'setup' | 'feature' | 'design-system' | 'ui' | 'testgen' | 'doc';
+      type: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'doc';
       priority: number;
       insertAfter?: string;
       uiSections?: string[];

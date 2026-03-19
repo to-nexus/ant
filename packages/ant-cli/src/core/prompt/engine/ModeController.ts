@@ -52,7 +52,7 @@ export class ModeController {
     phase: "plan" | "execute",
     context: AssembledContext,
     explicitMode?: JobMode,
-    taskType?: string  // 'setup' | 'feature' | 'testgen' | 'doc' | 'error'
+    taskType?: string  // 'setup' | 'feature' | 'test-code' | 'doc' | 'error'
   ): PromptModeConfig {
     // ✅ Use explicit mode only - LLM will infer in detectEnvironment if needed
     const mode: JobMode | undefined = explicitMode;
@@ -78,14 +78,14 @@ export class ModeController {
     // Base templates
     // ✅ design job uses explicit base-system-design.md and rules-system-design.md
     // ui-design has separate loading logic in docGen.ts (base-ui-design.md, rules-ui-design.md)
-    // ✅ verification, error, and testgen tasks use dedicated templates (lean, focused)
+    // ✅ verification, error, and test-code tasks use dedicated templates (lean, focused)
     const isVerification = taskType === 'verification';
     const isError = taskType === 'error';
-    const isTestgen = taskType === 'testgen';
+    const isTestCode = taskType === 'test-code';
     const isDoc = taskType === 'doc';
     const verifyPhasePrefix = `${job}/phases/verify`;
     const errorPhasePrefix = `${job}/phases/error`;
-    const testgenPhasePrefix = `${job}/phases/testgen`;
+    const testCodePhasePrefix = `${job}/phases/test-code`;
     const docgenPhasePrefix = `${job}/phases/docgen`;
     const baseTemplateName = job === 'design' ? 'base-system-design' : 'base';
     const rulesTemplateName = job === 'design' ? 'rules-system-design' : 'rules';
@@ -98,9 +98,9 @@ export class ModeController {
     } else if (isError) {
       templateBase = `${errorPhasePrefix}/base`;
       templateRules = `${errorPhasePrefix}/rules`;
-    } else if (isTestgen) {
-      templateBase = `${testgenPhasePrefix}/base`;
-      templateRules = `${testgenPhasePrefix}/rules`;
+    } else if (isTestCode) {
+      templateBase = `${testCodePhasePrefix}/base`;
+      templateRules = `${testCodePhasePrefix}/rules`;
     } else if (isDoc) {
       templateBase = `${docgenPhasePrefix}/base`;
       templateRules = `${docgenPhasePrefix}/rules`;
@@ -119,7 +119,7 @@ export class ModeController {
     const llmParams = this.getLLMParams(job, phase, mode);
     
     // Feature flags
-    const skipHeavyContext = isVerification || isTestgen || isDoc || isError;
+    const skipHeavyContext = isVerification || isTestCode || isDoc || isError;
     const flags = {
       includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !skipHeavyContext,
       includeProfiles: phase === 'execute' && job === 'code',
@@ -160,13 +160,13 @@ export class ModeController {
       }
     }
     
-    // ✅ Verification, testgen, doc tasks skip design context injections (designDoc, prdSpec, uiDoc).
+    // ✅ Verification, test-code, doc tasks skip design context injections (designDoc, prdSpec, uiDoc).
     // Error tasks allow design-doc injection so spec-driven designDoc can pass through.
     const isVerification = taskType === 'verification';
     const isError = taskType === 'error';
-    const isTestgen = taskType === 'testgen';
+    const isTestCode = taskType === 'test-code';
     const isDoc = taskType === 'doc';
-    const skipDesignContext = isVerification || isTestgen || isDoc;
+    const skipDesignContext = isVerification || isTestCode || isDoc;
     const detectedEnv = (context as any).detectedEnvironment as string | undefined;
 
     // ✅ Common injections (used by ALL jobs - code, design, learn)
@@ -221,11 +221,11 @@ export class ModeController {
       const language = this.detectLanguage(context);
       const environment = this.detectEnvironment(context, language);
       
-      // Diagnostic (verification/error) and testgen tasks use dedicated templates.
+      // Diagnostic (verification/error) and test-code tasks use dedicated templates.
       // Environment-specific rules (e.g. go-api/rules.md) contain "Do NOT run build commands"
       // which contradicts diagnostic tasks' purpose. tool-calling-rules-compact is
       // already included via Handlebars partial in verify/rules.md and error/rules.md.
-      if (!isVerification && !isError && !isTestgen && !isDoc) {
+      if (!isVerification && !isError && !isTestCode && !isDoc) {
         if (language && job === 'code') {
           if (environment === 'fullstack') {
             // Fullstack = browser + backend + fullstack-specific rules.
@@ -261,15 +261,15 @@ export class ModeController {
       // (buildDiagnosticPlanPrompt) where build/test execution actually happens.
       // codeGen only applies code fixes — it doesn't need build system hints.
       
-      // Testgen: inject language-specific hints (test frameworks, mock patterns)
-      if (isTestgen && language && job === 'code') {
-        const hintsPath = `${job}/phases/testgen/languages/${language}/hints`;
+      // Test-code: inject language-specific hints (test frameworks, mock patterns)
+      if (isTestCode && language && job === 'code') {
+        const hintsPath = `${job}/phases/test-code/languages/${language}/hints`;
         injections.push(hintsPath);
-        console.log(`[ModeController] Adding testgen language hints: ${hintsPath}`);
+        console.log(`[ModeController] Adding test-code language hints: ${hintsPath}`);
       }
       
       // Backend safety: common safety principles for backend/fullstack environments.
-      // Included for execute AND testgen phases — testgen needs safety context to generate security test cases.
+      // Included for execute AND test-code phases — test-code needs safety context to generate security test cases.
       if (job === 'code' && !isVerification && !isDoc) {
         if (detectedEnv === 'backend' || detectedEnv === 'fullstack') {
           injections.push(`code/phases/execute/injections/backend-safety`);
@@ -279,7 +279,7 @@ export class ModeController {
       
       // preview-env-contract and port-management: needed for code tasks that produce
       // application code (setup, feature, error, verification). Testgen/doc only write non-app files.
-      if (job === 'code' && !isTestgen && !isDoc) {
+      if (job === 'code' && !isTestCode && !isDoc) {
         injections.push(`${jobPrefix}/preview-env-contract`);
         console.log(`[ModeController] Adding preview-env-contract`);
         
