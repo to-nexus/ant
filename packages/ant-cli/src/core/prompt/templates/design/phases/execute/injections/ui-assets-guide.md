@@ -150,6 +150,32 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 **Note**: Replace `YOUR_CATEGORY` with the actual category determined from the asset directory structure and filenames. The system automatically merges new categories.
 
+### 🎨 SVG Color Theming (CRITICAL for dark/light mode)
+
+**Principle**: SVG icons must adapt to the application's color theme. Hardcoded colors in SVGs become invisible when the theme changes.
+
+**Constraint**: For SVG assets, include a `themeAdaptation` field:
+
+| SVG Content | themeAdaptation | Action |
+|-------------|----------------|--------|
+| Monochrome icon (single stroke/fill color) | `"currentColor"` | Replace hardcoded color with `currentColor` |
+| Brand logo with specific colors | `"static"` | Keep original colors |
+| Mixed brand + adaptive colors | `"partial"` | Keep brand colors, replace others with `currentColor` |
+
+```json
+{
+  "icon-wallet": {
+    "src": "inputs/assets/icons/wallet.svg",
+    "dest": "public/icons/icon-wallet.svg",
+    "format": "svg",
+    "themeAdaptation": "currentColor",
+    "rendering": { "method": "explicit", "width": 20, "height": 20 }
+  }
+}
+```
+
+**⚠️ `<img>` tag cannot style SVG internals**: If `themeAdaptation` is `"currentColor"`, the asset MUST be rendered inline (React component, SVG sprite) — NOT via `<img src="...">`. Document the required rendering method accordingly.
+
 ### Quality Criteria
 
 1. **Complete**: All assets in `inputs/assets/` documented
