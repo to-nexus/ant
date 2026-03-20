@@ -29,11 +29,15 @@
 
 ---
 
-### File Naming
+### File Naming & Placement
 
-| Convention | Rule |
-|-----------|------|
-| **Test file** | `*.test.ts` or `*.spec.ts` — observe existing convention |
-| **Test location** | Co-locate with source, or `__tests__/` directory if project uses it |
+**Principle**: Follow the project's existing convention. If none exists, use the ecosystem standard for the detected test runner.
 
-**Constraint**: Follow the project's existing naming convention. If none exists, use `*.test.ts` co-located with source files.
+| Observation | Placement |
+|-------------|-----------|
+| **Existing test files found** | Follow the same directory and naming pattern exactly |
+| **Vitest detected** | Co-locate with source — `*.test.ts` next to the source file |
+| **Jest detected** | `__tests__/` directory mirroring the source structure (e.g., `src/utils/foo.ts` → `src/__tests__/utils/foo.test.ts`) |
+| **No runner configured** | Co-locate with source — Vitest will be added as the default |
+
+**Constraint**: Do NOT mix placements within the same project. Pick one pattern and apply it consistently across all test files written in this task.

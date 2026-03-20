@@ -75,10 +75,15 @@ export class TaskWorker<T extends BaseTask> {
         // Worker subgraph exits normally even when task failed (retries exhausted,
         // violations exist but graph reaches learn → __end__ without throwing).
         // Check _taskCompleted to distinguish actual success from exhaustion.
+        const batchSplit = result?._batchSplitCompleted === true;
         const hasUnresolvedViolations = result?._taskCompleted !== true
+          && !batchSplit
           && result?.violations?.length > 0;
 
-        if (hasUnresolvedViolations) {
+        if (batchSplit) {
+          // Task was re-enqueued via batch split — release worker slot, don't mark as completed
+          await this.orchestrator.reportBatchSplit(this.workerId, task);
+        } else if (hasUnresolvedViolations) {
           const violationTypes = result.violations.map((v: any) => v.type || 'unknown').join(', ');
           const err = new Error(
             `Task "${task.name}" exhausted call budget with ${result.violations.length} unresolved violation(s): ${violationTypes}`
