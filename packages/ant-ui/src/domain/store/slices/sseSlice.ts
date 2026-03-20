@@ -681,9 +681,12 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
             }
           }
         }
-      }, 5000);
+      // ✅ 15s grace: large session files on EFS can take several seconds to read.
+      // safeReadSession now uses async I/O (no event loop blocking), but EFS
+      // latency can still delay initial kanban delivery past the old 5s window.
+      }, 15000);
     });
-    
+
     sseManager.connect(state.selectedProject, state.selectedFeature, jobType);
     
     if (state.currentJobId) {
