@@ -671,7 +671,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
         : `📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)`;
       const planDescription = isDiagnosticTask
         ? `The following JSON contains the diagnostic analysis and fix instructions.\n- \`diagnostics\`: Build/test error analysis\n- \`modify\`: Files to modify with specific fixes\n- \`create\`: Files to create (if any)\n- \`delete\`: Files to delete (if any)`
-        : `The following JSON contains the exact implementation instructions.\n- \`create\`: Files to create with integration points\n- \`modify\`: Files to modify with specific changes\n- \`assets\`: Asset copy operations (source → destination)`;
+        : `The following JSON contains the exact implementation instructions.\n- \`prescribedPackages\`: External dependencies with discovered API signatures — MUST import and call these APIs in the files listed in \`usedBy\`\n- \`create\`: Files to create with integration points\n- \`modify\`: Files to modify with specific changes\n- \`assets\`: Asset copy operations (source → destination)`;
       
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(planLabel);
