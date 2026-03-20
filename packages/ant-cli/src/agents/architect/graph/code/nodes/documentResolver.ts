@@ -40,7 +40,9 @@ export function resolveDesignDocForTask(task: CodeTask, state: ArchitectGraphSta
         parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
       }
     }
-    return parts.join('\n\n────────────────────────────────────────\n\n');
+    const result = parts.join('\n\n────────────────────────────────────────\n\n');
+    console.log(`📋 [Resolver] Using spec doc "${state.selectedSpec}" as primary (${result.length} chars)`);
+    return result;
   }
 
   // feature / setup / test-code / doc: system design via packages

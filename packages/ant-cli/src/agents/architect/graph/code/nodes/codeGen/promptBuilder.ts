@@ -128,7 +128,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   }
 
   // For error tasks with a selected spec doc, inject the spec as the "designDoc".
-  // Follows the same pattern as Plan's resolveDesignDoc() spec branch.
+  // resolver returns '' for error tasks; this post-resolver override handles the spec case.
   if (isErrorTask && state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
     const specContent = state.specDocs[state.selectedSpec];
     const parts: string[] = [];
