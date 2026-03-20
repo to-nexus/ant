@@ -160,8 +160,23 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     }
   }
 
+  // test-code guard: ensure at least one test file was actually written.
+  if (violations.length === 0 && llmExplicitlyDone && state.currentTask?.type === 'test-code') {
+    const { detectTestFilesFromDisk } = await import('./nodes/plan/testFileDetector');
+    const testFilesExist = detectTestFilesFromDisk(state.context?.featurePath);
+    if (!testFilesExist) {
+      violations.push({
+        type: 'incomplete_implementation' as ViolationType,
+        severity: 'critical',
+        message: 'test-code task completed but no test files (*.test.ts / *.spec.ts / *.test.js / *.spec.js) were found in the workspace.',
+        isRetryable: true,
+        suggestedFix: 'Create the required test files before marking this task as done.',
+      });
+    }
+  }
+
   const hasViolations = (violations && violations.length > 0);
-  
+
   // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
   // Without this, a cancelled job can still mark the current task as "completed"
   // if checkTaskStatus runs after the cancellation signal but before process termination.

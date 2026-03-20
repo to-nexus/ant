@@ -291,6 +291,22 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   /**
+   * Task was batch-split and re-enqueued — release worker slot WITHOUT marking task as completed.
+   * The task will run again from the queue after its generated sub-tasks complete.
+   */
+  async reportBatchSplit(workerId: number, task: T): Promise<void> {
+    await this.lock.runExclusive(async () => {
+      this.runningTasks.delete(workerId);
+      // Do NOT add to completedTasks — task is back in todo (re-enqueued by processDiagnosticBatchSplit)
+      this.broadcastKanban();
+      console.log(`[Orchestrator] Task "${task.name}" batch-split by worker ${workerId}. running=${this.runningTasks.size}, queue=${this.taskQueue.size()}`);
+
+      this.spawnAvailableWorkers();
+      this.checkAllDone();
+    });
+  }
+
+  /**
    * Report task failure.
    *
    * Strategy:

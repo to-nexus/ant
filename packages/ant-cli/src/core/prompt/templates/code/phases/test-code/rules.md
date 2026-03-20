@@ -48,11 +48,11 @@ Do NOT write any test file before understanding the actual code's coupling and a
 
 ## Test File Placement
 
-**Principle**: Follow the project's existing test file conventions. If no convention exists, co-locate test files with their source.
+**Principle**: Follow the project's existing test file conventions. If no convention exists, use the ecosystem standard for the detected language and test runner (see language hints).
 
 | Observation | Placement |
 |-------------|-----------|
-| **Existing test files observed** | Follow the same directory and naming convention |
-| **No existing test files** | Co-locate with source, use language-standard naming |
+| **Existing test files observed** | Follow the same directory and naming convention exactly |
+| **No existing test files** | Use the ecosystem standard defined in the language hints for the detected runner |
 
-**Constraint**: Do NOT create a separate `tests/` directory unless the project already uses one.
+**Constraint**: Do NOT mix placement patterns within a single task. Apply one convention consistently across all test files written.

@@ -126,7 +126,8 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
     return {
-      _taskCompleted: true,
+      _taskCompleted: false,       // NOT completed — task is re-enqueued (back in todo)
+      _batchSplitCompleted: true,  // Signal TaskWorker to release slot via reportBatchSplit()
       currentTask: undefined,
       violations: [],
       _batchSplitRequeued: false,
@@ -204,6 +205,22 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
         message: 'Tests have not passed. Test files exist in this project — run tests and ensure they pass.' + testErrorDetail,
         isRetryable: true,
         suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
+      });
+    }
+  }
+
+  // test-code guard: ensure at least one test file was actually written.
+  // Protects against LLM claiming completion without creating test files.
+  if (violations.length === 0 && llmExplicitlyDone && state.currentTask?.type === 'test-code') {
+    const { detectTestFilesFromDisk } = await import('../nodes/plan/testFileDetector');
+    const testFilesExist = detectTestFilesFromDisk(state.context?.featurePath);
+    if (!testFilesExist) {
+      violations.push({
+        type: 'incomplete_implementation' as ViolationType,
+        severity: 'critical',
+        message: 'test-code task completed but no test files (*.test.ts / *.spec.ts / *.test.js / *.spec.js) were found in the workspace.',
+        isRetryable: true,
+        suggestedFix: 'Create the required test files before marking this task as done.',
       });
     }
   }
@@ -429,9 +446,10 @@ function buildWorkerSubgraph() {
     'checkTaskStatus' as any,
     ((s: any) => {
       const taskCompleted = s._taskCompleted === true;
+      const batchSplitCompleted = s._batchSplitCompleted === true;
       const hasViolations = s.violations && s.violations.length > 0;
 
-      if (taskCompleted) {
+      if (taskCompleted || batchSplitCompleted) {
         return 'learn';
       }
 
