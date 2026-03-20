@@ -372,7 +372,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
   const taskCount = (completedTasks?.length || 0) + (inProgressTasks?.length || 0);
 
   const tooltipContent = (
-    <div className="space-y-2 min-w-[340px] max-h-[80vh] overflow-y-auto">
+    <div className="space-y-2 w-[480px] max-h-[80vh] overflow-y-auto">
       <div className="font-semibold border-b pb-1.5 border-amber-300 dark:border-slate-600">
         {t('header.tokenUsage')}
       </div>
@@ -485,7 +485,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                       const m = getTokenUsageMetrics(task.tokenUsage!);
                       return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
                         <div key={task.id} className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={task.name}>
+                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
                             • {task.name}
                           </span>
                           <span className="font-mono text-gray-600 dark:text-gray-400">
@@ -498,7 +498,7 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
                       const m = task.tokenUsage ? getTokenUsageMetrics(task.tokenUsage) : null;
                       return (
                         <div key={task.id} className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[180px]" title={task.name}>
+                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
                             • {task.name}
                           </span>
                           <span className="font-mono text-gray-600 dark:text-gray-400">

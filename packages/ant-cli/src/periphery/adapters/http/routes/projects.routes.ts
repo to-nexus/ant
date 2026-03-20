@@ -8,11 +8,13 @@ import { GitOperationError } from '../services/GitService/errors';
 
 function handleGitError(res: Response, error: any, context: string, projectId: string) {
   const message = error instanceof Error ? error.message : String(error);
-  logger.warn(`${context} failed: ${message}`, { component: 'Projects', projectId }, error);
 
   if (error instanceof GitOperationError) {
+    // Expected operational errors (no remote, not initialized, etc.) — no stack trace needed
+    logger.warn(`${context} failed: ${message}`, { component: 'Projects', projectId });
     res.status(error.statusCode).json({ success: false, error: message });
   } else {
+    logger.warn(`${context} failed: ${message}`, { component: 'Projects', projectId }, error);
     res.status(500).json({ success: false, error: message });
   }
 }

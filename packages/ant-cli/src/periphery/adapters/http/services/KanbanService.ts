@@ -146,12 +146,21 @@ export class KanbanService {
     
     let sessionData: any = null;
     const safeReadSession = async (): Promise<any | null> => {
-      if (!fs.existsSync(sessionPath)) return null;
-      
+      // ✅ Use async fs.access instead of fs.existsSync to avoid blocking the event loop.
+      // Blocking reads on EFS can stall the Realtime Server's Node.js event loop,
+      // preventing Redis Pub/Sub messages from flowing and causing SSE reconnect grace
+      // timeouts to fire incorrectly (setting isRunning=false while the job is still active).
+      try {
+        await fs.promises.access(sessionPath);
+      } catch {
+        return null;
+      }
+
       const maxAttempts = 3;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          const raw = fs.readFileSync(sessionPath, 'utf-8');
+          // ✅ async read: does not block the Node.js event loop
+          const raw = await fs.promises.readFile(sessionPath, 'utf-8');
           if (!raw || raw.trim().length === 0) {
             if (attempt < maxAttempts) {
               await new Promise(r => setTimeout(r, 25 * attempt));
