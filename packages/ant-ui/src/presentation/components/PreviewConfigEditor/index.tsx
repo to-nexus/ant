@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Convert from 'ansi-to-html';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
@@ -56,6 +57,13 @@ const STATUS_COLORS: Record<string, string> = {
  * - Preview Controls: start/stop/restart + running status
  * - Status Console: issues, warnings, and logs
  */
+const ansiConverter = new Convert({
+  fg: '#d4d4d4',
+  bg: 'transparent',
+  newline: false,
+  escapeXML: true,
+});
+
 export function PreviewConfigEditor() {
   const { t } = useTranslation('explorer');
   const selectedProject = useStore((s) => s.selectedProject);
@@ -683,9 +691,8 @@ export function PreviewConfigEditor() {
                       className={`text-xs font-mono leading-relaxed ${
                         log.type === 'stderr' ? 'text-red-400' : 'text-gray-300'
                       }`}
-                    >
-                      {log.message}
-                    </div>
+                      dangerouslySetInnerHTML={{ __html: ansiConverter.toHtml(log.message) }}
+                    />
                   ))}
                 </div>
               )}

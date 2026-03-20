@@ -3,10 +3,18 @@
  * Used for: command_running, command_streaming, command
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Terminal, ChevronDown, ChevronRight, ChevronUp, Loader2 } from 'lucide-react';
+import Convert from 'ansi-to-html';
 import type { MessageContent } from '@/domain/models/chat';
+
+const ansiConverter = new Convert({
+  fg: '#d4d4d4',
+  bg: 'transparent',
+  newline: false,
+  escapeXML: true,
+});
 
 interface TerminalCardProps {
   content: MessageContent;
@@ -79,6 +87,10 @@ export function TerminalCard({ content }: TerminalCardProps) {
   };
   
   const config = isActive ? activeConfig : statusConfig;
+  const outputHtml = useMemo(
+    () => output ? ansiConverter.toHtml(output) : '',
+    [output],
+  );
   const hasOutput = output && output.trim().length > 0;
   const isLongCommand = command && command.length > 60;
   const canToggleOutput = hasOutput && isCompleted;
@@ -157,9 +169,10 @@ export function TerminalCard({ content }: TerminalCardProps) {
             className="max-h-[300px] overflow-y-auto scrollbar-thin bg-gray-50 dark:bg-gray-900/50 px-4 py-3"
             style={{ overflowAnchor: 'none' }}
           >
-            <pre className="text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
-              {output}
-            </pre>
+            <pre
+              className="text-xs font-mono text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+              dangerouslySetInnerHTML={{ __html: outputHtml }}
+            />
           </div>
         </div>
       )}
