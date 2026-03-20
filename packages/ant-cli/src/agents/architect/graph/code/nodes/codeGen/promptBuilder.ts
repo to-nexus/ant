@@ -16,7 +16,8 @@ import { CacheableContent } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
-import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
+import { selectDesignFilesByPackages } from "../detectEnvironment/designSelector";
+import { resolveDesignDocForTask, resolveUiDocForTask } from "../documentResolver";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
 import { condenseContent } from "../../../../../../core/utils/contentCondenser";
@@ -71,23 +72,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       )
     : undefined;
 
-  // UI doc injection: only for 'ui' and 'design-system' task types
-  const uiDocForTask = (() => {
-    if (!state.parsedUiDocs || !state.currentTask) return undefined;
-    const t = state.currentTask.type;
-    if (t !== 'ui' && t !== 'design-system') return undefined;
-
-    const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, state.currentTask.uiSections);
-
-    if (uiDoc) {
-      const sectionInfo = state.currentTask.uiSections?.length
-        ? `sections: ${state.currentTask.uiSections.join(', ')}`
-        : 'all sections';
-      console.log(`   🎨 [CodeGen] UI doc injection: ${uiDoc.length} chars (${sectionInfo})`);
-    }
-
-    return uiDoc;
-  })();
+  // UI doc injection via resolver: only for 'ui' and 'design-system' task types
+  const uiDocForTask = resolveUiDocForTask(state.currentTask, state);
+  if (uiDocForTask) {
+    const sectionInfo = state.currentTask.uiSections?.length
+      ? `sections: ${state.currentTask.uiSections.join(', ')}`
+      : 'all sections';
+    console.log(`   🎨 [CodeGen] UI doc injection: ${uiDocForTask.length} chars (${sectionInfo})`);
+  }
   
   // Pass profile to context for TypeScript/React templates on new projects
   // ✅ Also pass detectionReport.profile as fallback for ModeController language detection
@@ -105,35 +97,34 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
   // If missing, fall back to state.design but warn — this indicates a decompose bug.
   let designDocForTask: string | undefined;
-  
+  let designDocFiles: string[] = [];
+
   const isUiTask = state.currentTask.type === 'ui' || state.currentTask.type === 'design-system';
 
-  if (isVerificationTask || isErrorTask || isUiTask) {
-    designDocForTask = undefined;
-    if (!isUiTask) {
-      console.log(`📄 [CodeGen] ${state.currentTask.type} task — skipping designDoc (architecture) injection`);
+  // Design doc injection via resolver
+  const resolvedDesign = resolveDesignDocForTask(state.currentTask, state);
+  designDocForTask = resolvedDesign || undefined;
+
+  if (designDocForTask && !isUiTask && !isErrorTask && !isVerificationTask) {
+    if (state.currentTask.packages?.length && state.designDocs && !state.selectedSpec) {
+      // Packages-based: condense large system design docs.
+      // Outline preserves heading keywords (framework names etc.) so ModeController .includes() checks still work.
+      const designResult = condenseContent(designDocForTask, {
+        threshold: 30_000,
+        label: 'System Design',
+        filePath: state.currentTask.packages
+          .filter(p => p.startsWith('fe-') || p.startsWith('be-'))
+          .map(p => `outputs/design/${p.startsWith('fe') ? 'fe' : 'be'}-system-${p.slice(3)}.md`)
+          .join(', '),
+      });
+      designDocForTask = designResult.content || undefined;
+      designDocFiles = selectDesignFilesByPackages(state.currentTask.packages, state.designDocs);
+      console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → [${designDocFiles.join(', ')}] → ${designDocForTask?.length ?? 0} chars${designResult.wasCondensed ? ' (condensed)' : ''}`);
     }
-  } else if (state.currentTask?.packages && state.currentTask.packages.length > 0 && state.designDocs) {
-    // Package-based split injection (fe, fe-*, be, be-*, shared)
-    const rawDesignDoc = buildDesignDocForTask(state.currentTask.packages, state.designDocs);
-    // Condense large design docs. Outline preserves heading keywords
-    // (framework names etc.) so ModeController .includes() checks still work.
-    const designResult = condenseContent(rawDesignDoc, {
-      threshold: 30_000,
-      label: 'System Design',
-      filePath: state.currentTask.packages
-        .filter(p => p.startsWith('fe-') || p.startsWith('be-'))
-        .map(p => `outputs/design/${p.startsWith('fe') ? 'fe' : 'be'}-system-${p.slice(3)}.md`)
-        .join(', '),
-    });
-    designDocForTask = designResult.content;
-    console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → ${designDocForTask.length} chars${designResult.wasCondensed ? ' (condensed)' : ''}`);
-  } else {
-    // Fallback: all tasks should have packages set by decompose.
-    // If this fires, it indicates a decompose bug (missing packages) or resolve bug (missing designDocs).
+  } else if (!isUiTask && !isErrorTask && !isVerificationTask && !state.currentTask.packages?.length) {
+    // Fallback: packages missing — indicates decompose bug
     console.warn('⚠️ [CodeGen] Fallback to state.design: task.packages or state.designDocs missing (decompose bug)');
     console.warn(`   task.id=${state.currentTask?.id}, task.packages=${JSON.stringify(state.currentTask?.packages)}, hasDesignDocs=${!!state.designDocs}`);
-    designDocForTask = state.design;
   }
 
   // For error tasks with a selected spec doc, inject the spec as the "designDoc".
@@ -601,9 +592,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           injectedVariables: {
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             designDoc: designDocForTask ? `[${designDocForTask.length} chars]` : undefined,
+            designDocFiles: designDocFiles.length > 0 ? designDocFiles : undefined,
             packages: state.currentTask?.packages || undefined,
             prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
             uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
+            uiDocSections: uiDocForTask ? (state.currentTask?.uiSections ?? ['all']) : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
             jobMode: state.detectionReport?.jobMode,
             taskType: state.currentTask?.type,
