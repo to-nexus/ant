@@ -31,7 +31,7 @@ import { loadReferenceContexts } from "./referenceLoader";
 import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, buildPlanPromptBlocks, PLAN_TOOL_LOOP_MAX, taskRequiresPlan, finalizePlanFromExploration } from "./planGeneration";
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
 import { extractFilesFromPlanToolLoop, computeBudgetFromPlanText } from "./utils";
-import { detectTestFiles } from "./testFileDetector";
+import { detectTestFilesFromDisk } from "./testFileDetector";
 
 /**
  * Strip markdown code fences from a string if present.
@@ -347,7 +347,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       state._verificationTracker = {
         buildPassed: false,
         testPassed: false,
-        testsRequired: detectTestFiles(state.projectCodeContext),
+        testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
       };
       console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}`);
     }
