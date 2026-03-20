@@ -57,7 +57,7 @@ Each task object MUST follow this schema:
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
 | `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, or `"verification"` |
-| `priority` | Yes | 100–189: setup, 190–199: design-system (token infra), 200–299: design-system/foundation, 300–649: feature, 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 190–199: design-system (token infra), 200–299: feature (shared foundation), 300–649: feature, 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
@@ -79,7 +79,7 @@ CRITICAL:
 | `"error"` | Something is **broken** | Directive contains error messages, crashes, build failures, or runtime exceptions |
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Always unstyled structure (skeleton only) |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
-| `"design-system"` | Visual **infrastructure** | ui-doc exists: token → CSS + runtime integration (import chain, framework bridge), DS component library (priority 190–299) |
+| `"design-system"` | Visual **infrastructure** | ui-doc exists: token → CSS + runtime integration (import chain, framework bridge) (priority 190–199 only) |
 | `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
 
 **Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
@@ -372,7 +372,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 | **Shared schema types** | Are there domain types (models, entities, response DTOs, input structs) referenced by 2+ feature tasks? |
 | **Cross-boundary coordination** | Will 2+ feature tasks need atomic operations spanning multiple persistence boundaries? |
 
-**Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create dedicated foundation tasks (priority 200-299, after setup, before features) following the Shared Foundation Splitting rules below. Foundation tasks complete before any feature task begins (enforced by a runtime barrier).
+**Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create dedicated foundation tasks (`type: "feature"`, priority 200-299, after setup, before regular features) following the Shared Foundation Splitting rules below. Foundation tasks complete before any feature task begins (enforced by a runtime barrier).
 
 **Constraint**: This task defines types, interfaces, response DTOs, and shared utility functions ONLY. It does NOT implement business logic, API handlers, or data access queries.
 
@@ -476,7 +476,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "setup"` (root, priority 100) -> `exclusive: true`
 - `type: "setup"` (package-level, priority 101+) -> `exclusive: false`, distinct `parallelGroup` per package
 - `type: "design-system"` (priority 190–199) -> `exclusive: false`, `parallelGroup` per task (barriers.designSystem ensures 200+ tasks wait until all 190–199 tasks complete)
-- `type: "design-system"` (priority 200–299) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait)
+- `type: "feature"` (priority 200–299 shared foundation) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait; Schema sub-task is `exclusive`)
 - `type: "ui"` (priority 650–699) -> `parallelGroup` (group with corresponding skeleton task)
 - `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
