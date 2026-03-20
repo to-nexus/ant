@@ -298,6 +298,9 @@ Sub-role is determined by priority:
 - **Scope**: Reusable DS components OR external DS library configuration
 - **Constraint**: No page-specific logic. Reference 190–199 token infrastructure.
 - **Constraint**: Components must be generic and reusable.
+- **Principle**: Observe ui-spec `components` section for shared component definitions (variants, interactionStates, sizes). If `components` section exists, implement components matching those specs.
+- **Principle**: If `components` section is absent or incomplete, observe page `sections` in ui-spec for repeated UI patterns. Extract and generalize into shared components. This is a fallback — explicit `components` specs take precedence.
+- **Constraint**: Do NOT rely on task description for component inventory. The task description defines scope; the ui-spec defines WHAT to build.
 
 **Actions:** Read ui-doc → implement token/component infrastructure → Output `<done>true</done>`
 

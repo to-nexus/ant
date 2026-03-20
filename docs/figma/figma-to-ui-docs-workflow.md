@@ -636,7 +636,30 @@ Coverage Report:
 ```
 
 **누락이 있으면**: 해당 프레임에 대해 `get_design_context`를 추가 호출한 후 재검증한다.
-**Coverage 100%가 확인된 후에만** Phase 3-4로 진행한다.
+**Coverage 100%가 확인된 후에만** Phase 3-3b로 진행한다.
+
+---
+
+### Phase 3-3b: 공용 컴포넌트 추출
+
+Phase 3-1~3-3에서 수집한 페이지/컴포넌트 데이터에서 **여러 페이지에 걸쳐 반복되는 UI 패턴**을 식별하여 ui-spec.json의 top-level `components` 키에 기록한다.
+
+**식별 기준**:
+- 2개 이상 페이지에서 동일 구조로 반복되는 요소 (Button, Input, Badge, Card 등)
+- Figma에서 Component/Instance로 정의된 요소
+- 디자인 시스템 페이지(있는 경우)에 정의된 atomic 요소
+
+**추출 항목** (각 컴포넌트별):
+- `variants`: 크기/색상/상태별 변형 (Primary/Secondary, Small/Medium/Large 등)
+- `interactionStates`: default, hover, focus, disabled, error 등
+- 토큰 참조: 색상, 타이포그래피, spacing, borderRadius
+
+**출력 위치**: ui-spec.json top-level `components` 키
+
+**원칙**:
+- 페이지 sections 내부에 이미 기술된 컴포넌트와 중복 기술하지 않음. `components`는 일반화된 정의, sections는 사용처별 컨텍스트
+- Figma에 명시적 컴포넌트 페이지가 있으면 해당 정의를 우선 사용
+- 없으면 페이지 분석에서 반복 패턴을 관찰하여 추출
 
 ---
 
@@ -1000,6 +1023,7 @@ Figma에서 같은 페이지의 다양한 상태 변형이 별도 프레임으�
 | 조건 | 기록 위치 |
 |------|-----------|
 | 모든 페이지에 표시되는 요소 (Header, Footer 등) | `sections` |
+| 여러 페이지에서 재사용되는 atomic 패턴 | `components` |
 | 페이지별 고유 컴포넌트 | `pages.<page>.components` |
 | 페이지 위에 떠있는 요소 (모달, 토스트) | `overlays` |
 
@@ -1184,6 +1208,13 @@ export 후 파일 크기로 빠르게 검증:
 
 - [ ] **Coverage Report 작성**: 3개 매트릭스의 식별 수 = 조회 수
 - [ ] **누락 0건** 확인. 누락 시 추가 조회 후 재검증
+
+### Phase 3-3b GATE: 공용 컴포넌트 추출 확인
+
+- [ ] 2개 이상 페이지에서 반복되는 UI 패턴이 식별됨 (또는 해당 없음 확인)
+- [ ] 식별된 공용 컴포넌트가 ui-spec.json top-level `components` 키에 기록됨
+- [ ] 각 컴포넌트에 `variants`, `interactionStates`, 토큰 참조가 포함됨
+- [ ] page sections 내부 기술과 중복되지 않음 (일반화된 정의만 포함)
 
 ### Phase 3-4 GATE: Spec 완전성 확인
 
