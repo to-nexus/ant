@@ -155,10 +155,10 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     });
   }
 
-  // Diagnostic objective guard: build must pass for verification and error tasks.
+  // Diagnostic objective guard: build must pass for verification tasks.
   // Verification tasks additionally require tests to pass (if test files exist).
-  // Error tasks (including pre-planned batch-split tasks) require build pass.
-  const isDiagnosticTask = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
+  // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
+  const isDiagnosticTask = state.currentTask?.type === 'verification';
   if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
     const tracker = state._verificationTracker;
 

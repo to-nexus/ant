@@ -362,7 +362,7 @@ export async function generatePlanText(
     const parsed = JSON.parse(planText);
     validatePrescribedPackages(parsed, state);
   } catch (jsonError) {
-    // Continue anyway - CodeGen can still use the structured text
+    console.warn(`⚠️  [Plan] Failed to parse plan JSON for validation — prescribedPackages check skipped. Error: ${(jsonError as Error).message}`);
   }
   
   if (planText.length < 50) {
@@ -461,6 +461,10 @@ function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): vo
     const noUsage = prescribed.filter((p: any) => !p.usedBy?.length);
     if (noUsage.length > 0) {
       console.warn(`⚠️  [Plan] Prescribed packages declared but not used: ${noUsage.map((p: any) => p.package).join(', ')}`);
+    }
+    const emptyApis = prescribed.filter((p: any) => !p.apis || p.apis.length === 0);
+    if (emptyApis.length > 0) {
+      console.warn(`⚠️  [Plan] Prescribed packages with empty apis (signatures not discovered): ${emptyApis.map((p: any) => p.package).join(', ')}`);
     }
     console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
   }
