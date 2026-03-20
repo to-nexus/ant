@@ -6,7 +6,7 @@
  */
 
 import { PlanGraphState } from '../state';
-import { PLANNER_TOOLS } from '../../tools';
+import { ALL_PLANNER_TOOLS } from '../../tools';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 
 export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
@@ -35,7 +35,7 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
     
     await chatAPI.showChatStatus('placeholder', { content: `${tc.name}` });
     
-    const tool = PLANNER_TOOLS.find(t => t.name === tc.name);
+    const tool = ALL_PLANNER_TOOLS.find(t => t.name === tc.name);
     if (!tool) {
       console.error(`[Planner:Tool] Unknown tool: ${tc.name}`);
       toolResultBlocks.push({
