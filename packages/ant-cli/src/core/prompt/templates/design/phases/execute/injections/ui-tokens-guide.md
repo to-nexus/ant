@@ -27,6 +27,18 @@ Extract and document all design tokens from reference screenshots as a JSON stru
 - Use nested JSON structure for organization
 - Names should be technology-agnostic
 
+#### ⚠️ Utility Class Name Collision
+
+CSS utility frameworks generate class names by adding a category prefix to token keys. If a token key already contains that prefix, the resulting class name will have a double prefix.
+
+**Principle**: Token keys represent the part AFTER the framework's utility prefix. The key itself must not duplicate the prefix the framework will add.
+
+**Example**: A framework that generates font-size classes with prefix `text-`:
+- ❌ Key `text-medium-xs` → class `text-text-medium-xs` (double prefix, broken)
+- ✅ Key `medium-xs` → class `text-medium-xs` (correct)
+
+This applies to any category where the framework adds a prefix (font-size, background-color, border-color, etc.).
+
 #### 3. Exhaustive Extraction (WITHIN YOUR SCOPE)
 For the categories specified in YOUR task description, capture ALL instances visible in screenshots.
 
