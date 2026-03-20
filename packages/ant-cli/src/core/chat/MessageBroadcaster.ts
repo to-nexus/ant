@@ -25,6 +25,8 @@ export interface ChatBroadcastMessage {
  * MessageBroadcaster - Broadcasts chat events via user-scoped Redis Pub/Sub channels
  */
 export class MessageBroadcaster {
+  private pendingPublishes = new Set<Promise<void>>();
+
   constructor(private stateStore?: StateStorePort) {}
 
   /**
@@ -82,13 +84,16 @@ export class MessageBroadcaster {
     const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
     
     // Fire-and-forget: publish asynchronously without blocking
-    this.stateStore.publish(channel, message).catch((error) => {
-      logger.error(`Failed to publish chat message to Redis channel ${channel}`, { 
-        component: 'MessageBroadcaster', 
-        projectId, 
-        featureName 
-      }, error);
-    });
+    const p = this.stateStore.publish(channel, message)
+      .catch((error) => {
+        logger.error(`Failed to publish chat message to Redis channel ${channel}`, {
+          component: 'MessageBroadcaster',
+          projectId,
+          featureName
+        }, error);
+      })
+      .finally(() => { this.pendingPublishes.delete(p); });
+    this.pendingPublishes.add(p);
   }
 
   /**
@@ -177,5 +182,17 @@ export class MessageBroadcaster {
       contentIndex,
       durationMs
     }, userContext);
+  }
+
+  /**
+   * Wait for all pending publishes to complete (or timeout).
+   * Call before process exit to prevent losing the last few broadcasts.
+   */
+  async drain(timeoutMs = 2000): Promise<void> {
+    if (this.pendingPublishes.size === 0) return;
+    await Promise.race([
+      Promise.all(this.pendingPublishes),
+      new Promise<void>(r => setTimeout(r, timeoutMs))
+    ]);
   }
 }

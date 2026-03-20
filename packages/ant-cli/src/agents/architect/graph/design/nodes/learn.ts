@@ -227,7 +227,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // If worker calls endJob, it prematurely terminates workflow visualization
   // while other workers are still running. Only the MAIN graph's learn should end the job.
   if (!_isWorkerContext && state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.endJob(state._httpJobId);
+    await state.deps.workflowUpdate.endJob(state._httpJobId);
     console.log(`\n🏁 Job ended: ${state._httpJobId}\n`);
   }
   

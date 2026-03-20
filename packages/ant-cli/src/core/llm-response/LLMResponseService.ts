@@ -442,6 +442,13 @@ export class LLMResponseService {
     await this.showChatStatus('read', { filePath, error, _mergeIndex: readingIndex });
   }
 
+  /**
+   * Drain all pending broadcast publishes before process exit.
+   */
+  async drainBroadcaster(): Promise<void> {
+    await this.broadcaster.drain();
+  }
+
   // ============================================================================
   // Private Helpers
   // ============================================================================
