@@ -501,8 +501,10 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         if (task.type === 'error') {
           const remaining = taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
           console.log(`📋 [ParallelOrchestrator] Error task done. ${remaining} error task(s) remain — will run independently`);
-          const hasFinal = taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-          if (!hasFinal) {
+          const hasFinalInQueue = taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+          const hasFinalRunning = orchestrator.getRunningTasks().some((t: any) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
+          const hasFinalCompleted = orchestrator.getCompletedTasks().some((t: any) => t.type === 'verification');
+          if (!hasFinalInQueue && !hasFinalRunning && !hasFinalCompleted) {
             const finalTask: CodeTask = {
               id: `final-verification-recheck-${Date.now()}`,
               name: 'Final Verification (Recheck)',
