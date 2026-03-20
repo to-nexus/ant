@@ -183,9 +183,126 @@ const editFile: ToolDefinition = {
   },
 };
 
+/**
+ * write_file — Shadow tool for LLM hallucination recovery.
+ *
+ * LLM sometimes hallucinates write_file instead of using <file> XML tag.
+ * Instead of returning an error and wasting a retry cycle, we intercept
+ * and execute the file write directly since the content is already available.
+ */
+const writeFile: ToolDefinition = {
+  name: 'write_file',
+  description: 'Shadow tool for LLM hallucination recovery (write_file → <file> tag)',
+  parameters: {
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'Relative path from feature root' },
+      content: { type: 'string', description: 'File content to write' },
+    },
+    required: ['path', 'content'],
+  },
+  execute: async (args) => {
+    return handleHallucinatedFileWrite(args.path, args.content, false);
+  },
+};
+
+/**
+ * append_file — Shadow tool for LLM hallucination recovery.
+ *
+ * LLM sometimes hallucinates append_file instead of using <append> XML tag.
+ */
+const appendFile: ToolDefinition = {
+  name: 'append_file',
+  description: 'Shadow tool for LLM hallucination recovery (append_file → <append> tag)',
+  parameters: {
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'Relative path from feature root' },
+      content: { type: 'string', description: 'Content to append' },
+    },
+    required: ['path', 'content'],
+  },
+  execute: async (args) => {
+    return handleHallucinatedFileWrite(args.path, args.content, true);
+  },
+};
+
+/**
+ * Handle hallucinated append_file/write_file tool calls in planner.
+ *
+ * Uses direct fs access (same as editFile) since planner has no fileSystem port.
+ */
+async function handleHallucinatedFileWrite(
+  filePath: string,
+  content: string,
+  isAppend: boolean,
+): Promise<string> {
+  if (!workspaceFeaturePath) {
+    return 'Error: No workspace context available';
+  }
+
+  if (!content) {
+    return `Error: ${isAppend ? 'append_file' : 'write_file'} called without content. Use ${isAppend ? '<append>' : '<file>'} XML tag instead.`;
+  }
+
+  const resolvedPath = path.join(workspaceFeaturePath, filePath);
+
+  // Security: prevent path traversal
+  if (!resolvedPath.startsWith(workspaceFeaturePath)) {
+    return 'Error: Path traversal not allowed';
+  }
+
+  const chatAPI = getChatAPIClient();
+  const toolName = isAppend ? 'append_file' : 'write_file';
+
+  try {
+    // Ensure parent directory exists
+    const dir = path.dirname(resolvedPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    if (isAppend && fs.existsSync(resolvedPath)) {
+      const existing = fs.readFileSync(resolvedPath, 'utf-8');
+      fs.writeFileSync(resolvedPath, existing + '\n' + content, 'utf-8');
+    } else {
+      fs.writeFileSync(resolvedPath, content, 'utf-8');
+    }
+
+    // Notify file tree update
+    if (fileTreeUpdatePort) {
+      const projectId = process.env.ANT_PROJECT_ID;
+      const featureName = process.env.ANT_FEATURE_NAME;
+      if (projectId && featureName) {
+        fileTreeUpdatePort.notifyFileTreeUpdate(projectId, featureName);
+      }
+    }
+
+    // Chat UI notification: file card
+    await chatAPI.completeFileEdit(filePath, '', content);
+
+    console.warn(`⚠️  [Tool] LLM hallucinated ${toolName} → auto-converted to file ${isAppend ? 'append' : 'write'} for ${filePath}`);
+
+    const action = isAppend ? 'appended' : 'written';
+    return `File ${action} successfully: ${filePath} (auto-recovered from ${toolName} tool call).\n\n` +
+      `⚠️ IMPORTANT: "${toolName}" is not a real tool. For future file operations, use the <file path="...">content</file> XML tag format instead.`;
+  } catch (error: any) {
+    await chatAPI.failFileEdit(filePath, error.message);
+    return `Error ${isAppend ? 'appending to' : 'writing'} file: ${error.message}`;
+  }
+}
+
+/** Tools advertised to the LLM (tool definitions sent in API call) */
 export const PLANNER_TOOLS: ToolDefinition[] = [
   readWorkspaceFile,
   listWorkspaceFiles,
   searchWeb,
   editFile,
+];
+
+/** All tools including shadow tools for hallucination recovery (used in tool node execution) */
+export const ALL_PLANNER_TOOLS: ToolDefinition[] = [
+  ...PLANNER_TOOLS,
+  writeFile,
+  appendFile,
 ];

@@ -86,6 +86,18 @@ async function executeDesignTool(
         });
         break;
       }
+      case 'append_file':
+      case 'write_file': {
+        // LLM hallucination recovery: append_file/write_file → fileSystem operations
+        const isAppend = name === 'append_file';
+        const { path: filePath, content } = args as { path: string; content: string };
+        if (!content) {
+          throw new Error(`${name} called without content. Use ${isAppend ? '<append>' : '<file>'} XML tag instead.`);
+        }
+        result = await handleHallucinatedFileWrite(state, filePath, content, isAppend);
+        console.warn(`⚠️  [Tool] LLM hallucinated ${name} → auto-converted to file ${isAppend ? 'append' : 'write'} for ${filePath}`);
+        break;
+      }
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -880,8 +892,79 @@ async function handleListReferenceImages(
 }
 
 /**
+ * Handle hallucinated append_file/write_file tool calls.
+ *
+ * LLM sometimes hallucinates these tools instead of using <file>/<append> XML tags.
+ * Instead of returning an error and wasting a retry cycle, we intercept and execute
+ * the file operation directly since the content is already available in args.
+ */
+async function handleHallucinatedFileWrite(
+  state: DesignGraphState,
+  filePath: string,
+  content: string,
+  isAppend: boolean,
+): Promise<string> {
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) {
+    throw new Error('FileSystemPort not available');
+  }
+
+  const chatAPI = getChatAPIClient();
+  const path = await import('path');
+  const featurePath = state.context.featurePath;
+  if (!featurePath) {
+    throw new Error('featurePath not available in context');
+  }
+
+  const absolutePath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(featurePath, filePath);
+
+  const rootPath = fileSystem.getRootPath?.() || '';
+  const relativePath = rootPath
+    ? path.relative(rootPath, absolutePath)
+    : absolutePath.replace(/^\//, '');
+
+  await chatAPI.startFileEdit(filePath);
+
+  try {
+    if (isAppend) {
+      const exists = await fileSystem.fileExists(relativePath);
+      if (exists) {
+        const existing = await fileSystem.readFile(relativePath);
+        await fileSystem.writeFile(relativePath, existing + '\n' + content);
+      } else {
+        await fileSystem.writeFile(relativePath, content);
+      }
+    } else {
+      await fileSystem.writeFile(relativePath, content);
+    }
+
+    // Notify file tree update
+    if (state.deps?.fileTreeUpdate) {
+      const featureName = state.context.featureFolder || 'default';
+      state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
+      if ('addUnseenArtifacts' in state.deps.fileTreeUpdate && filePath.startsWith('outputs/')) {
+        (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
+          state.context.project, featureName, [filePath]
+        );
+      }
+    }
+
+    // Chat UI notification
+    await chatAPI.completeFileEdit(filePath, '', content);
+
+    const action = isAppend ? 'appended' : 'written';
+    return `File ${action} successfully: ${filePath} (auto-recovered from ${isAppend ? 'append_file' : 'write_file'} tool call)`;
+  } catch (error) {
+    await chatAPI.failFileEdit(filePath, (error as Error).message);
+    throw error;
+  }
+}
+
+/**
  * Handle list_assets tool
- * 
+ *
  * Lists all runtime asset files in inputs/assets/
  */
 async function handleListAssets(
