@@ -347,10 +347,10 @@ export class BullMQJobQueue implements JobQueuePort {
       }
     }
     
-    // ✅ CRITICAL: Clear userStopped flag for resume
-    // Without this, JobWorker immediately cancels the resumed job
-    await this.stateStore.clearUserStopped(jobId);
-    logger.debug(`Cleared userStopped flag for job: ${jobId}`, { component: 'BullMQJobQueue' });
+    // NOTE: clearUserStopped is now called in JobWorker.processJob() AFTER
+    // killing any existing child process. This prevents the race where the old
+    // child's checkCancellation polling misses the flag because it was cleared
+    // too early here in enqueue().
 
     // ✅ Track enqueue timestamp for delay measurement
     const enqueuedAt = Date.now();
