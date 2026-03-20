@@ -54,5 +54,5 @@ export interface WorkflowStateUpdatePort {
   /**
    * Job 종료 알림
    */
-  endJob(jobId: string): void;
+  endJob(jobId: string): void | Promise<void>;
 }

@@ -581,6 +581,16 @@ export class ChatAPIClient {
   }
 }
 
+/**
+ * Drain all pending chat broadcast publishes.
+ * Call before process exit to prevent losing the last few SSE messages.
+ */
+export async function drainChatBroadcaster(): Promise<void> {
+  if (llmResponseService) {
+    await llmResponseService.drainBroadcaster();
+  }
+}
+
 // Singleton instance
 let chatAPIClient: ChatAPIClient | null = null;
 
