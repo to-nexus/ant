@@ -8,7 +8,7 @@
 
 ## Core Principles
 
-### 1. Architecture Pattern Selection
+### 1. Architecture Decisions
 
 #### 1.1 Architecture Observation
 
@@ -18,16 +18,22 @@
 | **Integration boundary count** | Does the system interact with multiple external systems that may change independently? |
 | **Dependency direction concern** | Do core business rules need to be testable or replaceable independent of framework and persistence? |
 
-#### 1.2 Architecture Selection Principle
+#### 1.2 Architecture Decision Dimensions
 
-| Complexity Observed | Pattern Direction |
-|--------------------|--------------------|
-| Thin domain logic, straightforward data flow | Framework-conventional layering sufficient |
-| Non-trivial domain rules and invariants | Explicit domain boundary separated from infrastructure |
-| Multiple external integration points with substitution needs | Port/adapter boundaries isolating external dependencies |
+Architecture is not a single label — it is the combination of independent design decisions. Evaluate each dimension separately based on observed complexity.
 
-**Constraint**: Do NOT default to the most complex pattern. Observed complexity must justify the chosen separation level.  
-**Constraint**: Selected pattern MUST be stated in the design document with explicit boundary responsibilities.
+**Dimension 1 — Code Organization**: What primary axis groups the codebase?
+- Observe: number of independent domain/service areas, proportion of shared code across domains, overall codebase size
+- Principle: If the codebase is small enough that grouping adds no value, keep it flat. If distinct domain areas emerge, organize by domain/feature. If technical layers dominate interaction patterns, organize by layer. The observed structure must justify the chosen axis.
+
+**Dimension 2 — Internal Structure**: How are responsibilities separated and dependency directions controlled within each unit?
+- Observe: domain logic complexity, need for external dependency substitution, test independence requirements
+- Principle: If domain logic is thin pass-through, a flat internal structure suffices. If framework conventions naturally enforce separation, follow them. If domain rules must be isolated from infrastructure and tested independently, define explicit boundaries with dependency direction rules. The observed complexity must justify the separation level.
+
+**Constraint**: Do NOT default to the most complex option in either dimension. Observed complexity must justify the decision.
+**Constraint**: Each dimension's decision MUST be stated with rationale in the design document.
+**Constraint**: If the user names a specific architecture (e.g., "Clean Architecture"), decompose it into these dimensions and evaluate each against observed complexity. Do NOT adopt the name as-is.
+**Constraint**: Do NOT output a single architecture label as the decision.
 
 #### 1.3 Directory Structure Principle
 

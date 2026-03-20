@@ -70,7 +70,7 @@ DO NOT CREATE tasks for:
 - ❌ "Final verification" or "review" tasks
 - ❌ Separate documents (all tasks → ONE document per tier)
 {{#if (eq jobMode "refactor")}}
-- ❌ Multiple chapter-based tasks (refactor mode = single focused task)
+- ❌ Multiple tasks targeting the SAME file (one task per file only)
 - ❌ Full document regeneration (only modify requested section)
 {{/if}}
 
@@ -148,7 +148,7 @@ Each per-service document uses the **same catalog sections** but organizes conte
 
 Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
 
-**Create exactly ONE task for the specific modification requested.**
+**Create one task per affected file.** Most refactors need only one task (one file). If the change genuinely spans multiple documents (e.g., auth change affecting both `be-system-main.md` and `api-contract-main.md`), create one task per affected file — tasks targeting different files run in parallel.
 
 {{#if existingDesignFiles}}
 **⚠️ CRITICAL: `targetFile` MUST be one of these existing files:**
@@ -161,12 +161,13 @@ Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
 {
   "documentType": "unified",
   "jobMode": "refactor",
-  "targetFiles": ["{chosen-file-from-existing-list}"],
+  "targetFiles": ["{affected-file-1}", "{affected-file-2-if-needed}"],
   "tasks": [
     {
-      "id": "refactor-{section}",
+      "id": "refactor-{file-scope}",
       "name": "Refactor: {brief description}",
-      "targetFile": "{chosen-file-from-existing-list}",
+      "targetFile": "{affected-file}",
+      "parallelGroup": "{affected-file-without-ext}",
       "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 200
     }
@@ -178,12 +179,14 @@ Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
 
 | Constraint | Requirement |
 |------------|-------------|
-| Task count | Exactly ONE |
-| ID format | `refactor-{section}` |
+| Tasks per file | Exactly ONE — never split a single file into multiple tasks |
+| Cross-file tasks | Allowed when change genuinely spans multiple documents |
+| ID format | `refactor-{file-scope}` (e.g., `refactor-be-auth`, `refactor-api-auth`) |
 | Name format | `Refactor: {description}` |
 | Description | Must include "Keep all other content unchanged" |
 | targetFile | MUST match an existing design document filename |
-| targetFiles | Include ONLY the file being modified — do NOT list files unrelated to the change |
+| targetFiles | Include ONLY affected files — do NOT list files unrelated to the change |
+| parallelGroup | `{targetFile without .md}` — tasks targeting different files run in parallel |
 
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)

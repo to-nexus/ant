@@ -235,7 +235,7 @@ System Design: [Omit CryptoPanic entirely from design]
 **Tier 1: Document Exactly (Architectural Constraints)**
 - External services named in PRD: "Stripe API", "NewsData.io"
 - Platform constraint INTENT: "Frontend-only" (not "browser-based")
-- Architecture patterns: "Layered", "Event-driven"
+- Architectural constraints from PRD: "event-driven communication required", "no microservices"
 - Technology prohibitions: "No MongoDB", "No GraphQL"
 
 **Tier 2: Abstract to Role (Technology Choices)**
@@ -371,7 +371,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 **NOTE**: Universal writing rules and forbidden content are defined in your system prompt.
 
 **FINAL CHECKLIST**:
-1. ✅ **Architecture defined**: Clear pattern selection (Layered, MVC, etc.)?
+1. ✅ **Architecture defined**: Design decisions (organization, internal structure) stated with rationale?
 2. ✅ **Architecture boundaries**: Modules/layers and responsibilities specified?
 3. ✅ Followed PRD constraints (tech stack, scope)?
 4. ✅ Skipped sections not applicable to project type?

@@ -1,5 +1,5 @@
 ### § Overview
-- System purpose, selected architecture pattern with rationale (reference observation from §1.1)
+- System purpose, architecture decisions per dimension with rationale (reference observations from §1.1)
 - PRD constraints relevant to architecture (platform, integrations, prohibitions)
 
 ### § Architecture Boundaries

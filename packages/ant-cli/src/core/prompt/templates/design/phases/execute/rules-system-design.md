@@ -548,7 +548,7 @@ Before generating output, verify:
 - [ ] **Platform constraints documented verbatim** ("client-side only", "no backend")
 
 ### Document Quality
-- [ ] **Architecture pattern selected and clearly defined** with explicit boundary responsibilities
+- [ ] **Architecture decisions (organization, internal structure) stated with rationale** and explicit boundary responsibilities
 - [ ] **Responsibilities non-overlapping** (each boundary owns distinct concerns)
 - [ ] **Domain rules explicit** (normalization, validation, business policies)
 - [ ] **Extension points clear** (adapters, ports, strategies)
