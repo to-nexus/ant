@@ -243,6 +243,33 @@ import Image from 'next/image';
 
 ---
 
+### ⚠️ SVG Theme Compatibility
+
+**Principle**: SVG icons with hardcoded `fill` or `stroke` colors become invisible when the app's color scheme changes.
+
+**Constraint**: Before using an SVG asset:
+1. Check `ui-assets.json` for `themeAdaptation` field
+2. If `"currentColor"` — replace hardcoded colors with `currentColor` in the SVG, and render inline (NOT via `<img>`)
+3. If `"static"` — use as-is (brand assets)
+
+**Rendering method by adaptation type:**
+
+| themeAdaptation | Rendering | Why |
+|----------------|-----------|-----|
+| `currentColor` | Inline SVG component or SVG sprite | `<img>` cannot inherit CSS `color` |
+| `static` | `<img>` or inline — either works | Colors are fixed by design |
+| `partial` | Inline SVG component | Need selective color control |
+
+```tsx
+// ❌ WRONG: <img> with theme-dependent SVG — color won't change
+<img src="/icons/wallet.svg" />
+
+// ✅ CORRECT: Inline SVG inherits text color
+<WalletIcon className="text-gray-700 dark:text-gray-300" />
+```
+
+---
+
 ## 🖼️ Image Rendering Verification
 
 When images fill their container (fill mode, 100% size, background-size: cover, etc.):

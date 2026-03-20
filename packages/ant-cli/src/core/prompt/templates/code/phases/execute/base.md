@@ -291,6 +291,7 @@ Sub-role is determined by priority:
   2. Typography utility file generation
   3. Global CSS entry file: imports for token + typography files
   4. Framework bridge: CSS vars → utility classes (Tailwind @theme or config extend)
+- **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks (Tailwind, UnoCSS) add category prefixes when generating classes (`text-` for fontSize, `bg-` for backgroundColor, `border-` for borderColor). When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix. Example: token key `text-medium-xs` → config key `medium-xs` (generates correct class `text-medium-xs`), NOT config key `text-medium-xs` (generates broken class `text-text-medium-xs`).
 - **Execution**: Read tokens → generate files → wire imports → verify entry file imports all token sources
 
 **priority 200–299 (Component Library)**

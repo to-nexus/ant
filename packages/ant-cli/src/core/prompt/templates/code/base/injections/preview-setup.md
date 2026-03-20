@@ -45,10 +45,9 @@ reading from an environment variable injected at dev server startup.
 
 ## SSR Image Optimization
 
-**Constraint**: SSR frameworks with built-in image optimization may internally fetch images
-in a way that ignores the path prefix. When path prefix env var is set, image optimization MUST be disabled. When absent (production), it works normally.
+**Constraint**: SSR frameworks with built-in image optimization internally fetch images in a way that ignores the path prefix. When path prefix env var is set, image optimization MUST be disabled. When absent (production), it works normally.
 
-**Observation Target**: Does the framework perform server-side image optimization? If NOT observed, do NOT add any image optimization toggle.
+**Constraint**: Next.js performs image optimization by default (`<Image>` component routes through `/_next/image`). When `NEXT_PUBLIC_BASE_PATH` is set, add `images: { unoptimized: true }` to `next.config`. When absent, omit this setting (production uses optimization normally).
 
 ---
 
@@ -57,6 +56,7 @@ in a way that ignores the path prefix. When path prefix env var is set, image op
 - **Client-side router base path is EASILY FORGOTTEN.** The framework config sets the base path for assets, but the router often needs a separate setting. Verify both.
 - **SSR fetch with path prefix**: Server-side data fetching (e.g., API routes) may construct URLs without the base path. Verify that server-side fetches also respect the prefix if they target the same proxy.
 - **Static assets in HTML**: Hardcoded paths in HTML templates (favicon, manifest, etc.) are NOT rewritten by the framework base path. Use relative paths or template the prefix.
+- **Framework image component is EASILY SKIPPED.** Bare `<img>` tags do NOT receive basePath prefix. Use the framework's image component (Next.js `<Image>`, Nuxt `<NuxtImg>`) for ALL local image references so that basePath is automatically applied. Reserve bare `<img>` only for external URLs.
 
 ---
 
