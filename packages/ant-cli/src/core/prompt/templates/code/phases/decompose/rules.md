@@ -355,7 +355,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Constraint**: Do NOT create a separate task for copying assets. UI tasks handle asset integration as part of their implementation.
 
-**Constraint**: `"feature"` tasks (frontend components) MUST always be headless — unstyled structure only. Prefix description with `<skeleton>`. A corresponding `"ui"` task provides the visual pass.
+**Constraint**: `"feature"` tasks (frontend components) MUST always be headless — unstyled structure only. A corresponding `"ui"` task provides the visual pass.
 
 ---
 
