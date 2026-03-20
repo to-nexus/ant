@@ -238,7 +238,12 @@ export class PromptLogger {
           sanitized[key] = value;
         }
       } else if (Array.isArray(value)) {
-        sanitized[key] = `[ARRAY: ${value.length} items]`;
+        // Keep small string arrays as-is for readability (e.g. packages, designDocFiles, uiDocSections)
+        if (value.length <= 10 && value.every(v => typeof v === 'string')) {
+          sanitized[key] = value;
+        } else {
+          sanitized[key] = `[ARRAY: ${value.length} items]`;
+        }
       } else if (typeof value === 'object') {
         sanitized[key] = `[OBJECT: ${Object.keys(value).length} keys]`;
       } else {
