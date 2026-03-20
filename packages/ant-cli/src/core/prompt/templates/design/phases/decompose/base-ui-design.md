@@ -127,6 +127,7 @@ You are analyzing UI complexity to break it into tasks.
 | ui-spec-ch3 | 320 | Main content sections (first half). Follow ch1's section pattern. |
 | ui-spec-ch4 | 330 | Main content sections (second half). Follow ch1's section pattern. |
 | ui-spec-ch5 | 340 | Footer + interactions + accessibility. Follow ch1's section pattern. |
+| ui-spec-components | 349 | (append) Shared reusable components. Observe ch2-ch5 for repeated UI patterns across pages. Extract generalized component definitions into top-level `components` key. Follow ch1's section pattern. Skip already-documented topics. |
 
 **⚠️ Pattern Consistency**:
 - ch1 writes actual content with a specific structure pattern (e.g., `## 1.`, `## 2.`)

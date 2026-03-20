@@ -90,6 +90,8 @@ CRITICAL:
 
 **Constraint**: `"design-system"` at priority 200–299 is ONLY for design-system wiring (wiring design tokens/component library into app framework code). Entity models, API clients, ports, and shared domain logic are `"feature"` type — NEVER `"design-system"`. If there is no design system to wire, priority 200–299 tasks are always `"feature"`.
 
+**Constraint**: `"design-system"` at priority 200–299 description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes ui-spec at runtime to determine which shared components to create. Description should define SCOPE (e.g., "shared component library from ui-spec observation") not a component inventory.
+
 **Blind spot**: First-time build failures ARE errors. A crash does not require "it worked before" to qualify as `"error"`.
 
 ---

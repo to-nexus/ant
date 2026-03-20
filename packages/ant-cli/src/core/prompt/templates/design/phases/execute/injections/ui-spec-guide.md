@@ -323,6 +323,49 @@ When exact color is uncertain, use description:
 
 ---
 
+## Shared Components (Top-Level `components` Key)
+
+**Principle**: Components that repeat across multiple pages should be defined ONCE in top-level `components`, then referenced by page sections. This prevents inconsistent specs for the same element.
+
+**When to populate**:
+- Button/Input/Select with consistent styling across pages → extract
+- Card patterns reused in different page contexts → extract
+- Badge/Tag with fixed variant set → extract
+
+**Component definition format**:
+```json
+{
+  "components": {
+    "<component-id>": {
+      "intent": "<purpose and design rationale>",
+      "variants": {
+        "<variant-name>": {
+          "background": "<token>",
+          "color": "<token>",
+          "borderRadius": "<token>",
+          "padding": "<token>"
+        }
+      },
+      "interactionStates": {
+        "default": { },
+        "hover": { },
+        "disabled": { }
+      },
+      "sizes": {
+        "sm": { "height": "<token>", "fontSize": "<token>" },
+        "md": { }
+      }
+    }
+  }
+}
+```
+
+**Constraint**: Do NOT duplicate full component specs in page sections. Page sections reference shared components by ID and add context-specific overrides only.
+
+**Constraint**: Extract only truly shared patterns. A component used in exactly one place belongs in that page's section, not in top-level `components`.
+
+---
+
 ## Quality Checklist
 
 - [ ] Only specified elements documented
