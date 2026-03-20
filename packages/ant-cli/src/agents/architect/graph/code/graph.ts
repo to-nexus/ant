@@ -108,10 +108,9 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     });
   }
 
-  // ✅ Diagnostic objective guard: build must pass for verification and error tasks.
-  // Verification tasks additionally require tests to pass (if test files exist).
-  // Error tasks (including pre-planned batch-split tasks) require build pass.
-  const isDiagnosticTask = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
+  // Diagnostic objective guard: build must pass for verification tasks.
+  // Error tasks are code-fix only — build verification deferred to the re-enqueued verification task.
+  const isDiagnosticTask = state.currentTask?.type === 'verification';
   if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
     const tracker = state._verificationTracker;
 
@@ -698,6 +697,19 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             usedInCode.add(pp.package);
           }
         }
+      }
+      const emptyApisInCode = new Set<string>();
+      for (const entry of planEntries) {
+        for (const pp of entry.plan?.prescribedPackages || []) {
+          if (pp.usedBy?.some((u: string) => !depManifestNames.has(u)) && (!pp.apis || pp.apis.length === 0)) {
+            emptyApisInCode.add(pp.package);
+          }
+        }
+      }
+      if (emptyApisInCode.size > 0) {
+        console.warn(
+          `⚠️  [PackageCoverage] Packages used in code but with empty apis (likely import-only, no real API calls): ${[...emptyApisInCode].join(', ')}`,
+        );
       }
       const missing = state.designDocUnknownPackages.filter(p => !usedInCode.has(p));
       if (missing.length > 0) {

@@ -185,7 +185,9 @@ function processDiagnosticBatchSplit(
     }
 
     const hasFileOverlap = computeBatchFileOverlap(parsed.batches);
-    const parallelGroup = hasFileOverlap ? undefined : `error-batch-${Date.now()}`;
+    // Each batch gets a unique parallelGroup so TaskOrchestrator can run them concurrently.
+    // Batches with file overlap use exclusive:true (sequential) instead.
+    const batchGroupBase = hasFileOverlap ? null : `error-batch-${Date.now()}`;
 
     const subTaskIds: string[] = [];
     for (let i = 0; i < parsed.batches.length; i++) {
@@ -208,7 +210,7 @@ function processDiagnosticBatchSplit(
         priority: (nextTask.priority || 500) - 1,
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
-        parallelGroup,
+        parallelGroup: batchGroupBase ? `${batchGroupBase}-${i}` : undefined,
       };
       state.taskQueue.push(subTask);
       subTaskIds.push(subTask.id);
@@ -339,17 +341,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     resetTaskTokenUsage(state as any);
     state._codeGenCallIndex = 0;
 
-    // ✅ Initialize verification tracker for diagnostic tasks (verification + error)
-    if (nextTask.type === 'verification' || nextTask.type === 'error') {
-      const testsRequired = nextTask.type === 'verification'
-        ? detectTestFiles(state.projectCodeContext)
-        : false; // error tasks: build only, tests deferred to Final Verification
+    // ✅ Initialize verification tracker for verification tasks only.
+    // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
+    if (nextTask.type === 'verification') {
       state._verificationTracker = {
         buildPassed: false,
         testPassed: false,
-        testsRequired,
+        testsRequired: detectTestFiles(state.projectCodeContext),
       };
-      console.log(`🔍 [Plan] VerificationTracker initialized: type=${nextTask.type}, testsRequired=${testsRequired}`);
+      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}`);
     }
 
     // ✅ Log task_start event to debug/logs/
@@ -468,7 +468,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // When a diagnostic task splits into batches, each batch becomes an error task
   // with prePlanText already set. Skip all plan generation and go straight to codeGen.
-  const hasPrePlanText = !isRetry && (nextTask as CodeTask).prePlanText && (nextTask as CodeTask).prePlanText!.length > 50;
+  // Error tasks always use prePlanText — even on retry.
+// budget_exhausted retry should re-attempt the same fix, not re-run tsc diagnostics.
+// Re-running diagnostics on retry causes cascade: sibling domain errors → duplicate subtasks.
+const hasPrePlanText =
+  (nextTask as CodeTask).prePlanText != null &&
+  (nextTask as CodeTask).prePlanText!.length > 50 &&
+  (!isRetry || nextTask.type === 'error');
   
   if (hasPrePlanText) {
     console.log(`\n⚡ [Plan] Pre-planned error task "${nextTask.name}" — using prePlanText (${(nextTask as CodeTask).prePlanText!.length} chars)`);
@@ -492,19 +498,18 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       conversationHistory: [],
       _planExploring: false,
       planConversationHistory: undefined,
-      // Initialize fresh tracker: workerCheckTaskStatus enforces that the LLM
-      // runs a build command before marking done (same guard as verification tasks).
-      _verificationTracker: { buildPassed: false, testPassed: false, testsRequired: false },
+      // Error tasks don't verify builds — build verification is deferred to the re-enqueued verification task.
+      _verificationTracker: undefined,
     };
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 0.7: Diagnostic task retry — always re-diagnose
+  // STEP 0.7: Verification task retry — always re-diagnose
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Diagnostic tasks (verification/error) must re-run build/test on retry to get
-  // fresh error state. Never skip to reuse old planText — the codebase has changed.
-  if (isRetry && (nextTask.type === 'verification' || nextTask.type === 'error')) {
-    console.log(`\n🔄 [Plan] Diagnostic retry — will re-run build/test via tool loop for fresh error analysis`);
+  // Verification tasks must re-run build/test on retry to get fresh error state.
+  // Error tasks are code-fix only — they don't run a diagnostic loop even on retry.
+  if (isRetry && nextTask.type === 'verification') {
+    console.log(`\n🔄 [Plan] Verification retry — will re-run build/test via tool loop for fresh error analysis`);
     console.log(`   Violations from previous attempt: ${state.violations?.length || 0}`);
     // Fall through to full plan flow (keyword/RAG/tool-loop/planText generation)
   }
