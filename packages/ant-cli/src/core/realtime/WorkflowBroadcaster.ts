@@ -277,24 +277,26 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   /**
    * End job tracking
    */
-  endJob(jobId: string): void {
+  async endJob(jobId: string): Promise<void> {
     // Close all remaining history entries
     for (const worker of this.activeWorkers.values()) {
       this.closeHistoryEntry(worker.nodeId);
     }
-    
+
     // Clear all active state
     this.activeWorkers.clear();
     this.state.activeNodes = [];
     this.state.isCompleted = true;
     this.state.endedAt = new Date().toISOString();
     this.state.activeActors = [];
-    
-    // Fire-and-forget broadcast (isEndEvent: true)
-    this.broadcastState(true).catch(err => {
+
+    // Await broadcast to ensure endJob event is delivered before process exits
+    try {
+      await this.broadcastState(true);
+    } catch (err: any) {
       console.warn(`[WorkflowBroadcaster] Failed to broadcast endJob:`, err.message);
-    });
-    
+    }
+
     console.log(`[WorkflowBroadcaster] Job ended: ${jobId}`);
   }
 

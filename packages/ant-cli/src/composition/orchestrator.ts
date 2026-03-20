@@ -185,24 +185,26 @@ export async function orchestrator(params: {
 
       if (jobType === 'design') {
         console.log('🔧 [Orchestrator:Design] Starting design job...');
-        
+
         const analyzer = new CodebaseAnalyzer();
-        
+
         // ✅ Real-time updates via Redis Pub/Sub (Job Worker child process → Redis → Realtime Server → SSE)
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
         let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
-        
+        let closeBroadcasters: (() => Promise<void>) | undefined = undefined;
+
         if (process.env.ANT_REDIS_URL) {
           try {
             const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
             const options = getBroadcasterOptionsFromEnv();
-            
+
             if (options) {
               const broadcasters = createRealtimeBroadcasters(options);
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
               workflowUpdate = broadcasters.workflow;
+              closeBroadcasters = () => broadcasters.close();
               console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Design]');
             } else {
               console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Design]');
@@ -213,44 +215,53 @@ export async function orchestrator(params: {
         } else {
           console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Design]');
         }
-        
+
         // ✅ Create session with file tree update support (agent-nested)
         const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
-        
+
         // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
-        return await architectAgent(
-          input, 
-          project || "default", 
-          'design', 
-          inputFile, 
+        const result = await architectAgent(
+          input,
+          project || "default",
+          'design',
+          inputFile,
           { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           jobId       // ✅ Pass jobId for real-time Kanban and resume
         );
+
+        // Drain pending chat broadcasts before process exits
+        const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
+        await drainChatBroadcaster();
+        await closeBroadcasters?.();
+
+        return result;
       }
 
       if (jobType === 'code') {
         const analyzer = new CodebaseAnalyzer();
         const command = new NodeCommandAdapter();
-        
+
         // ✅ Real-time updates via Redis Pub/Sub (Job Worker child process → Redis → Realtime Server → SSE)
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
         let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
         let previewUpdate: PreviewUpdatePort | undefined = undefined;
-        
+        let closeBroadcasters: (() => Promise<void>) | undefined = undefined;
+
         if (process.env.ANT_REDIS_URL) {
           try {
             const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
             const options = getBroadcasterOptionsFromEnv();
-            
+
             if (options) {
               const broadcasters = createRealtimeBroadcasters(options);
               kanbanUpdate = broadcasters.kanban;
               fileTreeUpdate = broadcasters.fileTree;
               workflowUpdate = broadcasters.workflow;
               previewUpdate = broadcasters.preview;
+              closeBroadcasters = () => broadcasters.close();
               console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Code]');
             } else {
               console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Code]');
@@ -261,22 +272,29 @@ export async function orchestrator(params: {
         } else {
           console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Code]');
         }
-        
+
         // ✅ Create session with file tree update support (agent-nested)
         const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
-        
+
         // Mode will be inferred or auto-determined in architect agent
         // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
-        return await architectAgent(
-          input, 
-          project || "default", 
-          'code', 
-          inputFile, 
+        const result = await architectAgent(
+          input,
+          project || "default",
+          'code',
+          inputFile,
           { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath },
           mode,              // Can be undefined (auto-infer) or explicit
           enableEvaluation,  // Pass evaluation flag
           jobId              // ✅ Pass jobId for real-time updates and resume
         );
+
+        // Drain pending chat broadcasts before process exits
+        const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
+        await drainChatBroadcaster();
+        await closeBroadcasters?.();
+
+        return result;
       }
 
       throw new Error(`Unknown architect jobType: ${jobType}`);
@@ -294,12 +312,13 @@ export async function orchestrator(params: {
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
       const llm = createLLMClient('planner', undefined, { jobType: 'plan' }, configData);
-      
+
       // Setup real-time updates via Redis Pub/Sub
       let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
       let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
       let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
-      
+      let closeBroadcasters: (() => Promise<void>) | undefined = undefined;
+
       if (process.env.ANT_REDIS_URL) {
         try {
           const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
@@ -309,6 +328,7 @@ export async function orchestrator(params: {
             kanbanUpdate = broadcasters.kanban;
             fileTreeUpdate = broadcasters.fileTree;
             workflowUpdate = broadcasters.workflow;
+            closeBroadcasters = () => broadcasters.close();
             console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Planner]');
           } else {
             console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Planner]');
@@ -319,14 +339,14 @@ export async function orchestrator(params: {
       } else {
         console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Planner]');
       }
-      
+
       // Create session for planner
       const session = new FileSessionAdapter(featurePath || '', 'planner', project, feature, fileTreeUpdate);
-      
+
       // Detect language from directive
       const language = /[가-힣]/.test(input) ? 'ko' : 'en';
-      
-      return await runPlanGraph({
+
+      const result = await runPlanGraph({
         directive: input,
         language: language as 'ko' | 'en',
         workspaceState: { featurePath: featurePath || '' } as any,
@@ -337,6 +357,13 @@ export async function orchestrator(params: {
         deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate },
         _httpJobId: jobId,
       });
+
+      // Drain pending chat broadcasts before process exits
+      const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
+      await drainChatBroadcaster();
+      await closeBroadcasters?.();
+
+      return result;
     }
 
     case "doc": {
