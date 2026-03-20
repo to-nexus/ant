@@ -15,7 +15,7 @@ import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
-import { buildDesignDocForTask } from "../detectEnvironment/designSelector";
+import { resolveDesignDocForTask } from "../documentResolver";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -46,38 +46,10 @@ async function selectLLMForTask(
 /**
  * Resolve the designDoc string for a given task from state.
  * Shared by buildPlanPrompt and buildPlanPromptBlocks to guarantee identical output.
+ * Delegates to resolveDesignDocForTask (documentResolver.ts).
  */
 function resolveDesignDoc(state: ArchitectGraphState, task: CodeTask): string {
-  // design-system: token infrastructure doesn't need system design
-  if (task.type === 'design-system') return '';
-
-  // ui: ui-doc is the visual source. Only inject system design when ui-doc is absent,
-  // and then only for plan-time visual hints (codegen skips system design for ui tasks).
-  if (task.type === 'ui') {
-    if (state.parsedUiDocs) return '';           // ui-doc is the visual source
-    // No ui-doc: inject system design for visual hint extraction (plan-time only)
-    if (task.packages && task.packages.length > 0 && state.designDocs) {
-      return buildDesignDocForTask(task.packages, state.designDocs);
-    }
-    return state.design || '';                   // fallback
-  }
-
-  if (state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
-    const parts: string[] = [];
-    parts.push(`# Feature Specification (Primary)\n\n${state.specDocs[state.selectedSpec]}`);
-    if (state.designDocs?.apiContracts) {
-      for (const [name, content] of Object.entries(state.designDocs.apiContracts)) {
-        parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
-      }
-    }
-    const designDoc = parts.join('\n\n────────────────────────────────────────\n\n');
-    console.log(`📋 [Plan] Using spec doc "${state.selectedSpec}" as primary (${designDoc.length} chars)`);
-    return designDoc;
-  } else if (task.packages && task.packages.length > 0 && state.designDocs) {
-    return buildDesignDocForTask(task.packages, state.designDocs);
-  } else {
-    return state.design || '';
-  }
+  return resolveDesignDocForTask(task, state);
 }
 
 /**
