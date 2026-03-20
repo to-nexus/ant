@@ -3,7 +3,7 @@
 **Purpose**: This injection is included **only** when the project design domain is classified as `service` (dashboards, CRUD apps, SaaS tools, content aggregators, internal tools, etc.).
 It provides **service-domain-specific concerns** that the tier-specific guide (backend-guide or frontend-guide) does not cover.
 
-**Mapping principle**: The architecture pattern is selected by the tier-specific guide (§1 Architecture Pattern Selection). Each concern below MUST be mapped to the appropriate boundary in that selected pattern — do NOT create boundaries beyond what the selected pattern defines.
+**Mapping principle**: Architecture decisions are determined by the tier-specific guide (§1 Architecture Decisions). Each concern below MUST be mapped to the appropriate boundary in that architecture — do NOT create boundaries beyond what the architecture decisions define.
 
 ---
 
@@ -32,7 +32,7 @@ It provides **service-domain-specific concerns** that the tier-specific guide (b
 | **Uniqueness and identity** | Does the domain define canonical IDs, deduplication, or idempotency? |
 | **Consistency constraints** | Does the domain enforce ordering, freshness, or monotonicity invariants? |
 
-**Principle**: When any of the above are observed, domain contracts MUST be defined explicitly — name, role, operations, and invariants — in language-agnostic terms. These contracts belong in whichever boundary the selected architecture pattern assigns to domain logic.
+**Principle**: When any of the above are observed, domain contracts MUST be defined explicitly — name, role, operations, and invariants — in language-agnostic terms. These contracts belong in whichever boundary the architecture decisions assign to domain logic.
 
 **Constraint**: Do NOT scatter ad-hoc business logic across orchestration or presentation concerns. Domain rules must be identifiable as a cohesive unit regardless of the structural mechanism.
 

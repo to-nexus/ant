@@ -1,6 +1,6 @@
 ### § Overview (mandatory)
 - System purpose and business domain
-- Selected architecture pattern with rationale (reference observation from §1.1)
+- Architecture decisions per dimension with rationale (reference observations from §1.1)
 
 ### § Database Design (conditional: if persistence needed)
 - Entity relationships (conceptual schema, NOT SQL DDL)

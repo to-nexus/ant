@@ -74,7 +74,7 @@ existing modules, design specs, dependencies, etc.)
     {
       "package": "[import path from design document]",
       "apis": ["[full function/type signature as observed — include parameter types and return types]"],
-      "usedBy": ["[name of create entry that uses this package]"]
+      "usedBy": ["[name of create or modify entry that uses this package]"]
     }
   ],
   "implementation": {
@@ -113,7 +113,7 @@ existing modules, design specs, dependencies, etc.)
 | `prescribedPackages` | Yes | Design-document-referenced packages discovered via tools. Empty array `[]` if none. |
 | `prescribedPackages[].package` | Yes | Exact import path from design document |
 | `prescribedPackages[].apis` | Yes | Full function/type signatures observed via tools. Include parameter types and return types — names alone are insufficient. |
-| `prescribedPackages[].usedBy` | Yes | Names of `create` entries that use this package |
+| `prescribedPackages[].usedBy` | Yes | Names of `create` or `modify` entries that use this package |
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 MODIFY FIELD CONSTRAINT

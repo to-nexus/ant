@@ -21,15 +21,16 @@ You are analyzing requirements to break them into design tasks.
 **Do NOT invent new filenames not in the list above.**
 {{/if}}
 
-**Philosophy**: Create a SINGLE focused task that modifies the specific section/part requested.
+**Philosophy**: Create focused task(s) that modify only the specific section/part requested. One task per affected file — never split a single file into multiple chapter-based tasks.
 
 ### Rules for Refactor Mode
 
-1. **Create ONE task** - Do NOT create multiple chapter-based tasks
-2. **Focus on the specific change** - Only modify what was requested
-3. **Preserve existing content** - Do NOT regenerate entire documents
-4. **Use descriptive task ID** - e.g., "modify-api-users", "modify-schema-orders"
-5. **Use EXACT existing filename** - `targetFile` must match an existing document filename
+1. **One task per affected file** — if the change spans multiple documents (e.g., `be-system-main.md` + `api-contract-main.md`), create one task for each affected file
+2. **Do NOT create chapter-based tasks** — never split modifications to a single file into multiple tasks
+3. **Focus on the specific change** — only modify what was requested
+4. **Preserve existing content** — do NOT regenerate entire documents
+5. **Use descriptive task ID** — e.g., "refactor-api-auth", "refactor-be-auth"
+6. **Use EXACT existing filename** — `targetFile` must match an existing document filename
 
 ### Task Output Format (Refactor Mode)
 
@@ -37,12 +38,13 @@ You are analyzing requirements to break them into design tasks.
 {
   "documentType": "unified",
   "jobMode": "refactor",
-  "targetFiles": ["{chosen-file-from-existing-list}"],
+  "targetFiles": ["{affected-file-1}", "{affected-file-2-if-needed}"],
   "tasks": [
     {
-      "id": "refactor-{section}",
+      "id": "refactor-{file-scope}",
       "name": "Refactor: {brief description}",
-      "targetFile": "{chosen-file-from-existing-list}",
+      "targetFile": "{affected-file}",
+      "parallelGroup": "{affected-file-without-ext}",
 {{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
 {{/if}}      "description": "{modification scope}. Keep all other content unchanged.",
       "priority": 200
@@ -51,7 +53,7 @@ You are analyzing requirements to break them into design tasks.
 }
 </decompose>
 
-**⚠️ Choose `targetFile` based on the directive.** Analyze which existing document the requested change belongs to, and target ONLY that file. Do NOT include files unrelated to the requested change in `targetFiles`.
+**⚠️ Choose `targetFile`(s) based on the directive.** Analyze which existing document(s) the requested change belongs to, and target ONLY those files. Most refactors affect a single file — only add additional tasks when the change genuinely requires consistent modifications across multiple documents.
 
 {{else}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
