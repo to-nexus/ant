@@ -245,6 +245,18 @@ export class TaskOrchestrator<T extends BaseTask> {
   async reportCompletion(workerId: number, task: T, tokenUsage?: TaskTokenUsage): Promise<void> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+
+      // Guard: Prevent duplicate completion (defense against overlapping child processes)
+      const alreadyCompleted = this.completedTasks.some(t => t.id === task.id);
+      const reEnqueued = this.taskQueue.getAll().some(t => t.id === task.id);
+      if (alreadyCompleted || reEnqueued) {
+        console.warn(`[Orchestrator] Task "${task.name}" skipped completion (worker ${workerId}): alreadyCompleted=${alreadyCompleted}, reEnqueued=${reEnqueued}`);
+        this.broadcastKanban();
+        this.spawnAvailableWorkers();
+        this.checkAllDone();
+        return;
+      }
+
       task.completed = true;
       task.interrupted = false;  // Clear safety-checkpoint marker from periodic saveCheckpoint()
       this.completedTasks.push(task);
@@ -300,6 +312,13 @@ export class TaskOrchestrator<T extends BaseTask> {
       // Do NOT add to completedTasks — task is back in todo (re-enqueued by processDiagnosticBatchSplit)
       this.broadcastKanban();
       console.log(`[Orchestrator] Task "${task.name}" batch-split by worker ${workerId}. running=${this.runningTasks.size}, queue=${this.taskQueue.size()}`);
+
+      // Save checkpoint after batch split (ensures re-enqueued state persists)
+      try {
+        await this.saveCheckpoint();
+      } catch (err) {
+        console.warn(`[Orchestrator] Post-batch-split checkpoint failed:`, err);
+      }
 
       this.spawnAvailableWorkers();
       this.checkAllDone();

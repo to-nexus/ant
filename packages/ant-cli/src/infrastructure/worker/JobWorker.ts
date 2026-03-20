@@ -107,6 +107,20 @@ export class JobWorker {
     this.worker.on('stalled', async (jobId: string) => {
       logger.warn(`Job stalled (worker crash detected): ${jobId}`, { component: 'JobWorker', jobId });
 
+      // Kill the child process for this stalled job (if running in this pod)
+      const stalledChild = this.runningProcesses.get(jobId);
+      if (stalledChild && stalledChild.pid) {
+        logger.warn(`Killing stalled child process: ${jobId} (PID: ${stalledChild.pid})`, { component: 'JobWorker', jobId });
+        try {
+          stalledChild.kill('SIGTERM');
+          // Don't wait long — stalled handler should be fast
+          setTimeout(() => {
+            try { process.kill(stalledChild.pid!, 'SIGKILL'); } catch { /* ok */ }
+          }, 2000);
+        } catch { /* already dead */ }
+        this.runningProcesses.delete(jobId);
+      }
+
       // Multi-pod idempotency: multiple Worker pods may detect the same stalled job.
       // Shares lock key with BullMQJobQueue's stalled handler on API Server pods.
       const acquired = await this.stateStore.acquireLock(`ant:job-stalled:${jobId}`, 120);
@@ -243,6 +257,31 @@ export class JobWorker {
   private async processJob(job: Job<JobPayload>): Promise<any> {
     const payload = job.data;
     const jobId = payload.jobId;
+
+    // Kill any existing child process for the same jobId.
+    // Covers: (a) BullMQ stalled job re-processing after Mac sleep
+    //         (b) Stop → Resume race condition
+    const existingChild = this.runningProcesses.get(jobId);
+    if (existingChild && existingChild.pid) {
+      logger.warn(`Killing existing child for re-processed job: ${jobId} (PID: ${existingChild.pid})`, { component: 'JobWorker', jobId });
+      try {
+        existingChild.kill('SIGTERM');
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(resolve, 3000);
+          existingChild.once('exit', () => { clearTimeout(timeout); resolve(); });
+        });
+        try {
+          process.kill(existingChild.pid!, 0); // check alive
+          process.kill(existingChild.pid!, 'SIGKILL');
+        } catch { /* already exited */ }
+      } catch (err: any) {
+        logger.warn(`Failed to kill existing child: ${err.message}`, { component: 'JobWorker', jobId });
+      }
+      this.runningProcesses.delete(jobId);
+    }
+
+    // Clear userStopped flag after killing old child (safe timing for Stop→Resume)
+    await this.stateStore.clearUserStopped(jobId);
 
     try {
       // Update status to running
