@@ -134,20 +134,36 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
         return;
       }
 
-      // 409 Conflict: recover state by syncing with the already-running job
+      // 409 Conflict: another job is running or interrupted
       if (response.existingJobId) {
-        console.log('[cli.ts] Job already running, recovering state:', response.existingJobId);
-        try {
-          store.addChatMessage({
-            id: `msg-conflict-${Date.now()}`,
-            role: 'assistant',
-            contents: [{ type: 'text', content: `이미 진행 중인 작업이 있습니다. (Job ID: ${response.existingJobId})` }],
-            timestamp: new Date().toISOString()
-          });
-        } catch (e) {
-          console.warn('[cli.ts] Failed to add chat message for conflict:', e);
+        if (response.isInterrupted) {
+          // Paused job: don't mark as running — the choice card handles resume/dismiss
+          console.log('[cli.ts] Interrupted job blocking new start:', response.existingJobId);
+          try {
+            store.addChatMessage({
+              id: `msg-conflict-${Date.now()}`,
+              role: 'assistant',
+              contents: [{ type: 'text', content: '이전 작업이 중단되어 있습니다. 재개하거나 닫아주세요.' }],
+              timestamp: new Date().toISOString()
+            });
+          } catch (e) {
+            console.warn('[cli.ts] Failed to add chat message for interrupted conflict:', e);
+          }
+        } else {
+          // Actively running job: restore running state
+          console.log('[cli.ts] Job already running, recovering state:', response.existingJobId);
+          try {
+            store.addChatMessage({
+              id: `msg-conflict-${Date.now()}`,
+              role: 'assistant',
+              contents: [{ type: 'text', content: `이미 진행 중인 작업이 있습니다. (Job ID: ${response.existingJobId})` }],
+              timestamp: new Date().toISOString()
+            });
+          } catch (e) {
+            console.warn('[cli.ts] Failed to add chat message for conflict:', e);
+          }
+          store.setRunning(true, response.existingJobId);
         }
-        store.setRunning(true, response.existingJobId);
         return;
       }
       
