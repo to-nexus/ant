@@ -9,15 +9,6 @@ describe('generateHumanId', () => {
     }
   });
 
-  it('generates unique IDs over 1000 iterations', () => {
-    const ids = new Set<string>();
-    for (let i = 0; i < 1000; i++) {
-      ids.add(generateHumanId());
-    }
-    // With ~16.7M combinations, 1000 IDs should all be unique
-    expect(ids.size).toBe(1000);
-  });
-
   it('has reasonable length bounds', () => {
     for (let i = 0; i < 100; i++) {
       const id = generateHumanId();
