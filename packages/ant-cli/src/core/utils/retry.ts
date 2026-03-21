@@ -197,6 +197,7 @@ export async function* withStreamIdleTimeout<T>(
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
+          console.warn(`[StreamIdleTimeout] No stream event received for ${idleTimeoutMs / 1000}s — aborting (likely silent network stall)`);
           const err = Object.assign(new TypeError('terminated'), { _isStreamIdleTimeout: true });
           reject(err);
         }, idleTimeoutMs);
