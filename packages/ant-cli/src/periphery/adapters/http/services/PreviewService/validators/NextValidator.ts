@@ -77,7 +77,17 @@ export class NextValidator {
       const readsEnv = this.readsEnvBasePath(content);
       
       if (hasBasePath && readsEnv) {
-        // basePath is present AND reads from NEXT_PUBLIC_BASE_PATH — valid
+        const hasImagesUnoptimized = content.includes('unoptimized');
+        if (!hasImagesUnoptimized) {
+          return {
+            valid: false,
+            framework: 'next',
+            reasoning: 'images-unoptimized-missing',
+            reason: 'Next.js config has basePath but missing images.unoptimized — image optimization will fail when basePath is set because /_next/image ignores the path prefix',
+            missingFiles: [path.basename(configPath!)],
+            suggestedFix: this.buildImageUnoptimizedFix(configPath!),
+          };
+        }
         return { valid: true, framework: 'next' };
       }
       
@@ -164,5 +174,27 @@ export class NextValidator {
     );
     
     return lines.join('\n');
+  }
+
+  /**
+   * Build suggested fix specifically for missing images.unoptimized
+   */
+  private buildImageUnoptimizedFix(configPath: string): string {
+    return [
+      'Add `images.unoptimized` to the existing Next.js config:',
+      '',
+      '```js',
+      'const nextConfig = {',
+      '  basePath: process.env.NEXT_PUBLIC_BASE_PATH || \'\',',
+      '  images: {',
+      '    unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH,',
+      '  },',
+      '  // ... other config',
+      '};',
+      '```',
+      '',
+      'Without this, `<Image>` components fail when basePath is set because',
+      'the image optimization endpoint (/_next/image) fetches images without the path prefix.',
+    ].join('\n');
   }
 }

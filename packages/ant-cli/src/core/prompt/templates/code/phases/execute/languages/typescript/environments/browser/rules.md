@@ -228,18 +228,27 @@ import { X } from '@/components/X';
 
 ---
 
-## 🖼️ Static Assets (Next.js Example)
+## 🖼️ Static Assets
 
 When using `ui-assets.json`:
 
+**Next.js**:
 ```tsx
-// After copying: inputs/assets/<category>/logo.svg → public/<category>/logo.svg
 import Image from 'next/image';
 
-<Image src="/<category>/logo.svg" alt="Logo" width={100} height={40} />
+// Raster images (png, jpg, webp): framework image component with optimization
+<Image src="/images/photo.png" alt="Photo" width={400} height={300} />
+
+// SVG assets (static themeAdaptation): framework image component WITHOUT optimization
+<Image src="/icons/logo.svg" alt="Logo" width={100} height={40} unoptimized />
+
+// SVG assets (currentColor themeAdaptation): inline SVG component (inherits CSS color)
+<WalletIcon className="text-current" />
 ```
 
-**For other frameworks:** Use standard `<img>` tag or framework's image component.
+**Principle**: SVG files do not benefit from raster image optimization. In Next.js, `<Image>` without `unoptimized` routes SVGs through `/_next/image` which may fail or produce incorrect output.
+
+**For other frameworks:** Use standard `<img>` tag or framework's image component. SVG theme adaptation rules still apply.
 
 ---
 
@@ -256,8 +265,8 @@ import Image from 'next/image';
 
 | themeAdaptation | Rendering | Why |
 |----------------|-----------|-----|
-| `currentColor` | Inline SVG component or SVG sprite | `<img>` cannot inherit CSS `color` |
-| `static` | `<img>` or inline — either works | Colors are fixed by design |
+| `currentColor` | Inline SVG component or SVG sprite | `<img>`/`<Image>` cannot inherit CSS `color` |
+| `static` | `<Image unoptimized>` (Next.js) or `<img>` | Colors fixed; optimization unnecessary for SVGs |
 | `partial` | Inline SVG component | Need selective color control |
 
 ```tsx
