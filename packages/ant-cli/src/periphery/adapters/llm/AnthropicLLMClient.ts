@@ -9,7 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
-import { withRetryStream, withRetry } from '../../../core/utils/retry';
+import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
 
 export class AnthropicLLMClient implements LLMClient {
   private client: Anthropic;
@@ -255,7 +255,11 @@ export class AnthropicLLMClient implements LLMClient {
     // ✅ Track token usage (accumulate from message_start and message_delta)
     let tokenUsage: TaskTokenUsage | undefined;
     
-    for await (const event of stream) {
+    // Idle timeout: if no stream event is received for 90s, treat as terminated.
+    // Handles Mac sleep/wake and silent network partitions where the TCP connection
+    // appears open but data has stopped flowing (no OS-level "terminated" error).
+    const STREAM_IDLE_TIMEOUT_MS = 90_000;
+    for await (const event of withStreamIdleTimeout(stream, STREAM_IDLE_TIMEOUT_MS)) {
       // ✅ Capture usage from message_start (initial usage snapshot)
       if (event.type === 'message_start' && (event as any).message?.usage) {
         const usage = (event as any).message.usage;
