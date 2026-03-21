@@ -45,12 +45,16 @@ export function createJobRoutes(deps: {
   }
   
   /**
-   * Check if feature already has a running job
+   * Check if feature already has a running or interrupted (paused) job.
+   * Returns the jobId and whether it is interrupted (paused by stall handler).
+   * 'paused' is set by the stall handler after Mac sleep/wake — it blocks new jobs
+   * until the user resumes or dismisses the interrupted job.
    */
-  async function checkDuplicateJob(projectId: string, featureName: string): Promise<string | undefined> {
+  async function checkDuplicateJob(projectId: string, featureName: string): Promise<{ jobId: string; isInterrupted: boolean } | undefined> {
     const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
-    const running = jobs.find(j => j.status === 'running');
-    return running?.jobId;
+    const active = jobs.find(j => j.status === 'running' || j.status === 'paused');
+    if (!active) return undefined;
+    return { jobId: active.jobId, isInterrupted: active.status === 'paused' };
   }
   
   // Execute task for a specific feature
@@ -61,13 +65,17 @@ export function createJobRoutes(deps: {
       const featureName = req.params.feature;
       const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage } = req.body;
       
-      // Check if this feature already has a running job
-      const existingJobId = await checkDuplicateJob(projectId, featureName);
-      
-      if (existingJobId) {
-        return res.status(409).json({ 
-          error: `A job is already running for this feature. Please wait for it to complete or stop it first.`,
+      // Check if this feature already has a running or interrupted job
+      const duplicate = await checkDuplicateJob(projectId, featureName);
+
+      if (duplicate) {
+        const { jobId: existingJobId, isInterrupted } = duplicate;
+        return res.status(409).json({
+          error: isInterrupted
+            ? 'A previous job was interrupted. Please resume or dismiss it first.'
+            : 'A job is already running for this feature. Please wait for it to complete or stop it first.',
           existingJobId,
+          isInterrupted,
           featureKey: `${projectId}/${featureName}`
         });
       }
@@ -115,11 +123,12 @@ export function createJobRoutes(deps: {
       const branchBase = readBranchBaseFromConfig(projectPath);
 
       // Check if base branch already has a running job
-      const existingJobId = await checkDuplicateJob(projectId, branchBase);
-      if (existingJobId) {
+      const duplicate = await checkDuplicateJob(projectId, branchBase);
+      if (duplicate) {
         return res.status(409).json({
           error: 'A learn job is already running for this project. Please wait for it to complete or stop it first.',
-          existingJobId,
+          existingJobId: duplicate.jobId,
+          isInterrupted: duplicate.isInterrupted,
           featureKey: `${projectId}/${branchBase}`
         });
       }
@@ -503,6 +512,36 @@ export function createJobRoutes(deps: {
       });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'InlineAsk');
+    }
+  });
+
+  // Dismiss an interrupted (paused) job — clears the server-side 'paused' state
+  // so a new job can be started. Only 'paused' jobs may be dismissed this way.
+  router.post('/projects/:id/features/:feature/job/dismiss', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { jobId } = req.body;
+
+    if (!jobId || typeof jobId !== 'string') {
+      return res.status(400).json({ error: 'jobId is required' });
+    }
+
+    try {
+      const jobStatus = await deps.stateStore.getJobStatus(jobId);
+      if (!jobStatus || jobStatus.status !== 'paused') {
+        return res.status(400).json({ error: 'Job is not in interrupted state' });
+      }
+
+      await deps.stateStore.updateJobStatus(jobId, {
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        error: 'Dismissed by user',
+      });
+
+      logger.info(`Interrupted job dismissed: ${projectId}/${featureName} jobId=${jobId}`, { component: 'JobRoute' });
+      res.json({ success: true });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'JobDismiss');
     }
   });
 

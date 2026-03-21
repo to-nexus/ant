@@ -87,7 +87,7 @@ export class JobWorker {
         removeOnFail: { count: 5000 },
         lockDuration: 30000,     // 30s — worker extends every 15s (lockDuration/2)
         stalledInterval: 30000,  // 30s — dead worker detected within ~60s
-        maxStalledCount: 1,
+        maxStalledCount: 0,      // Never re-queue stalled jobs (prevents double-child on Mac sleep/wake)
       }
     );
 
