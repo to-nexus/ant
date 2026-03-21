@@ -25,7 +25,7 @@ reading from an environment variable injected at dev server startup.
 | Framework | Config File | Setting | Environment Variable |
 |-----------|------------|---------|---------------------|
 | **Vite** (React/Vue) | `vite.config.ts` | `base: process.env.VITE_BASE_PATH \|\| '/'` | `VITE_BASE_PATH` |
-| **Next.js** | `next.config.js` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` | `NEXT_PUBLIC_BASE_PATH` |
+| **Next.js** | `next.config.js` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''`, `images: { unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH }` | `NEXT_PUBLIC_BASE_PATH` |
 
 ---
 
@@ -45,9 +45,9 @@ reading from an environment variable injected at dev server startup.
 
 ## SSR Image Optimization
 
-**Constraint**: SSR frameworks with built-in image optimization internally fetch images in a way that ignores the path prefix. When path prefix env var is set, image optimization MUST be disabled. When absent (production), it works normally.
+**Principle**: SSR frameworks with built-in image optimization internally fetch images from the local server. When basePath is set, the optimization endpoint and the actual asset path diverge — the endpoint fetches `/icons/logo.svg` but the file is served at `/{basePath}/icons/logo.svg`. This causes image loading failures.
 
-**Constraint**: Next.js performs image optimization by default (`<Image>` component routes through `/_next/image`). When `NEXT_PUBLIC_BASE_PATH` is set, add `images: { unoptimized: true }` to `next.config`. When absent, omit this setting (production uses optimization normally).
+**Constraint**: The framework config table above includes the image optimization disable setting for each framework. This is MANDATORY — verify it exists in the config file.
 
 ---
 
@@ -56,7 +56,7 @@ reading from an environment variable injected at dev server startup.
 - **Client-side router base path is EASILY FORGOTTEN.** The framework config sets the base path for assets, but the router often needs a separate setting. Verify both.
 - **SSR fetch with path prefix**: Server-side data fetching (e.g., API routes) may construct URLs without the base path. Verify that server-side fetches also respect the prefix if they target the same proxy.
 - **Static assets in HTML**: Hardcoded paths in HTML templates (favicon, manifest, etc.) are NOT rewritten by the framework base path. Use relative paths or template the prefix.
-- **Framework image component is EASILY SKIPPED.** Bare `<img>` tags do NOT receive basePath prefix. Use the framework's image component (Next.js `<Image>`, Nuxt `<NuxtImg>`) for ALL local image references so that basePath is automatically applied. Reserve bare `<img>` only for external URLs.
+- **Framework image component is EASILY SKIPPED.** Bare `<img>` tags do NOT receive basePath prefix. Use the framework's image component (Next.js `<Image>`, Nuxt `<NuxtImg>`) for local image references so that basePath is automatically applied. **Exception**: SVGs requiring inline rendering for theme adaptation (see browser rules for themeAdaptation guidance) — these use CSS `color` inheritance instead of basePath-dependent loading.
 
 ---
 
