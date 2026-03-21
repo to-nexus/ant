@@ -42,14 +42,16 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'retryMarker'>> = {
  */
 function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
   if (!error || typeof error !== 'object') return false;
-  
+
   const apiError = error as any;
-  
+
   // Check for network errors (TypeError with "terminated", "fetch failed", etc.)
-  if (error instanceof TypeError) {
+  // Also covers idle timeout errors thrown by withStreamIdleTimeout
+  if (error instanceof TypeError || (apiError as any)._isStreamIdleTimeout === true) {
     const message = apiError.message?.toLowerCase() || '';
-    if (message.includes('terminated') || 
-        message.includes('fetch failed') || 
+    if ((apiError as any)._isStreamIdleTimeout ||
+        message.includes('terminated') ||
+        message.includes('fetch failed') ||
         message.includes('network') ||
         message.includes('econnreset') ||
         message.includes('socket')) {
@@ -172,8 +174,54 @@ export async function withRetry<T>(
       console.log(`[Retry] 🔄 Retrying (attempt ${attempt + 1}/${opts.maxAttempts})...`);
     }
   }
-  
+
   throw lastError;
+}
+
+/**
+ * Wrap an async iterable with a per-event idle timeout.
+ *
+ * If no event is received within `idleTimeoutMs`, the iteration is aborted
+ * and a retryable "terminated" error is thrown. This handles the case where
+ * a network connection appears open (no OS-level error) but data has stopped
+ * flowing — e.g., after a Mac sleep/wake cycle or transient network partition.
+ */
+export async function* withStreamIdleTimeout<T>(
+  gen: AsyncIterable<T>,
+  idleTimeoutMs: number,
+): AsyncIterable<T> {
+  const iterator = gen[Symbol.asyncIterator]();
+  try {
+    while (true) {
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const err = Object.assign(new TypeError('terminated'), { _isStreamIdleTimeout: true });
+          reject(err);
+        }, idleTimeoutMs);
+      });
+
+      let result: IteratorResult<T>;
+      try {
+        result = await Promise.race([iterator.next(), timeoutPromise]);
+        if (timeoutId !== null) clearTimeout(timeoutId);
+      } catch (err) {
+        if (timeoutId !== null) clearTimeout(timeoutId);
+        if (iterator.return) {
+          try { await iterator.return(); } catch { /* ignore */ }
+        }
+        throw err;
+      }
+
+      if (result.done) break;
+      yield result.value;
+    }
+  } finally {
+    if (iterator.return) {
+      try { await iterator.return(); } catch { /* ignore */ }
+    }
+  }
 }
 
 /**
