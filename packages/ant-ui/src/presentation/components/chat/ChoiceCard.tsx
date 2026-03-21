@@ -25,6 +25,7 @@ import {
   submitEvalSave,
   submitPrdApply,
   submitChoiceDismiss,
+  dismissInterruptedJob,
   TriageChoiceAction,
 } from '@/infrastructure/http/api';
 import type { MessageContent } from '@/domain/models/chat';
@@ -639,6 +640,8 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
     }
 
     try {
+      // Clear server-side 'paused' state so new jobs can start
+      await dismissInterruptedJob(state.selectedProject, state.selectedFeature, jobId);
       // ✅ Persist to backend via unified endpoint
       await state.persistToBackend('dismiss', 'Dismissed');
       state.persistChoice('dismiss', 'Dismissed');

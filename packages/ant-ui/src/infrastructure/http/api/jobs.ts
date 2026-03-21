@@ -25,7 +25,7 @@ export interface JobStatus {
  */
 export async function executeJob(
   params: ExecuteJobParams,
-): Promise<{ jobId: string; error?: string; missingMaterials?: any[]; existingJobId?: string }> {
+): Promise<{ jobId: string; error?: string; missingMaterials?: any[]; existingJobId?: string; isInterrupted?: boolean }> {
   const {
     projectId,
     featureName,
@@ -57,9 +57,9 @@ export async function executeJob(
     return { jobId: data.jobId, error: data.error, missingMaterials: data.missingMaterials };
   }
 
-  // 409 Conflict: another job is already running for this feature
+  // 409 Conflict: another job is already running or interrupted
   if (response.status === 409 && data.existingJobId) {
-    return { jobId: '', error: data.error, existingJobId: data.existingJobId };
+    return { jobId: '', error: data.error, existingJobId: data.existingJobId, isInterrupted: data.isInterrupted ?? false };
   }
 
   if (!response.ok) {
@@ -134,4 +134,19 @@ export function inlineAsk(
 
 export function fetchJobStatus(jobId: string): Promise<JobStatus> {
   return apiGet(`${API_BASE()}/tasks/${encodeURIComponent(jobId)}/status`);
+}
+
+/**
+ * Dismiss an interrupted (paused) job, clearing the server-side 'paused' state
+ * so a new job can be started.
+ */
+export function dismissInterruptedJob(
+  projectId: string,
+  featureName: string,
+  jobId: string,
+): Promise<{ success: boolean }> {
+  return apiPost(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/job/dismiss`,
+    { jobId },
+  );
 }
