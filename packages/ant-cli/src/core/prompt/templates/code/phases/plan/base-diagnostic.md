@@ -32,7 +32,19 @@ Compare the build output with the user's report. The build output is the ground 
 If build succeeds, execute the project's test command using `run_command`.
 {{/if}}
 
-### Step {{#if runTests}}3{{else}}2{{/if}}: Analyze Errors
+{{#if runDevServer}}
+### Step {{#if runTests}}3{{else}}2{{/if}}: Start Dev Server
+
+If build (and tests) succeeded, start the dev server to verify runtime startup:
+
+1. Identify the dev server command from `package.json` scripts (e.g., `npm run dev`, `pnpm dev`)
+2. Execute it with `run_command` — the platform will auto-verify startup then terminate
+3. If startup fails, include the startup error in your remediation plan
+
+**Important**: Only run if build passed. Skip if no dev script exists in `package.json`.
+{{/if}}
+
+### Step {{#if runDevServer}}{{#if runTests}}4{{else}}3{{/if}}{{else}}{{#if runTests}}3{{else}}2{{/if}}{{/if}}: Analyze Errors
 
 If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE error output:
 
@@ -41,7 +53,7 @@ If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE error output:
 3. **Determine fix priority** — fix root causes first, cascading errors resolve automatically
 4. **Identify which files need reading** — use `read_file` on files referenced in errors to understand context
 
-### Step {{#if runTests}}4{{else}}3{{/if}}: Produce Remediation Plan
+### Step {{#if runDevServer}}{{#if runTests}}5{{else}}4{{/if}}{{else}}{{#if runTests}}4{{else}}3{{/if}}{{/if}}: Produce Remediation Plan
 
 Output your analysis and structured plan.
 
@@ -174,10 +186,10 @@ or have cross-file dependencies MUST be in the same batch.)
 
 **Constraint**: List ALL files that need modification across all batches. Do not fix one error and leave others.
 
-**Constraint**: If build{{#if runTests}}/test{{/if}} succeeds with no errors, output an empty plan:
+**Constraint**: If build{{#if runTests}}/test{{/if}}{{#if runDevServer}}/dev server{{/if}} succeeds with no errors, output an empty plan:
 
 ```
-<analysis>Build{{#if runTests}} and tests{{/if}} passed successfully. No fixes needed.</analysis>
+<analysis>Build{{#if runTests}}, tests,{{/if}}{{#if runDevServer}} and dev server{{/if}} passed successfully. No fixes needed.</analysis>
 
 <plan>
 {

@@ -47,7 +47,7 @@ import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient'
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
 import { cleanFileContentFromResponse } from '../../utils/responseCleaners';
-import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY, isBuildCommand, isTestCommand } from './constants';
+import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY, isBuildCommand, isTestCommand, isDevServerCommand } from './constants';
 import { CommandExecutionResult } from './types';
 import {
   handleReadFile,
@@ -90,6 +90,7 @@ async function executeToolByName(
         if (state._verificationTracker) {
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
+          state._verificationTracker.devServerPassed = false;
         }
         break;
       case 'edit_file':
@@ -97,6 +98,7 @@ async function executeToolByName(
         if (state._verificationTracker) {
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
+          state._verificationTracker.devServerPassed = false;
         }
         break;
       case 'mkdir':
@@ -120,6 +122,9 @@ async function executeToolByName(
           if (isTestCommand(commandResult.command)) {
             tracker.testPassed = commandResult.success;
           }
+          if (isDevServerCommand(commandResult.command)) {
+            tracker.devServerPassed = commandResult.success;
+          }
         }
         break;
       }
@@ -136,6 +141,7 @@ async function executeToolByName(
         if (state._verificationTracker) {
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
+          state._verificationTracker.devServerPassed = false;
         }
         break;
       default:
@@ -161,6 +167,7 @@ async function executeToolByName(
       if (state._verificationTracker) {
         if (isBuildCommand(cmdArgs.command)) state._verificationTracker.buildPassed = false;
         if (isTestCommand(cmdArgs.command)) state._verificationTracker.testPassed = false;
+        if (isDevServerCommand(cmdArgs.command)) state._verificationTracker.devServerPassed = false;
       }
     }
   }

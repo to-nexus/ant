@@ -126,3 +126,7 @@ export function isTestCommand(command: string): boolean {
   return TEST_COMMAND_PATTERNS.some(p => p.test(command));
 }
 
+export function isDevServerCommand(command: string): boolean {
+  return LONG_RUNNING_PATTERNS.some(p => p.test(command));
+}
+
