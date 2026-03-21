@@ -1216,7 +1216,7 @@ export function buildCodeGraph() {
     { tool: "tool", codeGen: "codeGen", checkTaskStatus: "checkTaskStatus" } as any
   );
 
-  // CodeGen → Router (tool / checkTaskStatus / codeGen)
+  // CodeGen → Router (tool / checkTaskStatus / codeGen / plan)
   graph.addConditionalEdges(
     "codeGen" as any,
     routeAfterCodeGen as any,
@@ -1224,6 +1224,7 @@ export function buildCodeGraph() {
       tool: "tool",
       checkTaskStatus: "checkTaskStatus",
       codeGen: "codeGen",
+      plan: "plan",   // verification task codeGen done → plan re-verify
     } as any
   );
   
