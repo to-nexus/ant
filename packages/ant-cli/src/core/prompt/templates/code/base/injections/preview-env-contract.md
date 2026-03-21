@@ -20,7 +20,7 @@
 | Framework | Variable | Config Setting | Default when absent |
 |-----------|----------|---------------|-------------------|
 | Vite (React/Vue) | `VITE_BASE_PATH` | `base: process.env.VITE_BASE_PATH \|\| '/'` | `'/'` |
-| Next.js | `NEXT_PUBLIC_BASE_PATH` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` | `''` |
+| Next.js | `NEXT_PUBLIC_BASE_PATH` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''`, `images: { unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH }` | `''` |
 
 - Framework config MUST read the path prefix from the environment variable
 - Client-side router MUST also use the same variable for its base/basename
