@@ -8,7 +8,7 @@
  * 라우팅 로직:
  * 0. File errors 있으면 → checkTaskStatus (바로 self-healing, tool 불필요)
  * 1. Tool calls 있으면 → tool 노드
- * 2. Done이면 → checkTaskStatus (all task types)
+ * 2. Done이면 → verification은 plan 재검증, 그 외 checkTaskStatus
  * 3. 그 외 → codeGen 노드 (재추론)
  * 
  * Safety Nets:
@@ -138,8 +138,15 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
     return 'tool';
   }
   
-  // 2. Done이면 → checkTaskStatus (all task types)
+  // 2. Done이면 → verification은 plan 재검증, 그 외는 checkTaskStatus
   if (response.done) {
+    // Verification tasks: route back to plan for final build/test/devServer check.
+    // verify/base.md states: "The diagnostic phase will re-verify after your changes."
+    if (currentTask?.type === 'verification') {
+      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (final build/test/devServer verification)\n`);
+      (state as any)._awaitingFinalVerify = true;
+      return 'plan';
+    }
     console.log(`\n🎯 [Router] ✅ TASK DONE → checkTaskStatus\n`);
     return 'checkTaskStatus';
   }

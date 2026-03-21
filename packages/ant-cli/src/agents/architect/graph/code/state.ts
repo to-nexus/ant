@@ -321,6 +321,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
 
   /** Plan↔tool loop: true while plan is exploring codebase with tools (tool routes back to plan) */
   _planExploring?: boolean;
+  /** codeGen이 verification task fix 완료 후 plan 재진단 트리거 */
+  _awaitingFinalVerify?: boolean;
   /** Plan-phase conversation only (separate from codeGen conversationHistory) */
   planConversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
 

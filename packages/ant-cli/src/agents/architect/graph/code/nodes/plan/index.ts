@@ -312,6 +312,28 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   } else if (state._planExploring === true && state.currentTask) {
     nextTask = state.currentTask;
     console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
+  } else if ((state as any)._awaitingFinalVerify === true && state.currentTask) {
+    // POST-CODEFIX: codeGen applied fixes, now re-run full diagnostic for final verification
+    nextTask = state.currentTask;
+    console.log(`\n🔄 [Plan] Post-codeGen final verification: ${nextTask.name}`);
+    console.log(`   Re-initializing VerificationTracker for fresh build/test/devServer check\n`);
+
+    // Clear the trigger flag
+    (state as any)._awaitingFinalVerify = false;
+
+    // Reset tracker for fresh verification pass
+    state._verificationTracker = {
+      buildPassed: false,
+      testPassed: false,
+      testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
+      devServerPassed: false,
+      devServerRequired: true,
+    };
+
+    // Reset codeGen state for potential next fix cycle
+    state._codeGenCallIndex = 0;
+    state._finalTaskLoopCount = 0;
+    state.conversationHistory = [];
   } else {
     // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
     // Sequential context: pop next task from queue
