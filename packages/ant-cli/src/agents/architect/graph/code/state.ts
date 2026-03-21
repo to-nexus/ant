@@ -18,13 +18,15 @@ export interface IntegrationRequirement {
 
 /**
  * Verification objective tracker.
- * Tracks whether build and test commands have succeeded,
+ * Tracks whether build, test, and dev server commands have succeeded,
  * reset when files are modified to force re-verification.
  */
 export interface VerificationTracker {
   buildPassed: boolean;
   testPassed: boolean;
   testsRequired: boolean;
+  devServerPassed: boolean;
+  devServerRequired: boolean;
 }
 
 /**

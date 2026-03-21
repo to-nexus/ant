@@ -89,6 +89,7 @@ function isDiagnosticPassWithoutCodeGen(
   const tracker = state._verificationTracker;
   if (!tracker || !tracker.buildPassed) return false;
   if (tracker.testsRequired && !tracker.testPassed) return false;
+  if (tracker.devServerRequired && !tracker.devServerPassed) return false;
   return true;
 }
 
@@ -116,7 +117,7 @@ function computeBatchFileOverlap(batches: any[]): boolean {
   return false;
 }
 
-const MAX_BATCH_SPLIT_CYCLES = 3;
+const MAX_BATCH_SPLIT_CYCLES = 10;
 
 /**
  * Detect batched diagnostic plan and split into sub-tasks.
@@ -175,13 +176,12 @@ function processDiagnosticBatchSplit(
     const splitCount = (nextTask._batchSplitCount || 0) + 1;
 
     if (splitCount > MAX_BATCH_SPLIT_CYCLES) {
-      logBatchSplit({
-        action: 'cycle_limit_reached',
-        splitCount,
-        taskName: nextTask.name,
-      });
-      console.warn(`⚠️  [BatchSplit] Cycle limit (${MAX_BATCH_SPLIT_CYCLES}) reached for "${nextTask.name}". Proceeding as single task.`);
-      return planText;
+      logBatchSplit({ action: 'cycle_limit_failed', splitCount, taskName: nextTask.name });
+      console.error(`❌ [BatchSplit] Cycle limit (${MAX_BATCH_SPLIT_CYCLES}) exceeded for "${nextTask.name}". Failing task.`);
+      (nextTask as any)._failed = true;
+      (nextTask as any)._failureReason = `batch_split_cycle_limit_exceeded (${splitCount} cycles)`;
+      state._batchSplitRequeued = true; // release worker slot
+      return ''; // batchSplitOccurred=true → llmResponse.done=true → skip codeGen
     }
 
     const hasFileOverlap = computeBatchFileOverlap(parsed.batches);
@@ -348,8 +348,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         buildPassed: false,
         testPassed: false,
         testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
+        devServerPassed: false,
+        devServerRequired: true,
       };
-      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}`);
+      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, devServerRequired=${state._verificationTracker.devServerRequired}`);
     }
 
     // ✅ Log task_start event to debug/logs/
