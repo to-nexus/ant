@@ -83,10 +83,11 @@ export class ModeController {
     const isError = taskType === 'error';
     const isTestCode = taskType === 'test-code';
     const isDoc = taskType === 'doc';
-    const verifyPhasePrefix = `${job}/phases/verify`;
-    const errorPhasePrefix = `${job}/phases/error`;
-    const testCodePhasePrefix = `${job}/phases/test-code`;
-    const docgenPhasePrefix = `${job}/phases/docgen`;
+    const executeTasksPrefix = `${job}/phases/execute/tasks`;
+    const verifyPhasePrefix = `${executeTasksPrefix}/verification`;
+    const errorPhasePrefix = `${executeTasksPrefix}/error`;
+    const testCodePhasePrefix = `${executeTasksPrefix}/test-code`;
+    const docgenPhasePrefix = `${executeTasksPrefix}/docgen`;
     const baseTemplateName = job === 'design' ? 'base-system-design' : 'base';
     const rulesTemplateName = job === 'design' ? 'rules-system-design' : 'rules';
     
@@ -257,13 +258,13 @@ export class ModeController {
         }
       }
       
-      // Verification language hints are now injected into the plan diagnostic prompt
-      // (buildDiagnosticPlanPrompt) where build/test execution actually happens.
+      // Verification language hints are now injected into the plan verification prompt
+      // (buildVerificationPlanPrompt) where build/test execution actually happens.
       // codeGen only applies code fixes — it doesn't need build system hints.
       
       // Test-code: inject language-specific hints (test frameworks, mock patterns)
       if (isTestCode && language && job === 'code') {
-        const hintsPath = `${job}/phases/test-code/languages/${language}/hints`;
+        const hintsPath = `${job}/phases/execute/tasks/test-code/languages/${language}/hints`;
         injections.push(hintsPath);
         console.log(`[ModeController] Adding test-code language hints: ${hintsPath}`);
       }

@@ -67,15 +67,15 @@ export async function buildPlanPrompt(
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) throw new Error('[Plan] PromptEngine not available');
 
-  const isDiagnosticTask = task.type === 'verification' || task.type === 'error';
-  if (isDiagnosticTask) {
+  const isVerificationTask = task.type === 'verification' || task.type === 'error';
+  if (isVerificationTask) {
     const profile = state.profile || (state as any).detectionReport?.profile;
     if (!profile) {
-      console.warn(`⚠️ [Plan] Diagnostic task "${task.name}": profile is null (state.profile=${!!state.profile}, detectionReport.profile=${!!(state as any).detectionReport?.profile})`);
+      console.warn(`⚠️ [Plan] Verification task "${task.name}": profile is null (state.profile=${!!state.profile}, detectionReport.profile=${!!(state as any).detectionReport?.profile})`);
     } else {
-      console.log(`🔧 [Plan] Diagnostic profile: language=${profile.language}, framework=${profile.framework || 'none'}`);
+      console.log(`🔧 [Plan] Verification profile: language=${profile.language}, framework=${profile.framework || 'none'}`);
     }
-    return await promptEngine.buildDiagnosticPlanPrompt(
+    return await promptEngine.buildVerificationPlanPrompt(
       task,
       state.directive || '',
       projectCodeContext,
@@ -200,9 +200,9 @@ export async function generatePlanText(
         {
           taskId: task.id,
           taskName: task.name,
-          templatePath: 'code/phases/plan/base-plan',
-          usedTemplates: ['code/phases/plan/rules-plan'],
-          resolvedPartials: collectResolvedPartials(['code/phases/plan/base-plan', 'code/phases/plan/rules-plan']),
+          templatePath: 'code/phases/plan/base',
+          usedTemplates: ['code/phases/plan/rules'],
+          resolvedPartials: collectResolvedPartials(['code/phases/plan/base', 'code/phases/plan/rules']),
           injectedVariables: {
             taskName: task.name,
             taskType: task.type,
@@ -567,7 +567,7 @@ export async function runPlanLLMWithTools(
   }
 
   // Log prompt for plan-toolLoop so it appears in prompt-*.md debug files
-  const isDiagnostic = task.type === 'verification' || task.type === 'error';
+  const isVerification = task.type === 'verification' || task.type === 'error';
   const planRound = Math.floor((messages.length - 1) / 2);
   const jobId = state._httpJobId || 'unknown';
   if (state.context?.featurePath) {
@@ -585,8 +585,8 @@ export async function runPlanLLMWithTools(
           taskId: task.id,
           taskName: task.name,
           templatePath: 'plan-toolLoop (with tools)',
-          usedTemplates: [isDiagnostic ? 'code/phases/plan/rules-plan-diagnostic' : 'code/base/injections/plan-tools-batch'],
-          resolvedPartials: collectResolvedPartials([isDiagnostic ? 'code/phases/plan/rules-plan-diagnostic' : 'code/base/injections/plan-tools-batch']),
+          usedTemplates: [isVerification ? 'code/phases/plan/tasks/verification/rules' : 'code/base/injections/plan-tools-batch'],
+          resolvedPartials: collectResolvedPartials([isVerification ? 'code/phases/plan/tasks/verification/rules' : 'code/base/injections/plan-tools-batch']),
           injectedVariables: {
             round: planRound,
             historyMessages: messages.length,
@@ -616,14 +616,14 @@ export async function runPlanLLMWithTools(
   if (planMatch) {
     const planText = planMatch[1].trim();
     if (planText.length >= 50) {
-      // Diagnostic shortcut: if plan indicates no errors, return empty planText
+      // Verification shortcut: if plan indicates no errors, return empty planText
       // so codeGen can immediately mark done without LLM interpretation
-      if (isDiagnostic) {
+      if (isVerification) {
         try {
           const parsed = JSON.parse(planText);
           if (parsed.diagnostics?.totalErrors === 0 ||
               (parsed.implementation?.modify?.length === 0 && parsed.implementation?.create?.length === 0)) {
-            console.log(`✅ [Plan] Diagnostic plan shows no errors — returning empty planText for immediate done`);
+            console.log(`✅ [Plan] Verification plan shows no errors — returning empty planText for immediate done`);
             return { planText: '' };
           }
         } catch { /* non-blocking parse error, use plan as-is */ }
@@ -656,8 +656,8 @@ export async function finalizePlanFromExploration(
   const llmToUse = await selectLLMForTask(llm, task, state);
   if (!llmToUse?.stream) return null;
 
-  const isDiagnostic = task.type === 'verification' || task.type === 'error';
-  const finalizePrompt = isDiagnostic
+  const isVerification = task.type === 'verification' || task.type === 'error';
+  const finalizePrompt = isVerification
     ? 'You have finished running build/test commands and exploring. Based on ALL the tool results above, ' +
       'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
       'and output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
@@ -784,12 +784,12 @@ export async function finalizePlanFromExploration(
         const parsed = JSON.parse(planText);
         validatePrescribedPackages(parsed, state);
 
-        // Diagnostic shortcut: no errors → empty planText for immediate done
-        const isDiagnostic = task.type === 'verification' || task.type === 'error';
-        if (isDiagnostic &&
+        // Verification shortcut: no errors → empty planText for immediate done
+        const isVerification = task.type === 'verification' || task.type === 'error';
+        if (isVerification &&
             (parsed.diagnostics?.totalErrors === 0 ||
              (parsed.implementation?.modify?.length === 0 && parsed.implementation?.create?.length === 0))) {
-          console.log(`✅ [Plan] Diagnostic plan shows no errors — returning empty planText for immediate done`);
+          console.log(`✅ [Plan] Verification plan shows no errors — returning empty planText for immediate done`);
           await savePlanTextForDebug(state, task, planText);
           return '';
         }

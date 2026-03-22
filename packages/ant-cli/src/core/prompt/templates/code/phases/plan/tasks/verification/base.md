@@ -206,4 +206,4 @@ or have cross-file dependencies MUST be in the same batch.)
 {{{languageHints}}}
 
 {{/if}}
-{{> code/phases/plan/rules-plan-diagnostic}}
+{{> code/phases/plan/tasks/verification/rules}}

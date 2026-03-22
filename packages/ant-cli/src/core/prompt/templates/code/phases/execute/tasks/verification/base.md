@@ -88,4 +88,4 @@ All paths are relative to the feature root.
 Use `search_reference_code` tool to query these projects. See rules for constraints.
 {{/if}}
 
-**For XML tag syntax and output format details, see verify/rules.md**
+**For XML tag syntax and output format details, see execute/tasks/verification/rules.md**

@@ -208,14 +208,14 @@ describe('Template Smoke Tests', () => {
     }
   });
 
-  it('secure-coding partial is resolved inside execute/rules and plan/rules-plan', async () => {
+  it('secure-coding partial is resolved inside execute/rules and plan/rules', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const rulesOutput = await adapter.render('code/phases/execute/rules', SAMPLE_VARS);
     expect(rulesOutput).toContain('untrusted');
     expect(rulesOutput).toContain('parameterized query');
 
-    const planRulesOutput = await adapter.render('code/phases/plan/rules-plan', SAMPLE_VARS);
+    const planRulesOutput = await adapter.render('code/phases/plan/rules', SAMPLE_VARS);
     expect(planRulesOutput).toContain('untrusted');
     expect(planRulesOutput).toContain('parameterized query');
   });
@@ -227,7 +227,7 @@ describe('Template Smoke Tests', () => {
     expect(partials).toContain('code/base/injections/secure-coding');
     expect(partials).toContain('code/base/injections/persistence-schema-rule');
 
-    const planPartials = collectResolvedPartials(['code/phases/plan/rules-plan']);
+    const planPartials = collectResolvedPartials(['code/phases/plan/rules']);
     expect(planPartials).toContain('code/base/injections/secure-coding');
   });
 
