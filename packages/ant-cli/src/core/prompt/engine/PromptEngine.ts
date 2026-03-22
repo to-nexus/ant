@@ -535,8 +535,8 @@ export class PromptEngine {
       }
     }
     
-    // ✅ Uses base-plan.md for plan generation
-    return await this.deps.promptPort.render('code/phases/plan/base-plan', {
+    // ✅ Uses base.md for plan generation
+    return await this.deps.promptPort.render('code/phases/plan/base', {
       taskName: task.name,
       taskDescription: task.description,
       directive: directive,  // ✅ Pass original directive
@@ -564,7 +564,7 @@ export class PromptEngine {
    * Build prompt for diagnostic plan (verification/error tasks).
    * Unlike feature plans, this focuses on build/test execution and error analysis.
    */
-  async buildDiagnosticPlanPrompt(
+  async buildVerificationPlanPrompt(
     task: { id: string; name: string; description: string; type: string },
     directive: string,
     projectCodeContext: any,
@@ -588,14 +588,14 @@ export class PromptEngine {
     if (profile?.language) {
       const language = this.mapLanguageToTemplatePath(profile.language);
       try {
-        languageHints = await this.deps.promptPort.render(`code/phases/verify/languages/${language}/hints`, {});
+        languageHints = await this.deps.promptPort.render(`code/phases/plan/tasks/verification/languages/${language}/hints`, {});
         console.log(`📋 [PromptEngine] Injected diagnostic language hints for: ${language}`);
       } catch {
         // No hints template for this language — skip
       }
     }
     
-    return await this.deps.promptPort.render('code/phases/plan/base-diagnostic', {
+    return await this.deps.promptPort.render('code/phases/plan/tasks/verification/base', {
       taskId: task.id,
       taskName: task.name,
       taskDescription: task.description,

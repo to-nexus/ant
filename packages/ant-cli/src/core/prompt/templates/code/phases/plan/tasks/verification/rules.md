@@ -10,7 +10,9 @@
 
 **`run_command` is NOT permitted for**:
 - Modifying source files (use the code execution phase for that)
-- Starting long-running dev servers or background processes
+- Persistent background processes unrelated to the verification steps above
+  (e.g., database servers, message queues — the dev server in Step 3
+   is permitted and is auto-terminated by the platform after startup verification)
 
 **Constraint**: When you need to read multiple files referenced in build errors, issue ALL reads in ONE response. Do NOT read files one at a time.
 
