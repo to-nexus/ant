@@ -5,6 +5,8 @@ export interface JobLLMConfig {
   decompose?: string;
   plan?: string;
   docGen?: string;
+  execute?: string;
+  /** @deprecated renamed to execute — kept for migration fallback */
   codeGen?: string;
   tool?: string;
   validate?: string;

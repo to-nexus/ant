@@ -27,7 +27,7 @@ export interface BaseCodeContext {
  * Source: decompose (paths only), plan (with content), or codeGen (accumulated)
  */
 export interface ProjectCodeContext extends BaseCodeContext {
-  source: 'decompose' | 'plan' | 'codeGen';
+  source: 'decompose' | 'plan' | 'execute' | 'codeGen';
   directoryTree?: string;
 }
 

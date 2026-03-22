@@ -11,5 +11,5 @@ export function routeAfterTool(state: ArchitectGraphState): string {
   if (state._planExploring === true) {
     return 'plan';
   }
-  return 'codeGen';
+  return 'execute';
 }
