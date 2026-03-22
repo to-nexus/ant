@@ -7,12 +7,12 @@ import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅
 import { detectEnvironment } from "./nodes/detectEnvironment/index";
 import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
-import { codeGen } from "./nodes/codeGen/index";
+import { execute } from "./nodes/execute/index";
 import { tool } from "./nodes/tool";
 // import { validate } from "./nodes/validate";  // ✅ REMOVED: Static validation no longer needed (prompts handle it)
 import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
-import { routeAfterCodeGen } from "./routers/codeGenRouter";
+import { routeAfterExecute } from "./routers/codeGenRouter";
 import { routeAfterPlan } from "./routers/planRouter";
 import { routeAfterTool } from "./routers/toolRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
@@ -213,7 +213,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       retries: 0,
       violations: [],
       _batchSplitRequeued: false,
-      _codeGenCallIndex: 0,
+      _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',
       projectCodeContext: undefined,
@@ -258,7 +258,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         outputTokens: completedTask.tokenUsage?.outputTokens || 0,
         cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
         cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
-        llmCallCount: state._codeGenCallIndex || 0,
+        llmCallCount: state._executeCallIndex || 0,
       }).catch(() => {});
     }
     
@@ -270,7 +270,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       nextTask: state.taskQueue?.peek() ? { id: state.taskQueue.peek()!.id } : undefined,
       conversationHistory: state.conversationHistory || [],
     });
-    state._codeGenCallIndex = 0;
+    state._executeCallIndex = 0;
     state._finalTaskLoopCount = 0;
     
     // ✅ CRITICAL: Clear violations for next task
@@ -382,7 +382,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       retries: 0,
       violations: [],
       conversationHistory: state.conversationHistory,  // Already processed by retention policy above
-      _codeGenCallIndex: 0,
+      _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
       projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
@@ -1052,8 +1052,8 @@ export function buildCodeGraph() {
       tokenUsage: null as any,              // Job-level token usage (accumulated across all tasks + decompose)
       _estimatingTokenUsage: null as any,   // Estimating phase snapshot (captured at end of decompose)
       
-      // ✅ codeGen call counter (per task, reset in checkTaskStatus)
-      _codeGenCallIndex: {
+      // ✅ execute call counter (per task, reset in checkTaskStatus)
+      _executeCallIndex: {
         value: (_prev: number, next: number) => next,
         default: () => 0,
       } as any,
@@ -1091,7 +1091,7 @@ export function buildCodeGraph() {
   graph.addNode("decompose", decompose as any);
   graph.addNode("revise", revise as any);  // ✅ Task queue revision (continue/modify)
   graph.addNode("plan", plan as any);
-  graph.addNode("codeGen", codeGen as any);
+  graph.addNode("execute", execute as any);
   graph.addNode("tool", tool as any);
   graph.addNode("checkTaskStatus", checkTaskStatus as any);
   graph.addNode("enforce", enforce as any);
@@ -1209,34 +1209,34 @@ export function buildCodeGraph() {
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   
-  // Plan → Router (batch split → checkTaskStatus, tool_calls → tool, else → codeGen)
+  // Plan → Router (batch split → checkTaskStatus, tool_calls → tool, else → execute)
   graph.addConditionalEdges(
     "plan" as any,
     routeAfterPlan as any,
-    { tool: "tool", codeGen: "codeGen", checkTaskStatus: "checkTaskStatus" } as any
+    { tool: "tool", execute: "execute", checkTaskStatus: "checkTaskStatus" } as any
   );
 
-  // CodeGen → Router (tool / checkTaskStatus / codeGen / plan)
+  // Execute → Router (tool / checkTaskStatus / execute / plan)
   graph.addConditionalEdges(
-    "codeGen" as any,
-    routeAfterCodeGen as any,
+    "execute" as any,
+    routeAfterExecute as any,
     {
       tool: "tool",
       checkTaskStatus: "checkTaskStatus",
-      codeGen: "codeGen",
-      plan: "plan",   // verification task codeGen done → plan re-verify
+      execute: "execute",
+      plan: "plan",   // verification task execute done → plan re-verify
     } as any
   );
-  
-  // Tool → Router (plan exploring then plan, else codeGen)
+
+  // Tool → Router (plan exploring then plan, else execute)
   graph.addConditionalEdges(
     "tool" as any,
     routeAfterTool as any,
-    { plan: "plan", codeGen: "codeGen" } as any
+    { plan: "plan", execute: "execute" } as any
   );
 
   // checkTaskStatus: 태스크 완료 상태 확인 및 라우팅
-  // All task types: codeGen(done) → checkTaskStatus
+  // All task types: execute(done) → checkTaskStatus
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
     ((s: ArchitectGraphState) => {

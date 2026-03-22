@@ -2,7 +2,7 @@ export { resolve } from "./resolve";
 export { decompose } from "./decompose/index";
 export { revise } from "./revise";
 export { plan } from "./plan/index";
-export { codeGen } from "./codeGen/index";
+export { execute } from "./execute/index";
 export { tool } from "./tool";
 export { validate } from "./validate";
 export { enforce } from "./enforce";

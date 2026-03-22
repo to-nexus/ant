@@ -79,7 +79,7 @@ function enrichContextFromPlanToolLoop(
  * LLM to output `<done>true</done>` — a wasted call.  Detect this and let the
  * plan node set `done: true` directly so planRouter skips codeGen entirely.
  */
-function isDiagnosticPassWithoutCodeGen(
+function isVerificationPassWithoutCodeGen(
   state: ArchitectGraphState, planText: string, batchSplitOccurred: boolean,
 ): boolean {
   if (batchSplitOccurred) return false;
@@ -138,7 +138,7 @@ function processDiagnosticBatchSplit(
   planText: string,
   nextTask: CodeTask,
 ): string {
-  const isDiagnosticTask = nextTask.type === 'verification' || nextTask.type === 'error';
+  const isVerificationOrErrorTask = nextTask.type === 'verification' || nextTask.type === 'error';
 
   const logBatchSplit = (data: Record<string, any>) => {
     if (state.context?.featurePath && state._httpJobId) {
@@ -152,7 +152,7 @@ function processDiagnosticBatchSplit(
     }
   };
 
-  if (!isDiagnosticTask) {
+  if (!isVerificationOrErrorTask) {
     return planText;
   }
   if (!planText || planText.length <= 50) {
@@ -290,9 +290,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // Reset call budget for retry — without this, each retry inherits the
     // previous attempt's call index, progressively shrinking the available
     // budget until the safety-net fires on the very first call.
-    const prevCallIndex = state._codeGenCallIndex || 0;
+    const prevCallIndex = state._executeCallIndex || 0;
     const isVerificationRetry = nextTask.type === 'verification';
-    
+
     if (isVerificationRetry) {
       // Verification retry: preserve conversationHistory and callIndex.
       // Clearing these causes enableThinking=true on every retry (because
@@ -300,14 +300,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       // loop where the LLM produces only a thinking block with no tool calls.
       state._finalTaskLoopCount = 0;
       console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-      console.log(`   ♻️  Preserved: conversationHistory (${state.conversationHistory?.length ?? 0}), _codeGenCallIndex (${prevCallIndex})`);
+      console.log(`   ♻️  Preserved: conversationHistory (${state.conversationHistory?.length ?? 0}), _executeCallIndex (${prevCallIndex})`);
       console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
     } else {
-      state._codeGenCallIndex = 0;
+      state._executeCallIndex = 0;
       state._finalTaskLoopCount = 0;
       state.conversationHistory = [];
       console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-      console.log(`   ♻️  Reset: _codeGenCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
+      console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
     }
   } else if (state._planExploring === true && state.currentTask) {
     nextTask = state.currentTask;
@@ -330,8 +330,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       devServerRequired: true,
     };
 
-    // Reset codeGen state for potential next fix cycle
-    state._codeGenCallIndex = 0;
+    // Reset execute state for potential next fix cycle
+    state._executeCallIndex = 0;
     state._finalTaskLoopCount = 0;
     state.conversationHistory = [];
   } else {
@@ -361,7 +361,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // ✅ Initialize token usage tracking for new task
     const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     resetTaskTokenUsage(state as any);
-    state._codeGenCallIndex = 0;
+    state._executeCallIndex = 0;
 
     // ✅ Initialize verification tracker for verification tasks only.
     // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
@@ -513,7 +513,7 @@ const hasPrePlanText =
       ...state,
       currentTask: nextTask,
       planText: (nextTask as CodeTask).prePlanText!,
-      _codeGenBudget: computeBudgetFromPlanText((nextTask as CodeTask).prePlanText!),
+      _executeBudget: computeBudgetFromPlanText((nextTask as CodeTask).prePlanText!),
       retries: 0,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
@@ -550,7 +550,7 @@ const hasPrePlanText =
         const preSplitPlan = finalizedPlan;
         finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
         const batchSplitOccurred = preSplitPlan.length > 50 && finalizedPlan === '';
-        const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
+        const diagnosticPass = isVerificationPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
         const enrichedContext = enrichContextFromPlanToolLoop(
           state.projectCodeContext ,
           state.planConversationHistory,
@@ -567,7 +567,7 @@ const hasPrePlanText =
           referenceCodeContexts: state.referenceCodeContexts,
           lessons: state.lessons ?? [],
           planText: finalizedPlan,
-          _codeGenBudget: computeBudgetFromPlanText(finalizedPlan),
+          _executeBudget: computeBudgetFromPlanText(finalizedPlan),
           _planExploring: false,
           planConversationHistory: undefined,
           retries: isRetry ? state.retries : 0,
@@ -575,9 +575,9 @@ const hasPrePlanText =
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           workspaceConfig: state.workspaceConfig,
-          ...((batchSplitOccurred || diagnosticPass) ? {
-            llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
-          } : {}),
+          llmResponse: (batchSplitOccurred || diagnosticPass)
+            ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
+            : { done: false, textResponse: '', thinking: '', toolCalls: [] },
         };
       }
       console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
@@ -610,7 +610,7 @@ const hasPrePlanText =
         const preSplitPlan = result.planText;
         const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
         const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
-        const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, planText, batchSplitOccurred);
+        const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
         const enrichedContext = enrichContextFromPlanToolLoop(
           state.projectCodeContext ,
           state.planConversationHistory,
@@ -622,7 +622,7 @@ const hasPrePlanText =
           referenceCodeContexts: state.referenceCodeContexts,
           lessons: state.lessons ?? [],
           planText,
-          _codeGenBudget: computeBudgetFromPlanText(planText),
+          _executeBudget: computeBudgetFromPlanText(planText),
           _planExploring: false,
           planConversationHistory: undefined,
           retries: isRetry ? state.retries : 0,
@@ -630,9 +630,9 @@ const hasPrePlanText =
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           workspaceConfig: state.workspaceConfig,
-          ...((batchSplitOccurred || diagnosticPass) ? {
-            llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
-          } : {}),
+          llmResponse: (batchSplitOccurred || diagnosticPass)
+            ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
+            : { done: false, textResponse: '', thinking: '', toolCalls: [] },
         };
         if (state.deps?.workflowUpdate && state._httpJobId) {
           await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
@@ -685,7 +685,7 @@ const hasPrePlanText =
       referenceCodeContexts: [],
       lessons: [],
       planText: setupPlanText,
-      _codeGenBudget: computeBudgetFromPlanText(setupPlanText ?? ''),
+      _executeBudget: computeBudgetFromPlanText(setupPlanText ?? ''),
       retries: isRetry ? state.retries : 0,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
@@ -876,15 +876,15 @@ const hasPrePlanText =
 
   let planText: string | undefined;
   const requiresPlan = taskRequiresPlan(nextTask);
-  const isDiagnosticTask = nextTask.type === 'verification' || nextTask.type === 'error';
+  const isVerificationTask = nextTask.type === 'verification' || nextTask.type === 'error';
   const planToolRounds = (state.planConversationHistory?.length ?? 0) / 2;
-  const tryToolsFirst = llm && (requiresPlan || isDiagnosticTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
+  const tryToolsFirst = llm && (requiresPlan || isVerificationTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
-  // ── Inject previous batch split context for re-enqueued diagnostic tasks ──
-  // When a diagnostic task was previously batch-split and re-enqueued, attach
+  // ── Inject previous batch split context for re-enqueued verification tasks ──
+  // When a verification task was previously batch-split and re-enqueued, attach
   // the history of previous attempts so the LLM can try a different strategy.
   let diagnosticRetryContext: string | undefined;
-  if (isDiagnosticTask && nextTask._previousBatchDiagnostics) {
+  if (isVerificationTask && nextTask._previousBatchDiagnostics) {
     const cycle = nextTask._batchSplitCount || 0;
     diagnosticRetryContext =
       `\n\n### PREVIOUS BATCH SPLIT ATTEMPT (Cycle ${cycle})\n` +
@@ -896,7 +896,7 @@ const hasPrePlanText =
   }
 
   // Inject completed error task details so the LLM knows what was already tried
-  if (isDiagnosticTask && nextTask._batchSplitCount && nextTask._batchSplitCount > 0) {
+  if (isVerificationTask && nextTask._batchSplitCount && nextTask._batchSplitCount > 0) {
     const completedErrorTasks = (state.completedTasksDetails || [])
       .filter((t: any) => t.type === 'error' && (t as any).prePlanText);
 
@@ -958,12 +958,12 @@ const hasPrePlanText =
   }
 
   if (planText === undefined) {
-    if (isDiagnosticTask) {
-      // Diagnostic tasks (verification/error): tool loop didn't produce a plan,
+    if (isVerificationTask) {
+      // Verification/error tasks: tool loop didn't produce a plan,
       // meaning build/test wasn't run in exploration. Generate empty plan —
-      // codeGen will handle via its diagnostic template.
+      // codeGen will handle via its verification template.
       planText = '';
-      console.log(`📋 [Plan] Diagnostic task "${nextTask.name}": tool loop did not produce plan, proceeding with empty planText`);
+      console.log(`📋 [Plan] Verification task "${nextTask.name}": tool loop did not produce plan, proceeding with empty planText`);
     } else {
       planText = await generatePlanText(
         llm,
@@ -991,7 +991,7 @@ const hasPrePlanText =
   const preSplitPlanText = planText ?? '';
   planText = processDiagnosticBatchSplit(state, preSplitPlanText, nextTask);
   const batchSplitOccurred = preSplitPlanText.length > 50 && planText === '';
-  const diagnosticPass = isDiagnosticPassWithoutCodeGen(state, planText, batchSplitOccurred);
+  const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Update state
@@ -1004,7 +1004,7 @@ const hasPrePlanText =
       referenceCodeContexts,
       lessons,
       planText,
-      _codeGenBudget: planText ? computeBudgetFromPlanText(planText) : undefined,
+      _executeBudget: planText ? computeBudgetFromPlanText(planText) : undefined,
       retries: isRetry ? state.retries : 0,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
@@ -1012,9 +1012,9 @@ const hasPrePlanText =
       workspaceConfig: state.workspaceConfig,
       _planExploring: false,
       planConversationHistory: undefined,
-      ...((batchSplitOccurred || diagnosticPass) ? {
-        llmResponse: { done: true, textResponse: '', thinking: '', toolCalls: [] },
-      } : {}),
+      llmResponse: (batchSplitOccurred || diagnosticPass)
+        ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
+        : { done: false, textResponse: '', thinking: '', toolCalls: [] },
     };
     
     // ✅ DEBUG: Verify planText is properly stored

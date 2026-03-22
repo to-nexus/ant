@@ -25,7 +25,7 @@ const DESIGN_NODES: NodeConfig[] = [
 const CODE_NODES: NodeConfig[] = [
   { key: 'default', labelKey: 'llmModels.default', description: 'llmModels.defaultCodeDesc' },
   { key: 'decompose', labelKey: 'llmModels.decompose', description: 'llmModels.decomposeDesc' },
-  { key: 'codeGen', labelKey: 'llmModels.codeGeneration', description: 'llmModels.codeGenDesc' },
+  { key: 'execute', labelKey: 'llmModels.codeGeneration', description: 'llmModels.codeGenDesc' },
   { key: 'plan', labelKey: 'llmModels.plan', description: 'llmModels.planDesc' },
 ];
 
