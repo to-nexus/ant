@@ -1,7 +1,7 @@
 /**
  * Reference Context Filtering
  * 
- * Extracted from original codeGen.ts:
+ * Extracted from original execute/index.ts:
  * - filterReferencesForTask: Filter reference contexts by task relevance
  */
 

@@ -71,7 +71,7 @@ export interface CodeTask extends BaseTask {
    * Used for split injection - only specified package design docs are loaded into prompt.
    * 
    * **REQUIRED**: Every task MUST have packages set by decompose.
-   * If missing, plan/codeGen falls back to state.design (all docs) with a warning.
+   * If missing, plan/execute falls back to state.design (all docs) with a warning.
    * 
    * ## Normalized Tag Format (unified naming: always `{type}-{name}.md`)
    * 

@@ -44,15 +44,18 @@
 
 ---
 
-### Full Type Error Discovery
+### Verification Order for TypeScript Projects
 
-**Principle**: Many build tools (Next.js, CRA, Vite with tsc plugin) stop type checking at the first error or first few errors. To plan comprehensive fixes, ALL type errors must be collected in a single run.
+**Principle**: Static type checking and dynamic build are two distinct steps. Tests run only after both pass. Dev server verification is the final step.
 
-| Checkpoint | Observation Target |
-|-----------|-------------------|
-| **tsconfig.json exists** | If present, `npx tsc --noEmit` (or `pnpm tsc --noEmit`, etc.) reports all type errors across the entire project in one pass. |
-| **Build tool behavior** | Does the project's build command truncate error output? If only 1-3 errors appear, suspect truncation. |
+**Required order**:
+1. `tsc --noEmit` — static type check (collects ALL type errors in one pass)
+2. Project build command (e.g., `next build`, `vite build`) — dynamic build
+3. Test command (e.g., `vitest run`, `jest`) — only if build passes
+4. Dev server — only if build and tests pass
 
-**Constraint**: Before running the project's build command, run the type checker directly (`tsc --noEmit` with the appropriate package manager) to collect the complete set of type errors. Plan fixes for ALL reported errors, then confirm with the project's build command.
+**Constraint**: `tsc --noEmit` is a pre-check BEFORE Step 1 (Build). It does NOT replace the build command. After tsc passes, you MUST still run the project's build command as Step 1.
 
-⚠️ **Blind spot**: `next build`, `react-scripts build`, and similar framework CLIs embed type checking but often abort on the first error. Relying solely on them causes a fix-one-discover-next loop that wastes iteration cycles.
+**Constraint**: Do NOT run tests (Step 2) before the dynamic build (Step 1) completes successfully. Test results are meaningless if the production build is broken.
+
+⚠️ **Blind spot**: `next build`, `react-scripts build`, and similar framework CLIs embed type checking but often abort on the first error. Running `tsc --noEmit` first surfaces ALL type errors at once — but the dynamic build must still be confirmed separately afterward.

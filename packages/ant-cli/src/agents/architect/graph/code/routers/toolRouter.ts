@@ -2,7 +2,7 @@
  * Tool Router - Tool node exit routing
  *
  * If we were in plan exploration (_planExploring) -> back to plan (with tool results)
- * Otherwise (from codeGen) -> codeGen
+ * Otherwise (from execute) -> execute
  */
 
 import { ArchitectGraphState } from '../state';

@@ -153,8 +153,8 @@ export class TokenLogger {
         ...(context.recursionCount !== undefined ? { recursionCount: context.recursionCount } : {}),
       };
 
-      // ━━━ Monitoring alerts (applies to iterative LLM nodes: codeGen, docGen) ━━━
-      const isIterativeNode = context.node === 'codeGen' || context.node === 'docGen';
+      // ━━━ Monitoring alerts (applies to iterative LLM nodes: execute, docGen) ━━━
+      const isIterativeNode = context.node === 'execute' || context.node === 'docGen';
       
       if (context.callIndex > 0 && cacheHitRatio < 0.5 && isIterativeNode) {
         console.warn(

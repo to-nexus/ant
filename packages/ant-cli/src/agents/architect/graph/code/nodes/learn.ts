@@ -418,8 +418,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
           chatSource: state.chatSource,  // ✅ Save chat source flag
           referenceRequests: state.referenceRequests || [],  // ✅ Save reference repositories for analysis
-          // ✅ CRITICAL: Save detectionReport for resume (required for tool calling in codeGen)
-          // Without this, codeGen disables tool calling on resume → XML tags rendered as text
+          // ✅ CRITICAL: Save detectionReport for resume (required for tool calling in codexecuteeGen)
+          // Without this, execute disables tool calling on resume → XML tags rendered as text
           detectionReport: state.detectionReport,
           // ✅ projectCodeContext is NOT saved to checkpoint
           // Plan node always regenerates it via RAG - no need to persist

@@ -12,7 +12,7 @@ import { tool } from "./nodes/tool";
 // import { validate } from "./nodes/validate";  // ✅ REMOVED: Static validation no longer needed (prompts handle it)
 import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
-import { routeAfterExecute } from "./routers/codeGenRouter";
+import { routeAfterExecute } from "./routers/executeRouter";
 import { routeAfterPlan } from "./routers/planRouter";
 import { routeAfterTool } from "./routers/toolRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
@@ -157,6 +157,23 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         isRetryable: true,
         suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
       });
+    } else if (tracker.devServerRequired && !tracker.devServerPassed) {
+      console.warn(`⚠️  [checkTaskStatus] Verification: dev server objective not met (reason: ${tracker.devServerFailureReason ?? 'unknown'})`);
+      const reasonMessages: Record<string, string> = {
+        timeout: 'The dev server did not respond within 30 seconds. The server may be slow to start or blocked on compilation.',
+        http_error: 'The dev server started but returned an HTTP error. There is likely a runtime error in the application.',
+        startup_failure: 'The dev server process failed to start. Check the startup logs for errors.',
+        connection_refused: 'The dev server process started but did not bind to the expected port. Verify the server configuration.',
+      };
+      const reason = tracker.devServerFailureReason;
+      const reasonDetail = reason ? reasonMessages[reason] : 'The dev server did not pass verification.';
+      violations.push({
+        type: 'verification_incomplete' as ViolationType,
+        severity: 'critical',
+        message: `Dev server verification failed: ${reasonDetail}`,
+        isRetryable: true,
+        suggestedFix: 'Run the dev server and confirm the root page is served successfully (HTTP 200). If the server started but the page failed to load, fix the runtime error first.',
+      });
     }
   }
 
@@ -224,7 +241,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
 
   if (!hasViolations && state.currentTask) {
     // Task succeeded — use _currentTaskTokenUsage as single source of truth.
-    // _currentTaskTokenUsage already accumulated ALL plan + codeGen calls via
+    // _currentTaskTokenUsage already accumulated ALL plan + execute calls via
     // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
     // No additional merge or job-level re-accumulation needed here.
     const { getTaskTokenUsage } = await import('../../../common/graph/llmHelpers');
@@ -551,6 +568,24 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
           });
         }
       },
+      onInterruption: (reason, runningTaskIds) => {
+        // ✅ Log job_interrupted event to debug/logs/
+        if (state.context?.featurePath && state._httpJobId) {
+          import('../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+            const execLogger = getExecutionLogger({
+              featurePath: state.context.featurePath!,
+              jobId: state._httpJobId!,
+              jobType: 'code',
+            });
+            execLogger.logJobInterrupted({
+              reason,
+              runningTaskIds,
+              remainingTaskCount: taskQueue.size(),
+              completedTaskCount: orchestrator.getCompletedTasks().length,
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      },
       onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
         if (state.deps?.kanbanUpdate && state._httpJobId) {
           state.deps.kanbanUpdate.updateTaskQueue(
@@ -659,7 +694,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );
 
-  // ✅ Log parallel_start event to debug/logs/
+  // ✅ Log parallel_start (and job_resumed if resuming) events to debug/logs/
   const parallelStartTime = Date.now();
   if (state.context?.featurePath && state._httpJobId) {
     const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
@@ -668,6 +703,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       jobId: state._httpJobId,
       jobType: 'code',
     });
+    // ✅ Log job_resumed when this is a resume run with an existing task queue
+    if (state.isResume) {
+      execLogger.logJobResumed({
+        fromCompletedTaskCount: (state.completedTasksDetails || []).length,
+        remainingTaskCount: taskQueue.size(),
+      }).catch(() => {});
+    }
     const allTaskIds = taskQueue.getAll().map((t: any) => t.id);
     execLogger.logParallelStart({
       taskIds: allTaskIds,
@@ -1058,7 +1100,7 @@ export function buildCodeGraph() {
         default: () => 0,
       } as any,
 
-      // Safety Net C: final task loop counter (computed by codeGen node, read by router)
+      // Safety Net C: final task loop counter (computed by execute node, read by router)
       _finalTaskLoopCount: {
         value: (_prev: number, next: number) => next,
         default: () => 0,

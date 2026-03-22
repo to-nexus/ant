@@ -75,9 +75,9 @@ function enrichContextFromPlanToolLoop(
 
 /**
  * When a diagnostic task (verification/error) finishes its plan tool-loop with
- * build/test already passing and no plan to execute, codeGen would only ask the
+ * build/test already passing and no plan to execute, execute would only ask the
  * LLM to output `<done>true</done>` — a wasted call.  Detect this and let the
- * plan node set `done: true` directly so planRouter skips codeGen entirely.
+ * plan node set `done: true` directly so planRouter skips execute entirely.
  */
 function isVerificationPassWithoutCodeGen(
   state: ArchitectGraphState, planText: string, batchSplitOccurred: boolean,
@@ -181,7 +181,7 @@ function processDiagnosticBatchSplit(
       (nextTask as any)._failed = true;
       (nextTask as any)._failureReason = `batch_split_cycle_limit_exceeded (${splitCount} cycles)`;
       state._batchSplitRequeued = true; // release worker slot
-      return ''; // batchSplitOccurred=true → llmResponse.done=true → skip codeGen
+      return ''; // batchSplitOccurred=true → llmResponse.done=true → skip execute
     }
 
     const hasFileOverlap = computeBatchFileOverlap(parsed.batches);
@@ -299,9 +299,28 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       // isAfterToolCall checks history length), which triggers a thinking-only
       // loop where the LLM produces only a thinking block with no tool calls.
       state._finalTaskLoopCount = 0;
-      console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
+      const _retryAttempt = (state.retries || 0) + 1;
+      const _retryMax = state.maxRetries || 3;
+      console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
       console.log(`   ♻️  Preserved: conversationHistory (${state.conversationHistory?.length ?? 0}), _executeCallIndex (${prevCallIndex})`);
       console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
+      if (nextTask && state.context?.featurePath && state._httpJobId) {
+        const _taskRef = nextTask;
+        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+          getExecutionLogger({
+            featurePath: state.context!.featurePath!,
+            jobId: state._httpJobId!,
+            jobType: 'code',
+          }).logVerificationRetry(_taskRef.id, {
+            taskName: _taskRef.name,
+            attempt: _retryAttempt,
+            maxAttempts: _retryMax,
+            preservedHistoryLength: state.conversationHistory?.length ?? 0,
+            preservedCallIndex: prevCallIndex,
+            violationsFromPrevAttempt: state.violations?.length ?? 0,
+          }).catch(() => {});
+        }).catch(() => {});
+      }
     } else {
       state._executeCallIndex = 0;
       state._finalTaskLoopCount = 0;
@@ -313,9 +332,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     nextTask = state.currentTask;
     console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
   } else if ((state as any)._awaitingFinalVerify === true && state.currentTask) {
-    // POST-CODEFIX: codeGen applied fixes, now re-run full diagnostic for final verification
+    // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
     nextTask = state.currentTask;
-    console.log(`\n🔄 [Plan] Post-codeGen final verification: ${nextTask.name}`);
+    console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
     console.log(`   Re-initializing VerificationTracker for fresh build/test/devServer check\n`);
 
     // Clear the trigger flag
@@ -412,7 +431,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     }
     
     // ✅ CRITICAL: Save checkpoint after task started so session has correct currentTask
-    // Without this, manual cancel during codeGen can't find the in-progress task
+    // Without this, manual cancel during execute can't find the in-progress task
     // (session still has stale currentTask from previous learn node save)
     // Skip in worker context — orchestrator manages parallel checkpoints separately
     if (!isWorkerCtx && state.deps?.session && state.context.featureFolder) {
@@ -457,7 +476,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   //   1. Not an enforce retry (retry always needs fresh plan with violation context)
   //   2. Task was previously interrupted (not a fresh task from queue)
   //   3. Valid planText already exists from the previous session
-  // When skipped: preserves planText + conversationHistory → codeGen continues from interruption point
+  // When skipped: preserves planText + conversationHistory → execute continues from interruption point
   const canSkipPlan = (
     !isRetry &&
     nextTask.interrupted === true &&
@@ -491,7 +510,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // STEP 0.6: Pre-planned error task — skip plan generation entirely
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // When a diagnostic task splits into batches, each batch becomes an error task
-  // with prePlanText already set. Skip all plan generation and go straight to codeGen.
+  // with prePlanText already set. Skip all plan generation and go straight to execute.
   // Error tasks always use prePlanText — even on retry.
 // budget_exhausted retry should re-attempt the same fix, not re-run tsc diagnostics.
 // Re-running diagnostics on retry causes cascade: sibling domain errors → duplicate subtasks.
@@ -961,7 +980,7 @@ const hasPrePlanText =
     if (isVerificationTask) {
       // Verification/error tasks: tool loop didn't produce a plan,
       // meaning build/test wasn't run in exploration. Generate empty plan —
-      // codeGen will handle via its verification template.
+      // execute will handle via its verification template.
       planText = '';
       console.log(`📋 [Plan] Verification task "${nextTask.name}": tool loop did not produce plan, proceeding with empty planText`);
     } else {

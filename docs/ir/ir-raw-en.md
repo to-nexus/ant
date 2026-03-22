@@ -127,7 +127,7 @@ ANT aims to generate code that is continuable by a development team, not only vi
 Different workflow steps have different optimal model requirements (cost/latency/quality).
 
 ### Implementation
-- Model selection supports job type (`design`, `code`, `learn`) and node type (e.g., `decompose`, `plan`, `docGen`, `codeGen`, `validate`).
+- Model selection supports job type (`design`, `code`, `learn`) and node type (e.g., `decompose`, `plan`, `docGen`, `execute`, `validate`).
 - Resolution priority:
   1. job+node specific model
   2. job default model

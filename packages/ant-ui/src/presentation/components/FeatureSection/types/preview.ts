@@ -13,14 +13,15 @@ export type PreviewState = 'idle' | 'installing' | 'starting' | 'stopping' | 'ru
  * ALIGNED with Backend: packages/ant-cli/.../PreviewService/types.ts
  * Categorizes different types of setup failures for appropriate handling
  */
-export type SetupFailureReasoning = 
-  | 'basename-missing'      // Frontend (CSR): Missing basename configuration for proxy (React Router, Vue Router)
-  | 'basepath-missing'      // Frontend (SSR): Missing basePath in Next.js config for proxy
-  | 'port-conflict'         // Port already in use
-  | 'dependency-error'      // npm/pnpm install failed
-  | 'config-invalid'        // Invalid vite/webpack config
-  | 'framework-unsupported' // Unsupported framework
-  | 'unknown';              // Unclassified error
+export type SetupFailureReasoning =
+  | 'basename-missing'            // Frontend (CSR): Missing basename configuration for proxy (React Router, Vue Router)
+  | 'basepath-missing'            // Frontend (SSR): Missing basePath in Next.js config for proxy
+  | 'images-unoptimized-missing'  // Next.js: basePath set but images.unoptimized missing — images break in proxy
+  | 'port-conflict'               // Port already in use
+  | 'dependency-error'            // npm/pnpm install failed
+  | 'config-invalid'              // Invalid vite/webpack config
+  | 'framework-unsupported'       // Unsupported framework
+  | 'unknown';                    // Unclassified error
 
 /**
  * Preview Server Status

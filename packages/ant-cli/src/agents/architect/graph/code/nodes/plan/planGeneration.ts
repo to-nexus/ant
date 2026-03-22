@@ -220,7 +220,7 @@ export async function generatePlanText(
     }
   }
   
-  // ✅ UI streaming (aligned with decompose/codeGen pattern)
+  // ✅ UI streaming (aligned with decompose/execute pattern)
   const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
@@ -480,7 +480,7 @@ export async function runPlanLLMWithTools(
     return null;
   }
 
-  // ✅ UI streaming (aligned with decompose/codeGen pattern)
+  // ✅ UI streaming (aligned with decompose/execute pattern)
   const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
@@ -617,7 +617,7 @@ export async function runPlanLLMWithTools(
     const planText = planMatch[1].trim();
     if (planText.length >= 50) {
       // Verification shortcut: if plan indicates no errors, return empty planText
-      // so codeGen can immediately mark done without LLM interpretation
+      // so execute can immediately mark done without LLM interpretation
       if (isVerification) {
         try {
           const parsed = JSON.parse(planText);

@@ -25,7 +25,7 @@ export interface NodeHistoryEntry {
 /** Active worker node — represents one worker occupying a graph node */
 export interface ActiveWorkerNode {
   workerId: number;
-  nodeId: string;              // Original graph node ID (plan, codeGen, etc.)
+  nodeId: string;              // Original graph node ID (plan, execute, etc.)
   previousNodeId: string | null;  // Previous node (for edge animation)
   taskName: string;            // Display task name
   taskId: string;              // Task ID

@@ -221,7 +221,7 @@ export async function execute(
   // not properly restored on resume.
   const isExplainMode = state.detectionReport?.jobMode === 'explain';
   const tools = isExplainMode
-    ? await getToolsByNamesWithTemplates(TOOL_SETS.codeExplain, state.deps?.prompt)
+    ? await getToolsByNamesWithTemplates(TOOL_SETS.codeExplain, state.deps?.promptEngine?.deps?.promptPort)
     : await getAvailableTools(state);
   
   if (!state.detectionReport?.jobMode) {
@@ -483,7 +483,7 @@ export async function execute(
     // ✅ Reliable projectCodeContext update from streamedFiles.
     // streamedFiles always contains written file paths regardless of registry state.
     // Used as the base for ALL return paths (conflict, tool-call, no-done, normal)
-    // to guarantee filePaths propagation to the next codeGen turn.
+    // to guarantee filePaths propagation to the next execute turn.
     const earlyStreamedPaths = (finalizeResult?.streamedFiles || [])
       .map((fp: string) => normalizeToCodebasePath(fp, codebaseRel).normalized);
     let earlyUpdatedProjectCodeContext = state.projectCodeContext;
@@ -501,11 +501,11 @@ export async function execute(
     }
 
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
-    // Instead of: codeGen → checkTaskStatus → enforce → plan → codeGen → read_file → tool → codeGen (4-5 LLM calls)
-    // Optimized:  codeGen → codeGen with merge instruction (1 LLM call)
+    // Instead of: execute → checkTaskStatus → enforce → plan → execute → read_file → tool → codexecuteeGen (4-5 LLM calls)
+    // Optimized:  execute → execute with merge instruction (1 LLM call)
     const fileConflicts = finalizeResult.fileConflicts || [];
     if (fileConflicts.length > 0) {
-      console.log(`🔀 [CodeGen] ${fileConflicts.length} cross-worker conflict(s) — injecting direct merge instruction`);
+      console.log(`🔀 [execute] ${fileConflicts.length} cross-worker conflict(s) — injecting direct merge instruction`);
 
       // 1. Authorize worker for post-merge writes (prevents re-conflict on next write)
       const workerFSForAuth = state.deps?.fileSystem as any;
@@ -615,7 +615,7 @@ export async function execute(
       }
 
       // Suppress fileErrors while merge is in progress — returning them
-      // would cause codeGenRouter to route to checkTaskStatus, losing the
+      // would cause execute to route to checkTaskStatus, losing the
       // merge instruction injected above.  Any genuine non-conflict errors
       // will resurface after the LLM processes the merge.
       if (fileErrors.length > 0) {
@@ -737,10 +737,10 @@ export async function execute(
     }
 
     if (toolCalls.length === 0 && !explicitDone) {
-      console.warn(`⚠️  [CodeGen] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
+      console.warn(`⚠️  [execute→execute] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
       
       // Preserve LLM response in conversationHistory to prevent amnesia.
-      // Without this, codeGen→codeGen loop loses all memory of previous response,
+      // Without this, execute→execute loop loses all memory of previous response,
       // causing the LLM to repeat the same work indefinitely.
       let cleanedResponse = cleanFileContentFromResponse(textResponse);
       
