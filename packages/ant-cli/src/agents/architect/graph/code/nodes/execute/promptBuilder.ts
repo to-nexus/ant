@@ -571,14 +571,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         state.context.featurePath,
         jobId,
         'code',
-        'codeGen-fullMessage',
+        'execute-fullMessage',
         totalPromptLength,
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
-          callIndex: state._codeGenCallIndex,
-          templatePath: state.currentTask?.type === 'verification' ? 'code/phases/verify/base'
-            : state.currentTask?.type === 'error' ? 'code/phases/error/base'
+          callIndex: state._executeCallIndex,
+          templatePath: state.currentTask?.type === 'verification' ? 'code/phases/execute/tasks/verification/base'
+            : state.currentTask?.type === 'error' ? 'code/phases/execute/tasks/error/base'
             : 'code/phases/execute/base',
           usedTemplates: [
             promptResult.modeConfig.templates.base,

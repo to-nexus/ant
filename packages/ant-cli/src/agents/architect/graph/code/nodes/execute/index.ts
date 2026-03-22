@@ -35,10 +35,10 @@ import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph
 import { isFinalVerificationTask } from '../../utils/taskClassification';
 import type { CodeTask } from '../../../../types/task';
 
-export async function codeGen(
+export async function execute(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
-  console.log('\n💭 [CodeGen] Starting reasoning...\n');
+  console.log('\n💭 [Execute] Starting reasoning...\n');
   
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
@@ -48,15 +48,15 @@ export async function codeGen(
     throw new Error('LLM client not available');
   }
   
-  // ✅ NEW: Use codeGen-specific model if configured
+  // ✅ NEW: Use execute-specific model if configured
   let llmToUse = llmClient;
   if (state.workspaceConfig) {
     const { createLLMClient } = await import('../../../../../../periphery/adapters/llm/LLMClientFactory');
-    
+
     llmToUse = createLLMClient(
       'architect',
       undefined,
-      { jobType: 'code', nodeType: 'codeGen' },
+      { jobType: 'code', nodeType: 'execute' },
       state.workspaceConfig
     );
   }
@@ -165,14 +165,14 @@ export async function codeGen(
   // ✅ Progressive call budget warning injection (mirrors design job docGen pattern)
   // LLM must know its remaining budget to prioritize file output over analysis.
   {
-    const currentCall = (state._codeGenCallIndex || 0) + 1;
+    const currentCall = (state._executeCallIndex || 0) + 1;
     const isErrorType = state.currentTask?.type === 'error';
     const isFinalType = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
     const isPrePlanned = !!(state.currentTask as CodeTask)?.prePlanText;
     // Pre-planned error tasks get a bounded budget (25) since their scope is limited by batch split.
     // Regular error/verification tasks have no budget (0) — they rely on recursion limit.
     // Feature tasks use plan-computed budget when available (create×1 + modify×3), otherwise default 20.
-    const maxCalls = isPrePlanned ? 25 : (isFinalType || isErrorType) ? 0 : (state._codeGenBudget ?? 20);
+    const maxCalls = isPrePlanned ? 25 : (isFinalType || isErrorType) ? 0 : (state._executeBudget ?? 20);
     
     if (maxCalls > 0 && currentCall >= 3) {
       const remaining = maxCalls - currentCall;
@@ -244,8 +244,8 @@ export async function codeGen(
       priority: state.currentTask.priority
     } : undefined;
     await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 
-      'codeGen',  // ✅ FIX: Must match graph.addNode() name!
+      state._httpJobId,
+      'execute',  // ✅ FIX: Must match graph.addNode() name!
       (state as any).workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
@@ -366,7 +366,7 @@ export async function codeGen(
   let thinkingSignature = '';
   let textResponse = '';
   let isDone = false;  // ✅ Track done event (don't propagate immediately)
-  let newCallIndex = (state._codeGenCallIndex || 0) + 1;
+  let newCallIndex = (state._executeCallIndex || 0) + 1;
   const toolCalls: Array<{
     id: string;
     name: string;
@@ -438,7 +438,7 @@ export async function codeGen(
             {
               taskId: state.currentTask?.id || 'unknown',
               taskName: state.currentTask?.name || 'unknown',
-              node: 'codeGen',
+              node: 'execute',
               callIndex: callIdx,
               conversationHistoryLength: state.conversationHistory?.length || 0,
               projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
@@ -492,7 +492,7 @@ export async function codeGen(
       const merged = Array.from(new Set([...prevPaths, ...earlyStreamedPaths]));
       earlyUpdatedProjectCodeContext = state.projectCodeContext
         ? { ...state.projectCodeContext, filePaths: merged }
-        : { source: 'codeGen' as const, filePaths: merged, files: [], stats: { filesLoaded: merged.length, estimatedTokens: 0 } };
+        : { source: 'execute' as const, filePaths: merged, files: [], stats: { filesLoaded: merged.length, estimatedTokens: 0 } };
 
       if (state._verificationTracker) {
         state._verificationTracker.buildPassed = false;
@@ -611,7 +611,7 @@ export async function codeGen(
 
       // Workflow exit
       if (state.deps?.workflowUpdate && state._httpJobId) {
-        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen', (state as any).workerId ?? 0);
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', (state as any).workerId ?? 0);
       }
 
       // Suppress fileErrors while merge is in progress — returning them
@@ -634,7 +634,7 @@ export async function codeGen(
         conversationHistory: newHistory,
         fileErrors: undefined,
         projectCodeContext: earlyUpdatedProjectCodeContext,
-        _codeGenCallIndex: newCallIndex,
+        _executeCallIndex: newCallIndex,
         _finalTaskLoopCount: 0,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
@@ -667,7 +667,7 @@ export async function codeGen(
     
     // ✅ Workflow instrumentation: Exit node (success path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', (state as any).workerId ?? 0);
     }
     
     // ✅ Return LLM response (state에 저장)
@@ -693,7 +693,7 @@ export async function codeGen(
         ...earlyUpdatedProjectCodeContext,
         filePaths: combinedPaths
       } : {
-        source: 'codeGen' as const,
+        source: 'execute' as const,
         filePaths: combinedPaths,
         files: [],
         stats: { filesLoaded: combinedPaths.length, estimatedTokens: 0 }
@@ -811,7 +811,7 @@ export async function codeGen(
           conversationHistory: newHistory,
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           projectCodeContext: updatedProjectCodeContext,
-          _codeGenCallIndex: newCallIndex,
+          _executeCallIndex: newCallIndex,
           _finalTaskLoopCount: newFinalTaskLoopCount,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -831,7 +831,7 @@ export async function codeGen(
       },
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       projectCodeContext: updatedProjectCodeContext,
-      _codeGenCallIndex: newCallIndex,
+      _executeCallIndex: newCallIndex,
       _finalTaskLoopCount: newFinalTaskLoopCount,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -848,7 +848,7 @@ export async function codeGen(
     
     // ✅ Workflow instrumentation: Exit node (error path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'codeGen', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', (state as any).workerId ?? 0);
     }
     
     throw error;

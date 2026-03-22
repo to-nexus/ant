@@ -93,7 +93,7 @@ const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: string }>
     actors: [COMMON_ACTORS.llm.id],
     description: 'Break down into tasks'
   },
-  'architect:code:codeGen': {
+  'architect:code:execute': {
     actors: [COMMON_ACTORS.llm.id],
     description: 'Generate code with LLM reasoning'
   },

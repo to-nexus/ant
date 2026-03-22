@@ -19,7 +19,9 @@ export interface JobLLMConfig {
   decompose?: string;         // Decompose node (task planning)
   plan?: string;              // Plan node (context gathering, planning)
   docGen?: string;            // Documentation generation (design job only)
-  codeGen?: string;           // Code generation (code job only)
+  execute?: string;           // Code execution node (code job only)
+  /** @deprecated renamed to execute — kept for migration fallback */
+  codeGen?: string;
   tool?: string;              // Tool execution node
   validate?: string;          // Validation node (code job only)
   learn?: string;             // Learning node

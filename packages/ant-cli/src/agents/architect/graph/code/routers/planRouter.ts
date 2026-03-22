@@ -19,5 +19,5 @@ export function routeAfterPlan(state: ArchitectGraphState): string {
     return 'tool';
   }
 
-  return 'codeGen';
+  return 'execute';
 }

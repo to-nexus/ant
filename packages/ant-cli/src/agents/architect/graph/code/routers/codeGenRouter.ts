@@ -37,7 +37,7 @@ function detectRecentToolFailures(state: ArchitectGraphState): number {
   return recentFailures.length;
 }
 
-export function routeAfterCodeGen(state: ArchitectGraphState): string {
+export function routeAfterExecute(state: ArchitectGraphState): string {
   const response = state.llmResponse;
   
   if (!response) {
@@ -86,7 +86,7 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   // Pre-planned tasks have a focused scope from batch splitting, so they get a bounded budget.
   const isPrePlannedTask = !!(currentTask as CodeTask)?.prePlanText;
   if (isPrePlannedTask) {
-    const callIndex = state._codeGenCallIndex || 0;
+    const callIndex = state._executeCallIndex || 0;
     const maxPrePlannedCalls = 25;
     const warningThreshold = Math.floor(maxPrePlannedCalls * 0.8); // 20
     if (callIndex >= maxPrePlannedCalls) {
@@ -102,11 +102,11 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   // Safety Net E: Feature/general task codeGen call budget
   // Budget is computed from planText (create×1 + modify×3) when available, otherwise defaults to 20
   if (!isFinalTask && !isErrorTask) {
-    const callIndex = state._codeGenCallIndex || 0;
-    const maxFeatureCalls = state._codeGenBudget ?? 20;
+    const callIndex = state._executeCallIndex || 0;
+    const maxFeatureCalls = state._executeBudget ?? 20;
     const warningThreshold = Math.floor(maxFeatureCalls * 0.8);
     if (callIndex >= maxFeatureCalls) {
-      console.warn(`⚠️  [Router] Feature task codeGen call limit reached (${callIndex}/${maxFeatureCalls}${state._codeGenBudget ? ' [plan-computed]' : ''})`);
+      console.warn(`⚠️  [Router] Feature task codeGen call limit reached (${callIndex}/${maxFeatureCalls}${state._executeBudget ? ' [plan-computed]' : ''})`);
       console.warn(`   🚨 Forcing checkTaskStatus to evaluate the task`);
       return 'checkTaskStatus';
     }
@@ -153,6 +153,6 @@ export function routeAfterCodeGen(state: ArchitectGraphState): string {
   
   // 3. 그 외 → codeGen 노드 (재추론 - 드물지만 가능)
   console.log(`🔄 [Router] Continue reasoning → codeGen node`);
-  return 'codeGen';
+  return 'execute';
 }
 

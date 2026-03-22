@@ -12,11 +12,11 @@ import { StateGraph, END } from '@langchain/langgraph';
 import type { ArchitectGraphState, ViolationType } from '../state';
 import type { CodeTask } from '../../../types/task';
 import { plan } from '../nodes/plan';
-import { codeGen } from '../nodes/codeGen/index';
+import { execute } from '../nodes/execute/index';
 import { tool } from '../nodes/tool';
 import { enforce } from '../nodes/enforce';
 import { learn } from '../nodes/learn';
-import { routeAfterCodeGen } from '../routers/codeGenRouter';
+import { routeAfterExecute } from '../routers/codeGenRouter';
 import { routeAfterPlan } from '../routers/planRouter';
 import { routeAfterTool } from '../routers/toolRouter';
 import type { WorkerGraphBuilder } from './types';
@@ -131,7 +131,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
       currentTask: undefined,
       violations: [],
       _batchSplitRequeued: false,
-      _codeGenCallIndex: 0,
+      _executeCallIndex: 0,
       planText: '',
       projectCodeContext: undefined,
       recursionCount: state.recursionCount,
@@ -260,7 +260,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
         outputTokens: completedTask.tokenUsage?.outputTokens || 0,
         cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
         cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
-        llmCallCount: state._codeGenCallIndex || 0,
+        llmCallCount: state._executeCallIndex || 0,
       }).catch(() => {});
     }
 
@@ -272,7 +272,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
       conversationHistory: [],
       planText: '',
       projectCodeContext: undefined,
-      _codeGenCallIndex: 0,
+      _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -381,7 +381,7 @@ function buildWorkerSubgraph() {
       _errorIsRepeating: null as any,
       _currentTaskTokenUsage: null as any,
       tokenUsage: null as any,
-      _codeGenCallIndex: null as any,
+      _executeCallIndex: null as any,
       _finalTaskLoopCount: null as any,
       recursionCount: null as any,
       recursionLimit: null as any,
@@ -407,7 +407,7 @@ function buildWorkerSubgraph() {
 
   // Register nodes
   graph.addNode('plan', plan as any);
-  graph.addNode('codeGen', codeGen as any);
+  graph.addNode('execute', execute as any);
   graph.addNode('tool', tool as any);
   graph.addNode('checkTaskStatus', workerCheckTaskStatus as any);
   graph.addNode('enforce', enforce as any);
@@ -420,25 +420,25 @@ function buildWorkerSubgraph() {
   graph.addConditionalEdges(
     'plan' as any,
     routeAfterPlan as any,
-    { tool: 'tool', codeGen: 'codeGen', checkTaskStatus: 'checkTaskStatus' } as any,
+    { tool: 'tool', execute: 'execute', checkTaskStatus: 'checkTaskStatus' } as any,
   );
 
-  // CodeGen → Router (tool / checkTaskStatus / codeGen)
+  // Execute → Router (tool / checkTaskStatus / execute)
   graph.addConditionalEdges(
-    'codeGen' as any,
-    routeAfterCodeGen as any,
+    'execute' as any,
+    routeAfterExecute as any,
     {
       tool: 'tool',
       checkTaskStatus: 'checkTaskStatus',
-      codeGen: 'codeGen',
+      execute: 'execute',
     } as any,
   );
 
-  // Tool → plan (if plan exploring) or codeGen
+  // Tool → plan (if plan exploring) or execute
   graph.addConditionalEdges(
     'tool' as any,
     routeAfterTool as any,
-    { plan: 'plan', codeGen: 'codeGen' } as any,
+    { plan: 'plan', execute: 'execute' } as any,
   );
 
   // checkTaskStatus routing
