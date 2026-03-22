@@ -68,4 +68,4 @@ Output `<done>true</done>` immediately.
 Use `search_reference_code` tool to query these projects. See rules for constraints.
 {{/if}}
 
-**For XML tag syntax and output format details, see error/rules.md**
+**For XML tag syntax and output format details, see execute/tasks/error/rules.md**

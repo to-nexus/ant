@@ -273,4 +273,4 @@ CodeGen will verify exact paths using `list_files` tool.
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
-{{> code/phases/plan/rules-plan}}
+{{> code/phases/plan/rules}}
