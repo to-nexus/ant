@@ -178,13 +178,9 @@ export function useJobExecution() {
         // Refresh file tree to show new/modified files
         refreshFileTree();
         
-        // ✅ Refresh Git status to show uncommitted changes (non-blocking)
-        // Trigger Git status refresh after job completion
-        console.log('[useJobExecution] Triggering Git status refresh after job completion');
-        const store = useStore.getState();
-        store.setGitStatusPhase('fetching');  // Trigger refresh
-        // Clear after completion
-        setTimeout(() => store.setGitStatusPhase(null), 100);
+        // Git status refresh: fileTree SSE debounce listener handles mid-job updates,
+        // but explicit refresh on completion ensures final state is captured
+        useStore.getState().refreshGitStatus();
       });
       
       console.log('[useJobExecution] Job execution started successfully');

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getGitChanges, FileChange } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
-import { GIT_FETCH_INTERVAL } from '@/shared/utils/constants';
 
 export type { FileChange } from '@/infrastructure/http/api';
 
@@ -22,7 +21,6 @@ export function useGitChanges(
   selectedFeature: string | undefined,
 ) {
   const { isGitStatusLoading, gitStatusPhase, gitStatusRefreshTrigger, gitStatus } = useStore();
-  const prevLoadingRef = useRef(isGitStatusLoading);
   const prevPhaseRef = useRef(gitStatusPhase);
   const prevTriggerRef = useRef(gitStatusRefreshTrigger);
   const prevInternalTriggerRef = useRef(0); // For internal triggerFetch state
@@ -57,27 +55,12 @@ export function useGitChanges(
   const [isFetchingChanges, setIsFetchingChanges] = useState(false);
   const [triggerFetch, setTriggerFetch] = useState(0);
 
-  // Storage helpers - ✅ Feature 단위로 타이머 관리
+  // Storage helpers
   const getStorageKey = (key: string) => {
     const featureKey = selectedFeature || 'base';
     return `${key}:${selectedProject || 'none'}:${featureKey}`;
   };
-  
-  const getLastFetchTime = (): number => {
-    try {
-      const stored = sessionStorage.getItem(getStorageKey('git-fetch-time'));
-      return stored ? parseInt(stored, 10) : 0;
-    } catch {
-      return 0;
-    }
-  };
-  
-  const setLastFetchTime = (time: number) => {
-    try {
-      sessionStorage.setItem(getStorageKey('git-fetch-time'), time.toString());
-    } catch {}
-  };
-  
+
   const getCachedChanges = (): GitChanges | null => {
     try {
       const cached = sessionStorage.getItem(getStorageKey('git-cache'));
@@ -172,6 +155,36 @@ export function useGitChanges(
     };
   }, [selectedProject, selectedFeature]);
 
+  // Listen to fileTree events (agent file writes) - debounced git refresh
+  useEffect(() => {
+    if (!selectedProject || !selectedFeature) return;
+
+    let cancelled = false;
+    let unregister: (() => void) | undefined;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    (async () => {
+      const { sseManager } = await import('@/infrastructure/sse/SSEManager');
+      if (cancelled) return;
+
+      const handleFileTreeUpdate = () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          setTriggerFetch(prev => prev + 1);
+        }, 3000);
+      };
+
+      sseManager.registerHandler('fileTree', handleFileTreeUpdate);
+      unregister = () => sseManager.unregisterHandler('fileTree', handleFileTreeUpdate);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unregister?.();
+    };
+  }, [selectedProject, selectedFeature]);
+
   // Main fetch logic
   useEffect(() => {
     if (!selectedProject) {
@@ -207,7 +220,6 @@ export function useGitChanges(
           }
         }
         
-        setLastFetchTime(Date.now());
       } catch (error: any) {
         if (error.message?.includes('not initialized')) {
           setGitChanges(null);
@@ -221,59 +233,31 @@ export function useGitChanges(
 
     // Skip if Git operation in progress
     if (isGitStatusLoading) {
-      prevLoadingRef.current = isGitStatusLoading;
       return;
     }
 
-    const loadingJustCompleted = prevLoadingRef.current === true && isGitStatusLoading === false;
-    prevLoadingRef.current = isGitStatusLoading;
-    
     // Priority 1: Git operation phase in progress (switching/fetching)
     if (gitStatusPhase !== null) {
       return;
     }
-    
-    // Priority 2: Explicit user action - bypass timer
+
+    // Priority 2: Event-driven trigger (SSE gitChange, fileTree, phase completion, explicit refresh)
     const internalTriggerChanged = prevInternalTriggerRef.current !== triggerFetch && triggerFetch > 0;
-    
+
     if (internalTriggerChanged) {
       prevInternalTriggerRef.current = triggerFetch;
       fetchChanges();
       return;
     }
-    
+
     // Update ref even if not changed (for next comparison)
     prevInternalTriggerRef.current = triggerFetch;
-    
-    // Priority 3: Initial load (gitChanges is null) - bypass timer
+
+    // Priority 3: Initial load (gitChanges is null)
     if (gitChanges === null && !isFetchingChanges) {
       fetchChanges();
       return;
     }
-    
-    // Priority 4: Auto-refresh with timer check
-    const lastFetchTime = getLastFetchTime();
-    const now = Date.now();
-    const timeSinceLastFetch = now - lastFetchTime;
-    
-    if (timeSinceLastFetch < GIT_FETCH_INTERVAL) {
-      return;
-    }
-    
-    // Timer passed - now check if we should fetch
-    if (loadingJustCompleted) {
-      fetchChanges();
-      return;
-    }
-    
-    // Delayed polling (debounce rapid re-renders)
-    const delayTimer = setTimeout(() => {
-      fetchChanges();
-    }, 500);
-    
-    return () => {
-      clearTimeout(delayTimer);
-    };
   }, [selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase, triggerFetch]);
 
   return {
