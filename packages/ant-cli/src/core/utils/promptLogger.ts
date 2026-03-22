@@ -300,7 +300,7 @@ export function clearPromptLogger(jobType: 'design' | 'code' | 'plan', jobId: st
  * @param featurePath - Feature directory path
  * @param jobId - Job ID
  * @param jobType - 'design' or 'code'
- * @param nodeId - Node identifier (e.g., 'decompose', 'codeGen')
+ * @param nodeId - Node identifier (e.g., 'decompose', 'execute')
  * @param promptLength - Length of the prompt in chars (for stats)
  * @param options - Additional options
  *   - templatePath: Main template file (e.g., 'design/phases/execute/base-ui-design')

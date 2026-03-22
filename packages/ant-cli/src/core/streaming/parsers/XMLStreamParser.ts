@@ -443,7 +443,7 @@ export class XMLStreamParser implements IStreamParser {
         
         console.error(`🚨 [XMLParser] CRITICAL: LLM outputting <function_calls> XML as text!`);
         console.error(`   This means structured tool_use was not enabled for this LLM call.`);
-        console.error(`   Check detectionReport.jobMode and tool activation in codeGen.`);
+        console.error(`   Check detectionReport.jobMode and tool activation in execute.`);
         
         this.buffer = this.buffer.substring(startIdx + '<function_calls>'.length);
         this.context.insideFunctionCalls = true;

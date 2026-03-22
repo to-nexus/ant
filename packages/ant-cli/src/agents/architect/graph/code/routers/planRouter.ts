@@ -2,9 +2,9 @@
  * Plan Router - Plan node exit routing
  *
  * Priority:
- * 1. Batch split completed (plan set done=true) -> checkTaskStatus (skip codeGen entirely)
+ * 1. Batch split completed (plan set done=true) -> checkTaskStatus (skip execute entirely)
  * 2. Plan exploring with tool calls -> tool
- * 3. Otherwise (planText ready) -> codeGen
+ * 3. Otherwise (planText ready) -> execute
  */
 
 import { ArchitectGraphState } from '../state';

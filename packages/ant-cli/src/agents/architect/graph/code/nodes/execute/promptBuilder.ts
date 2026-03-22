@@ -1,5 +1,5 @@
 /**
- * Prompt Building for CodeGen Node
+ * Prompt Building for Execute Node
  * 
  * ✅ Supports Anthropic Prompt Caching for cost reduction:
  * - System prompts, rules, profiles (cached)
@@ -40,24 +40,24 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   
   // planText check (empty is normal for verification and explain tasks)
   if (state.planText) {
-    console.log(`🔍 [CodeGen] planText: ${state.planText.length} chars`);
+    console.log(`🔍 [Execute] planText: ${state.planText.length} chars`);
   } else {
     const taskType = state.currentTask?.type || 'unknown';
     const priority = state.currentTask?.priority;
     const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'error' || taskType === 'test-code' || taskType === 'doc' || taskType === 'explain' || taskType === 'ui' || taskType === 'design-system';
     if (!isExpected) {
-      console.warn(`⚠️  [CodeGen] planText is empty (task: ${taskType}, priority: ${priority})`);
+      console.warn(`⚠️  [Execute] planText is empty (task: ${taskType}, priority: ${priority})`);
     }
   }
   
   const promptEngine = state.deps?.promptEngine;
   
   if (!promptEngine) {
-    throw new Error('[CodeGen] PromptEngine is required but not available in state.deps');
+    throw new Error('[Execute] PromptEngine is required but not available in state.deps');
   }
   
   if (!state.currentTask) {
-    throw new Error('[CodeGen] currentTask is required but not available in state');
+    throw new Error('[Execute] currentTask is required but not available in state');
   }
   
   // Pass RAG-loaded file content directly to the prompt.
@@ -65,7 +65,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // System prompt content is cached (cache_control: ephemeral), making this
   // more token-efficient than stripping content and forcing read_file tool calls.
   // When total content exceeds CODE_CONTEXT_THRESHOLD, condense to skeleton mode.
-  const codeGenProjectCodeContext = state.projectCodeContext
+  const executeProjectCodeContext = state.projectCodeContext
     ? condenseProjectCodeContext(
         state.projectCodeContext as ProjectCodeContext,
         state.profile?.language || state.detectionReport?.profile?.language,
@@ -78,7 +78,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const sectionInfo = state.currentTask.uiSections?.length
       ? `sections: ${state.currentTask.uiSections.join(', ')}`
       : 'all sections';
-    console.log(`   🎨 [CodeGen] UI doc injection: ${uiDocForTask.length} chars (${sectionInfo})`);
+    console.log(`   🎨 [Execute] UI doc injection: ${uiDocForTask.length} chars (${sectionInfo})`);
   }
   
   // Pass profile to context for TypeScript/React templates on new projects
@@ -119,11 +119,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       });
       designDocForTask = designResult.content || undefined;
       designDocFiles = selectDesignFilesByPackages(state.currentTask.packages, state.designDocs);
-      console.log(`📄 [CodeGen] Split injection: packages=${state.currentTask.packages.join(', ')} → [${designDocFiles.join(', ')}] → ${designDocForTask?.length ?? 0} chars${designResult.wasCondensed ? ' (condensed)' : ''}`);
+      console.log(`📄 [Execute] Split injection: packages=${state.currentTask.packages.join(', ')} → [${designDocFiles.join(', ')}] → ${designDocForTask?.length ?? 0} chars${designResult.wasCondensed ? ' (condensed)' : ''}`);
     }
   } else if (!isUiTask && !isErrorTask && !isVerificationTask && !state.currentTask.packages?.length) {
     // Fallback: packages missing — indicates decompose bug
-    console.warn('⚠️ [CodeGen] Fallback to state.design: task.packages or state.designDocs missing (decompose bug)');
+    console.warn('⚠️ [Execute] Fallback to state.design: task.packages or state.designDocs missing (decompose bug)');
     console.warn(`   task.id=${state.currentTask?.id}, task.packages=${JSON.stringify(state.currentTask?.packages)}, hasDesignDocs=${!!state.designDocs}`);
   }
 
@@ -146,7 +146,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         filePath: `outputs/design/${state.selectedSpec}`,
       },
     ).content;
-    console.log(`📋 [CodeGen] Error task with spec "${state.selectedSpec}" — injecting specDoc (${designDocForTask.length} chars)`);
+    console.log(`📋 [Execute] Error task with spec "${state.selectedSpec}" — injecting specDoc (${designDocForTask.length} chars)`);
   }
   
   const promptResult = await promptEngine.buildExecutePrompt(
@@ -157,7 +157,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       designDoc: designDocForTask,
       prdSpec: (isVerificationTask || isErrorTask) ? undefined : state.prd,
       uiDoc: (isVerificationTask || isErrorTask) ? undefined : uiDocForTask,
-      projectCodeContext: codeGenProjectCodeContext,
+      projectCodeContext: executeProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
       sessionContext: state.sessionContext,
@@ -228,9 +228,23 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
     if (_lastCacheBlockHashes.block1 && _lastCacheBlockHashes.block1 !== b1Hash) {
       console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${_lastCacheBlockHashes.block1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
+      if (state.context?.featurePath && state._httpJobId) {
+        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
+            .logCacheInstability(currentTaskId, { block: 'block1', prevHash: _lastCacheBlockHashes.block1!, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
+            .catch(() => {});
+        }).catch(() => {});
+      }
     }
     if (_lastCacheBlockHashes.block2 && _lastCacheBlockHashes.block2 !== b2Hash) {
       console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${_lastCacheBlockHashes.block2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
+      if (state.context?.featurePath && state._httpJobId) {
+        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
+            .logCacheInstability(currentTaskId, { block: 'block2', prevHash: _lastCacheBlockHashes.block2!, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
+            .catch(() => {});
+        }).catch(() => {});
+      }
     }
 
     if (histLen === 0) {
@@ -473,7 +487,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     let estimation = tokenManager.checkBudget(messages as any);
     
     if (estimation.isOverBudget) {
-      console.warn(`⚠️  [CodeGen] Over budget after standard pruning (${estimation.totalTokens.toLocaleString()} tokens). Attempting aggressive reduction...`);
+      console.warn(`⚠️  [Execute] Over budget after standard pruning (${estimation.totalTokens.toLocaleString()} tokens). Attempting aggressive reduction...`);
 
       // Aggressive step 1: re-prune history with minimal hot tail (1 turn)
       const { result: aggressiveHistory } = compactAndPruneHistory(filteredHistory, tokenManager, {
@@ -505,7 +519,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
       // Aggressive step 2: strip project context content blocks if still over
       if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
-        console.warn(`⚠️  [CodeGen] Still over budget (${estimation.totalTokens.toLocaleString()}). Stripping project context block...`);
+        console.warn(`⚠️  [Execute] Still over budget (${estimation.totalTokens.toLocaleString()}). Stripping project context block...`);
         const contentBlocks = messages[0].content as CacheableContent[];
         // Block 2 (index 1) is project context — replace with minimal stub
         if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
@@ -520,13 +534,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
       if (estimation.isOverBudget) {
         throw new Error(
-          `[CodeGen] Token budget exceeded after aggressive reduction! ` +
+          `[Execute] Token budget exceeded after aggressive reduction! ` +
           `${estimation.totalTokens.toLocaleString()} tokens > ` +
           `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
         );
       }
 
-      console.log(`✅ [CodeGen] Budget recovered after aggressive reduction: ${estimation.totalTokens.toLocaleString()} tokens`);
+      console.log(`✅ [Execute] Budget recovered after aggressive reduction: ${estimation.totalTokens.toLocaleString()} tokens`);
     }
   } else {
     // No history - just check base prompt tokens
@@ -534,7 +548,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const estimation = tokenManager.checkBudget(messages as any);
 
     if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
-      console.warn(`⚠️  [CodeGen] First message over budget (no history). Stripping project context...`);
+      console.warn(`⚠️  [Execute] First message over budget (no history). Stripping project context...`);
       const contentBlocks = messages[0].content as CacheableContent[];
       if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
         const original = contentBlocks[1].text;
@@ -546,12 +560,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       const retryEstimation = tokenManager.checkBudget(messages as any);
       if (retryEstimation.isOverBudget) {
         throw new Error(
-          `[CodeGen] Token budget exceeded even without project context! ` +
+          `[Execute] Token budget exceeded even without project context! ` +
           `${retryEstimation.totalTokens.toLocaleString()} tokens > ` +
           `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
         );
       }
-      console.log(`✅ [CodeGen] Budget recovered: ${retryEstimation.totalTokens.toLocaleString()} tokens`);
+      console.log(`✅ [Execute] Budget recovered: ${retryEstimation.totalTokens.toLocaleString()} tokens`);
     }
   }
   
@@ -601,8 +615,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             jobMode: state.detectionReport?.jobMode,
             taskType: state.currentTask?.type,
             detectedEnvironment: state.detectionReport?.environment,
-            projectCodeContextFiles: codeGenProjectCodeContext?.files?.length || 0,
-            projectCodeContextFilePaths: codeGenProjectCodeContext?.filePaths?.length || 0,
+            projectCodeContextFiles: executeProjectCodeContext?.files?.length || 0,
+            projectCodeContextFilePaths: executeProjectCodeContext?.filePaths?.length || 0,
             referenceCodeContexts: state.referenceCodeContexts?.length || 0,
             uiImageBlocksCount: uiImageBlocks.filter(b => (b as any).type === 'image').length,
             hasViolations: !!(state.violations?.length),
@@ -618,7 +632,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         }
       );
     } catch (logError) {
-      console.warn(`⚠️  [CodeGen] Failed to log prompt:`, logError);
+      console.warn(`⚠️  [Execute] Failed to log prompt:`, logError);
     }
   }
   
@@ -650,7 +664,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
         const stripped = state.planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
         const parsed = JSON.parse(stripped);
         if (parsed.batches && Array.isArray(parsed.batches) && parsed.batches.length > 1) {
-          console.error(`❌ [CodeGen] INVARIANT VIOLATION: Batched planText leaked to codeGen (${parsed.batches.length} batches). processDiagnosticBatchSplit should have split this. planRouter should have routed to checkTaskStatus. This is a system bug.`);
+          console.error(`❌ [Execute] INVARIANT VIOLATION: Batched planText leaked to execute (${parsed.batches.length} batches). processDiagnosticBatchSplit should have split this. planRouter should have routed to checkTaskStatus. This is a system bug.`);
         }
       } catch { /* not valid JSON — proceed normally */ }
     }
@@ -903,7 +917,7 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
   if (symbolCount === 0) return null;
 
   const result = sections.join('\n');
-  console.log(`📋 [CodeGen] Foundation contract: ${foundationFiles.length} file(s), ${symbolCount} symbol(s), ${result.length} chars`);
+  console.log(`📋 [Execute] Foundation contract: ${foundationFiles.length} file(s), ${symbolCount} symbol(s), ${result.length} chars`);
   return result;
 }
 
@@ -1117,7 +1131,7 @@ async function buildSchemaAnchor(state: ArchitectGraphState): Promise<string | n
   ];
 
   const result = sections.join('\n');
-  console.log(`📋 [CodeGen] Schema anchor: ${migrationPaths.size} migration(s), ${schemas.length} table/type(s), ${result.length} chars`);
+  console.log(`📋 [Execute] Schema anchor: ${migrationPaths.size} migration(s), ${schemas.length} table/type(s), ${result.length} chars`);
   return result;
 }
 

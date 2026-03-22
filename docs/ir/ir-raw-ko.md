@@ -127,7 +127,7 @@ ANT는 보이는 결과만 맞추는 것이 아니라 팀이 이어서 개발할
 워크플로우 단계별로 최적 모델이 다르다(비용/지연/품질).
 
 ### 구현(관찰 가능한 특징)
-- job 타입(`design`, `code`, `learn`)과 node 타입(예: `decompose`, `plan`, `docGen`, `codeGen`, `validate`)에 따라 모델 선택 가능.
+- job 타입(`design`, `code`, `learn`)과 node 타입(예: `decompose`, `plan`, `docGen`, `execute`, `validate`)에 따라 모델 선택 가능.
 - 선택 우선순위:
   1. job+node 지정 모델
   2. job 기본 모델

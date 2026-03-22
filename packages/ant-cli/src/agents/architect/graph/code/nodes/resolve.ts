@@ -388,7 +388,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // SCOPE: Very minimal - just need package.json, tsconfig.json, main entry files
   //
   // ⚠️ This is NOT for task planning (that's detectEnvironment + decompose)
-  // ⚠️ This is NOT for code generation (that's plan + codeGen)
+  // ⚠️ This is NOT for code generation (that's plan + execute)
   //
   let profile = undefined;
   const analyzer = state.deps?.analyzer;

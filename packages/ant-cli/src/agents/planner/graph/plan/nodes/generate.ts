@@ -263,7 +263,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   const isFirstCall = state.conversationHistory.length === 0;
   
-  // Show placeholder status before LLM streaming (same as codeGen/docGen)
+  // Show placeholder status before LLM streaming (same as execute/docGen)
   await chatAPI.showChatStatus('placeholder');
   
   try {

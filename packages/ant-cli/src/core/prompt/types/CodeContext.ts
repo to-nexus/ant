@@ -24,10 +24,10 @@ export interface BaseCodeContext {
 
 /**
  * Main project code context
- * Source: decompose (paths only), plan (with content), or codeGen (accumulated)
+ * Source: decompose (paths only), plan (with content), or execute (accumulated)
  */
 export interface ProjectCodeContext extends BaseCodeContext {
-  source: 'decompose' | 'plan' | 'execute' | 'codeGen';
+  source: 'decompose' | 'plan' | 'execute';
   directoryTree?: string;
 }
 

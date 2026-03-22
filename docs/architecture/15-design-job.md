@@ -8,7 +8,7 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 
 | 항목 | Code Job | Design Job |
 |------|----------|------------|
-| 실행 노드 | plan -> codeGen -> tool | plan -> docGen -> tool |
+| 실행 노드 | plan -> execute -> tool | plan -> docGen -> tool |
 | plan 역할 | LLM으로 planText 생성 | taskQueue 관리만 (LLM 호출 없음) |
 | 검증 루프 | enforce -> plan (violations) | 없음 |
 | 태스크 타입 | setup, feature, testgen, error, verification | doc |

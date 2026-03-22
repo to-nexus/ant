@@ -64,7 +64,7 @@ export class FileRegistry {
   }
   
   /**
-   * Check if file was known at codeGen start (existingFiles Set only, no disk fallback).
+   * Check if file was known at execute start (existingFiles Set only, no disk fallback).
    * Used by FileRenderer to determine isOverwrite flag at file_start time.
    *
    * CRITICAL: Files created by OTHER parallel workers (otherWorkerPaths) return false

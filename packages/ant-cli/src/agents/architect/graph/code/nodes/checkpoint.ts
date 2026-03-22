@@ -63,8 +63,8 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       previousFileCount: state.previousFileCount,
       resolvedCategories: state.resolvedCategories || [],
       planText: state.planText,  // ✅ Save plan for reuse on resume
-      // ✅ Save conversationHistory for mid-task resume (codeGen can continue from interruption point)
-      // Content includes assistant responses + tool_results from codeGen↔tool loop
+      // ✅ Save conversationHistory for mid-task resume (execute can continue from interruption point)
+      // Content includes assistant responses + tool_results from execute loop
       conversationHistory: state.conversationHistory || [],
       recursionCount: state.recursionCount,  // ✅ Save current recursion count
       recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
@@ -81,7 +81,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       design: state.design,  // ✅ Save design document
       prd: state.prd,  // ✅ Save PRD if exists
       // ✅ NOTE: parsedUiDocs is NOT saved (contains Map, heavy)
-      // It's reloaded from disk in resolve/codeGen when needed
+      // It's reloaded from disk in resolve/execute when needed
       // ✅ CRITICAL: Save projectCodeContext (filePaths only, NOT files content)
       // Why: files content is heavy (~500KB) and redundant (already on disk)
       // Solution: Save filePaths (~5KB) only, LLM can read_file when needed

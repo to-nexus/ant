@@ -18,6 +18,8 @@ import { getSessionDebugDir } from './sessionPaths';
 export type ExecutionEventType =
   | 'job_start'
   | 'job_complete'
+  | 'job_interrupted'
+  | 'job_resumed'
   | 'task_start'
   | 'task_complete'
   | 'task_fail'
@@ -29,7 +31,12 @@ export type ExecutionEventType =
   | 'phase_complete'
   | 'tool_call'
   | 'thinking_only'
-  | 'batch_split';
+  | 'batch_split'
+  | 'verification_retry'
+  | 'recursion_budget_warning'
+  | 'profile_missing'
+  | 'cache_instability'
+  | 'execute_interrupted';
 
 export interface ExecutionEvent {
   /** ISO timestamp */
@@ -108,6 +115,22 @@ export class ExecutionLogger {
     await this.log('job_complete', data);
   }
 
+  async logJobInterrupted(data: {
+    reason: string;
+    runningTaskIds: string[];
+    remainingTaskCount: number;
+    completedTaskCount: number;
+  }): Promise<void> {
+    await this.log('job_interrupted', data);
+  }
+
+  async logJobResumed(data: {
+    fromCompletedTaskCount: number;
+    remainingTaskCount: number;
+  }): Promise<void> {
+    await this.log('job_resumed', data);
+  }
+
   async logTaskStart(taskId: string, data: {
     taskName: string;
     taskType: string;
@@ -182,6 +205,53 @@ export class ExecutionLogger {
     details?: Record<string, any>;
   }): Promise<void> {
     await this.log('phase_complete', data);
+  }
+
+  async logVerificationRetry(taskId: string, data: {
+    taskName: string;
+    attempt: number;
+    maxAttempts: number;
+    preservedHistoryLength: number;
+    preservedCallIndex: number;
+    violationsFromPrevAttempt: number;
+  }): Promise<void> {
+    await this.log('verification_retry', data, taskId);
+  }
+
+  async logRecursionBudgetWarning(taskId: string, data: {
+    taskName: string;
+    current: number;
+    limit: number;
+    remaining: number;
+    forcedNode: string;
+  }): Promise<void> {
+    await this.log('recursion_budget_warning', data, taskId);
+  }
+
+  async logProfileMissing(taskId: string, data: {
+    profileType: 'language' | 'framework';
+    profileName: string;
+  }): Promise<void> {
+    await this.log('profile_missing', data, taskId);
+  }
+
+  async logCacheInstability(taskId: string, data: {
+    block: 'block1' | 'block2';
+    prevHash: string;
+    currHash: string;
+    contentLength: number;
+    historyLength: number;
+  }): Promise<void> {
+    await this.log('cache_instability', data, taskId);
+  }
+
+  async logExecuteInterrupted(taskId: string, data: {
+    taskName: string;
+    callIndex: number;
+    lastResponseSnippet: string;
+    reason: 'recursion_limit' | 'budget_exhausted';
+  }): Promise<void> {
+    await this.log('execute_interrupted', data, taskId);
   }
 
   async logToolCall(taskId: string, data: {

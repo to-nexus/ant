@@ -22,7 +22,7 @@ interface LLMConfig {
  */
 export interface LLMContext {
   jobType: 'design' | 'code' | 'learn' | 'plan';
-  nodeType?: 'decompose' | 'plan' | 'docGen' | 'execute' | 'codeGen' | 'tool' | 'validate' | 'learn' | 'detectEnvironment';
+  nodeType?: 'decompose' | 'plan' | 'docGen' | 'execute' | 'tool' | 'validate' | 'learn' | 'detectEnvironment';
 }
 
 /**
@@ -82,11 +82,6 @@ function resolveModelForContext(
   // Try node-specific model first
   if (context.nodeType && jobConfig[context.nodeType]) {
     return jobConfig[context.nodeType];
-  }
-
-  // Migration fallback: if nodeType is 'execute', also check legacy 'codeGen' key
-  if (context.nodeType === 'execute' && jobConfig['codeGen' as keyof typeof jobConfig]) {
-    return jobConfig['codeGen' as keyof typeof jobConfig] as string;
   }
 
   // Fall back to job default

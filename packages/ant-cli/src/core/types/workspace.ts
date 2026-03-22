@@ -20,8 +20,6 @@ export interface JobLLMConfig {
   plan?: string;              // Plan node (context gathering, planning)
   docGen?: string;            // Documentation generation (design job only)
   execute?: string;           // Code execution node (code job only)
-  /** @deprecated renamed to execute — kept for migration fallback */
-  codeGen?: string;
   tool?: string;              // Tool execution node
   validate?: string;          // Validation node (code job only)
   learn?: string;             // Learning node

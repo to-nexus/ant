@@ -94,6 +94,9 @@ export interface OrchestratorCallbacks<T extends BaseTask> {
    *  so its last-active-node badge disappears from the UI without waiting for
    *  all parallel workers to finish. */
   onWorkerTerminate?: (workerId: number) => void;
+  /** Called when the orchestrator is interrupted (user stop, recursion limit, consecutive timeouts).
+   *  Provides the reason and list of running task IDs at time of interruption. */
+  onInterruption?: (reason: string, runningTaskIds: string[]) => void;
 }
 
 /**

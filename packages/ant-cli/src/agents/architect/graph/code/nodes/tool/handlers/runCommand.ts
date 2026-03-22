@@ -372,24 +372,40 @@ Continue writing code files and output <done>true</done> when complete.`);
     // Long-running command: verify startup, then terminate (default)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (isLongRunning) {
-      const displayText = await handleLongRunningCommand(
-        state,
-        normalizedCommand,
-        workingDir,
-        mergeIndex || 0,
-        chatAPI,
-        Boolean(keep_running)
-      );
-      const longRunSuccess = displayText.startsWith('✅');
-      return {
-        displayText,
-        commandResult: {
-          success: longRunSuccess,
-          exitCode: longRunSuccess ? 0 : 1,
-          command: normalizedCommand,
-          hasWarnings: false,
-        },
-      };
+      try {
+        const longRunResult = await handleLongRunningCommand(
+          state,
+          normalizedCommand,
+          workingDir,
+          mergeIndex || 0,
+          chatAPI,
+          Boolean(keep_running)
+        );
+        const longRunSuccess = longRunResult.displayText.startsWith('✅');
+        return {
+          displayText: longRunResult.displayText,
+          commandResult: {
+            success: longRunSuccess,
+            exitCode: longRunSuccess ? 0 : 1,
+            command: normalizedCommand,
+            hasWarnings: false,
+            devServerFailureReason: longRunResult.devServerFailureReason,
+          },
+        };
+      } catch (longRunError) {
+        const err = longRunError as Error;
+        const devServerFailureReason = (err as any).devServerFailureReason as 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused' | undefined;
+        return {
+          displayText: err.message,
+          commandResult: {
+            success: false,
+            exitCode: 1,
+            command: normalizedCommand,
+            hasWarnings: false,
+            devServerFailureReason,
+          },
+        };
+      }
     }
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -591,9 +607,9 @@ async function handleLongRunningCommand(
   mergeIndex: number,
   chatAPI: any,
   keepRunning: boolean
-): Promise<string> {
+): Promise<{ displayText: string; devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused' }> {
   const { spawn } = await import('child_process');
-  
+
   return new Promise((resolve, reject) => {
     // ✅ FIXED: Use shell to execute compound commands (cd ... && ...)
     const isWindows = process.platform === 'win32';
@@ -615,14 +631,14 @@ async function handleLongRunningCommand(
     let stderr = '';
     let hasError = false;
     let resolved = false;  // ✅ Prevent double resolve/reject
-    
+
     // ✅ Helper to safely resolve/reject once
-    const safeResolve = async (message: string, shouldKill = false) => {
+    const safeResolve = async (message: string, shouldKill = false, devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused') => {
       if (resolved) return;
       resolved = true;
       clearTimeout(startupTimeout);
       clearTimeout(earlyErrorTimeout);
-      
+
       // ✅ Only kill if needed (errors or early completion)
       if (shouldKill) {
         if (child.pid) {
@@ -632,11 +648,11 @@ async function handleLongRunningCommand(
         }
       }
       // Otherwise, leave it running (will be cleaned up in learn node)
-      
-      resolve(message);
+
+      resolve({ displayText: message, devServerFailureReason });
     };
-    
-    const safeReject = async (error: Error) => {
+
+    const safeReject = async (error: Error, devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused') => {
       if (resolved) return;
       resolved = true;
       clearTimeout(startupTimeout);
@@ -647,6 +663,8 @@ async function handleLongRunningCommand(
       } else {
         child.kill('SIGTERM');
       }
+      // Attach failureReason to error so caller can propagate it
+      (error as any).devServerFailureReason = devServerFailureReason;
       reject(error);
     };
     
@@ -687,7 +705,7 @@ This usually means:
 - Permission denied
 - Invalid working directory
 
-Working directory: ${workingDir}`));
+Working directory: ${workingDir}`), 'startup_failure');
     });
     
     // ✅ Early error detection: if error detected within 3 seconds, likely startup failure
@@ -703,7 +721,7 @@ Error output:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`));
+${stdout.slice(0, 1000)}`), 'startup_failure');
       }
     }, EARLY_ERROR_TIMEOUT);
     
@@ -725,34 +743,60 @@ ${stdout.slice(0, 1000)}`));
         const port = portMatch ? (portMatch[1] || portMatch[2] || portMatch[3]) : '3000';
         
         // HTTP test to verify page actually renders (catches runtime-only errors)
-        let httpTestResult: { ok: boolean; error?: string } = { ok: true };
+        // Retries up to 3 attempts with 5s delay to handle Next.js lazy compilation
+        let httpTestResult: { ok: boolean; error?: string; failureReason?: 'timeout' | 'http_error' | 'connection_refused' } = { ok: true };
+        const HTTP_TEST_TIMEOUT = 30000;
+        const HTTP_TEST_RETRIES = 3;
+        const HTTP_TEST_RETRY_DELAY = 5000;
         try {
           const http = await import('http');
-          httpTestResult = await new Promise<{ ok: boolean; error?: string }>((resolveHttp) => {
-            const req = http.request({
-              hostname: 'localhost',
-              port: parseInt(port),
-              path: '/',
-              method: 'GET',
-              timeout: 5000
-            }, (res) => {
-              let body = '';
-              res.on('data', (chunk) => body += chunk);
-              res.on('end', () => {
-                if (res.statusCode === 200) {
-                  resolveHttp({ ok: true });
-                } else {
-                  // Extract meaningful error from response
-                  const errorMatch = body.match(/Error:([^<]+)/i) || body.match(/<pre>([^<]+)<\/pre>/i);
-                  const errorMsg = errorMatch ? errorMatch[1].trim().slice(0, 500) : `HTTP ${res.statusCode}`;
-                  resolveHttp({ ok: false, error: errorMsg });
-                }
+          const attemptHttpTest = (): Promise<{ ok: boolean; error?: string; failureReason?: 'timeout' | 'http_error' | 'connection_refused' }> => {
+            return new Promise((resolveHttp) => {
+              const req = http.request({
+                hostname: 'localhost',
+                port: parseInt(port),
+                path: '/',
+                method: 'GET',
+                timeout: HTTP_TEST_TIMEOUT
+              }, (res) => {
+                let body = '';
+                res.on('data', (chunk: Buffer) => body += chunk);
+                res.on('end', () => {
+                  const status = res.statusCode ?? 0;
+                  // 2xx = success, 3xx = redirect (server is working correctly)
+                  if (status >= 200 && status < 400) {
+                    resolveHttp({ ok: true });
+                  } else {
+                    // 4xx/5xx: extract meaningful error from response body
+                    const errorMatch = body.match(/Error:([^<]+)/i) || body.match(/<pre>([^<]+)<\/pre>/i);
+                    const errorMsg = errorMatch ? errorMatch[1].trim().slice(0, 500) : `HTTP ${status}`;
+                    resolveHttp({ ok: false, error: errorMsg, failureReason: 'http_error' });
+                  }
+                });
               });
+              req.on('error', (err: NodeJS.ErrnoException) => {
+                const reason = err.code === 'ECONNREFUSED' ? 'connection_refused' : 'http_error';
+                resolveHttp({ ok: false, error: err.message, failureReason: reason });
+              });
+              req.on('timeout', () => { req.destroy(); resolveHttp({ ok: false, error: 'Request timed out after 30s', failureReason: 'timeout' }); });
+              req.end();
             });
-            req.on('error', (err) => resolveHttp({ ok: false, error: err.message }));
-            req.on('timeout', () => { req.destroy(); resolveHttp({ ok: false, error: 'Request timeout' }); });
-            req.end();
-          });
+          };
+
+          for (let attempt = 1; attempt <= HTTP_TEST_RETRIES; attempt++) {
+            const result = await attemptHttpTest();
+            if (result.ok) {
+              httpTestResult = result;
+              break;
+            }
+            if (attempt < HTTP_TEST_RETRIES) {
+              console.log(`   ⏳ HTTP test attempt ${attempt}/${HTTP_TEST_RETRIES} failed (${result.failureReason}): ${result.error} — retrying in ${HTTP_TEST_RETRY_DELAY / 1000}s...`);
+              await new Promise(r => setTimeout(r, HTTP_TEST_RETRY_DELAY));
+            } else {
+              console.log(`   ❌ HTTP test failed after ${HTTP_TEST_RETRIES} attempts`);
+              httpTestResult = result;
+            }
+          }
         } catch (httpError) {
           // HTTP module error - still consider server started
           console.warn(`   ⚠️  Could not verify page render: ${httpError instanceof Error ? httpError.message : httpError}`);
@@ -767,16 +811,15 @@ ${stdout.slice(0, 1000)}`));
           );
           safeReject(new Error(`❌ SERVER STARTED BUT PAGE RENDER FAILED: ${command}
 
-The server process started, but loading the page failed.
-This indicates a runtime error (e.g., config incompatibility, missing runtime dependency).
+The server process started, but loading the page failed with a runtime error.
+This is a code or configuration issue that must be fixed.
 
 HTTP Test Error: ${httpTestResult.error}
 
 Startup output:
 ${stdout.slice(0, 1500)}
 
-⚠️ IMPORTANT: If 'npm run build' already succeeded, this dev server issue is environment-specific and NOT blocking.
-   For final-verification: Build success = task complete. Output <done>true</done> now.`));
+Fix the runtime error shown above before marking this task as done.`), httpTestResult.failureReason);
           return;
         }
         
@@ -815,7 +858,7 @@ ${stdout.slice(0, 1500)}
           safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
 
 The server started without errors and is running in background.
-✅ Page render verified (HTTP 200)
+✅ HTTP verification passed (server responded successfully)
 
 PID: ${child.pid}
 Working Directory: ${workingDir}
@@ -829,7 +872,7 @@ ${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}
           safeResolve(`✅ SERVER STARTED SUCCESSFULLY: ${command}
 
 The server started without errors.
-✅ Page render verified (HTTP 200)
+✅ HTTP verification passed (server responded successfully)
 
 PID: ${child.pid}
 Working Directory: ${workingDir}
@@ -849,7 +892,7 @@ Error detected during startup:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`));
+${stdout.slice(0, 1000)}`), 'startup_failure');
       }
     }, effectiveStartupTimeout);
     
@@ -872,7 +915,7 @@ Error output:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`));
+${stdout.slice(0, 1000)}`), 'startup_failure');
       }
     });
   });

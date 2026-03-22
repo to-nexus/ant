@@ -49,7 +49,7 @@ export async function docGen(
     throw new Error('LLM client or GitPort not available');
   }
   
-  // ✅ Log iteration start info (per-call debugging, like code job's codeGen)
+  // ✅ Log iteration start info (per-call debugging, like code job's execute)
   const taskTokensSoFar = (state as any)._currentTaskTokenUsage;
   console.log(`\n💭 [DocGen] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
   console.log(`   Work type: ${state.detectionReport?.workType || 'unknown'}`);
@@ -246,7 +246,7 @@ export async function docGen(
     }
     
     // ✅ Wait for all file operations to complete BEFORE finalizing
-    // (parity with code job codeGen/index.ts — detects incomplete <file> tags)
+    // (parity with code job execute/index.ts — detects incomplete <file> tags)
     try {
       await orchestrator.waitForAllFileOperations();
     } catch (fileError) {
