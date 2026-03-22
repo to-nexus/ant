@@ -360,6 +360,8 @@ export class TaskOrchestrator<T extends BaseTask> {
             error: new Error(`Task interrupted: ${this.consecutiveTimeouts} consecutive timeouts (${error.message})`),
             timestamp: new Date().toISOString(),
           });
+          const runningTaskIdsOnTimeout = Array.from(this.runningTasks.values()).map(t => t.id);
+          this.callbacks.onInterruption?.('consecutive_timeouts', runningTaskIdsOnTimeout);
           try {
             await this.saveCheckpoint({ reason: 'consecutive_timeouts', canResume: true });
           } catch (err) {
@@ -392,6 +394,9 @@ export class TaskOrchestrator<T extends BaseTask> {
         console.error(
           `[Orchestrator] Task "${task.name}" INTERRUPTED — recursion limit reached (worker ${workerId})`,
         );
+
+        // Notify only for this specific task (other workers may still be running)
+        this.callbacks.onInterruption?.('recursion_limit', [task.id]);
 
         try {
           await this.saveCheckpoint({ reason: 'recursion_limit', canResume: true });
@@ -795,6 +800,8 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.interruptReason = reason;
       this.drain();
       this.signalWorkersToStop();
+      const runningTaskIds = Array.from(this.runningTasks.values()).map(t => t.id);
+      this.callbacks.onInterruption?.(reason, runningTaskIds);
       await this.saveCheckpoint({ reason, canResume: true });
       this.broadcastKanban();
       this.checkAllDone();

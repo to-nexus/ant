@@ -3,9 +3,9 @@
  *
  * Builds a LangGraph StateGraph for a single code task execution within
  * a TaskWorker. This is a lighter version of the main code graph that
- * only handles the task execution lifecycle (plan → codeGen → tool loop).
+ * only handles the task execution lifecycle (plan → execute → tool loop).
  *
- * Flow: plan → codeGen ↔ tool → checkTaskStatus → (enforce/workerLearn)
+ * Flow: plan → execute ↔ tool → checkTaskStatus → (enforce/workerLearn)
  */
 
 import { StateGraph, END } from '@langchain/langgraph';
@@ -16,7 +16,7 @@ import { execute } from '../nodes/execute/index';
 import { tool } from '../nodes/tool';
 import { enforce } from '../nodes/enforce';
 import { learn } from '../nodes/learn';
-import { routeAfterExecute } from '../routers/codeGenRouter';
+import { routeAfterExecute } from '../routers/executeRouter';
 import { routeAfterPlan } from '../routers/planRouter';
 import { routeAfterTool } from '../routers/toolRouter';
 import type { WorkerGraphBuilder } from './types';
@@ -206,6 +206,23 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
         isRetryable: true,
         suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
       });
+    } else if (tracker.devServerRequired && !tracker.devServerPassed) {
+      console.warn(`⚠️  [Worker checkTaskStatus] Verification: dev server objective not met (reason: ${tracker.devServerFailureReason ?? 'unknown'})`);
+      const reasonMessages: Record<string, string> = {
+        timeout: 'The dev server did not respond within 30 seconds. The server may be slow to start or blocked on compilation.',
+        http_error: 'The dev server started but returned an HTTP error. There is likely a runtime error in the application.',
+        startup_failure: 'The dev server process failed to start. Check the startup logs for errors.',
+        connection_refused: 'The dev server process started but did not bind to the expected port. Verify the server configuration.',
+      };
+      const reason = tracker.devServerFailureReason;
+      const reasonDetail = reason ? reasonMessages[reason] : 'The dev server did not pass verification.';
+      violations.push({
+        type: 'verification_incomplete' as ViolationType,
+        severity: 'critical',
+        message: `Dev server verification failed: ${reasonDetail}`,
+        isRetryable: true,
+        suggestedFix: 'Run the dev server and confirm the root page is served successfully (HTTP 200). If the server started but the page failed to load, fix the runtime error first.',
+      });
     }
   }
 
@@ -235,7 +252,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
 
   if (!hasViolations && state.currentTask) {
     // Task succeeded — use _currentTaskTokenUsage as single source of truth.
-    // _currentTaskTokenUsage already accumulated ALL plan + codeGen calls via
+    // _currentTaskTokenUsage already accumulated ALL plan + execute calls via
     // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
     // No additional merge or job-level re-accumulation needed here.
     const { getTaskTokenUsage } = await import('../../../../common/graph/llmHelpers');
@@ -402,6 +419,7 @@ function buildWorkerSubgraph() {
       _isStopRequested: null as any,
       isResume: null as any,
       _batchSplitRequeued: null as any,
+      _awaitingFinalVerify: null as any,
     } as any,
   } as any);
 
@@ -416,14 +434,14 @@ function buildWorkerSubgraph() {
   // Edges
   graph.addEdge('__start__' as any, 'plan' as any);
 
-  // Plan → tool (if tool_calls), checkTaskStatus (if batch split), or codeGen
+  // Plan → tool (if tool_calls), checkTaskStatus (if batch split), or execute
   graph.addConditionalEdges(
     'plan' as any,
     routeAfterPlan as any,
     { tool: 'tool', execute: 'execute', checkTaskStatus: 'checkTaskStatus' } as any,
   );
 
-  // Execute → Router (tool / checkTaskStatus / execute)
+  // Execute → Router (tool / checkTaskStatus / execute / plan)
   graph.addConditionalEdges(
     'execute' as any,
     routeAfterExecute as any,
@@ -431,6 +449,7 @@ function buildWorkerSubgraph() {
       tool: 'tool',
       checkTaskStatus: 'checkTaskStatus',
       execute: 'execute',
+      plan: 'plan',   // verification task done → plan re-verify (final build/test/devServer check)
     } as any,
   );
 

@@ -165,7 +165,7 @@ export class TaskWorker<T extends BaseTask> {
     // Execute the subgraph
     // ✅ CRITICAL: Pass recursionLimit in the invoke config.
     // Without this, LangGraph uses its default of 25 which is far too low
-    // for complex tasks (plan → codeGen ↔ tool loop easily exceeds 25 node transitions).
+    // for complex tasks (plan → execute ↔ tool loop easily exceeds 25 node transitions).
     // Use sharedContext.recursionLimit (from env RECURSION_LIMIT via runner.ts).
     const envLimit = parseInt(process.env.RECURSION_LIMIT || '200', 10);
     const result = await runInWorkerScope(this.workerId, () =>

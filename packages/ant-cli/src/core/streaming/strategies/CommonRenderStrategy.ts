@@ -165,7 +165,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
   
   /**
    * Check if LLM explicitly output <done>true</done>
-   * Used by codeGen to determine task completion
+   * Used by execute to determine task completion
    */
   getExplicitDone(): boolean {
     return this.tagTransformer.explicitDone;

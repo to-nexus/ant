@@ -251,16 +251,24 @@ export class ModeController {
             console.log(`[ModeController] Adding preview-setup for frontend environment`);
           }
         }
-        
+
+        // preview-setup is also needed for error tasks in browser/fullstack environments.
+        // Error tasks may modify next.config / vite.config and must know the basePath +
+        // images.unoptimized requirements even though they skip environment-specific rules.
+        if (isError && (environment === 'browser' || environment === 'fullstack')) {
+          injections.push(`${jobPrefix}/preview-setup`);
+          console.log(`[ModeController] Adding preview-setup for error task in frontend environment`);
+        }
+
         if (job === 'code') {
           injections.push(`${jobPrefix}/tool-calling-rules-compact`);
           console.log(`[ModeController] Adding compact tool-calling rules`);
         }
       }
-      
+
       // Verification language hints are now injected into the plan verification prompt
       // (buildVerificationPlanPrompt) where build/test execution actually happens.
-      // codeGen only applies code fixes — it doesn't need build system hints.
+      // execute only applies code fixes — it doesn't need build system hints.
       
       // Test-code: inject language-specific hints (test frameworks, mock patterns)
       if (isTestCode && language && job === 'code') {

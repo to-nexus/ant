@@ -17,13 +17,13 @@ __start__ -> resolve -> [4-way router]
 
 plan -> [router]
     +-> tool -> plan (plan exploring)
-    +-> codeGen (planText ready)
+    +-> execute (planText ready)
     +-> checkTaskStatus (batch split 완료, done=true)
 
-codeGen -> [router]
-    +-> tool -> codeGen (도구 호출 루프)
+execute -> [router]
+    +-> tool -> execute (도구 호출 루프)
     +-> checkTaskStatus (done=true)
-    +-> codeGen (self-loop retry)
+    +-> execute (self-loop retry)
 
 checkTaskStatus -> [router]
     +-> enforce -> plan (violations + retries 남음)
@@ -60,13 +60,13 @@ taskQueue에서 태스크를 pop하여 currentTask로 설정하고 planText를 �
 
 **태스크 레벨 Resume**: `interrupted === true`이고 유효한 planText가 존재하면 plan 생성을 건너뛴다(canSkipPlan).
 
-### codeGen
+### execute
 
 LLM이 도구 호출(read_file, write_file, search 등)을 통해 코드를 생성한다. `conversationHistory`가 복원되면 이전 대화 위에 이어서 작업한다.
 
 ### tool
 
-codeGen의 도구 호출을 실행하고 결과를 반환한다.
+execute 도구 호출을 실행하고 결과를 반환한다.
 
 ### checkTaskStatus
 
@@ -124,7 +124,7 @@ runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다
 - `packages = ['be']` -> be-system-design + api-contract
 - `packages = ['fe', 'be']` -> 전체 포함
 
-plan 노드는 RAG 결과를 파일 경로 목록만 주입한다. 실제 파일 읽기는 codeGen이 `read_file` 도구로 수행한다.
+plan 노드는 RAG 결과를 파일 경로 목록만 주입한다. 실제 파일 읽기는 execute `read_file` 도구로 수행한다.
 
 ## 경계
 

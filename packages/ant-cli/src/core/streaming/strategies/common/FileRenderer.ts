@@ -14,7 +14,7 @@ import { normalizeToCodebasePath } from '../../../utils/pathNormalizer';
 
 /**
  * Structured data for cross-worker file conflicts.
- * Contains both contents so codeGen can inject a merge instruction
+ * Contains both contents so execute can inject a merge instruction
  * into the conversation without requiring read_file tool calls.
  */
 export interface FileConflict {
@@ -206,7 +206,7 @@ export class FileRenderer {
     }
     registry.markAsStreamed(canonicalPath, finalActionType);
     
-    // ✅ Determine isOverwrite: was this file known at codeGen start?
+    // ✅ Determine isOverwrite: was this file known at execute start?
     // If yes, this is a legitimate overwrite (existing file in codebase).
     // If no, this is a new file creation — subject to cross-worker conflict check.
     const isOverwrite = registry.isKnownAtStart(canonicalPath);
@@ -805,7 +805,7 @@ export class FileRenderer {
 
   /**
    * Get cross-worker file conflicts with structured data for direct merge.
-   * These are NOT included in fileErrors — codeGen handles them directly
+   * These are NOT included in fileErrors — execute handles them directly
    * by injecting both contents into the conversation (1 LLM call instead of 4-5).
    */
   getFileConflicts(): FileConflict[] {

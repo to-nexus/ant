@@ -124,6 +124,11 @@ async function executeToolByName(
           }
           if (isDevServerCommand(commandResult.command)) {
             tracker.devServerPassed = commandResult.success;
+            if (!commandResult.success && commandResult.devServerFailureReason) {
+              tracker.devServerFailureReason = commandResult.devServerFailureReason;
+            } else if (commandResult.success) {
+              tracker.devServerFailureReason = undefined;
+            }
           }
         }
         break;
@@ -303,7 +308,7 @@ export async function tool(
   // Preserve file creation awareness: when LLM creates files AND uses tools in
   // the same response, the text portion (containing file tags) must be included
   // alongside tool_use blocks. Without this, the LLM loses memory of written
-  // files and recreates them on the next codeGen call.
+  // files and recreates them on the next execute call.
   const textResponse = state.llmResponse?.textResponse || '';
   const cleanedText = cleanFileContentFromResponse(textResponse);
 

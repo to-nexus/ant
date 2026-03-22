@@ -66,8 +66,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
         initial._estimatingTokenUsage = (session.state as any).estimatingTokenUsage;  // ✅ Restore estimating phase snapshot
         
-        // ✅ CRITICAL: Restore detectionReport (required for enableTools in codeGen)
-        // Without this, codeGen disables tool calling and LLM outputs XML tags as text
+        // ✅ CRITICAL: Restore detectionReport (required for enableTools in execute)
+        // Without this, execute disables tool calling and LLM outputs XML tags as text
         if ((session.state as any).detectionReport) {
           initial.detectionReport = (session.state as any).detectionReport;
         }
@@ -89,7 +89,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.profile = restoredProfile;
         }
         
-        // ✅ Restore projectCodeContext (filePaths for existingFiles detection in codeGen)
+        // ✅ Restore projectCodeContext (filePaths for existingFiles detection in execute)
         if ((session.state as any).projectCodeContext) {
           initial.projectCodeContext = (session.state as any).projectCodeContext;
         }
@@ -99,7 +99,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.planText = session.state.planText;
         }
         
-        // ✅ Restore conversationHistory for mid-task resume (codeGen continues from interruption point)
+        // ✅ Restore conversationHistory for mid-task resume (execute continues from interruption point)
         if (session.state.conversationHistory && session.state.conversationHistory.length > 0) {
           initial.conversationHistory = session.state.conversationHistory;
         }
