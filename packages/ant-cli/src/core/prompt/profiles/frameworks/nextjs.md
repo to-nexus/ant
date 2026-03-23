@@ -181,48 +181,55 @@ export default function Error({
 
 ## Image Optimization
 
-**Primary Rule**: Follow rendering specs from `ui-assets.json` and `ui-spec.json` if available.
+**SVG assets**: Import as React component (SVGR). Webpack rule is configured in Platform Configuration below.
 
-```typescript
-import Image from 'next/image';
-
-// Use explicit dimensions from design spec
-<Image
-  src="/profile.jpg"
-  alt="Profile"
-  width={200}   // from ui-assets.json rendering.width
-  height={200}  // from ui-assets.json rendering.height
-  priority      // For above-the-fold images
-/>
-
-// Fill mode: parent must have explicit size (from design spec containerSize)
-<div className="relative w-[300px] h-[200px]">
-  <Image src="/card-bg.png" fill alt="Background" className="object-cover" />
-</div>
-
-// CSS background for full-section backgrounds (rendering: "css-background")
-<div 
-  className="w-full h-[400px]"
-  style={{ backgroundImage: 'url(/hero-bg.png)', backgroundSize: 'cover' }}
-/>
+```tsx
+import CalendarIcon from '@/assets/icon-calendar.svg';
+<CalendarIcon className="h-4 w-4 text-gray-500" />
 ```
 
-### Remote Images
-```typescript
-// Add domain to next.config.js
-images: { domains: ['example.com'] }
+**Raster images** (png, jpg, webp): Use `next/image` with explicit dimensions.
+
+```tsx
+import Image from 'next/image';
+<Image src="/assets/photo.png" alt="Photo" width={400} height={300} />
 ```
 
 ## Platform Configuration (next.config)
 
-**Principle**: All generated URLs (routes, assets, SSR output) MUST include the correct path prefix for proxy-based deployment.
-
-**Constraint**: `next.config` MUST read base path from `NEXT_PUBLIC_BASE_PATH` environment variable. Default to empty string when absent. This variable is injected by the Ant platform at runtime — do NOT add it to `.env.example`.
+**Constraint**: `next.config` MUST include both the basePath setting and SVGR webpack rule. Omitting either causes proxy routing failure or SVG import errors.
 
 ```typescript
-const nextConfig = {
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
+  webpack(config) {
+    // Exclude SVGs from default file-loader so SVGR can handle them
+    const fileLoaderRule = config.module.rules.find(
+      (rule: any) => rule.test?.test?.('.svg')
+    );
+    if (fileLoaderRule) fileLoaderRule.exclude = /\.svg$/i;
+    config.module.rules.push({
+      test: /\.svg$/i,
+      issuer: /\.[jt]sx?$/,
+      use: [{ loader: '@svgr/webpack', options: { typescript: true, dimensions: false } }],
+    });
+    return config;
+  },
 };
+
+export default nextConfig;
+```
+
+Install `@svgr/webpack` as devDependency. Add type declaration at `src/types/svg.d.ts`:
+
+```typescript
+declare module '*.svg' {
+  import type { FC, SVGProps } from 'react';
+  const SVGComponent: FC<SVGProps<SVGElement>>;
+  export default SVGComponent;
+}
 ```
 
 ## Environment Variables
@@ -238,17 +245,18 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 - **Use Server Components by default** - only add `'use client'` when needed
 - **Fetch data in Server Components** - faster, more secure
 - **Use `loading.tsx` and `error.tsx`** for better UX
-- **Optimize images** with `next/image`
+- **Optimize raster images** (png, jpg, webp) with `next/image`; import SVGs as SVGR components
 - **Use TypeScript** for all files
 - **Leverage caching** with `revalidate` and `cache` options
 - **Keep layouts simple** - shared UI across routes
 
 ## Forbidden Patterns
-- ❌ Fetching data in Client Components for initial render (use Server Components)
-- ❌ Using `getServerSideProps` or `getStaticProps` in App Router (old pattern)
-- ❌ Forgetting `'use client'` when using hooks
-- ❌ Not using `next/image` for images
-- ❌ Exposing secrets in client-side code (no `NEXT_PUBLIC_` for secrets)
+- ❌ Using `<Image>` or `<img>` for SVG assets — import SVGs as React components via SVGR
+- ❌ Global `images: { unoptimized: true }` in next.config — breaks proxy routing
+- ❌ Fetching data in Client Components for initial render
+- ❌ Using getServerSideProps or getStaticProps in App Router
+- ❌ Forgetting 'use client' when using hooks
+- ❌ Exposing secrets in client-side code
 
 ## Known Issue: Build Succeeds but Dev Server Fails
 

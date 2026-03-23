@@ -100,7 +100,7 @@ When `unoptimized` is NOT set (default), `next/image` generates `/{basePath}/_ne
 | `unoptimized: true` | `<img src="/icons/logo.svg">` | fallback | ❌ 404 |
 | `unoptimized: false` (default) | `<img src="/{basePath}/_next/image?url=...">` | main proxy | ✅ works |
 
-If you need unoptimized output for specific images (e.g., SVGs), use the `unoptimized` prop on individual `<Image>` components, NOT as a global config setting.
+SVG assets must NOT use `<Image>` at all — import them as SVGR components (see Static Assets section below).
 
 ---
 
@@ -265,23 +265,23 @@ className="bg-bg-dark text-primary-green bg-background-cardDark"
 
 When using `ui-assets.json`:
 
-**Next.js**:
+**Constraint**: SVG assets MUST be imported as React components (SVGR) — NOT via `<Image>` or `<img>`. Inline SVG has no network request and no basePath dependency.
+
+**Constraint**: Raster images (png, jpg, webp) MUST use the framework's image component to receive basePath automatically. Bare `<img>` for raster = basePath not applied = proxy routing failure.
+
 ```tsx
+// SVG: import as React component (SVGR — inline, no URL, SSR/CSR safe)
+import CalendarIcon from '@/assets/icon-calendar.svg';
+import LogoIcon from '@/assets/logo-horizontal.svg';
+<CalendarIcon className="h-3 w-3 text-gray-500" />
+
+// Raster — Next.js:
 import Image from 'next/image';
+<Image src="/assets/photo.png" alt="Photo" width={400} height={300} />
 
-// Raster images (png, jpg, webp): framework image component with optimization
-<Image src="/images/photo.png" alt="Photo" width={400} height={300} />
-
-// SVG assets (static themeAdaptation): framework image component WITHOUT optimization
-<Image src="/icons/logo.svg" alt="Logo" width={100} height={40} unoptimized />
-
-// SVG assets (currentColor themeAdaptation): inline SVG component (inherits CSS color)
-<WalletIcon className="text-current" />
+// Raster — Vite/React:
+<img src={`${import.meta.env.VITE_BASE_PATH || ''}/assets/photo.png`} alt="Photo" />
 ```
-
-**Principle**: SVG files do not benefit from raster image optimization. In Next.js, `<Image>` without `unoptimized` routes SVGs through `/_next/image` which may fail or produce incorrect output.
-
-**For other frameworks:** Use standard `<img>` tag or framework's image component. SVG theme adaptation rules still apply.
 
 ---
 
@@ -298,9 +298,9 @@ import Image from 'next/image';
 
 | themeAdaptation | Rendering | Why |
 |----------------|-----------|-----|
-| `currentColor` | Inline SVG component or SVG sprite | `<img>`/`<Image>` cannot inherit CSS `color` |
-| `static` | `<Image unoptimized>` (Next.js) or `<img>` | Colors fixed; optimization unnecessary for SVGs |
-| `partial` | Inline SVG component | Need selective color control |
+| `currentColor` | SVGR component (inline SVG) | Must inherit CSS `color`; `<img>`/`<Image>` cannot |
+| `static` | SVGR component (inline SVG) | SVGR has no basePath dependency; `<Image>`/`<img>` for SVGs causes optimizer rejection |
+| `partial` | SVGR component (inline SVG) | Need selective color control |
 
 ```tsx
 // ❌ WRONG: <img> with theme-dependent SVG — color won't change

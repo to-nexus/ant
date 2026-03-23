@@ -25,6 +25,24 @@ function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Rewrite _next/image url param to include basePath.
+ * Next.js optimizer uses new URL(url, origin) — ignores basePath — causing 400.
+ * Fix: prepend urlKey to url param so internal fetch resolves correctly.
+ */
+function rewriteNextImagePath(path: string, urlKey: string): string {
+  if (!path.includes('/_next/image')) return path;
+  try {
+    const urlObj = new URL(`http://localhost${path}`);
+    const imageUrl = urlObj.searchParams.get('url');
+    if (!imageUrl || imageUrl.startsWith(`/${urlKey}`)) return path;
+    urlObj.searchParams.set('url', `/${urlKey}${imageUrl}`);
+    return urlObj.pathname + urlObj.search;
+  } catch {
+    return path;
+  }
+}
+
 /** Known API/system paths that should NOT be treated as urlKey */
 const RESERVED_PATHS = ['/projects/', '/admin/', '/health'];
 
@@ -149,7 +167,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               const cleanHeaders = buildCleanHeaders(req, host, mapping.port);
 
               // All frameworks use native base path — always prepend the urlKey
-              const resolvedUrl = `/${urlKey}${req.url}`;
+              const resolvedUrl = rewriteNextImagePath(`/${urlKey}${req.url}`, urlKey);
 
               const targetUrl = `http://${host}:${mapping.port}${resolvedUrl}`;
               logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (fallback)`, { component: 'PreviewProxy' });
@@ -274,6 +292,10 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     // Backend-only projects: strip urlKey prefix (no basePath configured)
     if (!hasFrontend && targetPort === port) {
       targetPath = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
+    }
+
+    if (hasFrontend) {
+      targetPath = rewriteNextImagePath(targetPath, urlKey);
     }
 
     const effectiveTargetUrl = `http://${previewHost}:${targetPort}${targetPath}`;
