@@ -1,5 +1,15 @@
 # TypeScript Language Profile
 
+## Source Root Convention
+
+**Default**: Application source files go under `src/`. Configuration files (`package.json`, `tsconfig.json`, `*.config.*`, `.env`) remain at the project root. In monorepo packages, each package follows the same convention: `packages/{name}/src/`.
+
+**Opt-out**: If the project's design document explicitly prescribes a root-level architecture (e.g., FSD with top-level `app/`, `entities/`, `features/`) that conflicts with `src/`, follow the design document. The design document is the higher authority on project structure.
+
+**Existing projects (modify mode)**: Observe where existing source files live. If the project already uses a root-level layout without `src/`, follow the established pattern.
+
+**Constraint**: Do NOT mix layouts. If `src/` is used, ALL source directories belong under `src/`. Creating both `app/` and `src/app/` produces dead code.
+
 ## File Naming Conventions
 - **kebab-case** for all source files: `user-profile.tsx`, `api-client.ts`, `use-auth.ts`
 - **Framework-required exceptions**: Files mandated by frameworks keep their required names (`App.tsx`, `page.tsx`, `layout.tsx`)
