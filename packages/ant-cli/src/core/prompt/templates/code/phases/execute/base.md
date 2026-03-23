@@ -13,9 +13,9 @@ When writing files, use `codebase/` prefix for all code files.
 
 **Wrong paths (do NOT use):** `app/page.tsx` (missing codebase/ prefix), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
 
-**Next.js `app/` placement** — depends on whether the project uses `src/` directory:
-- With `src/` directory (FSD, monorepo): `codebase/src/app/page.tsx` ✅
-- Without `src/` directory (bare Next.js): `codebase/app/page.tsx` ✅
+**Next.js `app/` placement** — follows the project's source root convention:
+- Project uses `src/` directory (default per TypeScript/browser profile): `codebase/src/app/page.tsx` ✅
+- Project does not use `src/` directory: `codebase/app/page.tsx` ✅
 - Never omit `codebase/` prefix regardless of structure.
 
 {{#if designDoc}}
