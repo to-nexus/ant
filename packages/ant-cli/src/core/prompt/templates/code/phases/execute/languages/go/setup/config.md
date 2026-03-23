@@ -23,14 +23,8 @@ GO PROJECT SETUP - CRITICAL CONFIGURATION
 **Single service (default):**
 ```
 codebase/
-├── cmd/
-│   └── server/          # Entry point (main.go)
-├── internal/            # Private application code
-│   ├── handler/         # HTTP handlers (or controller/)
-│   ├── service/         # Business logic
-│   ├── repository/      # Data access
-│   └── model/           # Domain types and structs
-├── pkg/                 # Public reusable packages (if any)
+├── cmd/server/           # Entry point (main.go)
+├── internal/             # Private application code (sub-packages per design doc)
 ├── go.mod
 ├── go.sum
 ├── Makefile
@@ -43,30 +37,26 @@ codebase/
 
 **Principle**: `cmd/{name}/` is the standard entry point convention. Each subdirectory contains a `main.go` that wires dependencies and starts the application.
 
-**Constraint**: If design document specifies architecture boundaries (e.g., handler/service/repository layers), each boundary MUST correspond to a directory under `internal/`.
+**Principle**: Sub-package structure within `internal/` is determined by the architecture boundaries specified in the design document. Do NOT assume a fixed set of sub-directories — observe the design document's architecture layers and map each boundary to a package under `internal/`.
+
+**Constraint**: If design document specifies architecture boundaries, each boundary MUST correspond to a directory under `internal/`. If no boundaries are specified, use a flat structure under `internal/` until complexity demands separation.
 
 **Multi-service (MSA — when multiple backend design documents exist):**
 ```
 codebase/
 ├── go.work                     # Go workspace declaration
 ├── shared/                     # Shared library module (if cross-service types exist)
-│   ├── go.mod
-│   └── types/
+│   └── go.mod
 ├── services/
 │   ├── {svc-a}/
 │   │   ├── go.mod              # Independent module
 │   │   ├── cmd/server/         # Entry point (main.go)
-│   │   ├── internal/           # Private application code
-│   │   ├── Makefile            # Service-level build targets
-│   │   ├── .env.example        # Service-specific config (PORT, API keys)
+│   │   ├── internal/           # Private application code (per design doc)
+│   │   ├── Makefile
+│   │   ├── .env.example
 │   │   └── .env
 │   └── {svc-b}/
-│       ├── go.mod
-│       ├── cmd/server/
-│       ├── internal/
-│       ├── Makefile
-│       ├── .env.example
-│       └── .env
+│       └── ...                 # Same structure as svc-a
 ├── docker-compose.yml
 ├── Makefile                    # Root-level orchestration
 ├── .gitignore

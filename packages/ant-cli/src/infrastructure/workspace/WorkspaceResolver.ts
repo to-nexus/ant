@@ -224,7 +224,7 @@ export class WorkspacePathResolver {
    * @returns Path to profiles directory
    */
   static getProfilesPath(): string {
-    return path.join(WorkspacePathResolver.getCliRoot(), 'periphery/profiles');
+    return path.join(WorkspacePathResolver.getCliRoot(), 'core/prompt/profiles');
   }
   
   /**

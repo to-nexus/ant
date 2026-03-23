@@ -185,25 +185,14 @@ func setupRoutes(r *gin.Engine) {
 
 ## Error Handling
 ```go
-// ✅ Consistent error responses
-type ErrorResponse struct {
-    Error   string `json:"error"`
-    Message string `json:"message,omitempty"`
-    Code    string `json:"code,omitempty"`
-}
+// ✅ Principle: Define a single error response type and a shared handler
+// - Struct fields and naming follow the design document's API contract
+// - All error responses go through one helper function for consistency
 
-func handleError(c *gin.Context, statusCode int, err error) {
-    c.JSON(statusCode, ErrorResponse{
-        Error:   err.Error(),
-        Code:    getErrorCode(err),
-        Message: getErrorMessage(err),
-    })
-}
-
-// ✅ Use error handler in routes
+// ✅ Use centralized error handler in routes
 func handleGetUser(c *gin.Context) {
     userID := c.Param("id")
-    
+
     user, err := getUserByID(userID)
     if err != nil {
         if errors.Is(err, ErrNotFound) {
@@ -213,7 +202,7 @@ func handleGetUser(c *gin.Context) {
         }
         return
     }
-    
+
     c.JSON(http.StatusOK, user)
 }
 ```

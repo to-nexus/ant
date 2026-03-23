@@ -148,7 +148,7 @@ COPY --from=builder /app/packages/ant-cli/dist ./packages/ant-cli/dist
 
 # Copy runtime assets (templates, profiles)
 COPY --from=builder /app/packages/ant-cli/dist/core/prompt/templates ./packages/ant-cli/dist/core/prompt/templates
-COPY --from=builder /app/packages/ant-cli/dist/periphery/profiles ./packages/ant-cli/dist/periphery/profiles
+COPY --from=builder /app/packages/ant-cli/dist/core/prompt/profiles ./packages/ant-cli/dist/core/prompt/profiles
 
 # Copy source code for tsx execution
 COPY --from=builder /app/packages/ant-cli/src ./packages/ant-cli/src
@@ -233,7 +233,7 @@ COPY --from=builder /app/packages/ant-cli/dist ./packages/ant-cli/dist
 
 # Copy runtime assets (templates, profiles)
 COPY --from=builder /app/packages/ant-cli/dist/core/prompt/templates ./packages/ant-cli/dist/core/prompt/templates
-COPY --from=builder /app/packages/ant-cli/dist/periphery/profiles ./packages/ant-cli/dist/periphery/profiles
+COPY --from=builder /app/packages/ant-cli/dist/core/prompt/profiles ./packages/ant-cli/dist/core/prompt/profiles
 
 # Copy source code for tsx execution
 COPY --from=builder /app/packages/ant-cli/src ./packages/ant-cli/src
