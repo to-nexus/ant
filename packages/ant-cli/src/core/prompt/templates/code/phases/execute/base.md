@@ -283,7 +283,7 @@ MODIFY: app/page.tsx - Add import and render new component
 
 Sub-role is determined by priority:
 
-**priority 190–199 (Token Infrastructure)**
+**priority 200 (Token Infrastructure)**
 - **Scope**: ui-tokens.json → CSS custom properties / Tailwind config / **runtime integration**
 - **Constraint**: Token infrastructure only. Do NOT create components.
 - **Completeness**: Token files without import chain are incomplete. Scope includes:
@@ -294,9 +294,9 @@ Sub-role is determined by priority:
 - **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks (Tailwind, UnoCSS) add category prefixes when generating classes (`text-` for fontSize, `bg-` for backgroundColor, `border-` for borderColor). When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix. Example: token key `text-medium-xs` → config key `medium-xs` (generates correct class `text-medium-xs`), NOT config key `text-medium-xs` (generates broken class `text-text-medium-xs`).
 - **Execution**: Read tokens → generate files → wire imports → verify entry file imports all token sources
 
-**priority 200–299 (Component Library)**
+**priority 201+ (Component Library)**
 - **Scope**: Reusable DS components OR external DS library configuration
-- **Constraint**: No page-specific logic. Reference 190–199 token infrastructure.
+- **Constraint**: No page-specific logic. Token infrastructure (priority 200) completes before this task runs.
 - **Constraint**: Components must be generic and reusable.
 - **Principle**: Observe ui-spec `components` section for shared component definitions (variants, interactionStates, sizes). If `components` section exists, implement components matching those specs.
 - **Principle**: If `components` section is absent or incomplete, observe page `sections` in ui-spec for repeated UI patterns. Extract and generalize into shared components. This is a fallback — explicit `components` specs take precedence.

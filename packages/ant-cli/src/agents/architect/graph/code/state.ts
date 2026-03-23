@@ -80,11 +80,7 @@ export const TASK_PRIORITIES = {
   SETUP_PROJECT: 100,
   SETUP_MAX: 189,
 
-  // Design-System (190-299) — visual infrastructure before feature/ui tasks
-  DESIGN_SYSTEM_SETUP: 190,   // token infrastructure (exclusive range)
-  DESIGN_SYSTEM_MAX: 199,
-
-  // Shared Foundation (200-299) — shared types/interfaces + DS component library
+  // Design-System + Shared Foundation (200-299) — visual infrastructure + shared types/interfaces
   SHARED_FOUNDATION: 200,
   FOUNDATION_MAX: 299,
 

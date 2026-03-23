@@ -684,7 +684,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       maxWorkers,
       checkpointInterval: 60000,
       barriers: {
-        designSystem: true,
         feature: true,
         ui: true,
         'test-code': true,
