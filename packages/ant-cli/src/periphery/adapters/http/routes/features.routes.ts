@@ -217,16 +217,6 @@ export function createFeaturesRoutes(deps: {
         }
       }
       
-      // ✅ CRITICAL: Also clear chat.json (chat session should reset when job is cleared)
-      if (deps.chatService) {
-        try {
-          deps.chatService.clearMessages(projectId, featureName, userContext);
-          logger.debug(`[Session] ✅ Cleared chat session: ${projectId}/${featureName}/chat.json`);
-        } catch (error) {
-          logger.warn('Failed to clear chat session (non-critical)', { component: 'Features' }, error);
-        }
-      }
-
       // Delete debug log files matching the job ID from all debug subdirectories
       const previousJobId = sessionData?.state?.jobId;
       if (previousJobId) {

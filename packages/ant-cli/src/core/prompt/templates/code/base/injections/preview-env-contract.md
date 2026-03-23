@@ -289,4 +289,4 @@ Any task that adds or modifies environment variables MUST update BOTH files:
 - `.env` with the resolved localhost value
 If only one file is updated, either the platform cannot detect the connection OR the application fails at runtime.
 
-**Constraint**: Before completing a task, if you added or modified any variable in `.env.example`, verify that `.env` contains ALL variables from `.env.example` with resolved localhost/default values. Read both files and compare.
+**Invariant**: At task completion, `.env` MUST contain all variable keys present in `.env.example` with resolved localhost values. This invariant applies to every task — not only tasks whose scope explicitly mentions environment variables.
