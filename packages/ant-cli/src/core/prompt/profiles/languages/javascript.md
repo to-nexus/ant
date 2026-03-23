@@ -4,7 +4,7 @@
 
 **Default**: Application source files go under `src/`. Configuration files (`package.json`, `*.config.*`, `.env`) remain at the project root.
 
-**Opt-out**: If the project's design document explicitly prescribes a root-level architecture that conflicts with `src/`, follow the design document. **Note**: Architectural patterns like FSD (Feature-Sliced Design) do NOT conflict with `src/` — place FSD layers inside `src/`.
+**Note**: Architectural patterns like FSD (Feature-Sliced Design) do NOT conflict with `src/` — place FSD layers inside `src/`. Design documents describe boundary separation, not source root placement — do NOT let design document directory mentions override this convention.
 
 **Existing projects (modify mode)**: Observe where existing source files live. If the project already uses a root-level layout without `src/`, follow the established pattern.
 
