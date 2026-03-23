@@ -62,9 +62,9 @@ For each boundary in the design document, specify:
 ### D. Directory Structure Principle
 
 **Principle**: Each architecture boundary maps to a directory outside `app/`.
-If the project uses a `src/` directory (FSD, monorepos), `app/` resides at `src/app/` and
-boundary directories reside alongside it (e.g., `src/features/`, `src/entities/`).
-If `src/` is not used, `app/` and boundary directories are all at project root.
+`app/` location follows the project's source root convention: if the project uses a `src/` directory,
+`app/` resides at `src/app/` and boundary directories reside alongside it under `src/`.
+If no `src/` directory is used, `app/` and boundary directories are at project root.
 
 **Constraint**: Do NOT output a full directory tree. Output the invariant: route-layer (`app/`) is structurally separate from boundary directories.
 
