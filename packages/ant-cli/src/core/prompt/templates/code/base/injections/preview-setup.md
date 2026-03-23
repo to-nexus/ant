@@ -25,7 +25,7 @@ reading from an environment variable injected at dev server startup.
 | Framework | Config File | Setting | Environment Variable |
 |-----------|------------|---------|---------------------|
 | **Vite** (React/Vue) | `vite.config.ts` | `base: process.env.VITE_BASE_PATH \|\| '/'` | `VITE_BASE_PATH` |
-| **Next.js** | `next.config.js` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''`, `images: { unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH }` | `NEXT_PUBLIC_BASE_PATH` |
+| **Next.js** | `next.config.js` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` | `NEXT_PUBLIC_BASE_PATH` |
 
 ---
 
@@ -40,14 +40,6 @@ reading from an environment variable injected at dev server startup.
 | **React Router** | `basename={import.meta.env.VITE_BASE_PATH \|\| ''}` |
 | **Vue Router** | `createWebHistory(import.meta.env.VITE_BASE_PATH \|\| '/')` |
 | **Next.js** | Automatic (basePath in next.config handles routing) |
-
----
-
-## SSR Image Optimization
-
-**Principle**: SSR frameworks with built-in image optimization internally fetch images from the local server. When basePath is set, the optimization endpoint and the actual asset path diverge — the endpoint fetches `/icons/logo.svg` but the file is served at `/{basePath}/icons/logo.svg`. This causes image loading failures.
-
-**Constraint**: The framework config table above includes the image optimization disable setting for each framework. This is MANDATORY — verify it exists in the config file.
 
 ---
 

@@ -104,23 +104,6 @@ If you need unoptimized output for specific images (e.g., SVGs), use the `unopti
 
 ---
 
-### ⚠️ Source Root Convention
-
-**Principle**: New files belong at the location consistent with the project's established source layout.
-
-**Observation target**: Where do existing source files live — at the project root, or under a source subdirectory?
-
-| Observation | Constraint |
-|-------------|------------|
-| Existing source files are under `src/` | ALL new source files MUST be placed under `src/`. Framework directories (`app/`, `pages/`, `components/`) also belong under `src/`. |
-| Source files are at the project root (no `src/` convention) | Place new files at the project root following the framework default. |
-
-**Constraint**: Do NOT create a new top-level directory that mirrors one that already exists under `src/`. Creating both `app/` and `src/app/` produces dead code that silently diverges from the active source tree.
-
-⚠️ **Blind spot**: Next.js resolves `app/` OR `src/app/` — not both. If the project uses `src/app/`, creating a root-level `app/` is silently ignored by the framework while appearing to be valid. Verify which layout the existing codebase uses before creating framework directories.
-
----
-
 ### Dependency Boundaries for Testability
 
 **Principle**: Side effects and external I/O (API calls, storage access, third-party SDK interactions) should be isolated in dedicated service modules or custom hooks, not embedded directly in component render logic.

@@ -4,16 +4,19 @@ import { ValidationResult } from '../types';
 
 /**
  * NextValidator
- * 
+ *
  * Validates Next.js projects for basePath configuration.
- * 
+ *
  * Next.js serves all assets (images, CSS, JS) and routes with the basePath prefix
  * at the framework level — both during SSR and CSR. Without basePath, the preview
  * proxy cannot route requests correctly because Next.js won't recognize the prefixed URLs.
- * 
+ *
  * Required configuration:
  * - `basePath: process.env.NEXT_PUBLIC_BASE_PATH || ''` in next.config
- * - `images: { unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH }` (recommended)
+ *
+ * Note: `images.unoptimized` is NOT required. When basePath is set, next/image generates
+ * URLs with the basePath prefix (e.g., /{basePath}/_next/image?url=...), which the proxy
+ * routes correctly. Setting unoptimized: true would remove the prefix, breaking routing.
  */
 export class NextValidator {
   private readonly configCandidates = [
@@ -21,7 +24,7 @@ export class NextValidator {
     'next.config.mjs',
     'next.config.ts',
   ];
-  
+
   /**
    * Find the next.config file in the project
    */
@@ -34,7 +37,7 @@ export class NextValidator {
     }
     return null;
   }
-  
+
   /**
    * Check if the config file contains basePath configuration
    */
@@ -44,20 +47,20 @@ export class NextValidator {
       /["']basePath["']\s*[:=]/.test(content)
     );
   }
-  
+
   /**
    * Check if the config reads NEXT_PUBLIC_BASE_PATH from environment
    */
   private readsEnvBasePath(content: string): boolean {
     return content.includes('NEXT_PUBLIC_BASE_PATH');
   }
-  
+
   /**
    * Validate Next.js project for basePath configuration
    */
   async validate(codebasePath: string): Promise<ValidationResult> {
     const configPath = this.findConfigFile(codebasePath);
-    
+
     // No config file at all — suggest creating one with basePath
     if (!configPath) {
       return {
@@ -69,28 +72,17 @@ export class NextValidator {
         suggestedFix: this.buildSuggestedFix(false, false),
       };
     }
-    
+
     try {
       const content = await fs.promises.readFile(configPath, 'utf-8');
-      
+
       const hasBasePath = this.hasBasePathConfig(content);
       const readsEnv = this.readsEnvBasePath(content);
-      
+
       if (hasBasePath && readsEnv) {
-        const hasImagesUnoptimized = content.includes('unoptimized');
-        if (!hasImagesUnoptimized) {
-          return {
-            valid: false,
-            framework: 'next',
-            reasoning: 'images-unoptimized-missing',
-            reason: 'Next.js config has basePath but missing images.unoptimized — image optimization will fail when basePath is set because /_next/image ignores the path prefix',
-            missingFiles: [path.basename(configPath!)],
-            suggestedFix: this.buildImageUnoptimizedFix(configPath!),
-          };
-        }
         return { valid: true, framework: 'next' };
       }
-      
+
       if (hasBasePath && !readsEnv) {
         // basePath exists but is hardcoded (not from env var)
         return {
@@ -102,7 +94,7 @@ export class NextValidator {
           suggestedFix: this.buildSuggestedFix(true, true),
         };
       }
-      
+
       // Config exists but no basePath
       return {
         valid: false,
@@ -123,7 +115,7 @@ export class NextValidator {
       };
     }
   }
-  
+
   /**
    * Build LLM-ready suggested fix instruction
    */
@@ -135,7 +127,7 @@ export class NextValidator {
       'are generated with the correct prefix — both during server-side rendering and client-side hydration.',
       '',
     ];
-    
+
     if (hasHardcodedBasePath) {
       lines.push(
         'The `basePath` in your config appears to be hardcoded. It must read from the',
@@ -143,23 +135,20 @@ export class NextValidator {
       );
     } else if (configExists) {
       lines.push(
-        'Please add `basePath` and `images` to the existing Next.js config file:',
+        'Please add `basePath` to the existing Next.js config file:',
       );
     } else {
       lines.push(
-        'Please create a `next.config.js` (or .mjs/.ts) with `basePath` and `images`:',
+        'Please create a `next.config.js` (or .mjs/.ts) with `basePath`:',
       );
     }
-    
+
     lines.push(
       '',
       '```js',
       '// next.config.js',
       'const nextConfig = {',
       '  basePath: process.env.NEXT_PUBLIC_BASE_PATH || \'\',',
-      '  images: {',
-      '    unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH,',
-      '  },',
       '  // ... other config',
       '};',
       '',
@@ -168,33 +157,8 @@ export class NextValidator {
       '',
       'The environment variable `NEXT_PUBLIC_BASE_PATH` is injected automatically by the Ant platform at runtime.',
       'When running outside Ant, it defaults to empty string (no prefix), so the app works normally.',
-      '',
-      '`images.unoptimized` disables Next.js Image Optimization when running in the proxy environment.',
-      'This avoids internal fetch issues with the proxy path prefix while keeping optimization active in production.',
     );
-    
-    return lines.join('\n');
-  }
 
-  /**
-   * Build suggested fix specifically for missing images.unoptimized
-   */
-  private buildImageUnoptimizedFix(configPath: string): string {
-    return [
-      'Add `images.unoptimized` to the existing Next.js config:',
-      '',
-      '```js',
-      'const nextConfig = {',
-      '  basePath: process.env.NEXT_PUBLIC_BASE_PATH || \'\',',
-      '  images: {',
-      '    unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH,',
-      '  },',
-      '  // ... other config',
-      '};',
-      '```',
-      '',
-      'Without this, `<Image>` components fail when basePath is set because',
-      'the image optimization endpoint (/_next/image) fetches images without the path prefix.',
-    ].join('\n');
+    return lines.join('\n');
   }
 }
