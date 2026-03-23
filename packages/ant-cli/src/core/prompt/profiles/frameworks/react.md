@@ -193,4 +193,32 @@ function LoginForm() {
 - ❌ Missing dependencies in useEffect/useMemo/useCallback
 - ❌ Forgetting cleanup in useEffect
 - ❌ Props drilling (use Context or state management)
+- ❌ Using `<img>` for SVG assets — use SVGR component import instead
+
+## SVG Assets
+
+Import SVGs as React components (SVGR) — see browser rules for usage constraints. Vite setup:
+
+**Option A** — `vite-plugin-svgr` (same import syntax as Next.js):
+```typescript
+// vite.config.ts
+import svgr from 'vite-plugin-svgr';
+export default defineConfig({ plugins: [react(), svgr()] });
+```
+Install: `vite-plugin-svgr` (devDependency)
+
+Type declaration (add to `src/types/svg.d.ts`):
+```typescript
+declare module '*.svg' {
+  import type { FC, SVGProps } from 'react';
+  const SVGComponent: FC<SVGProps<SVGElement>>;
+  export default SVGComponent;
+}
+```
+
+**Option B** — Vite built-in (no extra package, no type declaration needed):
+```tsx
+import CalendarIcon from '@/assets/icon-calendar.svg?react';
+<CalendarIcon className="h-3 w-3" />
+```
 

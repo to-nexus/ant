@@ -515,8 +515,9 @@ export function createJobRoutes(deps: {
     }
   });
 
-  // Dismiss an interrupted (paused) job — clears the server-side 'paused' state
-  // so a new job can be started. Only 'paused' jobs may be dismissed this way.
+  // Dismiss an interrupted/cancelled job — clears the server-side state
+  // so the user can acknowledge the interruption and start a new job.
+  // For 'paused' jobs: transitions to 'failed'. For already-terminal jobs: no-op (just ack).
   router.post('/projects/:id/features/:feature/job/dismiss', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
@@ -528,17 +529,29 @@ export function createJobRoutes(deps: {
 
     try {
       const jobStatus = await deps.stateStore.getJobStatus(jobId);
-      if (!jobStatus || jobStatus.status !== 'paused') {
-        return res.status(400).json({ error: 'Job is not in interrupted state' });
+
+      // If job doesn't exist or is actively running/queued, reject
+      if (!jobStatus) {
+        return res.status(404).json({ error: 'Job not found' });
       }
 
-      await deps.stateStore.updateJobStatus(jobId, {
-        status: 'failed',
-        completedAt: new Date().toISOString(),
-        error: 'Dismissed by user',
-      });
+      const terminalStatuses = ['failed', 'completed', 'cancelled', 'stopped'];
+      if (jobStatus.status === 'paused') {
+        // Paused (interrupted) → transition to failed
+        await deps.stateStore.updateJobStatus(jobId, {
+          status: 'failed',
+          completedAt: new Date().toISOString(),
+          error: 'Dismissed by user',
+        });
+      } else if (terminalStatuses.includes(jobStatus.status)) {
+        // Already terminal — no state transition needed, just acknowledge
+        logger.debug(`Job already in terminal state (${jobStatus.status}), dismiss is a no-op`, { component: 'JobRoute' });
+      } else {
+        // Running or queued — cannot dismiss
+        return res.status(400).json({ error: `Cannot dismiss job in '${jobStatus.status}' state` });
+      }
 
-      logger.info(`Interrupted job dismissed: ${projectId}/${featureName} jobId=${jobId}`, { component: 'JobRoute' });
+      logger.info(`Job dismissed: ${projectId}/${featureName} jobId=${jobId} (was: ${jobStatus.status})`, { component: 'JobRoute' });
       res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'JobDismiss');
