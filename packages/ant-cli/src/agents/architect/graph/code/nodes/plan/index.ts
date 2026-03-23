@@ -25,7 +25,7 @@ import { extractErrorDetails, createErrorViolation } from "../shared/errorHandle
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 
 // Import submodules
-import { generateTaskKeywords, displayKeywords, logKeywords, updateKeywordsWithRetrieval } from "./keywordGeneration";
+import { generateTaskKeywords, displayKeywords, logKeywords } from "./keywordGeneration";
 import { combineCodeContext, TaskKeywords } from "./combineCodeContext";
 import { loadReferenceContexts } from "./referenceLoader";
 import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, buildPlanPromptBlocks, PLAN_TOOL_LOOP_MAX, taskRequiresPlan, finalizePlanFromExploration } from "./planGeneration";
@@ -815,16 +815,6 @@ const hasPrePlanText =
       projectCodeContext = combinedResult.context;
       lessons = combinedResult.lessons || [];
       
-      // ✅ Save retrieval results to keyword debug log (non-blocking)
-      const ctx = combinedResult.context;
-      updateKeywordsWithRetrieval(state, nextTask.id, {
-        requiredFilesLoaded: ctx.files.filter(f => taskKeywords.requiredFiles.includes(f.path)).map(f => f.path),
-        errorFilesLoaded: ctx.files.filter(f => taskKeywords.errorFiles.includes(f.path)).map(f => f.path),
-        semanticFilesLoaded: ctx.files.filter(f => 
-          !taskKeywords.requiredFiles.includes(f.path) && !taskKeywords.errorFiles.includes(f.path)
-        ).map(f => f.path),
-        totalFilesLoaded: ctx.stats.filesLoaded,
-      }).catch(() => {});
     }
     
     // Load reference projects if needed
