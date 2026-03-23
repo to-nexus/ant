@@ -57,7 +57,7 @@ Each task object MUST follow this schema:
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
 | `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, or `"verification"` |
-| `priority` | Yes | 100–189: setup, 190–199: design-system (token infra), 200–299: feature or design-system (shared foundation / design-system wiring), 300–649: feature, 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra + wiring), 300–649: feature, 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
@@ -79,7 +79,7 @@ CRITICAL:
 | `"error"` | Something is **broken** | Directive contains error messages, crashes, build failures, or runtime exceptions |
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Always unstyled structure (skeleton only) |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
-| `"design-system"` | Visual **infrastructure** | ui-doc exists: 190–199 = token → CSS infrastructure (token variables, runtime import); 200–299 = design-system wiring (import chain, framework bridge, component library integration into app code) |
+| `"design-system"` | Visual **infrastructure** | ui-doc exists: 200 = token → CSS infrastructure (token variables, runtime import); 201+ = shared UI components + framework wiring (import chain, framework bridge, component library). Both share `parallelGroup: "design-system"` for serial ordering. |
 | `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
 
 **Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
@@ -88,7 +88,7 @@ CRITICAL:
 
 **Constraint**: `"feature"` tasks are ALWAYS headless — unstyled structure only. A corresponding `"ui"` task handles visual styling.
 
-**Constraint**: `"design-system"` at priority 200–299 is ONLY for design-system wiring (wiring design tokens/component library into app framework code). Entity models, API clients, ports, and shared domain logic are `"feature"` type — NEVER `"design-system"`. If there is no design system to wire, priority 200–299 tasks are always `"feature"`.
+**Constraint**: `"design-system"` at priority 200–299 covers visual infrastructure only: framework wiring (import chain, framework bridge) AND shared UI component development (reusable component library from ui-spec). Entity models, API clients, ports, and shared domain logic are `"feature"` type — NEVER `"design-system"`. If there is no design system to wire or build, priority 200–299 tasks are always `"feature"`.
 
 **Constraint**: `"design-system"` at priority 200–299 description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes ui-spec at runtime to determine which shared components to create. Description should define SCOPE (e.g., "shared component library from ui-spec observation") not a component inventory.
 
@@ -259,13 +259,13 @@ the full path so the executor can copy it directly into the install command.
 
 When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify which UI doc sections are needed. This enables split injection — only requested sections are loaded into the prompt.
 
-- `"design-system"` tasks (priority 190–199): `"uiSections": ["tokens"]` (token infrastructure — always fixed)
-- `"design-system"` tasks (priority 200–299): `"uiSections": ["tokens", "<component-section>"]` (design-system wiring — framework bridge, import chain, component library integration)
+- `"design-system"` tasks (priority 200, token infrastructure): `"uiSections": ["tokens"]` (always fixed)
+- `"design-system"` tasks (priority 201+, wiring): `"uiSections": ["tokens", "<component-section>"]` (framework bridge, import chain, component library integration)
 - `"ui"` tasks: `"uiSections": ["tokens", "<component-section>"]`
   If omitted, ALL UI docs are injected (not recommended for large docs).
 
 {{#if hasUiDocs}}
-**Constraint**: When ui-docs exist, create a `"design-system"` task (priority 190–199) for token infrastructure. If the design system also requires framework-level wiring (import chain setup, component library integration into app shell), create a second `"design-system"` task (priority 200–299) after token infra. Do NOT embed token setup in Setup or UI tasks.
+**Constraint**: When ui-docs exist, create a `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure. If the design system also requires framework-level wiring (import chain setup, component library integration into app shell), create a second `"design-system"` task (priority 201, `parallelGroup: "design-system"`) for wiring. The shared parallelGroup ensures token infra runs before wiring; both run in parallel with shared foundation tasks. Do NOT embed token setup in Setup or UI tasks.
 {{else}}
 **Constraint**: ui-docs not available → do NOT create `"design-system"` tasks.
 `"ui"` tasks are still created — CSS framework + visual hints from system design provide styling guidance.
@@ -480,8 +480,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 **`exclusive: true`** -- Task MUST run alone. Determine by observing the task's `type` and structural role:
 - `type: "setup"` (root, priority 100) -> `exclusive: true`
 - `type: "setup"` (package-level, priority 101+) -> `exclusive: false`, distinct `parallelGroup` per package
-- `type: "design-system"` (priority 190–199) -> `exclusive: false`, `parallelGroup` per task (barriers.designSystem ensures 200+ tasks wait until all 190–199 tasks complete)
-- `type: "design-system"` (priority 200–299 design-system wiring) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait)
+- `type: "design-system"` (priority 200, token infra) -> `exclusive: false`, `parallelGroup: "design-system"`
+- `type: "design-system"` (priority 201+, wiring) -> `exclusive: false`, `parallelGroup: "design-system"` (shared group serializes token→wiring; foundation barrier ensures 300+ tasks wait)
 - `type: "feature"` (priority 200–299 shared foundation) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait; Schema sub-task is `exclusive`)
 - `type: "ui"` (priority 650–699) -> `parallelGroup` (group with corresponding skeleton task)
 - `type: "error"` -> always exclusive
