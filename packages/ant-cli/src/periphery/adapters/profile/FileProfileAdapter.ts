@@ -6,7 +6,7 @@ import { WorkspacePathResolver } from "../../../infrastructure/workspace/Workspa
 /**
  * FileProfileAdapter - File system implementation of ProfilePort
  * 
- * Loads language and framework profiles from markdown files in periphery/profiles/
+ * Loads language and framework profiles from markdown files in core/prompt/profiles/
  * Returns empty string if profile not found (graceful degradation)
  */
 export class FileProfileAdapter implements ProfilePort {

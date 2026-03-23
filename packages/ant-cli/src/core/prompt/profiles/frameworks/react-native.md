@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
 // - Component.tsx (shared)
 ```
 
-## Navigation (React Navigation)
+## Navigation (Example: React Navigation)
 ```typescript
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -182,7 +182,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-// ✅ React Native Reanimated (preferred)
+// ✅ Example: React Native Reanimated
 function AnimatedBox() {
   const offset = useSharedValue(0);
   
@@ -225,11 +225,11 @@ function Screen() {
 - **Use FlatList** for long lists, not ScrollView + map
 - **Optimize images** - use appropriate sizes and formats
 - **Handle keyboard** with KeyboardAvoidingView
-- **Use StyleSheet.create** for performance
+- **Use StyleSheet.create** for performance (avoids recalculating styles on every render)
 - **Test on both iOS and Android**
-- **Use React Navigation** for routing
+- **Use a native-performance routing solution** (follow design document's library choice)
 - **Leverage native modules** when needed (Camera, Location, etc.)
-- **Use Reanimated** for smooth animations
+- **Use native-thread animations** to avoid blocking the JavaScript thread (follow design document's library choice)
 
 ## Performance Tips
 - **useMemo/useCallback** for expensive operations

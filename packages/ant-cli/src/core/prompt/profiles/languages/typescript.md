@@ -4,7 +4,7 @@
 
 **Default**: Application source files go under `src/`. Configuration files (`package.json`, `tsconfig.json`, `*.config.*`, `.env`) remain at the project root. In monorepo packages, each package follows the same convention: `packages/{name}/src/`.
 
-**Opt-out**: If the project's design document explicitly prescribes a root-level architecture (e.g., FSD with top-level `app/`, `entities/`, `features/`) that conflicts with `src/`, follow the design document. The design document is the higher authority on project structure.
+**Opt-out**: If the project's design document explicitly prescribes a root-level architecture that conflicts with `src/`, follow the design document. **Note**: Architectural patterns like FSD (Feature-Sliced Design) do NOT conflict with `src/` — place FSD layers (`app/`, `entities/`, `features/`, `shared/`, `widgets/`, `pages/`) inside `src/`.
 
 **Existing projects (modify mode)**: Observe where existing source files live. If the project already uses a root-level layout without `src/`, follow the established pattern.
 

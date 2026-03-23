@@ -57,7 +57,7 @@ SSR frameworks run code in TWO contexts:
 - **Database access**: Only in server context (API routes, server components)
 
 **Framework-Specific Patterns:**
-- Check framework profile in `periphery/profiles/frameworks/` for detailed patterns
+- Check framework profile in `core/prompt/profiles/frameworks/` for detailed patterns
 - Examples: `nextjs.md`, `remix.md` (if exist)
 
 ---
@@ -240,39 +240,23 @@ className="bg-bg-dark text-primary-green bg-background-cardDark"
 
 ## 🧩 UI Component Integration Patterns
 
-### React/Next.js Component Hierarchy
-
-```
-page.tsx (entry point)
-  └── SectionName.tsx (parent section)
-        └── SectionNameCard.tsx (child component)
-```
+### Component Render Chain Completeness
 
 **Principle**: Creating a component is INCOMPLETE until it is rendered by a parent within YOUR task's scope. Orphan components that exist but are never imported are a task failure.
 
-**Pattern:**
-| If You Create | You MUST Also Create | You MUST Also Do |
-|---------------|---------------------|------------------|
-| `XCard.tsx` | `X.tsx` (parent) | Import `<X />` in the page/layout that YOUR task owns |
+**Constraint**: Every component you create MUST be imported and rendered in a page or layout file that YOUR task owns. The render chain must be complete from page entry point down to leaf components.
 
 **Scope clarification**: "Entry point" means the page or layout file that YOUR task description covers — NOT shared application-wide entry points (like root layout or router) that belong to setup or integration tasks. If your task says "Implement Hero section", the page file that displays the Hero section is within YOUR scope.
 
 **Anti-Pattern (TASK FAILURE):**
 ```tsx
-// ❌ WRONG: Created XCard.tsx but page still has placeholder
-<section id="x-section">
-  <h2>X Section</h2>  {/* ← PLACEHOLDER! */}
-</section>
-
-// ✅ CORRECT: Replaced with actual component
-import { X } from '@/components/X';
-<X />
+// ❌ WRONG: Component created but page still has placeholder text instead of rendering it
+// ✅ CORRECT: Page imports and renders the component — no placeholders remain
 ```
 
-**Verification Checklist:**
-- [ ] Child component created (`XCard.tsx`)
-- [ ] Parent section created (`X.tsx`) using children
-- [ ] Page/layout within YOUR task scope imports and renders the parent
+**Verification:**
+- [ ] Every component created in this task is imported and rendered by a parent
+- [ ] The render chain reaches a page/layout entry point within YOUR task scope
 - [ ] No `{/* ... Placeholder */}` comments remain in files YOU own
 
 ---
