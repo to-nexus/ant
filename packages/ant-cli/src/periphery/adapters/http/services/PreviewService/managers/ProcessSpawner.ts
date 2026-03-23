@@ -282,6 +282,7 @@ export class ProcessSpawner {
     //   Next.js:  NEXT_PUBLIC_BASE_PATH  → next.config.js basePath
     //   Vite:     VITE_BASE_PATH         → vite.config.ts base
     // Universal:  ANT_BASE_PATH          → generic fallback for custom setups
+    //
     const basePathEnv: Record<string, string> = {};
     if (pkg.type === 'frontend' && options.serverKey) {
       const urlKey = toUrlKey(options.serverKey);
@@ -295,6 +296,7 @@ export class ProcessSpawner {
       } else if (devScript?.includes('vite')) {
         basePathEnv.VITE_BASE_PATH = basePath;
       }
+
     }
     
     // Environment variable priority (low to high):
@@ -601,4 +603,6 @@ export class ProcessSpawner {
       return false;
     }
   }
+
 }
+
