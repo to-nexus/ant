@@ -45,7 +45,7 @@
     "removeJobDesc": "This will remove the current job and clear all session data:",
     "removeJobItem1": "Job ID and progress will be removed",
     "removeJobItem2": "Task board will be cleared",
-    "removeJobItem3": "Chat history will be deleted",
+    "removeJobItem3": "Chat history will be preserved",
     "removeJobItem4": "Session files will be reset and debug log files will be deleted",
     "removeJobConfirm": "Are you sure you want to continue?",
     "removeJobBlocked": "Cannot remove job while it is running. Please stop the job first."

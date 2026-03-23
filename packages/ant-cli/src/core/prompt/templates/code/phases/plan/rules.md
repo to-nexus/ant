@@ -156,6 +156,8 @@ existing modules, design specs, dependencies, etc.)
 ## 🔒 TASK SCOPE PRINCIPLE
 ────────────────────────────────────────────────────────────────────────────────
 
+**Constraint**: If `.env.example` appears in `create` or `modify`, `.env` MUST also appear in `create` or `modify`. Omitting `.env` when `.env.example` is planned = PROTOCOL VIOLATION.
+
 **Constraint**: Create and modify ONLY files that belong to YOUR task's scope.
 
 - Do NOT modify shared entry points, routers, or wiring files that another task is responsible for
