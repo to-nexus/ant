@@ -61,10 +61,9 @@ For each boundary in the design document, specify:
 
 ### D. Directory Structure Principle
 
-**Principle**: Each architecture boundary maps to a directory outside `app/`.
-`app/` location follows the project's source root convention: if the project uses a `src/` directory,
-`app/` resides at `src/app/` and boundary directories reside alongside it under `src/`.
-If no `src/` directory is used, `app/` and boundary directories are at project root.
+**Principle**: Each architecture boundary maps to a directory outside `app/`. The invariant is structural separation: route-layer (`app/`) is separate from boundary directories.
+
+**Constraint**: Do NOT specify whether directories live under `src/` or at project root — that is a language convention resolved by the coding phase, not an architecture decision.
 
 **Constraint**: Do NOT output a full directory tree. Output the invariant: route-layer (`app/`) is structurally separate from boundary directories.
 
