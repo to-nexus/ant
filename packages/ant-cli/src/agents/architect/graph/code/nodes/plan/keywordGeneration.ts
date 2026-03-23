@@ -14,7 +14,6 @@ import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { getSessionDebugDir } from "../../../../../../core/utils/sessionPaths";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { TaskKeywords } from "./combineCodeContext";
 import { KeywordDeduplicator } from "../../../../../../core/prompt/engine/InputSanitizer";
@@ -167,9 +166,6 @@ export async function generateTaskKeywords(
         references
       };
 
-      // ✅ Save keywords to debug file (non-blocking)
-      saveKeywordsForDebug(state, task, result, !!directoryTree).catch(() => {});
-
       return result;
     }
   } catch (error) {
@@ -283,108 +279,4 @@ export function logKeywords(taskKeywords: TaskKeywords): void {
   }
 }
 
-/**
- * Save keyword generation results to debug file
- * 
- * Saves to: {featurePath}/sessions/architect/debug/keywords/{jobId}.json
- * All task keywords for a job are stored in a single JSON file (array of entries).
- * 
- * Follows the same pattern as savePlanTextForDebug in planGeneration.ts.
- */
-async function saveKeywordsForDebug(
-  state: ArchitectGraphState,
-  task: CodeTask,
-  keywords: TaskKeywords,
-  hasDirectoryTree: boolean
-): Promise<void> {
-  try {
-    const featurePath = state.context.featurePath;
-    const jobId = state._httpJobId;
-
-    if (!featurePath || !jobId) {
-      return;
-    }
-
-    const keywordsDir = getSessionDebugDir(featurePath, 'architect', 'keywords');
-    await fs.mkdir(keywordsDir, { recursive: true });
-
-    const filepath = path.join(keywordsDir, `keyword-${jobId}.json`);
-
-    // Load existing entries or start fresh
-    let entries: any[] = [];
-    try {
-      const existing = await fs.readFile(filepath, 'utf-8');
-      entries = JSON.parse(existing);
-    } catch {
-      // File doesn't exist yet
-    }
-
-    // Convert references Map to plain object for JSON serialization
-    const referencesObj: Record<string, string[]> = {};
-    if (keywords.references) {
-      keywords.references.forEach((kws, proj) => {
-        referencesObj[proj] = kws;
-      });
-    }
-
-    entries.push({
-      taskId: task.id,
-      taskName: task.name,
-      generated: new Date().toISOString(),
-      hasDirectoryTree,
-      requiredFiles: keywords.requiredFiles,
-      keywords: keywords.keywords,
-      errorFiles: keywords.errorFiles,
-      references: referencesObj,
-    });
-
-    await fs.writeFile(filepath, JSON.stringify(entries, null, 2), 'utf-8');
-  } catch {
-    // Non-blocking - keyword debug save failed
-  }
-}
-
-/**
- * Update the last keyword entry with actual retrieval results
- * 
- * Called after combineCodeContext completes to record what files were actually loaded.
- * Merges a `retrieval` field into the last entry of the keywords debug JSON.
- */
-export async function updateKeywordsWithRetrieval(
-  state: ArchitectGraphState,
-  taskId: string,
-  retrieval: {
-    requiredFilesLoaded: string[];
-    errorFilesLoaded: string[];
-    semanticFilesLoaded: string[];
-    totalFilesLoaded: number;
-  }
-): Promise<void> {
-  try {
-    const featurePath = state.context.featurePath;
-    const jobId = state._httpJobId;
-
-    if (!featurePath || !jobId) return;
-
-    const keywordsDir = getSessionDebugDir(featurePath, 'architect', 'keywords');
-    const filepath = path.join(keywordsDir, `keyword-${jobId}.json`);
-
-    let entries: any[] = [];
-    try {
-      const existing = await fs.readFile(filepath, 'utf-8');
-      entries = JSON.parse(existing);
-    } catch {
-      return; // No keyword file to update
-    }
-
-    // Find the entry for this task and add retrieval data
-    const entry = entries.find((e: any) => e.taskId === taskId);
-    if (entry) {
-      entry.retrieval = retrieval;
-      await fs.writeFile(filepath, JSON.stringify(entries, null, 2), 'utf-8');
-    }
-  } catch {
-    // Non-blocking
-  }
-}
 

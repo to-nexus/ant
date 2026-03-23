@@ -232,7 +232,7 @@ export function createFeaturesRoutes(deps: {
       if (previousJobId) {
         try {
           const agent = getAgentForJob(jobType);
-          const debugSubdirs = ['prompts', 'plans', 'keywords', 'logs', 'tokens', 'asks'];
+          const debugSubdirs = ['prompts', 'plans', 'logs', 'tokens'];
           for (const subdir of debugSubdirs) {
             const debugDir = getSessionDebugDir(featurePath, agent, subdir);
             let entries: fs.Dirent[];
