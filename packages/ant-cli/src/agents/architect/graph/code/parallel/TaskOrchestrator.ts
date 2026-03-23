@@ -86,9 +86,6 @@ const CONSECUTIVE_TIMEOUT_LIMIT = 3;
 // ============================================
 // Barrier predicates — shared by findAndAssignNonConflictingTask + spawnAvailableWorkers
 // ============================================
-function isDesignSystemTask<T extends BaseTask>(t: T): boolean {
-  return t.priority >= 190 && t.priority <= 199;
-}
 function isFoundationTask<T extends BaseTask>(t: T): boolean {
   return t.priority >= 200 && t.priority <= 299;
 }
@@ -489,9 +486,6 @@ export class TaskOrchestrator<T extends BaseTask> {
     const running = Array.from(this.runningTasks.values());
     const queued = this.taskQueue.getAll();
     return {
-      hasDesignSystemWork: !!b?.designSystem && (
-        running.some(isDesignSystemTask) || queued.some(isDesignSystemTask)
-      ),
       hasPreFeatureWork: !!b?.feature && (
         running.some(isFoundationTask) || queued.some(isFoundationTask)
       ),
@@ -515,17 +509,12 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
-    const { hasDesignSystemWork, hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork } =
+    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork } =
       this.computeBarriers();
 
     for (const task of this.taskQueue.getAll()) {
       // Exclusive task acts as a barrier
       if (task.exclusive) break;
-
-      // Design-system barrier: don't assign 200+ tasks while design-system work exists
-      if (hasDesignSystemWork && task.priority >= 200) {
-        break;
-      }
 
       // Feature barrier: don't assign feature/integration tasks while foundation work exists
       if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') {
@@ -591,13 +580,12 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
-    const { hasDesignSystemWork, hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork } =
+    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork } =
       this.computeBarriers();
 
     let potentialTasks = 0;
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
-      if (hasDesignSystemWork && task.priority >= 200) break;
       if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') break;
       if (hasPreTestgenWork && task.type === 'test-code') break;
       if (hasPreDocWork && task.type === 'doc') break;
