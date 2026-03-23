@@ -4,7 +4,7 @@ import * as path from 'path';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, getAgentForJob, getSessionDebugDir } from '../../../../core/utils/sessionPaths';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 
@@ -224,6 +224,33 @@ export function createFeaturesRoutes(deps: {
           logger.debug(`[Session] ✅ Cleared chat session: ${projectId}/${featureName}/chat.json`);
         } catch (error) {
           logger.warn('Failed to clear chat session (non-critical)', { component: 'Features' }, error);
+        }
+      }
+
+      // Delete debug log files matching the job ID from all debug subdirectories
+      const previousJobId = sessionData?.state?.jobId;
+      if (previousJobId) {
+        try {
+          const agent = getAgentForJob(jobType);
+          const debugSubdirs = ['prompts', 'plans', 'keywords', 'logs', 'tokens', 'asks'];
+          for (const subdir of debugSubdirs) {
+            const debugDir = getSessionDebugDir(featurePath, agent, subdir);
+            let entries: fs.Dirent[];
+            try {
+              entries = await fs.promises.readdir(debugDir, { withFileTypes: true });
+            } catch {
+              continue; // directory doesn't exist — skip
+            }
+            for (const entry of entries) {
+              if (entry.isFile() && entry.name.includes(previousJobId)) {
+                await fs.promises.unlink(path.join(debugDir, entry.name));
+                logger.debug(`[Session] 🗑️ Deleted debug file: ${subdir}/${entry.name}`);
+              }
+            }
+          }
+          logger.debug(`[Session] ✅ Cleared debug logs for job: ${previousJobId}`);
+        } catch (error) {
+          logger.warn('Failed to clear debug log files (non-critical)', { component: 'Features' }, error);
         }
       }
       
