@@ -43,7 +43,6 @@ export interface ProjectStructure {
 export type SetupFailureReasoning =
   | 'basename-missing'            // Frontend (CSR): Missing basename configuration for proxy (React Router, Vue Router)
   | 'basepath-missing'            // Frontend (SSR): Missing basePath in Next.js config for proxy
-  | 'images-unoptimized-missing'  // Next.js: basePath set but images.unoptimized missing — images break in proxy
   | 'port-conflict'               // Port already in use (future)
   | 'dependency-error'            // npm/pnpm install failed (future)
   | 'config-invalid'              // Invalid vite/webpack config (future)

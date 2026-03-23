@@ -49,6 +49,8 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 **Constraint**: Only create configuration-layer files. Do NOT create application code directories (src/*, app/*, pages/*, components/*) or application source files (.tsx/.jsx/.ts/.js outside *.config.*).
 
+**Source root for tooling config**: When configuring paths that reference source directories (e.g., Tailwind `content`, tsconfig `paths`), use `src/` as the default source root per the language profile convention. Feature tasks will create source files there.
+
 **Critical Requirements:**
 1. Linter config MUST exclude build output directories (`dist`, `build`), `node_modules`, and config files (`*.config.*`) from analysis
 2. Include ALL dependencies in package.json (don't defer to feature tasks)

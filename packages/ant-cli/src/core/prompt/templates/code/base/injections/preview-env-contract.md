@@ -20,7 +20,7 @@
 | Framework | Variable | Config Setting | Default when absent |
 |-----------|----------|---------------|-------------------|
 | Vite (React/Vue) | `VITE_BASE_PATH` | `base: process.env.VITE_BASE_PATH \|\| '/'` | `'/'` |
-| Next.js | `NEXT_PUBLIC_BASE_PATH` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''`, `images: { unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH }` | `''` |
+| Next.js | `NEXT_PUBLIC_BASE_PATH` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` | `''` |
 
 - Framework config MUST read the path prefix from the environment variable
 - Client-side router MUST also use the same variable for its base/basename
@@ -288,3 +288,5 @@ Any task that adds or modifies environment variables MUST update BOTH files:
 - `.env.example` with annotation and placeholder value
 - `.env` with the resolved localhost value
 If only one file is updated, either the platform cannot detect the connection OR the application fails at runtime.
+
+**Constraint**: Before completing a task, if you added or modified any variable in `.env.example`, verify that `.env` contains ALL variables from `.env.example` with resolved localhost/default values. Read both files and compare.

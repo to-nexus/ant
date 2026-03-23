@@ -1,27 +1,15 @@
 # Next.js Framework Profile
 
 ## App Router (Next.js 13+)
-- **Use App Router** (`app/` directory) for new projects
+- **Use App Router** under `src/app/` for new projects
 - **Server Components by default** - add `'use client'` only when needed
 - **File-based routing** with special files: `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`
 
 ## Directory Structure
-```
-app/
-├── layout.tsx          # Root layout (required)
-├── page.tsx            # Home page
-├── loading.tsx         # Loading UI
-├── error.tsx           # Error boundary
-├── not-found.tsx       # 404 page
-├── (auth)/             # Route group (doesn't affect URL)
-│   ├── login/
-│   │   └── page.tsx
-│   └── register/
-│       └── page.tsx
-└── api/
-    └── users/
-        └── route.ts    # API route
-```
+
+Next.js supports both `app/` and `src/app/`. **Default to `src/app/`** for new projects (per language profile src/ convention).
+
+⚠️ Next.js resolves `app/` OR `src/app/` — not both. Do NOT create both. Internal directory organization under `src/` is determined by the project's architecture requirements.
 
 ## Server vs Client Components
 ```typescript
@@ -229,16 +217,11 @@ images: { domains: ['example.com'] }
 
 **Principle**: All generated URLs (routes, assets, SSR output) MUST include the correct path prefix for proxy-based deployment.
 
-**Constraint**: `next.config` MUST read base path from `NEXT_PUBLIC_BASE_PATH` environment variable. Default to empty string when absent.
-
-**Constraint**: Image optimization MUST be disabled when base path is set (proxy path breaks internal image fetch).
+**Constraint**: `next.config` MUST read base path from `NEXT_PUBLIC_BASE_PATH` environment variable. Default to empty string when absent. This variable is injected by the Ant platform at runtime — do NOT add it to `.env.example`.
 
 ```typescript
 const nextConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
-  images: {
-    unoptimized: !!process.env.NEXT_PUBLIC_BASE_PATH,
-  },
 };
 ```
 
