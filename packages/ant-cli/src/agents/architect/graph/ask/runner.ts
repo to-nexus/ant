@@ -9,9 +9,6 @@
  * (env vars, auth implementation as project spec, etc.).
  */
 
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { getSessionDebugDir } from '../../../../core/utils/sessionPaths';
 import { buildAskGraph } from './graph.js';
 import { AskGraphState, createInitialAskState } from './state.js';
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
@@ -33,66 +30,6 @@ export interface AskRunnerParams {
 export interface AskRunnerResult {
   response: string;
   toolCallCount: number;
-}
-
-/**
- * Save debug info to sessions/debug/asks/ directory
- * Similar to Code Job's sessions/debug/plans/
- */
-async function saveDebugInfo(
-  featurePath: string | undefined,
-  jobId: string | undefined,
-  question: string,
-  finalState: AskGraphState
-): Promise<void> {
-  // Always log debug status
-  console.log(`📝 [Ask Debug] DEBUG=${DEBUG}, featurePath=${featurePath ? 'present' : 'MISSING'}`);
-  
-  if (!DEBUG) {
-    console.log(`📝 [Ask Debug] Skipped: ASK_DEBUG is not enabled`);
-    return;
-  }
-  
-  if (!featurePath) {
-    console.log(`📝 [Ask Debug] Skipped: featurePath is undefined`);
-    return;
-  }
-  
-  try {
-    // Create sessions/architect/debug/asks/ directory
-    const debugDir = getSessionDebugDir(featurePath, 'architect', 'asks');
-    await fs.mkdir(debugDir, { recursive: true });
-    
-    // Use jobId or timestamp for filename
-    const filename = jobId || `ask-${Date.now()}`;
-    const filepath = path.join(debugDir, `${filename}.json`);
-    
-    const debugInfo = {
-      timestamp: new Date().toISOString(),
-      question,
-      language: finalState.language,
-      toolCalls: finalState.toolCalls.map(tc => ({
-        name: tc.name,
-        args: tc.args,
-        result: tc.result ? tc.result.substring(0, 500) + (tc.result.length > 500 ? '...' : '') : undefined,
-        error: tc.error,
-        timestamp: tc.timestamp,
-      })),
-      conversationHistory: finalState.conversationHistory.map(msg => ({
-        role: msg.role,
-        contentPreview: typeof msg.content === 'string' 
-          ? msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : '')
-          : JSON.stringify(msg.content).substring(0, 200),
-      })),
-      response: finalState.response ? finalState.response.substring(0, 1000) + (finalState.response.length > 1000 ? '...' : '') : undefined,
-      tokenUsage: finalState.tokenUsage,
-    };
-    
-    await fs.writeFile(filepath, JSON.stringify(debugInfo, null, 2), 'utf-8');
-    console.log(`📝 [Ask Debug] Saved to ${filepath}`);
-  } catch (error) {
-    console.warn('[Ask Debug] Failed to save debug info:', error);
-  }
 }
 
 /**
@@ -181,14 +118,6 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
       }
     });
   }
-  
-  // Save debug info to file (similar to Code Job's plan debug)
-  await saveDebugInfo(
-    params.workspaceState.featurePath,
-    params._httpJobId,
-    params.question,
-    finalState
-  );
   
   return {
     response: finalState.response || '',
