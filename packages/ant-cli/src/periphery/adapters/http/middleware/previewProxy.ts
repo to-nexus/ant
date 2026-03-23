@@ -141,24 +141,24 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         const parsed = parseUrlKey(urlKey);
         if (parsed) {
           const { tenantId, userId, projectId, feature } = parsed;
-          
+
           try {
             const mapping = await portRegistry.getPreview(tenantId, userId, projectId, feature);
             if (mapping) {
               const host = mapping.host || 'localhost';
               const cleanHeaders = buildCleanHeaders(req, host, mapping.port);
-              
+
               // All frameworks use native base path — always prepend the urlKey
               const resolvedUrl = `/${urlKey}${req.url}`;
-              
+
               const targetUrl = `http://${host}:${mapping.port}${resolvedUrl}`;
               logger.warn(`[Preview] Routing ${req.path} to ${host}:${mapping.port} (fallback)`, { component: 'PreviewProxy' });
-              
+
               const response = await fetch(targetUrl, {
                 method: req.method,
                 headers: cleanHeaders,
               });
-              
+
               // Stream response
               res.status(response.status);
               response.headers.forEach((value: string, key: string) => {
@@ -166,7 +166,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
                 if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
                 res.setHeader(key, value);
               });
-              
+
               if (response.body) {
                 const nodeStream = Readable.fromWeb(response.body as any);
                 nodeStream.pipe(res);

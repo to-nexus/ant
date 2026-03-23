@@ -70,6 +70,55 @@ SSR frameworks run code in TWO contexts:
 
 **Observation Target**: Does the framework config file read base path from an environment variable? If not, this MUST be fixed before proceeding with feature code.
 
+**ANT Platform Variables** — injected at runtime by ProcessSpawner — do NOT define in `.env.example`:
+
+| Variable | Framework | Config file usage |
+|----------|-----------|-------------------|
+| `NEXT_PUBLIC_BASE_PATH` | Next.js | `next.config.ts` → `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` |
+| `VITE_BASE_PATH` | Vite | `vite.config.ts` → `base: process.env.VITE_BASE_PATH \|\| '/'` |
+| `ANT_BASE_PATH` | All | Universal fallback |
+
+⚠️ **Constraint**: Do NOT add `NEXT_PUBLIC_BASE_PATH`, `VITE_BASE_PATH`, or `ANT_BASE_PATH` to `.env.example`. These are platform-injected variables — defining them (even as empty values) in `.env.example` pollutes user-facing config with internal platform concerns.
+
+**Next.js `next.config.ts` — Correct Pattern:**
+```typescript
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+const nextConfig: NextConfig = {
+  ...(basePath ? { basePath } : {}),
+  // Do NOT add: images: { unoptimized: !!basePath }
+};
+```
+
+⚠️ **Critical Blind Spot — `images: { unoptimized: !!basePath }` breaks image routing**:
+
+When `images.unoptimized: true`, `next/image` returns the `src` attribute **unchanged** (no basePath prefix). All image requests go to the fallback proxy without the urlKey, which cannot route them correctly.
+
+When `unoptimized` is NOT set (default), `next/image` generates `/{basePath}/_next/image?url=...` — this URL contains the urlKey, so the main proxy routes it correctly.
+
+| Config | next/image output | Proxy path | Result |
+|--------|-------------------|------------|--------|
+| `unoptimized: true` | `<img src="/icons/logo.svg">` | fallback | ❌ 404 |
+| `unoptimized: false` (default) | `<img src="/{basePath}/_next/image?url=...">` | main proxy | ✅ works |
+
+If you need unoptimized output for specific images (e.g., SVGs), use the `unoptimized` prop on individual `<Image>` components, NOT as a global config setting.
+
+---
+
+### ⚠️ Source Root Convention
+
+**Principle**: New files belong at the location consistent with the project's established source layout.
+
+**Observation target**: Where do existing source files live — at the project root, or under a source subdirectory?
+
+| Observation | Constraint |
+|-------------|------------|
+| Existing source files are under `src/` | ALL new source files MUST be placed under `src/`. Framework directories (`app/`, `pages/`, `components/`) also belong under `src/`. |
+| Source files are at the project root (no `src/` convention) | Place new files at the project root following the framework default. |
+
+**Constraint**: Do NOT create a new top-level directory that mirrors one that already exists under `src/`. Creating both `app/` and `src/app/` produces dead code that silently diverges from the active source tree.
+
+⚠️ **Blind spot**: Next.js resolves `app/` OR `src/app/` — not both. If the project uses `src/app/`, creating a root-level `app/` is silently ignored by the framework while appearing to be valid. Verify which layout the existing codebase uses before creating framework directories.
+
 ---
 
 ### Dependency Boundaries for Testability
@@ -186,6 +235,23 @@ className="bg-bg-dark text-primary-green bg-background-cardDark"
 | SCSS | `_variables.scss` with `$color-primary`, etc. |
 | Styled-components / Emotion | `theme.ts` with theme object |
 | Vue/Nuxt | `assets/css/variables.css` |
+
+---
+
+### ⚠️ Shared UI Component Duplication
+
+**Principle**: Shared UI primitives may already exist if a design-system task ran before this one. Do not create duplicates.
+
+**Observation target**: Before creating a UI primitive (Button, Badge, Input, Card, etc.), read the shared component location indicated by the design specification.
+
+| Observation | Constraint |
+|-------------|------------|
+| A matching component already exists at any path in the codebase | Import from that path. Do NOT create a new implementation at a different path. |
+| No matching component exists | Create it in a scope appropriate to this task. |
+
+**Constraint**: Do NOT create a new implementation of a component that already exists elsewhere in the codebase. Having two implementations of the same primitive at different paths causes import divergence — different parts of the app use different implementations, breaking visual and behavioral consistency.
+
+⚠️ **Blind spot**: The existing component may be at `<shared-dir>/badge/badge.tsx` (subdirectory) while you target `<shared-dir>/badge.tsx` (flat file). These are different paths — the file system will not warn you. Always read the shared component directory, not just check a specific target path.
 
 ---
 

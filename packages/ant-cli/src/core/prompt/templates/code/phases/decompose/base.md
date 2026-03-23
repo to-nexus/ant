@@ -102,14 +102,16 @@ Break this specification into a prioritized list of implementation tasks.
 - See rules for detailed scope constraints
 
 **Priority Assignment** (LOWER NUMBER = HIGHER PRIORITY):
-- 100: Setup (if needed, only in generate mode)
-- 200: Shared foundation (shared types/interfaces before features)
-- 300-500: Features (300=critical, 350=important, 400=normal, 500=nice-to-have)
-- 600: Integration (wire parallel outputs into shared entry points)
-- 700: Test generation (after all features)
-- 800: Documentation (after all features and tests)
-- 900-980: Error fixes
-- 1000: Final verification (always last)
+- 100–189: setup (project initialization)
+- 190–199: design-system (token infrastructure — only when ui-docs exist)
+- 200–299: feature or design-system (shared foundation / design-system wiring)
+- 300–649: feature (300=critical, 350=important, 400=normal, 500=nice-to-have)
+- 600: feature, exclusive (integration — wire parallel outputs into shared entry points)
+- 650–699: ui (visual implementation pass)
+- 700: test-code (after all features)
+- 800: doc (after all features and tests)
+- 900–980: error (fixes)
+- 1000: verification (always last)
 
 **Task Dependencies:**
 - Order tasks logically (foundational features before dependent ones)
