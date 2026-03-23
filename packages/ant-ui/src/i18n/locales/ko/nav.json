@@ -46,7 +46,7 @@
     "removeJobItem1": "작업 ID와 진행 상황이 제거됩니다",
     "removeJobItem2": "태스크 보드가 초기화됩니다",
     "removeJobItem3": "채팅 기록이 삭제됩니다",
-    "removeJobItem4": "세션 파일이 리셋됩니다",
+    "removeJobItem4": "세션 파일이 리셋되고 디버그 로그 파일이 삭제됩니다",
     "removeJobConfirm": "계속하시겠습니까?",
     "removeJobBlocked": "작업이 진행 중이므로 제거할 수 없습니다. 먼저 작업을 중지해주세요."
   },
