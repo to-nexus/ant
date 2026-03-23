@@ -85,8 +85,8 @@ export class JobWorker {
         concurrency: this.options.concurrency || DEFAULT_CONCURRENCY,
         removeOnComplete: { count: 1000 },
         removeOnFail: { count: 5000 },
-        lockDuration: 30000,     // 30s — worker extends every 15s (lockDuration/2)
-        stalledInterval: 30000,  // 30s — dead worker detected within ~60s
+        lockDuration: 300000,    // 5min — covers longest LLM call (thinking=true, ~2min) with margin
+        stalledInterval: 60000,  // 1min — detects actual dead workers within 3 min
         maxStalledCount: 0,      // Never re-queue stalled jobs (prevents double-child on Mac sleep/wake)
       }
     );
@@ -342,24 +342,23 @@ export class JobWorker {
    * Spawn a child process to execute the job
    * 
    * Lock Strategy (BullMQ convention: extend at lockDuration/2):
-   * - lockDuration: 30s
-   * - Extension interval: 15s (lockDuration / 2)
-   * - stalledInterval: 30s
-   * - Dead Worker: 30s (expire) + 30s (check) = ~60s to detect
+   * - lockDuration: 5min — covers longest LLM call (thinking=true, ~2min) with margin
+   * - Extension interval: 2.5min (lockDuration / 2)
+   * - stalledInterval: 1min — detects actual dead workers within 3 min
+   * - Dead Worker detection: ~3 min (1 expire + 1 check cycle + margin)
    */
   private spawnJobProcess(job: Job<JobPayload>, payload: JobPayload): Promise<{ success: boolean; error?: string; output?: any }> {
     return new Promise(async (resolve, reject) => {
       const jobId = payload.jobId;
       
-      const LOCK_DURATION = 30000;            // 30s (must match Worker config)
-      const LOCK_EXTENSION_INTERVAL = 15000;  // 15s (lockDuration / 2)
+      const LOCK_DURATION = 300000;            // 5min (must match Worker config)
+      const LOCK_EXTENSION_INTERVAL = 150000; // 2.5min (lockDuration / 2)
       
       const lockExtensionTimer = setInterval(async () => {
         try {
           await job.extendLock(job.token!, LOCK_DURATION);
         } catch (error: any) {
-          // Lock extension failure is not critical - job continues
-          logger.debug(`Lock extension failed for job: ${jobId}`, { component: 'JobWorker', jobId });
+          logger.warn(`Lock extension failed for job: ${jobId} — stall risk if repeated`, { component: 'JobWorker', jobId });
         }
       }, LOCK_EXTENSION_INTERVAL);
       
