@@ -188,7 +188,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Step 4: Parse Response
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  let triageResult = parseTriageResponse(responseText, currentJob, currentAgent);
+  let triageResult = parseTriageResponse(responseText, currentJob, currentAgent, workspaceState);
   
   if (!triageResult) {
     console.error('❌ [Triage] Failed to parse LLM response:');
