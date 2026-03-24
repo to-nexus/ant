@@ -363,11 +363,23 @@ export class RouteConfigurator {
               }, cleanupError);
             }
           } else {
-            logger.warn(`Missing projectId/featureName for job completion cleanup: ${jobId}`, {
-              component: 'RouteConfigurator',
-              projectId,
-              featureName
-            });
+            // projectId/featureName 누락 시 stateStore에서 직접 조회 (stalled 핸들러 best-effort 실패 보완)
+            try {
+              const mapping = await stateStore.getJobMapping(jobId);
+              if (mapping?.projectId && mapping?.featureName) {
+                logger.info(`Resolved missing projectId/featureName from stateStore for job: ${jobId}`, { component: 'RouteConfigurator' });
+                const userCtx = mapping.userContext;
+                await this.cleanupJobState(jobId, mapping.projectId, mapping.featureName, interruption, jobType, userCtx);
+              } else {
+                logger.warn(`Missing projectId/featureName and stateStore lookup failed: ${jobId}`, {
+                  component: 'RouteConfigurator',
+                  projectId,
+                  featureName
+                });
+              }
+            } catch (err) {
+              logger.error(`Failed to resolve mapping for job ${jobId}`, { component: 'RouteConfigurator' }, err);
+            }
           }
         }
       }).catch((err: Error) => {
