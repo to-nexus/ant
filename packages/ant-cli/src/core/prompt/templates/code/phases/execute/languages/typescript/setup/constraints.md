@@ -7,7 +7,7 @@
 **If you see a `# DESIGN TOKENS` section in this prompt:**
 - The tokens are ALREADY LOADED from `outputs/design/ui-tokens.json`
 - DO NOT attempt to read `ui-tokens.json` from `inputs/` or any other directory
-- Use the token values from the prompt directly to configure Tailwind/theme
+- Use the token values from the prompt directly to configure the styling framework's theme
 
 ## 📁 PATH CONVENTION (CRITICAL!)
 
@@ -49,17 +49,18 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 
 **Constraint**: Only create configuration-layer files. Do NOT create application code directories (src/*, app/*, pages/*, components/*) or application source files (.tsx/.jsx/.ts/.js outside *.config.*).
 
-**Source root for tooling config**: When configuring paths that reference source directories (e.g., Tailwind `content`, tsconfig `paths`), use `src/` as the default source root per the language profile convention. Feature tasks will create source files there.
+**Source root for tooling config**: When configuring paths that reference source directories (e.g., styling framework source scan paths, tsconfig `paths`), use `src/` as the default source root per the language profile convention. Feature tasks will create source files there.
 
 **Critical Requirements:**
 1. Linter config MUST exclude build output directories (`dist`, `build`), `node_modules`, and config files (`*.config.*`) from analysis
 2. Include ALL dependencies in package.json (don't defer to feature tasks)
 3. Next task will create ALL application code - don't do it now
-4. **Tailwind `content` paths MUST match actual source directories**
+4. **Styling framework source scan paths MUST match actual source directories**
 5. In monorepos, `"workspace:*"` MUST only reference packages whose source directory is physically present in `pnpm-workspace.yaml` globs. Do NOT use `"workspace:*"` for externally published packages — regardless of scope name (`@org/`) or design document terminology ("shared packages", "common libraries"). For external packages whose version is unknown, use `"latest"` — do NOT invent version numbers
+6. **SVG loader config MUST preserve intrinsic dimensions.** Do NOT set `dimensions: false` in SVGR plugin configuration (vite-plugin-svgr, @svgr/webpack). Stripping `width`/`height` attributes causes viewBox-only SVGs to expand to container size.
 
-⚠️ **Blind spot — `content` path mismatch**:
-If `content` paths don't cover the directories where source files exist, zero utility classes will be generated. The CSS file still loads normally — it just contains only the base reset, making this invisible in network/console. Ensure `content` paths match the directories where source files will be created.
+⚠️ **Blind spot — Styling framework source scan mismatch**:
+If a CSS utility framework's source scan paths don't cover the directories where source files exist, zero utility classes will be generated. The CSS file still loads normally — it just contains only the base reset, making this failure invisible in network/console. Ensure scan paths match the directories where source files will be created.
 
 ### Workspace Version Consistency (Multi-Package Projects)
 

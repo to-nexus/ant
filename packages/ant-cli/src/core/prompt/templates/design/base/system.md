@@ -62,8 +62,8 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
    ❌ NO  → Too specific (abstract or omit)
 
 ❓ "Is this a proper noun (library/vendor/API)?"
-   ✅ External service from PRD → Keep exact name
-   ✅ Internal tech choice → Abstract to role
+   ✅ PRD specified it (external service OR technology) → Keep exact name
+   ✅ YOU chose it (internal tech choice) → Abstract to role
    ❌ Implementation detail → Omit
 
 ❓ "Am I describing WHAT or HOW?"
@@ -76,9 +76,16 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
    ❌ System Design: "browser storage" → WRONG (copied verbatim)
 ```
 
+**Entry Gate — Apply BEFORE classifying into Tiers:**
+
+Every technology/library/tool name must pass the **"Who decided?"** test:
+- **PRD specified it** → Tier 1: Document as architectural constraint with exact name
+- **YOU chose it** → Classify per Tier 2/3 below
+
 **Three-Tier Abstraction Model:**
 
 **Tier 1: Architectural Constraints (Document Exactly)**
+- **PRD-specified technology choices**: "Tailwind CSS", "PostgreSQL", "Redis" (keep exact name when PRD explicitly chooses them)
 - **External services from PRD**: "Stripe API", "NewsData.io" (exact names with PRD §reference)
 - **Platform constraint INTENT**: Extract WHY, not implementation wording
   - PRD: "browser storage" → Intent: "Client-side persistence required"
@@ -86,7 +93,7 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
   - PRD: "static hosting" → Intent: "Stateless deployment required"
 - **Required architectural constraints**: PRD-mandated directives like "event-driven communication required", "strict layer separation"
 - **Technology prohibitions**: "No MongoDB", "No GraphQL"
-- **Rule**: Extract INTENT, abstract the wording
+- **Rule**: For platform constraints, extract INTENT and abstract the wording. For named technologies/services, keep exact name.
 
 **Tier 2: Technology Choices (Abstract to Role)**
 - **Heuristic: Any library/framework/tool name → Its architectural role**
@@ -97,12 +104,12 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
   - State tech → "State management approach"
   - Routing tech → "Routing mechanism"
   - Platform APIs → "Platform interface" / "Client-side capability"
-- **Rule**: Even if PRD specifies concrete tech, use architectural term
+- **Rule**: Apply to technologies YOU chose. PRD-specified technologies bypass Tier 2 — they are documented per the entry gate above.
 
 **Tier 3: Implementation Details (Omit Entirely)**
 - Config values: timeouts (5000ms), retry counts (3), TTL (300s)
 - Code constructs: variable names, function signatures, type definitions
-- UI specifics: CSS properties, component props, styling libraries
+- UI specifics: CSS properties, component props, styling techniques
 - Data formats: "JSON", "XML" (except when defining cross-boundary contract format)
 - Algorithms: loops, conditions, formulas
 - Platform mechanisms: "CORS", "same-origin policy", "browser history API"
@@ -172,12 +179,13 @@ Do NOT add requirements that are NOT in the PRD, even if they are industry "best
 - Paragraphs of prose (use bullet points!)
 
 **✅ ALWAYS document PRD-specified constraints:**
+- PRD-specified technology choices (keep exact names: "Tailwind CSS", "PostgreSQL")
 - Platform constraints (Client-side only, No backend, Serverless)
 - Required external services/APIs (copy exact names from PRD)
 - Required/forbidden architecture patterns (copy exact names from PRD)
 - Technology prohibitions (what PRD forbids)
-- **But ABSTRACT implementation technologies** (LocalStorage → Persistence, PostgreSQL → Database)
-- **Rule**: Copy architectural constraints VERBATIM, abstract implementation technologies
+- **But ABSTRACT technologies YOU chose** (YOUR LocalStorage choice → "Persistence adapter"; PRD's PostgreSQL requirement → keep exact name)
+- **Rule**: Copy PRD technology names and service names VERBATIM. For platform constraints, extract intent per Tier 1 rule. Abstract only technologies YOU chose to their architectural role.
 
 ### Content to Keep OUT of System Design (belongs in PRD or Implementation docs):
 - ❌ Detailed UI behavior narratives (e.g., "user clicks X then Y happens")
