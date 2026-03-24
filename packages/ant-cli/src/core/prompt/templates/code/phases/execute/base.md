@@ -7,7 +7,9 @@ You are implementing a specific task. Follow the instructions for your task type
 **All paths are relative to the feature root.**
 - Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
 - Assets source: `features/<feature>/inputs/assets/...`
-- Assets destination: `codebase/public/...`
+- Assets destination:
+  - SVG assets → `codebase/src/assets/` (source tree — required for SVGR import)
+  - Raster assets (png, jpg, webp) → `codebase/public/...`
 
 When writing files, use `codebase/` prefix for all code files.
 

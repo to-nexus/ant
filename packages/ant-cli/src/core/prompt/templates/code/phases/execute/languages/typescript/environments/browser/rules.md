@@ -265,9 +265,14 @@ className="bg-bg-dark text-primary-green bg-background-cardDark"
 
 When using `ui-assets.json`:
 
-**Constraint**: SVG assets MUST be imported as React components (SVGR) — NOT via `<Image>` or `<img>`. Inline SVG has no network request and no basePath dependency.
+**Observation target**: What is the `format` field of the asset?
 
-**Constraint**: Raster images (png, jpg, webp) MUST use the framework's image component to receive basePath automatically. Bare `<img>` for raster = basePath not applied = proxy routing failure.
+| format | File placement | Code pattern | Why |
+|--------|---------------|--------------|-----|
+| `svg` | Source tree (`src/assets/`) | `import Icon from '@/assets/icon.svg'` → `<Icon />` | `public/` files are NOT in webpack module graph → SVGR cannot process them. `<Image>`/`<img>` with SVG → Next.js optimizer rejects SVG; bare `<img>` has no basePath → 404 in proxy. |
+| `png`, `jpg`, `webp` | `public/` | `<Image src="/assets/photo.png" />` | Framework image component auto-applies basePath. Bare `<img>` for raster = basePath not applied = proxy routing failure. |
+
+**Constraint**: SVG format assets MUST be placed in the source tree (`src/assets/`) and imported as SVGR React components. Placing SVGs in `public/` makes SVGR import impossible — webpack only processes the source tree.
 
 ```tsx
 // SVG: import as React component (SVGR — inline, no URL, SSR/CSR safe)
@@ -285,22 +290,15 @@ import Image from 'next/image';
 
 ---
 
-### ⚠️ SVG Theme Compatibility
+### SVG Color Adaptation (SVGR post-processing)
 
-**Principle**: SVG icons with hardcoded `fill` or `stroke` colors become invisible when the app's color scheme changes.
+After importing as SVGR component, check `ui-assets.json` for `themeAdaptation`. **If the field is missing, default to `"currentColor"`.**
 
-**Constraint**: Before using an SVG asset:
-1. Check `ui-assets.json` for `themeAdaptation` field
-2. If `"currentColor"` — replace hardcoded colors with `currentColor` in the SVG, and render inline (NOT via `<img>`)
-3. If `"static"` — use as-is (brand assets)
-
-**Rendering method by adaptation type:**
-
-| themeAdaptation | Rendering | Why |
-|----------------|-----------|-----|
-| `currentColor` | SVGR component (inline SVG) | Must inherit CSS `color`; `<img>`/`<Image>` cannot |
-| `static` | SVGR component (inline SVG) | SVGR has no basePath dependency; `<Image>`/`<img>` for SVGs causes optimizer rejection |
-| `partial` | SVGR component (inline SVG) | Need selective color control |
+| themeAdaptation | Action | Why |
+|----------------|--------|-----|
+| `currentColor` (or missing) | Replace hardcoded `fill`/`stroke` colors with `currentColor` | Icon inherits CSS `color` → adapts to light/dark theme |
+| `static` | Keep original colors | Brand assets with specific colors |
+| `partial` | Replace non-brand colors with `currentColor`, keep brand colors | Selective theme adaptation |
 
 ```tsx
 // ❌ WRONG: <img> with theme-dependent SVG — color won't change

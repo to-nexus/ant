@@ -467,7 +467,7 @@ get_design_context(fileKey, nodeId="292:8139")  # events (dark)
     "lastSection": 3,
     "sectionPattern": "top-level",
     "pathPattern": {
-      "icons": "public/icons/",
+      "icons": "src/assets/icons/",
       "images": "public/images/"
     }
   },
@@ -482,8 +482,9 @@ get_design_context(fileKey, nodeId="292:8139")  # events (dark)
   "icons": {
     "<asset-id>": {
       "src": "inputs/assets/<filename>",
-      "dest": "public/icons/<filename>",
+      "dest": "src/assets/icons/<filename>",
       "format": "svg",
+      "themeAdaptation?": "currentColor | static | partial",
       "figmaNodeId": "<nodeId>",
       "usage": "<사용 위치>",
       "rendering": { "method": "explicit", "width": "<number>", "height": "<number>" }
@@ -522,6 +523,8 @@ get_design_context(fileKey, nodeId="292:8139")  # events (dark)
 - `rendering` 필드 필수 (Code Job이 사이즈를 추측하지 않도록)
 - `figmaNodeId` 기록 (추후 재 export 시 사용)
 - 카테고리는 디자인 구조에서 관찰하여 결정
+- SVG 에셋에는 `themeAdaptation` 필드 권장 (다크/라이트 모드 대응). 생략 시 Code Job이 `currentColor`로 기본 처리
+- `dest` 경로는 format에 따라 결정: SVG → `src/assets/` (SVGR import), raster → `public/` (static serving)
 
 ---
 

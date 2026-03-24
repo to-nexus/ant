@@ -19,15 +19,15 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 **❌ WRONG (Path Inconsistency):**
 ```json
-// ch1 established: <category> → public/<category>/
+// ch1 established: images → public/images/
 // ch2 uses different path structure — INCONSISTENT!
-"asset-new": { "dest": "public/<category>/subdir/new.svg" }
+"asset-new": { "dest": "public/images/subdir/new.png" }
 ```
 
 **✅ CORRECT:**
 ```json
 // ch1 established pattern, ch2 follows exactly:
-"asset-new": { "dest": "public/<category>/new.svg" }
+"asset-new": { "dest": "public/images/new.png" }
 ```
 
 ### PRD Integration
@@ -49,20 +49,29 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 ### JSON Structure
 
+**`dest` is determined by `format`:**
+
+| format | dest pattern | Why |
+|--------|-------------|-----|
+| `svg` | `src/assets/<category>/<file>` | Source tree — required for SVGR import (webpack processes source tree only) |
+| `png`, `jpg`, `webp` | `public/<category>/<file>` | Static serving via framework image component |
+
 ```json
 {
   "_meta": {
     "lastSection": 3,
     "sectionPattern": "top-level",
     "pathPattern": {
-      "<category>": "public/<category>/"
+      "<svg-category>": "src/assets/<svg-category>/",
+      "<raster-category>": "public/<raster-category>/"
     }
   },
   "<category>": {
     "<asset-id>": {
       "src": "inputs/assets/<source-path>",
-      "dest": "public/<category>/<dest-filename>",
+      "dest": "<see format-based rule above>",
       "format": "svg | png | jpg | webp",
+      "themeAdaptation?": "currentColor | static | partial",
       "usage": "<where this asset appears in the UI>",
       "rendering": {
         "method": "explicit | fill | css-background",
@@ -111,13 +120,22 @@ Create a JSON mapping document that connects source assets to their runtime dest
 {
   "_meta": {
     "lastSection": {{add lastSectionNumber 1}},
-    "pathPattern": { "YOUR_CATEGORY": "public/YOUR_CATEGORY/" }
+    "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }
   },
-  "YOUR_CATEGORY": {
-    "asset-id": {
+  "icons": {
+    "icon-id": {
       "src": "inputs/assets/...",
-      "dest": "public/YOUR_CATEGORY/...",
-      "format": "svg|png",
+      "dest": "src/assets/icons/...",
+      "format": "svg",
+      "themeAdaptation": "currentColor",
+      "usage": "Usage context"
+    }
+  },
+  "images": {
+    "image-id": {
+      "src": "inputs/assets/...",
+      "dest": "public/images/...",
+      "format": "png",
       "usage": "Usage context"
     }
   }
@@ -133,13 +151,22 @@ Create a JSON mapping document that connects source assets to their runtime dest
   "_meta": {
     "lastSection": 1,
     "sectionPattern": "top-level",
-    "pathPattern": { "YOUR_CATEGORY": "public/YOUR_CATEGORY/" }
+    "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }
   },
-  "YOUR_CATEGORY": {
-    "asset-id": {
+  "icons": {
+    "icon-id": {
       "src": "inputs/assets/...",
-      "dest": "public/YOUR_CATEGORY/...",
-      "format": "svg|png",
+      "dest": "src/assets/icons/...",
+      "format": "svg",
+      "themeAdaptation": "currentColor",
+      "usage": "Usage context"
+    }
+  },
+  "images": {
+    "image-id": {
+      "src": "inputs/assets/...",
+      "dest": "public/images/...",
+      "format": "png",
       "usage": "Usage context"
     }
   }
@@ -154,7 +181,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 **Principle**: SVG icons must adapt to the application's color theme. Hardcoded colors in SVGs become invisible when the theme changes.
 
-**Constraint**: For SVG assets, include a `themeAdaptation` field:
+**Guideline**: For SVG assets, you MAY include a `themeAdaptation` field. If omitted, Code Job defaults to `"currentColor"`.
 
 | SVG Content | themeAdaptation | Action |
 |-------------|----------------|--------|
@@ -166,7 +193,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 {
   "icon-wallet": {
     "src": "inputs/assets/icons/wallet.svg",
-    "dest": "public/icons/icon-wallet.svg",
+    "dest": "src/assets/icons/icon-wallet.svg",
     "format": "svg",
     "themeAdaptation": "currentColor",
     "rendering": { "method": "explicit", "width": 20, "height": 20 }
@@ -201,8 +228,8 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 **⚠️ CRITICAL: You MUST use these EXACT paths for new assets!**
 
-Example - if ch1 used `<category> → public/<category>/`:
-- ✅ CORRECT: Follow the same path pattern exactly
+Example - if ch1 used `icons → src/assets/icons/`, `images → public/images/`:
+- ✅ CORRECT: Follow the same path pattern exactly (SVG → src/assets/, raster → public/)
 - ❌ WRONG: Create new subdirectories not established in ch1
 
 **DO NOT create new subdirectories or change the path structure!**
