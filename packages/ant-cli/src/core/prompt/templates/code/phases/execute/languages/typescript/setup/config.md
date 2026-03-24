@@ -167,13 +167,13 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 
 ## 4. Style/Linting Configuration
 
-Configure as needed for project (Tailwind, ESLint, etc).
+Configure as needed for project (styling framework, ESLint, etc).
 
-**⚠️ Blind Spot — Tailwind `content` paths:**
+**⚠️ Blind Spot — Styling framework source scan paths:**
 
-**Principle**: `content` MUST list every directory where source files with styling classes will exist.
+**Principle**: CSS utility frameworks require source scan paths that cover every directory where source files with styling classes will exist.
 
-**Constraint**: Do NOT assume existing `content` paths are correct. Observe where the framework convention places source files, and ensure `content` paths match.
+**Constraint**: Do NOT assume existing scan paths are correct. Observe where the framework convention places source files, and ensure scan paths match.
 
 ## 5. .gitignore
 

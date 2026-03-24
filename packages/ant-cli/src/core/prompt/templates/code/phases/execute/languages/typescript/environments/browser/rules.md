@@ -154,70 +154,25 @@ SVG assets must NOT use `<Image>` at all — import them as SVGR components (see
 
 ## 🎨 Design Tokens Configuration
 
-When `ui-tokens.json` is provided, configure tokens in the project's styling system:
+When `ui-tokens.json` is provided, configure tokens in the project's styling system.
 
-### Tailwind CSS
+**Principle**: The project's installed styling tool and its configuration files determine the token integration method. Read existing config files (postcss, bundler, styling framework) to determine the correct approach — do NOT assume a specific tool version or configuration format.
 
-**⚠️ Blind Spot — `content` path mismatch:**
+**Constraint**: When a styling framework provides a token-to-class mapping mechanism, use semantic token classes — not hardcoded values.
 
-**Principle**: `content` paths MUST list every directory where source files with styling classes exist.
-
-**Constraint**: Do NOT assume existing `content` paths are correct. Observe the actual source directory structure and verify `content` matches.
-
-**Constraint**: If source files are in a directory not listed in `content`, zero utility classes will be generated for those files. The CSS file still loads normally — it just contains only the base reset, making this failure invisible in network/console.
-
-```javascript
-// tailwind.config.js
-module.exports = {
-  content: [
-    // ⚠️ REQUIRED — MUST match actual source directories
-  ],
-  theme: {
-    extend: {
-      colors: {
-        primary: { green: '#00E676' },
-        bg: { dark: '#121212' },
-        background: { cardDark: 'rgba(45, 52, 54, 0.8)' },
-      },
-      fontFamily: { heading: ['Inter', 'sans-serif'] },
-      spacing: { section: '120px' }
-    }
-  }
-}
-```
-
-**Usage:**
 ```tsx
-// ❌ WRONG: Arbitrary values
-className="bg-[#121212] text-[#00E676] bg-[rgba(45,52,54,0.8)]"
+// ❌ WRONG: Hardcoded values bypass the token system
+className="bg-[#121212] text-[#00E676]"
 
-// ✅ CORRECT: Token classes
-className="bg-bg-dark text-primary-green bg-background-cardDark"
+// ✅ CORRECT: Semantic token classes
+className="bg-bg-dark text-primary-green"
 ```
 
-### CSS Variables
+**⚠️ Blind Spot — Utility framework source scan mismatch:**
 
-```css
-/* globals.css */
-:root {
-  --color-primary-green: #00E676;
-  --color-bg-dark: #121212;
-  --font-heading: 'Inter', sans-serif;
-}
-```
+CSS utility frameworks generate classes only for source files covered by their configured scan paths. A mismatch between configured paths and actual source directories causes **silent failure** — the CSS file loads normally but contains only the base reset, making this invisible in network/console.
 
-**Usage:**
-```css
-.hero { background: var(--color-bg-dark); }
-```
-
-### Other Frameworks
-
-| Framework | Configuration |
-|-----------|--------------|
-| SCSS | `_variables.scss` with `$color-primary`, etc. |
-| Styled-components / Emotion | `theme.ts` with theme object |
-| Vue/Nuxt | `assets/css/variables.css` |
+**Observation target**: Verify the styling framework's source scan configuration covers all directories where styled components exist.
 
 ---
 
@@ -278,7 +233,7 @@ When using `ui-assets.json`:
 // SVG: import as React component (SVGR — inline, no URL, SSR/CSR safe)
 import CalendarIcon from '@/assets/icon-calendar.svg';
 import LogoIcon from '@/assets/logo-horizontal.svg';
-<CalendarIcon className="h-3 w-3 text-gray-500" />
+<CalendarIcon className="text-gray-500" />
 
 // Raster — Next.js:
 import Image from 'next/image';
@@ -287,6 +242,19 @@ import Image from 'next/image';
 // Raster — Vite/React:
 <img src={`${import.meta.env.VITE_BASE_PATH || ''}/assets/photo.png`} alt="Photo" />
 ```
+
+### SVG Component Sizing
+
+**Principle**: An inline `<svg>` element with only a `viewBox` and no `width`/`height` attributes expands to fill its parent container. This applies regardless of how the SVG was imported (SVGR, raw inline, or any other SVG-to-component loader).
+
+**Observation target**: Check `ui-assets.json` for the asset's `rendering` field.
+
+| rendering.method | Action |
+|-----------------|--------|
+| `explicit` | Apply `rendering.width` and `rendering.height` as `width` and `height` props on the SVG component |
+| `fill` | SVG fills parent — parent MUST have explicit dimensions |
+
+**Constraint**: When `rendering.method` is `explicit`, the component MUST receive `width` and `height` from `ui-assets.json` rendering field values. CSS size classes are acceptable only when the design spec prescribes different sizing in a specific usage context.
 
 ---
 

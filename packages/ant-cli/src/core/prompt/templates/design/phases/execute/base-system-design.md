@@ -157,7 +157,8 @@ System Design: [Omit CryptoPanic entirely from design]
 **Golden Rule:**
 - PRD constraints = WHAT must be true
 - Your design = HOW architecture achieves it (abstractly)
-- PRD: "Use X technology" → You: "Capability that X provides"
+- PRD: "Use X technology" → You: Document "X" as architectural constraint (Tier 1)
+- PRD: "browser storage" → You: Extract intent — "Client-side persistence required"
 
 **Skip sections not applicable:**
 - No backend → Skip API/Database sections
@@ -181,8 +182,8 @@ System Design: [Omit CryptoPanic entirely from design]
    ❌ HOW  → Implementation (abstract or omit)
 
 ❓ "Is this a proper noun (library/vendor/API name)?"
-   ✅ External service from PRD → Keep exact name
-   ✅ Internal tech choice (LocalStorage, Redis, React) → Abstract to role
+   ✅ PRD specified it (external service OR technology) → Keep exact name
+   ✅ YOU chose it (internal tech choice) → Abstract to role
    ❌ Implementation detail → Omit
 ```
 
@@ -196,9 +197,9 @@ System Design: [Omit CryptoPanic entirely from design]
   - Say: "Client-side persistence adapter"
   - Why: The role is architectural; the specific tech is implementation
   
-- **Exception: PRD explicitly names external services**
-  - Do say: "Stripe API" (if PRD specifies), "NewsData.io API"
-  - Why: External dependencies are architectural constraints
+- **Exception: PRD explicitly specifies a technology or external service**
+  - Do say: "Stripe API", "NewsData.io API", "Tailwind CSS", "PostgreSQL" (if PRD specifies)
+  - Why: PRD-specified technologies are architectural constraints (Tier 1), not implementation choices
 
 **Rule 2: Platform-Specific Capabilities**
 - **If it references a specific platform's API or feature → Abstract to generic interface**
@@ -230,9 +231,14 @@ System Design: [Omit CryptoPanic entirely from design]
 
 ---
 
+**Entry Gate: "Who decided?"**
+- PRD specified a technology → Tier 1 (document with exact name)
+- YOU chose a technology → Classify per Tier 2/3 below
+
 ## Three-Tier Classification
 
 **Tier 1: Document Exactly (Architectural Constraints)**
+- PRD-specified technology choices: "Tailwind CSS", "PostgreSQL" (keep exact name)
 - External services named in PRD: "Stripe API", "NewsData.io"
 - Platform constraint INTENT: "Frontend-only" (not "browser-based")
 - Architectural constraints from PRD: "event-driven communication required", "no microservices"
@@ -242,9 +248,10 @@ System Design: [Omit CryptoPanic entirely from design]
 - Any library/framework/tool name → Its architectural role
 - Any platform-specific API → Generic interface
 - Examples:
-  - "LocalStorage" / "Redis" / "PostgreSQL" → "Persistence adapter" / "Cache layer" / "Data store"
+  - "LocalStorage" / "Redis" / "SQLite" → "Persistence adapter" / "Cache layer" / "Data store"
   - "React Router" / "Vue Router" → "Routing mechanism"
   - "browser storage" / "window API" → "Client-side persistence" / "Platform interface"
+- **Applies only to technologies YOU choose** — PRD-specified technologies are Tier 1
 
 **Tier 3: Omit Entirely (Implementation Details)**
 - Config values: timeouts, retry counts, buffer sizes
@@ -258,19 +265,23 @@ System Design: [Omit CryptoPanic entirely from design]
 
 **Before writing each sentence, ask yourself:**
 
-1. **"Is this a proper noun (library/vendor)?"**
-   - External service from PRD? → Keep name
-   - Internal tech choice? → Abstract to role
+1. **"Who decided this — PRD or me?"**
+   - PRD specified it? → Document exactly (Tier 1 constraint). **Stop — skip Q2-Q5.**
+   - I chose it? → Apply questions 2-5 below
 
-2. **"Am I describing WHAT or HOW?"**
+2. **"Is this a proper noun (library/vendor)?"**
+   - PRD specified it (service or technology)? → Keep name
+   - YOU chose it? → Abstract to role
+
+3. **"Am I describing WHAT or HOW?"**
    - WHAT component does? → Architecture (keep)
    - HOW it's implemented? → Implementation (abstract/omit)
 
-3. **"Could this sentence work with ANY implementation?"**
+4. **"Could this sentence work with ANY implementation?"**
    - YES → Good abstraction
    - NO → Too specific, rewrite
 
-4. **"Did I extract INTENT from PRD, not copy wording?"**
+5. **"Did I extract INTENT from PRD, not copy wording?"**
    - PRD says "browser storage" → Intent is "client-side persistence required"
    - PRD says "static hosting" → Intent is "stateless deployment required"
 
@@ -384,9 +395,9 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 11. ✅ **ABSTRACTION SELF-CHECK** - For each sentence, verify:
     - ✅ Describes WHAT/WHO, not HOW implementation works?
     - ✅ Could be implemented 10+ different ways?
-    - ✅ No library/framework/tool names (except external services from PRD)?
+    - ✅ No library/framework/tool names YOU chose (PRD-specified technologies are Tier 1 — keep them)?
     - ✅ No platform-specific API names (browser, window, DOM, etc.)?
-    - ✅ No concrete technology names abstracted to architectural roles?
+    - ✅ Technologies YOU chose abstracted to architectural roles (not left as concrete names)?
     - ✅ Extracted INTENT from PRD constraints, not copied wording?
 12. ✅ **EXTERNAL SERVICES CHECK** - If PRD specifies external APIs:
     - ✅ Created dedicated "External Services (Per PRD)" section?
@@ -394,7 +405,7 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
     - ✅ Checked for exclusions (services PRD says NOT to use)?
     - ✅ NO generic names (e.g., "NewsAPI" when PRD says "NewsData.io")?
 13. ✅ **TECHNOLOGY ABSTRACTION** - Applied Heuristic Rules:
-    - ✅ Library/framework names → Architectural roles?
+    - ✅ Library/framework names YOU chose → Architectural roles (PRD-specified → keep as Tier 1)?
     - ✅ Platform APIs → Generic interfaces?
     - ✅ Deployment terms → Constraint intents only?
     - ✅ UI implementation patterns → Component responsibilities?

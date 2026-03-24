@@ -348,7 +348,7 @@ Before generating output, verify:
 ### UI / Rendering Detail Guardrail
 - System Design MUST NOT describe UI at the level of implementation details:
   - ❌ Do NOT list concrete component trees, overlay compositions, or DOM element hierarchies
-  - ❌ Do NOT describe specific CSS properties, layout techniques, animation timelines, or styling libraries
+  - ❌ Do NOT describe specific CSS properties, layout techniques, animation timelines, or styling implementation details
   - ❌ Do NOT narrate step-by-step UI flows ("user clicks X, then Y happens, then Z...") beyond what is needed to explain core architecture
 - Instead, describe:
   - ✅ Roles of screens/boundaries (e.g., "Game screen renders the current GameState and forwards user commands")
@@ -416,16 +416,17 @@ Before generating output, verify:
   - "Market detail view-model contains: bestBid, bestAsk, spread, userLevels..." — NOT OK
 
 ### ALWAYS Write (PRD-specified constraints):
+- ✅ **PRD-specified technology choices**: Exact technology names when PRD explicitly selects them (e.g., "Tailwind CSS", "PostgreSQL")
 - ✅ **Platform constraints**: Client-side only, No backend, Serverless, Browser-based
 - ✅ **External services**: Exact service names from PRD (not LLM examples)
 - ✅ **Architecture patterns**: Exact patterns from PRD
 - ✅ **Technology prohibitions**: What PRD forbids
 
-### ABSTRACT these (even if PRD specifies concrete tech):
+### ABSTRACT these (when YOU chose them — PRD-specified tech stays as Tier 1):
 - 🔄 **Storage**: "LocalStorage", "Redis", "IndexedDB" → "Persistence adapter", "Cache layer"
-- 🔄 **Database**: "PostgreSQL", "MongoDB" → "Database", "Data store"
+- 🔄 **Database**: "SQLite", "MongoDB" → "Database", "Data store"
 - 🔄 **State management**: "Zustand", "Redux" → "Global state management"
-- 🔄 **Why**: System Design describes WHAT, not specific HOW implementation
+- 🔄 **Why**: Technologies YOU choose are abstracted to architectural roles. PRD-specified technologies are preserved as constraints.
 
 ### INSTEAD, Write at Architecture / Policy Level:
 - ✅ **Boundary responsibilities** (without naming): "Authentication boundary captures credentials and delegates to Application layer"
@@ -526,7 +527,7 @@ Before generating output, verify:
 - [ ] **For EVERY sentence I wrote, I verified:**
   - "Could this be implemented 10+ different ways?" (YES = good)
   - "Am I describing WHAT/WHO or HOW?" (WHAT/WHO = good)
-  - "Is this a library/framework/tool name?" (YES = abstract to role)
+  - "Is this a library/framework/tool name I chose?" (YES = abstract to role; PRD-specified = keep as Tier 1)
   - "Is this a platform-specific API/feature?" (YES = abstract to interface)
   - "Did I extract INTENT from PRD, not copy wording?" (YES = good)
   - "Did I reproduce any PRD formula instead of referencing the section?" (reference only = good)
@@ -546,6 +547,11 @@ Before generating output, verify:
 - [ ] **External services listed exactly as in PRD** (with § references)
 - [ ] **Exclusions respected** (if PRD says "X is excluded", X is NOT mentioned anywhere)
 - [ ] **Platform constraints documented verbatim** ("client-side only", "no backend")
+
+### Guardrail Compliance
+- [ ] **Routing**: Application/Domain boundaries do NOT depend on concrete routing APIs?
+- [ ] **Layer consistency**: All sections maintain the same boundary ownership model?
+- [ ] **Cross-section consistency**: Overlapping infrastructure defined ONCE, referenced elsewhere?
 
 ### Document Quality
 - [ ] **Architecture decisions (organization, internal structure) stated with rationale** and explicit boundary responsibilities
