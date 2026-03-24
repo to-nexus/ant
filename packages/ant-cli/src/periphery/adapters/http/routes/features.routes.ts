@@ -208,7 +208,7 @@ export function createFeaturesRoutes(deps: {
       // ✅ CRITICAL: Invalidate KanbanService cache to prevent stale data on SSE reconnect
       if (deps.kanbanService) {
         deps.kanbanService.invalidateSessionCache(sessionPath);
-        
+
         // ✅ Also clear job memory state if jobId existed
         const previousJobId = sessionData?.state?.jobId;
         if (previousJobId) {
@@ -216,9 +216,26 @@ export function createFeaturesRoutes(deps: {
           logger.debug(`[Session] 🗑️ Cleared memory state for previous job: ${previousJobId}`);
         }
       }
-      
-      // Delete debug log files matching the job ID from all debug subdirectories
+
+      // ✅ CRITICAL: Clear Redis job status for paused/stale jobs so new jobs can start.
+      // Without this, checkDuplicateJob() still finds the paused job and blocks new job creation
+      // with "이전 작업이 중단되어 있습니다" even after session reset.
       const previousJobId = sessionData?.state?.jobId;
+      if (previousJobId && deps.stateStore) {
+        try {
+          const jobStatus = await deps.stateStore.getJobStatus(previousJobId);
+          if (jobStatus && (jobStatus.status === 'paused' || jobStatus.status === 'running')) {
+            await deps.stateStore.updateJobStatus(previousJobId, {
+              status: 'failed',
+              completedAt: new Date().toISOString(),
+              error: 'Session cleared by user',
+            });
+            logger.debug(`[Session] 🗑️ Marked job ${previousJobId} as failed (was: ${jobStatus.status})`);
+          }
+        } catch (error) {
+          logger.warn('Failed to update Redis job status during session clear (non-critical)', { component: 'Features' }, error);
+        }
+      }
       if (previousJobId) {
         try {
           const agent = getAgentForJob(jobType);
