@@ -1,7 +1,7 @@
 import { TaskQueue, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
-import { normalizeLanguage } from "../../../../../../utils/languageUtils";
+import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
 
 /**
  * Escape unescaped control characters inside JSON string literals.
@@ -76,7 +76,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
           environment: parsedProfile.environment || 'unknown',
           environmentReasoning: parsedProfile.environmentReasoning || '',
           language: normalizeLanguage(parsedProfile.language || 'typescript'),
-          framework: parsedProfile.framework || null,
+          framework: normalizeFramework(parsedProfile.framework || null),
         };
       } catch (error) {
         console.warn('⚠️  [Decompose] Failed to parse <profile> tag content:', error);
