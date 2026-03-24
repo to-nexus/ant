@@ -61,6 +61,7 @@ export class ServerConfigurator {
   private setupSecurityHeaders(app: Express): void {
     app.use(helmet({
       crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
       contentSecurityPolicy: false,
       frameguard: false,
     }));

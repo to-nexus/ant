@@ -95,4 +95,6 @@
 
 **Constraint**: Security headers MUST be applied as middleware at the router level so they cover ALL responses — including error responses. Do NOT set headers inside individual handlers.
 
-⚠️ **Blind spot**: Error responses (4xx, 5xx) are commonly returned without security headers because they bypass normal handler logic. Router-level middleware ensures headers are present on every response path.
+⚠️ **Blind spot — Error responses**: Error responses (4xx, 5xx) are commonly returned without security headers because they bypass normal handler logic. Router-level middleware ensures headers are present on every response path.
+
+⚠️ **Blind spot — Frontend framework apps**: Response Hardening applies to custom backend servers you build (Express, Fastify, etc.). For frontend framework apps (Next.js, Vite, Nuxt), the framework and deployment platform handle security headers. Do NOT manually add `Cross-Origin-Opener-Policy` or `Cross-Origin-Embedder-Policy` headers in frontend apps — these break popup-based authentication flows (OAuth, Wallet SDKs like Coinbase Wallet, WalletConnect).
