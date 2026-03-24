@@ -712,12 +712,14 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(`📦 Available Assets (inputs/assets)`);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(`Check if this task needs any assets from the list below.`);
-    lines.push(`If needed: copy the asset to codebase/public/, then reference it in code.`);
+    lines.push(`If needed: SVG (.svg) → copy to codebase/src/assets/ and import as React component (SVGR).`);
+    lines.push(`Raster (png, jpg, webp) → copy to codebase/public/ and use framework image component.`);
     lines.push(``);
     if (state.context?.featurePath) {
       lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/inputs/assets/`);
     }
-    lines.push(`Destination: codebase/public/ogf/ (or app-specific static root)`);
+    lines.push(`SVG destination: codebase/src/assets/ (SVGR import — webpack processes source tree only)`);
+    lines.push(`Raster destination: codebase/public/ (URL reference via framework image component)`);
     lines.push(``);
     lines.push(`Available files (${idx.count} total):`);
     idx.files.slice(0, 20).forEach((f) => lines.push(`  - ${f}`));
