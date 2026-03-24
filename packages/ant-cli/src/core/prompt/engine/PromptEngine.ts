@@ -401,8 +401,11 @@ export class PromptEngine {
           `There are ${context.runtimeAssetsIndex.count} runtime asset file(s) under inputs/assets.\n` +
           `These are NOT auto-copied. You MUST add a task to copy them into the correct static asset root for the target app (monorepo-aware).\n` +
           `Copy rule: preserve relative paths under inputs/assets.\n` +
-          `Examples (choose correct root for the target app):\n` +
-          `- inputs/assets/icons/x.svg -> <app>/public/icons/x.svg\n` +
+          `Placement rule by format:\n` +
+          `- SVG (.svg) → <app>/src/assets/ (source tree, for SVGR import)\n` +
+          `- Raster (png, jpg, webp) → <app>/public/ (static serving)\n` +
+          `Examples:\n` +
+          `- inputs/assets/icons/x.svg -> <app>/src/assets/icons/x.svg\n` +
           `- inputs/assets/bg/hero.webp -> <app>/public/bg/hero.webp\n` +
           `Asset file list (first 50):\n` +
           `${context.runtimeAssetsIndex.files.slice(0, 50).map(f => `- ${f}`).join('\n')}\n`

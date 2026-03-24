@@ -243,19 +243,21 @@ ${parsedDocs.tokens}
     });
     if (assetsResult.wasCondensed) {
       parts.push(`## 📦 ASSET MAPPING (condensed — use read_file for details)
-> You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
+> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
+> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
 
 ${assetsResult.content}`);
     } else {
       parts.push(`## 📦 ASSET MAPPING (JSON)
-> You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
+> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
+> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
 
 \`\`\`json
 ${parsedDocs.assets}
 \`\`\``);
     }
   }
-  
+
   // Add requested spec sections
   for (const sectionId of requestedSections) {
     const normalized = sectionId.toLowerCase().trim();
@@ -316,12 +318,14 @@ ${parsedDocs.tokens}
     });
     if (assetsResult.wasCondensed) {
       parts.push(`## 📦 ASSET MAPPING (condensed — use read_file for details)
-> You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
+> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
+> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
 
 ${assetsResult.content}`);
     } else {
       parts.push(`## 📦 ASSET MAPPING (JSON)
-> You MUST copy assets from \`inputs/assets/\` to \`public/\` before referencing them in code.
+> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
+> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
 
 \`\`\`json
 ${parsedDocs.assets}
