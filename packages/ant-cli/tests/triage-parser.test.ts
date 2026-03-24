@@ -1,8 +1,27 @@
 import { describe, it, expect, vi } from 'vitest';
 import { parseTriageResponse } from '../src/agents/common/nodes/triage/parser';
+import { AgentRegistry } from '../src/agents/common/nodes/triage/AgentRegistry';
+import { WorkspaceState } from '../src/agents/common/nodes/triage/types';
 
 function wrap(json: Record<string, unknown>): string {
   return `<triage>${JSON.stringify(json)}</triage>`;
+}
+
+/** Minimal WorkspaceState factory */
+function makeWorkspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
+  return {
+    hasPrd: false,
+    hasDirective: true,
+    hasScreens: false,
+    hasComponents: false,
+    hasAssets: false,
+    hasSystemDesignDoc: false,
+    hasUiDocs: false,
+    hasSpecDocs: false,
+    hasCodebase: false,
+    hasDesignDoc: false,
+    ...overrides,
+  };
 }
 
 describe('parseTriageResponse', () => {
@@ -75,7 +94,8 @@ describe('parseTriageResponse', () => {
   // Work - explicit redirect
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   describe('work - explicit redirect', () => {
-    it('returns redirect with choice for code→design', () => {
+    it('returns redirect with choice for code→design (defaults to spec label)', () => {
+      // No workspaceState → falls back to spec mode
       const result = parseTriageResponse(wrap({
         intent: 'work',
         workStatus: 'redirect',
@@ -87,8 +107,8 @@ describe('parseTriageResponse', () => {
       expect(result!.suggestedJob).toBe('design');
       expect(result!.needsChoice).toBe(true);
       expect(result!.choiceOptions).toBeDefined();
-      // code→design uses spec suggestion labels
-      expect(result!.choiceOptions!.positive.label).toBe('spec부터 짜기');
+      // no workspaceState → spec fallback
+      expect(result!.choiceOptions!.positive.label).toBe('스펙 설계부터 시작');
     });
 
     it('returns redirect with normal labels for design→code', () => {
@@ -113,6 +133,69 @@ describe('parseTriageResponse', () => {
       expect(result!.workStatus).toBe('redirect');
       expect(result!.suggestedJob).toBe('design');
       expect(result!.needsChoice).toBe(true);
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Design mode-specific redirect labels
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  describe('design mode-specific redirect labels', () => {
+    const designRedirectJson = {
+      intent: 'work',
+      workStatus: 'redirect',
+      suggestedJob: 'design',
+      suggestedAgent: 'architect',
+      redirectReason: 'Design needed',
+    };
+
+    it('ui-design mode when screens exist', () => {
+      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('ui-design');
+      const ws = makeWorkspaceState({ hasScreens: true });
+      const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect', ws);
+      expect(result!.choiceOptions!.positive.label).toBe('UI 디자인부터 시작');
+      expect(result!.choiceOptions!.neutral.label).toBe('바로 진행');
+      expect(result!.choiceOptions!.negative.label).toBe('취소');
+      expect(result!.displayMessage).toContain('UI 디자인');
+      spy.mockRestore();
+    });
+
+    it('system-design mode when PRD exists without screens', () => {
+      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('system-design');
+      const ws = makeWorkspaceState({ hasPrd: true });
+      const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect', ws);
+      expect(result!.choiceOptions!.positive.label).toBe('시스템 설계부터 시작');
+      expect(result!.choiceOptions!.neutral.label).toBe('바로 진행');
+      expect(result!.displayMessage).toContain('시스템 설계');
+      spy.mockRestore();
+    });
+
+    it('spec mode when only directive exists', () => {
+      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('spec');
+      const ws = makeWorkspaceState({ hasDirective: true });
+      const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect', ws);
+      expect(result!.choiceOptions!.positive.label).toBe('스펙 설계부터 시작');
+      expect(result!.choiceOptions!.neutral.label).toBe('바로 개발');
+      expect(result!.displayMessage).toContain('스펙 설계');
+      spy.mockRestore();
+    });
+
+    it('falls back to spec when workspaceState is not provided', () => {
+      const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect');
+      expect(result!.choiceOptions!.positive.label).toBe('스펙 설계부터 시작');
+      expect(result!.choiceOptions!.neutral.label).toBe('바로 개발');
+    });
+
+    it('non-design redirect still uses generic labels', () => {
+      const result = parseTriageResponse(wrap({
+        intent: 'work',
+        workStatus: 'redirect',
+        suggestedJob: 'plan',
+        suggestedAgent: 'planner',
+        redirectReason: 'PRD needed',
+      }), 'code', 'architect', makeWorkspaceState());
+      expect(result!.choiceOptions!.positive.label).toBe('전환');
+      expect(result!.choiceOptions!.neutral.label).toBe('현재 모드로 진행');
+      expect(result!.choiceOptions!.negative.label).toBe('Dismiss');
     });
   });
 
