@@ -123,7 +123,7 @@ export class ModeController {
     const skipHeavyContext = isVerification || isTestCode || isDoc || isError;
     const flags = {
       includeExamples: phase === 'execute' && job === 'code' && context.currentTask?.type !== 'setup' && !skipHeavyContext,
-      includeProfiles: phase === 'execute' && job === 'code',
+      includeProfiles: (phase === 'execute' || phase === 'plan') && job === 'code',
       includeMemory: context.stats.hasMemory,
       strictValidation: job === 'code'
     };

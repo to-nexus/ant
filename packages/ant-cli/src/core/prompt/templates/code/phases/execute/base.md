@@ -286,15 +286,15 @@ MODIFY: app/page.tsx - Add import and render new component
 Sub-role is determined by priority:
 
 **priority 200 (Token Infrastructure)**
-- **Scope**: ui-tokens.json → CSS custom properties / Tailwind config / **runtime integration**
+- **Scope**: ui-tokens.json → CSS custom properties / styling framework config / **runtime integration**
 - **Constraint**: Token infrastructure only. Do NOT create components.
 - **Completeness**: Token files without import chain are incomplete. Scope includes:
   1. Token CSS file generation (custom properties)
   2. Typography utility file generation
-  3. Global CSS entry file: imports for token + typography files
-  4. Framework bridge: CSS vars → utility classes (Tailwind @theme or config extend)
-- **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks (Tailwind, UnoCSS) add category prefixes when generating classes (`text-` for fontSize, `bg-` for backgroundColor, `border-` for borderColor). When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix. Example: token key `text-medium-xs` → config key `medium-xs` (generates correct class `text-medium-xs`), NOT config key `text-medium-xs` (generates broken class `text-text-medium-xs`).
-- **Execution**: Read tokens → generate files → wire imports → verify entry file imports all token sources
+  3. Global CSS entry file: Read the project's installed CSS framework/build tool configuration (postcss config, package.json dependencies, existing framework config) to determine the required initialization format, then produce a CSS entry file that initializes the framework's build pipeline first, followed by imports for token and typography files. A global CSS file that contains only token imports but no framework initialization is broken — the framework's build pipeline never activates.
+  4. Framework bridge: CSS vars → utility classes via the installed framework's theme/config extension mechanism
+- **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks add category prefixes when generating classes (`text-` for fontSize, `bg-` for backgroundColor, `border-` for borderColor). When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix. Example: token key `text-medium-xs` → config key `medium-xs` (generates correct class `text-medium-xs`), NOT config key `text-medium-xs` (generates broken class `text-text-medium-xs`).
+- **Execution**: Read installed framework config → read tokens → generate files → wire imports → verify entry file initializes framework and imports all token sources
 
 **priority 201+ (Component Library)**
 - **Scope**: Reusable DS components OR external DS library configuration

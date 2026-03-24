@@ -239,7 +239,7 @@ In your `<analysis>` section, cover:
 1. **TOKEN INVENTORY**
    - Extract ALL token keys and values from ui-tokens.json
    - Group by category (colors, typography, spacing, etc.)
-   - Identify target output: CSS custom properties or Tailwind config
+   - Identify target output: CSS custom properties and/or styling framework theme config
    - Record tokens with ACTUAL values (not just key names): `--color-bg-default: #1a1a2e`
 
 2. **INTEGRATION CHAIN**
