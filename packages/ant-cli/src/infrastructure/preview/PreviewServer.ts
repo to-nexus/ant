@@ -201,6 +201,7 @@ export class PreviewServer {
     // 2. Security headers
     this.app.use(helmet({
       crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
       contentSecurityPolicy: false,
     }));
 
