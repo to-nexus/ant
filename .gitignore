@@ -69,6 +69,7 @@ workspaces/**/sessions/
 
 # Claude Code (personal data)
 .claude/projects/
+.claude/plans/
 .claude/settings.local.json
 
 # Untracked docs
