@@ -168,6 +168,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         priority: state.currentTask.priority,
         description: state.currentTask.description,
       },
+      isSpecDriven: !!state.selectedSpec,
     } as any,
     state.detectionReport?.jobMode,
     state.currentTask.type

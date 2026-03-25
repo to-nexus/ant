@@ -112,7 +112,10 @@ export class TemplateComposer {
         filteredCatalog: assembled.filteredCatalog || undefined,
         
         // ✅ Used in {{#if hasUiDoc}} for UI specification existence
-        hasUiDoc: (assembled as any).hasUiDoc || false
+        hasUiDoc: (assembled as any).hasUiDoc || false,
+
+        // ✅ Used in {{#if isSpecDriven}} for spec vs system-design document type branching
+        isSpecDriven: (assembled as any).isSpecDriven || false
       }),
       failedTemplates,
       true // critical: base template failure = job must fail
