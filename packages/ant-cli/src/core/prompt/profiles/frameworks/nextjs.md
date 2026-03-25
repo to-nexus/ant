@@ -36,6 +36,29 @@ export function Counter() {
 }
 ```
 
+## Hydration Safety (App Router)
+
+**Principle**: In App Router, server-rendered HTML and client initial render MUST produce identical output. Any conditional that yields different JSX between server and client causes a hydration error.
+
+**Constraint**: Do NOT use `typeof window !== 'undefined'` or `typeof document !== 'undefined'` to conditionally render different JSX. React hydration compares server output with client initial render — a branch that returns `null` on server but content on client is a mismatch.
+
+**Constraint**: For browser-only rendering (`createPortal`, viewport measurements, persisted storage reads), use `useEffect` + `useState(false)` mount guard — return `null` on both server AND client initial render, then render after hydration.
+
+❌ Anti-pattern:
+  {typeof document !== 'undefined' && createPortal(<Toast />, document.body)}
+  → Server: null, Client initial: <Toast/> = MISMATCH
+
+✅ Correct:
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;   // server AND client initial = null
+  return createPortal(<Toast />, document.body);  // after hydration only
+
+**Common triggers requiring mount guard:**
+- `createPortal(... document.body)` — toast, modal, tooltip, dropdown overlay
+- `window.innerWidth` / `matchMedia` — viewport-dependent layout
+- `localStorage` / `sessionStorage` — persisted state for initial render
+
 ## Data Fetching
 ```typescript
 // ✅ Server Component: Direct async/await
@@ -199,12 +222,25 @@ import Image from 'next/image';
 
 **Constraint**: `next.config` MUST include both the basePath setting and SVGR webpack rule. Omitting either causes proxy routing failure or SVG import errors.
 
+**Constraint**: When a direct dependency is a Node.js-native package used on the server (logging libraries like `pino`/`winston`, native crypto, `fs`-based utilities), its transitive sub-modules will fail in the client bundle with "Module not found". Add the failing module names to `webpack.resolve.fallback` with `false` inside a `!isServer` guard. Two situations:
+- **At generation time**: If you are installing a package that is primarily a Node.js library (check its description/purpose), proactively add its commonly-failing transitive modules to fallback.
+- **At build-fix time**: If a build produces "Module not found: <module>" for a transitive dependency, add that exact module name to fallback.
+
 ```typescript
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
-  webpack(config) {
+  webpack(config, { isServer }) {
+    // Suppress "Module not found" for Node.js-only transitive dependencies in client bundle
+    // Add entries when: (1) installing Node.js-native packages, or (2) build warnings name specific modules
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        // Example: pino → pino-pretty uses 'fs', 'os', etc.
+        // 'pino-pretty': false,
+      };
+    }
     // Exclude SVGs from default file-loader so SVGR can handle them
     const fileLoaderRule = config.module.rules.find(
       (rule: any) => rule.test?.test?.('.svg')
