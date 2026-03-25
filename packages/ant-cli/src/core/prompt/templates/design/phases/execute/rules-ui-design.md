@@ -29,7 +29,7 @@ You have access to tools for exploring reference images and assets:
 
 ## OUTPUT FORMAT
 
-{{> common/rules}}
+{{> agents/architect/rules}}
 
 ════════════════════════════════════════════════════════════════════════════════
 

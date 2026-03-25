@@ -105,7 +105,7 @@ LLMs generate plausible but outdated API structures and framework constraints wi
 
 ## OUTPUT FORMAT
 
-{{> common/rules}}
+{{> agents/architect/rules}}
 
 ════════════════════════════════════════════════════════════════════════════════
 
