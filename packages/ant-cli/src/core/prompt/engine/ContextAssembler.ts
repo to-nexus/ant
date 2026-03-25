@@ -95,6 +95,9 @@ export interface AssembledContext {
   
   // ✅ Design domain (for domain-specific injections, e.g., game vs service)
   designDomain?: 'game' | 'service';
+
+  // ✅ Spec-driven mode: true when designDoc comes from spec document (not system design)
+  isSpecDriven?: boolean;
   
   // Statistics
   stats: {
@@ -190,6 +193,10 @@ export class ContextAssembler {
       // ✅ UI specification existence flag (for conditional prompt guidance)
       if ((artifacts as any).hasUiDoc !== undefined) {
         (assembled as any).hasUiDoc = (artifacts as any).hasUiDoc;
+      }
+      // ✅ Spec-driven mode flag (for conditional prompt guidance)
+      if ((artifacts as any).isSpecDriven !== undefined) {
+        (assembled as any).isSpecDriven = (artifacts as any).isSpecDriven;
       }
     }
     

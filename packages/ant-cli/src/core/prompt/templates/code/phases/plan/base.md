@@ -210,6 +210,15 @@ Speculation without empirical validation is insufficient.
 
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════
+{{#if isSpecDriven}}
+## 📋 FEATURE SPECIFICATION (SOURCE OF TRUTH)
+════════════════════════════════════════════════════════════════════════════════
+
+This is a feature-scoped specification. If an API Contract section is included,
+treat its endpoints and field names as immutable reference.
+
+{{designDoc}}
+{{else}}
 ## 📐 DESIGN SPECIFICATION (SOURCE OF TRUTH)
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -226,6 +235,7 @@ Speculation without empirical validation is insufficient.
 {{designDoc}}
 
 {{> code/base/injections/system-design-guide}}
+{{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}

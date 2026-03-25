@@ -204,6 +204,7 @@ export class PromptEngine {
       };
       designDomain?: 'game' | 'service';
       hasUiDoc?: boolean;  // ✅ Derived from existingDesignDocs (ui-* files present)
+      isSpecDriven?: boolean;  // ✅ true when designDoc comes from spec document (not system design)
     },
     mode?: JobMode,
     taskType?: string
@@ -510,6 +511,7 @@ export class PromptEngine {
     remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,  // ✅ Remaining tasks for task boundary awareness
     options?: { hasTools?: boolean },
     designDocUnknownPackages?: string[],
+    isSpecDriven?: boolean,
   ): Promise<string> {
     // ✅ Format projectCodeContext as FILE PATHS ONLY (not full content)
     // Plan node is a strategic planner — CodeGen reads actual files via tools.
@@ -560,6 +562,7 @@ export class PromptEngine {
       hasTools: options?.hasTools ?? false,
       designDocUnknownPackages: designDocUnknownPackages,
       hasDesignDocUnknownPackages: designDocUnknownPackages && designDocUnknownPackages.length > 0,
+      isSpecDriven: isSpecDriven || false,
     });
   }
   

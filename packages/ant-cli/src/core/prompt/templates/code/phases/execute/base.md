@@ -16,6 +16,7 @@ When writing files, use `codebase/` prefix for all code files.
 **Wrong paths (do NOT use):** `app/page.tsx` (missing codebase/ prefix), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
 
 {{#if designDoc}}
+{{#unless isSpecDriven}}
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚨 CRITICAL: API Contract Compliance is MANDATORY
 
@@ -27,6 +28,7 @@ When writing files, use `codebase/` prefix for all code files.
 **Note**: Directory names in design documents (`app/`, `components/`, `handlers/`) describe architectural layer boundaries, not filesystem paths. The language/framework profile determines the actual source root — e.g., `app/` in the design doc maps to `src/app/` when the profile convention is `src/`.
 
 ════════════════════════════════════════════════════════════════════════════════
+{{/unless}}
 {{/if}}
 
 ## 🎯 CORE PRINCIPLES (ALWAYS APPLY)
@@ -118,13 +120,13 @@ Output `<done>true</done>` when complete.
 
 {{#if designDoc}}
 {{#if (eq modificationMode "MODIFICATION MODE: Modify existing code")}}
-## 📋 DESIGN SPECIFICATION
+## 📋 {{#if isSpecDriven}}FEATURE SPECIFICATION{{else}}DESIGN SPECIFICATION{{/if}}
 
 **🚨 When modifying existing code, design documents are for REFERENCE ONLY!**
 
 - ✅ Modify EXISTING code (see "EXISTING FILES" section)
 - ✅ Keep same architecture/patterns
-- ✅ Use API Contract for correct field names and types
+- ✅ Use {{#if isSpecDriven}}feature specification{{else}}API Contract{{/if}} for correct field names and types
 - ❌ DO NOT regenerate from scratch
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -137,7 +139,7 @@ Output `<done>true</done>` when complete.
 
 ════════════════════════════════════════════════════════════════════════════════
 {{else}}
-## 📋 DESIGN SPECIFICATION
+## 📋 {{#if isSpecDriven}}FEATURE SPECIFICATION{{else}}DESIGN SPECIFICATION{{/if}}
 
 {{designDoc}}
 

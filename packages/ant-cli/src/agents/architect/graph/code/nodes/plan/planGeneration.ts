@@ -98,6 +98,7 @@ export async function buildPlanPrompt(
     remainingTasks,
     { hasTools: options?.hasTools ?? false },
     state.designDocUnknownPackages,
+    !!state.selectedSpec,  // isSpecDriven
   );
 
   return prompt;
