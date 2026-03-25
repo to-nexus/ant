@@ -76,6 +76,7 @@ Job 완료 시 `job:status:updates` 채널로 API Server에 알린다. API Serve
 | `recursion_limit` | LangGraph recursion limit 도달 |
 | `api_error` | LLM API 오류 |
 | `process_crash` | 자식 프로세스 비정상 종료 |
+| `server_crash` | Worker 크래시 또는 BullMQ lock 만료 (stalled 감지) |
 | `timeout` | 실행 시간 초과 |
 | `tasks_failed` | 병렬 실행 중 태스크 실패 |
 | `awaiting_choice` | 사용자 선택 대기 (Triage) |
@@ -84,13 +85,86 @@ Job 완료 시 `job:status:updates` 채널로 API Server에 알린다. API Serve
 
 1. 중단 발생 시 현재 상태를 세션 파일에 checkpoint로 저장
 2. `interruption` 메타데이터(reason, canResume, timestamp) 기록
-3. Job 상태를 `interrupted`로 갱신
+3. Job 상태를 `paused`로 갱신
 4. API Server에 알림
 5. 프론트엔드에 중단 ChoiceCard 표시
 
-### SIGTERM 처리
+### Child Process 종료 시나리오
 
-Job Worker가 `job:stop` 채널을 구독한다. 사용자 중지 요청 시 API Server가 이 채널에 publish하고, Worker가 자식 프로세스에 SIGTERM을 전달한다. 자식 프로세스 내 `gracefulShutdown.ts`가 등록된 orchestrator의 `handleInterruption()`을 호출하여 상태를 저장한 후 종료한다.
+자식 프로세스가 종료되는 경로는 4가지이며, 모두 동일한 `killChildGracefully()` 패턴(SIGTERM → grace period 대기 → SIGKILL)을 따른다.
+
+**1. 사용자 중지 (user_stopped)**
+
+```
+사용자 → 중지 버튼 → API Server → Redis job:stop 채널 publish
+→ Job Worker가 구독 중 → killChildGracefully(child, 3s)
+→ Child SIGTERM 수신 → gracefulShutdown.ts → orchestrator.handleInterruption()
+→ 체크포인트 저장 → exit
+```
+
+병렬로 cancellation polling(5초 간격)도 `isUserStopped` 플래그를 확인하여 SIGTERM을 보낸다. stop 채널보다 느리지만 Pub/Sub 유실 시 백업 역할.
+
+**2. BullMQ Lock 만료 임박 (lock extension 연속 실패)**
+
+```
+Extension 2회 연속 실패 (5분 경과, lock 만료 직전)
+→ 모든 타이머 cleanup → killChildGracefully(child, 3s)
+→ Child SIGTERM → graceful shutdown → 체크포인트 저장
+→ moveToFinished의 "Missing lock" 에러 방지
+```
+
+이 경로가 없으면: child가 lock 만료 모르고 계속 실행 → 정상 종료 후 moveToFinished 호출 → "Missing lock for job" 에러 → Job 상태 불일치.
+
+**3. BullMQ Stalled 감지 (Worker/child 크래시)**
+
+```
+Worker/child 크래시 → lock extension 중단 → lock 만료
+→ BullMQ stalledInterval(1분)에 stalled 감지 → stalled 이벤트
+→ killChildGracefully(child, 2s) (혹시 살아있을 경우)
+→ 상태를 paused로 갱신, server_crash interruption publish
+```
+
+maxStalledCount=0이므로 stalled job은 재큐잉되지 않는다. 사용자가 resume으로 재개한다.
+
+**4. 동일 Job 재처리 (Mac sleep/resume race)**
+
+```
+processJob 시작 시 동일 jobId의 기존 child 발견
+→ killChildGracefully(existingChild, 3s) → 기존 child 종료
+→ 새 child 스폰
+```
+
+### Lock, Stall, Kill의 시간축 관계
+
+```
+  lockDuration = 5min
+  extensionInterval = 2.5min
+  stalledInterval = 1min
+
+  ┌─── 정상 ──────────────────────────────────────────────┐
+  │  T+0     T+2.5m    T+5m      T+7.5m    ...   T+end   │
+  │  lock    extend✓   extend✓   extend✓         finish   │
+  └───────────────────────────────────────────────────────┘
+
+  ┌─── Lock 실패 ────────────────────────────────────────┐
+  │  T+0     T+2.5m    T+5m                               │
+  │  lock    fail(1/2) fail(2/2)→ cleanup + SIGTERM        │
+  │                     ↑ lock 만료 직전에 child 종료      │
+  └───────────────────────────────────────────────────────┘
+
+  ┌─── Mac Sleep ──────────────────────────────────────────┐
+  │  T+0     T+2.5m    ...sleep...  T+Xm (wake)           │
+  │  lock    extend✓   interval정지  첫 tick: elapsed>lock │
+  │                                  → 즉시 cleanup+kill   │
+  └────────────────────────────────────────────────────────┘
+
+  ┌─── 크래시 ──────────────────────────────────────────┐
+  │  T+0     T+2.5m   T+5m    T+6m                      │
+  │  lock    💀crash   expire  stalled 감지 → paused     │
+  └──────────────────────────────────────────────────────┘
+```
+
+상세 타이밍과 설정값은 [02-infrastructure.md § BullMQ](02-infrastructure.md)를 참조한다.
 
 ## 재개 (Resume)
 
