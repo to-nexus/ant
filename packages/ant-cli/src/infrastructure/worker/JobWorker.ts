@@ -24,6 +24,7 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { JobPayload, JobProgress } from '../../core/ports/queue';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { REDIS_CHANNELS } from '../state/redisConstants';
+import { LOCK_DURATION, LOCK_EXTENSION_INTERVAL, STALLED_INTERVAL, CANCELLATION_POLL_INTERVAL } from '../queue/constants';
 import { logger } from '../../utils/logger';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
 import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchUtils';
@@ -53,13 +54,44 @@ export class JobWorker {
 
   constructor(options: JobWorkerOptions) {
     this.options = options;
-    
+
     // Create state store connection
     this.stateStore = new RedisStateStore({ url: options.redisUrl });
 
-    logger.info(`JobWorker initialized for queue: ${options.queueName || QUEUE_NAME}`, { 
+    logger.info(`JobWorker initialized for queue: ${options.queueName || QUEUE_NAME}`, {
       component: 'JobWorker'
     });
+  }
+
+  /**
+   * Send SIGTERM to a child process and SIGKILL after grace period if still alive.
+   * Unified kill pattern used by: stalled handler, stop signal, lock expiry, re-processed job cleanup.
+   */
+  private async killChildGracefully(child: ChildProcess, jobId: string, gracePeriodMs: number = 3000): Promise<void> {
+    if (!child.pid) return;
+
+    child.kill('SIGTERM');
+
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => {
+        child.removeListener('exit', onExit);
+        resolve();
+      }, gracePeriodMs);
+      const onExit = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      child.once('exit', onExit);
+    });
+
+    // SIGKILL if still alive
+    try {
+      process.kill(child.pid, 0);
+      logger.info(`Process still alive after ${gracePeriodMs}ms, sending SIGKILL: ${jobId}`, { component: 'JobWorker', jobId });
+      process.kill(child.pid, 'SIGKILL');
+    } catch {
+      // Already exited — expected path
+    }
   }
 
   /**
@@ -85,9 +117,10 @@ export class JobWorker {
         concurrency: this.options.concurrency || DEFAULT_CONCURRENCY,
         removeOnComplete: { count: 1000 },
         removeOnFail: { count: 5000 },
-        lockDuration: 300000,    // 5min — covers longest LLM call (thinking=true, ~2min) with margin
-        stalledInterval: 60000,  // 1min — detects actual dead workers within 3 min
-        maxStalledCount: 0,      // Never re-queue stalled jobs (prevents double-child on Mac sleep/wake)
+        lockDuration: LOCK_DURATION,
+        stalledInterval: STALLED_INTERVAL,
+        maxStalledCount: 0,        // Never re-queue stalled jobs (prevents double-child on Mac sleep/wake)
+        skipLockRenewal: true,     // Manual extension only — enables reliable failure detection
       }
     );
 
@@ -111,13 +144,8 @@ export class JobWorker {
       const stalledChild = this.runningProcesses.get(jobId);
       if (stalledChild && stalledChild.pid) {
         logger.warn(`Killing stalled child process: ${jobId} (PID: ${stalledChild.pid})`, { component: 'JobWorker', jobId });
-        try {
-          stalledChild.kill('SIGTERM');
-          // Don't wait long — stalled handler should be fast
-          setTimeout(() => {
-            try { process.kill(stalledChild.pid!, 'SIGKILL'); } catch { /* ok */ }
-          }, 2000);
-        } catch { /* already dead */ }
+        // Short grace period — stalled handler should be fast
+        this.killChildGracefully(stalledChild, jobId, 2000).catch(() => {});
         this.runningProcesses.delete(jobId);
       }
 
@@ -200,42 +228,10 @@ export class JobWorker {
         const childProcess = this.runningProcesses.get(jobId);
         if (childProcess && childProcess.pid) {
           logger.info(`Killing child process for job: ${jobId} (PID: ${childProcess.pid})`, { component: 'JobWorker', jobId });
-          
           try {
-            // Send SIGTERM for graceful shutdown.
-            // The child process (job-runner) has a SIGTERM handler that:
-            // 1. Calls orchestrator.handleInterruption() to push running tasks back
-            // 2. Saves a final checkpoint to the session file
-            // 3. Exits with code 143
-            childProcess.kill('SIGTERM');
-            
-            // Wait up to 3s for graceful shutdown (child needs time to save checkpoint).
-            // If the child exits early (graceful shutdown completed), proceed immediately.
-            const GRACEFUL_TIMEOUT_MS = 3000;
-            await new Promise<void>((resolve) => {
-              const timeout = setTimeout(() => {
-                childProcess.removeListener('exit', onExit);
-                resolve();
-              }, GRACEFUL_TIMEOUT_MS);
-              
-              const onExit = () => {
-                clearTimeout(timeout);
-                resolve();
-              };
-              childProcess.once('exit', onExit);
-            });
-            
-            // Forcefully kill if still alive after grace period
-            try {
-              process.kill(childProcess.pid, 0);  // Check if still alive
-              logger.info(`Process still alive after ${GRACEFUL_TIMEOUT_MS}ms grace period, sending SIGKILL: ${jobId}`, { component: 'JobWorker', jobId });
-              process.kill(childProcess.pid, 'SIGKILL');
-            } catch (checkErr: any) {
-              logger.info(`Process exited gracefully: ${jobId}`, { component: 'JobWorker', jobId });
-            }
-            
+            await this.killChildGracefully(childProcess, jobId);
             this.runningProcesses.delete(jobId);
-            logger.info(`✅ Job stopped successfully: ${jobId}`, { component: 'JobWorker', jobId });
+            logger.info(`Job stopped successfully: ${jobId}`, { component: 'JobWorker', jobId });
           } catch (error: any) {
             logger.error(`Error killing process for job: ${jobId}`, { component: 'JobWorker', jobId }, error);
             this.runningProcesses.delete(jobId);
@@ -265,15 +261,7 @@ export class JobWorker {
     if (existingChild && existingChild.pid) {
       logger.warn(`Killing existing child for re-processed job: ${jobId} (PID: ${existingChild.pid})`, { component: 'JobWorker', jobId });
       try {
-        existingChild.kill('SIGTERM');
-        await new Promise<void>((resolve) => {
-          const timeout = setTimeout(resolve, 3000);
-          existingChild.once('exit', () => { clearTimeout(timeout); resolve(); });
-        });
-        try {
-          process.kill(existingChild.pid!, 0); // check alive
-          process.kill(existingChild.pid!, 'SIGKILL');
-        } catch { /* already exited */ }
+        await this.killChildGracefully(existingChild, jobId);
       } catch (err: any) {
         logger.warn(`Failed to kill existing child: ${err.message}`, { component: 'JobWorker', jobId });
       }
@@ -314,6 +302,16 @@ export class JobWorker {
         jobStatus = 'failed';
       }
       
+      // Guard: stalled handler may have already transitioned to 'paused' — don't overwrite
+      const currentStatus = await this.stateStore.getJobStatus(jobId);
+      if (currentStatus?.status === 'paused') {
+        logger.warn(
+          `Job ${jobId} already paused (likely by stalled handler) — skipping status update to '${jobStatus}'`,
+          { component: 'JobWorker', jobId }
+        );
+        return result;
+      }
+
       // Update final status
       await this.stateStore.updateJobStatus(jobId, {
         status: jobStatus,
@@ -325,6 +323,16 @@ export class JobWorker {
 
     } catch (error: any) {
       logger.error(`Job execution error: ${jobId}`, { component: 'JobWorker', jobId }, error);
+
+      // Guard: stalled handler may have already transitioned to 'paused'
+      const currentStatus = await this.stateStore.getJobStatus(jobId);
+      if (currentStatus?.status === 'paused') {
+        logger.warn(
+          `Job ${jobId} already paused (likely by stalled handler) — skipping status update to 'failed'`,
+          { component: 'JobWorker', jobId }
+        );
+        throw error;
+      }
 
       await this.stateStore.updateJobStatus(jobId, {
         status: 'failed',
@@ -347,143 +355,189 @@ export class JobWorker {
    * - stalledInterval: 1min — detects actual dead workers within 3 min
    * - Dead Worker detection: ~3 min (1 expire + 1 check cycle + margin)
    */
-  private spawnJobProcess(job: Job<JobPayload>, payload: JobPayload): Promise<{ success: boolean; error?: string; output?: any }> {
-    return new Promise(async (resolve, reject) => {
-      const jobId = payload.jobId;
-      
-      const LOCK_DURATION = 300000;            // 5min (must match Worker config)
-      const LOCK_EXTENSION_INTERVAL = 150000; // 2.5min (lockDuration / 2)
-      
-      const lockExtensionTimer = setInterval(async () => {
-        try {
-          await job.extendLock(job.token!, LOCK_DURATION);
-        } catch (error: any) {
-          logger.warn(`Lock extension failed for job: ${jobId} — stall risk if repeated`, { component: 'JobWorker', jobId });
+  private async spawnJobProcess(
+    job: Job<JobPayload>,
+    payload: JobPayload
+  ): Promise<{ success: boolean; error?: string; output?: any }> {
+    const jobId = payload.jobId;
+
+    // --- Timers: lock extension + cancellation polling ---
+    // Both are cleaned up via cleanup() on child close/error.
+    const timers: NodeJS.Timeout[] = [];
+    const cleanup = () => timers.forEach(t => clearInterval(t));
+
+    // --- Async setup (errors propagate normally to processJob catch) ---
+
+    // Build environment variables for the job process
+    const workspaceBase = payload.workspacePath
+      || process.env.ANT_WORKSPACE_BASE_PATH
+      || WorkspacePathResolver.getPhysicalWorkspacesPath();
+
+    const workspaceResolver = new UnifiedWorkspaceResolver(workspaceBase);
+    const projectPath = workspaceResolver.getProjectPath(payload.userContext, payload.projectId);
+    const branchBase = readBranchBaseFromConfig(projectPath);
+    const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
+
+    // For base branch jobs (learn), use projectPath as featurePath since there's no feature directory
+    const isBaseBranchJob = isBaseBranch(payload.feature, branchBase);
+    const featurePath = isBaseBranchJob
+      ? projectPath
+      : workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
+
+    // CLI source/dist root for internal resource paths (templates, policies, etc.)
+    const cliRoot = WorkspacePathResolver.getCliRoot();
+
+    // Inject GitHub PAT-based credentials for private module access (go get, npm install)
+    const credentialEnv = await this.getCredentialEnv(workspaceBase, payload.userContext, projectPath, codebasePath);
+
+    const env: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      ...credentialEnv,
+      ANT_JOB_ID: jobId,
+      ANT_PROJECT_ID: payload.projectId,
+      ANT_FEATURE: payload.feature,
+      ANT_FEATURE_NAME: payload.feature,
+      ANT_JOB_TYPE: payload.type,
+      ANT_AGENT: payload.agent,
+      ANT_MODE: payload.mode || 'generate',
+      ANT_USER_ID: payload.userContext.userId,
+      ANT_ORG_ID: payload.userContext.organizationId,
+      ANT_REDIS_URL: this.options.redisUrl,
+      ANT_BRANCH_BASE: branchBase,
+      ANT_PROJECT_PATH: projectPath,
+      ANT_FEATURE_PATH: featurePath,
+      ANT_CODEBASE_PATH: codebasePath,
+      ANT_CLI_ROOT: cliRoot,
+      ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.PORT || '4100'}`,
+      ANT_USER_EMAIL: `${payload.userContext.userId}@${payload.userContext.organizationId}`
+    };
+    if (payload.overrideDirective) {
+      env.ANT_OVERRIDE_DIRECTIVE = payload.overrideDirective;
+    }
+    if (payload.chatSource) {
+      env.ANT_CHAT_SOURCE = 'true';
+    }
+    if (payload.skipTriage) {
+      env.ANT_SKIP_TRIAGE = 'true';
+    }
+    if (payload.inputFile) {
+      env.ANT_INPUT_FILE = payload.inputFile;
+    }
+    if (payload.isResume) {
+      env.ANT_IS_RESUME = 'true';
+      if (payload.originalJobId) {
+        env.ANT_ORIGINAL_JOB_ID = payload.originalJobId;
+      }
+    }
+
+    // Path to the job runner script
+    const isDev = process.env.NODE_ENV === 'development';
+
+    let runnerScript: string;
+    let command: string;
+    let args: string[];
+
+    if (isDev) {
+      runnerScript = path.resolve(__dirname, '../../composition/job-runner.ts');
+      command = 'npx';
+      args = ['tsx', runnerScript];
+    } else {
+      runnerScript = path.resolve(__dirname, '../../composition/job-runner.js');
+      command = 'node';
+      args = [runnerScript];
+    }
+
+    logger.info(`Spawning job runner: ${runnerScript} (isDev=${isDev}, NODE_ENV=${process.env.NODE_ENV})`, {
+      component: 'JobWorker',
+      jobId
+    });
+
+    logger.info(`Running: ${command} ${args.join(' ')}`, { component: 'JobWorker', jobId });
+
+    const child = spawn(command, args, {
+      env,
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    logger.info(`Child process spawned with PID: ${child.pid}`, { component: 'JobWorker', jobId });
+
+    this.runningProcesses.set(jobId, child);
+
+    // --- Timer setup ---
+
+    const MAX_CONSECUTIVE_LOCK_FAILURES = 2;
+    let consecutiveLockFailures = 0;
+    let lastExtensionTime = Date.now();
+
+    timers.push(setInterval(async () => {
+      const now = Date.now();
+      const elapsed = now - lastExtensionTime;
+
+      // Wall-clock gap detection: if elapsed > lockDuration, system was sleeping.
+      // Lock is already expired in Redis — skip extend attempt and kill child immediately.
+      if (elapsed > LOCK_DURATION) {
+        logger.warn(
+          `Wall-clock gap detected (${Math.round(elapsed / 1000)}s > lockDuration ${LOCK_DURATION / 1000}s) — lock expired during system sleep: ${jobId}`,
+          { component: 'JobWorker', jobId }
+        );
+        cleanup();
+        const childProcess = this.runningProcesses.get(jobId);
+        if (childProcess?.pid) {
+          this.killChildGracefully(childProcess, jobId).catch(() => {});
         }
-      }, LOCK_EXTENSION_INTERVAL);
-      
-      const cleanup = () => clearInterval(lockExtensionTimer);
-      
-      // Build environment variables for the job process
-      // ✅ Use centralized WorkspaceResolver for path calculation (no individual implementation)
-      const workspaceBase = payload.workspacePath 
-        || process.env.ANT_WORKSPACE_BASE_PATH 
-        || WorkspacePathResolver.getPhysicalWorkspacesPath();
-      
-      const workspaceResolver = new UnifiedWorkspaceResolver(workspaceBase);
-      const projectPath = workspaceResolver.getProjectPath(payload.userContext, payload.projectId);
-      const branchBase = readBranchBaseFromConfig(projectPath);
-      const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
-      
-      // For base branch jobs (learn), use projectPath as featurePath since there's no feature directory
-      const isBaseBranchJob = isBaseBranch(payload.feature, branchBase);
-      const featurePath = isBaseBranchJob
-        ? projectPath
-        : workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
-      
-      // CLI source/dist root for internal resource paths (templates, policies, etc.)
-      // Use centralized resolver (handles both bundled and unbundled contexts)
-      const cliRoot = WorkspacePathResolver.getCliRoot();
-      
-      // Inject GitHub PAT-based credentials for private module access (go get, npm install)
-      const credentialEnv = await this.getCredentialEnv(workspaceBase, payload.userContext, projectPath, codebasePath);
+        return;
+      }
 
-      const env: Record<string, string> = {
-        ...process.env as Record<string, string>,
-        ...credentialEnv,
-        ANT_JOB_ID: jobId,
-        ANT_PROJECT_ID: payload.projectId,
-        ANT_FEATURE: payload.feature,
-        ANT_FEATURE_NAME: payload.feature,  // ✅ Alias for ChatAPIClient compatibility
-        ANT_JOB_TYPE: payload.type,
-        ANT_AGENT: payload.agent,
-        ANT_MODE: payload.mode || 'generate',
-        ANT_USER_ID: payload.userContext.userId,
-        ANT_ORG_ID: payload.userContext.organizationId,
-        ANT_REDIS_URL: this.options.redisUrl,
-        ANT_BRANCH_BASE: branchBase,
-        // Project paths (user workspaces)
-        ANT_PROJECT_PATH: projectPath,
-        ANT_FEATURE_PATH: featurePath,
-        ANT_CODEBASE_PATH: codebasePath,
-        // CLI internal paths (for templates, policies, etc.)
-        ANT_CLI_ROOT: cliRoot,
-        // ✅ API Server connection for real-time updates (Kanban, FileTree, Workflow)
-        // Cloud: ANT_API_URL (e.g., http://ant-api:8080)
-        // Local: fallback to localhost with PORT from npm script
-        ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.PORT || '4100'}`,
-        // ✅ User authentication for Cloud mode HTTP clients
-        ANT_USER_EMAIL: `${payload.userContext.userId}@${payload.userContext.organizationId}`
-      };
-      if (payload.overrideDirective) {
-        env.ANT_OVERRIDE_DIRECTIVE = payload.overrideDirective;
-      }
-      if (payload.chatSource) {
-        env.ANT_CHAT_SOURCE = 'true';
-      }
-      if (payload.skipTriage) {
-        env.ANT_SKIP_TRIAGE = 'true';
-      }
-      if (payload.inputFile) {
-        env.ANT_INPUT_FILE = payload.inputFile;
-      }
-      if (payload.isResume) {
-        env.ANT_IS_RESUME = 'true';
-        if (payload.originalJobId) {
-          env.ANT_ORIGINAL_JOB_ID = payload.originalJobId;
+      lastExtensionTime = now;
+
+      try {
+        await job.extendLock(job.token!, LOCK_DURATION);
+        consecutiveLockFailures = 0;
+      } catch (error: any) {
+        consecutiveLockFailures++;
+        logger.warn(
+          `Lock extension failed for job: ${jobId} (${consecutiveLockFailures}/${MAX_CONSECUTIVE_LOCK_FAILURES})`,
+          { component: 'JobWorker', jobId }
+        );
+
+        if (consecutiveLockFailures >= MAX_CONSECUTIVE_LOCK_FAILURES) {
+          logger.error(
+            `Lock likely expired for job: ${jobId} — killing child to prevent "Missing lock" error`,
+            { component: 'JobWorker', jobId }
+          );
+          cleanup();
+          const childProcess = this.runningProcesses.get(jobId);
+          if (childProcess?.pid) {
+            this.killChildGracefully(childProcess, jobId).catch(() => {});
+          }
         }
       }
+    }, LOCK_EXTENSION_INTERVAL));
 
-      // Path to the job runner script
-      // Development: use .ts with tsx
-      // Production: use compiled .js with node
-      const isDev = process.env.NODE_ENV === 'development';
-      
-      let runnerScript: string;
-      let command: string;
-      let args: string[];
-      
-      if (isDev) {
-        // Development: run TypeScript directly with tsx
-        runnerScript = path.resolve(__dirname, '../../composition/job-runner.ts');
-        command = 'npx';
-        args = ['tsx', runnerScript];
-      } else {
-        // Production: esbuild maintains source structure
-        // __dirname is dist/infrastructure/worker/ → go to dist/composition/
-        runnerScript = path.resolve(__dirname, '../../composition/job-runner.js');
-        command = 'node';
-        args = [runnerScript];
+    // Cancellation polling — backup for pub/sub job:stop channel.
+    // NOTE: Do NOT clear the isUserStopped flag here.
+    // The RouteConfigurator's JOB_STATUS_UPDATES handler checks this flag
+    // to skip duplicate cleanupJobState calls.
+    timers.push(setInterval(async () => {
+      const isStopped = await this.stateStore.isUserStopped(jobId);
+      if (isStopped && child.pid) {
+        cleanup();
+        child.kill('SIGTERM');
       }
-      
-      logger.info(`Spawning job runner: ${runnerScript} (isDev=${isDev}, NODE_ENV=${process.env.NODE_ENV})`, { 
-        component: 'JobWorker', 
-        jobId 
-      });
-      
-      logger.info(`Running: ${command} ${args.join(' ')}`, { component: 'JobWorker', jobId });
-      
-      const child = spawn(command, args, {
-        env,
-        cwd: process.cwd(),
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      
-      logger.info(`Child process spawned with PID: ${child.pid}`, { component: 'JobWorker', jobId });
+    }, CANCELLATION_POLL_INTERVAL));
 
-      this.runningProcesses.set(jobId, child);
-
+    // --- Child lifecycle (event-based — wrapped in Promise) ---
+    return new Promise<{ success: boolean; error?: string; output?: any }>((resolve, reject) => {
       let stdout = '';
       let stderr = '';
 
       child.stdout?.on('data', async (data: Buffer) => {
         const line = data.toString();
         stdout += line;
-        
-        // Log stdout for debugging
+
         console.log(`[job-runner:${jobId}] ${line.trim()}`);
-        
-        // Try to parse progress updates
+
         if (line.includes('PROGRESS:')) {
           try {
             const progressJson = line.split('PROGRESS:')[1].trim();
@@ -493,8 +547,7 @@ export class JobWorker {
             // Ignore parse errors
           }
         }
-        
-        // Append to logs
+
         await this.stateStore.appendJobLog(jobId, {
           type: 'stdout',
           message: line,
@@ -505,10 +558,9 @@ export class JobWorker {
       child.stderr?.on('data', async (data: Buffer) => {
         const line = data.toString();
         stderr += line;
-        
-        // Log stderr for debugging
+
         console.error(`[job-runner:${jobId}:stderr] ${line.trim()}`);
-        
+
         await this.stateStore.appendJobLog(jobId, {
           type: 'stderr',
           message: line,
@@ -517,65 +569,42 @@ export class JobWorker {
       });
 
       child.on('close', (code: number | null) => {
-        cleanup(); // Stop lock extension timer
+        cleanup();
         logger.info(`Child process exited with code: ${code}`, { component: 'JobWorker', jobId });
-        
-        // ✅ Parse RESULT from stdout regardless of exit code
-        // Even on non-zero exit, the RESULT line may have been written before the error
+
         let parsedResult: any = { success: code === 0 };
         try {
           const resultMatch = stdout.match(/^RESULT:(\{.+\})$/m);
           if (resultMatch) {
             parsedResult = JSON.parse(resultMatch[1]);
           } else {
-            // ✅ Regex didn't match - log for debugging
             const stdoutLen = stdout.length;
             const lastLines = stdout.split('\n').filter(Boolean).slice(-5).join(' | ');
-            console.warn(`⚠️ [JobWorker] RESULT regex no match | jobId=${jobId} | stdoutLen=${stdoutLen} | exitCode=${code} | lastLines: ${lastLines.substring(0, 300)}`);
+            console.warn(`[JobWorker] RESULT regex no match | jobId=${jobId} | stdoutLen=${stdoutLen} | exitCode=${code} | lastLines: ${lastLines.substring(0, 300)}`);
           }
         } catch (parseErr: any) {
-          console.warn(`⚠️ [JobWorker] RESULT parse failed | jobId=${jobId} | error=${parseErr.message}`);
+          console.warn(`[JobWorker] RESULT parse failed | jobId=${jobId} | error=${parseErr.message}`);
         }
-        
+
         if (code === 0) {
           resolve(parsedResult);
         } else {
           logger.error(`Job runner failed: ${stderr || 'No stderr'}`, { component: 'JobWorker', jobId });
-          // ✅ If RESULT was parsed (even with non-zero exit), use it (preserves interruption details)
           if (parsedResult.output) {
             resolve(parsedResult);
           } else {
-            resolve({ 
-              success: false, 
-              error: stderr || `Process exited with code ${code}` 
+            resolve({
+              success: false,
+              error: stderr || `Process exited with code ${code}`
             });
           }
         }
       });
 
       child.on('error', (err: Error) => {
-        cleanup(); // Stop lock extension timer
+        cleanup();
         logger.error(`Failed to spawn job runner: ${err.message}`, { component: 'JobWorker', jobId }, err);
         reject(err);
-      });
-
-      // Handle cancellation during execution
-      const checkCancellation = setInterval(async () => {
-        const isStopped = await this.stateStore.isUserStopped(jobId);
-        if (isStopped && child.pid) {
-          clearInterval(checkCancellation);
-          child.kill('SIGTERM');
-          // ✅ FIX: Do NOT clear the isUserStopped flag here.
-          // The RouteConfigurator's JOB_STATUS_UPDATES handler checks this flag
-          // to skip duplicate cleanupJobState calls. If we clear it here, the handler
-          // can't tell the job was user-stopped → calls cleanupJobState again →
-          // cross-process race condition → completed tasks may be lost.
-          // The flag is cleared by the RouteConfigurator after it checks it.
-        }
-      }, 1000);
-
-      child.on('close', () => {
-        clearInterval(checkCancellation);
       });
     });
   }

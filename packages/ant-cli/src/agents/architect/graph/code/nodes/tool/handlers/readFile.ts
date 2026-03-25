@@ -64,9 +64,17 @@ Proceed with your next action.`;
   const chatAPI = getChatAPIClient();
 
   const resolved = await resolveToolPath(state, filePath);
-  
+
+  // Guard: detect directory paths before attempting file read (prevents EISDIR errors)
+  const isDir = await fileSystem.isDirectory(resolved.fsPath);
+  if (isDir) {
+    return `Path is a directory, not a file: ${resolved.displayPath}\n\n` +
+      `To see files in this directory: use list_files("${resolved.displayPath}")\n` +
+      `To read a specific file: use read_file("${resolved.displayPath}/filename")`;
+  }
+
   const mergeIndex = await chatAPI.addReadingFile(resolved.displayPath);
-  
+
   return withErrorHandling('readFile', async () => {
     logFileOperation('readFile', 'Reading file', resolved.displayPath, { fsPath: resolved.fsPath, scope: resolved.scope });
     
