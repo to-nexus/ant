@@ -62,6 +62,31 @@ SSR frameworks run code in TWO contexts:
 
 ---
 
+### ⚠️ Blind Spot: Transitive Dependency Runtime Conflict
+
+**Principle**: A direct dependency that works in the browser may carry transitive dependencies that reference Node.js built-in modules (`fs`, `os`, `child_process`). The bundler traces the full dependency tree into the client bundle, causing "Module not found" at build time.
+
+**Constraint**: When adding a dependency to a browser or SSR project, determine whether it is designed for the client runtime:
+
+| Situation | Action |
+|-----------|--------|
+| Package itself is a Node.js-only tool (logger, CLI util, filesystem lib) and you are importing it in client code | Choose a browser-compatible alternative for the same functional need |
+| Package is required for the project (SDK, framework plugin) but its transitive deps include Node.js modules | Keep the package; configure the bundler to stub the offending transitive modules in client builds (see framework profile for `resolve.fallback`) |
+
+**Key distinction**: The decision depends on whether the package itself serves a client-side need, NOT on whether its dependency tree is clean. A Web3 SDK that internally uses a Node.js logger is still a valid client dependency — the transitive conflict is resolved at the bundler level.
+
+---
+
+### ⚠️ Blind Spot: SSR Hydration Mismatch
+
+**Principle**: SSR frameworks expect server-rendered HTML and client initial render to produce identical DOM. A `typeof window !== 'undefined'` or `typeof document !== 'undefined'` guard that changes rendered output causes React hydration failure.
+
+**Constraint**: Do NOT branch rendering logic on browser API availability checks. Both server and client initial render must return the same JSX. Defer browser-only rendering to `useEffect` + `useState(false)` mount guard.
+
+**Common triggers**: `createPortal(... document.body)`, viewport-dependent layout, `localStorage`-based initial state.
+
+---
+
 ### ⚠️ Blind Spot: SSR Base Path
 
 **Principle**: SSR frameworks generate URLs on BOTH server and client. Both MUST produce identical paths.
