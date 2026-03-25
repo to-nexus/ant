@@ -1,4 +1,4 @@
-{{> common/architect-role}}
+{{> agents/architect/base}}
 
 <design_specialization>
 Your role is to create **ARCHITECTURAL DESIGN DOCUMENTS** that guide LLM code generation.

@@ -1,6 +1,6 @@
 # Error Fix Rules
 
-{{> common/rules}}
+{{> agents/architect/rules}}
 
 {{> code/base/injections/text-format-compact}}
 
