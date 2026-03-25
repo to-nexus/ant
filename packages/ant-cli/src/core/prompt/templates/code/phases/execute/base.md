@@ -17,12 +17,14 @@ When writing files, use `codebase/` prefix for all code files.
 
 {{#if designDoc}}
 ════════════════════════════════════════════════════════════════════════════════
-## 🚨 CRITICAL: Specification Compliance is MANDATORY
+## 🚨 CRITICAL: API Contract Compliance is MANDATORY
 
 **API Contract in Design Specification below is IMMUTABLE.**
-- Endpoints, field names, types defined in specification cannot be changed
-- Your conventions or "best practices" do NOT override specification
-- Follow specification EXACTLY from initial implementation
+- Endpoints, field names, types, validation rules defined in API contracts cannot be changed
+- Your conventions or "best practices" do NOT override API contracts
+- Follow API contracts EXACTLY from initial implementation
+
+**Note**: Directory names in design documents (`app/`, `components/`, `handlers/`) describe architectural layer boundaries, not filesystem paths. The language/framework profile determines the actual source root — e.g., `app/` in the design doc maps to `src/app/` when the profile convention is `src/`.
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
