@@ -346,7 +346,9 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Constraint**: When design documents are available, reference the relevant sections. Do NOT duplicate content from those sections into the description.
 
-**Constraint**: Do NOT include concrete file paths, directory names, or language-specific directory conventions in descriptions.
+**Constraint**: Do NOT include concrete file paths, directory names, or language-specific directory conventions in descriptions. Reference design document sections instead.
+
+⚠️ **Blind spot**: Design documents use directory-like names (`app/`, `handlers/`, `internal/`) to describe architectural layers. Copying these into task descriptions creates a path specification that bypasses the Plan phase — where the language/framework profile determines actual filesystem paths. Use section references: "route definitions (fe-system §2.1)" not "route definitions in app/ directory".
 
 **Blind spot**: Copying implementation details into descriptions — whether from design documents, PRD, or directive — creates a parallel specification. When parallel tasks reference the same copied details, they generate conflicting implementations. The description marks scope; the Plan phase extracts implementation details from available sources.
 
