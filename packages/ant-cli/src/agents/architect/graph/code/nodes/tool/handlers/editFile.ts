@@ -64,14 +64,10 @@ export async function handleEditFile(
           resolved.displayPath
         );
       } catch (searchError) {
-        // Include current file content in error so CodeGen can retry without a separate read_file call
-        const preview = originalContent.length > 4000
-          ? originalContent.substring(0, 4000) + `\n... (truncated, ${originalContent.length} total chars)`
-          : originalContent;
         throw new Error(
           `${(searchError as Error).message}\n\n` +
-          `Current file content (use this to construct correct old_str):\n` +
-          `────────────────────────────────────────\n${preview}\n────────────────────────────────────────`
+          `⚠️ Your old_str does not match the current file.\n` +
+          `Action: Call read_file("${resolved.displayPath}") to get current content, then retry edit_file with exact old_str from the read result.`
         );
       }
       

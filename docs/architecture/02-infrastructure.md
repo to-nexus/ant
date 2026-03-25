@@ -90,12 +90,102 @@ ANT의 모든 프로세스 간 통신과 상태 관리는 Redis를 통해 이루
 
 ### 큐 구성
 
-| 항목 | 값 |
-|------|---|
-| 큐 이름 | `ant-jobs` |
-| 기본 동시성 | 2 |
-| Lock duration | 10분 |
-| Lock extend interval | 5분 |
+| 항목 | 값 | 근거 |
+|------|---|------|
+| 큐 이름 | `ant-jobs` | |
+| 기본 동시성 | 2 | |
+| lockDuration | 5분 (300 000ms) | 가장 긴 LLM 호출(thinking=true, ~2분)에 마진을 둠 |
+| lock extension interval | 2.5분 (150 000ms) | BullMQ 관례: lockDuration / 2 |
+| stalledInterval | 1분 (60 000ms) | 실제 dead worker를 ~3분 내에 감지 |
+| maxStalledCount | 0 | stalled job 재큐잉 금지 (Mac sleep/wake 시 double-child 방지) |
+
+### Lock Extension과 Stalled Detection
+
+BullMQ의 lock은 Worker가 Job을 처리하는 동안 다른 Worker가 같은 Job을 가져가지 못하게 보호한다. lock이 만료되면 BullMQ는 해당 Job을 "stalled"로 판정한다.
+
+lock/timer 상수는 `infrastructure/queue/constants.ts`에 중앙 정의되어 JobWorker와 BullMQJobQueue에서 import한다.
+
+**skipLockRenewal: true** — BullMQ 내장 auto-extension을 비활성화하고 수동 extension만 사용한다. 이유: 내장 auto-extension(75s 간격)이 수동 extension과 이중 실행되면, 수동 실패 카운터가 무의미해지고 Mac sleep 후 lock 만료 감지를 마스킹한다.
+
+**정상 시퀀스:**
+
+```
+T=0       Worker가 Job dequeue → lock 획득 (TTL=5min)
+T=2.5min  Extension 성공 → lock TTL 5min으로 갱신
+T=5.0min  Extension 성공 → lock TTL 5min으로 갱신
+  ...     (child 실행 중 반복)
+T=end     Child 정상 종료 → moveToFinished → lock 해제
+```
+
+**Lock extension 실패 시퀀스 (Redis timeout 등):**
+
+```
+T=0       Lock 획득 (TTL=5min)
+T=2.5min  Extension 실패 (1/2) → warn 로그, 카운터 증가
+T=5.0min  Extension 실패 (2/2) → 연속 실패 임계 도달
+          → 모든 타이머 정리 (lock extension + cancellation polling)
+          → child에 SIGTERM → graceful shutdown → 체크포인트 저장
+          → child 종료 후 3s grace period 내 미종료 시 SIGKILL
+```
+
+연속 실패 임계(MAX_CONSECUTIVE_LOCK_FAILURES=2)의 근거: extension interval=2.5min이므로, 2회 연속 실패 = 5분 경과 = lock 만료 직전. 이 시점에서 child를 종료하면 moveToFinished의 "Missing lock" 에러를 방지할 수 있다.
+
+**Mac sleep 즉시 감지 (wall-clock gap detection):**
+
+```
+T=0       Lock 획득, lastExtensionTime = now
+T=2.5min  Extension 성공, lastExtensionTime 갱신
+          ... Mac sleep 시작 (setInterval 정지, Redis TTL만 감소) ...
+T=7min+   Mac wake → 첫 interval tick 발생
+          elapsed = now - lastExtensionTime > LOCK_DURATION
+          → lock은 이미 만료 — extend 시도 없이 즉시 cleanup + child kill
+```
+
+원리: `setInterval`은 sleep 중 멈추지만 `Date.now()`는 wall-clock을 반환. wake 후 첫 tick에서 경과 시간이 lockDuration을 초과하면 즉시 감지. 기존 5분(2회 연속 실패 대기)을 0초로 단축.
+
+**Stalled detection 시퀀스 (child/worker 크래시):**
+
+```
+T=0       Lock 획득 (TTL=5min)
+T=2.5min  Extension 시도 못 함 (프로세스 크래시)
+T=5.0min  Lock 만료
+T=6.0min  stalledInterval 주기에 BullMQ가 stalled 감지
+          → stalled 이벤트 발생
+          → child kill (SIGTERM → 2s → SIGKILL)
+          → 상태를 paused로 갱신, server_crash interruption publish
+```
+
+maxStalledCount=0이므로 stalled job은 재큐잉되지 않고, interruption으로 기록되어 사용자가 수동 resume할 수 있다.
+
+**상태 경합 방어 (stalled handler vs processJob):**
+
+Mac wake 시 stalled handler가 `paused`로 전환한 뒤, processJob이 `completed`/`failed`로 덮어쓸 수 있다. 이를 방지하기 위해 processJob에서 updateJobStatus 전에 현재 상태를 확인하고, 이미 `paused`이면 덮어쓰지 않는다.
+
+### Child Process Kill — 통합 패턴
+
+Child process를 종료해야 하는 시나리오가 4가지 있으며, 모두 `killChildGracefully(child, jobId, gracePeriodMs)` 메서드를 사용한다:
+
+| 시나리오 | 트리거 | Grace Period |
+|---------|--------|-------------|
+| Stalled 감지 | BullMQ stalled 이벤트 | 2s (빠른 처리 필요) |
+| 사용자 중지 | Redis `job:stop` 채널 | 3s |
+| Lock 만료 임박 | Extension 연속 실패 | 3s |
+| Job 재처리 | 동일 jobId 중복 spawn | 3s |
+
+Kill 시퀀스: `SIGTERM → 대기(gracePeriodMs, early exit 감지) → pid 생존 확인 → SIGKILL`
+
+Child는 SIGTERM을 받으면 `gracefulShutdown.ts`의 핸들러를 통해 체크포인트를 저장하고 종료한다. SIGKILL은 grace period 내 미종료 시에만 발동되는 최후 수단이다.
+
+### Timer 관리
+
+`spawnJobProcess` 내의 두 타이머(lock extension, cancellation polling)는 `timers[]` 배열로 통합 관리된다. child가 어떤 경로로 종료되든 `cleanup()`이 양쪽 타이머를 모두 정리한다:
+
+| 종료 경로 | cleanup 호출 위치 |
+|----------|-----------------|
+| 정상 종료 / 비정상 종료 | child `close` 이벤트 |
+| spawn 실패 | child `error` 이벤트 |
+| Lock 만료 감지 | extension 실패 핸들러 |
+| 사용자 중지 감지 | cancellation 폴링 핸들러 |
 
 ### Job Payload
 

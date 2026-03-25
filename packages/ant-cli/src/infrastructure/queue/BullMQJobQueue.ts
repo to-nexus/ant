@@ -33,6 +33,7 @@ import { logger } from '../../utils/logger';
 import { parseRedisUrl } from '../utils/redis';
 import { REDIS_CHANNELS } from '../state/redisConstants';
 import { generateHumanId } from '../../utils/humanId';
+import { LOCK_DURATION } from './constants';
 
 // Queue configuration
 const QUEUE_NAME = 'ant-jobs';
@@ -318,7 +319,6 @@ export class BullMQJobQueue implements JobQueuePort {
       try {
         await existingJob.remove();
       } catch (removeErr: any) {
-        const LOCK_DURATION = 30000;
         const client = await this.queue.client;
         const lockKey = `bull:${this.queue.name}:${jobId}:lock`;
         const ttl = await client.pttl(lockKey);
