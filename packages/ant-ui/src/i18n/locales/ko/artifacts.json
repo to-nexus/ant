@@ -17,7 +17,7 @@
     "dirHintTooltip": {
       "references": "UI 디자인을 위한 참고 이미지 (PNG, JPG, WebP, GIF). Design Job 전용 — Code Job에서는 사용되지 않습니다. Figma 링크가 있는 경우 보조 자료로 활용됩니다. 허용: .png .jpg .jpeg .webp .gif",
       "assets": "UI 에셋 (아이콘, 이미지, SVG). codebase/public/에 자동으로 복사되어 생성된 코드에서 참조됩니다. 아이콘, 이미지 등 서브디렉토리로 그룹화 가능합니다. 허용: .png .jpg .gif .svg .webp .ico",
-      "sources": "기획 문서를 여기에 배치하세요. 모든 파일이 Design, Code, Plan Job의 컨텍스트로 주입됩니다. 디자인 참고 이미지는 inputs/references/를 사용하세요. 허용: .md .txt .json .yaml .yml",
+      "sources": "기획 문서를 여기에 배치하세요. 모든 파일이 Design, Code, Plan Job의 컨텍스트로 주입됩니다. 허용: .md .txt .json .yaml .yml",
       "design": "시스템 설계서, API 계약서, UI 스펙 문서 (MD, JSON). Design Job이 생성하며 Code Job의 입력으로도 사용됩니다. 파일을 직접 추가하거나 편집할 수 있습니다. 허용: .md .json",
       "evals": "각 단계별 품질 평가 리포트 (PRD, UI 디자인, 시스템 설계, 코드). 평가 시스템이 자동으로 생성합니다."
     },
