@@ -48,9 +48,9 @@ core/prompt/templates/
             plan/           (base.md, rules.md)
             revise/         (base.md, rules.md)
     common/
-        architect-role.md
-        rules.md
         injections/         (공통 injection 파셜)
+    agents/
+        architect/          (base.md, rules.md)
     planner/
         plan/               (base.md, rules.md)
     triage/                 (base.md, rules.md)

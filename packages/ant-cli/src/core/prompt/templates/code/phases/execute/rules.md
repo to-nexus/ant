@@ -1,6 +1,6 @@
 # Output Format Rules
 
-{{> common/rules}}
+{{> agents/architect/rules}}
 
 {{> code/base/injections/tool-calling-rules-compact}}
 
