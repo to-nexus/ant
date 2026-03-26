@@ -96,7 +96,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     }));
   }
   
-  // Bridge (Companion App) status
+  // Bridge (Ant Desktop) status
   router.use('/bridge', createBridgeRoutes({
     stateStore: deps.stateStore,
   }));

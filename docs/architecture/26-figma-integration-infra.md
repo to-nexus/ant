@@ -57,9 +57,9 @@ sequenceDiagram
 
   Note over UI,AD: 2. 딥링크 인증 (모달 UX)
   UI->>UI: 딥링크 모달 표시 (스피너)
-  UI->>API: POST /api/auth/companion-token
+  UI->>API: POST /api/auth/desktop-token
   API-->>UI: { token: "jwt..." }
-  UI->>AD: ant-companion://connect?token=...&server=...
+  UI->>AD: ant-desktop://connect?token=...&server=...
   AD->>AD: JWT 키체인 저장
   UI->>API: 2초 간격 폴링 GET /api/bridge/status
   Note over UI: 연결 확인 시 모달 "연결 완료" → 자동 닫힘
@@ -136,15 +136,15 @@ GNB 인디케이터: `bridgeStatusChecked && bridgeConnected !== true`일 때만
 |---|---|
 | WS 핸들러, 세션 관리 | `packages/ant-cli/src/infrastructure/realtime/BridgeWebSocketHandler.ts`, `BridgeSessionManager.ts` |
 | HTTP `GET /api/bridge/status` | `packages/ant-cli/src/periphery/adapters/http/routes/bridge.routes.ts` |
-| Companion 토큰 발급 | `packages/ant-cli/src/periphery/adapters/http/routes/auth.routes.ts` |
+| Desktop 토큰 발급 | `packages/ant-cli/src/periphery/adapters/http/routes/auth.routes.ts` |
 | 공유 타입 (`BridgeStatus`, `BridgeSession`) | `packages/ant-shared/src/bridge.ts` |
-| 프론트 API (`checkBridgeStatus`, `openCompanionDeepLink`) | `packages/ant-ui/src/infrastructure/http/api/companion.ts` |
+| 프론트 API (`checkBridgeStatus`, `openDesktopDeepLink`) | `packages/ant-ui/src/infrastructure/http/api/desktop.ts` |
 | 프론트 전역 상태 (`setBridgeStatus`) | `packages/ant-ui/src/domain/store/slices/uiSlice.ts` |
 | 설정 UI (Figma 연동 섹션) | `packages/ant-ui/src/presentation/components/AccountConfigEditor.tsx` |
 | GNB 인디케이터 | `packages/ant-ui/src/presentation/components/GlobalNavBar.tsx` |
-| Ant Desktop 브리지 클라이언트 | `ant-companion/src-tauri/src/bridge/client.rs` |
-| Ant Desktop Figma 헬스 체크 | `ant-companion/src-tauri/src/health/figma_check.rs` |
-| Ant Desktop 딥링크 처리 | `ant-companion/src-tauri/src/auth/deeplink.rs` |
+| Ant Desktop 브리지 클라이언트 | `ant-desktop/src-tauri/src/bridge/client.rs` |
+| Ant Desktop Figma 헬스 체크 | `ant-desktop/src-tauri/src/health/figma_check.rs` |
+| Ant Desktop 딥링크 처리 | `ant-desktop/src-tauri/src/auth/deeplink.rs` |
 
 ## 경계
 

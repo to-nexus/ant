@@ -5,7 +5,7 @@ import {
   saveGitHubPAT, 
   deleteGitHubPAT,
   checkBridgeStatus,
-  openCompanionDeepLink,
+  openDesktopDeepLink,
   fetchOrgConfig,
   fetchUserConfig,
   updateUserConfig,
@@ -114,7 +114,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     loadOwnerConfigs();
   }, []);
   
-  // Load Bridge / Companion status → global store
+  // Load Bridge / Ant Desktop status → global store
   const loadBridgeStatus = async () => {
     setIsCheckingBridge(true);
     try {
@@ -251,11 +251,11 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     }, 15000);
   }, [cleanupDeeplinkPolling, setBridgeStatus, closeDeeplinkModal]);
 
-  const handleConnectCompanion = async () => {
+  const handleConnectDesktop = async () => {
     setDeeplinkModalOpen(true);
     setDeeplinkPhase('connecting');
     try {
-      const opened = await openCompanionDeepLink();
+      const opened = await openDesktopDeepLink();
       if (!opened) {
         setDeeplinkPhase('failed');
         return;
@@ -269,7 +269,7 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const handleDeeplinkRetry = async () => {
     setDeeplinkPhase('connecting');
     try {
-      const opened = await openCompanionDeepLink();
+      const opened = await openDesktopDeepLink();
       if (!opened) {
         setDeeplinkPhase('failed');
         return;
@@ -618,14 +618,14 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             {antDesktopBadge.text}
           </span>
           {!bridgeDetected && !bridgeConnected && (
-            <a href="https://github.com/anthropics/ant-companion/releases" target="_blank"
+            <a href="https://github.com/anthropics/ant-desktop/releases" target="_blank"
                rel="noopener noreferrer"
                className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
               {t('figma.downloadAntDesktop')} ↗
             </a>
           )}
           {bridgeDetected && !bridgeConnected && (
-            <button onClick={handleConnectCompanion}
+            <button onClick={handleConnectDesktop}
                     className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
               {t('figma.connectAntDesktop')}
             </button>

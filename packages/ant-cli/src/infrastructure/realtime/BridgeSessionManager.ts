@@ -1,7 +1,7 @@
 /**
  * Bridge Session Manager
  * 
- * Manages companion app WebSocket sessions via Redis.
+ * Manages Ant Desktop WebSocket sessions via Redis.
  * Used by:
  * - RealtimeServer: to register/update/remove bridge sessions
  * - API Server: to check bridge status (GET /api/bridge/status)

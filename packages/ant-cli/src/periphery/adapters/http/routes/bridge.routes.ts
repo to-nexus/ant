@@ -1,7 +1,7 @@
 /**
  * Bridge Routes
  * 
- * API endpoints for the Companion App bridge.
+ * API endpoints for the Ant Desktop bridge.
  * The bridge is a general-purpose local machine proxy,
  * independent of any specific integration (Figma, IDE, etc.).
  */
@@ -28,7 +28,7 @@ export function createBridgeRoutes(deps: BridgeRoutesDeps): Router {
 
   /**
    * GET /api/bridge/status
-   * Check companion app bridge connection status
+   * Check Ant Desktop bridge connection status
    */
   router.get('/status', async (req: Request, res: Response) => {
     try {
