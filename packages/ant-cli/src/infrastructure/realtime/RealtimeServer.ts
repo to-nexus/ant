@@ -74,7 +74,7 @@ export class RealtimeServer {
     // 5. Setup health check
     this.setupHealthCheck();
     
-    // 6. Setup Bridge WebSocket handler for Companion App
+    // 6. Setup Bridge WebSocket handler for Ant Desktop
     this.bridgeHandler = new BridgeWebSocketHandler({ stateStore });
     logger.info('Bridge WebSocket handler initialized', { component: 'RealtimeServer' });
     

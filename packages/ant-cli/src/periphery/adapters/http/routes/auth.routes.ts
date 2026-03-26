@@ -241,11 +241,11 @@ export function createAuthRoutes(deps: {
   });
 
   /**
-   * POST /api/auth/companion-token
-   * Issues a long-lived JWT (90 days) for the companion desktop app.
+   * POST /api/auth/desktop-token
+   * Issues a long-lived JWT (90 days) for Ant Desktop.
    * Requires existing authentication (cookie-based session).
    */
-  router.post('/auth/companion-token', async (req: Request, res: Response) => {
+  router.post('/auth/desktop-token', async (req: Request, res: Response) => {
     // Local mode: no JWT service, issue a fixed token that the bridge handler accepts
     if (!jwtService) {
       return res.json({
@@ -262,10 +262,10 @@ export function createAuthRoutes(deps: {
     }
 
     try {
-      const COMPANION_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
+      const DESKTOP_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
       const token = jwtService.sign(
         { sub: user.id, email: user.email || '', org: organization.id },
-        COMPANION_TOKEN_TTL_SECONDS
+        DESKTOP_TOKEN_TTL_SECONDS
       );
 
       res.json({
@@ -274,7 +274,7 @@ export function createAuthRoutes(deps: {
         expiresInDays: 90,
       });
     } catch (error: any) {
-      logger.error('[Auth] Failed to issue companion token:', error);
+      logger.error('[Auth] Failed to issue desktop token:', error);
       res.status(500).json({ success: false, message: 'Failed to issue token' });
     }
   });

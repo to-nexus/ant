@@ -2,7 +2,7 @@
  * Figma Port
  * 
  * MCP-only design: Figma mode requires Full MCP connectivity
- * via Companion App bridge (cloud) or direct local MCP (local).
+ * via Ant Desktop bridge (cloud) or direct local MCP (local).
  */
 
 import type { MCPToolResult } from '@ant/shared';

@@ -318,37 +318,35 @@ async function resolveUIDesignSource(
       };
     }
   } else {
-    // Cloud mode: check Bridge session via BridgeSessionManager
-    const userId = state.deps?.userId;
-    const stateStore = state.deps?.stateStore;
+    // Cloud mode: check Bridge via BridgeMCPTransport.isAvailable()
+    const userId = state.context?.userId;
+    const redis = state.deps?.redis;
 
-    if (!userId || !stateStore) {
+    if (!userId || !redis) {
       return {
         uiDesignSource: 'figma',
         designError: {
           type: 'figma_bridge_unavailable',
-          message: 'Companion 앱 연결 확인에 필요한 컨텍스트가 없습니다.',
-          suggestedAction: 'ant-companion 앱을 설치하고 연결한 후 다시 시도하세요.',
+          message: !userId
+            ? 'Ant Desktop 앱 연결 확인에 필요한 컨텍스트가 없습니다.'
+            : 'Redis 연결이 없어 Ant Desktop 상태를 확인할 수 없습니다.',
+          suggestedAction: 'Ant Desktop 앱을 설치하고 연결한 후 다시 시도하세요.',
         },
       };
     }
 
     try {
-      const { BridgeSessionManager } = await import('../../../../../infrastructure/realtime/BridgeSessionManager');
-      const manager = new BridgeSessionManager(stateStore);
-      const status = await manager.getStatus(userId);
+      const { createMCPTransport } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+      const transport = createMCPTransport({ serverMode: 'cloud', userId, redis });
+      const available = await transport.isAvailable();
 
-      if (!status.connected || !status.figmaDesktopReachable) {
+      if (!available) {
         return {
           uiDesignSource: 'figma',
           designError: {
             type: 'figma_bridge_unavailable',
-            message: !status.connected
-              ? 'Companion 앱이 연결되지 않았습니다.'
-              : 'Figma Desktop이 응답하지 않습니다.',
-            suggestedAction: !status.connected
-              ? 'ant-companion 앱을 설치하고 연결한 후 다시 시도하세요.'
-              : 'Figma Desktop을 실행한 후 다시 시도하세요.',
+            message: 'Ant Desktop 앱이 연결되지 않았거나 Figma Desktop이 응답하지 않습니다.',
+            suggestedAction: 'Ant Desktop 앱과 Figma Desktop을 실행한 후 다시 시도하세요.',
           },
         };
       }
@@ -357,8 +355,8 @@ async function resolveUIDesignSource(
         uiDesignSource: 'figma',
         designError: {
           type: 'figma_bridge_unavailable',
-          message: 'Companion 앱 연결 상태 확인에 실패했습니다.',
-          suggestedAction: 'ant-companion 앱을 설치하고 연결한 후 다시 시도하세요.',
+          message: 'Ant Desktop 앱 연결 상태 확인에 실패했습니다.',
+          suggestedAction: 'Ant Desktop 앱을 설치하고 연결한 후 다시 시도하세요.',
         },
       };
     }

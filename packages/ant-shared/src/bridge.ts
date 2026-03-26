@@ -1,14 +1,14 @@
 /**
- * Bridge Protocol & Companion App Types
+ * Bridge Protocol & Ant Desktop Types
  * 
- * Shared types for the Companion App bridge communication.
- * The Companion App is a general-purpose local machine bridge
+ * Shared types for the Ant Desktop bridge communication.
+ * Ant Desktop is a general-purpose local machine bridge
  * that proxies requests between the cloud agent and local resources.
  * 
  * Current capabilities: figma-mcp
  * Future: local-ide, local-fs, etc.
  * 
- * Used by ant-cli (cloud), ant-ui (frontend), and ant-companion (desktop app).
+ * Used by ant-cli (cloud), ant-ui (frontend), and ant-desktop (desktop app).
  */
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -82,7 +82,7 @@ export interface MCPResponseMessage {
  * - disconnected: was connected but WS dropped (network/server failure)
  *
  * Note: "disconnected" is NOT stored in Redis (session is deleted on close).
- * It exists for Companion UI to display "연결 끊김" to the user.
+ * It exists for Ant Desktop UI to display "연결 끊김" to the user.
  */
 export type BridgeSessionStatus = 'detected' | 'connected' | 'disconnected';
 

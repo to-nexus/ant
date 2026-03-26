@@ -4,7 +4,7 @@
  * Shared types for Figma data configuration and MCP tool interaction.
  * Used by ant-cli (cloud agent) and ant-ui (frontend).
  * 
- * Bridge/Companion types are in bridge.ts (separate concern).
+ * Bridge/Ant Desktop types are in bridge.ts (separate concern).
  */
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
