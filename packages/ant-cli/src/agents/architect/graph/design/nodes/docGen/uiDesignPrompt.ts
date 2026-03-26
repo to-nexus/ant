@@ -7,8 +7,10 @@
  * - buildUiDesignSystemPrompt: System prompt loader (from template)
  * 
  * NOTE: Task instructions and tool guides are in templates:
- * - base-ui-design.md (with Handlebars conditionals for task-specific content)
- * - rules-ui-design.md (tool usage rules)
+ * - base-ui-design-by-ref.md (reference mode: Handlebars conditionals for task-specific content)
+ * - rules-ui-design-by-ref.md (reference mode: tool usage rules)
+ * - base-ui-design-by-figma.md (figma mode: MCP-based extraction)
+ * - rules-ui-design-by-figma.md (figma mode: MCP tool usage rules)
  */
 
 import { DesignGraphState } from '../../state';
@@ -167,6 +169,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
+      const logSuffix = state.uiDesignSource === 'figma' ? 'by-figma' : 'by-ref';
       await logPrompt(
         state.context.featurePath,
         jobId,
@@ -176,12 +179,12 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         {
           taskId: task?.id,
           taskName: task?.name,
-          templatePath: 'design/phases/execute/base-ui-design',
+          templatePath: `design/phases/execute/base-ui-design-${logSuffix}`,
           usedTemplates: [
-            'design/phases/execute/rules-ui-design',
-            'design/phases/execute/injections/ui-tokens-guide',
-            'design/phases/execute/injections/ui-assets-guide',
-            'design/phases/execute/injections/ui-spec-guide',
+            `design/phases/execute/rules-ui-design-${logSuffix}`,
+            `design/phases/execute/injections/ui-tokens-guide-${logSuffix}`,
+            `design/phases/execute/injections/ui-assets-guide-${logSuffix}`,
+            `design/phases/execute/injections/ui-spec-guide-${logSuffix}`,
           ],
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
@@ -283,6 +286,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
+      const freshLogSuffix = state.uiDesignSource === 'figma' ? 'by-figma' : 'by-ref';
       await logPrompt(
         state.context.featurePath,
         jobIdFresh,
@@ -292,12 +296,12 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         {
           taskId: task?.id,
           taskName: task?.name,
-          templatePath: 'design/phases/execute/base-ui-design',
+          templatePath: `design/phases/execute/base-ui-design-${freshLogSuffix}`,
           usedTemplates: [
-            'design/phases/execute/rules-ui-design',
-            'design/phases/execute/injections/ui-tokens-guide',
-            'design/phases/execute/injections/ui-assets-guide',
-            'design/phases/execute/injections/ui-spec-guide',
+            `design/phases/execute/rules-ui-design-${freshLogSuffix}`,
+            `design/phases/execute/injections/ui-tokens-guide-${freshLogSuffix}`,
+            `design/phases/execute/injections/ui-assets-guide-${freshLogSuffix}`,
+            `design/phases/execute/injections/ui-spec-guide-${freshLogSuffix}`,
           ],
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
@@ -435,9 +439,8 @@ async function loadPreviousUiDocs(
 /**
  * Build system prompt for UI Design generation
  * 
- * Loads: design/phases/execute/base-ui-design.md
- * - Includes rules-ui-design.md via partial
- * - Has task-specific instructions via Handlebars conditionals
+ * Loads design/phases/execute/base-ui-design-{by-ref|by-figma}.md based on state.uiDesignSource
+ * - Includes corresponding rules and injection guides via partials
  * 
  * ✅ NEW: Tracks lastSectionNumber for chapter-based append (same as System Design)
  * ✅ NEW: Injects previousChaptersSummary to prevent duplicate content
@@ -605,15 +608,21 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     existingDocContent: existingFileContent,  // ✅ NEW: Full file content for LLM to see and extend
     jobMode: state.detectionReport?.jobMode,  // ✅ NEW: For refactor mode handling (generate/refactor/explain)
     userLanguage: state.context.userLanguage || 'en',
+    figmaExplorationResult: state.uiDesignSource === 'figma'
+      ? JSON.stringify(state.figmaExplorationResult, null, 2)
+      : undefined,
   };
-  
-  const template = await (promptPort as any).deps?.promptPort?.render('design/phases/execute/base-ui-design', injectedVariables);
+
+  const isFigmaMode = state.uiDesignSource === 'figma';
+  const templateSuffix = isFigmaMode ? 'by-figma' : 'by-ref';
+  const templatePath = `design/phases/execute/base-ui-design-${templateSuffix}`;
+
+  const template = await (promptPort as any).deps?.promptPort?.render(templatePath, injectedVariables);
   
   if (!template) {
-    throw new Error('[DocGen] Failed to load base-ui-design.md template');
+    throw new Error(`[DocGen] Failed to load ${templatePath}.md template`);
   }
   
-  // ✅ Log prompt structure (not content)
   const jobId = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
@@ -626,12 +635,12 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
-          templatePath: 'design/phases/execute/base-ui-design',
+          templatePath,
           usedTemplates: [
-            'design/phases/execute/rules-ui-design',
-            'design/phases/execute/injections/ui-tokens-guide',
-            'design/phases/execute/injections/ui-assets-guide',
-            'design/phases/execute/injections/ui-spec-guide',
+            `design/phases/execute/rules-ui-design-${templateSuffix}`,
+            `design/phases/execute/injections/ui-tokens-guide-${templateSuffix}`,
+            `design/phases/execute/injections/ui-assets-guide-${templateSuffix}`,
+            `design/phases/execute/injections/ui-spec-guide-${templateSuffix}`,
           ],
           injectedVariables: {
             // Summarize large content

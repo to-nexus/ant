@@ -41,9 +41,12 @@
     "frontend-guide": []
   },
   "design/phases/execute/injections": {
-    "ui-tokens-guide": [],
-    "ui-assets-guide": [],
-    "ui-spec-guide": [],
+    "ui-tokens-guide-by-ref": [],
+    "ui-tokens-guide-by-figma": [],
+    "ui-assets-guide-by-ref": [],
+    "ui-assets-guide-by-figma": [],
+    "ui-spec-guide-by-ref": [],
+    "ui-spec-guide-by-figma": [],
     "game-domain-guide": [],
     "service-domain-guide": [],
     "ui-continuation": ["targetDoc"],

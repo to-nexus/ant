@@ -104,6 +104,12 @@ export interface UIState {
     mode: 'design' | 'code';
     existingProjectId?: string;
   } | undefined;
+  // ✅ Figma integration bridge state (global single source of truth)
+  bridgeConnected: boolean | null;       // null=unchecked, false=disconnected, true=connected
+  bridgeDetected: boolean;
+  figmaDesktopReachable: boolean;
+  bridgeStatusChecked: boolean;
+  accountConfigScrollTarget: string | null;
 }
 
 export interface GitStatus {

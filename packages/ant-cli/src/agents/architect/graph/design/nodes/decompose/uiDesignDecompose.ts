@@ -72,7 +72,11 @@ export async function decomposeUiDesign(
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  const uiDecomposePrompt = await promptAdapter.render('design/phases/decompose/base-ui-design', {
+  const isFigmaMode = state.uiDesignSource === 'figma';
+  const templateSuffix = isFigmaMode ? 'by-figma' : 'by-ref';
+  const decomposeTemplatePath = `design/phases/decompose/base-ui-design-${templateSuffix}`;
+
+  const uiDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
     uiContext,
     referenceCount: state.uiReferences?.length || 0,
     assetCount: state.uiAssetsList
@@ -80,6 +84,9 @@ export async function decomposeUiDesign(
       : 0,
     jobMode: state.detectionReport?.jobMode || 'generate',
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
+    figmaExplorationResult: isFigmaMode
+      ? JSON.stringify(state.figmaExplorationResult, null, 2)
+      : undefined,
   });
 
   await safeLogPrompt(
@@ -88,8 +95,8 @@ export async function decomposeUiDesign(
     'decompose-uiDesign',
     uiDecomposePrompt.length,
     {
-      templatePath: 'design/phases/decompose/base-ui-design',
-      usedTemplates: ['design/phases/decompose/rules-ui-design'],
+      templatePath: decomposeTemplatePath,
+      usedTemplates: [`design/phases/decompose/rules-ui-design-${templateSuffix}`],
     }
   );
 

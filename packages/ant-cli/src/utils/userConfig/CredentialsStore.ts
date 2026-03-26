@@ -16,7 +16,6 @@ import { logger } from '../logger';
 import { 
   UserCredentials, 
   GitHubCredentials, 
-  FigmaCredentials, 
   LinearCredentials, 
   SlackCredentials,
   ServiceType 
@@ -70,7 +69,7 @@ export class CredentialsStore {
   /**
    * Get credentials for specific service
    */
-  async get<T extends GitHubCredentials | FigmaCredentials | LinearCredentials | SlackCredentials>(
+  async get<T extends GitHubCredentials | LinearCredentials | SlackCredentials>(
     userContext: UserContext,
     service: ServiceType
   ): Promise<T | undefined> {
@@ -95,7 +94,7 @@ export class CredentialsStore {
   /**
    * Set credentials for specific service
    */
-  async set<T extends GitHubCredentials | FigmaCredentials | LinearCredentials | SlackCredentials>(
+  async set<T extends GitHubCredentials | LinearCredentials | SlackCredentials>(
     userContext: UserContext,
     service: ServiceType,
     credentials: Omit<T, 'updatedAt'>

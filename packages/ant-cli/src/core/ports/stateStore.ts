@@ -560,7 +560,7 @@ export interface StateStorePort {
   // ============================================
   
   /**
-   * Set a key with TTL (for OIDC state, Figma OAuth state, SSE connection counts, etc.)
+   * Set a key with TTL (for OIDC state, SSE connection counts, etc.)
    */
   setKeyWithTTL(key: string, value: string, ttlSeconds: number): Promise<void>;
   

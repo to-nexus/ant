@@ -2,5 +2,5 @@
  * Figma Adapter Exports
  */
 
-export * from './FigmaMCPAdapter';
-
+export { FigmaMCPAdapter } from './FigmaMCPAdapter';
+export { MCPTransport, DirectMCPTransport, BridgeMCPTransport, createMCPTransport } from './MCPTransport';

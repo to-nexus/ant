@@ -239,6 +239,45 @@ export function createAuthRoutes(deps: {
       message: 'Signed out successfully'
     });
   });
-  
+
+  /**
+   * POST /api/auth/companion-token
+   * Issues a long-lived JWT (90 days) for the companion desktop app.
+   * Requires existing authentication (cookie-based session).
+   */
+  router.post('/auth/companion-token', async (req: Request, res: Response) => {
+    // Local mode: no JWT service, issue a fixed token that the bridge handler accepts
+    if (!jwtService) {
+      return res.json({
+        success: true,
+        token: 'local',
+        expiresInDays: 9999,
+      });
+    }
+
+    const user = (req as any).user;
+    const organization = (req as any).organization;
+    if (!user || !organization) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    try {
+      const COMPANION_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
+      const token = jwtService.sign(
+        { sub: user.id, email: user.email || '', org: organization.id },
+        COMPANION_TOKEN_TTL_SECONDS
+      );
+
+      res.json({
+        success: true,
+        token,
+        expiresInDays: 90,
+      });
+    } catch (error: any) {
+      logger.error('[Auth] Failed to issue companion token:', error);
+      res.status(500).json({ success: false, message: 'Failed to issue token' });
+    }
+  });
+
   return router;
 }

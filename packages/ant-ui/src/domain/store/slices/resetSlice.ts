@@ -24,9 +24,14 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => 
       connectionStatus: 'disconnected',
       chatMessages: [],
       mainPanelActiveTab: 'job',
-      mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false },
+      mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false },
       mainPanelTabOrder: [],
       isJobTabCleared: false,
+      bridgeConnected: null,
+      bridgeDetected: false,
+      figmaDesktopReachable: false,
+      bridgeStatusChecked: false,
+      accountConfigScrollTarget: null,
     });
     
     // Clear job-related localStorage

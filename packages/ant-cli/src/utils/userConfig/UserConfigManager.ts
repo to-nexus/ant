@@ -13,7 +13,7 @@
  * const githubCreds = await userConfig.credentials.get(userContext, 'github');
  * 
  * // Integrations
- * await userConfig.integrations.set(userContext, 'figma', { enabled: true, serverUrl: '...' });
+ * await userConfig.integrations.set(userContext, 'github', { enabled: true });
  * 
  * // Preferences
  * await userConfig.preferences.update(userContext, { theme: 'dark' });
@@ -30,9 +30,7 @@ import {
   UserPreferences,
   ServiceType,
   GitHubCredentials,
-  FigmaCredentials,
-  GitHubIntegration,
-  FigmaIntegration
+  GitHubIntegration
 } from './types';
 
 export class UserConfigManager {
@@ -80,8 +78,8 @@ export class UserConfigManager {
    * Configure service (credentials + integration settings)
    */
   async configureService<
-    C extends GitHubCredentials | FigmaCredentials,
-    I extends GitHubIntegration | FigmaIntegration
+    C extends GitHubCredentials,
+    I extends GitHubIntegration
   >(
     userContext: UserContext,
     service: ServiceType,

@@ -21,9 +21,20 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 
 | workType | 조건 | 출력 파일 |
 |----------|------|----------|
-| `system-design` | PRD/directive만 있고 참조 이미지 없음 | system-design.md, api-contract.md 등 |
-| `ui-design` | `inputs/references/` 또는 `inputs/assets/`에 파일 존재 | ui-tokens.json, ui-assets.json, ui-spec.json |
+| `system-design` | PRD/directive만 있고 UI 입력 없음 | system-design.md, api-contract.md 등 |
+| `ui-design` | `inputs/figma.json` populated **또는** `inputs/references/` 존재 | ui-tokens.json, ui-assets.json, ui-spec.json |
 | `spec` | spec 모드로 명시적 지정 시 | spec 문서 |
+
+## UI Design Source Mode (SSOT)
+
+`ui-design` workType은 두 가지 상호배타적 소스 모드를 갖는다. `detectEnvironment`에서 `state.uiDesignSource`를 결정한다.
+
+| 모드 | 조건 | 방법론 | 도구 세트 |
+|------|------|--------|----------|
+| `figma` | `inputs/figma.json`에 files가 populated | Figma MCP 구조적 데이터 추출 | `TOOL_SETS.uiDesignFigma` |
+| `references` | figma.json 비어있고 references/ 존재 | 스크린샷 멀티모달 시각 분석 | `TOOL_SETS.uiDesign` |
+
+Figma 모드가 우선한다. 양쪽 모두 입력이 있으면 Figma를 사용하고 references는 무시된다. 상세 파이프라인은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
 
 ## documentType (System Design)
 
@@ -41,7 +52,9 @@ decompose가 프로젝트 환경에 따라 문서 구조를 결정한다.
 
 ```
 __start__ -> resolve -> [4-way router]
-    +-> triage -> detectEnvironment -> decompose -> plan (순차 루프)
+    +-> triage -> detectEnvironment -> [source router]
+         +-> uiDesignSource === 'figma': figmaExplore -> decompose
+         +-> otherwise: decompose
     +-> revise -> plan
     +-> plan (직행)
     +-> decompose (detectEnv 이후 중단 resume)
@@ -55,6 +68,10 @@ checkTaskStatus -> [router]
     +-> plan (다음 태스크)
     +-> learn -> __end__
 ```
+
+### figmaExplore 노드
+
+Figma 모드 전용 노드. `detectEnvironment` 이후, `decompose` 이전에 실행된다. docGen과 동일한 LLM + tool loop 구조로 Figma MCP 도구를 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State, Interaction State)를 생성한다. 에셋을 `inputs/assets/`에, 스크린샷을 `inputs/references/`에 다운로드한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 도구 세트: `TOOL_SETS.figmaExplore`.
 
 ### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
 
@@ -95,3 +112,4 @@ ui-tokens.json (의존 없음)
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
 - Code Job: [14-code-job.md](14-code-job.md)
 - 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
+- UI Design 파이프라인 상세: [25-ui-design-pipeline.md](25-ui-design-pipeline.md)

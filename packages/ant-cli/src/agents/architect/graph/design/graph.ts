@@ -9,6 +9,7 @@ import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate
 import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
 import { detectEnvironment } from "./nodes/detectEnvironment";
+import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
 import { routeAfterDocGen } from "./routers/docGenRouter";
@@ -662,6 +663,7 @@ export function buildDesignGraph() {
   graph.addNode("resolve" as const, resolve as any);
   graph.addNode("triage" as const, triage as any);  // ✅ Triage: analyze intent and prerequisites
   graph.addNode("detectEnvironment" as const, detectEnvironment as any);
+  graph.addNode("figmaExplore" as const, figmaExplore as any);  // ✅ Figma exploration (Phase 0)
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("revise" as const, revise as any);  // ✅ Task queue revision (on resume with new directive)
   graph.addNode("plan" as const, plan as any);
@@ -744,9 +746,10 @@ export function buildDesignGraph() {
   );
   
   // ✅ Conditional routing from detectEnvironment
-  // - designError → END (e.g., modification without documents)
+  // - designError → END (e.g., modification without documents, Figma MCP unavailable)
   // - awaitingDetectClarify → END (paused for user choice between spec/system-design)
-  // - otherwise → decompose (normal flow)
+  // - uiDesignSource === 'figma' → figmaExplore → decompose
+  // - otherwise → decompose (reference mode or non-UI)
   graph.addConditionalEdges(
     "detectEnvironment" as any,
     ((s: DesignGraphState) => {
@@ -758,10 +761,17 @@ export function buildDesignGraph() {
         console.log(`⏸️  [Graph] Detect clarify — paused for user choice`);
         return "__end__";
       }
+      if (s.uiDesignSource === 'figma') {
+        console.log(`🎨 [Graph] Figma mode → figmaExplore`);
+        return "figmaExplore";
+      }
       return "decompose";
     }) as any,
-    { __end__: "__end__", decompose: "decompose" } as any
+    { __end__: "__end__", decompose: "decompose", figmaExplore: "figmaExplore" } as any
   );
+  
+  // ✅ figmaExplore → decompose (always proceeds after exploration)
+  graph.addEdge("figmaExplore" as any, "decompose" as any);
   
   // ✅ Decompose → conditional: parallel or sequential
   graph.addConditionalEdges(

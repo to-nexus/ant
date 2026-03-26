@@ -24,7 +24,8 @@
     
     "test:cli": "pnpm --filter @ant/cli test",
     "build": "pnpm -r build",
-    "build:cli": "pnpm --filter @ant/cli build",
+    "build:shared": "pnpm --filter @ant/shared build",
+    "build:cli": "pnpm --filter @ant/shared build && pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
 
     "start:ui": "pnpm --filter @ant/ui preview --port 4200",

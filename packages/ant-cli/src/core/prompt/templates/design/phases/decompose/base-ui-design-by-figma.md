@@ -78,10 +78,10 @@ You are analyzing UI complexity to break it into tasks.
 
 ### Available Resources
 
-| Resource | Count |
-|----------|-------|
-| Reference images | {{referenceCount}} |
-| Asset files | {{assetCount}} |
+| Resource | Details |
+|----------|---------|
+| Figma Exploration Result | Pre-analyzed structure from `figmaExplore` node |
+| Figma MCP Tools | `figma_get_design_context`, `figma_get_metadata`, `figma_get_screenshot`, `figma_get_variable_defs` |
 
 ---
 
@@ -144,7 +144,7 @@ You are analyzing UI complexity to break it into tasks.
 | Medium (landing page) | 2-3 chapters | 1-2 chapters | 3-4 chapters |
 | Large (multi-page) | 3+ chapters | 2+ chapters | 5+ chapters |
 
-**Your resources**: references={{referenceCount}}, assets={{assetCount}}
+**Your resources**: Figma MCP tools + pre-analyzed exploration data
 
 **Principle**: When unsure, create more chapters. Better to have small focused tasks than hit token limits.
 
@@ -152,4 +152,4 @@ You are analyzing UI complexity to break it into tasks.
 
 ---
 
-{{> design/phases/decompose/rules-ui-design}}
+{{> design/phases/decompose/rules-ui-design-by-figma}}
