@@ -250,6 +250,10 @@ class AgentRegistryClass {
       case 'indexed_codebase':
         satisfied = ws.hasCodebase;
         break;
+
+      case 'figma_config':
+        satisfied = ws.hasFigmaConfig;
+        break;
         
       case 'any_of':
         if (prereq.items) {
@@ -329,6 +333,10 @@ class AgentRegistryClass {
     
     if (type === 'indexed_codebase') {
       return ws.hasCodebase;
+    }
+
+    if (type === 'figma_config') {
+      return ws.hasFigmaConfig;
     }
     
     return false;

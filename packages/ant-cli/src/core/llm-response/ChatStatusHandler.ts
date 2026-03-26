@@ -334,6 +334,33 @@ export class ChatStatusHandler {
         ).join(', ');
       }
       
+      case 'downloading': {
+        const filename = metadata?.filename ?? 'asset';
+        return `Downloading: ${filename}...`;
+      }
+
+      case 'downloaded': {
+        const filename = metadata?.filename ?? 'asset';
+        const error = metadata?.error;
+        if (error) return `❌ Download Failed: ${filename}`;
+        const sizeKB = metadata?.sizeKB;
+        return sizeKB ? `Downloaded: ${filename} (${sizeKB} KB)` : `Downloaded: ${filename}`;
+      }
+
+      case 'figma_calling': {
+        const toolName = metadata?.toolName ?? 'MCP tool';
+        const label = toolName.replace(/^figma_/, '');
+        return `Figma: ${label}...`;
+      }
+
+      case 'figma_called': {
+        const toolName = metadata?.toolName ?? 'MCP tool';
+        const label = toolName.replace(/^figma_/, '');
+        const error = metadata?.error;
+        if (error) return `❌ Figma Failed: ${label}`;
+        return `Figma: ${label}`;
+      }
+
       case 'tool_action':
         return metadata?.content || 'Processing...';
       

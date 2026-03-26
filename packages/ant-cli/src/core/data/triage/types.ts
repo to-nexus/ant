@@ -13,6 +13,7 @@ export type PrerequisiteType =
   | 'has_directive'
   | 'has_git_repository'
   | 'indexed_codebase'
+  | 'figma_config'
   | 'any_of';
 
 export interface PrerequisiteCondition {

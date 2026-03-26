@@ -114,6 +114,17 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.detectionReport = (session.state as any).detectionReport;
         }
         
+        // ✅ Restore Figma context (required for Figma tool activation on resume)
+        if ((session.state as any).uiDesignSource) {
+          initial.uiDesignSource = (session.state as any).uiDesignSource;
+        }
+        if ((session.state as any).figmaConfig) {
+          initial.figmaConfig = (session.state as any).figmaConfig;
+        }
+        if ((session.state as any).figmaExplorationResult) {
+          initial.figmaExplorationResult = (session.state as any).figmaExplorationResult;
+        }
+        
         // ✅ Restore planText for task-level resume (skip plan regeneration if applicable)
         if (session.state.planText) {
           initial.planText = session.state.planText;

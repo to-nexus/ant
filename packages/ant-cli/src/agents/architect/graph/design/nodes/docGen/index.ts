@@ -119,13 +119,16 @@ export async function docGen(
   }
 
   // Tool activation: Select appropriate tool set based on work type
+  const isFigmaUiDesign = workType === 'ui-design' && state.uiDesignSource === 'figma';
   const tools = isExplainMode
     ? getToolsByNames(TOOL_SETS.designExplain)
-    : workType === 'ui-design'
-      ? getToolsByNames(TOOL_SETS.uiDesign)
-      : useSourceFileTool
-        ? [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL]
-        : getToolsByNames(TOOL_SETS.design);
+    : isFigmaUiDesign
+      ? getToolsByNames(TOOL_SETS.uiDesignFigma)
+      : workType === 'ui-design'
+        ? getToolsByNames(TOOL_SETS.uiDesign)
+        : useSourceFileTool
+          ? [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL]
+          : getToolsByNames(TOOL_SETS.design);
   
   // Tool configuration complete
   

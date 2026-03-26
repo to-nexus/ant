@@ -133,12 +133,20 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   });
   
   // ✅ 3. PRD Context (if available) — per-task selective injection
+  const effectiveSourceDocs = state.sourceDocuments ? { ...state.sourceDocuments } : {};
+  if (state.uiDesignSource === 'figma' && state.figmaConfig) {
+    effectiveSourceDocs['figma.json'] = JSON.stringify(state.figmaConfig, null, 2);
+  }
+  const taskSourceFiles = (task as DesignTask)?.sourceFiles
+    ? [...(task as DesignTask).sourceFiles!]
+    : undefined;
+  if (state.uiDesignSource === 'figma' && taskSourceFiles && !taskSourceFiles.includes('figma.json')) {
+    taskSourceFiles.push('figma.json');
+  }
   const sourceDocsForTask = buildSourceDocsForTask(
-    (task as DesignTask)?.sourceFiles,
-    state.sourceDocuments
+    taskSourceFiles,
+    Object.keys(effectiveSourceDocs).length > 0 ? effectiveSourceDocs : undefined
   );
-  
-  const taskSourceFiles = (task as DesignTask)?.sourceFiles;
   if (taskSourceFiles?.length && !sourceDocsForTask) {
     console.warn(`⚠️ [DocGen] sourceFiles assigned [${taskSourceFiles.join(', ')}] but matched 0 documents in sourceDocuments`);
   }
@@ -271,7 +279,10 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     console.log(`🔔 [FreshPrompt] Adding "Next Steps" instruction for ${task?.id} → ${targetDoc}`);
     const { FilePromptAdapter } = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
     const adapter = new FilePromptAdapter();
-    const continuationText = await adapter.render('design/phases/execute/injections/ui-continuation', { targetDoc });
+    const continuationTemplate = state.uiDesignSource === 'figma'
+      ? 'design/phases/execute/injections/ui-continuation-by-figma'
+      : 'design/phases/execute/injections/ui-continuation';
+    const continuationText = await adapter.render(continuationTemplate, { targetDoc });
     content.push({
       type: 'text',
       text: `\n\n${continuationText}`
@@ -330,13 +341,32 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
  * - Examples of file names
  */
 function buildResourcesSummary(state: DesignGraphState): string {
+  const isFigmaMode = state.uiDesignSource === 'figma';
   let resourcesSummary = '\n\n# Available Resources\n\n';
-  resourcesSummary += '## Reference Images\n';
-  resourcesSummary += 'Use `list_reference_images` tool to discover available images, then use `read_reference_image` to load and analyze specific images.\n\n';
-  
-  if (state.uiReferences?.length) {
-    resourcesSummary += `- **References**: ${state.uiReferences.length} images available\n`;
-    resourcesSummary += `  (Examples: ${state.uiReferences.slice(0, 5).join(', ')}${state.uiReferences.length > 5 ? '...' : ''})\n`;
+
+  if (isFigmaMode) {
+    resourcesSummary += '## Figma Design Data\n';
+    resourcesSummary += 'Use Figma MCP tools to extract design data directly from Figma files:\n';
+    resourcesSummary += '- `figma_get_metadata` — node tree structure and hierarchy\n';
+    resourcesSummary += '- `figma_get_design_context` — detailed styles, colors, typography, spacing\n';
+    resourcesSummary += '- `figma_get_screenshot` — visual rendering of a node\n';
+    resourcesSummary += '- `figma_get_variable_defs` — design tokens/variables defined in the file\n\n';
+
+    if (state.figmaConfig?.files?.length) {
+      resourcesSummary += `- **Figma files**: ${state.figmaConfig.files.length} file(s) configured\n`;
+    }
+    if (state.figmaExplorationResult) {
+      const er = state.figmaExplorationResult;
+      resourcesSummary += `- **Explored**: ${er.totalFrameCount} frames, ${er.variationMatrix.length} variation groups, ${er.componentStateMatrix.length} component sets\n`;
+    }
+  } else {
+    resourcesSummary += '## Reference Images\n';
+    resourcesSummary += 'Use `list_reference_images` tool to discover available images, then use `read_reference_image` to load and analyze specific images.\n\n';
+
+    if (state.uiReferences?.length) {
+      resourcesSummary += `- **References**: ${state.uiReferences.length} images available\n`;
+      resourcesSummary += `  (Examples: ${state.uiReferences.slice(0, 5).join(', ')}${state.uiReferences.length > 5 ? '...' : ''})\n`;
+    }
   }
   
   resourcesSummary += '\n## Asset Files\n';

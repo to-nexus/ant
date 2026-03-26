@@ -10,6 +10,8 @@ import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 import { executeSearchWeb } from '../../../tools/searchWeb';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
+import { createMCPTransport } from '../../../../../periphery/adapters/figma/MCPTransport';
+import { FigmaMCPAdapter } from '../../../../../periphery/adapters/figma/FigmaMCPAdapter';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -84,6 +86,36 @@ async function executeDesignTool(
           error: isError ? result : undefined,
           startLine, endLine, totalLines,
         });
+        break;
+      }
+      case 'figma_get_metadata':
+      case 'figma_get_design_context':
+      case 'figma_get_screenshot':
+      case 'figma_get_variable_defs': {
+        const figmaChatAPI = getChatAPIClient();
+        const figmaMergeIdx = await figmaChatAPI.showChatStatus('figma_calling', { toolName: name });
+        try {
+          result = await handleFigmaMCPTool(state, name, args as { fileKey: string; nodeId: string });
+          await figmaChatAPI.showChatStatus('figma_called', { toolName: name, _mergeIndex: figmaMergeIdx });
+        } catch (err: any) {
+          await figmaChatAPI.showChatStatus('figma_called', { toolName: name, error: true, _mergeIndex: figmaMergeIdx });
+          result = JSON.stringify({ error: err.message });
+        }
+        break;
+      }
+      case 'download_asset': {
+        const dlChatAPI = getChatAPIClient();
+        const dlFilename = (args as any).filename || 'asset';
+        const dlMergeIdx = await dlChatAPI.showChatStatus('downloading', { filename: dlFilename });
+        try {
+          result = await handleDownloadAsset(state, args as { url: string; filename: string; category?: string });
+          const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+          const sizeKB = parsed?.sizeBytes ? (parsed.sizeBytes / 1024).toFixed(1) : undefined;
+          await dlChatAPI.showChatStatus('downloaded', { filename: dlFilename, sizeKB, _mergeIndex: dlMergeIdx });
+        } catch (err: any) {
+          await dlChatAPI.showChatStatus('downloaded', { filename: dlFilename, error: true, _mergeIndex: dlMergeIdx });
+          result = JSON.stringify({ error: err.message });
+        }
         break;
       }
       case 'append_file':
@@ -959,6 +991,145 @@ async function handleHallucinatedFileWrite(
   } catch (error) {
     await chatAPI.failFileEdit(filePath, (error as Error).message);
     throw error;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FIGMA MCP TOOL HANDLER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const FIGMA_TOOL_METHOD_MAP: Record<string, keyof FigmaMCPAdapter> = {
+  figma_get_metadata: 'getMetadata',
+  figma_get_design_context: 'getDesignContext',
+  figma_get_screenshot: 'getScreenshot',
+  figma_get_variable_defs: 'getVariableDefs',
+};
+
+let _cachedMcpTransport: { key: string; adapter: FigmaMCPAdapter } | null = null;
+
+export function getMCPAdapter(state: DesignGraphState): FigmaMCPAdapter {
+  const serverMode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
+  const cacheKey = `${serverMode}:${state.context?.userId || 'local'}`;
+
+  if (_cachedMcpTransport?.key === cacheKey) {
+    return _cachedMcpTransport.adapter;
+  }
+
+  const transport = createMCPTransport({
+    serverMode,
+    userId: state.context?.userId,
+    redis: state.deps?.redis,
+  });
+  const adapter = new FigmaMCPAdapter(transport);
+  _cachedMcpTransport = { key: cacheKey, adapter };
+  return adapter;
+}
+
+async function handleFigmaMCPTool(
+  state: DesignGraphState,
+  toolName: string,
+  args: { fileKey: string; nodeId: string }
+): Promise<string> {
+  const { fileKey, nodeId } = args;
+  if (!fileKey || !nodeId) {
+    throw new Error(`${toolName} requires fileKey and nodeId`);
+  }
+
+  const adapter = getMCPAdapter(state);
+
+  const method = FIGMA_TOOL_METHOD_MAP[toolName];
+  if (!method) {
+    throw new Error(`No MCP method mapping for tool: ${toolName}`);
+  }
+
+  const mcpResult = await (adapter[method] as Function)(fileKey, nodeId);
+
+  if (mcpResult.isError) {
+    throw new Error(`Figma MCP error (${toolName}): ${mcpResult.content}`);
+  }
+
+  const content = mcpResult.content;
+  if (typeof content === 'string') {
+    return content;
+  }
+  return JSON.stringify(content, null, 2);
+}
+
+/**
+ * Handle download_asset tool
+ *
+ * Downloads a file from a URL and saves it to inputs/assets/{category}/{filename}.
+ * Used by LLM to download Figma-exported assets (SVG, PNG, etc.) from CDN URLs
+ * returned by get_design_context.
+ */
+async function handleDownloadAsset(
+  state: DesignGraphState,
+  args: { url: string; filename: string; category?: string }
+): Promise<string> {
+  const { url, filename } = args;
+  let { category } = args;
+
+  if (!url || !filename) {
+    throw new Error('download_asset requires url and filename');
+  }
+
+  const featurePath = state.context.featurePath;
+  if (!featurePath) {
+    throw new Error('featurePath not available in context');
+  }
+
+  // Path traversal prevention
+  const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (sanitized.includes('..') || sanitized.startsWith('/')) {
+    throw new Error(`Invalid filename: ${filename}`);
+  }
+
+  // Infer category from extension if not provided
+  if (!category) {
+    const ext = sanitized.split('.').pop()?.toLowerCase();
+    if (ext === 'svg') category = 'icons';
+    else if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext || '')) category = 'images';
+    else category = 'misc';
+  }
+
+  const pathMod = await import('path');
+  const fsMod = await import('fs/promises');
+
+  const destDir = pathMod.join(featurePath, 'inputs', 'assets', category);
+  await fsMod.mkdir(destDir, { recursive: true });
+
+  const destPath = pathMod.join(destDir, sanitized);
+  const relativePath = `inputs/assets/${category}/${sanitized}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await fsMod.writeFile(destPath, buffer);
+
+    const sizeKB = (buffer.length / 1024).toFixed(1);
+    console.log(`📥 [Tool] download_asset: ${relativePath} (${sizeKB} KB)`);
+
+    return JSON.stringify({
+      success: true,
+      path: relativePath,
+      filename: sanitized,
+      category,
+      sizeBytes: buffer.length,
+    });
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Download timed out after 30s: ${url}`);
+    }
+    throw new Error(`Failed to download asset from ${url}: ${err.message}`);
   }
 }
 

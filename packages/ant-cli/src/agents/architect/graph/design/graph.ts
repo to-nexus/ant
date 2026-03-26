@@ -119,6 +119,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
               detectionReport: state.detectionReport,
+              uiDesignSource: state.uiDesignSource,
+              figmaConfig: state.figmaConfig,
+              figmaExplorationResult: state.figmaExplorationResult,
               interruption,
             }
           }
@@ -254,6 +257,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
               chatSource: state.chatSource,  // ✅ Save chat source flag
               detectionReport: state.detectionReport,  // ✅ Save for resume routing
+              uiDesignSource: state.uiDesignSource,
+              figmaConfig: state.figmaConfig,
+              figmaExplorationResult: state.figmaExplorationResult,
             }
           }
         );
@@ -368,6 +374,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     existingDesignDocs: state.existingDesignDocs,
     uiReferences: (state as any).uiReferences,
     uiAssetsList: (state as any).uiAssetsList,
+    figmaConfig: state.figmaConfig,
+    uiDesignSource: state.uiDesignSource,
+    figmaExplorationResult: state.figmaExplorationResult,
     _httpJobId: state._httpJobId,
     _uiLocale: (state as any)._uiLocale,
     jobId: (state as any).jobId,
@@ -443,6 +452,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   jobId: (state as any).jobId,
                   jobTiming: (state as any).jobTiming,
                   parallelMode: true,
+                  uiDesignSource: state.uiDesignSource,
+                  figmaConfig: state.figmaConfig,
+                  figmaExplorationResult: state.figmaExplorationResult,
                 },
               },
             );
@@ -523,6 +535,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
             jobId: (state as any).jobId,
             jobTiming: (state as any).jobTiming,
             parallelMode: true,
+            uiDesignSource: state.uiDesignSource,
+            figmaConfig: state.figmaConfig,
+            figmaExplorationResult: state.figmaExplorationResult,
             interruption: {
               reason: 'tasks_failed',
               message: `${result.failedTasks.length} task(s) failed during parallel execution`,
@@ -636,6 +651,11 @@ export function buildDesignGraph() {
       // UI document generation context
       uiReferences: null as any,
       uiAssetsList: null as any,
+
+      // Figma integration (resolve -> detectEnvironment -> figmaExplore -> docGen)
+      figmaConfig: null as any,
+      uiDesignSource: null as any,
+      figmaExplorationResult: null as any,
       
       // ✅ Resume flag (set by runner before graph invoke)
       isResume: null as any,
