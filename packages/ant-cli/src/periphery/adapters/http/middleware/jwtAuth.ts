@@ -47,7 +47,7 @@ export function createJwtAuthMiddleware(options: JwtAuthMiddlewareOptions) {
       }
     }
 
-    // Extract JWT from cookie or Authorization header (for companion app)
+    // Extract JWT from cookie or Authorization header (for Ant Desktop)
     const token = (req as any).cookies?.[JwtService.cookieName]
       || req.headers.authorization?.replace('Bearer ', '');
 

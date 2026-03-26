@@ -1,13 +1,13 @@
 /**
  * Bridge WebSocket Handler
  *
- * Accepts WebSocket connections from the Companion App at /bridge/ws.
+ * Accepts WebSocket connections from Ant Desktop at /bridge/ws.
  * Manages session lifecycle (register/heartbeat/disconnect) via Redis,
- * and relays MCP requests between Job Workers and the Companion App
+ * and relays MCP requests between Job Workers and Ant Desktop
  * using user-scoped Redis Pub/Sub channels.
  *
  * Cloud-safe: each Realtime Pod only subscribes to channels for its
- * locally connected companions. Workers publish to user-scoped channels,
+ * locally connected desktops. Workers publish to user-scoped channels,
  * so only the correct Pod receives the message.
  */
 
@@ -108,7 +108,7 @@ export class BridgeWebSocketHandler {
   // ─── Connection lifecycle ───────────────────────────────
 
   private handleConnection(ws: WebSocket, client: BridgeClient): void {
-    logger.info(`Companion connected (userId=${client.userId}, auth=${client.authStatus})`, { component: COMPONENT });
+    logger.info(`Ant Desktop connected (userId=${client.userId}, auth=${client.authStatus})`, { component: COMPONENT });
 
     ws.on('message', (data) => {
       try {
@@ -218,7 +218,7 @@ export class BridgeWebSocketHandler {
     await this.stateStore.setKeyWithTTL(responseKey, payload, 60);
   }
 
-  // ─── MCP channel relay (Worker → Companion) ────────────
+  // ─── MCP channel relay (Worker → Ant Desktop) ────────────
 
   private async subscribeMcpChannel(client: BridgeClient, userId: string): Promise<void> {
     if (!this.stateStore) return;

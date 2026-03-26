@@ -87,7 +87,7 @@ export class DirectMCPTransport implements MCPTransport {
  * BridgeMCPTransport
  * 
  * For cloud mode: worker publishes MCP request to Redis,
- * Realtime forwards to Companion WebSocket, response comes back via Redis.
+ * Realtime forwards to Ant Desktop WebSocket, response comes back via Redis.
  * 
  * Stub implementation — full Redis pub/sub will be implemented in Phase 3-B.
  */
