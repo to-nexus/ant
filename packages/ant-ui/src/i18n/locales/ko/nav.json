@@ -54,7 +54,24 @@
     "horizontal": "수평 분할 (좌/우)",
     "vertical": "수직 분할 (상/하)"
   },
-  "bridge": {
-    "notConnected": "Ant Desktop 미연결"
+  "desktop": {
+    "offline": "오프라인",
+    "detected": "실행 중",
+    "connected": "연결됨",
+    "start": "시작",
+    "connect": "연결",
+    "connecting": "연결 중...",
+    "settings": "설정",
+    "offlineDesc": "Ant Desktop이 실행되고 있지 않습니다",
+    "downloadHint": "앱이 없으신가요?",
+    "detectedDesc": "Ant Desktop이 실행 중입니다. 연결을 클릭하세요.",
+    "connectedDesc": "Ant Desktop이 연결되었습니다",
+    "downloadTitle": "Ant Desktop을 찾을 수 없습니다",
+    "downloadDesc": "Ant Desktop이 설치되어 있지 않은 것 같습니다. 다운로드 후 시작하세요.",
+    "downloadButton": "다운로드",
+    "retry": "재시도",
+    "cancel": "취소",
+    "connectionFailed": "연결 시간 초과",
+    "connectionFailedDesc": "Ant Desktop에 연결할 수 없습니다. 실행 중인지 확인하세요."
   }
 }

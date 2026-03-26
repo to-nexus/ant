@@ -95,6 +95,12 @@ function isFeatureOrSetupTask<T extends BaseTask>(t: T): boolean {
 function isPreDocTask<T extends BaseTask>(t: T): boolean {
   return t.type === 'feature' || t.type === 'setup' || t.type === 'test-code';
 }
+function isTokensTask<T extends BaseTask>(t: T): boolean {
+  return t.priority >= 100 && t.priority <= 199;
+}
+function isTokensOrAssetsTask<T extends BaseTask>(t: T): boolean {
+  return t.priority >= 100 && t.priority <= 299;
+}
 
 export class TaskOrchestrator<T extends BaseTask> {
   // Shared state (protected by lock)
@@ -498,6 +504,12 @@ export class TaskOrchestrator<T extends BaseTask> {
       hasPreDocWork: !!b?.doc && (
         running.some(isPreDocTask) || queued.some(isPreDocTask)
       ),
+      hasPreAssetsWork: !!b?.assets && (
+        running.some(isTokensTask) || queued.some(isTokensTask)
+      ),
+      hasPreSpecWork: !!b?.spec && (
+        running.some(isTokensOrAssetsTask) || queued.some(isTokensOrAssetsTask)
+      ),
     };
   }
 
@@ -509,7 +521,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
-    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork } =
+    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     for (const task of this.taskQueue.getAll()) {
@@ -533,6 +545,12 @@ export class TaskOrchestrator<T extends BaseTask> {
 
       // UI barrier: don't assign ui tasks while feature/setup work exists
       if (hasPreUiWork && task.type === 'ui') break;
+
+      // Assets barrier: don't assign assets (200+) while tokens (100-199) work exists
+      if (hasPreAssetsWork && task.priority >= 200) break;
+
+      // Spec barrier: don't assign spec (300+) while tokens+assets (100-299) work exists
+      if (hasPreSpecWork && task.priority >= 300) break;
 
       // No parallelGroup = conservative solo execution
       if (!task.parallelGroup) {
@@ -580,7 +598,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
-    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork } =
+    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     let potentialTasks = 0;
@@ -590,6 +608,8 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (hasPreTestgenWork && task.type === 'test-code') break;
       if (hasPreDocWork && task.type === 'doc') break;
       if (hasPreUiWork && task.type === 'ui') break;
+      if (hasPreAssetsWork && task.priority >= 200) break;
+      if (hasPreSpecWork && task.priority >= 300) break;
       if (!task.parallelGroup) {
         if (this.runningTasks.size === 0 && potentialTasks === 0) potentialTasks++;
         continue;

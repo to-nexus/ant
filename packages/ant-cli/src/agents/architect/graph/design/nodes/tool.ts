@@ -1025,6 +1025,8 @@ export function getMCPAdapter(state: DesignGraphState): FigmaMCPAdapter {
   return adapter;
 }
 
+const _figmaResponseCache = new Map<string, string>();
+
 async function handleFigmaMCPTool(
   state: DesignGraphState,
   toolName: string,
@@ -1033,6 +1035,13 @@ async function handleFigmaMCPTool(
   const { fileKey, nodeId } = args;
   if (!fileKey || !nodeId) {
     throw new Error(`${toolName} requires fileKey and nodeId`);
+  }
+
+  const cacheKey = `${toolName}:${fileKey}:${nodeId}`;
+  const cached = _figmaResponseCache.get(cacheKey);
+  if (cached) {
+    console.log(`🔧 [FigmaMCP] Cache hit: ${toolName} (${fileKey}:${nodeId})`);
+    return cached;
   }
 
   const adapter = getMCPAdapter(state);
@@ -1049,10 +1058,10 @@ async function handleFigmaMCPTool(
   }
 
   const content = mcpResult.content;
-  if (typeof content === 'string') {
-    return content;
-  }
-  return JSON.stringify(content, null, 2);
+  const result = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+
+  _figmaResponseCache.set(cacheKey, result);
+  return result;
 }
 
 /**
@@ -1117,6 +1126,17 @@ async function handleDownloadAsset(
 
     const sizeKB = (buffer.length / 1024).toFixed(1);
     console.log(`📥 [Tool] download_asset: ${relativePath} (${sizeKB} KB)`);
+
+    if (state.deps?.fileTreeUpdate) {
+      const featureName = state.context.featureFolder || 'default';
+      state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
+
+      if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
+        (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
+          state.context.project, featureName, [relativePath]
+        );
+      }
+    }
 
     return JSON.stringify({
       success: true,
