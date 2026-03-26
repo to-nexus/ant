@@ -16,7 +16,6 @@ import { logger } from '../logger';
 import {
   UserIntegrations,
   GitHubIntegration,
-  FigmaIntegration,
   LinearIntegration,
   SlackIntegration,
   ServiceType
@@ -56,7 +55,7 @@ export class IntegrationsStore {
   /**
    * Get integration settings for specific service
    */
-  async get<T extends GitHubIntegration | FigmaIntegration | LinearIntegration | SlackIntegration>(
+  async get<T extends GitHubIntegration | LinearIntegration | SlackIntegration>(
     userContext: UserContext,
     service: ServiceType
   ): Promise<T> {
@@ -67,7 +66,7 @@ export class IntegrationsStore {
   /**
    * Set integration settings for specific service
    */
-  async set<T extends GitHubIntegration | FigmaIntegration | LinearIntegration | SlackIntegration>(
+  async set<T extends GitHubIntegration | LinearIntegration | SlackIntegration>(
     userContext: UserContext,
     service: ServiceType,
     settings: Partial<T>
@@ -167,7 +166,6 @@ export class IntegrationsStore {
   private getDefaults(): UserIntegrations {
     return {
       github: this.getServiceDefaults('github') as GitHubIntegration,
-      figma: this.getServiceDefaults('figma') as FigmaIntegration,
       linear: this.getServiceDefaults('linear') as LinearIntegration,
       slack: this.getServiceDefaults('slack') as SlackIntegration
     };
@@ -184,12 +182,6 @@ export class IntegrationsStore {
         autoCreateRepo: false,
         autoSync: false,
         syncInterval: 5
-      },
-      figma: {
-        enabled: false,
-        defaultFileFormat: 'svg',
-        autoExtractTokens: false,
-        autoGenerateCode: false
       },
       linear: {
         enabled: false,

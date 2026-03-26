@@ -1,28 +1,23 @@
 /**
  * Figma Files Routes
  * 
- * API endpoints for working with Figma files in features
+ * API endpoints for reading/writing inputs/figma.json in features.
  */
 
 import { Router, Request, Response } from 'express';
-import { FigmaFileReader } from '../../../../core/usecases/figma/FigmaFileReader';
-import { FigmaDesignExtractor } from '../../../../core/usecases/figma/FigmaDesignExtractor';
-import { FigmaMCPAdapter } from '../../../adapters/figma/FigmaMCPAdapter';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { UserConfigManager } from '../../../../utils/userConfig';
+import { FigmaDataConfig, FIGMA_FILENAME, createEmptyFigmaData, migrateFigmaConfig } from '@ant/shared';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 
 export interface FigmaFilesRoutesDeps {
   workspaceRoot: string;
-  workspaceResolver: any; // WorkspaceResolver
+  workspaceResolver: any;
 }
 
 export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
   const router = Router();
-  const userConfig = new UserConfigManager(deps.workspaceRoot);
-  
-  /**
-   * Helper to get user context from request
-   */
+
   const getUserContext = (req: Request) => {
     if ((req as any).user && (req as any).organization) {
       return {
@@ -30,97 +25,76 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
         organizationId: (req as any).organization.id,
       };
     }
-    
-    // Fallback for local mode
     return { userId: 'local', organizationId: 'local' };
   };
-  
+
+  const getFigmaJsonPath = (req: Request): string => {
+    const { projectId, featureName } = req.params;
+    const userContext = getUserContext(req);
+    const featurePath = deps.workspaceResolver.getFeaturePath(
+      userContext,
+      projectId,
+      featureName
+    );
+    return path.join(featurePath, 'inputs', FIGMA_FILENAME);
+  };
+
   /**
-   * GET /api/figma/files/:projectId/:featureName
-   * Get Figma file references from inputs/figma.md
+   * GET /api/figma/config/:projectId/:featureName
+   * Read inputs/figma.json — auto-creates if missing, auto-migrates legacy format.
    */
-  router.get('/files/:projectId/:featureName', async (req: Request, res: Response) => {
+  router.get('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {
-      const { projectId, featureName } = req.params;
-      const userContext = getUserContext(req);
-      
-      const featurePath = deps.workspaceResolver.getFeaturePath(
-        userContext,
-        projectId,
-        featureName
-      );
-      
-      const references = FigmaFileReader.readFigmaReferences(featurePath);
-      
-      res.json({
-        success: true,
-        references,
-        count: references.length
-      });
+      const figmaPath = getFigmaJsonPath(req);
+      let config: FigmaDataConfig;
+
+      let fileExists = true;
+      let content: string | undefined;
+      try {
+        content = await fs.readFile(figmaPath, 'utf-8');
+      } catch {
+        fileExists = false;
+      }
+
+      if (!fileExists) {
+        config = createEmptyFigmaData();
+        await fs.mkdir(path.dirname(figmaPath), { recursive: true });
+        await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
+      } else {
+        try {
+          const raw = JSON.parse(content!);
+          config = migrateFigmaConfig(raw);
+          if (JSON.stringify(config) !== JSON.stringify(raw)) {
+            await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
+          }
+        } catch {
+          config = createEmptyFigmaData();
+        }
+      }
+
+      res.json({ success: true, config });
     } catch (error: any) {
-      sendErrorResponse(res, 500, error, 'FigmaFiles');
+      sendErrorResponse(res, 500, error, 'FigmaConfig');
     }
   });
-  
+
   /**
-   * POST /api/figma/extract/:projectId/:featureName
-   * Extract design information from Figma files
+   * PUT /api/figma/config/:projectId/:featureName
+   * Write inputs/figma.json
    */
-  router.post('/extract/:projectId/:featureName', async (req: Request, res: Response) => {
+  router.put('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {
-      const { projectId, featureName } = req.params;
-      const userContext = getUserContext(req);
-      
-      const featurePath = deps.workspaceResolver.getFeaturePath(
-        userContext,
-        projectId,
-        featureName
-      );
-      
-      const figmaAdapter = new FigmaMCPAdapter();
-      const extractor = new FigmaDesignExtractor(
-        figmaAdapter,
-        userConfig,
-        deps.workspaceRoot
-      );
-      
-      const designs = await extractor.extractDesigns(featurePath, userContext);
-      
-      res.json({
-        success: true,
-        designs,
-        count: designs.length
-      });
+      const figmaPath = getFigmaJsonPath(req);
+      const config: FigmaDataConfig = req.body;
+
+      await fs.mkdir(path.dirname(figmaPath), { recursive: true });
+      await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
+
+      res.json({ success: true });
     } catch (error: any) {
-      sendErrorResponse(res, 500, error, 'FigmaExtract');
+      sendErrorResponse(res, 500, error, 'FigmaConfig');
     }
   });
-  
-  /**
-   * POST /api/figma/create-example/:projectId/:featureName
-   * Create example figma.md file
-   */
-  router.post('/create-example/:projectId/:featureName', async (req: Request, res: Response) => {
-    try {
-      const { projectId, featureName } = req.params;
-      const userContext = getUserContext(req);
-      
-      const featurePath = deps.workspaceResolver.getFeaturePath(
-        userContext,
-        projectId,
-        featureName
-      );
-      
-      FigmaFileReader.createExampleFile(featurePath);
-      
-      res.json({
-        success: true,
-        message: 'Example figma.md created'
-      });
-    } catch (error: any) {
-      sendErrorResponse(res, 500, error, 'FigmaCreateExample');
-    }
-  });
-  
+
   return router;
 }

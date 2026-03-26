@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   checkGitHubPATStatus, 
   saveGitHubPAT, 
   deleteGitHubPAT,
-  checkFigmaConfigStatus,
-  startFigmaOAuth,
-  disconnectFigma,
+  checkBridgeStatus,
+  openCompanionDeepLink,
   fetchOrgConfig,
   fetchUserConfig,
   updateUserConfig,
@@ -17,6 +16,7 @@ import { useStore } from '@/domain/store';
 import { DEFAULT_LOCAL_BACKEND_PORT, STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
 import { ConfigSection, ConfigIcons, ConfigStyles } from './ConfigSection';
 import { DangerZoneSection } from './common/DangerZoneSection';
+import { Modal } from './common/Modal';
 
 interface AccountConfigEditorProps {
   onClose: () => void;
@@ -49,13 +49,21 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const [isLoadingOwnerConfig, setIsLoadingOwnerConfig] = useState(true);
   const [isSavingOverride, setIsSavingOverride] = useState(false);
   
-  // Figma OAuth state
-  const [figmaConfigured, setFigmaConfigured] = useState(false);
-  const [figmaUserEmail, setFigmaUserEmail] = useState<string | undefined>();
-  const [figmaUserId, setFigmaUserId] = useState<string | undefined>();
-  const [figmaConnectedAt, setFigmaConnectedAt] = useState<string | undefined>();
-  const [isCheckingFigma, setIsCheckingFigma] = useState(true);
-  const [isDisconnectingFigma, setIsDisconnectingFigma] = useState(false);
+  // Bridge state from global store (single source of truth)
+  const bridgeConnected = useStore((s) => s.bridgeConnected);
+  const bridgeDetected = useStore((s) => s.bridgeDetected);
+  const figmaDesktopReachable = useStore((s) => s.figmaDesktopReachable);
+  const setBridgeStatus = useStore((s) => s.setBridgeStatus);
+  const accountConfigScrollTarget = useStore((s) => s.accountConfigScrollTarget);
+  const setAccountConfigScrollTarget = useStore((s) => s.setAccountConfigScrollTarget);
+  const [isCheckingBridge, setIsCheckingBridge] = useState(false);
+  const figmaSectionRef = useRef<HTMLDivElement>(null);
+  
+  // Deep link modal state
+  const [deeplinkModalOpen, setDeeplinkModalOpen] = useState(false);
+  const [deeplinkPhase, setDeeplinkPhase] = useState<'connecting' | 'success' | 'failed'>('connecting');
+  const deeplinkPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const deeplinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Account reset state
   const [isResettingAccount, setIsResettingAccount] = useState(false);
@@ -106,71 +114,35 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     loadOwnerConfigs();
   }, []);
   
-  // Load Figma config status on mount
-  useEffect(() => {
-    async function loadFigmaConfigStatus() {
-      console.log('[AccountConfigEditor] Loading initial Figma config status...');
-      setIsCheckingFigma(true);
-      try {
-        const status = await checkFigmaConfigStatus();
-        console.log('[AccountConfigEditor] Initial Figma status:', status);
-        
-        setFigmaConfigured(status.configured);
-        setFigmaUserEmail(status.email);
-        setFigmaUserId(status.userId);
-        setFigmaConnectedAt(status.updatedAt);
-        
-        if (status.configured) {
-          console.log('[AccountConfigEditor] Figma is already connected:', status.email);
-        } else {
-          console.log('[AccountConfigEditor] Figma is not connected');
-        }
-      } catch (error) {
-        console.error('[AccountConfigEditor] Failed to check Figma config status:', error);
-      } finally {
-        setIsCheckingFigma(false);
-      }
+  // Load Bridge / Companion status → global store
+  const loadBridgeStatus = async () => {
+    setIsCheckingBridge(true);
+    try {
+      const status = await checkBridgeStatus();
+      setBridgeStatus({
+        connected: status.connected,
+        detected: status.detected ?? status.connected,
+        figmaDesktopReachable: status.figmaDesktopReachable ?? false,
+      });
+    } catch {
+      setBridgeStatus({ connected: false, detected: false, figmaDesktopReachable: false });
+    } finally {
+      setIsCheckingBridge(false);
     }
-    loadFigmaConfigStatus();
-  }, []);
-  
-  // Listen for OAuth completion via postMessage
+  };
+
   useEffect(() => {
-    const reloadFigmaStatus = async () => {
-      try {
-        console.log('[AccountConfigEditor] Reloading Figma status...');
-        const status = await checkFigmaConfigStatus();
-        console.log('[AccountConfigEditor] Figma status:', status);
-        
-        setFigmaConfigured(status.configured);
-        setFigmaUserEmail(status.email);
-        setFigmaUserId(status.userId);
-        setFigmaConnectedAt(status.updatedAt);
-        
-        if (status.configured) {
-          showSuccess(t('account.figmaConnectedAs', { email: status.email }));
-        }
-      } catch (error) {
-        console.error('[AccountConfigEditor] Failed to reload Figma status:', error);
-      }
-    };
-    
-    // Handle postMessage from OAuth popup
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'figma-oauth-success') {
-        console.log('[AccountConfigEditor] ✅ Received OAuth success message:', event.data);
-        // Wait a bit for backend to save, then reload once
-        setTimeout(() => reloadFigmaStatus(), 500);
-      }
-    };
-    
-    window.addEventListener('message', handleMessage);
-    
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
+    loadBridgeStatus();
   }, []);
 
+  // Scroll to Figma section when requested (e.g. from GNB indicator)
+  useEffect(() => {
+    if (accountConfigScrollTarget === 'figma' && figmaSectionRef.current) {
+      figmaSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setAccountConfigScrollTarget(null);
+    }
+  }, [accountConfigScrollTarget]);
+  
   // ============================================
   // Handlers
   // ============================================
@@ -243,42 +215,74 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     });
   };
 
-  const handleConnectFigma = async () => {
+  const cleanupDeeplinkPolling = useCallback(() => {
+    if (deeplinkPollRef.current) { clearInterval(deeplinkPollRef.current); deeplinkPollRef.current = null; }
+    if (deeplinkTimeoutRef.current) { clearTimeout(deeplinkTimeoutRef.current); deeplinkTimeoutRef.current = null; }
+  }, []);
+
+  const closeDeeplinkModal = useCallback(() => {
+    cleanupDeeplinkPolling();
+    setDeeplinkModalOpen(false);
+  }, [cleanupDeeplinkPolling]);
+
+  const startDeeplinkPolling = useCallback(() => {
+    cleanupDeeplinkPolling();
+    setDeeplinkPhase('connecting');
+
+    deeplinkPollRef.current = setInterval(async () => {
+      try {
+        const status = await checkBridgeStatus();
+        if (status.connected) {
+          cleanupDeeplinkPolling();
+          setBridgeStatus({
+            connected: status.connected,
+            detected: status.detected ?? status.connected,
+            figmaDesktopReachable: status.figmaDesktopReachable ?? false,
+          });
+          setDeeplinkPhase('success');
+          setTimeout(() => closeDeeplinkModal(), 1200);
+        }
+      } catch { /* ignore poll errors */ }
+    }, 2000);
+
+    deeplinkTimeoutRef.current = setTimeout(() => {
+      if (deeplinkPollRef.current) { clearInterval(deeplinkPollRef.current); deeplinkPollRef.current = null; }
+      setDeeplinkPhase('failed');
+    }, 15000);
+  }, [cleanupDeeplinkPolling, setBridgeStatus, closeDeeplinkModal]);
+
+  const handleConnectCompanion = async () => {
+    setDeeplinkModalOpen(true);
+    setDeeplinkPhase('connecting');
     try {
-      console.log('[AccountConfigEditor] Starting Figma OAuth...');
-      await startFigmaOAuth();
-      // OAuth flow will trigger postMessage when complete
-    } catch (error: any) {
-      console.error('[AccountConfigEditor] Failed to start Figma OAuth:', error);
-      showError(error.message || t('figma.oauthFailed'));
+      const opened = await openCompanionDeepLink();
+      if (!opened) {
+        setDeeplinkPhase('failed');
+        return;
+      }
+      startDeeplinkPolling();
+    } catch {
+      setDeeplinkPhase('failed');
     }
   };
 
-  const handleDisconnectFigma = async () => {
-    showConfirm(t('figma.disconnectConfirm'), {
-      type: 'warning',
-      title: t('figma.disconnectConfirm'),
-      confirmText: t('common:button.delete'),
-      cancelText: t('common:button.cancel'),
-      onConfirm: async () => {
-        setIsDisconnectingFigma(true);
-        try {
-          console.log('[AccountConfigEditor] Disconnecting Figma...');
-          await disconnectFigma();
-          setFigmaConfigured(false);
-          setFigmaUserEmail(undefined);
-          setFigmaUserId(undefined);
-          setFigmaConnectedAt(undefined);
-          showSuccess(t('figma.disconnected'));
-        } catch (error: any) {
-          console.error('[AccountConfigEditor] Failed to disconnect Figma:', error);
-          showError(error.message || t('figma.disconnectFailed'));
-        } finally {
-          setIsDisconnectingFigma(false);
-        }
+  const handleDeeplinkRetry = async () => {
+    setDeeplinkPhase('connecting');
+    try {
+      const opened = await openCompanionDeepLink();
+      if (!opened) {
+        setDeeplinkPhase('failed');
+        return;
       }
-    });
+      startDeeplinkPolling();
+    } catch {
+      setDeeplinkPhase('failed');
+    }
   };
+
+  useEffect(() => {
+    return () => cleanupDeeplinkPolling();
+  }, [cleanupDeeplinkPolling]);
 
   const handlePortInputChange = (value: string) => {
     setPortInput(value);
@@ -562,60 +566,107 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     </ConfigSection>
   );
 
-  const renderFigmaSection = () => (
+  const renderFigmaSection = () => {
+    const statusState = isCheckingBridge
+      ? 'checking' as const
+      : (bridgeConnected === true && figmaDesktopReachable)
+        ? 'configured' as const
+        : 'not-configured' as const;
+    const statusLabel = (bridgeConnected === true && figmaDesktopReachable)
+      ? t('figma.ready')
+      : t('figma.setupNeeded');
+
+    const antDesktopBadge = (() => {
+      if (bridgeConnected) return { text: t('figma.statusConnected'), cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' };
+      if (bridgeDetected) return { text: t('figma.statusDetected'), cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' };
+      return { text: t('figma.statusNotDetected'), cls: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' };
+    })();
+
+    const figmaDesktopBadge = (() => {
+      if (!bridgeConnected) return { text: t('figma.statusRequiresAntDesktop'), cls: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-500' };
+      if (figmaDesktopReachable) return { text: t('figma.statusReachable'), cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' };
+      return { text: t('figma.statusNotReachable'), cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' };
+    })();
+
+    return (
     <ConfigSection
       icon={<ConfigIcons.Figma />}
       title={t('figma.title')}
       description={t('figma.description')}
-      status={{
-        state: isCheckingFigma ? 'checking' : (figmaConfigured ? 'configured' : 'not-configured'),
-        label: figmaConfigured ? t('account.figmaConnected') : t('account.figmaNotConnected'),
-      }}
-      extraBadge={figmaConfigured ? (
-        <span className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-          {t('figma.comingSoon')}
-        </span>
-      ) : undefined}
-      hint={t('account.figmaOauthHint')}
+      status={{ state: statusState, label: statusLabel }}
+      extraBadge={
+        <button onClick={loadBridgeStatus} disabled={isCheckingBridge}
+          className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-700 dark:hover:text-gray-300 transition-colors disabled:opacity-50">
+          <svg className={`w-3 h-3 ${isCheckingBridge ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {t('figma.refresh')}
+        </button>
+      }
     >
-      {figmaConfigured ? (
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-            {t('account.connectedAccount')}
-          </label>
-          <div className="flex items-center gap-3">
-            <div className={`flex-1 ${ConfigStyles.inputDisabled}`}>
-              {figmaUserEmail || figmaUserId || t('account.connectedFallback')}
-              {figmaConnectedAt && (
-                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                  {t('account.connectedDate', { date: new Date(figmaConnectedAt).toLocaleDateString() })}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={handleDisconnectFigma}
-              disabled={isDisconnectingFigma}
-              className={ConfigStyles.buttonDanger}
-            >
-              {isDisconnectingFigma ? t('account.disconnecting') : t('account.disconnect')}
+      <div className="space-y-2.5">
+        {/* Ant Desktop row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <svg className="w-4 h-4 flex-shrink-0 text-gray-500 dark:text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="3" width="18" height="14" rx="2" />
+            <path d="M7 21h10M12 17v4" strokeLinecap="round" />
+          </svg>
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+            {t('figma.antDesktop')}
+          </span>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${antDesktopBadge.cls}`}>
+            {antDesktopBadge.text}
+          </span>
+          {!bridgeDetected && !bridgeConnected && (
+            <a href="https://github.com/anthropics/ant-companion/releases" target="_blank"
+               rel="noopener noreferrer"
+               className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+              {t('figma.downloadAntDesktop')} ↗
+            </a>
+          )}
+          {bridgeDetected && !bridgeConnected && (
+            <button onClick={handleConnectCompanion}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+              {t('figma.connectAntDesktop')}
             </button>
-          </div>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-            {t('figma.connected')}
-          </p>
+          )}
         </div>
-      ) : (
-        <div>
-          <button
-            onClick={handleConnectFigma}
-            className={ConfigStyles.buttonPurple}
-          >
-            {t('account.connectFigma')}
-          </button>
+
+        {/* Figma Desktop row (always visible) */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 38 57" fill="none">
+            <path d="M19 28.5a9.5 9.5 0 1119 0 9.5 9.5 0 01-19 0z" fill="#1ABCFE"/>
+            <path d="M0 47.5A9.5 9.5 0 019.5 38H19v9.5a9.5 9.5 0 01-19 0z" fill="#0ACF83"/>
+            <path d="M19 0v19h9.5a9.5 9.5 0 000-19H19z" fill="#FF7262"/>
+            <path d="M0 9.5A9.5 9.5 0 009.5 19H19V0H9.5A9.5 9.5 0 000 9.5z" fill="#F24E1E"/>
+            <path d="M0 28.5A9.5 9.5 0 009.5 38H19V19H9.5A9.5 9.5 0 000 28.5z" fill="#A259FF"/>
+          </svg>
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+            {t('figma.figmaDesktop')}
+          </span>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${figmaDesktopBadge.cls}`}>
+            {figmaDesktopBadge.text}
+          </span>
+          {bridgeConnected && !figmaDesktopReachable && (
+            <a href="https://www.figma.com/downloads/" target="_blank"
+               rel="noopener noreferrer"
+               className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+              {t('figma.downloadFigmaDesktop')} ↗
+            </a>
+          )}
+          {!bridgeConnected && (
+            <a href="https://www.figma.com/downloads/" target="_blank"
+               rel="noopener noreferrer"
+               className="text-xs text-gray-400 dark:text-gray-500 hover:underline">
+              {t('figma.downloadFigmaDesktop')} ↗
+            </a>
+          )}
         </div>
-      )}
+
+      </div>
     </ConfigSection>
   );
+  };
 
   const renderResetAccountSection = () => (
     <DangerZoneSection
@@ -717,10 +768,9 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             {renderLocalBackendSection()}
           </div> */}
           
-          {/* Figma Integration Section - Hidden: planned feature, not yet supported */}
-          {/* <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+          <div ref={figmaSectionRef} className="border-t border-gray-200 dark:border-gray-700 pt-6">
             {renderFigmaSection()}
-          </div> */}
+          </div>
 
           {/* Reset Account Section (Danger Zone) */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
@@ -728,6 +778,67 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           </div>
         </div>
       </div>
+
+      {/* Deep link connection modal */}
+      <Modal
+        isOpen={deeplinkModalOpen}
+        onClose={closeDeeplinkModal}
+        title={t('figma.antDesktop')}
+        size="sm"
+        onBackdropClick={() => {}}
+      >
+        <div className="flex flex-col items-center py-4">
+          {deeplinkPhase === 'connecting' && (
+            <>
+              <div className="w-10 h-10 mb-4 border-3 border-gray-200 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+              <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                {t('figma.deeplinkConnecting')}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                {t('figma.deeplinkDesc')}
+              </p>
+              <button onClick={closeDeeplinkModal} className={ConfigStyles.buttonSecondary}>
+                {t('figma.deeplinkCancel')}
+              </button>
+            </>
+          )}
+          {deeplinkPhase === 'success' && (
+            <>
+              <div className="w-10 h-10 mb-4 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                {t('figma.deeplinkSuccess')}
+              </p>
+            </>
+          )}
+          {deeplinkPhase === 'failed' && (
+            <>
+              <div className="w-10 h-10 mb-4 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                <svg className="w-6 h-6 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                {t('figma.deeplinkFailed')}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                {t('figma.deeplinkDesc')}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={handleDeeplinkRetry} className={ConfigStyles.buttonPrimary}>
+                  {t('figma.deeplinkRetry')}
+                </button>
+                <button onClick={closeDeeplinkModal} className={ConfigStyles.buttonSecondary}>
+                  {t('figma.deeplinkCancel')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -30,6 +30,7 @@ import {
 } from '../../periphery/adapters/http/services';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { UnifiedWorkspaceResolver } from '../workspace/WorkspaceResolver';
+import { BridgeWebSocketHandler } from './BridgeWebSocketHandler';
 import { logger } from '../../utils/logger';
 import http from 'http';
 
@@ -43,6 +44,7 @@ export class RealtimeServer {
   private app: Express;
   private server: http.Server | null = null;
   private sseService: SSEService;
+  private bridgeHandler: BridgeWebSocketHandler | null = null;
   private config: RealtimeServerConfig;
   
   constructor(config: RealtimeServerConfig) {
@@ -72,7 +74,11 @@ export class RealtimeServer {
     // 5. Setup health check
     this.setupHealthCheck();
     
-    // 6. Start server
+    // 6. Setup Bridge WebSocket handler for Companion App
+    this.bridgeHandler = new BridgeWebSocketHandler({ stateStore });
+    logger.info('Bridge WebSocket handler initialized', { component: 'RealtimeServer' });
+    
+    // 7. Start server
     return new Promise((resolve, reject) => {
       try {
         this.server = this.app.listen(this.config.port, () => {
@@ -80,6 +86,15 @@ export class RealtimeServer {
             component: 'RealtimeServer'
           }, { port: this.config.port });
           resolve(this.server!);
+        });
+        
+        // Register WebSocket upgrade handler for /bridge/ws
+        this.server.on('upgrade', (req, socket, head) => {
+          if (this.bridgeHandler?.shouldHandle(req)) {
+            this.bridgeHandler.handleUpgrade(req, socket, head);
+          } else {
+            socket.destroy();
+          }
         });
         
         this.server.on('error', (error) => {
@@ -223,6 +238,11 @@ export class RealtimeServer {
    * Stop the server
    */
   async stop(): Promise<void> {
+    // Close bridge WebSocket connections
+    if (this.bridgeHandler) {
+      await this.bridgeHandler.close();
+    }
+
     // End all SSE connections first so server.close() doesn't block
     this.sseService.closeAll();
 

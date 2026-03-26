@@ -13,6 +13,7 @@ export * from './agents';
 export * from './llm';
 export * from './github';
 export * from './figma';
+export * from './companion';
 export * from './ide';
 export * from './triage';
 export * from './transfer';

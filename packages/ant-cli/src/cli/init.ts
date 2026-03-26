@@ -153,7 +153,14 @@ export function initFeature(workspaceName: string, featureName: string): void {
 
   // ✅ Reference images folder (may be sent to LLM as multimodal blocks)
   fs.mkdirSync(path.join(featureDir, "inputs/references"), { recursive: true });
-  // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/icons/*)
+
+  // ✅ Empty figma.json (Figma integration placeholder)
+  const { createEmptyFigmaData, FIGMA_FILENAME } = require('@ant/shared');
+  fs.writeFileSync(
+    path.join(featureDir, "inputs", FIGMA_FILENAME),
+    JSON.stringify(createEmptyFigmaData(), null, 2),
+    "utf8"
+  );
 
   // Create placeholder directive.md files
   const directiveTemplate = `<!-- ant:template -->
@@ -192,8 +199,8 @@ export function initFeature(workspaceName: string, featureName: string): void {
   console.log("");
   console.log("🚀 Next steps:");
   console.log(`  1. Edit inputs/sources/prd.md`);
-  console.log(`  2. Add Figma link: echo "URL" > inputs/sources/figma-link.txt`);
-  console.log(`  3. Add wireframes to inputs/sources/wireframes/`);
+  console.log(`  2. (Optional) Configure Figma in inputs/figma.json`);
+  console.log(`  3. Add reference images to inputs/references/`);
   console.log(`  4. Generate design: npm run dev architect design workspace/${workspaceName}/${featureName}`);
 }
 

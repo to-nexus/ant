@@ -44,13 +44,13 @@ export class JwtService {
     this.expiresInSeconds = config.expiresInSeconds ?? DEFAULT_EXPIRY_SECONDS;
   }
 
-  /** Generate a signed JWT token */
-  sign(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
+  /** Generate a signed JWT token. Optional expiresInSeconds overrides instance default. */
+  sign(payload: Omit<JwtPayload, 'iat' | 'exp'>, expiresInSeconds?: number): string {
     const now = Math.floor(Date.now() / 1000);
     const fullPayload: JwtPayload = {
       ...payload,
       iat: now,
-      exp: now + this.expiresInSeconds,
+      exp: now + (expiresInSeconds ?? this.expiresInSeconds),
     };
 
     const header = this.base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));

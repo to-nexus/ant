@@ -5,6 +5,12 @@
 		},
 		{
 			"path": "../../../../../../ant-workspaces"
+		},
+		{
+			"path": "../../../../../../../.cursor/plans"
+		},
+		{
+			"path": "../../../../../../ant-companion"
 		}
 	],
 	"settings": {}

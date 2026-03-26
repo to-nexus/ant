@@ -174,7 +174,6 @@ export class ServerConfigurator {
         '/api/auth/google/callback',
         '/api/auth/me',
         '/api/auth/signout',
-        '/api/figma/oauth/callback',
       ],
       publicPrefixes: [],
     }));

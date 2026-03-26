@@ -13,7 +13,6 @@
 
 export interface UserCredentials {
   github?: GitHubCredentials;
-  figma?: FigmaCredentials;
   linear?: LinearCredentials;
   slack?: SlackCredentials;
   // 향후 추가될 서비스들...
@@ -23,15 +22,6 @@ export interface GitHubCredentials {
   token: string;              // Personal Access Token (암호화됨)
   tokenType?: 'pat' | 'oauth';
   username?: string;          // GitHub username (auto-detected from PAT validation)
-  updatedAt: string;
-}
-
-export interface FigmaCredentials {
-  accessToken: string;        // OAuth Access Token (암호화됨)
-  refreshToken?: string;      // OAuth Refresh Token (암호화됨)
-  userId?: string;            // Figma User ID
-  email?: string;             // Figma User Email
-  expiresAt?: string;         // Token expiration time
   updatedAt: string;
 }
 
@@ -52,7 +42,6 @@ export interface SlackCredentials {
 
 export interface UserIntegrations {
   github?: GitHubIntegration;
-  figma?: FigmaIntegration;
   linear?: LinearIntegration;
   slack?: SlackIntegration;
   // 향후 추가될 서비스들...
@@ -65,13 +54,6 @@ export interface GitHubIntegration {
   autoCreateRepo?: boolean;
   autoSync?: boolean;
   syncInterval?: number;        // minutes
-}
-
-export interface FigmaIntegration {
-  enabled: boolean;
-  defaultFileFormat?: 'svg' | 'png' | 'pdf';
-  autoExtractTokens?: boolean;  // 자동으로 디자인 토큰 추출
-  autoGenerateCode?: boolean;   // 자동으로 컴포넌트 코드 생성
 }
 
 export interface LinearIntegration {
@@ -120,7 +102,7 @@ export interface UserPreferences {
   desktopNotifications?: boolean;
   
   // Integration Toggles (간단한 on/off)
-  enabledIntegrations?: string[]; // ['github', 'figma', 'linear']
+  enabledIntegrations?: string[]; // ['github', 'linear', 'slack']
   
   // Advanced
   betaFeatures?: boolean;
@@ -134,6 +116,6 @@ export interface UserPreferences {
 // Service Types
 // ============================================
 
-export type ServiceType = 'github' | 'figma' | 'linear' | 'slack';
+export type ServiceType = 'github' | 'linear' | 'slack';
 
-export const SERVICE_TYPES: ServiceType[] = ['github', 'figma', 'linear', 'slack'];
+export const SERVICE_TYPES: ServiceType[] = ['github', 'linear', 'slack'];

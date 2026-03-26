@@ -4,6 +4,7 @@ import { DesignGraphState } from "../state";
 import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
+import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData } from "@ant/shared";
 
 /**
  * Design Resolve Node
@@ -274,6 +275,28 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     // Non-critical: design directory may not exist yet
   }
 
+  // 5. Load inputs/figma.json (Figma integration) — auto-create & migrate
+  let figmaConfig: FigmaDataConfig | undefined;
+  try {
+    const figmaJsonPath = path.join(featurePath, 'inputs', FIGMA_FILENAME);
+    if (fs.existsSync(figmaJsonPath)) {
+      const figmaRaw = fs.readFileSync(figmaJsonPath, 'utf-8');
+      const raw = JSON.parse(figmaRaw);
+      figmaConfig = migrateFigmaConfig(raw);
+      if (JSON.stringify(figmaConfig) !== JSON.stringify(raw)) {
+        fs.writeFileSync(figmaJsonPath, JSON.stringify(figmaConfig, null, 2), 'utf-8');
+        console.log(`📄 [Design Resolve] Migrated ${FIGMA_FILENAME} to simplified format`);
+      }
+    } else {
+      figmaConfig = createEmptyFigmaData();
+      fs.mkdirSync(path.dirname(figmaJsonPath), { recursive: true });
+      fs.writeFileSync(figmaJsonPath, JSON.stringify(figmaConfig, null, 2), 'utf-8');
+    }
+    console.log(`📄 [Design Resolve] Loaded ${FIGMA_FILENAME}: ${figmaConfig.files?.length || 0} file(s)`);
+  } catch {
+    // Non-critical: figma.json may not exist or be invalid
+  }
+
   // Validation based on mode
   const hasAnySource = sourceDocuments && Object.keys(sourceDocuments).length > 0;
   if (jobMode === 'generate' && !prd && !hasAnySource) {
@@ -287,6 +310,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     directive,
     design,
     existingDesignDocs,
+    figmaConfig,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     _httpJobId: state._httpJobId,

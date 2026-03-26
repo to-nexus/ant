@@ -6,9 +6,10 @@ import { Button } from '@/presentation/components/common/button';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { Eye, FileText } from 'lucide-react';
+import { Eye, FileText, AlertTriangle } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { JsonYamlPreview } from './JsonYamlPreview';
+import { isFigmaDataPopulated } from '@ant/shared';
 
 // Line-numbered editor component for code-like files
 interface LineNumberedEditorProps {
@@ -161,7 +162,25 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
   const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
   const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
-  
+
+  const bridgeConnected = useStore((state) => state.bridgeConnected);
+  const figmaDesktopReachable = useStore((state) => state.figmaDesktopReachable);
+  const openMainPanelTab = useStore((state) => state.openMainPanelTab);
+  const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
+
+  const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
+  const figmaWarning = useMemo(() => {
+    if (!isFigmaFile) return null;
+    try {
+      const parsed = JSON.parse(editedContent || '{}');
+      if (!isFigmaDataPopulated(parsed)) return 'empty';
+      if (bridgeConnected !== true || !figmaDesktopReachable) return 'not_connected';
+      return null;
+    } catch {
+      return 'empty';
+    }
+  }, [isFigmaFile, editedContent, bridgeConnected, figmaDesktopReachable]);
+
   // Check file types for preview support
   const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
   const isSvgFile = isSvgFilePath(selectedFile);
@@ -342,6 +361,27 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                     Open
                   </a>
                 </Button>
+              )}
+            </div>
+          )}
+
+          {/* Figma status warning — shown when figma.json is open */}
+          {figmaWarning && (
+            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="text-xs text-amber-700 dark:text-amber-300">
+                {figmaWarning === 'empty' ? t('editor.figmaEmpty') : t('editor.figmaNotConnected')}
+              </span>
+              {figmaWarning === 'not_connected' && (
+                <button
+                  onClick={() => {
+                    openMainPanelTab('accountConfig');
+                    setAccountConfigScrollTarget('figma');
+                  }}
+                  className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0 ml-1"
+                >
+                  {t('editor.figmaSetup')}
+                </button>
               )}
             </div>
           )}

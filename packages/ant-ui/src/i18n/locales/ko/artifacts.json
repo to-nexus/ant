@@ -12,14 +12,16 @@
       "assets": "UI 에셋",
       "sources": "기획 문서",
       "design": "설계 / 디자인",
-      "evals": "평가 문서"
+      "evals": "평가 문서",
+      "figma": "Figma"
     },
     "dirHintTooltip": {
-      "references": "UI 디자인을 위한 참고 이미지 (PNG, JPG, WebP, GIF). Design Job 전용 — Code Job에서는 사용되지 않습니다. Figma 링크가 있는 경우 보조 자료로 활용됩니다. 허용: .png .jpg .jpeg .webp .gif",
+      "references": "UI 디자인을 위한 참고 이미지 (PNG, JPG, WebP, GIF). Design Job 전용 — Code Job에서는 사용되지 않습니다. 허용: .png .jpg .jpeg .webp .gif",
       "assets": "UI 에셋 (아이콘, 이미지, SVG). codebase/public/에 자동으로 복사되어 생성된 코드에서 참조됩니다. 아이콘, 이미지 등 서브디렉토리로 그룹화 가능합니다. 허용: .png .jpg .gif .svg .webp .ico",
       "sources": "기획 문서를 여기에 배치하세요. 모든 파일이 Design, Code, Plan Job의 컨텍스트로 주입됩니다. 허용: .md .txt .json .yaml .yml",
       "design": "시스템 설계서, API 계약서, UI 스펙 문서 (MD, JSON). Design Job이 생성하며 Code Job의 입력으로도 사용됩니다. 파일을 직접 추가하거나 편집할 수 있습니다. 허용: .md .json",
-      "evals": "각 단계별 품질 평가 리포트 (PRD, UI 디자인, 시스템 설계, 코드). 평가 시스템이 자동으로 생성합니다."
+      "evals": "각 단계별 품질 평가 리포트 (PRD, UI 디자인, 시스템 설계, 코드). 평가 시스템이 자동으로 생성합니다.",
+      "figma": "Figma 디자인 파일 설정. Figma URL을 추가하면 Figma 기반 디자인 추출이 활성화됩니다. 설정 시 참고 이미지보다 우선합니다."
     },
     "dirAccepted": {
       "sources": "MD · TXT · JSON · YAML · YML",
@@ -27,8 +29,13 @@
       "references": "PNG · JPG · WebP · GIF",
       "design": "MD · JSON",
       "plan": "MD",
-      "evals": "MD (자동 생성)"
-    }
+      "evals": "MD (자동 생성)",
+      "figma": "JSON"
+    },
+    "figmaEmpty": "Figma URL이 설정되지 않았습니다. 클릭하여 디자인 파일 URL을 추가하세요.",
+    "figmaConnected": "Figma 연동 완료",
+    "figmaNotConnected": "Figma URL이 설정되었지만 Ant Desktop이 연결되지 않았습니다. 클릭하여 설정하세요.",
+    "goToAccountSettings": "계정 설정으로 이동"
   },
   "actions": {
     "createFile": "파일 생성",
@@ -70,7 +77,10 @@
     "raw": "편집",
     "preview": "미리보기",
     "svgPreviewFailed": "SVG 프리뷰를 불러오지 못했습니다.",
-    "parseError": "파싱 오류"
+    "parseError": "파싱 오류",
+    "figmaEmpty": "Figma URL이 설정되지 않았습니다",
+    "figmaNotConnected": "Ant Desktop 미연결",
+    "figmaSetup": "설정하기"
   },
   "featureDetails": {
     "title": "피처 상세",
