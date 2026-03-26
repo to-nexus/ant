@@ -217,8 +217,9 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 1. Review the `# REFERENCE: ui-tokens.json` section in this prompt
 2. Read `figmaExplorationResult` → Identify exportable asset nodes
-3. Use `figma_get_design_context` for asset context and properties
-4. Generate ui-assets.json with complete mapping structure
+3. Use `figma_get_design_context` for asset URLs and properties
+4. **Use `download_asset` to save each asset locally** (SVG → `inputs/assets/icons/`, PNG/JPG → `inputs/assets/images/`)
+5. Generate ui-assets.json — `src` fields must reference the downloaded file paths from step 4
 
 {{#if pathPattern}}
 ════════════════════════════════════════════════════════════════════════════════

@@ -48,11 +48,15 @@ export interface OrchestratorConfig {
   /**
    * Stage-gate barriers controlling task dispatch order.
    *
-   * Barrier chain:
+   * Code barrier chain:
    *   foundation (200–299) ──[feature]   ──▶ feature   (300–649)
    *   feature    (300–649) ──[ui]        ──▶ ui        (650–699)
    *   feature    (300–649) ──[test-code] ──▶ test-code (700)
    *   test-code  (700)     ──[doc]       ──▶ doc       (800)
+   *
+   * Design barrier chain:
+   *   tokens     (100–199) ──[assets]    ──▶ assets    (200–299)
+   *   tokens+assets (100–299) ──[spec]   ──▶ spec      (300–349)
    *
    * Each flag, when true, prevents the downstream tier from starting
    * while any upstream task is still running or queued.
@@ -66,6 +70,10 @@ export interface OrchestratorConfig {
     'test-code'?: boolean;
     /** Blocks doc tasks until all feature/setup/test-code tasks complete. */
     doc?: boolean;
+    /** Blocks assets (200+) until all tokens (100–199) tasks complete. */
+    assets?: boolean;
+    /** Blocks spec (300+) until all tokens+assets (100–299) tasks complete. */
+    spec?: boolean;
   };
 }
 

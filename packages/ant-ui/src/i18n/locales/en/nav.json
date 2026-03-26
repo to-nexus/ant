@@ -54,7 +54,24 @@
     "horizontal": "Horizontal Split (Left/Right)",
     "vertical": "Vertical Split (Top/Bottom)"
   },
-  "bridge": {
-    "notConnected": "Ant Desktop not connected"
+  "desktop": {
+    "offline": "Offline",
+    "detected": "Running",
+    "connected": "Connected",
+    "start": "Start",
+    "connect": "Connect",
+    "connecting": "Connecting...",
+    "settings": "Settings",
+    "offlineDesc": "Ant Desktop is not running",
+    "downloadHint": "Don't have it?",
+    "detectedDesc": "Ant Desktop is running. Click Connect to link.",
+    "connectedDesc": "Ant Desktop is connected",
+    "downloadTitle": "Ant Desktop Not Found",
+    "downloadDesc": "Ant Desktop doesn't seem to be installed. Download it to get started.",
+    "downloadButton": "Download",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "connectionFailed": "Connection timed out",
+    "connectionFailedDesc": "Could not connect to Ant Desktop. Make sure it's running."
   }
 }

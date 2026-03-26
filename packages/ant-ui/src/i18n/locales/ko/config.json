@@ -56,13 +56,7 @@
     "downloadFigmaDesktop": "Figma 다운로드",
     "connectFailed": "연결에 실패했습니다. Ant Desktop이 설치되어 실행 중인지 확인하세요.",
     "refresh": "새로고침",
-    "statusRequiresAntDesktop": "Ant Desktop 필요",
-    "deeplinkConnecting": "Ant Desktop 연결 중...",
-    "deeplinkSuccess": "연결 완료",
-    "deeplinkFailed": "연결에 실패했습니다",
-    "deeplinkRetry": "재시도",
-    "deeplinkCancel": "취소",
-    "deeplinkDesc": "Ant Desktop이 실행되고 있는지 확인해주세요"
+    "statusRequiresAntDesktop": "Ant Desktop 필요"
   },
   "field": {
     "optional": "선택 사항"

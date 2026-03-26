@@ -469,6 +469,10 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     {
       maxWorkers,
       checkpointInterval: 60000,
+      barriers: {
+        assets: true,
+        spec: true,
+      },
     },
   );
 
