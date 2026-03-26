@@ -56,13 +56,7 @@
     "downloadFigmaDesktop": "Download Figma",
     "connectFailed": "Connection failed. Is Ant Desktop installed and running?",
     "refresh": "Refresh",
-    "statusRequiresAntDesktop": "Requires Ant Desktop",
-    "deeplinkConnecting": "Connecting to Ant Desktop...",
-    "deeplinkSuccess": "Connected",
-    "deeplinkFailed": "Connection failed",
-    "deeplinkRetry": "Retry",
-    "deeplinkCancel": "Cancel",
-    "deeplinkDesc": "Make sure Ant Desktop is running"
+    "statusRequiresAntDesktop": "Requires Ant Desktop"
   },
   "field": {
     "optional": "Optional"

@@ -65,5 +65,6 @@ export interface BridgeStatus {
 export async function checkBridgeStatus(): Promise<BridgeStatus> {
   return apiGet<BridgeStatus>(`${API_BASE()}/bridge/status`).catch(() => ({
     connected: false,
+    detected: false,
   }));
 }
