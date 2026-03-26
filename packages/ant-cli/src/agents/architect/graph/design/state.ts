@@ -6,6 +6,7 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
+import type { FigmaDataConfig, UIDesignSource, FigmaExplorationResult } from '@ant/shared';
 
 /**
  * Design Task State
@@ -158,4 +159,9 @@ export interface DesignGraphState extends TaskArtifacts {
   // Populated when detectionReport.workType === 'ui-design'
   uiReferences?: string[];  // All image paths under inputs/references/ (recursive)
   uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under inputs/assets/
+  
+  // ✅ Figma Integration (All-or-Nothing: Full MCP required)
+  figmaConfig?: FigmaDataConfig;        // Loaded from inputs/figma.json at resolve
+  uiDesignSource?: UIDesignSource;       // 'figma' | 'references' | 'none' — set by detectEnvironment
+  figmaExplorationResult?: FigmaExplorationResult;  // Output of figmaExplore node
 }

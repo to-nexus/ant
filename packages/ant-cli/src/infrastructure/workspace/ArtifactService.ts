@@ -153,8 +153,6 @@ export class ArtifactService {
   ): Promise<{
     prd?: string;
     sourceDocuments?: Record<string, string>;
-    figmaLink?: string;
-    figmaData?: any;
     wireframes?: string[];
   }> {
     const result: any = {};

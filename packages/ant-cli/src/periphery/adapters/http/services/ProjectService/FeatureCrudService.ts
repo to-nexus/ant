@@ -194,7 +194,11 @@ export class FeatureCrudService {
 
     await fs.promises.mkdir(path.join(featurePath, 'inputs/assets'), { recursive: true });
     await fs.promises.mkdir(path.join(featurePath, 'inputs/references'), { recursive: true });
-    // NOTE: icons are treated as runtime assets by default → place under inputs/assets/** (e.g. inputs/assets/icons/*)
+
+    // Create empty inputs/figma.json (Figma integration placeholder)
+    const { createEmptyFigmaData, FIGMA_FILENAME } = await import('@ant/shared');
+    const figmaJsonPath = path.join(featurePath, 'inputs', FIGMA_FILENAME);
+    await fs.promises.writeFile(figmaJsonPath, JSON.stringify(createEmptyFigmaData(), null, 2), 'utf-8');
 
     // ✅ Create Git worktree for feature (if WorktreeService is available)
     if (this.worktreeService) {

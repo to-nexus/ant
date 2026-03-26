@@ -53,5 +53,8 @@
   "splitLayout": {
     "horizontal": "수평 분할 (좌/우)",
     "vertical": "수직 분할 (상/하)"
+  },
+  "bridge": {
+    "notConnected": "Ant Desktop 미연결"
   }
 }

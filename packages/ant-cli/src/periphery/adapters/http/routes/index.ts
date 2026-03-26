@@ -8,8 +8,8 @@ import { createFeaturesRoutes } from './features.routes';
 import { createFilesRoutes } from './files.routes';
 import { createChatRoutes } from './chat.routes';
 import { createGitHubRoutes } from './github.routes';
-import { createFigmaOAuthRoutes } from './figma-oauth.routes';
 import { createFigmaFilesRoutes } from './figma-files.routes';
+import { createBridgeRoutes } from './bridge.routes';
 import { createModelsRoutes } from './models.routes';
 import { createTransferRoutes } from './transfer.routes';
 import { createOrgRoutes } from './org.routes';
@@ -33,7 +33,7 @@ export interface RoutesDeps {
   kanbanService?: KanbanService;  // ✅ For session cache invalidation
   choiceService?: ChoiceService;  // ✅ For Triage choice handling
   githubAuthService?: GitHubAuthService;
-  workspaceRoot?: string;  // For Figma OAuth
+  workspaceRoot?: string;  // For Figma Files
   workspaceResolver?: any;  // For Figma Files (WorkspaceResolver)
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };  // ✅ For file tree updates after file writes
   transferService?: any;  // ArtifactTransferService for transfer operations
@@ -88,16 +88,18 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     }));
   }
   
-  // Figma OAuth integration
-  router.use('/figma', createFigmaOAuthRoutes(deps.workspaceRoot || process.cwd(), deps.stateStore));
-  
   // Figma Files integration
   if (deps.workspaceRoot && deps.workspaceResolver) {
     router.use('/figma', createFigmaFilesRoutes({
       workspaceRoot: deps.workspaceRoot,
-      workspaceResolver: deps.workspaceResolver
+      workspaceResolver: deps.workspaceResolver,
     }));
   }
+  
+  // Bridge (Companion App) status
+  router.use('/bridge', createBridgeRoutes({
+    stateStore: deps.stateStore,
+  }));
   
   // Models API
   router.use(createModelsRoutes());

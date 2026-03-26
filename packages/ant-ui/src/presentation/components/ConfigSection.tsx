@@ -9,8 +9,10 @@ import { ReactNode } from 'react';
  * - Right: Action controls
  */
 
+type StatusState = 'configured' | 'not-configured' | 'checking';
+
 interface StatusBadgeProps {
-  status: 'configured' | 'not-configured' | 'checking';
+  status: StatusState;
   label?: string;
 }
 
@@ -23,15 +25,14 @@ function StatusBadge({ status, label }: StatusBadgeProps) {
     );
   }
 
-  const isConfigured = status === 'configured';
-  
+  const colorMap: Record<string, string> = {
+    configured: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+    'not-configured': 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
+  };
+
   return (
-    <span className={`text-xs px-2 py-0.5 rounded ${
-      isConfigured 
-        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
-        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-    }`}>
-      {label || (isConfigured ? '✓ Configured' : 'Not configured')}
+    <span className={`text-xs px-2 py-0.5 rounded ${colorMap[status] || colorMap['not-configured']}`}>
+      {label || (status === 'configured' ? '✓ Configured' : 'Not configured')}
     </span>
   );
 }
@@ -45,7 +46,7 @@ export interface ConfigSectionProps {
   description: string;
   /** Status indicator */
   status?: {
-    state: 'configured' | 'not-configured' | 'checking';
+    state: StatusState;
     label?: string;
   };
   /** Extra badge shown next to the status badge */

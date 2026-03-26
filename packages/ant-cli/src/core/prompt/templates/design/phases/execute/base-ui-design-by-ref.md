@@ -2,7 +2,7 @@
 
 {{> design/base/injections/document-language}}
 
-{{> design/phases/execute/rules-ui-design}}
+{{> design/phases/execute/rules-ui-design-by-ref}}
 
 ---
 
@@ -61,7 +61,7 @@
 **Target file: `ui-spec.json`** (default)
 {{/if}}
 
-⚠️ You MUST append to existing document using `<append>` tag (see rules-ui-design.md)
+⚠️ You MUST append to existing document using `<append>` tag (see rules)
 
 {{else}}
 🆕 NEW DOCUMENT - START FROM DOCUMENT TITLE
@@ -206,17 +206,17 @@ Use semantic token names:
 
 {{! ✅ Support ui-tokens, ui-tokens-ch1, ui-tokens-ch2, etc. }}
 {{#if (includes taskId "ui-tokens")}}
-{{> design/phases/execute/injections/ui-tokens-guide}}
+{{> design/phases/execute/injections/ui-tokens-guide-by-ref}}
 {{/if}}
 
 {{! ✅ Support ui-assets, ui-assets-ch1, ui-assets-ch2, etc. }}
 {{#if (includes taskId "ui-assets")}}
-{{> design/phases/execute/injections/ui-assets-guide}}
+{{> design/phases/execute/injections/ui-assets-guide-by-ref}}
 {{/if}}
 
 {{! ✅ Support ui-spec, ui-spec-ch1, ui-spec-ch2, etc. }}
 {{#if (includes taskId "ui-spec")}}
-{{> design/phases/execute/injections/ui-spec-guide}}
+{{> design/phases/execute/injections/ui-spec-guide-by-ref}}
 {{/if}}
 
 {{#if existingDocContent}}

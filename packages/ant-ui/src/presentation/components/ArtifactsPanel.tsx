@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X, Check, AlertCircle } from 'lucide-react';
+import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X, Check, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, renameFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
@@ -15,10 +15,93 @@ import { isCanonicalDir, isStructuralCanonicalDir, getArtifactDirPolicy, validat
 import { ApiError } from '@/infrastructure/http/api/client';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
 import { HintBadge } from '@/presentation/components/common/HintBadge';
+import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
 import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
+import { getFigmaConfig } from '@/infrastructure/http/api/figma';
+import { isFigmaDataPopulated } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
+
+function FigmaIcon({ className, muted }: { className?: string; muted?: boolean }) {
+  if (muted) {
+    return (
+      <svg className={className} viewBox="0 0 38 57" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19 28.5C19 23.2533 23.2533 19 28.5 19C33.7467 19 38 23.2533 38 28.5C38 33.7467 33.7467 38 28.5 38C23.2533 38 19 33.7467 19 28.5Z" fill="currentColor" />
+        <path d="M0 47.5C0 42.2533 4.25329 38 9.5 38H19V47.5C19 52.7467 14.7467 57 9.5 57C4.25329 57 0 52.7467 0 47.5Z" fill="currentColor" />
+        <path d="M19 0V19H28.5C33.7467 19 38 14.7467 38 9.5C38 4.25329 33.7467 0 28.5 0H19Z" fill="currentColor" />
+        <path d="M0 9.5C0 14.7467 4.25329 19 9.5 19H19V0H9.5C4.25329 0 0 4.25329 0 9.5Z" fill="currentColor" />
+        <path d="M0 28.5C0 33.7467 4.25329 38 9.5 38H19V19H9.5C4.25329 19 0 23.2533 0 28.5Z" fill="currentColor" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={className} viewBox="0 0 38 57" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M19 28.5C19 23.2533 23.2533 19 28.5 19C33.7467 19 38 23.2533 38 28.5C38 33.7467 33.7467 38 28.5 38C23.2533 38 19 33.7467 19 28.5Z" fill="#1ABCFE" />
+      <path d="M0 47.5C0 42.2533 4.25329 38 9.5 38H19V47.5C19 52.7467 14.7467 57 9.5 57C4.25329 57 0 52.7467 0 47.5Z" fill="#0ACF83" />
+      <path d="M19 0V19H28.5C33.7467 19 38 14.7467 38 9.5C38 4.25329 33.7467 0 28.5 0H19Z" fill="#FF7262" />
+      <path d="M0 9.5C0 14.7467 4.25329 19 9.5 19H19V0H9.5C4.25329 0 0 4.25329 0 9.5Z" fill="#F24E1E" />
+      <path d="M0 28.5C0 33.7467 4.25329 38 9.5 38H19V19H9.5C4.25329 19 0 23.2533 0 28.5Z" fill="#A259FF" />
+    </svg>
+  );
+}
+
+interface FigmaStatusIndicatorProps {
+  isPopulated: boolean | null;
+  bridgeConnected: boolean;
+  figmaDesktopReachable: boolean;
+  onOpenSettings: () => void;
+  onSelectFile: () => void;
+  t: (key: string) => string;
+}
+
+function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReachable, onOpenSettings, onSelectFile, t }: FigmaStatusIndicatorProps) {
+  if (isPopulated === null) return null;
+
+  if (!isPopulated) {
+    return (
+      <Tooltip content={t('panel.figmaEmpty')} placement="right">
+        <span className="inline-flex items-center flex-shrink-0">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+        </span>
+      </Tooltip>
+    );
+  }
+
+  const isFullyConnected = bridgeConnected && figmaDesktopReachable;
+
+  if (isFullyConnected) {
+    return (
+      <Tooltip content={t('panel.figmaConnected')} placement="right">
+        <span className="inline-flex items-center flex-shrink-0">
+          <FigmaIcon className="w-3.5 h-3.5" />
+        </span>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Tooltip
+      content={
+        <div className="space-y-1.5">
+          <div>{t('panel.figmaNotConnected')}</div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpenSettings(); }}
+            className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            {t('panel.goToAccountSettings')}
+          </button>
+        </div>
+      }
+      placement="right"
+    >
+      <span className="relative inline-flex items-center flex-shrink-0">
+        <FigmaIcon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" muted />
+        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500" />
+      </span>
+    </Tooltip>
+  );
+}
 
 interface DirectoryViewProps {
   title: string;
@@ -39,9 +122,10 @@ interface DirectoryViewProps {
   onMarkSeen?: (paths: string[]) => void;
   isNarrow?: boolean;
   nodeHints?: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }>;
+  fileIndicators?: Record<string, React.ReactNode>;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
@@ -248,6 +332,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                     placement="right"
                   />
                 )}
+                {!isDirectory && fileIndicators?.[node.name]}
                 {isDirectory && unseenCount > 0 && (
                   <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white flex-shrink-0">
                     {unseenCount > 99 ? '99+' : unseenCount}
@@ -517,6 +602,9 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const setPendingTransferCount = useStore((state) => state.setPendingTransferCount);
   const unseenArtifacts = useStore((state) => state.unseenArtifacts) as string[];
   const markArtifactsSeen = useStore((state) => state.markArtifactsSeen);
+  const bridgeConnected = useStore((state) => state.bridgeConnected);
+  const figmaDesktopReachable = useStore((state) => state.figmaDesktopReachable);
+  const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
   
   // ✅ UI Action Policy
   const policy = useUIActionPolicy();
@@ -535,6 +623,27 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     setDropError(message);
     dropErrorTimerRef.current = setTimeout(() => setDropError(null), 3000);
   }, []);
+
+  // Figma config state — reloads when fileTree changes (covers saves + feature switches)
+  const [isFigmaPopulated, setIsFigmaPopulated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!selectedProject || !selectedFeature) {
+      setIsFigmaPopulated(null);
+      return;
+    }
+    getFigmaConfig(selectedProject, selectedFeature)
+      .then((config) => {
+        setIsFigmaPopulated(isFigmaDataPopulated(config));
+        const hasFigmaInTree = fileTree
+          ?.find(n => n.name === 'inputs')
+          ?.children?.some(n => n.name === 'figma.json');
+        if (!hasFigmaInTree) {
+          refreshFileTree();
+        }
+      })
+      .catch(() => setIsFigmaPopulated(false));
+  }, [selectedProject, selectedFeature, fileTree]);
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
@@ -782,10 +891,10 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   }
 
   // Separate inputs, outputs, and sessions with filtering
-  // inputs: show 'sources' + 'assets' + 'references'
+  // inputs: show 'sources' + 'assets' + 'references' + 'figma.json'
   const allInputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
   const inputsNodes = allInputsNodes.filter(node =>
-    node.name === 'sources' || node.name === 'assets' || node.name === 'references'
+    node.name === 'sources' || node.name === 'assets' || node.name === 'references' || node.name === 'figma.json'
   );
   
   // outputs: show 'design', 'plan', 'evals', and 'reports' directories
@@ -862,6 +971,21 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
+          fileIndicators={{
+            'figma.json': (
+              <FigmaStatusIndicator
+                isPopulated={isFigmaPopulated}
+                bridgeConnected={bridgeConnected === true}
+                figmaDesktopReachable={figmaDesktopReachable}
+                onOpenSettings={() => {
+                  openMainPanelTab('accountConfig');
+                  setAccountConfigScrollTarget('figma');
+                }}
+                onSelectFile={() => handleFileSelect('inputs/figma.json')}
+                t={t}
+              />
+            ),
+          }}
         />
         <DirectoryView
           title={t('panel.outputs')}

@@ -3,16 +3,25 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Shared types between ant-cli (backend) and ant-ui (frontend)",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
-  "files": ["src"],
+  "files": [
+    "src",
+    "dist"
+  ],
   "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --format=esm --platform=node --target=node20 --outfile=dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "esbuild": "^0.27.2",
     "typescript": "^5.9.3"
   }
 }

@@ -29,6 +29,7 @@ import {
   JobEnvironment,
   DesignDomain,
 } from "../../../../../core/types/detection";
+import { isFigmaDataPopulated, FIGMA_MCP_ENDPOINT, UIDesignSource } from "@ant/shared";
 
 interface ParsedDesignResponse {
   workType: "ui-design" | "system-design" | "spec" | "clarify" | "error";
@@ -263,6 +264,107 @@ async function saveDetectClarifyToSession(state: DesignGraphState): Promise<void
   } catch (err) {
     console.warn(`⚠️  [detectEnvironment] Failed to save clarify state:`, err);
   }
+}
+
+/**
+ * Check if Figma Desktop MCP is reachable (local mode only).
+ * Sends a minimal HTTP request to localhost:3845.
+ */
+async function checkLocalMCPAvailability(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(FIGMA_MCP_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'ping', id: 1 }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return res.ok || res.status === 400;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Determine UI design source mode and validate MCP availability.
+ * Returns uiDesignSource + optional designError if MCP unavailable.
+ */
+async function resolveUIDesignSource(
+  state: DesignGraphState,
+): Promise<{
+  uiDesignSource: UIDesignSource;
+  designError?: DesignGraphState['designError'];
+}> {
+  const figmaPopulated = isFigmaDataPopulated(state.figmaConfig);
+  
+  if (!figmaPopulated) {
+    return { uiDesignSource: 'references' };
+  }
+
+  const serverMode = process.env.ANT_SERVER_MODE || 'local';
+
+  if (serverMode === 'local') {
+    const mcpAvailable = await checkLocalMCPAvailability();
+    if (!mcpAvailable) {
+      return {
+        uiDesignSource: 'figma',
+        designError: {
+          type: 'figma_mcp_unavailable',
+          message: 'Figma Desktop이 실행되지 않았습니다.',
+          suggestedAction: 'Figma Desktop을 실행한 후 다시 시도하세요.',
+        },
+      };
+    }
+  } else {
+    // Cloud mode: check Bridge session via BridgeSessionManager
+    const userId = state.deps?.userId;
+    const stateStore = state.deps?.stateStore;
+
+    if (!userId || !stateStore) {
+      return {
+        uiDesignSource: 'figma',
+        designError: {
+          type: 'figma_bridge_unavailable',
+          message: 'Companion 앱 연결 확인에 필요한 컨텍스트가 없습니다.',
+          suggestedAction: 'ant-companion 앱을 설치하고 연결한 후 다시 시도하세요.',
+        },
+      };
+    }
+
+    try {
+      const { BridgeSessionManager } = await import('../../../../../infrastructure/realtime/BridgeSessionManager');
+      const manager = new BridgeSessionManager(stateStore);
+      const status = await manager.getStatus(userId);
+
+      if (!status.connected || !status.figmaDesktopReachable) {
+        return {
+          uiDesignSource: 'figma',
+          designError: {
+            type: 'figma_bridge_unavailable',
+            message: !status.connected
+              ? 'Companion 앱이 연결되지 않았습니다.'
+              : 'Figma Desktop이 응답하지 않습니다.',
+            suggestedAction: !status.connected
+              ? 'ant-companion 앱을 설치하고 연결한 후 다시 시도하세요.'
+              : 'Figma Desktop을 실행한 후 다시 시도하세요.',
+          },
+        };
+      }
+    } catch (err: any) {
+      return {
+        uiDesignSource: 'figma',
+        designError: {
+          type: 'figma_bridge_unavailable',
+          message: 'Companion 앱 연결 상태 확인에 실패했습니다.',
+          suggestedAction: 'ant-companion 앱을 설치하고 연결한 후 다시 시도하세요.',
+        },
+      };
+    }
+  }
+
+  return { uiDesignSource: 'figma' };
 }
 
 /**
@@ -669,8 +771,42 @@ export async function detectEnvironment(
       }
     }
 
+    // SSOT mode resolution for ui-design
+    let uiDesignSource: UIDesignSource | undefined;
+    let figmaDesignError: DesignGraphState['designError'] | undefined;
+    
+    if (detectionReport.workType === 'ui-design') {
+      const sourceResult = await resolveUIDesignSource(state);
+      uiDesignSource = sourceResult.uiDesignSource;
+      figmaDesignError = sourceResult.designError;
+      
+      if (figmaDesignError) {
+        console.log(`\n❌ Figma MCP unavailable: ${figmaDesignError.message}`);
+        
+        const errorText = `❌ **${figmaDesignError.message}**\n\n${figmaDesignError.suggestedAction}`;
+        await chatAPI.sendLLMEvent({ type: 'text', text: errorText });
+        await chatAPI.finalizeMessage();
+        
+        return {
+          detectionReport,
+          uiDesignSource,
+          designError: figmaDesignError,
+          tokenUsage: (state as any).tokenUsage,
+          _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
+        };
+      }
+      
+      console.log(`✅ UI Design Source: ${uiDesignSource}`);
+      
+      if (uiDesignSource === 'figma') {
+        // Figma mode: suppress references pipeline
+        uiReferences = undefined;
+      }
+    }
+
     return {
       detectionReport,
+      uiDesignSource,
       uiReferences: detectionReport.workType === 'ui-design' ? uiReferences : undefined,
       uiAssetsList: detectionReport.workType === 'ui-design' ? uiAssetsList : undefined,
       tokenUsage: (state as any).tokenUsage,

@@ -47,8 +47,9 @@ export function createJwtAuthMiddleware(options: JwtAuthMiddlewareOptions) {
       }
     }
 
-    // Extract JWT from cookie
-    const token = (req as any).cookies?.[JwtService.cookieName];
+    // Extract JWT from cookie or Authorization header (for companion app)
+    const token = (req as any).cookies?.[JwtService.cookieName]
+      || req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
       res.status(401).json({

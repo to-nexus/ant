@@ -53,5 +53,8 @@
   "splitLayout": {
     "horizontal": "Horizontal Split (Left/Right)",
     "vertical": "Vertical Split (Top/Bottom)"
+  },
+  "bridge": {
+    "notConnected": "Ant Desktop not connected"
   }
 }

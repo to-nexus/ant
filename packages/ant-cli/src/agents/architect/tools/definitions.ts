@@ -323,7 +323,17 @@ export const TOOL_SETS = {
   // Full set for design job (no run_command, no reference)
   design: ['read_file', 'edit_file', 'list_files', 'search_code', 'delete_file', 'mkdir', 'search_web'] as ToolName[],
   
-  // UI Design job - includes image/asset tools for multimodal document generation
+  // UI Design base tools (shared by both reference and Figma modes)
+  uiDesignBase: [
+    'read_file',
+    'edit_file',
+    'list_files',
+    'delete_file',
+    'mkdir',
+    'list_assets',
+  ] as ToolName[],
+
+  // UI Design by-ref: base + reference image tools
   uiDesign: [
     'read_file',
     'edit_file',
@@ -333,6 +343,32 @@ export const TOOL_SETS = {
     'read_reference_image',
     'list_reference_images',
     'list_assets',
+  ] as ToolName[],
+
+  // UI Design by-figma: base + Figma MCP tools (no reference image tools)
+  uiDesignFigma: [
+    'read_file',
+    'edit_file',
+    'list_files',
+    'delete_file',
+    'mkdir',
+    'list_assets',
+    'figma_get_metadata',
+    'figma_get_design_context',
+    'figma_get_screenshot',
+    'figma_get_variable_defs',
+  ] as ToolName[],
+
+  // figmaExplore node: Figma MCP tools + file write for exploration output
+  figmaExplore: [
+    'read_file',
+    'edit_file',
+    'list_files',
+    'mkdir',
+    'figma_get_metadata',
+    'figma_get_design_context',
+    'figma_get_screenshot',
+    'figma_get_variable_defs',
   ] as ToolName[],
 } as const;
 

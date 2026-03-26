@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { useStore } from '@/domain/store';
-import { signOut, checkLocalBackend, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
+import { signOut, checkLocalBackend, getBackendMode, getLocalBackendPort, checkBridgeStatus } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES, LANGUAGE_LABELS } from '@/i18n';
 
@@ -59,6 +59,10 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
+  const bridgeConnected = useStore((state) => state.bridgeConnected);
+  const bridgeStatusChecked = useStore((state) => state.bridgeStatusChecked);
+  const setBridgeStatus = useStore((state) => state.setBridgeStatus);
+  const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
   
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -77,6 +81,24 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showLangMenu]);
   
+  // Check bridge status on mount (once)
+  useEffect(() => {
+    if (bridgeStatusChecked) return;
+    checkBridgeStatus()
+      .then((status) => {
+        setBridgeStatus({
+          connected: status.connected,
+          detected: status.detected ?? status.connected,
+          figmaDesktopReachable: status.figmaDesktopReachable ?? false,
+        });
+      })
+      .catch(() => {
+        setBridgeStatus({ connected: false, detected: false, figmaDesktopReachable: false });
+      });
+  }, [bridgeStatusChecked]);
+
+  const showBridgeWarning = bridgeStatusChecked && bridgeConnected !== true;
+
   // Check if user is signed in
   const isSignedIn = !!userEmail && !!userOrganization;
   
@@ -367,6 +389,26 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
             <div className="w-px h-6 bg-gray-300 dark:bg-gray-600"></div>
             
             <ConnectionStatus status={connectionStatus} />
+
+            {/* Ant Desktop bridge warning indicator */}
+            {showBridgeWarning && (
+              <button
+                onClick={() => {
+                  setQuickStartProjectId(undefined);
+                  setOnboardingSkipped(true);
+                  openMainPanelTab('accountConfig');
+                  setAccountConfigScrollTarget('figma');
+                }}
+                className="relative inline-flex items-center gap-1.5 px-1.5 sm:px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title={t('bridge.notConnected')}
+              >
+                <div className="relative">
+                  <Monitor className="w-4 h-4 text-gray-400" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+                </div>
+                <span className="hidden sm:inline text-xs text-gray-500 dark:text-gray-400">Ant Desktop</span>
+              </button>
+            )}
             
             {/* User Section (Cloud Mode only) */}
             {uiSelectedMode === 'cloud' && (
