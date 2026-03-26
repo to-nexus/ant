@@ -39,6 +39,7 @@ export async function architectAgent(
     feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
     featurePath?: string;  // ✅ Pre-calculated feature path (avoids re-calculation mismatch)
     skipTriage?: boolean;
+    redis?: any;  // Raw ioredis client for cloud Figma MCP bridge
   },
   jobMode?: JobMode,
   enableEvaluation?: boolean,
@@ -251,13 +252,14 @@ export async function architectAgent(
           chunk: deps?.chunk,
           session: deps?.session,
           git: deps?.git,
-          fileSystem: deps?.fileSystem,  // ✅ NEW: FileSystemPort
+          fileSystem: deps?.fileSystem,
           analyzer: deps?.analyzer,
           memory: deps?.memory,
-          workspaceResolver: deps?.workspaceResolver,  // ✅ For path resolution
-          kanbanUpdate: deps?.kanbanUpdate,      // ✅ NEW: For real-time Kanban updates
-          fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ NEW: For real-time file tree updates
-          workflowUpdate: deps?.workflowUpdate,  // ✅ NEW: For real-time workflow tracking
+          workspaceResolver: deps?.workspaceResolver,
+          kanbanUpdate: deps?.kanbanUpdate,
+          fileTreeUpdate: deps?.fileTreeUpdate,
+          workflowUpdate: deps?.workflowUpdate,
+          redis: deps?.redis,
         },
         planText: "",
         _httpJobId: jobId || process.env.ANT_JOB_ID,  // ✅ For tracking and resume

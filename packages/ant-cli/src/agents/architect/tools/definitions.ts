@@ -234,6 +234,106 @@ export const ARCHITECT_TOOLS = {
       required: ['query'],
     },
   },
+
+  // Figma MCP tools (used in UI Design Figma mode)
+  figma_get_metadata: {
+    name: 'figma_get_metadata',
+    description: 'Get structural metadata of a Figma design node. Returns the node tree with types, names, dimensions, and hierarchy. Use this to understand the overall structure before drilling into specific components.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        fileKey: {
+          type: 'string',
+          description: 'Figma file key (from URL: figma.com/design/:fileKey/...)',
+        },
+        nodeId: {
+          type: 'string',
+          description: 'Node ID to inspect (e.g., "0:1" for root, or specific node like "123:456")',
+        },
+      },
+      required: ['fileKey', 'nodeId'],
+    },
+  },
+
+  figma_get_design_context: {
+    name: 'figma_get_design_context',
+    description: 'Get detailed design context for a Figma node including layout properties, styles, colors, typography, spacing, and auto-layout settings. Returns rich design data for token extraction and spec generation.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        fileKey: {
+          type: 'string',
+          description: 'Figma file key (from URL: figma.com/design/:fileKey/...)',
+        },
+        nodeId: {
+          type: 'string',
+          description: 'Node ID to get design context for',
+        },
+      },
+      required: ['fileKey', 'nodeId'],
+    },
+  },
+
+  figma_get_screenshot: {
+    name: 'figma_get_screenshot',
+    description: 'Get a screenshot/rendered image of a Figma node. Returns the visual representation for layout analysis and visual verification.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        fileKey: {
+          type: 'string',
+          description: 'Figma file key (from URL: figma.com/design/:fileKey/...)',
+        },
+        nodeId: {
+          type: 'string',
+          description: 'Node ID to screenshot',
+        },
+      },
+      required: ['fileKey', 'nodeId'],
+    },
+  },
+
+  download_asset: {
+    name: 'download_asset',
+    description: 'Download a file from a URL and save it to inputs/assets/. Use this to download Figma-exported asset images (SVG, PNG, etc.) returned by get_design_context. The file is saved under inputs/assets/{category}/{filename}. If category is omitted, it is inferred from the file extension (svg→icons, png/jpg/webp→images).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: {
+          type: 'string',
+          description: 'The URL to download the asset from (e.g., Figma CDN URL)',
+        },
+        filename: {
+          type: 'string',
+          description: 'Destination filename (e.g., "logo.svg", "hero-bg.png")',
+        },
+        category: {
+          type: 'string',
+          description: 'Optional subdirectory under inputs/assets/ (e.g., "icons", "images"). If omitted, inferred from file extension.',
+        },
+      },
+      required: ['url', 'filename'],
+    },
+  },
+
+  figma_get_variable_defs: {
+    name: 'figma_get_variable_defs',
+    description: 'Get variable/token definitions from a Figma file. Returns design tokens including colors, spacing, typography scales, and other variables defined in the Figma file.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        fileKey: {
+          type: 'string',
+          description: 'Figma file key (from URL: figma.com/design/:fileKey/...)',
+        },
+        nodeId: {
+          type: 'string',
+          description: 'Node ID scope for variable lookup',
+        },
+      },
+      required: ['fileKey', 'nodeId'],
+    },
+  },
 } as const satisfies Record<string, ToolDefinition>;
 
 /**
@@ -345,7 +445,7 @@ export const TOOL_SETS = {
     'list_assets',
   ] as ToolName[],
 
-  // UI Design by-figma: base + Figma MCP tools (no reference image tools)
+  // UI Design by-figma: base + Figma MCP tools + asset download (no reference image tools)
   uiDesignFigma: [
     'read_file',
     'edit_file',
@@ -353,6 +453,7 @@ export const TOOL_SETS = {
     'delete_file',
     'mkdir',
     'list_assets',
+    'download_asset',
     'figma_get_metadata',
     'figma_get_design_context',
     'figma_get_screenshot',

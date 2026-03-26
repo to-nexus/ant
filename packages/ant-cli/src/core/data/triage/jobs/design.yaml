@@ -3,28 +3,33 @@ id: design
 agent: architect
 description: |
   Creates specifications and architecture documents.
-  Three modes: UI Design (from reference images), System Design (from PRD), and Spec (feature-scoped planning).
+  Three modes: UI Design (from reference images or Figma), System Design (from PRD), and Spec (feature-scoped planning).
   Spec mode analyzes existing codebase and plans multi-boundary changes before implementation.
   Output documents guide Code Job for accurate implementation.
 
 modes:
   - id: ui-design
     description: |
-      Generates UI specification documents from reference images.
+      Generates UI specification documents from reference images or Figma design files.
       Analyzes visual design to extract tokens, components, and layouts.
-      Works with any design tool output (Figma, Sketch, screenshots, etc.)
+      Works with any design tool output (Figma live files, screenshots, wireframes, etc.)
     detection:
       any_of:
         - path: inputs/references
           type: directory_with_files
         - path: inputs/assets
           type: directory_with_files
+        - type: figma_config
     prerequisites:
       required:
-        - id: references
-          type: directory_with_files
-          path: inputs/references
-          description: Reference images (inputs/references/)
+        - id: references_or_figma
+          type: any_of
+          items:
+            - type: directory_with_files
+              path: inputs/references
+              description: Reference images (inputs/references/)
+            - type: figma_config
+              description: Figma design files configured (inputs/figma.json)
       recommended:
         - id: assets
           type: directory_with_files
@@ -52,6 +57,7 @@ modes:
               type: directory_with_files
             - path: inputs/assets
               type: directory_with_files
+            - type: figma_config
     prerequisites:
       required:
         - id: prd_or_directive
@@ -84,6 +90,7 @@ modes:
         - none_of:
             - path: inputs/references
               type: directory_with_files
+            - type: figma_config
     prerequisites:
       required:
         - id: directive

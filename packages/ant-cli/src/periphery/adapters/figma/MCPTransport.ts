@@ -13,6 +13,24 @@ export interface MCPTransport {
   isAvailable(): Promise<boolean>;
 }
 
+const MCP_ACCEPT = 'application/json, text/event-stream';
+
+/**
+ * Parse a Figma MCP response body that may be SSE or plain JSON.
+ * SSE format: `event: message\ndata: {json}\n\n`
+ */
+function parseMCPResponse(text: string, contentType: string | null): any {
+  if (contentType?.includes('text/event-stream')) {
+    for (const line of text.split('\n')) {
+      if (line.startsWith('data: ')) {
+        return JSON.parse(line.slice(6));
+      }
+    }
+    throw new Error('No data line in SSE response');
+  }
+  return JSON.parse(text);
+}
+
 /**
  * DirectMCPTransport
  * 
@@ -21,9 +39,81 @@ export interface MCPTransport {
  */
 export class DirectMCPTransport implements MCPTransport {
   private endpoint: string;
+  private initialized = false;
+  private initPromise: Promise<void> | null = null;
+  private sessionId: string | null = null;
 
   constructor(endpoint?: string) {
     this.endpoint = endpoint || 'http://127.0.0.1:3845/mcp';
+  }
+
+  private buildHeaders(): Record<string, string> {
+    const h: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': MCP_ACCEPT,
+    };
+    if (this.sessionId) {
+      h['Mcp-Session-Id'] = this.sessionId;
+    }
+    return h;
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      const initRes = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': MCP_ACCEPT,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'ant-cli', version: '1.0.0' },
+          },
+          id: `init-${Date.now()}`,
+        }),
+      });
+
+      if (!initRes.ok) {
+        throw new Error(`MCP initialize returned HTTP ${initRes.status}`);
+      }
+
+      const sid = initRes.headers.get('mcp-session-id');
+      if (sid) this.sessionId = sid;
+
+      const ct = initRes.headers.get('content-type');
+      const text = await initRes.text();
+      const json = parseMCPResponse(text, ct);
+
+      if (json.error) {
+        throw new Error(`MCP initialize rejected: ${json.error.message || JSON.stringify(json.error)}`);
+      }
+
+      await fetch(this.endpoint, {
+        method: 'POST',
+        headers: this.buildHeaders(),
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'notifications/initialized',
+        }),
+      });
+
+      this.initialized = true;
+    })();
+
+    try {
+      await this.initPromise;
+    } catch (err) {
+      this.initPromise = null;
+      throw err;
+    }
   }
 
   async callTool(name: FigmaMCPTool, args: Record<string, unknown>): Promise<MCPToolResult> {
@@ -31,9 +121,11 @@ export class DirectMCPTransport implements MCPTransport {
     const timeout = setTimeout(() => controller.abort(), BRIDGE_MCP_REQUEST_TIMEOUT_MS);
 
     try {
+      await this.ensureInitialized();
+
       const response = await fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.buildHeaders(),
         body: JSON.stringify({
           jsonrpc: '2.0',
           method: 'tools/call',
@@ -46,10 +138,13 @@ export class DirectMCPTransport implements MCPTransport {
       clearTimeout(timeout);
 
       if (!response.ok) {
-        return { content: null, isError: true };
+        const errorBody = await response.text().catch(() => '');
+        return { content: `HTTP ${response.status}: ${errorBody}`, isError: true };
       }
 
-      const json = await response.json();
+      const ct = response.headers.get('content-type');
+      const text = await response.text();
+      const json = parseMCPResponse(text, ct);
 
       if (json.error) {
         return { content: json.error.message || json.error, isError: true };
@@ -71,12 +166,24 @@ export class DirectMCPTransport implements MCPTransport {
       const timeout = setTimeout(() => controller.abort(), 3000);
       const res = await fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', method: 'ping', id: 1 }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': MCP_ACCEPT,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'ant-cli', version: '1.0.0' },
+          },
+          id: `avail-${Date.now()}`,
+        }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      return res.ok || res.status === 400;
+      return res.ok;
     } catch {
       return false;
     }
@@ -88,8 +195,7 @@ export class DirectMCPTransport implements MCPTransport {
  * 
  * For cloud mode: worker publishes MCP request to Redis,
  * Realtime forwards to Ant Desktop WebSocket, response comes back via Redis.
- * 
- * Stub implementation — full Redis pub/sub will be implemented in Phase 3-B.
+ * MCP initialization is handled by the companion app (ant-desktop).
  */
 export class BridgeMCPTransport implements MCPTransport {
   private userId: string;

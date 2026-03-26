@@ -53,19 +53,23 @@ Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{
 - Add "Skip any topics already documented" to continuation chapter descriptions
 - Execution phase will automatically detect and skip duplicates
 
-### 8. ui-assets.json Path Consistency (CRITICAL!)
+### 8. ui-assets.json: Download First + Path Consistency (CRITICAL!)
 
 **When creating ui-assets tasks:**
 
 **ui-assets-ch1 description MUST include:**
+- "Download FIRST, document AFTER — `src` fields must reference real downloaded file paths (Code Job requires local paths, not Figma URLs)"
 - "Define canonical destination path patterns based on observed asset categories"
 - "Output `<!-- PATH_PATTERN: <category>=<dest-path>, ... -->` metadata"
 
 **ui-assets-ch2+ descriptions MUST include:**
+- "Download first, then document — Code Job cannot use assets that only exist as Figma URLs"
 - "Follow ch1's path patterns exactly - do NOT create new subdirectories"
 - "Skip any assets already documented in ch1"
 
-**Why?** Without explicit path patterns, ch2 may create inconsistent destination paths.
+**Why download first?** The `src` field in ui-assets.json must point to real local files. Code Job reads these paths to integrate assets — Figma URLs are not usable at code generation time.
+
+**Why path patterns?** Without explicit path patterns, ch2 may create inconsistent destination paths.
 
 ---
 

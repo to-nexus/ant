@@ -55,7 +55,7 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
 export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState): boolean {
   switch (targetJob) {
     case 'design':
-      return ws.hasPrd || ws.hasScreens || ws.hasComponents || ws.hasAssets;
+      return ws.hasPrd || ws.hasScreens || ws.hasComponents || ws.hasAssets || ws.hasFigmaConfig;
     case 'code':
       return ws.hasDesignDoc || ws.hasCodebase;
     case 'learn':
@@ -360,6 +360,8 @@ export function buildTriagePrompt(params: {
     componentCount: workspaceState.componentCount || 0,
     hasAssets: workspaceState.hasAssets,
     assetCount: workspaceState.assetCount || 0,
+    hasFigmaConfig: workspaceState.hasFigmaConfig,
+    figmaFileCount: workspaceState.figmaFileCount || 0,
     hasUiDocs: workspaceState.hasUiDocs,
     hasSystemDesignDoc: workspaceState.hasSystemDesignDoc,
     hasSpecDocs: workspaceState.hasSpecDocs,

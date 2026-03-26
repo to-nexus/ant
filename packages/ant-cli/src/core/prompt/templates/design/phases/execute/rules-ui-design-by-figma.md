@@ -7,22 +7,32 @@ You have access to Figma MCP tools for extracting design data directly from Figm
 | Tool | Purpose |
 |------|---------|
 | `figma_get_metadata` | Get structural overview of Figma nodes (names, types, positions) |
-| `figma_get_design_context` | Get detailed design context with code hints and screenshot |
+| `figma_get_design_context` | Get detailed design context with code hints, screenshot, and **asset download URLs** |
 | `figma_get_screenshot` | Capture visual screenshot of specific node |
 | `figma_get_variable_defs` | Extract design variables/tokens from Figma |
+| `download_asset` | Download an asset file from URL to `inputs/assets/` (for SVG icons, PNG images, etc.) |
 | `read_file` | Read existing documents, PRD, or exploration results |
 
 ### Workflow
 
 1. **First**: Read the Figma exploration result (`figmaExplorationResult`) injected in the prompt context
 2. **Then**: Use `figma_get_design_context` for detailed component analysis (ONE PER TURN)
-3. **Optionally**: Use `figma_get_screenshot` for additional visual context
-4. **Finally**: Generate the document using `<file>` or `<append>` XML tag (see below)
+3. **Download assets**: When `figma_get_design_context` returns asset download URLs, use `download_asset` to save them to `inputs/assets/`
+4. **Optionally**: Use `figma_get_screenshot` for additional visual context
+5. **Finally**: Generate the document using `<file>` or `<append>` XML tag (see below)
+
+### Asset Download Strategy
+
+When `figma_get_design_context` returns download URLs for assets (icons, images, logos):
+1. Identify exportable assets from the response (SVG icons, PNG images, etc.)
+2. Call `download_asset` with the URL and a descriptive filename
+3. The tool auto-categorizes: SVG → `inputs/assets/icons/`, PNG/JPG → `inputs/assets/images/`
+4. Reference the downloaded paths in `ui-assets.json` using the `src` field
 
 ### Figma Extraction Strategy
 
 - **ui-tokens.json**: Use `figma_get_variable_defs` and exploration data for token extraction
-- **ui-assets.json**: Use exploration data for asset identification, `figma_get_design_context` for details
+- **ui-assets.json**: Use `figma_get_design_context` to find asset URLs, `download_asset` to save them, then map in JSON
 - **ui-spec.json**: Use `figma_get_design_context` per component/section for specification
 
 > ⚠️ **IMPORTANT**: The `figmaExplorationResult` provides pre-analyzed structure. Use MCP tools for deeper inspection of specific nodes.

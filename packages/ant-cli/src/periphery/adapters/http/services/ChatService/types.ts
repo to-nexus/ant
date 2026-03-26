@@ -23,6 +23,8 @@ export interface MessageContent {
      | 'analyzing' | 'analyzed'   // File analysis (learn job)
      | 'storing' | 'stored'       // Lesson storage (learn job)
      | 'learning' | 'learned'     // Codebase learning (code job - post task)
+     | 'downloading' | 'downloaded'   // Asset download (Figma design)
+     | 'figma_calling' | 'figma_called' // Figma MCP tool calls
      // General content
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
@@ -161,13 +163,15 @@ export const CHAT_STATUS_TYPES = new Set([
   'analyzing', 'analyzed',
   'storing', 'stored',
   'learning', 'learned',
+  'downloading', 'downloaded',
+  'figma_calling', 'figma_called',
   'command_running', 'command_streaming', 'command'
 ]);
 
 /**
  * Completed chat status types (used for duplicate detection)
  */
-export const COMPLETED_CHAT_STATUS_TYPES = new Set(['grepped', 'explored', 'read', 'command', 'learned']);
+export const COMPLETED_CHAT_STATUS_TYPES = new Set(['grepped', 'explored', 'read', 'command', 'learned', 'downloaded', 'figma_called']);
 
 // BASE_BRANCH_NAMES removed — use isBaseBranch() from core/utils/branchUtils instead.
 // Base branch is determined by project config (config.branchBase), not a hardcoded list.

@@ -33,6 +33,10 @@ export type MessageContentType =
   | 'stored'         // Storing lessons complete
   | 'learning'       // Learning from code changes (in progress)
   | 'learned'        // Learning complete
+  | 'downloading'    // Asset download in progress (Figma design)
+  | 'downloaded'     // Asset download complete
+  | 'figma_calling'  // Figma MCP tool call in progress
+  | 'figma_called'   // Figma MCP tool call complete
   // General content (Chat Status Messages HIDE when these arrive)
   | 'thinking'       // LLM's thought process (collapsible block, accumulates, multiple blocks possible)
   | 'text'           // General text response

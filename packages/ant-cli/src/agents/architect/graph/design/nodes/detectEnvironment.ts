@@ -276,7 +276,10 @@ async function checkLocalMCPAvailability(): Promise<boolean> {
     const timeout = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(FIGMA_MCP_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      },
       body: JSON.stringify({ jsonrpc: '2.0', method: 'ping', id: 1 }),
       signal: controller.signal,
     });

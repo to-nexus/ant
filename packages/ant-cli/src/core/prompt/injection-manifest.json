@@ -50,6 +50,7 @@
     "game-domain-guide": [],
     "service-domain-guide": [],
     "ui-continuation": ["targetDoc"],
+    "ui-continuation-by-figma": ["targetDoc"],
     "go-api-augmentation": [],
     "nextjs-augmentation": []
   }
