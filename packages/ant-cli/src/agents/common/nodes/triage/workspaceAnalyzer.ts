@@ -70,6 +70,7 @@ export async function analyzeWorkspace(
     hasScreens: false,
     hasComponents: false,
     hasAssets: false,
+    hasFigmaConfig: false,
     hasSystemDesignDoc: false,
     hasUiDocs: false,
     hasEvals: false,
@@ -143,6 +144,23 @@ export async function analyzeWorkspace(
     state.componentCount = componentsCount;
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Check Figma config (inputs/figma.json with populated files)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const figmaJsonPath = path.join(featurePath, 'inputs', 'figma.json');
+  if (fs.existsSync(figmaJsonPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(figmaJsonPath, 'utf-8'));
+      if (raw.files && Array.isArray(raw.files) && raw.files.length > 0) {
+        state.hasFigmaConfig = true;
+        state.figmaFileCount = raw.files.length;
+      }
+    } catch {
+      // Invalid JSON — treat as no config
+    }
+  }
+  console.log(`🎨 [WorkspaceAnalyzer] Figma config: ${state.hasFigmaConfig ? `${state.figmaFileCount} file(s)` : 'none'}`);
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Check assets
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -239,6 +257,7 @@ function createEmptyWorkspaceState(): WorkspaceState {
     hasScreens: false,
     hasComponents: false,
     hasAssets: false,
+    hasFigmaConfig: false,
     hasSystemDesignDoc: false,
     hasUiDocs: false,
     hasEvals: false,
@@ -264,6 +283,9 @@ export function formatWorkspaceState(state: WorkspaceState): string {
   
   lines.push('');
   lines.push('### References (ui-design)');
+  lines.push(state.hasFigmaConfig
+    ? `✅ Figma: ${state.figmaFileCount || 'multiple'} file(s) configured`
+    : 'ℹ️ No Figma config');
   lines.push(state.hasScreens 
     ? `✅ Screens: ${state.screenCount || 'multiple'} files` 
     : '❌ No screen references');

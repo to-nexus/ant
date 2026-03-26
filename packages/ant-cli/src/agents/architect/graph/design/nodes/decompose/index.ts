@@ -26,6 +26,17 @@ import { decomposeSpec } from "./specDecompose";
 // ============================================
 
 function validateUiDesignPrerequisites(state: DesignGraphState): void {
+  // Figma mode: references come from Figma MCP, not local files
+  if (state.uiDesignSource === 'figma') {
+    if (!state.figmaConfig?.files?.length) {
+      throw new Error(
+        "No Figma files configured for UI document generation.\n\n" +
+        "Required: figma.json with at least one Figma URL in the 'files' array."
+      );
+    }
+    return;
+  }
+
   const hasReferences = state.uiReferences?.length;
   const hasAssets = state.uiAssetsList && Object.values(state.uiAssetsList).some(arr => arr.length > 0);
 

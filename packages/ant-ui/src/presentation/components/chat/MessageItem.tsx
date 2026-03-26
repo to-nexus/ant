@@ -236,6 +236,12 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     case 'loading':
       return <WorkingCard content={content} variant="loading" />;
 
+    case 'downloading':
+      return <WorkingCard content={content} variant="downloading" />;
+
+    case 'figma_calling':
+      return <WorkingCard content={content} variant="figma_calling" />;
+
     // ===== Result States (~ed) =====
     case 'explored':
       return <WorkingCard content={content} variant="explored" />;
@@ -272,6 +278,12 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     
     case 'loaded':
       return <WorkingCard content={content} variant="loaded" />;
+
+    case 'downloaded':
+      return <WorkingCard content={content} variant="downloaded" />;
+
+    case 'figma_called':
+      return <WorkingCard content={content} variant="figma_called" />;
 
     // ===== Context Loaded =====
     case 'context_loaded':

@@ -7,19 +7,19 @@
  */
 
 import { useState } from 'react';
-import { Loader2, Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
 
 interface WorkingCardProps {
   content: MessageContent;
-  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'reading_source' | 'read_source' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned';
+  variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'reading_source' | 'read_source' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned' | 'downloading' | 'downloaded' | 'figma_calling' | 'figma_called';
 }
 
 /**
  * Determine if variant is a progress state (~ing) or complete state (~ed)
  */
 function isProgressState(variant: string): boolean {
-  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing', 'learning'].includes(variant);
+  return ['exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code', 'reading', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing', 'learning', 'downloading', 'figma_calling'].includes(variant);
 }
 
 /**
@@ -154,6 +154,28 @@ function getVariantConfig(variant: string, isProgress: boolean) {
         iconColorClass: isProgress ? 'text-fuchsia-600 dark:text-fuchsia-400' : 'text-fuchsia-500 dark:text-fuchsia-400',
         textClass: 'text-fuchsia-800 dark:text-fuchsia-300',
         detailClass: 'text-fuchsia-600 dark:text-fuchsia-400'
+      };
+    case 'download':
+      return {
+        Icon: isProgress ? Loader2 : Download,
+        iconClass: isProgress ? 'animate-spin' : '',
+        containerClass: isProgress
+          ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
+          : 'bg-orange-50/30 dark:bg-orange-900/20 hover:bg-orange-100/50 dark:hover:bg-orange-800/30',
+        iconColorClass: isProgress ? 'text-orange-600 dark:text-orange-400' : 'text-orange-500 dark:text-orange-400',
+        textClass: 'text-orange-800 dark:text-orange-300',
+        detailClass: 'text-orange-600 dark:text-orange-400'
+      };
+    case 'figma_call':
+      return {
+        Icon: isProgress ? Loader2 : Palette,
+        iconClass: isProgress ? 'animate-spin' : '',
+        containerClass: isProgress
+          ? 'bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800'
+          : 'bg-pink-50/30 dark:bg-pink-900/20 hover:bg-pink-100/50 dark:hover:bg-pink-800/30',
+        iconColorClass: isProgress ? 'text-pink-600 dark:text-pink-400' : 'text-pink-500 dark:text-pink-400',
+        textClass: 'text-pink-800 dark:text-pink-300',
+        detailClass: 'text-pink-600 dark:text-pink-400'
       };
     default:
       return {

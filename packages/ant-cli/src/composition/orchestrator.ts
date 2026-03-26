@@ -193,6 +193,7 @@ export async function orchestrator(params: {
         let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
         let closeBroadcasters: (() => Promise<void>) | undefined = undefined;
+        let redis: any = undefined;
 
         if (process.env.ANT_REDIS_URL) {
           try {
@@ -212,6 +213,21 @@ export async function orchestrator(params: {
           } catch (error: any) {
             console.log('⚠️  Failed to initialize real-time broadcasters [Design]:', error?.message);
           }
+
+          if (process.env.ANT_SERVER_MODE === 'cloud') {
+            try {
+              const { default: Redis } = await import('ioredis');
+              const url = process.env.ANT_REDIS_URL;
+              const isTLS = url.startsWith('rediss://');
+              const tlsOpts = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
+              redis = new Redis(url, { ...tlsOpts, maxRetriesPerRequest: 3, lazyConnect: true });
+              await redis.connect();
+              console.log('✅ Redis client created for Figma MCP bridge [Design]');
+            } catch (error: any) {
+              console.log('⚠️  Failed to create Redis for Figma bridge [Design]:', error?.message);
+              redis = undefined;
+            }
+          }
         } else {
           console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Design]');
         }
@@ -225,7 +241,7 @@ export async function orchestrator(params: {
           project || "default",
           'design',
           inputFile,
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath, redis },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           jobId       // ✅ Pass jobId for real-time Kanban and resume
@@ -235,6 +251,7 @@ export async function orchestrator(params: {
         const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
         await drainChatBroadcaster();
         await closeBroadcasters?.();
+        await redis?.quit?.();
 
         return result;
       }

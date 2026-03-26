@@ -14,8 +14,7 @@
 import { DesignGraphState } from '../state';
 import type { FigmaExplorationResult } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
-import { createMCPTransport } from '../../../../../periphery/adapters/figma/MCPTransport';
-import { FigmaMCPAdapter } from '../../../../../periphery/adapters/figma/FigmaMCPAdapter';
+import { getMCPAdapter } from './tool';
 
 interface MetadataNode {
   id: string;
@@ -149,9 +148,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     };
   }
 
-  const serverMode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
-  const transport = createMCPTransport({ serverMode });
-  const adapter = new FigmaMCPAdapter(transport);
+  const adapter = getMCPAdapter(state);
 
   const result: FigmaExplorationResult = {
     variationMatrix: [],
@@ -218,3 +215,4 @@ function emptyResult(): FigmaExplorationResult {
     downloadedScreenshots: [],
   };
 }
+

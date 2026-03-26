@@ -36,6 +36,7 @@ export interface DesignGraphState extends TaskArtifacts {
     kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
+    redis?: any;  // Raw ioredis client for cloud Figma MCP (BridgeMCPTransport)
   };
   
   

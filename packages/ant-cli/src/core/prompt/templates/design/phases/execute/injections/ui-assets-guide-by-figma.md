@@ -38,10 +38,12 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 ### Core Principles
 
-#### 1. Accuracy - Verify Before Documenting
+#### 1. Accuracy - Download and Verify Before Documenting
 - Use Figma exploration data to identify exportable asset nodes
-- Use `figma_get_screenshot` or `figma_get_design_context` via MCP to obtain asset data
+- Use `figma_get_design_context` to obtain asset download URLs from Figma
+- **Use `download_asset` to save each asset** to `inputs/assets/` (SVG → icons/, PNG → images/)
 - Preserve Figma node names as filenames unless semantic clarity requires change
+- The `src` field in ui-assets.json must point to the actual downloaded file path (e.g., `inputs/assets/icons/logo.svg`)
 
 #### 2. Token Reference
 - Use token keys from `ui-tokens.json` when describing asset usage context

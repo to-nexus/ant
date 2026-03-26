@@ -645,7 +645,7 @@ export class ContentMerger {
       'placeholder',  // Placeholder should be removed on cancel
       'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 'reading_source', 'loading',
       'indexing', 'storing', 'learning', 'searching_code', 'listing_files',
-      'searching_reference'
+      'searching_reference', 'downloading', 'figma_calling'
     ]);
     
     session.currentMessage!.contents.forEach((content, index) => {

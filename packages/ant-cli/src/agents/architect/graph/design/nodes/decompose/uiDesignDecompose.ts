@@ -68,11 +68,14 @@ export async function decomposeUiDesign(
   }
 
   const sourceFileNames = state.sourceDocuments ? Object.keys(state.sourceDocuments) : [];
+  const isFigmaMode = state.uiDesignSource === 'figma';
+  if (isFigmaMode && !sourceFileNames.includes('figma.json')) {
+    sourceFileNames.push('figma.json');
+  }
 
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  const isFigmaMode = state.uiDesignSource === 'figma';
   const templateSuffix = isFigmaMode ? 'by-figma' : 'by-ref';
   const decomposeTemplatePath = `design/phases/decompose/base-ui-design-${templateSuffix}`;
 
@@ -162,13 +165,18 @@ export async function decomposeUiDesign(
         ? task.parallelGroup
         : task.targetFile.replace(/\.json$/, '');
       
+      const sf: string[] = Array.isArray((task as any).sourceFiles) ? [...(task as any).sourceFiles] : [];
+      if (isFigmaMode && !sf.includes('figma.json')) {
+        sf.push('figma.json');
+      }
+
       taskQueue.push({
         id: task.id,
         name: task.name,
         type: 'doc',
         priority: task.priority,
         description: task.description,
-        sourceFiles: Array.isArray((task as any).sourceFiles) ? (task as any).sourceFiles : undefined,
+        sourceFiles: sf.length > 0 ? sf : undefined,
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,
