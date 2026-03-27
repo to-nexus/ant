@@ -408,6 +408,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
 async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   const { TaskOrchestrator: OrchestratorClass } = await import('../code/parallel/TaskOrchestrator');
   const { createDesignWorkerGraphBuilder } = await import('./parallel/workerGraph');
+  const { registerActiveOrchestrator, unregisterActiveOrchestrator } = await import('../../../../composition/gracefulShutdown');
 
   const maxWorkers = getTaskConcurrency();
   const parallelStartTime = Date.now();
@@ -529,6 +530,14 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   uiDesignSource: state.uiDesignSource,
                   figmaConfig: state.figmaConfig,
                   figmaExplorationResult: state.figmaExplorationResult,
+                  ...(checkpoint.reason ? {
+                    interruption: {
+                      reason: checkpoint.reason,
+                      message: `Design paused: ${checkpoint.reason}`,
+                      timestamp: new Date().toISOString(),
+                      canResume: checkpoint.canResume ?? true,
+                    },
+                  } : {}),
                 },
               },
             );
@@ -549,7 +558,13 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     },
   );
 
-  const result = await orchestrator.run();
+  registerActiveOrchestrator(orchestrator);
+  let result;
+  try {
+    result = await orchestrator.run();
+  } finally {
+    unregisterActiveOrchestrator();
+  }
 
   // Clear stale worker entries from WorkflowBroadcaster
   // Workers' last node (usually 'learn') stays in activeWorkers until cleared
@@ -867,8 +882,18 @@ export function buildDesignGraph() {
     { __end__: "__end__", decompose: "decompose", figmaExplore: "figmaExplore" } as any
   );
   
-  // ✅ figmaExplore → decompose (always proceeds after exploration)
-  graph.addEdge("figmaExplore" as any, "decompose" as any);
+  // ✅ figmaExplore → conditional: designError → END, otherwise → decompose
+  graph.addConditionalEdges(
+    "figmaExplore" as any,
+    ((s: DesignGraphState) => {
+      if (s.designError) {
+        console.log(`❌ [Graph] Figma explore failed (${s.designError.type}), terminating job`);
+        return "__end__";
+      }
+      return "decompose";
+    }) as any,
+    { __end__: "__end__", decompose: "decompose" } as any
+  );
   
   // ✅ Decompose → conditional: parallel or sequential
   graph.addConditionalEdges(
