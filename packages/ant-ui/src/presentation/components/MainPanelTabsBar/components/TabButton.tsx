@@ -30,17 +30,15 @@ export function TabButton({
     <div
       className={cn(
         'flex items-center gap-2 py-1.5 rounded-t text-sm font-medium',
-        showText ? 'px-3' : 'px-2',
+        showText ? 'px-3' : 'px-2 min-w-[36px] min-h-[36px] justify-center',
         isActive
           ? 'bg-white dark:bg-[#0d1117] text-gray-900 dark:text-white border-t border-x border-gray-200 dark:border-[#30363d]'
           : 'bg-gray-100 dark:bg-[#161b22] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#1c2128] cursor-pointer'
       )}
       title={title}
+      onClick={onClick}
     >
-      <div 
-        onClick={onClick}
-        className="flex items-center gap-2 flex-1"
-      >
+      <div className="flex items-center gap-2 flex-1">
         <Icon className="w-4 h-4 flex-shrink-0" />
         {showText && <span className={isJobTab ? "whitespace-nowrap" : ""}>{label}</span>}
       </div>
