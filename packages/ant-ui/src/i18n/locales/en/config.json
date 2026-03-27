@@ -50,15 +50,15 @@
     "statusNotReachable": "Not responding",
     "ready": "Integration complete",
     "setupNeeded": "Setup needed",
-    "downloadAntDesktop": "Download Ant Desktop",
+    "downloadAntDesktop": "Download",
     "connectAntDesktop": "Connect",
     "connecting": "Connecting...",
-    "downloadFigmaDesktop": "Download Figma",
+    "downloadFigmaDesktop": "Download",
     "connectFailed": "Connection failed. Is Ant Desktop installed and running?",
     "refresh": "Refresh",
     "statusRequiresAntDesktop": "Requires Ant Desktop",
-    "launchAntDesktop": "Open Ant Desktop",
-    "launchFigmaDesktop": "Open Figma"
+    "launchAntDesktop": "Open",
+    "launchFigmaDesktop": "Open"
   },
   "field": {
     "optional": "Optional"

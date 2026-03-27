@@ -1,19 +1,12 @@
 {
 	"folders": [
 		{
-			"name": "ant",
 			"path": "../../../../.."
 		},
 		{
-			"name": "ant-workspaces",
 			"path": "../../../../../../ant-workspaces"
 		},
 		{
-			"name": "plans",
-			"path": "../../../../../../../.cursor/plans"
-		},
-		{
-			"name": "ant-desktop",
 			"path": "../../../../../../ant-desktop"
 		}
 	],

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { checkBridgeStatus, openDesktopDeepLink } from '@/infrastructure/http/api';
+import { checkBridgeStatus, probeBridgeStatus, openDesktopDeepLink } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 
 export type DesktopStatus = 'offline' | 'detected' | 'connected';
@@ -188,11 +188,14 @@ export function useDesktopBridge(
   const refreshStatus = useCallback(async () => {
     setIsRefreshing(true);
     try {
+      const status = await probeBridgeStatus();
+      if (mountedRef.current) applyStatus(status);
+    } catch {
       await fetchStatus();
     } finally {
       if (mountedRef.current) setIsRefreshing(false);
     }
-  }, [fetchStatus]);
+  }, [applyStatus, fetchStatus]);
 
   return {
     desktopStatus,
