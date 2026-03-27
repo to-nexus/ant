@@ -43,6 +43,7 @@ interface BridgeClient {
    */
   authStatus: BridgeSessionStatus;
   unsubscribeMcp: (() => void) | null;
+  unsubscribeProbe: (() => void) | null;
 }
 
 export interface BridgeWebSocketHandlerDeps {
@@ -94,6 +95,7 @@ export class BridgeWebSocketHandler {
       machineId: null,
       authStatus: authResult.status,
       unsubscribeMcp: null,
+      unsubscribeProbe: null,
     };
 
     this.wss.handleUpgrade(req, socket, head, (ws) => {
@@ -172,6 +174,7 @@ export class BridgeWebSocketHandler {
 
     if (client.authStatus === 'connected') {
       await this.subscribeMcpChannel(client, userId);
+      await this.subscribeProbeChannel(client, userId);
     }
 
     await this.broadcastBridgeStatus(client);
@@ -278,6 +281,25 @@ export class BridgeWebSocketHandler {
     logger.info(`Subscribed to MCP channel for userId=${userId}`, { component: COMPONENT });
   }
 
+  // ─── Status probe relay (API Server → Ant Desktop) ──────
+
+  private async subscribeProbeChannel(client: BridgeClient, userId: string): Promise<void> {
+    if (!this.stateStore) return;
+    if (client.unsubscribeProbe) {
+      client.unsubscribeProbe();
+      client.unsubscribeProbe = null;
+    }
+
+    const channel = `bridge:status:probe:${userId}`;
+    const unsubscribe = await this.stateStore.subscribe(channel, () => {
+      if (client.ws.readyState !== WebSocket.OPEN) return;
+      client.ws.send(JSON.stringify({ type: 'bridge.statusProbe' }));
+    });
+
+    client.unsubscribeProbe = unsubscribe;
+    logger.info(`Subscribed to probe channel for userId=${userId}`, { component: COMPONENT });
+  }
+
   // ─── Auth ───────────────────────────────────────────────
 
   private authenticate(req: IncomingMessage): { userId: string | null; orgId: string | null; status: BridgeSessionStatus } {
@@ -316,6 +338,10 @@ export class BridgeWebSocketHandler {
     if (client.unsubscribeMcp) {
       client.unsubscribeMcp();
       client.unsubscribeMcp = null;
+    }
+    if (client.unsubscribeProbe) {
+      client.unsubscribeProbe();
+      client.unsubscribeProbe = null;
     }
 
     if (client.userId) {

@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet } from './client';
+import { API_BASE, authFetch, apiGet, apiPost } from './client';
 
 export interface DesktopTokenResponse {
   success: boolean;
@@ -68,4 +68,15 @@ export async function checkBridgeStatus(): Promise<BridgeStatus> {
     detected: false,
     figmaDesktopReachable: false,
   }));
+}
+
+/**
+ * Trigger an on-demand status probe — asks Ant Desktop to check Figma immediately.
+ * Returns fresh status after Ant Desktop responds (blocks up to 5s server-side).
+ * Falls back to cached GET /status on error.
+ */
+export async function probeBridgeStatus(): Promise<BridgeStatus> {
+  return apiPost<BridgeStatus>(`${API_BASE()}/bridge/probe`).catch(() =>
+    checkBridgeStatus(),
+  );
 }

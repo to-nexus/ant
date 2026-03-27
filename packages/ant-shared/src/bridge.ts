@@ -19,6 +19,7 @@ export const BRIDGE_WS_PATH = '/bridge/ws';
 export const BRIDGE_HEARTBEAT_INTERVAL_MS = 30_000;
 export const BRIDGE_HEARTBEAT_TIMEOUT_MS = 90_000;
 export const BRIDGE_MCP_REQUEST_TIMEOUT_MS = 30_000;
+export const BRIDGE_PROBE_TIMEOUT_MS = 5_000;
 export const BRIDGE_WS_MAX_MESSAGE_BYTES = 16_777_216;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -35,6 +36,7 @@ export type BridgeMessage =
   | BridgeRegisterMessage
   | BridgeHeartbeatMessage
   | BridgeDisconnectMessage
+  | BridgeStatusProbeMessage
   | MCPRequestMessage
   | MCPResponseMessage;
 
@@ -55,6 +57,11 @@ export interface BridgeHeartbeatMessage {
 export interface BridgeDisconnectMessage {
   type: 'bridge.disconnect';
   reason?: string;
+}
+
+/** Server → Desktop: request an immediate heartbeat with fresh figmaDesktopReachable check */
+export interface BridgeStatusProbeMessage {
+  type: 'bridge.statusProbe';
 }
 
 export interface MCPRequestMessage {
