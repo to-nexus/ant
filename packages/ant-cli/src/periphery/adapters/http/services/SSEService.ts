@@ -89,6 +89,11 @@ export class SSEService {
     const broadcastChannel = getRealtimeBroadcastChannel(orgId, userId);
     if (!this.subscribedChannels.has(broadcastChannel)) {
       await this.stateStore.subscribe(broadcastChannel, (message: SSEBroadcastMessage) => {
+        if (!message.projectId || !message.featureName) {
+          // User-level message (e.g., bridge status) — deliver to all user's clients
+          this.broadcastToUser(orgId, userId, message.type, message.data);
+          return;
+        }
         const { projectId, featureName, type, data, userContext: msgUserContext } = message;
         this.broadcastLocal(projectId, featureName, type, data, msgUserContext);
       });
@@ -295,6 +300,33 @@ export class SSEService {
     });
   }
   
+  /**
+   * Broadcast to all SSE clients for a specific user, regardless of project/feature.
+   * Used for user-level events (e.g., bridge status) that are not project-scoped.
+   */
+  private broadcastToUser(orgId: string, userId: string, type: SSEMessageType, data: any): void {
+    const prefix = `${orgId}:${userId}:`;
+    const message: SSEMessage = {
+      type,
+      timestamp: new Date().toISOString(),
+      data,
+    };
+    const dataString = JSON.stringify(message);
+
+    this.clients.forEach((clients, key) => {
+      if (!key.startsWith(prefix)) return;
+      clients.forEach(res => {
+        try {
+          res.write(`data: ${dataString}\n\n`);
+          SSEService.flushResponse(res);
+        } catch (error) {
+          logger.warn('Failed to send user-level SSE', { component: 'SSEService' }, error);
+          clients.delete(res);
+        }
+      });
+    });
+  }
+
   /**
    * Broadcast message to all features of a project (project-level events)
    */
