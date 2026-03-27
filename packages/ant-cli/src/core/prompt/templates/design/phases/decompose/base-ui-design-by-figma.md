@@ -83,6 +83,18 @@ You are analyzing UI complexity to break it into tasks.
 | Figma Exploration Result | Pre-analyzed structure from `figmaExplore` node |
 | Figma MCP Tools | `figma_get_design_context`, `figma_get_metadata`, `figma_get_screenshot`, `figma_get_variable_defs` |
 
+{{#if nodeSummary}}
+### Figma Node Structure (nodeSummary)
+
+Use these nodeIds to scope tasks to specific design areas:
+
+```
+{{{nodeSummary}}}
+```
+
+**CONSTRAINT**: Assign relevant nodeIds to each task description so the executor can query specific nodes instead of root.
+{{/if}}
+
 ---
 
 ## 📊 CHAPTER-BASED TASK BREAKDOWN
@@ -107,17 +119,16 @@ You are analyzing UI complexity to break it into tasks.
 
 **⚠️ CRITICAL: ch1 establishes the destination PATH PATTERN. ch2+ MUST follow it exactly.**
 
-**⚠️ CRITICAL: Download FIRST, document AFTER. The `src` field in ui-assets.json must reference real downloaded file paths — Code Job requires local paths, not Figma URLs.**
+**CONSTRAINT: Every `src` field in ui-assets.json MUST reference a file that exists on the local filesystem. The system validates this after task completion — violations cause task failure.**
 
 | Task ID | Priority | Topic |
 |---------|----------|-------|
-| ui-assets-ch1 | 200 | First batch of assets. Download FIRST, document AFTER: use `figma_get_design_context` to obtain asset URLs, then `download_asset` to save each asset locally. The `src` field must reference real downloaded file paths — Code Job cannot use Figma URLs. Define canonical destination path patterns. Output PATH_PATTERN metadata. |
-| ui-assets-ch2 | 210 | Remaining assets. Same workflow: download first, then document. Code Job requires local file paths, not Figma URLs. MUST follow ch1's path patterns exactly. Skip assets already documented. |
+| ui-assets-ch1 | 200 | First batch of assets. Every `src` path must reference a locally downloaded file. Define canonical destination path patterns. Output PATH_PATTERN metadata. |
+| ui-assets-ch2 | 210 | Remaining assets. Every `src` path must reference a locally downloaded file. MUST follow ch1's path patterns exactly. Skip assets already documented. |
 
 **Task Description Requirements:**
-- **ch1 MUST include**: "Download FIRST, document AFTER — `src` fields must reference real downloaded file paths (Code Job requires local paths, not Figma URLs)"
+- **ALL tasks MUST include**: "Every `src` field must reference a file that exists locally. Non-existent paths cause task failure."
 - **ch1 MUST include**: "Define canonical destination paths" and "Output `<!-- PATH_PATTERN: ... -->` metadata"
-- **ch2+ MUST include**: "Download first, then document — Code Job cannot use assets that only exist as Figma URLs"
 - **ch2+ MUST include**: "Follow ch1's path patterns exactly" and "Skip assets already documented in ch1"
 
 #### ui-spec.json (multi-chapter)

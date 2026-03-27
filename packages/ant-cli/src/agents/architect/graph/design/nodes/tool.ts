@@ -97,6 +97,11 @@ async function executeDesignTool(
         try {
           result = await handleFigmaMCPTool(state, name, args as { fileKey: string; nodeId: string });
           await figmaChatAPI.showChatStatus('figma_called', { toolName: name, _mergeIndex: figmaMergeIdx });
+
+          const figmaNodeId = (args as any).nodeId;
+          if ((figmaNodeId === '0:1' || figmaNodeId === '0-1') && result && name !== 'figma_get_screenshot') {
+            result = buildRootCallGuidance(state, name);
+          }
         } catch (err: any) {
           await figmaChatAPI.showChatStatus('figma_called', { toolName: name, error: true, _mergeIndex: figmaMergeIdx });
           result = JSON.stringify({ error: err.message });
@@ -1026,6 +1031,23 @@ export function getMCPAdapter(state: DesignGraphState): FigmaMCPAdapter {
 }
 
 const _figmaResponseCache = new Map<string, string>();
+
+function buildRootCallGuidance(state: DesignGraphState, toolName: string): string {
+  const nodeSummary = state.figmaExplorationResult?.nodeSummary;
+  const topFrames = nodeSummary
+    ? nodeSummary
+        .filter(n => n.depth <= 1 && (n.type === 'FRAME' || n.type === 'SECTION'))
+        .map(n => `  - ${n.name} (nodeId: ${n.nodeId}, type: ${n.type}, children: ${n.childCount})`)
+        .join('\n')
+    : '  (nodeSummary not available)';
+
+  return JSON.stringify({
+    warning: 'Root node query returns too much data. Use specific nodeIds instead.',
+    guidance: `Query individual frames/sections for detailed data. Available top-level nodes:\n${topFrames}`,
+    tool: toolName,
+    availableNodeCount: nodeSummary?.length ?? 0,
+  });
+}
 
 async function handleFigmaMCPTool(
   state: DesignGraphState,

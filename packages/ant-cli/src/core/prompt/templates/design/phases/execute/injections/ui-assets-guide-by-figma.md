@@ -38,14 +38,19 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 ### Core Principles
 
-#### 1. Accuracy - Download and Verify Before Documenting
-- Use Figma exploration data to identify exportable asset nodes
-- Use `figma_get_design_context` to obtain asset download URLs from Figma
-- **Use `download_asset` to save each asset** to `inputs/assets/` (SVG → icons/, PNG → images/)
+#### 1. Asset Reference Integrity
+
+**CONSTRAINT: Every `src` field in ui-assets.json MUST reference a file that exists on the local filesystem.**
+
+- Code Job consumes local file paths. Non-existent paths break the build.
+- If a local file does not exist for an asset, it has NOT been downloaded yet.
+- The system validates this constraint after task completion. Violations cause task failure.
+
+#### 2. Accuracy
 - Preserve Figma node names as filenames unless semantic clarity requires change
 - The `src` field in ui-assets.json must point to the actual downloaded file path (e.g., `inputs/assets/icons/logo.svg`)
 
-#### 2. Token Reference
+#### 3. Token Reference
 - Use token keys from `ui-tokens.json` when describing asset usage context
 - Example: `"overlay": "colors.overlay.dark"` instead of raw hex values
 
@@ -216,10 +221,10 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ### Workflow
 
 1. Review the `# REFERENCE: ui-tokens.json` section in this prompt
-2. Read `figmaExplorationResult` → Identify exportable asset nodes
-3. Use `figma_get_design_context` for asset URLs and properties
-4. **Use `download_asset` to save each asset locally** (SVG → `inputs/assets/icons/`, PNG/JPG → `inputs/assets/images/`)
-5. Generate ui-assets.json — `src` fields must reference the downloaded file paths from step 4
+2. Read `figmaExplorationResult` → Identify exportable asset nodes via nodeSummary
+3. Query specific nodeIds (not root) for asset details and download URLs
+4. Download each asset to `inputs/assets/` before referencing it in ui-assets.json
+5. Generate ui-assets.json — every `src` path MUST point to a file that exists locally
 
 {{#if pathPattern}}
 ════════════════════════════════════════════════════════════════════════════════

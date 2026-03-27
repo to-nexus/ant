@@ -123,6 +123,12 @@ export interface DesignGraphState extends TaskArtifacts {
   /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */
   _toolResultCache?: Record<string, string>;
 
+  /** Set by checkTaskStatus when ui-assets src validation fails — signals router to retry via docGen */
+  _assetValidationFailed?: boolean;
+
+  /** Retry counter for asset validation (max 2 retries before forced completion) */
+  _assetValidationRetried?: number;
+
   // Results (populated by learn node)
   lessons?: string;
   

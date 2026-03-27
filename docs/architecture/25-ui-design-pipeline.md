@@ -135,7 +135,7 @@ docGen과 동일한 LLM + tool loop 구조. Figma 파일의 구조를 탐색하�
 - **Component State Matrix** 생성: 섹션 외부 컴포넌트 변형 (active/closed 등)
 - **Interaction State** 수집: hover/focus/error 프레임 그룹
 - 에셋 노드 탐색 + 다운로드 → `inputs/assets/`
-- 페이지 스크린샷 다운로드 → `inputs/references/` (보조 참고용, 파이프라인 모드 결정에 무관)
+- nodeSummary 생성: 노드 트리를 컴팩트한 목록으로 변환 (LLM이 특정 nodeId로 조회할 수 있게 가이드)
 - get_variable_defs로 디자인 변수 확인
 
 출력: `state.figmaExplorationResult` (매트릭스, 어노테이션, 에셋 경로, 변수 정의)
@@ -289,7 +289,7 @@ interface FigmaExplorationResult {
   variableDefs?: any;
   totalFrameCount: number;
   downloadedAssets: string[];
-  downloadedScreenshots: string[];
+  nodeSummary?: FigmaNodeSummary[];
 }
 ```
 
