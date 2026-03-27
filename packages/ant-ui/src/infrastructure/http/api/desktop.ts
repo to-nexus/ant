@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, getBackendMode } from './client';
+import { API_BASE, authFetch, apiGet } from './client';
 
 export interface DesktopTokenResponse {
   success: boolean;
@@ -66,5 +66,6 @@ export async function checkBridgeStatus(): Promise<BridgeStatus> {
   return apiGet<BridgeStatus>(`${API_BASE()}/bridge/status`).catch(() => ({
     connected: false,
     detected: false,
+    figmaDesktopReachable: false,
   }));
 }

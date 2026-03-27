@@ -24,6 +24,7 @@ import type {
 import { BRIDGE_WS_PATH, BRIDGE_WS_MAX_MESSAGE_BYTES } from '@ant/shared';
 import { BridgeSessionManager } from './BridgeSessionManager';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
+import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import { logger } from '../../utils/logger';
 
 const COMPONENT = 'BridgeWS';
@@ -33,6 +34,8 @@ interface BridgeClient {
   ws: WebSocket;
   /** null until register message is processed */
   userId: string | null;
+  /** Organization ID for SSE broadcast scoping. local mode → 'local', cloud → JWT org */
+  orgId: string | null;
   machineId: string | null;
   /**
    * 'detected' = WS connected but no JWT (probe only)
@@ -87,6 +90,7 @@ export class BridgeWebSocketHandler {
     const client: BridgeClient = {
       ws: null as any,
       userId: authResult.userId,
+      orgId: authResult.orgId,
       machineId: null,
       authStatus: authResult.status,
       unsubscribeMcp: null,
@@ -169,6 +173,8 @@ export class BridgeWebSocketHandler {
     if (client.authStatus === 'connected') {
       await this.subscribeMcpChannel(client, userId);
     }
+
+    await this.broadcastBridgeStatus(client);
   }
 
   private async handleHeartbeat(client: BridgeClient, msg: BridgeHeartbeatMessage): Promise<void> {
@@ -177,11 +183,15 @@ export class BridgeWebSocketHandler {
     if (client.authStatus === 'detected') {
       const probe = await this.sessionManager.getProbeSession();
       if (!probe) return;
+      const prevReachable = probe.figmaDesktopReachable;
       probe.lastPingAt = Date.now();
       if (msg.figmaDesktopReachable !== undefined) {
         probe.figmaDesktopReachable = msg.figmaDesktopReachable;
       }
       await this.sessionManager.updateProbeSession(probe);
+      if (msg.figmaDesktopReachable !== undefined && msg.figmaDesktopReachable !== prevReachable) {
+        await this.broadcastBridgeStatus(client);
+      }
       return;
     }
 
@@ -198,14 +208,19 @@ export class BridgeWebSocketHandler {
       };
       await this.sessionManager.setSession(client.userId!, session);
       logger.warn(`Session recovered from heartbeat (userId=${client.userId})`, { component: COMPONENT });
+      await this.broadcastBridgeStatus(client);
       return;
     }
 
+    const prevReachable = existing.figmaDesktopReachable;
     existing.lastPingAt = Date.now();
     if (msg.figmaDesktopReachable !== undefined) {
       existing.figmaDesktopReachable = msg.figmaDesktopReachable;
     }
     await this.sessionManager.setSession(client.userId, existing);
+    if (msg.figmaDesktopReachable !== undefined && msg.figmaDesktopReachable !== prevReachable) {
+      await this.broadcastBridgeStatus(client);
+    }
   }
 
   private async handleMcpResponse(msg: BridgeMessage): Promise<void> {
@@ -216,6 +231,26 @@ export class BridgeWebSocketHandler {
     const responseKey = `bridge:mcp:response:${requestId}`;
     const payload = JSON.stringify(error ? { error } : { result });
     await this.stateStore.setKeyWithTTL(responseKey, payload, 60);
+  }
+
+  // ─── SSE bridge status broadcast ────────────────────────
+
+  /** Publish bridge status to the user's SSE broadcast channel (user-level, no projectId). */
+  private async broadcastBridgeStatus(client: BridgeClient): Promise<void> {
+    if (!client.userId || !client.orgId || !this.stateStore) return;
+
+    try {
+      const status = await this.sessionManager.getStatus(client.userId);
+      const channel = getRealtimeBroadcastChannel(client.orgId, client.userId);
+
+      await this.stateStore.publish(channel, {
+        type: 'bridge',
+        data: status,
+        userContext: { organizationId: client.orgId, userId: client.userId },
+      });
+    } catch (err: any) {
+      logger.warn(`Failed to broadcast bridge status: ${err.message}`, { component: COMPONENT });
+    }
   }
 
   // ─── MCP channel relay (Worker → Ant Desktop) ────────────
@@ -245,28 +280,28 @@ export class BridgeWebSocketHandler {
 
   // ─── Auth ───────────────────────────────────────────────
 
-  private authenticate(req: IncomingMessage): { userId: string | null; status: BridgeSessionStatus } {
+  private authenticate(req: IncomingMessage): { userId: string | null; orgId: string | null; status: BridgeSessionStatus } {
     const authHeader = req.headers['authorization'];
     if (!authHeader?.startsWith('Bearer ')) {
-      return { userId: null, status: 'detected' };
+      return { userId: null, orgId: null, status: 'detected' };
     }
 
     const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
     const token = authHeader.slice(7);
 
     if (!isCloudMode) {
-      return { userId: 'local', status: 'connected' };
+      return { userId: 'local', orgId: 'local', status: 'connected' };
     }
 
     if (!this.jwtService) {
-      return { userId: null, status: 'detected' };
+      return { userId: null, orgId: null, status: 'detected' };
     }
 
     try {
       const payload = this.jwtService.verify(token);
-      return { userId: payload.sub, status: 'connected' };
+      return { userId: payload.sub, orgId: payload.org, status: 'connected' };
     } catch {
-      return { userId: null, status: 'detected' };
+      return { userId: null, orgId: null, status: 'detected' };
     }
   }
 
@@ -290,6 +325,7 @@ export class BridgeWebSocketHandler {
         await this.sessionManager.removeSession(client.userId);
       }
       logger.info(`Bridge disconnected: userId=${client.userId}`, { component: COMPONENT });
+      await this.broadcastBridgeStatus(client);
     }
 
     this.clients.delete(client);

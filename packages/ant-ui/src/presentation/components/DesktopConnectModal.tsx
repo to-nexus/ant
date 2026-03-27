@@ -1,8 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Modal } from './common/Modal';
 import type { LaunchPhase } from '@/application/hooks/ui/useDesktopBridge';
-
-const GITHUB_RELEASES_URL = 'https://github.com/anthropics/ant-desktop/releases';
+import { GITHUB_RELEASES_URL } from '@/presentation/constants/desktop';
 
 interface DesktopConnectModalProps {
   launchPhase: LaunchPhase;
@@ -30,7 +29,7 @@ export function DesktopConnectModal({ launchPhase, onRetry, onCancel }: DesktopC
               {t('desktop.connecting')}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              {t('desktop.connectionFailedDesc')}
+              {t('desktop.connectingDesc')}
             </p>
             <button
               onClick={onCancel}

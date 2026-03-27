@@ -56,7 +56,9 @@
     "downloadFigmaDesktop": "Download Figma",
     "connectFailed": "Connection failed. Is Ant Desktop installed and running?",
     "refresh": "Refresh",
-    "statusRequiresAntDesktop": "Requires Ant Desktop"
+    "statusRequiresAntDesktop": "Requires Ant Desktop",
+    "launchAntDesktop": "Open Ant Desktop",
+    "launchFigmaDesktop": "Open Figma"
   },
   "field": {
     "optional": "Optional"

@@ -73,8 +73,9 @@ function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReacha
   if (isFullyConnected) {
     return (
       <Tooltip content={t('panel.figmaConnected')} placement="right">
-        <span className="inline-flex items-center flex-shrink-0">
+        <span className="inline-flex items-center gap-0.5 flex-shrink-0">
           <FigmaIcon className="w-3.5 h-3.5" />
+          <Check className="w-2.5 h-2.5 text-green-500" />
         </span>
       </Tooltip>
     );
@@ -95,9 +96,9 @@ function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReacha
       }
       placement="right"
     >
-      <span className="relative inline-flex items-center flex-shrink-0">
-        <FigmaIcon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" muted />
-        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-500" />
+      <span className="inline-flex items-center gap-0.5 flex-shrink-0">
+        <FigmaIcon className="w-3.5 h-3.5" />
+        <X className="w-2.5 h-2.5 text-red-400" />
       </span>
     </Tooltip>
   );

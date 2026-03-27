@@ -55,13 +55,14 @@
     "vertical": "수직 분할 (상/하)"
   },
   "desktop": {
-    "offline": "오프라인",
+    "offline": "Ant Desktop",
     "detected": "실행 중",
     "connected": "연결됨",
     "start": "시작",
     "connect": "연결",
     "connecting": "연결 중...",
-    "settings": "설정",
+    "connectingDesc": "Ant Desktop을 실행하는 중...",
+    "settings": "설정 (Figma 연동)",
     "offlineDesc": "Ant Desktop이 실행되고 있지 않습니다",
     "downloadHint": "앱이 없으신가요?",
     "detectedDesc": "Ant Desktop이 실행 중입니다. 연결을 클릭하세요.",

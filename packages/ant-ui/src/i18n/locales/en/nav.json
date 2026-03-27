@@ -55,13 +55,14 @@
     "vertical": "Vertical Split (Top/Bottom)"
   },
   "desktop": {
-    "offline": "Offline",
+    "offline": "Ant Desktop",
     "detected": "Running",
     "connected": "Connected",
     "start": "Start",
     "connect": "Connect",
     "connecting": "Connecting...",
-    "settings": "Settings",
+    "connectingDesc": "Launching Ant Desktop...",
+    "settings": "Settings (Figma)",
     "offlineDesc": "Ant Desktop is not running",
     "downloadHint": "Don't have it?",
     "detectedDesc": "Ant Desktop is running. Click Connect to link.",

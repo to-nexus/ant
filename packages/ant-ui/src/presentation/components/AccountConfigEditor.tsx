@@ -1,11 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   checkGitHubPATStatus, 
   saveGitHubPAT, 
   deleteGitHubPAT,
-  checkBridgeStatus,
-  openDesktopDeepLink,
   fetchOrgConfig,
   fetchUserConfig,
   updateUserConfig,
@@ -16,7 +14,10 @@ import { useStore } from '@/domain/store';
 import { DEFAULT_LOCAL_BACKEND_PORT, STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
 import { ConfigSection, ConfigIcons, ConfigStyles } from './ConfigSection';
 import { DangerZoneSection } from './common/DangerZoneSection';
-import { Modal } from './common/Modal';
+import { DesktopConnectModal } from './DesktopConnectModal';
+import { useDesktopBridge } from '@/application/hooks/ui/useDesktopBridge';
+import { GITHUB_RELEASES_URL, FIGMA_DOWNLOAD_URL, FIGMA_DEEPLINK_URL } from '@/presentation/constants/desktop';
+import { AntDesktopIcon } from './common/AntDesktopIcon';
 
 interface AccountConfigEditorProps {
   onClose: () => void;
@@ -53,17 +54,18 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const bridgeConnected = useStore((s) => s.bridgeConnected);
   const bridgeDetected = useStore((s) => s.bridgeDetected);
   const figmaDesktopReachable = useStore((s) => s.figmaDesktopReachable);
-  const setBridgeStatus = useStore((s) => s.setBridgeStatus);
   const accountConfigScrollTarget = useStore((s) => s.accountConfigScrollTarget);
   const setAccountConfigScrollTarget = useStore((s) => s.setAccountConfigScrollTarget);
-  const [isCheckingBridge, setIsCheckingBridge] = useState(false);
   const figmaSectionRef = useRef<HTMLDivElement>(null);
   
-  // Deep link modal state
-  const [deeplinkModalOpen, setDeeplinkModalOpen] = useState(false);
-  const [deeplinkPhase, setDeeplinkPhase] = useState<'connecting' | 'success' | 'failed'>('connecting');
-  const deeplinkPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const deeplinkTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    launchPhase,
+    isRefreshing: isCheckingBridge,
+    launchDesktop,
+    retryLaunch,
+    cancelLaunch,
+    refreshStatus: loadBridgeStatus,
+  } = useDesktopBridge({ enablePolling: false });
   
   // Account reset state
   const [isResettingAccount, setIsResettingAccount] = useState(false);
@@ -114,26 +116,6 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     loadOwnerConfigs();
   }, []);
   
-  // Load Bridge / Ant Desktop status → global store
-  const loadBridgeStatus = async () => {
-    setIsCheckingBridge(true);
-    try {
-      const status = await checkBridgeStatus();
-      setBridgeStatus({
-        connected: status.connected,
-        detected: status.detected ?? status.connected,
-        figmaDesktopReachable: status.figmaDesktopReachable ?? false,
-      });
-    } catch {
-      setBridgeStatus({ connected: false, detected: false, figmaDesktopReachable: false });
-    } finally {
-      setIsCheckingBridge(false);
-    }
-  };
-
-  useEffect(() => {
-    loadBridgeStatus();
-  }, []);
 
   // Scroll to Figma section when requested (e.g. from GNB indicator)
   useEffect(() => {
@@ -215,74 +197,9 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     });
   };
 
-  const cleanupDeeplinkPolling = useCallback(() => {
-    if (deeplinkPollRef.current) { clearInterval(deeplinkPollRef.current); deeplinkPollRef.current = null; }
-    if (deeplinkTimeoutRef.current) { clearTimeout(deeplinkTimeoutRef.current); deeplinkTimeoutRef.current = null; }
-  }, []);
-
-  const closeDeeplinkModal = useCallback(() => {
-    cleanupDeeplinkPolling();
-    setDeeplinkModalOpen(false);
-  }, [cleanupDeeplinkPolling]);
-
-  const startDeeplinkPolling = useCallback(() => {
-    cleanupDeeplinkPolling();
-    setDeeplinkPhase('connecting');
-
-    deeplinkPollRef.current = setInterval(async () => {
-      try {
-        const status = await checkBridgeStatus();
-        if (status.connected) {
-          cleanupDeeplinkPolling();
-          setBridgeStatus({
-            connected: status.connected,
-            detected: status.detected ?? status.connected,
-            figmaDesktopReachable: status.figmaDesktopReachable ?? false,
-          });
-          setDeeplinkPhase('success');
-          setTimeout(() => closeDeeplinkModal(), 1200);
-        }
-      } catch { /* ignore poll errors */ }
-    }, 2000);
-
-    deeplinkTimeoutRef.current = setTimeout(() => {
-      if (deeplinkPollRef.current) { clearInterval(deeplinkPollRef.current); deeplinkPollRef.current = null; }
-      setDeeplinkPhase('failed');
-    }, 15000);
-  }, [cleanupDeeplinkPolling, setBridgeStatus, closeDeeplinkModal]);
-
   const handleConnectDesktop = async () => {
-    setDeeplinkModalOpen(true);
-    setDeeplinkPhase('connecting');
-    try {
-      const opened = await openDesktopDeepLink();
-      if (!opened) {
-        setDeeplinkPhase('failed');
-        return;
-      }
-      startDeeplinkPolling();
-    } catch {
-      setDeeplinkPhase('failed');
-    }
+    await launchDesktop();
   };
-
-  const handleDeeplinkRetry = async () => {
-    setDeeplinkPhase('connecting');
-    try {
-      const opened = await openDesktopDeepLink();
-      if (!opened) {
-        setDeeplinkPhase('failed');
-        return;
-      }
-      startDeeplinkPolling();
-    } catch {
-      setDeeplinkPhase('failed');
-    }
-  };
-
-  useEffect(() => {
-    return () => cleanupDeeplinkPolling();
-  }, [cleanupDeeplinkPolling]);
 
   const handlePortInputChange = (value: string) => {
     setPortInput(value);
@@ -607,28 +524,25 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       <div className="space-y-2.5">
         {/* Ant Desktop row */}
         <div className="flex items-center gap-2 flex-wrap">
-          <svg className="w-4 h-4 flex-shrink-0 text-gray-500 dark:text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <rect x="3" y="3" width="18" height="14" rx="2" />
-            <path d="M7 21h10M12 17v4" strokeLinecap="round" />
-          </svg>
+          <AntDesktopIcon className="w-4 h-4 flex-shrink-0" />
           <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
             {t('figma.antDesktop')}
           </span>
           <span className={`text-xs px-1.5 py-0.5 rounded ${antDesktopBadge.cls}`}>
             {antDesktopBadge.text}
           </span>
-          {!bridgeDetected && !bridgeConnected && (
-            <a href="https://github.com/anthropics/ant-desktop/releases" target="_blank"
-               rel="noopener noreferrer"
-               className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-              {t('figma.downloadAntDesktop')} ↗
-            </a>
-          )}
-          {bridgeDetected && !bridgeConnected && (
+          {!bridgeConnected && (
             <button onClick={handleConnectDesktop}
                     className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-              {t('figma.connectAntDesktop')}
+              {t('figma.launchAntDesktop')}
             </button>
+          )}
+          {!bridgeConnected && (
+            <a href={GITHUB_RELEASES_URL} target="_blank"
+               rel="noopener noreferrer"
+               className="text-xs text-gray-400 dark:text-gray-500 hover:underline">
+              {t('figma.downloadAntDesktop')} ↗
+            </a>
           )}
         </div>
 
@@ -647,15 +561,15 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           <span className={`text-xs px-1.5 py-0.5 rounded ${figmaDesktopBadge.cls}`}>
             {figmaDesktopBadge.text}
           </span>
-          {bridgeConnected && !figmaDesktopReachable && (
-            <a href="https://www.figma.com/downloads/" target="_blank"
-               rel="noopener noreferrer"
-               className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-              {t('figma.downloadFigmaDesktop')} ↗
-            </a>
+          {!figmaDesktopReachable && (
+            <button
+              onClick={() => window.open(FIGMA_DEEPLINK_URL, '_self')}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+              {t('figma.launchFigmaDesktop')}
+            </button>
           )}
-          {!bridgeConnected && (
-            <a href="https://www.figma.com/downloads/" target="_blank"
+          {!figmaDesktopReachable && (
+            <a href={FIGMA_DOWNLOAD_URL} target="_blank"
                rel="noopener noreferrer"
                className="text-xs text-gray-400 dark:text-gray-500 hover:underline">
               {t('figma.downloadFigmaDesktop')} ↗
@@ -779,66 +693,11 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         </div>
       </div>
 
-      {/* Deep link connection modal */}
-      <Modal
-        isOpen={deeplinkModalOpen}
-        onClose={closeDeeplinkModal}
-        title={t('figma.antDesktop')}
-        size="sm"
-        onBackdropClick={() => {}}
-      >
-        <div className="flex flex-col items-center py-4">
-          {deeplinkPhase === 'connecting' && (
-            <>
-              <div className="w-10 h-10 mb-4 border-3 border-gray-200 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
-              <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                {t('figma.deeplinkConnecting')}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                {t('figma.deeplinkDesc')}
-              </p>
-              <button onClick={closeDeeplinkModal} className={ConfigStyles.buttonSecondary}>
-                {t('figma.deeplinkCancel')}
-              </button>
-            </>
-          )}
-          {deeplinkPhase === 'success' && (
-            <>
-              <div className="w-10 h-10 mb-4 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
-                <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                {t('figma.deeplinkSuccess')}
-              </p>
-            </>
-          )}
-          {deeplinkPhase === 'failed' && (
-            <>
-              <div className="w-10 h-10 mb-4 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-                <svg className="w-6 h-6 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                {t('figma.deeplinkFailed')}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                {t('figma.deeplinkDesc')}
-              </p>
-              <div className="flex gap-2">
-                <button onClick={handleDeeplinkRetry} className={ConfigStyles.buttonPrimary}>
-                  {t('figma.deeplinkRetry')}
-                </button>
-                <button onClick={closeDeeplinkModal} className={ConfigStyles.buttonSecondary}>
-                  {t('figma.deeplinkCancel')}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
+      <DesktopConnectModal
+        launchPhase={launchPhase}
+        onRetry={retryLaunch}
+        onCancel={cancelLaunch}
+      />
     </div>
   );
 }
