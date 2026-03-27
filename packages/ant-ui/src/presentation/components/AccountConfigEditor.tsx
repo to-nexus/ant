@@ -534,10 +534,10 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           {!bridgeConnected && (
             <button onClick={handleConnectDesktop}
                     className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
-              {t('figma.launchAntDesktop')}
+              {bridgeDetected ? t('figma.connectAntDesktop') : t('figma.launchAntDesktop')}
             </button>
           )}
-          {!bridgeConnected && (
+          {!bridgeConnected && !bridgeDetected && (
             <a href={GITHUB_RELEASES_URL} target="_blank"
                rel="noopener noreferrer"
                className="text-xs text-gray-400 dark:text-gray-500 hover:underline">
