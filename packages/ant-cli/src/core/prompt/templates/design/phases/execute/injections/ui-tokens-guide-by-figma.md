@@ -122,7 +122,7 @@ Use `<file>` tag to create the initial JSON file.
 
 ### Workflow
 
-1. Read `figmaExplorationResult` → Understand page/frame structure
+1. Review nodeSummary in Available Resources → Understand page/frame structure
 2. `figma_get_variable_defs` → Extract Figma variables as token candidates
 3. `figma_get_design_context` → Inspect specific nodes for additional token values
 4. Generate `ui-tokens.json` with comprehensive token structure

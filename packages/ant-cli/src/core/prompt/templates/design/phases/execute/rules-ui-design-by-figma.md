@@ -15,7 +15,7 @@ You have access to Figma MCP tools for extracting design data directly from Figm
 
 ### Workflow
 
-1. **First**: Read the Figma exploration result (`figmaExplorationResult`) injected in the prompt context
+1. **First**: Review the nodeSummary in Available Resources to identify target nodeIds
 2. **Then**: Use `figma_get_design_context` for detailed component analysis (ONE PER TURN)
 3. **Download assets**: When `figma_get_design_context` returns asset download URLs, use `download_asset` to save them to `inputs/assets/`
 4. **Optionally**: Use `figma_get_screenshot` for additional visual context
@@ -35,7 +35,7 @@ When `figma_get_design_context` returns download URLs for assets (icons, images,
 - **ui-assets.json**: Use `figma_get_design_context` to find asset URLs, `download_asset` to save them, then map in JSON
 - **ui-spec.json**: Use `figma_get_design_context` per component/section for specification
 
-> ⚠️ **IMPORTANT**: The `figmaExplorationResult` provides pre-analyzed structure. Use MCP tools for deeper inspection of specific nodes.
+> ⚠️ **IMPORTANT**: The nodeSummary in Available Resources provides the structural overview. Use MCP tools for deeper inspection of specific nodes.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -540,7 +540,7 @@ Before outputting, verify:
 
 3. **Typical flow:**
    ```
-   Turn 1: Read figmaExplorationResult context + figma_get_design_context(node) → Wait
+   Turn 1: Review nodeSummary + figma_get_design_context(node) → Wait
    Turn 2: Additional figma_get_design_context() for details → Wait
    Turn 3: <file>...</file> or <append>...</append> + <done>true</done>
    ```

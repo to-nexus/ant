@@ -18,6 +18,37 @@ export function createFeaturesRoutes(deps: {
   stateStore?: StateStorePort;
 }): Router {
   const router = Router();
+
+  /**
+   * Find paused/running jobs for a specific feature+jobType in Redis and mark them as failed.
+   * Decoupled from session file — works even when the session file is missing or corrupted.
+   */
+  async function cleanupStaleRedisJobs(
+    projectId: string,
+    featureName: string,
+    jobType: string,
+  ): Promise<string[]> {
+    if (!deps.stateStore) return [];
+
+    const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+    const staleJobs = jobs.filter(j =>
+      (j.status === 'paused' || j.status === 'running') && j.type === jobType
+    );
+
+    for (const job of staleJobs) {
+      await deps.stateStore.updateJobStatus(job.jobId, {
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        error: 'Session cleared by user',
+      });
+      if (deps.kanbanService) {
+        await deps.kanbanService.clearJobMemory(job.jobId);
+      }
+      logger.debug(`[Session] 🗑️ Marked stale job ${job.jobId} as failed (was: ${job.status})`);
+    }
+
+    return staleJobs.map(j => j.jobId);
+  }
   
   // Get features for a project
   router.get('/projects/:id/features', async (req: Request, res: Response) => {
@@ -166,8 +197,14 @@ export function createFeaturesRoutes(deps: {
       try {
         sessionData = await deps.projectService.getSession(projectId, featureName, jobType, userContext);
       } catch (error: any) {
-        if (error.message === 'Session file not found') {
-          logger.debug(`[Session] No session file to clear`);
+        const isUnreadable = error.message === 'Session file not found' || error instanceof SyntaxError;
+        if (isUnreadable) {
+          logger.debug(`[Session] No valid session file to clear (${error.message})`);
+          try {
+            await cleanupStaleRedisJobs(projectId, featureName, jobType);
+          } catch (cleanupError) {
+            logger.warn('Failed to cleanup Redis during session clear', { component: 'Features' }, cleanupError);
+          }
           return res.json({ success: true, message: 'No session data to clear' });
         }
         throw error;
@@ -205,38 +242,28 @@ export function createFeaturesRoutes(deps: {
       
       logger.debug(`[Session] ✅ Cleared session data: ${projectId}/${featureName}/${jobType}.json`);
       
-      // ✅ CRITICAL: Invalidate KanbanService cache to prevent stale data on SSE reconnect
       if (deps.kanbanService) {
         deps.kanbanService.invalidateSessionCache(sessionPath);
-
-        // ✅ Also clear job memory state if jobId existed
-        const previousJobId = sessionData?.state?.jobId;
-        if (previousJobId) {
-          deps.kanbanService.clearJobMemory(previousJobId);
-          logger.debug(`[Session] 🗑️ Cleared memory state for previous job: ${previousJobId}`);
-        }
       }
 
-      // ✅ CRITICAL: Clear Redis job status for paused/stale jobs so new jobs can start.
-      // Without this, checkDuplicateJob() still finds the paused job and blocks new job creation
-      // with "이전 작업이 중단되어 있습니다" even after session reset.
+      // Clean up Redis job status (paused/running → failed) and kanban task queues.
+      // Uses listJobsByFeature so it works even when sessionData.state.jobId is missing.
+      const cleanedJobIds: string[] = [];
+      try {
+        const ids = await cleanupStaleRedisJobs(projectId, featureName, jobType);
+        cleanedJobIds.push(...ids);
+      } catch (error) {
+        logger.warn('Failed to cleanup Redis during session clear', { component: 'Features' }, error);
+      }
+
+      // Include session's jobId for debug file cleanup even if that job was already completed/failed
       const previousJobId = sessionData?.state?.jobId;
-      if (previousJobId && deps.stateStore) {
-        try {
-          const jobStatus = await deps.stateStore.getJobStatus(previousJobId);
-          if (jobStatus && (jobStatus.status === 'paused' || jobStatus.status === 'running')) {
-            await deps.stateStore.updateJobStatus(previousJobId, {
-              status: 'failed',
-              completedAt: new Date().toISOString(),
-              error: 'Session cleared by user',
-            });
-            logger.debug(`[Session] 🗑️ Marked job ${previousJobId} as failed (was: ${jobStatus.status})`);
-          }
-        } catch (error) {
-          logger.warn('Failed to update Redis job status during session clear (non-critical)', { component: 'Features' }, error);
-        }
+      if (previousJobId && !cleanedJobIds.includes(previousJobId)) {
+        cleanedJobIds.push(previousJobId);
       }
-      if (previousJobId) {
+
+      // Clean up debug artifacts for all affected jobs
+      if (cleanedJobIds.length > 0) {
         try {
           const agent = getAgentForJob(jobType);
           const debugSubdirs = ['prompts', 'plans', 'logs', 'tokens'];
@@ -246,16 +273,16 @@ export function createFeaturesRoutes(deps: {
             try {
               entries = await fs.promises.readdir(debugDir, { withFileTypes: true });
             } catch {
-              continue; // directory doesn't exist — skip
+              continue;
             }
             for (const entry of entries) {
-              if (entry.isFile() && entry.name.includes(previousJobId)) {
+              if (entry.isFile() && cleanedJobIds.some(id => entry.name.includes(id))) {
                 await fs.promises.unlink(path.join(debugDir, entry.name));
                 logger.debug(`[Session] 🗑️ Deleted debug file: ${subdir}/${entry.name}`);
               }
             }
           }
-          logger.debug(`[Session] ✅ Cleared debug logs for job: ${previousJobId}`);
+          logger.debug(`[Session] ✅ Cleared debug logs for jobs: ${cleanedJobIds.join(', ')}`);
         } catch (error) {
           logger.warn('Failed to clear debug log files (non-critical)', { component: 'Features' }, error);
         }

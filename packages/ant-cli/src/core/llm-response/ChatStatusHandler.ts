@@ -12,6 +12,13 @@ import type { MessageContent } from '../chat/types';
 import type { ChatStatusType } from './types';
 import { logger } from '../../utils/logger';
 
+function formatFigmaTarget(nodeId?: string, nodeName?: string): string | null {
+  if (!nodeId) return null;
+  if (nodeId === '0:1' || nodeId === '0-1') return null;
+  if (nodeName) return nodeName.length > 200 ? nodeName.slice(0, 197) + '...' : nodeName;
+  return `node: ${nodeId}`;
+}
+
 export class ChatStatusHandler {
   constructor(
     private sessionStore: SessionStore,
@@ -350,15 +357,17 @@ export class ChatStatusHandler {
       case 'figma_calling': {
         const toolName = metadata?.toolName ?? 'MCP tool';
         const label = toolName.replace(/^figma_/, '');
-        return `Figma: ${label}...`;
+        const target = formatFigmaTarget(metadata?.nodeId, metadata?.nodeName);
+        return target ? `Figma: ${label} (${target})...` : `Figma: ${label}...`;
       }
 
       case 'figma_called': {
         const toolName = metadata?.toolName ?? 'MCP tool';
         const label = toolName.replace(/^figma_/, '');
         const error = metadata?.error;
-        if (error) return `❌ Figma Failed: ${label}`;
-        return `Figma: ${label}`;
+        const target = formatFigmaTarget(metadata?.nodeId, metadata?.nodeName);
+        if (error) return target ? `❌ Figma Failed: ${label} (${target})` : `❌ Figma Failed: ${label}`;
+        return target ? `Figma: ${label} (${target})` : `Figma: ${label}`;
       }
 
       case 'tool_action':
