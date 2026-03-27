@@ -84,6 +84,10 @@ export class ToolResultManager {
         return this.truncateRunCommand(result);
       case 'list_files':
         return this.truncateListFiles(result);
+      case 'figma_get_metadata':
+      case 'figma_get_design_context':
+      case 'figma_get_variable_defs':
+        return this.truncateFigma(result);
       default:
         return this.truncateGeneric(result);
     }
@@ -382,6 +386,79 @@ export class ToolResultManager {
    * 일반 tool 결과 truncation
    * 전략: JSON을 compact하게 포맷, 토큰 초과시 간단히 잘라냄
    */
+  private truncateFigma(result: any): TruncationResult {
+    const FIGMA_TOKEN_LIMIT = 20000;
+    const resultStr = typeof result === 'object' ? JSON.stringify(result) : String(result);
+    const originalTokens = this.tokenManager.estimateTokens(resultStr);
+
+    if (originalTokens <= FIGMA_TOKEN_LIMIT) {
+      return {
+        content: resultStr,
+        wasTruncated: false,
+        originalTokens,
+        truncatedTokens: originalTokens,
+      };
+    }
+
+    // JSON-aware structural pruning: remove deep children first
+    try {
+      const parsed = typeof result === 'object' ? result : JSON.parse(resultStr);
+      const pruned = this.pruneDeepChildren(parsed, FIGMA_TOKEN_LIMIT);
+      const prunedStr = JSON.stringify(pruned);
+      const truncatedTokens = this.tokenManager.estimateTokens(prunedStr);
+
+      console.log(`\n✂️  [ToolResult] Figma structural pruning:`);
+      console.log(`   Original: ${originalTokens.toLocaleString()} tokens`);
+      console.log(`   Pruned: ${truncatedTokens.toLocaleString()} tokens`);
+
+      return {
+        content: prunedStr,
+        wasTruncated: true,
+        originalTokens,
+        truncatedTokens,
+        reason: `Figma result structurally pruned from ${originalTokens} to ${truncatedTokens} tokens`,
+      };
+    } catch {
+      const maxChars = FIGMA_TOKEN_LIMIT * 3.5;
+      const truncated = resultStr.substring(0, maxChars) + '\n... (Figma result truncated)';
+      const truncatedTokens = this.tokenManager.estimateTokens(truncated);
+      return {
+        content: truncated,
+        wasTruncated: true,
+        originalTokens,
+        truncatedTokens,
+        reason: `Figma result fallback-truncated from ${originalTokens} to ${truncatedTokens} tokens`,
+      };
+    }
+  }
+
+  private pruneDeepChildren(obj: any, tokenLimit: number, currentDepth = 0): any {
+    if (obj === null || typeof obj !== 'object') return obj;
+
+    if (Array.isArray(obj)) {
+      const result: any[] = [];
+      for (const item of obj) {
+        result.push(this.pruneDeepChildren(item, tokenLimit, currentDepth));
+        const check = JSON.stringify(result);
+        if (this.tokenManager.estimateTokens(check) > tokenLimit * 0.8) {
+          result.push({ _pruned: true, remainingItems: obj.length - result.length });
+          break;
+        }
+      }
+      return result;
+    }
+
+    const pruned: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === 'children' && Array.isArray(value) && currentDepth >= 2) {
+        pruned[key] = `[${(value as any[]).length} children pruned at depth ${currentDepth}]`;
+        continue;
+      }
+      pruned[key] = this.pruneDeepChildren(value, tokenLimit, currentDepth + 1);
+    }
+    return pruned;
+  }
+
   private truncateGeneric(result: any): TruncationResult {
     let resultStr: string;
     

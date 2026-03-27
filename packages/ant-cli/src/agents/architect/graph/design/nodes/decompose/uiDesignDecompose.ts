@@ -90,6 +90,11 @@ export async function decomposeUiDesign(
     figmaExplorationResult: isFigmaMode
       ? JSON.stringify(state.figmaExplorationResult, null, 2)
       : undefined,
+    nodeSummary: isFigmaMode && state.figmaExplorationResult?.nodeSummary
+      ? state.figmaExplorationResult.nodeSummary
+          .map(n => `${'  '.repeat(n.depth)}${n.type} "${n.name}" nodeId=${n.nodeId} (${n.childCount} children)`)
+          .join('\n')
+      : undefined,
   });
 
   await safeLogPrompt(

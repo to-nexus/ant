@@ -12,7 +12,7 @@
  */
 
 import { DesignGraphState } from '../state';
-import type { FigmaExplorationResult } from '@ant/shared';
+import type { FigmaExplorationResult, FigmaNodeSummary } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getMCPAdapter } from './tool';
 
@@ -132,6 +132,32 @@ function buildComponentStateMatrix(
   return matrix;
 }
 
+const NODE_SUMMARY_TYPES = new Set(['FRAME', 'SECTION', 'COMPONENT_SET', 'COMPONENT', 'GROUP']);
+const NODE_SUMMARY_MAX_DEPTH = 3;
+const MAX_VARIABLE_DEFS_TOKENS = 8000;
+
+function buildNodeSummary(
+  nodes: MetadataNode[],
+  depth = 0,
+): FigmaNodeSummary[] {
+  const summaries: FigmaNodeSummary[] = [];
+  for (const node of nodes) {
+    if (NODE_SUMMARY_TYPES.has(node.type)) {
+      summaries.push({
+        nodeId: node.id,
+        name: node.name,
+        type: node.type,
+        depth,
+        childCount: node.children?.length ?? 0,
+      });
+    }
+    if (node.children && depth < NODE_SUMMARY_MAX_DEPTH) {
+      summaries.push(...buildNodeSummary(node.children, depth + 1));
+    }
+  }
+  return summaries;
+}
+
 export async function figmaExplore(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   const phaseStart = Date.now();
 
@@ -157,7 +183,6 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     interactionStates: [],
     totalFrameCount: 0,
     downloadedAssets: [],
-    downloadedScreenshots: [],
   };
 
   for (const url of figmaConfig.files) {
@@ -190,6 +215,35 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
 
     const componentStates = buildComponentStateMatrix(nodes);
     result.componentStateMatrix.push(...componentStates);
+
+    const nodeSummary = buildNodeSummary(nodes);
+    if (!result.nodeSummary) result.nodeSummary = [];
+    result.nodeSummary.push(...nodeSummary);
+    console.log(`      nodeSummary: ${nodeSummary.length} entries (depth <= ${NODE_SUMMARY_MAX_DEPTH})`);
+
+    try {
+      const varResult = await adapter.getVariableDefs(fileKey, rootNodeId);
+      if (!varResult.isError) {
+        const varContent = varResult.content;
+        const varStr = typeof varContent === 'string' ? varContent : JSON.stringify(varContent);
+        const estimatedTokens = varStr.length / 3.5;
+        console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
+        let varData: unknown;
+        if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
+          varData = varContent;
+        } else {
+          console.warn(`      ⚠️ variableDefs too large, storing keys only`);
+          varData = extractVariableDefsSummary(varContent);
+        }
+        if (!result.variableDefs) {
+          result.variableDefs = varData;
+        } else {
+          result.variableDefs = mergeVariableDefs(result.variableDefs, varData);
+        }
+      }
+    } catch (err: any) {
+      console.warn(`      ⚠️ getVariableDefs failed: ${err.message}`);
+    }
   }
 
   console.log(`\n   📊 Exploration complete:`);
@@ -197,6 +251,8 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
   console.log(`      Variation groups: ${result.variationMatrix.length}`);
   console.log(`      Annotations: ${result.annotations.length}`);
   console.log(`      Component sets: ${result.componentStateMatrix.length}`);
+  console.log(`      nodeSummary entries: ${result.nodeSummary?.length ?? 0}`);
+  console.log(`      variableDefs: ${result.variableDefs ? 'loaded' : 'none'}`);
 
   return {
     figmaExplorationResult: result,
@@ -212,7 +268,33 @@ function emptyResult(): FigmaExplorationResult {
     interactionStates: [],
     totalFrameCount: 0,
     downloadedAssets: [],
-    downloadedScreenshots: [],
   };
+}
+
+function mergeVariableDefs(existing: unknown, incoming: unknown): unknown {
+  if (Array.isArray(existing) && Array.isArray(incoming)) {
+    return [...existing, ...incoming];
+  }
+  if (typeof existing === 'object' && existing !== null
+      && typeof incoming === 'object' && incoming !== null) {
+    return { ...(existing as Record<string, unknown>), ...(incoming as Record<string, unknown>) };
+  }
+  return [existing, incoming];
+}
+
+function extractVariableDefsSummary(content: unknown): unknown {
+  try {
+    const obj = typeof content === 'string' ? JSON.parse(content) : content;
+    if (typeof obj !== 'object' || obj === null) return content;
+    const summary: Record<string, number> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      summary[key] = Array.isArray(value) ? value.length
+        : (typeof value === 'object' && value !== null) ? Object.keys(value).length
+        : 1;
+    }
+    return { _summary: true, collections: summary };
+  } catch {
+    return { _summary: true, error: 'parse_failed' };
+  }
 }
 
