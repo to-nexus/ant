@@ -1,26 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings } from 'lucide-react';
+import { AlertTriangle, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useDesktopBridge } from '@/application/hooks/ui/useDesktopBridge';
 import { DesktopConnectModal } from './DesktopConnectModal';
 import { useStore } from '@/domain/store';
-import { GITHUB_RELEASES_URL } from '@/presentation/constants/desktop';
 import { AntDesktopIcon } from './common/AntDesktopIcon';
 
 const STATUS_CONFIG = {
   offline: {
     dotClass: 'bg-gray-400',
-    iconClass: 'text-gray-400',
     textClass: 'text-gray-500 dark:text-gray-400',
   },
   detected: {
     dotClass: 'bg-amber-500',
-    iconClass: 'text-amber-500',
     textClass: 'text-amber-600 dark:text-amber-400',
   },
   connected: {
     dotClass: 'bg-green-500',
-    iconClass: 'text-green-500',
     textClass: 'text-green-600 dark:text-green-400',
   },
 } as const;
@@ -35,10 +31,11 @@ export function DesktopStatusIndicator() {
   const setQuickStartProjectId = useStore((s) => s.setQuickStartProjectId);
   const setAccountConfigScrollTarget = useStore((s) => s.setAccountConfigScrollTarget);
 
+  const figmaDesktopReachable = useStore((s) => s.figmaDesktopReachable);
+
   const {
     desktopStatus,
     launchPhase,
-    launchDesktop,
     retryLaunch,
     cancelLaunch,
   } = useDesktopBridge({ enablePolling: true });
@@ -64,11 +61,6 @@ export function DesktopStatusIndicator() {
     setShowDropdown(false);
   };
 
-  const handleActionClick = async () => {
-    setShowDropdown(false);
-    await launchDesktop();
-  };
-
   return (
     <>
       <div className="relative" ref={dropdownRef}>
@@ -92,68 +84,51 @@ export function DesktopStatusIndicator() {
           <div className="absolute top-full right-0 mt-1 w-64 bg-white dark:bg-gray-800
                         rounded-md shadow-lg border border-gray-200 dark:border-gray-700
                         py-2 z-50">
-            {/* Status description */}
+            {/* Status header */}
             <div className="px-3 pb-2 border-b border-gray-100 dark:border-gray-700">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${config.dotClass}`} />
                 <span className={`text-sm font-medium ${config.textClass}`}>
                   {t(`desktop.${desktopStatus}`)}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {t(`desktop.${desktopStatus}Desc`)}
-              </p>
             </div>
 
-            {/* Action area */}
-            <div className="px-3 py-2">
+            {/* Status checklist */}
+            <div className="px-3 py-2 space-y-1.5">
               {desktopStatus === 'offline' && (
-                <div className="space-y-2">
-                  <button
-                    onClick={handleActionClick}
-                    className="w-full px-3 py-1.5 text-sm font-medium rounded-md
-                             bg-blue-600 text-white hover:bg-blue-700
-                             transition-colors flex items-center justify-center gap-1.5"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                    </svg>
-                    {t('desktop.start')}
-                  </button>
-                  <div className="text-center">
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
-                      {t('desktop.downloadHint')}{' '}
-                    </span>
-                    <a
-                      href={GITHUB_RELEASES_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                    >
-                      {t('desktop.downloadButton')} ↗
-                    </a>
-                  </div>
+                <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400 flex-shrink-0" />
+                  {t('desktop.antDesktopOffline')}
                 </div>
               )}
 
               {desktopStatus === 'detected' && (
-                <button
-                  onClick={handleActionClick}
-                  className="w-full px-3 py-1.5 text-sm font-medium rounded-md
-                           bg-blue-600 text-white hover:bg-blue-700
-                           transition-colors"
-                >
-                  {t('desktop.connect')}
-                </button>
+                <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  {t('desktop.antDesktopDetected')}
+                </div>
               )}
 
               {desktopStatus === 'connected' && (
-                <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  {t('desktop.connectedDesc')}
-                </div>
+                <>
+                  <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    {t('desktop.antDesktopConnected')}
+                  </div>
+                  <div className={`flex items-center gap-1.5 text-xs ${figmaDesktopReachable ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                    {figmaDesktopReachable ? (
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                    )}
+                    {figmaDesktopReachable ? t('desktop.figmaConnected') : t('desktop.figmaNotReachable')}
+                  </div>
+                </>
               )}
             </div>
 

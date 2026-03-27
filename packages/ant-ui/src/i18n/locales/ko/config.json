@@ -50,15 +50,15 @@
     "statusNotReachable": "응답 없음",
     "ready": "연동 완료",
     "setupNeeded": "설정 필요",
-    "downloadAntDesktop": "Ant Desktop 다운로드",
+    "downloadAntDesktop": "다운로드",
     "connectAntDesktop": "연결",
     "connecting": "연결 중...",
-    "downloadFigmaDesktop": "Figma 다운로드",
+    "downloadFigmaDesktop": "다운로드",
     "connectFailed": "연결에 실패했습니다. Ant Desktop이 설치되어 실행 중인지 확인하세요.",
     "refresh": "새로고침",
     "statusRequiresAntDesktop": "Ant Desktop 필요",
-    "launchAntDesktop": "Ant Desktop 열기",
-    "launchFigmaDesktop": "Figma 열기"
+    "launchAntDesktop": "열기",
+    "launchFigmaDesktop": "열기"
   },
   "field": {
     "optional": "선택 사항"
