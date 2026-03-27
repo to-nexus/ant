@@ -253,7 +253,36 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
       setSvgPreviewUrl(null);
     }
 
-    const blob = new Blob([editedContent], { type: 'image/svg+xml' });
+    // SVGs without explicit width/height fall back to the HTML replaced-element
+    // default of 300x150, causing square icons to render as wide rectangles.
+    // Extract dimensions from viewBox and set them explicitly.
+    let svgContent = editedContent;
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+      const svgEl = doc.querySelector('svg');
+      if (svgEl) {
+        const w = svgEl.getAttribute('width');
+        const h = svgEl.getAttribute('height');
+        const needsWidth = !w || w === '100%';
+        const needsHeight = !h || h === '100%';
+        if (needsWidth || needsHeight) {
+          const viewBox = svgEl.getAttribute('viewBox');
+          if (viewBox) {
+            const parts = viewBox.trim().split(/[\s,]+/);
+            if (parts.length === 4) {
+              svgEl.setAttribute('width', parts[2]);
+              svgEl.setAttribute('height', parts[3]);
+              svgContent = new XMLSerializer().serializeToString(doc);
+            }
+          }
+        }
+      }
+    } catch {
+      // Parse failed — use original content as-is
+    }
+
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     setSvgPreviewUrl(url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
