@@ -358,6 +358,23 @@ function buildResourcesSummary(state: DesignGraphState): string {
     if (state.figmaExplorationResult) {
       const er = state.figmaExplorationResult;
       resourcesSummary += `- **Explored**: ${er.totalFrameCount} frames, ${er.variationMatrix.length} variation groups, ${er.componentStateMatrix.length} component sets\n`;
+
+      if (er.nodeSummary?.length) {
+        resourcesSummary += '\n### Figma Data Access\n\n';
+        resourcesSummary += '**CONSTRAINT**: Use the most specific (deepest) nodeId available for design context queries.\n';
+        resourcesSummary += 'nodeSummary provides nodeIds by area. Broader nodeIds return less useful responses.\n\n';
+        resourcesSummary += '**CONSTRAINT**: Do NOT query nodes at the root or page level for detailed design data.\n\n';
+        resourcesSummary += '### nodeSummary (available nodeIds)\n\n';
+        resourcesSummary += '```\n';
+        for (const n of er.nodeSummary.slice(0, 80)) {
+          const indent = '  '.repeat(n.depth);
+          resourcesSummary += `${indent}${n.type} "${n.name}" nodeId=${n.nodeId} (${n.childCount} children)\n`;
+        }
+        if (er.nodeSummary.length > 80) {
+          resourcesSummary += `... and ${er.nodeSummary.length - 80} more entries\n`;
+        }
+        resourcesSummary += '```\n';
+      }
     }
   } else {
     resourcesSummary += '## Reference Images\n';

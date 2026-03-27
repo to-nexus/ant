@@ -123,5 +123,13 @@ export interface FigmaExplorationResult {
   variableDefs?: unknown;
   totalFrameCount: number;
   downloadedAssets: string[];
-  downloadedScreenshots: string[];
+  nodeSummary?: FigmaNodeSummary[];
+}
+
+export interface FigmaNodeSummary {
+  nodeId: string;
+  name: string;
+  type: string;
+  depth: number;
+  childCount: number;
 }

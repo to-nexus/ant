@@ -71,7 +71,7 @@ checkTaskStatus -> [router]
 
 ### figmaExplore 노드
 
-Figma 모드 전용 노드. `detectEnvironment` 이후, `decompose` 이전에 실행된다. docGen과 동일한 LLM + tool loop 구조로 Figma MCP 도구를 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State, Interaction State)를 생성한다. 에셋을 `inputs/assets/`에, 스크린샷을 `inputs/references/`에 다운로드한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 도구 세트: `TOOL_SETS.figmaExplore`.
+Figma 모드 전용 노드. `detectEnvironment` 이후, `decompose` 이전에 실행된다. 프로그래밍적으로 Figma MCP 도구를 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State, Interaction State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다.
 
 ### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
 

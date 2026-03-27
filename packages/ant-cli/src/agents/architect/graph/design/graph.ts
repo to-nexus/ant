@@ -35,6 +35,46 @@ async function stripInternalMarkers(
   }
 }
 
+function extractAllSrcFields(obj: any): string[] {
+  const srcs: string[] = [];
+  if (!obj || typeof obj !== 'object') return srcs;
+  if (Array.isArray(obj)) {
+    for (const item of obj) srcs.push(...extractAllSrcFields(item));
+  } else {
+    if (typeof obj.src === 'string') srcs.push(obj.src);
+    for (const key of Object.keys(obj)) {
+      if (typeof obj[key] === 'object') srcs.push(...extractAllSrcFields(obj[key]));
+    }
+  }
+  return srcs;
+}
+
+async function validateAssetReferences(state: DesignGraphState): Promise<{
+  valid: boolean;
+  missingFiles: string[];
+  totalRefs: number;
+}> {
+  const featurePath = state.context.featurePath;
+  const fs = await import('fs/promises');
+
+  const uiAssetsPath = path.join(featurePath, 'outputs', 'design', 'ui-assets.json');
+  try {
+    const content = await fs.readFile(uiAssetsPath, 'utf-8');
+    const parsed = JSON.parse(content);
+    const srcPaths = extractAllSrcFields(parsed);
+    const missing: string[] = [];
+
+    for (const src of srcPaths) {
+      const absPath = path.join(featurePath, src);
+      try { await fs.access(absPath); } catch { missing.push(src); }
+    }
+
+    return { valid: missing.length === 0, missingFiles: missing, totalRefs: srcPaths.length };
+  } catch {
+    return { valid: true, missingFiles: [], totalRefs: 0 };
+  }
+}
+
 /**
  * Check task status and handle completion
  * Routes to plan (next task) or learn (all done)
@@ -156,6 +196,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       fileErrors: undefined,
       interruption,
       tokenUsage: (state as any).tokenUsage,
+      _assetValidationFailed: false,
+      _assetValidationRetried: 0,
     } as any;
   }
   
@@ -166,6 +208,36 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     console.warn(`⚠️  [checkTaskStatus] ${state.fileErrors.length} file error(s) for "${state.currentTask.name}":`);
     for (const err of state.fileErrors) {
       console.warn(`   - ${err.substring(0, 200)}`);
+    }
+  }
+
+  // Asset validation gate: verify all src paths exist before completing ui-assets tasks
+  if (state.currentTask?.id.startsWith('ui-assets-')
+      && (state._assetValidationRetried || 0) >= 2) {
+    console.warn(`⚠️  [checkTaskStatus] Asset validation retry limit reached (${state._assetValidationRetried}). Proceeding with incomplete assets.`);
+  }
+  if (state.currentTask?.id.startsWith('ui-assets-')
+      && (state._assetValidationRetried || 0) < 2) {
+    const validation = await validateAssetReferences(state);
+    if (!validation.valid) {
+      console.warn(`⚠️  [checkTaskStatus] Asset validation failed: ${validation.missingFiles.length}/${validation.totalRefs} not downloaded:`);
+      for (const f of validation.missingFiles) console.warn(`   - ${f}`);
+
+      const retryMessage = {
+        role: 'user' as const,
+        content: `VALIDATION FAILED: ${validation.missingFiles.length} assets referenced in ui-assets.json are not downloaded:\n${
+          validation.missingFiles.map(f => `- ${f}`).join('\n')
+        }\n\nDownload the missing assets and update the document. Every src path MUST exist as a local file.`,
+      };
+
+      return {
+        conversationHistory: [...(state.conversationHistory || []), retryMessage],
+        _assetValidationFailed: true,
+        _assetValidationRetried: (state._assetValidationRetried || 0) + 1,
+        _docGenCallIndex: 0,
+        _noOutputCallCount: 0,
+        _callLimitReached: false,
+      };
     }
   }
   
@@ -319,6 +391,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _noOutputCallCount: 0,
       _callLimitReached: false,
       _toolResultCache: undefined,
+      _assetValidationFailed: false,
+      _assetValidationRetried: 0,
     };
   }
   
@@ -838,10 +912,13 @@ export function buildDesignGraph() {
   // ✅ Tool → docGen (loop back for next LLM turn)
   (graph as any).addEdge("tool", "docGen");
   
-  // ✅ Conditional routing: interrupted → learn, more tasks → plan, all done → learn
+  // ✅ Conditional routing: validation retry → docGen, interrupted → learn, more tasks → plan, all done → learn
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
     ((s: DesignGraphState) => {
+      if (s._assetValidationFailed) {
+        return "docGen";  // ← Asset validation failed — retry with guidance
+      }
       if ((s as any).interruption) {
         return "learn";  // ← Interrupted (call limit / recursion) — skip to cleanup
       }
@@ -851,7 +928,7 @@ export function buildDesignGraph() {
         return "learn";  // ← All done
       }
     }) as any,
-    { plan: "plan", learn: "learn" } as any
+    { plan: "plan", learn: "learn", docGen: "docGen" } as any
   );
   
   // ✅ CRITICAL: learn 노드 이후 END로 이동
