@@ -655,9 +655,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     existingDocContent: existingFileContent,  // ✅ NEW: Full file content for LLM to see and extend
     jobMode: state.detectionReport?.jobMode,  // ✅ NEW: For refactor mode handling (generate/refactor/explain)
     userLanguage: state.context.userLanguage || 'en',
-    figmaExplorationResult: state.uiDesignSource === 'figma'
-      ? JSON.stringify(state.figmaExplorationResult, null, 2)
-      : undefined,
   };
 
   const isFigmaMode = state.uiDesignSource === 'figma';

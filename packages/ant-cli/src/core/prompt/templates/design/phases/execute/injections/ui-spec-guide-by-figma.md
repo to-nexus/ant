@@ -404,7 +404,7 @@ For each positioned element, observe:
 
 ## Workflow
 
-1. **Load design data**: Read `figmaExplorationResult` + `figma_get_design_context` for key nodes
+1. **Load design data**: Review nodeSummary in Available Resources + `figma_get_design_context` for key nodes
 2. **Extract**: Layout properties, spacing, colors, typography from Figma data
 3. **Document**: Write what Figma data SHOWS in JSON
 4. **Verify**: Run quality checklist

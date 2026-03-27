@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { Loader2, Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
+import { TruncatableText } from '@/presentation/components/common/TruncatableText';
 
 interface WorkingCardProps {
   content: MessageContent;
@@ -232,10 +233,15 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
   if (isProgress) {
     return (
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${containerClass}`}>
-        <Icon className={`w-4 h-4 ${iconColorClass} ${iconClass}`} />
+        <Icon className={`w-4 h-4 ${iconColorClass} ${iconClass} flex-shrink-0`} />
         <div className="flex-1 min-w-0">
-          <div className={`text-xs font-medium ${textClass}`}>
-            {content.content}
+          <div className="flex items-center gap-1">
+            <TruncatableText
+              text={content.content || ''}
+              maxLength={60}
+              className={`text-xs font-medium ${textClass}`}
+              buttonClassName={`${textClass} opacity-60`}
+            />
           </div>
           {content.metadata?.detail && (
             <div className={`text-xs mt-0.5 ${detailClass}`}>
@@ -258,11 +264,12 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
         disabled={!hasExpandable}
       >
         <Icon className={`w-4 h-4 flex-shrink-0 ${iconColorClass}`} />
-        <div className="flex-1 min-w-0 text-left">
-          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-            {content.content}
-          </span>
-        </div>
+        <TruncatableText
+          text={content.content || ''}
+          maxLength={60}
+          className="text-xs font-medium text-gray-700 dark:text-gray-300"
+          buttonClassName="text-gray-600 dark:text-gray-400 opacity-60"
+        />
         {hasExpandable && (
           <div className="flex-shrink-0">
             {isExpanded ? 

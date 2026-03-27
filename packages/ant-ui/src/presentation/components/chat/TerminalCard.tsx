@@ -5,9 +5,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Terminal, ChevronDown, ChevronRight, ChevronUp, Loader2 } from 'lucide-react';
+import { Terminal, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import Convert from 'ansi-to-html';
 import type { MessageContent } from '@/domain/models/chat';
+import { TruncatableText } from '@/presentation/components/common/TruncatableText';
 
 const ansiConverter = new Convert({
   fg: '#d4d4d4',
@@ -36,7 +37,6 @@ export function TerminalCard({ content }: TerminalCardProps) {
   
   // ✅ Cursor/Copilot style: Default to expanded (show output), allow user to collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isCommandExpanded, setIsCommandExpanded] = useState(false);
   const shouldShowOutput = !isCollapsed && output;
   
   // ✅ CRITICAL: Use ref to track previous output length
@@ -92,7 +92,6 @@ export function TerminalCard({ content }: TerminalCardProps) {
     [output],
   );
   const hasOutput = output && output.trim().length > 0;
-  const isLongCommand = command && command.length > 60;
   const canToggleOutput = hasOutput && isCompleted;
   
   return (
@@ -114,33 +113,12 @@ export function TerminalCard({ content }: TerminalCardProps) {
           )}
           
           {/* Command text + expand toggle for long commands */}
-          <span
-            className={`text-xs font-mono ${config.textColor} flex-1 text-left ${isCommandExpanded ? 'whitespace-pre-wrap break-all' : 'truncate'} ${isLongCommand ? 'cursor-pointer hover:opacity-80' : ''}`}
-            onClick={(e) => {
-              if (isLongCommand) {
-                e.stopPropagation();
-                setIsCommandExpanded(!isCommandExpanded);
-              }
-            }}
-            title={isLongCommand && !isCommandExpanded ? command : undefined}
-          >
-            {command}
-          </span>
-          
-          {/* Command expand/collapse indicator for long commands */}
-          {isLongCommand && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setIsCommandExpanded(!isCommandExpanded); }}
-              className={`flex-shrink-0 p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors`}
-              title={isCommandExpanded ? t('card.collapseCommand') : t('card.expandCommand')}
-            >
-              {isCommandExpanded
-                ? <ChevronUp className={`w-3 h-3 ${config.textColor} opacity-60`} />
-                : <ChevronDown className={`w-3 h-3 ${config.textColor} opacity-60`} />
-              }
-            </button>
-          )}
+          <TruncatableText
+            text={command || ''}
+            maxLength={60}
+            className={`text-xs font-mono ${config.textColor}`}
+            buttonClassName={`${config.textColor} opacity-60`}
+          />
           
           {/* Exit Code (Compact) */}
           {isCompleted && exitCode !== undefined && (

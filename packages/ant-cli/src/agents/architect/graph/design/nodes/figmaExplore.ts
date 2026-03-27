@@ -15,6 +15,7 @@ import { DesignGraphState } from '../state';
 import type { FigmaExplorationResult, FigmaNodeSummary } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getMCPAdapter } from './tool';
+import { extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
 
 interface MetadataNode {
   id: string;
@@ -27,18 +28,71 @@ interface MetadataNode {
   height?: number;
 }
 
-function parseMetadataXML(content: any): MetadataNode[] {
-  if (!content) return [];
+function parseMetadataXML(rawContent: any): MetadataNode[] {
+  if (!rawContent) return [];
+
+  // 1) Extract text from MCP response wrapper
+  const extracted = extractMCPTextContent(rawContent);
+  let content: any = extracted ?? rawContent;
+
+  // 2) If string, try JSON first then XML
   if (typeof content === 'string') {
     try {
       content = JSON.parse(content);
     } catch {
+      const xmlNodes = parseXMLToNodes(content);
+      if (xmlNodes.length > 0) return xmlNodes;
+      console.warn('⚠️  [parseMetadataXML] Failed to parse as JSON or XML, content preview:', content.substring(0, 300));
       return [];
     }
   }
+
+  // 3) Already structured data
   if (Array.isArray(content)) return content;
   if (content.children) return content.children;
   return [content];
+}
+
+/**
+ * Parse Figma MCP XML metadata into MetadataNode[].
+ * Handles format like: <FRAME id="1:2" name="Header" type="FRAME" x="0" y="0" width="1440" height="80">...</FRAME>
+ */
+function parseXMLToNodes(xml: string): MetadataNode[] {
+  const nodes: MetadataNode[] = [];
+  const tagPattern = /<(\w+)\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/g;
+  let match;
+
+  while ((match = tagPattern.exec(xml)) !== null) {
+    const [, tagName, attrs, innerContent] = match;
+    const node: MetadataNode = {
+      id: extractAttr(attrs, 'id') || '',
+      name: extractAttr(attrs, 'name') || tagName,
+      type: extractAttr(attrs, 'type') || tagName.toUpperCase(),
+    };
+
+    const x = extractAttr(attrs, 'x');
+    const y = extractAttr(attrs, 'y');
+    const w = extractAttr(attrs, 'width') || extractAttr(attrs, 'w');
+    const h = extractAttr(attrs, 'height') || extractAttr(attrs, 'h');
+    if (x) node.x = Number(x);
+    if (y) node.y = Number(y);
+    if (w) node.width = Number(w);
+    if (h) node.height = Number(h);
+
+    if (innerContent?.trim()) {
+      const children = parseXMLToNodes(innerContent);
+      if (children.length > 0) node.children = children;
+    }
+
+    if (node.id) nodes.push(node);
+  }
+
+  return nodes;
+}
+
+function extractAttr(attrs: string, name: string): string | undefined {
+  const pattern = new RegExp(`${name}=["']([^"']*)["']`);
+  return pattern.exec(attrs)?.[1];
 }
 
 function findFrames(nodes: MetadataNode[]): MetadataNode[] {
@@ -202,6 +256,25 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
       continue;
     }
 
+    const rawContent = metadataResult.content;
+    const contentType = Array.isArray(rawContent) ? 'array' : typeof rawContent;
+    const contentSize = typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length;
+    const extractedPreview = extractMCPTextContent(rawContent);
+    console.log(`      metadata response: type=${contentType}, size=${contentSize}, extracted=${extractedPreview ? extractedPreview.substring(0, 120) + '...' : 'null'}`);
+
+    if (extractedPreview && isFigmaMCPSoftError(extractedPreview)) {
+      console.log(`   ❌ Figma MCP soft error: "${extractedPreview}"`);
+      return {
+        figmaExplorationResult: emptyResult(),
+        designError: {
+          type: 'figma_window_not_open',
+          message: `Figma 파일이 열려있지 않습니다: ${extractedPreview}`,
+          suggestedAction: 'Figma Desktop에서 디자인 파일을 연 후 다시 시도하세요.',
+        },
+        _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+      };
+    }
+
     const nodes = parseMetadataXML(metadataResult.content);
     const allFrames = findFrames(nodes);
     result.totalFrameCount += allFrames.length;
@@ -224,7 +297,8 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     try {
       const varResult = await adapter.getVariableDefs(fileKey, rootNodeId);
       if (!varResult.isError) {
-        const varContent = varResult.content;
+        const rawVarContent = varResult.content;
+        const varContent = extractMCPTextContent(rawVarContent) ?? rawVarContent;
         const varStr = typeof varContent === 'string' ? varContent : JSON.stringify(varContent);
         const estimatedTokens = varStr.length / 3.5;
         console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);

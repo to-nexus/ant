@@ -10,7 +10,7 @@ import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 import { executeSearchWeb } from '../../../tools/searchWeb';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
-import { createMCPTransport } from '../../../../../periphery/adapters/figma/MCPTransport';
+import { createMCPTransport, extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
 import { FigmaMCPAdapter } from '../../../../../periphery/adapters/figma/FigmaMCPAdapter';
 
 const tokenManager = new TokenBudgetManager();
@@ -93,17 +93,24 @@ async function executeDesignTool(
       case 'figma_get_screenshot':
       case 'figma_get_variable_defs': {
         const figmaChatAPI = getChatAPIClient();
-        const figmaMergeIdx = await figmaChatAPI.showChatStatus('figma_calling', { toolName: name });
+        const figmaNodeId = (args as any).nodeId as string | undefined;
+        const figmaNodeName = figmaNodeId
+          ? state.figmaExplorationResult?.nodeSummary?.find(n => n.nodeId === figmaNodeId)?.name
+          : undefined;
+        const figmaStatusMeta = { toolName: name, nodeId: figmaNodeId, nodeName: figmaNodeName };
+        const figmaMergeIdx = await figmaChatAPI.showChatStatus('figma_calling', figmaStatusMeta);
         try {
           result = await handleFigmaMCPTool(state, name, args as { fileKey: string; nodeId: string });
-          await figmaChatAPI.showChatStatus('figma_called', { toolName: name, _mergeIndex: figmaMergeIdx });
+          await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, _mergeIndex: figmaMergeIdx });
 
-          const figmaNodeId = (args as any).nodeId;
           if ((figmaNodeId === '0:1' || figmaNodeId === '0-1') && result && name !== 'figma_get_screenshot') {
-            result = buildRootCallGuidance(state, name);
+            const hasSummary = (state.figmaExplorationResult?.nodeSummary?.length ?? 0) > 0;
+            if (hasSummary) {
+              result = buildRootCallGuidance(state, name);
+            }
           }
         } catch (err: any) {
-          await figmaChatAPI.showChatStatus('figma_called', { toolName: name, error: true, _mergeIndex: figmaMergeIdx });
+          await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, error: true, _mergeIndex: figmaMergeIdx });
           result = JSON.stringify({ error: err.message });
         }
         break;
@@ -1080,7 +1087,12 @@ async function handleFigmaMCPTool(
   }
 
   const content = mcpResult.content;
-  const result = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+  const extracted = extractMCPTextContent(content);
+  const result = extracted ?? (typeof content === 'string' ? content : JSON.stringify(content, null, 2));
+
+  if (isFigmaMCPSoftError(result)) {
+    throw new Error(`Figma Desktop is not accessible: ${result}. Open a design file in Figma Desktop and retry.`);
+  }
 
   _figmaResponseCache.set(cacheKey, result);
   return result;

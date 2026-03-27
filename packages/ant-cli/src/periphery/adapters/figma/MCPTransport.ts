@@ -13,6 +13,51 @@ export interface MCPTransport {
   isAvailable(): Promise<boolean>;
 }
 
+/**
+ * Extract the actual text content from an MCP tool result.
+ * MCP tools wrap results as: { content: [{ type: "text", text: "..." }] }
+ * or after one unwrap: [{ type: "text", text: "..." }].
+ * Returns the concatenated text from all text items, or null if none found.
+ */
+export function extractMCPTextContent(content: unknown): string | null {
+  if (!content) return null;
+
+  if (typeof content === 'string') return content;
+
+  // { content: [...] } wrapper
+  if (typeof content === 'object' && !Array.isArray(content)) {
+    const arr = (content as any).content;
+    if (Array.isArray(arr)) return extractMCPTextContent(arr);
+  }
+
+  // [{ type: "text", text: "..." }, ...] MCP content items
+  if (Array.isArray(content)) {
+    const texts = content
+      .filter((item: any) => item?.type === 'text' && typeof item?.text === 'string')
+      .map((item: any) => item.text);
+    return texts.length > 0 ? texts.join('\n') : null;
+  }
+
+  return null;
+}
+
+/**
+ * Known Figma MCP soft-error messages.
+ * These are returned as successful JSON-RPC responses (no `error` field),
+ * but the text content indicates the tool could not produce real data.
+ */
+const FIGMA_SOFT_ERROR_PATTERNS = [
+  'no figma window open',
+  'no file open',
+  'plugin not running',
+];
+
+export function isFigmaMCPSoftError(text: string): boolean {
+  if (!text || text.length > 300) return false;
+  const lower = text.toLowerCase();
+  return FIGMA_SOFT_ERROR_PATTERNS.some(p => lower.includes(p));
+}
+
 const MCP_ACCEPT = 'application/json, text/event-stream';
 
 /**
@@ -232,7 +277,7 @@ export class BridgeMCPTransport implements MCPTransport {
         if (parsed.error) {
           return { content: parsed.error, isError: true };
         }
-        return { content: parsed.result };
+        return { content: parsed.result?.content ?? parsed.result };
       }
       await new Promise(r => setTimeout(r, 100));
     }
