@@ -290,6 +290,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sseManager.clearHandlers('chat');
     sseManager.clearHandlers('fileTree');
     sseManager.clearHandlers('unseenArtifacts');
+    sseManager.clearHandlers('bridge');
     
     sseManager.registerHandler('kanban', (data: KanbanData) => {
       const currentState = get();
@@ -629,6 +630,15 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }
     });
     
+    // Bridge SSE handler (user-level: Ant Desktop connection status)
+    sseManager.registerHandler('bridge', (data: any) => {
+      get().setBridgeStatus({
+        connected: data.connected,
+        detected: data.detected ?? data.connected,
+        figmaDesktopReachable: data.figmaDesktopReachable ?? false,
+      });
+    });
+
     // Transfer SSE handler
     sseManager.registerHandler('transfer', (data: any) => {
       if (data.type === 'transfer-request-new') {

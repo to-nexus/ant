@@ -19,8 +19,8 @@ interface UseDesktopBridgeReturn {
   refreshStatus: () => Promise<void>;
 }
 
-const POLL_INTERVAL_DISCONNECTED = 30_000;
-const POLL_INTERVAL_CONNECTED = 60_000;
+const POLL_INTERVAL_DISCONNECTED = 60_000;
+const POLL_INTERVAL_CONNECTED = 120_000;
 const LAUNCH_POLL_INTERVAL = 2_000;
 const LAUNCH_TIMEOUT = 15_000;
 
@@ -73,55 +73,6 @@ export function useDesktopBridge(
     }
   }, [applyStatus, setBridgeStatus]);
 
-  // --- Initial fetch on mount (regardless of enablePolling) [FIX-10] ---
-  useEffect(() => {
-    fetchStatus();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // --- Periodic polling [FIX-2] ---
-  useEffect(() => {
-    if (!enablePolling) return;
-
-    const interval = bridgeConnected === true
-      ? POLL_INTERVAL_CONNECTED
-      : POLL_INTERVAL_DISCONNECTED;
-
-    periodicPollRef.current = setInterval(() => {
-      fetchStatus();
-    }, interval);
-
-    return () => {
-      if (periodicPollRef.current) {
-        clearInterval(periodicPollRef.current);
-        periodicPollRef.current = null;
-      }
-    };
-  }, [enablePolling, bridgeConnected, fetchStatus]);
-
-  // --- Stop polling on logout [FIX-8] ---
-  useEffect(() => {
-    if (!userEmail) {
-      cleanupLaunchPolling();
-      if (periodicPollRef.current) {
-        clearInterval(periodicPollRef.current);
-        periodicPollRef.current = null;
-      }
-    }
-  }, [userEmail]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // --- Cleanup on unmount ---
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      cleanupLaunchPolling();
-      if (periodicPollRef.current) {
-        clearInterval(periodicPollRef.current);
-        periodicPollRef.current = null;
-      }
-    };
-  }, []);
-
   const cleanupLaunchPolling = useCallback(() => {
     if (launchPollRef.current) {
       clearInterval(launchPollRef.current);
@@ -161,6 +112,55 @@ export function useDesktopBridge(
       if (mountedRef.current) setLaunchPhase('failed');
     }, LAUNCH_TIMEOUT);
   }, [cleanupLaunchPolling, applyStatus]);
+
+  // --- Initial fetch on mount (regardless of enablePolling) ---
+  useEffect(() => {
+    fetchStatus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Periodic polling ---
+  useEffect(() => {
+    if (!enablePolling) return;
+
+    const interval = bridgeConnected === true
+      ? POLL_INTERVAL_CONNECTED
+      : POLL_INTERVAL_DISCONNECTED;
+
+    periodicPollRef.current = setInterval(() => {
+      fetchStatus();
+    }, interval);
+
+    return () => {
+      if (periodicPollRef.current) {
+        clearInterval(periodicPollRef.current);
+        periodicPollRef.current = null;
+      }
+    };
+  }, [enablePolling, bridgeConnected, fetchStatus]);
+
+  // --- Stop polling on logout ---
+  useEffect(() => {
+    if (!userEmail) {
+      cleanupLaunchPolling();
+      if (periodicPollRef.current) {
+        clearInterval(periodicPollRef.current);
+        periodicPollRef.current = null;
+      }
+    }
+  }, [userEmail, cleanupLaunchPolling]);
+
+  // --- Cleanup on unmount ---
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cleanupLaunchPolling();
+      if (periodicPollRef.current) {
+        clearInterval(periodicPollRef.current);
+        periodicPollRef.current = null;
+      }
+    };
+  }, [cleanupLaunchPolling]);
 
   const launchDesktop = useCallback(async () => {
     setLaunchPhase('connecting');

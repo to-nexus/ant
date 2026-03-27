@@ -51,7 +51,7 @@ export const WORKFLOW_STATE_TTL = REDIS_TTL.JOB.WORKFLOW;
 // ============================================
 
 /** Message types routed through the unified SSE stream */
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange' | 'unseenArtifacts';
+export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'gitChange' | 'unseenArtifacts' | 'bridge';
 
 /** SSE message envelope sent to frontend */
 export interface SSEMessage {
@@ -60,10 +60,12 @@ export interface SSEMessage {
   data: any;
 }
 
-/** Broadcast message published to Redis for SSE routing */
+/** Broadcast message published to Redis for SSE routing.
+ * projectId/featureName are optional for user-level messages (e.g., bridge status)
+ * that should be delivered to all SSE clients of a user regardless of project context. */
 export interface SSEBroadcastMessage {
-  projectId: string;
-  featureName: string;
+  projectId?: string;
+  featureName?: string;
   type: SSEMessageType;
   data: any;
   userContext: UserContext;
