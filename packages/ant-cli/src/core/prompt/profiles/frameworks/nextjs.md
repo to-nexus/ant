@@ -229,8 +229,10 @@ import Image from 'next/image';
 ```typescript
 import type { NextConfig } from 'next';
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 const nextConfig: NextConfig = {
-  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
+  ...(basePath ? { basePath } : {}),
   webpack(config, { isServer }) {
     // Suppress "Module not found" for Node.js-only transitive dependencies in client bundle
     // Add entries when: (1) installing Node.js-native packages, or (2) build warnings name specific modules

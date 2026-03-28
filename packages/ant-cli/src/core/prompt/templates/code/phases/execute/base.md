@@ -27,6 +27,16 @@ When writing files, use `codebase/` prefix for all code files.
 
 **Note**: Directory names in design documents (`app/`, `components/`, `handlers/`) describe architectural layer boundaries, not filesystem paths. The language/framework profile determines the actual source root — e.g., `app/` in the design doc maps to `src/app/` when the profile convention is `src/`.
 
+### API Response Data Ownership
+
+**Principle**: The API response is the single source of truth for renderable data. If the API provides a complete list, the UI renders that list as-is — it does NOT inject additional items that may overlap with what the API already provides.
+
+**Observation target**: Does the API contract specify that the response already includes aggregate or filter-all entries?
+
+**Constraint**: If the API response provides a complete collection (including aggregate/summary entries), do NOT create independent duplicates in the UI.
+
+⚠️ **Blind spot**: When the API contract defines an aggregate entry and the UI independently creates the same entry, the result is duplicate list keys and duplicated UI elements. This is easily missed when UI and adapter tasks run in parallel.
+
 ════════════════════════════════════════════════════════════════════════════════
 {{/unless}}
 {{/if}}

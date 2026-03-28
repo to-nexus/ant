@@ -20,7 +20,7 @@
 | Framework | Variable | Config Setting | Default when absent |
 |-----------|----------|---------------|-------------------|
 | Vite (React/Vue) | `VITE_BASE_PATH` | `base: process.env.VITE_BASE_PATH \|\| '/'` | `'/'` |
-| Next.js | `NEXT_PUBLIC_BASE_PATH` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` | `''` |
+| Next.js | `NEXT_PUBLIC_BASE_PATH` | `...(basePath ? { basePath } : {})` in `next.config.ts` | `''` |
 
 - Framework config MUST read the path prefix from the environment variable
 - Client-side router MUST also use the same variable for its base/basename
@@ -30,6 +30,14 @@
 - The platform proxy serves each project under a unique path prefix
 - All generated URLs (routes, assets, images) must include this prefix
 - Both server-rendered and client-rendered content must produce identical URLs
+
+### Platform-Injected Variables
+
+**Constraint**: Base path variables (`NEXT_PUBLIC_BASE_PATH`, `VITE_BASE_PATH`, `ANT_BASE_PATH`) are injected by the platform at dev server startup. Do NOT include them in `.env.example` or `.env`. Do NOT list them in task descriptions as environment file targets.
+
+**Observation target**: If a variable from the Contract table above appears in a task description or specification, wire it into the framework config file only — not into `.env.example`.
+
+⚠️ **Blind spot**: These variables appear in the Contract table alongside connection variables like `PORT`, making them look like regular environment variables that belong in `.env.example`. They are NOT — they are platform-internal and invisible to end users.
 
 ---
 
