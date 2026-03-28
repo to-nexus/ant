@@ -46,7 +46,7 @@ export function showHelp(): void {
   console.error("      │   ├── inputs/");
   console.error("      │   │   ├── sources/      # PRD, Figma, wireframes");
   console.error("      │   │   └── directives/   # Task-specific instructions");
-  console.error("      │   └── outputs/          # Generated design, code, reports");
+  console.error("      │   └── outputs/          # Generated design, code, evals");
   console.error("      └── config.json");
 }
 
