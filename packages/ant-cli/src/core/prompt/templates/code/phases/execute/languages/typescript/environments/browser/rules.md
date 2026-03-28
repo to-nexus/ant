@@ -99,7 +99,7 @@ SSR frameworks run code in TWO contexts:
 
 | Variable | Framework | Config file usage |
 |----------|-----------|-------------------|
-| `NEXT_PUBLIC_BASE_PATH` | Next.js | `next.config.ts` → `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` |
+| `NEXT_PUBLIC_BASE_PATH` | Next.js | `next.config.ts` → `...(basePath ? { basePath } : {})` |
 | `VITE_BASE_PATH` | Vite | `vite.config.ts` → `base: process.env.VITE_BASE_PATH \|\| '/'` |
 | `ANT_BASE_PATH` | All | Universal fallback |
 
@@ -243,16 +243,29 @@ CSS utility frameworks generate classes only for source files covered by their c
 
 ## 🖼️ Static Assets
 
-When using `ui-assets.json`:
+### Raster Image Rendering (Universal)
+
+**Observation target**: Is a raster image (png, jpg, webp) being rendered via a URL path?
+
+**Constraint**: Raster images rendered via URL path MUST use the framework's image component. Bare `<img src={url}>` does NOT receive basePath prefix, causing 404 in proxy environments.
+
+| Rendering method | basePath applied? | Result in proxy |
+|-----------------|-------------------|-----------------| 
+| Framework image component (Next.js `<Image>`, Vite basePath-prefixed `<img>`) | Yes | Works |
+| Bare `<img src={url}>` | No | 404 |
+
+⚠️ **Blind spot**: This constraint is easily overlooked for images from mock data or API responses. The image URL source does not matter — ALL raster URL paths need basePath compatibility.
+
+### When using `ui-assets.json`
 
 **Observation target**: What is the `format` field of the asset?
 
-| format | File placement | Code pattern | Why |
-|--------|---------------|--------------|-----|
-| `svg` | Source tree (`src/assets/`) | `import Icon from '@/assets/icon.svg'` → `<Icon />` | `public/` files are NOT in webpack module graph → SVGR cannot process them. `<Image>`/`<img>` with SVG → Next.js optimizer rejects SVG; bare `<img>` has no basePath → 404 in proxy. |
-| `png`, `jpg`, `webp` | `public/` | `<Image src="/assets/photo.png" />` | Framework image component auto-applies basePath. Bare `<img>` for raster = basePath not applied = proxy routing failure. |
+| format | File placement | Code pattern |
+|--------|---------------|--------------|
+| `svg` | Source tree (`src/assets/`) | `import Icon from '@/assets/icon.svg'` → `<Icon />` |
+| `png`, `jpg`, `webp` | `public/` | See Raster Image Rendering above |
 
-**Constraint**: SVG format assets MUST be placed in the source tree (`src/assets/`) and imported as SVGR React components. Placing SVGs in `public/` makes SVGR import impossible — webpack only processes the source tree.
+**Constraint**: SVG format assets MUST be placed in the source tree (`src/assets/`) and imported as SVGR React components. Placing SVGs in `public/` makes SVGR import impossible — webpack only processes the source tree. `<Image>`/`<img>` with SVG → Next.js optimizer rejects SVG; bare `<img>` has no basePath → 404 in proxy.
 
 ```tsx
 // SVG: import as React component (SVGR — inline, no URL, SSR/CSR safe)
