@@ -26,6 +26,7 @@ import {
   submitPrdApply,
   submitChoiceDismiss,
   dismissInterruptedJob,
+  resumeJob,
   TriageChoiceAction,
 } from '@/infrastructure/http/api';
 import type { MessageContent } from '@/domain/models/chat';
@@ -577,12 +578,9 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function CancelledChoiceVariant({ content, messageId }: { content: MessageContent; messageId: string }) {
-  const selectedAgent = useStore(state => state.selectedAgent);
-  const selectedJobType = useStore(state => state.selectedJobType);
   const isRunning = useStore(state => state.isRunning);
   const kanbanData = useStore(state => state.kanban);
   const setDismissedInterruptTimestamp = useStore(state => state.setDismissedInterruptTimestamp);
-  const { runJob } = useJobExecution();
 
   const jobId = content.metadata?.jobId;
 
@@ -616,12 +614,32 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
     state.setLocalResolvedLabel('Resumed');
 
     try {
-      await runJob(selectedAgent, selectedJobType);
-      // ✅ Persist to backend via unified endpoint
+      // ✅ SSE protection: dismiss stale interruption to prevent auto-reconnect
+      // from resetting isRunning via updateKanban (same-jobType case)
+      if (kanbanData?.interruption?.timestamp) {
+        setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+      }
+      useStore.getState().setRunning(true, jobId);
+
+      // ✅ Direct resumeJob with card's jobId (bypasses runJob's kanbanData dependency)
+      const result = await resumeJob(jobId, state.selectedProject, state.selectedFeature, true);
+
+      // ✅ Persist choice card state BEFORE jobType switch (SSE reconnect reads persisted state)
       await state.persistToBackend('resume', 'Resumed');
       state.persistChoice('resume', 'Resumed');
+
+      // ✅ Switch jobType if backend resumed a different type than current UI
+      // setSelectedJobType triggers reconnectSSE('kanban') — a manual reconnect where
+      // sseReconnectGrace is NOT set. jobStartPending protects isRunning from stale kanban.
+      if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
+        useStore.setState({ jobStartPending: true });
+        useStore.getState().setSelectedJobType(result.jobType);
+      }
+
+      useStore.getState().setRunning(true, result.jobId);
     } catch (error) {
       console.error('[ChoiceCard:Cancelled] Failed:', error);
+      useStore.getState().setRunning(false);
       state.setLocalSelectedChoice(null);
       state.setLocalResolvedLabel(null);
     } finally {
