@@ -276,6 +276,11 @@ export function createJobRoutes(deps: {
         if (fs.existsSync(entry.path)) {
           const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
           if (data.state?.jobId && data.state?.interruption) {
+            // ✅ If a specific jobId was requested, only match that exact session
+            if (requestedJobId && data.state.jobId !== requestedJobId) {
+              continue;
+            }
+            
             // ✅ Guard against stale interruption: if taskQueue is empty and tasks
             // were completed, the interruption is leftover from a recursion-limit
             // retry that ultimately succeeded. Skip it — there's nothing to resume.

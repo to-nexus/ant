@@ -3,6 +3,8 @@ import { DesignGraphState } from "./state";
 import { DesignTask } from "../../types/task";
 import { getChatAPIClient } from "../../../../core/adapters/ChatAPIClient";
 import path from 'node:path';
+import * as fs from 'fs/promises';
+import { getSessionRuntimeDir } from '../../../../core/utils/sessionPaths';
 
 /**
  * Design Graph Runner
@@ -121,7 +123,22 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if ((session.state as any).figmaConfig) {
           initial.figmaConfig = (session.state as any).figmaConfig;
         }
-        if ((session.state as any).figmaExplorationResult) {
+        // Load figmaExplorationResult from sidecar file (preferred) or session fallback
+        if (initial.context?.featurePath) {
+          const sidecarPath = path.join(
+            getSessionRuntimeDir(initial.context.featurePath, 'architect', 'design'),
+            'figma-exploration.json',
+          );
+          try {
+            const raw = await fs.readFile(sidecarPath, 'utf-8');
+            initial.figmaExplorationResult = JSON.parse(raw);
+          } catch {
+            // Sidecar not found — fall back to legacy session storage
+            if ((session.state as any).figmaExplorationResult) {
+              initial.figmaExplorationResult = (session.state as any).figmaExplorationResult;
+            }
+          }
+        } else if ((session.state as any).figmaExplorationResult) {
           initial.figmaExplorationResult = (session.state as any).figmaExplorationResult;
         }
         
