@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
-import { getSessionFilePathByJob, getInitFeatureDirs } from '../../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 import { isBaseBranch, readBranchBaseFromConfig, RESERVED_FEATURE_NAME } from '../../../../../core/utils/branchUtils';
 import { WorktreeService } from '../GitService/worktree';
 
@@ -160,10 +160,12 @@ export class FeatureCrudService {
       throw new Error('Feature already exists');
     }
     
-    // Create all canonical directories (single source of truth: CANONICAL_FEATURE_DIRS)
-    for (const dir of getInitFeatureDirs(featurePath)) {
-      await fs.promises.mkdir(dir, { recursive: true });
-    }
+    // 'codebase' is managed separately (WorktreeService may replace it with a git worktree).
+    // Must be created BEFORE ensureCanonicalStructure — its mkdir -p also creates featurePath.
+    await fs.promises.mkdir(path.join(featurePath, 'codebase'), { recursive: true });
+
+    // Canonical directories + files (CANONICAL_FEATURE_DIRS + CANONICAL_FEATURE_FILES)
+    await ensureCanonicalStructure(featurePath);
 
     // Create inputs/sources templates (so users know what to fill)
     // Skip when wizard will upload source files (prd skeleton would be redundant)
@@ -188,17 +190,6 @@ export class FeatureCrudService {
 `;
       await fs.promises.writeFile(path.join(sourcesDir, 'prd.md'), prdTemplate, 'utf-8');
     }
-
-    // NOTE: UI documents (ui-spec.json, ui-tokens.json, ui-assets.json) are auto-generated
-    // by Design Job into outputs/design/. No placeholders needed.
-
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/assets'), { recursive: true });
-    await fs.promises.mkdir(path.join(featurePath, 'inputs/references'), { recursive: true });
-
-    // Create empty inputs/figma.json (Figma integration placeholder)
-    const { createEmptyFigmaData, FIGMA_FILENAME } = await import('@ant/shared');
-    const figmaJsonPath = path.join(featurePath, 'inputs', FIGMA_FILENAME);
-    await fs.promises.writeFile(figmaJsonPath, JSON.stringify(createEmptyFigmaData(), null, 2), 'utf-8');
 
     // ✅ Create Git worktree for feature (if WorktreeService is available)
     if (this.worktreeService) {

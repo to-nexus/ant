@@ -15,7 +15,7 @@
  *   Any path not under a sibling directory belongs to codebase/.
  */
 
-import { CANONICAL_FEATURE_DIRS } from './sessionPaths';
+import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
 
 /**
  * Normalize path separators and remove leading ./ or /

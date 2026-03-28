@@ -54,8 +54,6 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     allowSubdirs: false,
     acceptedExtensions: ['.md'],
   },
-  // outputs/reports: no entry — legacy directory, unused in pipeline.
-  // No policy = no restriction (backward compatible).
 };
 
 /**
