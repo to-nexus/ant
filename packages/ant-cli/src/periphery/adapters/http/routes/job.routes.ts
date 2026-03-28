@@ -45,16 +45,36 @@ export function createJobRoutes(deps: {
   }
   
   /**
-   * Check if feature already has a running or interrupted (paused) job.
-   * Returns the jobId and whether it is interrupted (paused by stall handler).
-   * 'paused' is set by the stall handler after Mac sleep/wake — it blocks new jobs
-   * until the user resumes or dismisses the interrupted job.
+   * Check if feature already has a running or interrupted (paused) job
+   * of the same jobType. Filters by jobType to prevent cross-type blocking
+   * (e.g. a paused design job should not block a new code job).
    */
-  async function checkDuplicateJob(projectId: string, featureName: string): Promise<{ jobId: string; isInterrupted: boolean } | undefined> {
+  async function checkDuplicateJob(projectId: string, featureName: string, jobType?: string): Promise<{ jobId: string; isInterrupted: boolean } | undefined> {
     const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
-    const active = jobs.find(j => j.status === 'running' || j.status === 'paused');
+    const active = jobs.find(j =>
+      (j.status === 'running' || j.status === 'paused') &&
+      (!jobType || j.type === jobType)
+    );
     if (!active) return undefined;
     return { jobId: active.jobId, isInterrupted: active.status === 'paused' };
+  }
+
+  /**
+   * Check whether a paused job still has a resumable session file.
+   * If the session was cleared (interruption is null/missing), the paused job
+   * is a "zombie" that can never be dismissed via the UI — auto-dismiss it.
+   */
+  function hasResumableSession(featurePath: string, jobId: string): boolean {
+    for (const entry of getAllSessionPaths(featurePath)) {
+      try {
+        if (!fs.existsSync(entry.path)) continue;
+        const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+        if (data.state?.jobId === jobId && data.state?.interruption) {
+          return true;
+        }
+      } catch { continue; }
+    }
+    return false;
   }
   
   // Execute task for a specific feature
@@ -65,22 +85,45 @@ export function createJobRoutes(deps: {
       const featureName = req.params.feature;
       const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage } = req.body;
       
-      // Check if this feature already has a running or interrupted job
-      const duplicate = await checkDuplicateJob(projectId, featureName);
+      const userContext = extractUserContext(req);
+
+      // Check if this feature already has a running or interrupted job of the same type
+      const duplicate = await checkDuplicateJob(projectId, featureName, jobType);
 
       if (duplicate) {
         const { jobId: existingJobId, isInterrupted } = duplicate;
-        return res.status(409).json({
-          error: isInterrupted
-            ? 'A previous job was interrupted. Please resume or dismiss it first.'
-            : 'A job is already running for this feature. Please wait for it to complete or stop it first.',
-          existingJobId,
-          isInterrupted,
-          featureKey: `${projectId}/${featureName}`
-        });
+
+        if (isInterrupted) {
+          // Verify session file still has resumable interruption data.
+          // If session was cleared, this is a zombie paused job — auto-dismiss it.
+          const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+          const resumable = hasResumableSession(featurePath, existingJobId);
+
+          if (!resumable) {
+            logger.info(`Auto-dismissing zombie paused job: ${existingJobId} (session cleared)`, { component: 'JobRoute' });
+            await deps.stateStore.updateJobStatus(existingJobId, {
+              status: 'failed',
+              completedAt: new Date().toISOString(),
+              error: 'Auto-dismissed: session data was cleared',
+            });
+            // Fall through to normal job execution below
+          } else {
+            return res.status(409).json({
+              error: 'A previous job was interrupted. Please resume or dismiss it first.',
+              existingJobId,
+              isInterrupted: true,
+              featureKey: `${projectId}/${featureName}`
+            });
+          }
+        } else {
+          return res.status(409).json({
+            error: 'A job is already running for this feature. Please wait for it to complete or stop it first.',
+            existingJobId,
+            isInterrupted: false,
+            featureKey: `${projectId}/${featureName}`
+          });
+        }
       }
-      
-      const userContext = extractUserContext(req);
       
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const inputFile = overrideDirective ? undefined : path.join(featurePath, `inputs/directives/${jobType}/directive.md`);

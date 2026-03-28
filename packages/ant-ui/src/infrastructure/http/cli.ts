@@ -137,8 +137,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       // 409 Conflict: another job is running or interrupted
       if (response.existingJobId) {
         if (response.isInterrupted) {
-          // Paused job: don't mark as running — the choice card handles resume/dismiss
           console.log('[cli.ts] Interrupted job blocking new start:', response.existingJobId);
+          store.setRunning(false);
           try {
             store.addChatMessage({
               id: `msg-conflict-${Date.now()}`,
