@@ -11,11 +11,14 @@
  * 4. Return structured FigmaExplorationResult for downstream nodes
  */
 
+import * as path from 'path';
+import * as fs from 'fs/promises';
 import { DesignGraphState } from '../state';
 import type { FigmaExplorationResult, FigmaNodeSummary } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getMCPAdapter } from './tool';
 import { extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
+import { getSessionRuntimeDir } from '../../../../../core/utils/sessionPaths';
 
 interface MetadataNode {
   id: string;
@@ -327,6 +330,20 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
   console.log(`      Component sets: ${result.componentStateMatrix.length}`);
   console.log(`      nodeSummary entries: ${result.nodeSummary?.length ?? 0}`);
   console.log(`      variableDefs: ${result.variableDefs ? 'loaded' : 'none'}`);
+
+  if (state.context?.featurePath) {
+    try {
+      const runtimeDir = getSessionRuntimeDir(state.context.featurePath, 'architect', 'design');
+      await fs.mkdir(runtimeDir, { recursive: true });
+      await fs.writeFile(
+        path.join(runtimeDir, 'figma-exploration.json'),
+        JSON.stringify(result, null, 2),
+      );
+      console.log(`   💾 Saved figma-exploration.json sidecar`);
+    } catch (err) {
+      console.warn(`   ⚠️ Failed to save figma-exploration sidecar:`, err);
+    }
+  }
 
   return {
     figmaExplorationResult: result,

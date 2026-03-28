@@ -161,7 +161,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               detectionReport: state.detectionReport,
               uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
-              figmaExplorationResult: state.figmaExplorationResult,
               interruption,
             }
           }
@@ -331,7 +330,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               detectionReport: state.detectionReport,  // ✅ Save for resume routing
               uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
-              figmaExplorationResult: state.figmaExplorationResult,
             }
           }
         );
@@ -529,7 +527,6 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   parallelMode: true,
                   uiDesignSource: state.uiDesignSource,
                   figmaConfig: state.figmaConfig,
-                  figmaExplorationResult: state.figmaExplorationResult,
                   ...(checkpoint.reason ? {
                     interruption: {
                       reason: checkpoint.reason,
@@ -556,6 +553,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
         spec: true,
       },
     },
+    state.completedTasksDetails || [],  // Resume: pass previously completed tasks
   );
 
   registerActiveOrchestrator(orchestrator);
@@ -614,8 +612,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
         {
           state: {
             taskQueue: [...failedAsQueue, ...result.remainingQueue],
-            completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
-            completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+            completedTasks: result.completedTasks.map(t => t.id),
+            completedTasksDetails: result.completedTasks,
             failedTasks: result.failedTasks.map(f => ({
               taskId: f.task.id,
               taskName: f.task.name,
@@ -629,7 +627,6 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
             parallelMode: true,
             uiDesignSource: state.uiDesignSource,
             figmaConfig: state.figmaConfig,
-            figmaExplorationResult: state.figmaExplorationResult,
             interruption: {
               reason: 'tasks_failed',
               message: `${result.failedTasks.length} task(s) failed during parallel execution`,
@@ -646,8 +643,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   }
 
   return {
-    completedTasks: [...(state.completedTasks || []), ...result.completedTasks.map(t => t.id)],
-    completedTasksDetails: [...(state.completedTasksDetails || []), ...result.completedTasks],
+    completedTasks: result.completedTasks.map(t => t.id),
+    completedTasksDetails: result.completedTasks,
     currentTask: undefined,
     tokenUsage: result.tokenUsage || (state as any).tokenUsage,
     interruption: result.hasInterruptedTasks ? {
