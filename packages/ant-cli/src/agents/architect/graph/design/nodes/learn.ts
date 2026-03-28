@@ -82,11 +82,15 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     // ✅ All design documents go to outputs/design
     const designDirRel = path.join(featureDirRel, 'outputs/design');
     
-    const isUiDesign = state.detectionReport?.workType === 'ui-design';
+    const isUiDesign = state.detectionReport?.workType === 'ui-design'
+      || state.uiDesignSource != null;
     const expectedFiles = isUiDesign
       ? ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json']
       : undefined;  // Any .md files for system design
     
+    if (!state.detectionReport?.workType && state.uiDesignSource) {
+      console.warn(`⚠️  [Learn] detectionReport.workType missing — falling back to uiDesignSource="${state.uiDesignSource}"`);
+    }
     console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in outputs/design...`);
     
     try {

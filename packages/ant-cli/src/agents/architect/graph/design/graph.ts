@@ -435,6 +435,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   }
 
   // Build shared context
+  console.log(`🔧 [Design ParallelOrchestrator] detectionReport.workType=${state.detectionReport?.workType || 'MISSING'}, uiDesignSource=${state.uiDesignSource || 'N/A'}`);
   const sharedContext = {
     context: state.context,
     workspaceConfig: state.workspaceConfig,
@@ -527,6 +528,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   parallelMode: true,
                   uiDesignSource: state.uiDesignSource,
                   figmaConfig: state.figmaConfig,
+                  detectionReport: state.detectionReport,
                   ...(checkpoint.reason ? {
                     interruption: {
                       reason: checkpoint.reason,
@@ -627,6 +629,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
             parallelMode: true,
             uiDesignSource: state.uiDesignSource,
             figmaConfig: state.figmaConfig,
+            detectionReport: state.detectionReport,
             interruption: {
               reason: 'tasks_failed',
               message: `${result.failedTasks.length} task(s) failed during parallel execution`,

@@ -162,6 +162,10 @@ export class TaskWorker<T extends BaseTask> {
       task.interrupted = false;
     }
 
+    if (!workerState.detectionReport) {
+      console.warn(`⚠️  [Worker ${this.workerId}] detectionReport missing from workerState (task: ${task.name})`);
+    }
+
     // Execute the subgraph
     // ✅ CRITICAL: Pass recursionLimit in the invoke config.
     // Without this, LangGraph uses its default of 25 which is far too low
