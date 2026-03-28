@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getDefaultWorkspaceConfig } from "../core/types/workspace";
 import { getInitFeatureDirs } from '../core/utils/sessionPaths';
+import { createEmptyFigmaData, FIGMA_FILENAME } from '@ant/shared';
 
 /**
  * Initialize a new workspace with boilerplate structure
@@ -18,8 +19,7 @@ export function initWorkspace(workspaceName: string): void {
   // Create workspace structure
   fs.mkdirSync(workspaceDir, { recursive: true });
   fs.mkdirSync(path.join(workspaceDir, "common/inputs/directives/learn"), { recursive: true });
-  // Common outputs directory (no need for memory subdirectory)
-  fs.mkdirSync(path.join(workspaceDir, "common/outputs/reports"), { recursive: true });
+  fs.mkdirSync(path.join(workspaceDir, "common/outputs"), { recursive: true });
 
   // Create config.json using centralized default config
   const config = getDefaultWorkspaceConfig(workspaceName);
@@ -40,8 +40,6 @@ ${workspaceName}/
 │   ├── inputs/
 │   │   └── directives/learn/
 │   └── outputs/
-│       ├── memory/
-│       └── reports/
 ├── {feature}/              # Add features with: npm run init:feature
 │   ├── inputs/
 │   │   ├── sources/
@@ -155,7 +153,7 @@ export function initFeature(workspaceName: string, featureName: string): void {
   fs.mkdirSync(path.join(featureDir, "inputs/references"), { recursive: true });
 
   // ✅ Empty figma.json (Figma integration placeholder)
-  const { createEmptyFigmaData, FIGMA_FILENAME } = require('@ant/shared');
+  // createEmptyFigmaData, FIGMA_FILENAME imported at top level (ESM)
   fs.writeFileSync(
     path.join(featureDir, "inputs", FIGMA_FILENAME),
     JSON.stringify(createEmptyFigmaData(), null, 2),

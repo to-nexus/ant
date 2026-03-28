@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
-import { isCanonicalDir, clearCanonicalDirectory } from '../../../../../core/utils/sessionPaths';
+import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 
 /**
  * FileOperationService
@@ -34,6 +34,9 @@ export class FileOperationService {
    */
   async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<any> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+
+    // Reconcile canonical dirs/files for existing features (retroactive for newly added entries)
+    await ensureCanonicalStructure(featurePath);
 
     const buildTree = async (dirPath: string, relativePath: string = ''): Promise<any> => {
       let items: fs.Dirent[] = [];

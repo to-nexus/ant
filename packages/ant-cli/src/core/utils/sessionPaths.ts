@@ -25,6 +25,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { JobType, SessionableJobType } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, isCanonicalDir, createEmptyFigmaData } from '@ant/shared';
+
+export { CANONICAL_FEATURE_DIRS, isCanonicalDir };
 
 // ============================================
 // Agent-Job Mapping
@@ -122,6 +125,22 @@ export function getSessionDebugDir(featurePath: string, agent: string, subdir: s
 }
 
 // ============================================
+// Runtime Directory
+// ============================================
+
+/**
+ * Get the runtime directory path for an agent.
+ * Runtime stores large transient data (e.g., Figma exploration results) that
+ * must survive pause/resume but should NOT bloat the main session checkpoint.
+ * 
+ * @example getSessionRuntimeDir('/path/to/feature', 'architect', 'design')
+ *   → '/path/to/feature/sessions/architect/runtime/design'
+ */
+export function getSessionRuntimeDir(featurePath: string, agent: string, subdir: string): string {
+  return path.join(featurePath, 'sessions', agent, 'runtime', subdir);
+}
+
+// ============================================
 // Sessions Directory
 // ============================================
 
@@ -166,64 +185,72 @@ export function getAllSessionPaths(featurePath: string): Array<{ path: string; a
 }
 
 // ============================================
-// Canonical Feature Directories (Single Source of Truth)
+// Canonical Feature Files (Backend-only — needs Node.js fs)
 // ============================================
 
 /**
- * Complete list of canonical (system-managed) directories within a feature.
- * 
- * These directories are:
- * - Created automatically when a feature is initialized
- * - Preserved on delete (only files inside are removed, directory structure is kept)
- * - Non-canonical (user-created) directories within these are fully deleted
- * 
- * Used by:
- * - getInitFeatureDirs() — creates all canonical dirs on feature init
- * - FileOperationService — smart delete preserves canonical dirs
+ * Content factories for canonical files.
+ * Paths are defined in @ant/shared (CANONICAL_FEATURE_FILE_PATHS).
+ * Every path listed there MUST have a corresponding factory here.
  */
-export const CANONICAL_FEATURE_DIRS: ReadonlyArray<string> = [
-  // inputs
-  'inputs',
-  'inputs/sources',
-  'inputs/directives',
-  'inputs/directives/design',
-  'inputs/directives/code',
-  'inputs/directives/learn',
-  'inputs/assets',
-  'inputs/references',
-  // outputs
-  'outputs',
-  'outputs/design',
-  'outputs/evals',
-  'outputs/evals/prd',
-  'outputs/evals/ui-design',
-  'outputs/evals/system-design',
-  'outputs/evals/code',
-  // sessions
-  'sessions',
-  'sessions/architect',
-  'sessions/architect/debug',
-  'sessions/architect/debug/prompts',
-  'sessions/architect/debug/plans',
-  'sessions/architect/debug/logs',
-  'sessions/architect/debug/tokens',
-  'sessions/planner',
-  'sessions/planner/debug',
-  'sessions/planner/debug/prompts',
-];
-
-/** Set for O(1) lookup of canonical directories */
-const CANONICAL_FEATURE_DIRS_SET = new Set(CANONICAL_FEATURE_DIRS);
+const FILE_CONTENT_FACTORIES: Record<string, () => string> = {
+  'inputs/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
+};
 
 /**
- * Check if a relative path is a canonical feature directory.
+ * Canonical files that must exist within every feature.
+ * Derived from CANONICAL_FEATURE_FILE_PATHS (@ant/shared) + local content factories.
  * 
- * @param relativePath - Path relative to feature root (e.g., 'inputs/sources')
- * @returns true if the path is a canonical directory
+ * Used by:
+ * - ensureCanonicalStructure() — creates missing files on feature access
+ * - FeatureCrudService.createFeature() — via ensureCanonicalStructure()
  */
-export function isCanonicalDir(relativePath: string): boolean {
-  const normalized = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
-  return CANONICAL_FEATURE_DIRS_SET.has(normalized);
+export const CANONICAL_FEATURE_FILES: ReadonlyArray<{
+  relativePath: string;
+  getContent: () => string;
+}> = CANONICAL_FEATURE_FILE_PATHS.map(p => {
+  const factory = FILE_CONTENT_FACTORIES[p];
+  if (!factory) throw new Error(`Missing content factory for canonical file: ${p}`);
+  return { relativePath: p, getContent: factory };
+});
+
+// ============================================
+// Ensure Canonical Structure (Reconciliation)
+// ============================================
+
+/**
+ * Ensure all canonical directories and files exist within a feature.
+ * 
+ * Idempotent — safe to call on every feature access. Only creates what's missing.
+ * This enables retroactive application of new CANONICAL_FEATURE_DIRS / FILES
+ * entries to features created before the entry was added.
+ * 
+ * Design constraints:
+ * - Guard: returns immediately if featurePath does not exist (prevents ghost features)
+ * - Excludes 'codebase' (managed by WorktreeService, may be a git worktree)
+ * - mkdir({ recursive: true }) is a no-op for existing dirs
+ * - writeFile with 'wx' flag is atomic exclusive-create (safe under multi-pod concurrency)
+ * 
+ * @param featurePath - Absolute path to the feature directory
+ */
+export async function ensureCanonicalStructure(featurePath: string): Promise<void> {
+  try {
+    await fs.promises.access(featurePath);
+  } catch {
+    return;
+  }
+
+  const dirs = CANONICAL_FEATURE_DIRS.map(d => path.join(featurePath, d));
+  await Promise.all(dirs.map(d => fs.promises.mkdir(d, { recursive: true })));
+
+  await Promise.all(CANONICAL_FEATURE_FILES.map(async (file) => {
+    const filePath = path.join(featurePath, file.relativePath);
+    try {
+      await fs.promises.writeFile(filePath, file.getContent(), { flag: 'wx' });
+    } catch (err: any) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+  }));
 }
 
 // ============================================

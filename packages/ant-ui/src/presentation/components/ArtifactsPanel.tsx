@@ -19,7 +19,7 @@ import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
 import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
 import { getFigmaConfig } from '@/infrastructure/http/api/figma';
-import { isFigmaDataPopulated } from '@ant/shared';
+import { isFigmaDataPopulated, UI_VISIBLE_INPUT_DIRS, UI_VISIBLE_OUTPUT_DIRS, UI_VISIBLE_INPUT_FILES } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -891,17 +891,15 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     return null;
   }
 
-  // Separate inputs, outputs, and sessions with filtering
-  // inputs: show 'sources' + 'assets' + 'references' + 'figma.json'
   const allInputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
   const inputsNodes = allInputsNodes.filter(node =>
-    node.name === 'sources' || node.name === 'assets' || node.name === 'references' || node.name === 'figma.json'
+    UI_VISIBLE_INPUT_DIRS.includes(node.name) ||
+    UI_VISIBLE_INPUT_FILES.includes(node.name)
   );
-  
-  // outputs: show 'design', 'plan', 'evals', and 'reports' directories
+
   const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
-  const outputsNodes = allOutputsNodes.filter(node => 
-    node.name === 'design' || node.name === 'plan' || node.name === 'evals' || node.name === 'reports'
+  const outputsNodes = allOutputsNodes.filter(node =>
+    UI_VISIBLE_OUTPUT_DIRS.includes(node.name)
   );
   
   // sessions: show all

@@ -15,7 +15,7 @@ import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
-import { CANONICAL_FEATURE_DIRS } from '../../../../core/utils/sessionPaths';
+import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
 import { OrgConfig } from '../../../../core/types/orgConfig';
 
 /**
