@@ -21,6 +21,15 @@ import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 
+const FAVICON_PATHS = new Set(['/favicon.ico', '/favicon.svg', '/favicon.png']);
+
+const DEFAULT_FAVICON_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">' +
+  '<rect width="32" height="32" rx="6" fill="#1a1a2e"/>' +
+  '<text x="16" y="23" font-family="system-ui,sans-serif" font-size="20" font-weight="700" fill="#e94560" text-anchor="middle">A</text>' +
+  '</svg>'
+);
+
 function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -177,6 +186,15 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
                 headers: cleanHeaders,
               });
 
+              // Favicon fallback in Referer/Cookie routing path
+              if (response.status === 404 && FAVICON_PATHS.has(req.path)) {
+                res.status(200)
+                  .setHeader('Content-Type', 'image/svg+xml')
+                  .setHeader('Cache-Control', 'public, max-age=3600')
+                  .end(DEFAULT_FAVICON_SVG);
+                return;
+              }
+
               // Stream response
               res.status(response.status);
               response.headers.forEach((value: string, key: string) => {
@@ -198,7 +216,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           }
         }
       }
-      // No urlKey found or routing failed — fall through to Express
+      // No urlKey found or routing failed — serve default favicon or fall through
+      if (FAVICON_PATHS.has(req.path)) {
+        res.status(200)
+          .setHeader('Content-Type', 'image/svg+xml')
+          .setHeader('Cache-Control', 'public, max-age=3600')
+          .end(DEFAULT_FAVICON_SVG);
+        return;
+      }
       return next();
     }
     
@@ -336,7 +361,18 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       
       const contentType = response.headers.get('content-type') || '';
       logger.debug(`Upstream response: ${response.status} (${contentType})`, { component: 'PreviewProxy' });
-      
+
+      // Favicon fallback: serve default Ant favicon when upstream returns 404
+      const strippedPath = targetPath.replace(new RegExp(`^/${escapeRegExp(urlKey)}`), '') || '/';
+      if (response.status === 404 && FAVICON_PATHS.has(strippedPath)) {
+        const favicon = DEFAULT_FAVICON_SVG;
+        res.status(200)
+          .setHeader('Content-Type', 'image/svg+xml')
+          .setHeader('Cache-Control', 'public, max-age=3600')
+          .end(favicon);
+        return;
+      }
+
       // Copy status and headers (strip hop-by-hop and caching headers)
       res.status(response.status);
       response.headers.forEach((value: string, key: string) => {

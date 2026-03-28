@@ -25,7 +25,7 @@ reading from an environment variable injected at dev server startup.
 | Framework | Config File | Setting | Environment Variable |
 |-----------|------------|---------|---------------------|
 | **Vite** (React/Vue) | `vite.config.ts` | `base: process.env.VITE_BASE_PATH \|\| '/'` | `VITE_BASE_PATH` |
-| **Next.js** | `next.config.js` | `basePath: process.env.NEXT_PUBLIC_BASE_PATH \|\| ''` | `NEXT_PUBLIC_BASE_PATH` |
+| **Next.js** | `next.config.ts` | `...(basePath ? { basePath } : {})` | `NEXT_PUBLIC_BASE_PATH` |
 
 ---
 
@@ -49,7 +49,8 @@ reading from an environment variable injected at dev server startup.
 - **SSR fetch with path prefix**: Server-side data fetching (e.g., API routes) may construct URLs without the base path. Verify that server-side fetches also respect the prefix if they target the same proxy.
 - **Static assets in HTML**: Hardcoded paths in HTML templates (favicon, manifest, etc.) are NOT rewritten by the framework base path. Use relative paths or template the prefix.
 - **SVG assets MUST be imported as React components (SVGR)** — NOT via `<Image>` or `<img>`. SVGR renders inline with no network request, so basePath is irrelevant. Using `<img>` or `<Image>` for SVGs routes them through the image optimizer, which rejects SVG unless explicitly configured.
-- **Raster images (`<img>` tag) MUST NOT be used for local assets** — bare `<img>` tags do not receive basePath prefix. Use the framework's image component (Next.js `<Image>`) so basePath is applied automatically.
+- **Raster images MUST NOT use bare `<img>` with URL paths** — basePath prefix is not applied. Use the framework's image component. This applies to ALL image URL sources, not only design assets.
+- **Favicon in `inputs/assets/` is EASILY OVERLOOKED during setup.** Favicon is project metadata — not a design asset from `ui-assets.json`. If `inputs/assets/` contains a favicon file, copy it to the framework's conventional metadata location during setup.
 
 ---
 
