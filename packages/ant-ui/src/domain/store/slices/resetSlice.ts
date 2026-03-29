@@ -32,6 +32,7 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => 
       figmaDesktopReachable: false,
       bridgeStatusChecked: false,
       accountConfigScrollTarget: null,
+      figmaPopulated: null,
     });
     
     // Clear job-related localStorage

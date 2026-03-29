@@ -19,8 +19,8 @@ interface UseDesktopBridgeReturn {
   refreshStatus: () => Promise<void>;
 }
 
-const POLL_INTERVAL_DISCONNECTED = 60_000;
-const POLL_INTERVAL_CONNECTED = 120_000;
+const POLL_INTERVAL_DISCONNECTED = 30_000;
+const POLL_INTERVAL_CONNECTED = 60_000;
 const LAUNCH_POLL_INTERVAL = 2_000;
 const LAUNCH_TIMEOUT = 15_000;
 

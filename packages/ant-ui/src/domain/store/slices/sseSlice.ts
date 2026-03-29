@@ -1,8 +1,17 @@
 import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
+import type { HandlerId } from '@/infrastructure/sse/SSEManager';
 import type { ChatMessage, MessageContent } from '@/domain/models/chat';
-import type { KanbanData } from '@/infrastructure/http/api';
+import type { KanbanData, FileNode } from '@/infrastructure/http/api';
 import { removeFromStorage, STORAGE_KEYS } from '../storage';
+
+function findFigmaJsonNode(tree: FileNode[]): FileNode | undefined {
+  const inputs = tree?.find(n => n.name === 'inputs');
+  return inputs?.children?.find(n => n.name === 'figma.json');
+}
+
+let figmaRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let sliceHandlerIds: HandlerId[] = [];
 
 export interface SSEState {
   kanban: KanbanData;
@@ -18,7 +27,6 @@ export interface SSEActions {
   removeCancelledMessage: (jobId: string) => void;
   clearChatMessages: () => void;
   initializeSSE: () => void;
-  cleanupSSE: () => void;
   reconnectSSE: (key: string) => void;
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
 }
@@ -286,20 +294,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     const connectedProject = state.selectedProject;
     const connectedFeature = state.selectedFeature;
     
-    sseManager.clearHandlers('kanban');
-    sseManager.clearHandlers('chat');
-    sseManager.clearHandlers('fileTree');
-    sseManager.clearHandlers('unseenArtifacts');
-    sseManager.clearHandlers('bridge');
+    for (const id of sliceHandlerIds) {
+      sseManager.unregisterHandlerById(id);
+    }
+    sliceHandlerIds = [];
     
-    sseManager.registerHandler('kanban', (data: KanbanData) => {
+    sliceHandlerIds.push(sseManager.registerHandlerWithId('kanban', (data: KanbanData) => {
       const currentState = get();
       if (currentState.selectedProject !== connectedProject ||
           currentState.selectedFeature !== connectedFeature) return;
       get().updateKanban(data);
-    });
+    }));
     
-    sseManager.registerHandler('chat', (event: any) => {
+    sliceHandlerIds.push(sseManager.registerHandlerWithId('chat', (event: any) => {
       const currentState = get();
       const isCorrectContext = 
         event.projectId === currentState.selectedProject &&
@@ -612,35 +619,52 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           break;
         }
       }
-    });
+    }));
     
-    sseManager.registerHandler('fileTree', (data: any) => {
+    sliceHandlerIds.push(sseManager.registerHandlerWithId('fileTree', (data: any) => {
       if (data.type === 'initial' || data.type === 'update') {
         const tree = data.tree || data.fileTree;
         console.log(`[Timing] SSE fileTree received (type=${data.type}, nodes=${tree?.length ?? 0}) @${Math.round(performance.now())}ms`);
+
+        const oldFigma = findFigmaJsonNode(get().fileTree);
+        const newFigma = findFigmaJsonNode(tree);
+        const figmaChanged =
+          (oldFigma?.size !== newFigma?.size) ||
+          (oldFigma?.modifiedTime !== newFigma?.modifiedTime) ||
+          (!oldFigma && !!newFigma) ||
+          (!!oldFigma && !newFigma);
+
         get().setFileTree(tree);
+
+        if (figmaChanged) {
+          if (figmaRefreshTimer) clearTimeout(figmaRefreshTimer);
+          figmaRefreshTimer = setTimeout(() => {
+            get().refreshFigmaPopulated?.();
+            figmaRefreshTimer = null;
+          }, 300);
+        }
       }
-    });
+    }));
     
     // Unseen artifacts SSE handler (badge notifications)
-    sseManager.registerHandler('unseenArtifacts', (data: any) => {
+    sliceHandlerIds.push(sseManager.registerHandlerWithId('unseenArtifacts', (data: any) => {
       if (data.type === 'initial' || data.type === 'update') {
         const paths = data.paths || [];
         get().setUnseenArtifacts(paths);
       }
-    });
+    }));
     
     // Bridge SSE handler (user-level: Ant Desktop connection status)
-    sseManager.registerHandler('bridge', (data: any) => {
+    sliceHandlerIds.push(sseManager.registerHandlerWithId('bridge', (data: any) => {
       get().setBridgeStatus({
         connected: data.connected,
         detected: data.detected ?? data.connected,
         figmaDesktopReachable: data.figmaDesktopReachable ?? false,
       });
-    });
+    }));
 
     // Transfer SSE handler
-    sseManager.registerHandler('transfer', (data: any) => {
+    sliceHandlerIds.push(sseManager.registerHandlerWithId('transfer', (data: any) => {
       if (data.type === 'transfer-request-new') {
         get().incrementPendingTransferCount();
       } else if (data.type === 'transfer-request-cancelled') {
@@ -653,7 +677,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           }).catch(() => {});
         });
       }
-    });
+    }));
     
     // Register status callback so connectionStatus reflects actual EventSource state
     // (not set optimistically before onopen fires)
@@ -670,6 +694,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sseManager.setOnReconnectCallback(() => {
       console.log('[Store] SSE reconnected, enabling grace period');
       set({ sseReconnectGrace: true });
+
+      // Re-fetch bridge status and figma populated state on reconnect
+      import('@/infrastructure/http/api/desktop').then(({ checkBridgeStatus }) => {
+        checkBridgeStatus().then((status) => {
+          get().setBridgeStatus({
+            connected: status.connected,
+            detected: status.detected ?? status.connected,
+            figmaDesktopReachable: status.figmaDesktopReachable ?? false,
+          });
+        }).catch(() => {});
+      }).catch(() => {});
+      get().refreshFigmaPopulated?.();
+
       setTimeout(() => {
         if (get().sseReconnectGrace) {
           console.log('[Store] SSE reconnect grace expired (timeout)');
@@ -706,14 +743,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     // NOTE: connectionStatus is now set by SSEManager's onopen callback via statusCallback
     // (previously set optimistically here before EventSource was actually connected)
     console.log('[Store] ✅ Unified SSE connection initializing (waiting for onopen...)');
-  },
-  
-  cleanupSSE: () => {
-    console.log('[Store] 🧹 Cleaning up SSE connections...');
-    sseManager.cleanup();
-    sseManager.clearHandlers();
-    set({ connectionStatus: 'disconnected' });
-    console.log('[Store] ✅ SSE connections cleaned up');
   },
   
   reconnectSSE: (key) => {
