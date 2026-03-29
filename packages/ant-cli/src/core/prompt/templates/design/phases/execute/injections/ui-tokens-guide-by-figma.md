@@ -82,7 +82,10 @@ Preserve the mode structure as-is from Figma variables.
 
 ### Output Format
 
-{{#if lastSectionNumber}}
+{{#if forceAppend}}
+**Parallel chapter**: Use `<append>` tag to merge your categories into the shared JSON.
+The system serializes concurrent writes via mutex and deep-merges automatically.
+{{else if lastSectionNumber}}
 **Continuation chapter**: Append additional categories to existing JSON structure.
 Use `<append>` tag to merge new keys into the existing JSON.
 {{else}}
@@ -92,14 +95,25 @@ Use `<file>` tag to create the initial JSON file.
 
 ### Example Output
 
-{{#if lastSectionNumber}}
+{{#if forceAppend}}
+**Parallel chapter** - use `<append>` to add YOUR categories:
+
+```xml
+<append path="outputs/design/ui-tokens.json">
+{
+  "_meta": { "lastSection": 1 },
+  "YOUR_CATEGORY": { /* tokens extracted from Figma */ }
+}
+</append>
+```
+{{else if lastSectionNumber}}
 **Continuation task** - use `<append>` to add YOUR categories:
 
 ```xml
 <append path="outputs/design/ui-tokens.json">
 {
   "_meta": { "lastSection": {{add lastSectionNumber 1}} },
-  "YOUR_CATEGORY": { /* tokens extracted from screenshots */ }
+  "YOUR_CATEGORY": { /* tokens extracted from Figma */ }
 }
 </append>
 ```
@@ -110,7 +124,7 @@ Use `<file>` tag to create the initial JSON file.
 <file path="outputs/design/ui-tokens.json">
 {
   "_meta": { "lastSection": 1, "sectionPattern": "top-level" },
-  "YOUR_CATEGORY": { /* tokens extracted from screenshots */ }
+  "YOUR_CATEGORY": { /* tokens extracted from Figma */ }
 }
 </file>
 ```

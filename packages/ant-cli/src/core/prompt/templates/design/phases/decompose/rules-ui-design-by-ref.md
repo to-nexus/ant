@@ -160,18 +160,17 @@ DO NOT CREATE:
 | targetFile | MUST be in targetFiles array |
 | description | Clear scope of what to document |
 | priority | See priority ranges above |
-| parallelGroup | Group ID for parallel scheduling — use targetFile basename (e.g., `"ui-tokens"`, `"ui-spec"`) |
+| parallelGroup | Group ID for parallel scheduling (see rules below) |
 
 ### Parallel Execution Hints
 
-Add `"parallelGroup"` to every task. Tasks targeting the SAME file MUST share the same group ID.
+Add `"parallelGroup"` to every task.
 
-Use the targetFile basename as group ID:
-- `ui-tokens.json` tasks → `"parallelGroup": "ui-tokens"`
-- `ui-assets.json` tasks → `"parallelGroup": "ui-assets"`
-- `ui-spec.json` tasks → `"parallelGroup": "ui-spec"`
+- `ui-tokens.json` chapters → use task ID as group (e.g., `"ui-tokens-ch1"`, `"ui-tokens-ch2"`) — enables parallel execution
+- `ui-assets.json` chapters → shared group `"ui-assets"` — keeps sequential (category conflict risk)
+- `ui-spec.json` chapters → use task ID as group (e.g., `"ui-spec-ch1"`, `"ui-spec-ch2"`) — enables parallel execution
 
-This ensures chapters within the same document are serialized, while the orchestrator handles cross-document dependencies via priority ordering.
+The system uses per-file mutex + deep merge for concurrent writes. Cross-document ordering (tokens → assets → spec) is enforced by priority barriers.
 
 ---
 
@@ -206,7 +205,7 @@ Before outputting, verify:
 - ✅ All fields present (id, name, targetFile, description, priority, parallelGroup)
 - ✅ Priority in correct range (100-149, 200-249, 300-349)
 - ✅ No forbidden tasks (verification, deployment, operations)
-- ✅ Every task has `parallelGroup` matching its targetFile basename
+- ✅ Every task has `parallelGroup` (task ID for tokens/spec, shared basename for assets)
 
 ### Chapter Count
 - ✅ At least 2 chapters for ui-spec (ch1 = outline, ch2+ = content)

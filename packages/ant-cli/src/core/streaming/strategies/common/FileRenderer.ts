@@ -11,6 +11,17 @@ import { ParsedAction, FileStreamInfo } from '../../types';
 import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
 import { normalizeToCodebasePath } from '../../../utils/pathNormalizer';
+import { AsyncMutex } from '../../../../agents/architect/graph/code/parallel/AsyncMutex';
+
+const designFileLocks = new Map<string, AsyncMutex>();
+function getDesignFileLock(fsPath: string): AsyncMutex {
+  let lock = designFileLocks.get(fsPath);
+  if (!lock) {
+    lock = new AsyncMutex();
+    designFileLocks.set(fsPath, lock);
+  }
+  return lock;
+}
 
 /**
  * Structured data for cross-worker file conflicts.
@@ -359,24 +370,36 @@ export class FileRenderer {
         }
       }
 
-      if (this.jobType === 'design' && fileInfo.actionType !== 'append') {
-        const existsOnDisk = await this.fileSystem?.fileExists(fsPath);
-        if (existsOnDisk) {
-          console.warn(`⚠️ [FileRenderer] <file> tag on existing design doc "${filePath}" — auto-converting to <append>`);
-          await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
-          return;
+      if (this.jobType === 'design') {
+        await getDesignFileLock(fsPath).runExclusive(async () => {
+          if (fileInfo.actionType === 'append') {
+            await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
+          } else {
+            const existsOnDisk = await this.fileSystem?.fileExists(fsPath);
+            if (existsOnDisk) {
+              console.warn(`⚠️ [FileRenderer] <file> tag on existing design doc "${filePath}" — auto-converting to <append>`);
+              await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
+            } else {
+              if (!this.fileSystem) throw new Error('FileSystemPort not available');
+              await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
+            }
+          }
+        });
+
+        if (filePath.startsWith('outputs/')) {
+          this.pendingUnseenPaths.add(filePath);
         }
+        this.scheduleFileTreeNotification();
+        await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
+        return;
       }
 
-      if (fileInfo.actionType === 'append' && this.jobType === 'design') {
-        await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
-      } else {
+      {
         if (!this.fileSystem) throw new Error('FileSystemPort not available');
         
-        // ✅ Cross-worker conflict detection for file creation and overwrite
+        // Cross-worker conflict detection for file creation and overwrite
         const isOverwrite = (fileInfo as any).isOverwrite === true;
         if (isOverwrite) {
-          // Pre-existing file overwrite — check if another worker modified it
           const workerFS = this.fileSystem as any;
           if (typeof workerFS.writeOverwrite === 'function') {
             const result = await workerFS.writeOverwrite(fsPath, fileInfo.contentBuffer);
@@ -401,17 +424,14 @@ export class FileRenderer {
               return;
             }
           } else {
-            // Non-parallel mode: direct write
             await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
           }
         } else {
-          // New file creation — use writeNewFile for cross-worker ownership check
           const workerFS = this.fileSystem as any;
           if (typeof workerFS.writeNewFile === 'function') {
             const result = await workerFS.writeNewFile(fsPath, fileInfo.contentBuffer);
             if (!result.success) {
               if (result.currentContent !== undefined) {
-                // Cross-worker conflict with content available — store for direct merge
                 console.log(`⚠️ [FileRenderer] Cross-worker conflict (direct merge path): ${filePath}`);
                 this.fileConflicts.push({
                   path: filePath,
@@ -420,7 +440,6 @@ export class FileRenderer {
                   ownerTask: result.ownerTask,
                 });
               } else {
-                // Conflict without content (shouldn't happen, but fallback to fileErrors)
                 console.log(`⚠️ [FileRenderer] Cross-worker conflict (fallback): ${result.error}`);
                 this.fileErrors.push(result.error || `File "${filePath}" was already created by another task.`);
               }
@@ -432,7 +451,6 @@ export class FileRenderer {
               return;
             }
           } else {
-            // Non-parallel mode: direct write
             await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
           }
         }
