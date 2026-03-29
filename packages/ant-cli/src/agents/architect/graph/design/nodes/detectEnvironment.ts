@@ -29,7 +29,7 @@ import {
   JobEnvironment,
   DesignDomain,
 } from "../../../../../core/types/detection";
-import { isFigmaDataPopulated, FIGMA_MCP_ENDPOINT, UIDesignSource } from "@ant/shared";
+import { isFigmaDataPopulated, UIDesignSource } from "@ant/shared";
 
 interface ParsedDesignResponse {
   workType: "ui-design" | "system-design" | "spec" | "clarify" | "error";
@@ -266,29 +266,8 @@ async function saveDetectClarifyToSession(state: DesignGraphState): Promise<void
   }
 }
 
-/**
- * Check if Figma Desktop MCP is reachable (local mode only).
- * Sends a minimal HTTP request to localhost:3845.
- */
-async function checkLocalMCPAvailability(): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(FIGMA_MCP_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', method: 'ping', id: 1 }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    return res.ok || res.status === 400;
-  } catch {
-    return false;
-  }
-}
+// checkLocalMCPAvailability is now a shared utility
+import { checkLocalMCPAvailability } from '../../../../../periphery/adapters/figma/MCPTransport';
 
 /**
  * Determine UI design source mode and validate MCP availability.

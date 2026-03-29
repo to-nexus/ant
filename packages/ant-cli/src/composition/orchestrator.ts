@@ -260,12 +260,14 @@ export async function orchestrator(params: {
         const analyzer = new CodebaseAnalyzer();
         const command = new NodeCommandAdapter();
 
-        // ✅ Real-time updates via Redis Pub/Sub (Job Worker child process → Redis → Realtime Server → SSE)
         let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
         let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
         let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
         let previewUpdate: PreviewUpdatePort | undefined = undefined;
         let closeBroadcasters: (() => Promise<void>) | undefined = undefined;
+
+        // Redis client for cloud-mode Figma MCP (BridgeMCPTransport)
+        let codeRedis: any = undefined;
 
         if (process.env.ANT_REDIS_URL) {
           try {
@@ -286,30 +288,37 @@ export async function orchestrator(params: {
           } catch (error: any) {
             console.log('⚠️  Failed to initialize real-time broadcasters [Code]:', error?.message);
           }
+
+          if (process.env.ANT_SERVER_MODE === 'cloud') {
+            try {
+              const Redis = (await import('ioredis')).default;
+              codeRedis = new Redis(process.env.ANT_REDIS_URL);
+              console.log('✅ Redis client created for Code Job Figma MCP [Cloud]');
+            } catch (error: any) {
+              console.log('⚠️  Failed to create Redis client for Code Figma MCP:', error?.message);
+            }
+          }
         } else {
           console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Code]');
         }
 
-        // ✅ Create session with file tree update support (agent-nested)
         const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
 
-        // Mode will be inferred or auto-determined in architect agent
-        // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
         const result = await architectAgent(
           input,
           project || "default",
           'code',
           inputFile,
-          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath },
-          mode,              // Can be undefined (auto-infer) or explicit
-          enableEvaluation,  // Pass evaluation flag
-          jobId              // ✅ Pass jobId for real-time updates and resume
+          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath, redis: codeRedis },
+          mode,
+          enableEvaluation,
+          jobId
         );
 
-        // Drain pending chat broadcasts before process exits
         const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
         await drainChatBroadcaster();
         await closeBroadcasters?.();
+        await codeRedis?.quit?.();
 
         return result;
       }

@@ -5,7 +5,8 @@
     "design-doc": ["designDoc"],
     "memory": ["content"],
     "prd-spec": ["prdSpec"],
-    "ui-doc": ["uiDoc"]
+    "ui-doc": ["uiDoc"],
+    "visual-source-authority": []
   },
   "code/base/injections": {
     "git-diff": ["gitDiff"],

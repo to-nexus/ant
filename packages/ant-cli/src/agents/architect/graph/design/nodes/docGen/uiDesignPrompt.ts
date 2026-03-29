@@ -20,6 +20,7 @@ import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { buildSourceDocsForTask } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
+import type { FigmaNodeSummary } from '@ant/shared';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -333,6 +334,45 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   return content;
 }
 
+const NODESUMMARY_TOKEN_THRESHOLD = 2500;
+
+function buildNodeSummaryDisplay(nodeSummary: FigmaNodeSummary[]): string {
+  const fullDisplay = nodeSummary.map(n => {
+    const indent = '  '.repeat(n.depth);
+    const dimStr = n.dimensions ? ` ${n.dimensions.width}x${n.dimensions.height}` : '';
+    const compStr = n.isComponent ? ' [component]' : '';
+    return `${indent}${n.type} "${n.name}" nodeId=${n.nodeId} (${n.childCount} children)${dimStr}${compStr}`;
+  }).join('\n');
+
+  if (Math.ceil(fullDisplay.length / 3.5) <= NODESUMMARY_TOKEN_THRESHOLD) {
+    return fullDisplay;
+  }
+
+  const structural = nodeSummary.filter(
+    n => n.depth <= 1 || n.type === 'COMPONENT_SET' || n.type === 'SECTION'
+  );
+
+  return structural.map(n => {
+    const indent = '  '.repeat(n.depth);
+    const descendants = countDescendants(n, nodeSummary);
+    const descStr = descendants > 0 ? ` (${descendants} descendants)` : '';
+    const dimStr = n.dimensions ? ` ${n.dimensions.width}x${n.dimensions.height}` : '';
+    return `${indent}${n.type} "${n.name}" nodeId=${n.nodeId}${descStr}${dimStr}`;
+  }).join('\n')
+    + `\nTotal: ${nodeSummary.length} nodes. Use figma_get_design_context with a nodeId to inspect details.`;
+}
+
+function countDescendants(parent: FigmaNodeSummary, all: FigmaNodeSummary[]): number {
+  const idx = all.findIndex(n => n.nodeId === parent.nodeId);
+  if (idx === -1) return 0;
+  let count = 0;
+  for (let i = idx + 1; i < all.length; i++) {
+    if (all[i].depth <= parent.depth) break;
+    count++;
+  }
+  return count;
+}
+
 /**
  * Build resources summary for UI Design tasks
  * 
@@ -362,18 +402,12 @@ function buildResourcesSummary(state: DesignGraphState): string {
       if (er.nodeSummary?.length) {
         resourcesSummary += '\n### Figma Data Access\n\n';
         resourcesSummary += '**CONSTRAINT**: Use the most specific (deepest) nodeId available for design context queries.\n';
-        resourcesSummary += 'nodeSummary provides nodeIds by area. Broader nodeIds return less useful responses.\n\n';
+        resourcesSummary += 'nodeIds come from nodeSummary or from [Child Nodes] outlines in truncated responses.\n\n';
         resourcesSummary += '**CONSTRAINT**: Do NOT query nodes at the root or page level for detailed design data.\n\n';
         resourcesSummary += '### nodeSummary (available nodeIds)\n\n';
         resourcesSummary += '```\n';
-        for (const n of er.nodeSummary.slice(0, 80)) {
-          const indent = '  '.repeat(n.depth);
-          resourcesSummary += `${indent}${n.type} "${n.name}" nodeId=${n.nodeId} (${n.childCount} children)\n`;
-        }
-        if (er.nodeSummary.length > 80) {
-          resourcesSummary += `... and ${er.nodeSummary.length - 80} more entries\n`;
-        }
-        resourcesSummary += '```\n';
+        resourcesSummary += buildNodeSummaryDisplay(er.nodeSummary);
+        resourcesSummary += '\n```\n';
       }
     }
   } else {
@@ -652,7 +686,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     previousChaptersSummary,
     isLastTaskForDocument,  // ✅ If true, don't output metadata comments
     pathPattern,  // ✅ NEW: For ui-assets ch2+ to follow ch1's destination paths
-    existingDocContent: existingFileContent,  // ✅ NEW: Full file content for LLM to see and extend
+    // existingDocContent removed: LLM uses read_file/edit_file for large file efficiency
     jobMode: state.detectionReport?.jobMode,  // ✅ NEW: For refactor mode handling (generate/refactor/explain)
     userLanguage: state.context.userLanguage || 'en',
   };
@@ -692,7 +726,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
             isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
             pathPattern: injectedVariables.pathPattern,
             previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,
-            existingDocContent: injectedVariables.existingDocContent ? `[${injectedVariables.existingDocContent.length} chars]` : undefined,
+            existingDocContent: '(removed — LLM uses read_file/edit_file)',
           },
         }
       );

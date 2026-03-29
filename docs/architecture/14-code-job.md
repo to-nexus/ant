@@ -126,8 +126,112 @@ runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다
 
 plan 노드는 RAG 결과를 파일 경로 목록만 주입한다. 실제 파일 읽기는 execute `read_file` 도구로 수행한다.
 
+## UI Design Document Consumption
+
+Design Job이 생성한 UI 문서(ui-tokens.json, ui-assets.json, ui-spec.json)를 Code Job이 소비하는 메커니즘이다.
+
+### 로딩
+
+`resolve` 노드에서 `ArtifactService.loadParsedUiContext()`를 호출한다. `outputs/design/` 디렉터리에서 세 파일을 읽어 `ParsedUiDocs` 구조로 파싱한다:
+
+```typescript
+interface ParsedUiDocs {
+  tokens?: string;              // ui-tokens.json 전체 (문자열)
+  tokensTokenEstimate?: number;
+  assets?: string;              // ui-assets.json 전체 (문자열)
+  assetsTokenEstimate?: number;
+  specSections: Map<string, UiSpecSection>;  // ui-spec.json 논리 분할
+  specToc: UiSpecTocEntry[];                 // 섹션 목차
+  specTotalTokens: number;
+}
+```
+
+### 섹션 분할
+
+단일 `ui-spec.json` 파일을 `UiDocParser.parseJsonSections()`가 **메모리상에서** 논리적 섹션으로 분할한다. 디스크에 별도 파일을 만들지 않는다.
+
+분할 규칙:
+- `_meta` 키 제외
+- 최상위 키의 값이 "컨테이너"(모든 자식이 비배열 객체)이면: 각 자식에 대해 `{parentKey}-{childKey}` 섹션 생성 (예: `pages-events`, `modals-connectModal`)
+- 그 외 리프 객체는 키를 그대로 섹션 ID로 사용 (예: `layout`, `meta`)
+
+### 태스크별 주입
+
+`documentResolver.ts`가 task type에 따라 주입할 문서를 결정한다:
+
+| task.type | 주입 |
+|-----------|------|
+| `ui`, `design-system` | `resolveUiDocForTask()` → parsedUiDocs에서 해당 섹션만 |
+| `feature`, `setup`, `test-code`, `doc` | `resolveDesignDocForTask()` → system design 문서 |
+| `error`, `verification` | 없음 |
+
+`ui`/`design-system` 태스크에는 `task.uiSections` 배열이 있다. 이 배열은 decompose LLM이 `uiSectionsSummary` (TOC)를 참조하여 할당한다. `ArtifactService.getUiDocForTask(parsedDocs, uiSections)`가 해당 섹션만 추출하여 프롬프트에 주입한다. `uiSections`가 없으면 전체 UI 문서를 주입한다.
+
+### Document Authority
+
+- **ui-tokens.json**: SSOT — 시각적 값의 유일한 원천
+- **ui-assets.json**: SSOT — 에셋 경로의 유일한 원천
+- **ui-spec.json**: Primary — 레이아웃의 1차 참조. spec이 침묵하는 세부사항은 프레임워크 best practices 적용
+
+### hasUiDoc 플래그
+
+`parsedUiDocs`가 존재하면 `hasUiDoc = true`가 `promptBuilder.ts`에서 artifacts에 설정되어, execute 프롬프트에서 `{{#if hasUiDoc}}` 분기로 UI 관련 가이드를 조건부 주입한다.
+
+## Visual Source Authority
+
+Code Job의 모든 시각 소스(UI Design Documents, Figma MCP)에 대한 우선순위와 충돌 해결 규칙은 `visual-source-authority.md` 단일 문서에 정의된다. 이 문서는 `ModeController`가 프론트엔드 프로젝트(`detectedEnv !== 'backend'`)에 대해 항상 주입한다(uiDoc 유무 무관).
+
+## Figma MCP Supplementation
+
+Code Job은 Figma Desktop MCP에 직접 연결하여 디자인 정보를 보충할 수 있다. Design Job의 MCP 연동과 동일한 인프라(`MCPTransport`, `FigmaMCPAdapter`)를 공유하지만, 사용 목적과 범위가 다르다.
+
+### 가용성 감지 (resolve 노드)
+
+2단계 감지:
+
+1. **figma.json 검증**: `inputs/figma.json`을 로드하고 `isFigmaDataPopulated()`로 유효성 확인
+2. **MCP 연결 확인**: local은 `checkLocalMCPAvailability()`, cloud는 `BridgeMCPTransport.isAvailable()`
+
+감지 결과는 `ArchitectGraphState`에 저장:
+- `figmaAvailable: boolean` — MCP 연결 가능 여부
+- `figmaFileKey: string` — Figma URL에서 추출한 file key
+- `figmaStartNodeId?: string` — URL의 `node-id` 파라미터에서 추출한 시작 노드
+
+`fileKey` 추출 실패 시 `figmaAvailable = false`로 설정하여 도구 호출 시 런타임 오류를 방지한다.
+
+### 사용 가능 도구
+
+| 도구 | 조건 |
+|------|------|
+| `figma_get_design_context` | 항상 (프론트엔드 태스크 + figmaAvailable) |
+| `figma_get_screenshot` | 항상 (프론트엔드 태스크 + figmaAvailable) |
+| `figma_get_variable_defs` | UI 문서 없을 때만 (Scenario C) |
+| `figma_get_metadata` | `figmaStartNodeId` 없을 때만 (노드 탐색용) |
+
+### fileKey 자동 주입
+
+도구 스키마에서 `fileKey`를 제거(`removeFigmaFileKeyFromSchema`)하여 LLM이 제공하지 않도록 한다. tool handler가 `state.figmaFileKey`를 런타임에 자동 주입한다.
+
+### 시나리오 매트릭스
+
+| Scenario | UI Docs | Figma MCP | 전략 |
+|----------|---------|-----------|------|
+| A | O | O | UI docs primary, Figma supplements gaps |
+| B | O | X | UI docs only |
+| C | X | O | Figma primary — tokens, layout, screenshot 직접 조회 |
+| D | X | X | Plan hints + framework best practices |
+
+### On-demand 접근 (feature 태스크)
+
+`feature` 태스크에서는 UI 문서를 eager injection하지 않고, LLM이 `read_file`로 필요한 시점에 조회한다. 프롬프트에 artifact 경로(`outputs/design/ui-tokens.json` 등)를 안내한다.
+
+### Redis 의존성 (Cloud mode)
+
+Cloud mode에서 `BridgeMCPTransport`는 Redis Pub/Sub을 사용한다. `orchestrator.ts`에서 Code Job 전용 Redis 클라이언트를 생성하여 `deps.redis`로 전달하고, Job 완료 시 `quit()`한다.
+
 ## 경계
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
 - Job 실행/중단/재개: [10-job-lifecycle.md](10-job-lifecycle.md)
 - Design Job: [15-design-job.md](15-design-job.md)
+- UI Design 파이프라인 상세: [25-ui-design-pipeline.md](25-ui-design-pipeline.md)

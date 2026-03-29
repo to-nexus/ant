@@ -133,7 +133,29 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
         // Non-critical: design directory may not exist yet
       }
     }
-    
+
+    // ✅ sourceDocuments (PRD): reload from disk on resume.
+    // Checkpoints only store taskQueue/completedTasks/tokenUsage — NOT sourceDocuments.
+    // Without this, resumed tasks lose PRD context in prompts.
+    if (featurePath) {
+      const gitPort = state.deps?.git;
+      const fileSystem = state.deps?.fileSystem;
+      if (gitPort && fileSystem) {
+        try {
+          const source = await ArtifactService.getSource(context, gitPort, fileSystem);
+          if (source?.prd) {
+            state.prd = source.prd;
+          }
+          if (source?.sourceDocuments) {
+            state.sourceDocuments = source.sourceDocuments;
+          }
+          console.log(`📄 [Design Resolve] Reloaded sourceDocuments on resume (prd: ${!!source?.prd}, docs: ${Object.keys(source?.sourceDocuments || {}).length})`);
+        } catch (err: any) {
+          console.warn(`⚠️ [Design Resolve] Failed to reload sourceDocuments on resume: ${err.message}`);
+        }
+      }
+    }
+
     // ✅ Record phase timing
     state._phaseTimings = { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart };
     

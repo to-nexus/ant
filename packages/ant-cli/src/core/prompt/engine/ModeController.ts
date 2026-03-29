@@ -188,7 +188,11 @@ export class ModeController {
       injections.push(`${commonPrefix}/prd-spec`);
     }
     
-    // ✅ Optional UI doc (Figma-derived) - skip for backend-only environments (no visual layer)
+    // ✅ Visual source authority principles — always for frontend projects (regardless of uiDoc presence)
+    if (!skipDesignContext && detectedEnv !== 'backend') {
+      injections.push(`${commonPrefix}/visual-source-authority`);
+    }
+    // ✅ UI doc data — only when present
     if (context.uiDoc && !skipDesignContext && detectedEnv !== 'backend') {
       injections.push(`${commonPrefix}/ui-doc`);
     }

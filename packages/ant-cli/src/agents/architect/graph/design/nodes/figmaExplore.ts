@@ -14,11 +14,12 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { DesignGraphState } from '../state';
-import type { FigmaExplorationResult, FigmaNodeSummary } from '@ant/shared';
+import type { FigmaExplorationResult, FigmaExplorationError, FigmaNodeSummary, VariantProperty } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getMCPAdapter } from './tool';
 import { extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
 import { getSessionRuntimeDir } from '../../../../../core/utils/sessionPaths';
+import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
 interface MetadataNode {
   id: string;
@@ -163,6 +164,17 @@ function buildVariationMatrix(
   return matrix;
 }
 
+function parseVariantName(name: string): VariantProperty[] {
+  if (!name.includes('=')) return [];
+  return name.split(',')
+    .map(pair => {
+      const eqIdx = pair.indexOf('=');
+      if (eqIdx === -1) return null;
+      return { property: pair.substring(0, eqIdx).trim(), value: pair.substring(eqIdx + 1).trim() };
+    })
+    .filter((p): p is VariantProperty => p !== null && p.property.length > 0);
+}
+
 function buildComponentStateMatrix(
   nodes: MetadataNode[]
 ): FigmaExplorationResult['componentStateMatrix'] {
@@ -170,15 +182,29 @@ function buildComponentStateMatrix(
 
   for (const node of nodes) {
     if (node.type === 'COMPONENT_SET' && node.children) {
-      matrix.push({
-        componentName: node.name,
-        frames: node.children.map(c => ({
+      const frames = node.children.map(c => {
+        const variantProperties = parseVariantName(c.name);
+        return {
           nodeId: c.id,
           name: c.name,
           stateName: c.name,
+          ...(variantProperties.length > 0 ? { variantProperties } : {}),
           width: c.width || 0,
           height: c.height || 0,
-        })),
+        };
+      });
+
+      const axesSet = new Set<string>();
+      for (const f of frames) {
+        if (f.variantProperties) {
+          for (const vp of f.variantProperties) axesSet.add(vp.property);
+        }
+      }
+
+      matrix.push({
+        componentName: node.name,
+        ...(axesSet.size > 0 ? { variantAxes: [...axesSet] } : {}),
+        frames,
       });
     }
     if (node.children) {
@@ -190,29 +216,40 @@ function buildComponentStateMatrix(
 }
 
 const NODE_SUMMARY_TYPES = new Set(['FRAME', 'SECTION', 'COMPONENT_SET', 'COMPONENT', 'GROUP']);
-const NODE_SUMMARY_MAX_DEPTH = 3;
+const NODE_SUMMARY_MAX_ENTRIES = 300;
 const MAX_VARIABLE_DEFS_TOKENS = 8000;
 
-function buildNodeSummary(
-  nodes: MetadataNode[],
-  depth = 0,
-): FigmaNodeSummary[] {
-  const summaries: FigmaNodeSummary[] = [];
+function scanAllNodes(nodes: MetadataNode[], depth: number): FigmaNodeSummary[] {
+  const result: FigmaNodeSummary[] = [];
   for (const node of nodes) {
     if (NODE_SUMMARY_TYPES.has(node.type)) {
-      summaries.push({
-        nodeId: node.id,
-        name: node.name,
-        type: node.type,
-        depth,
-        childCount: node.children?.length ?? 0,
-      });
+      const entry: FigmaNodeSummary = {
+        nodeId: node.id, name: node.name, type: node.type,
+        depth, childCount: node.children?.length ?? 0,
+      };
+      if (node.width && node.height) {
+        entry.dimensions = { width: node.width, height: node.height };
+      }
+      if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+        entry.isComponent = true;
+      }
+      result.push(entry);
     }
-    if (node.children && depth < NODE_SUMMARY_MAX_DEPTH) {
-      summaries.push(...buildNodeSummary(node.children, depth + 1));
-    }
+    if (node.children) result.push(...scanAllNodes(node.children, depth + 1));
   }
-  return summaries;
+  return result;
+}
+
+function buildNodeSummary(nodes: MetadataNode[]): FigmaNodeSummary[] {
+  const all = scanAllNodes(nodes, 0);
+  if (all.length <= NODE_SUMMARY_MAX_ENTRIES) return all;
+
+  const maxDepth = Math.max(...all.map(n => n.depth));
+  for (let cutoff = maxDepth - 1; cutoff >= 2; cutoff--) {
+    const pruned = all.filter(n => n.depth <= cutoff);
+    if (pruned.length <= NODE_SUMMARY_MAX_ENTRIES) return pruned;
+  }
+  return all.filter(n => n.depth <= 1);
 }
 
 export async function figmaExplore(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
@@ -231,13 +268,40 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     };
   }
 
-  const adapter = getMCPAdapter(state);
+  // Diagnostic collector for figma-exploration-debug.json
+  const debugInfo: {
+    jobId?: string;
+    startedAt: string;
+    completedAt?: string;
+    elapsedMs?: number;
+    files: any[];
+    summary?: any;
+  } = {
+    jobId: state._httpJobId,
+    startedAt: new Date().toISOString(),
+    files: [],
+  };
+  const errors: FigmaExplorationError[] = [];
+
+  let adapter;
+  try {
+    adapter = getMCPAdapter(state);
+  } catch (err: any) {
+    const errMsg = `MCP adapter init failed: ${err.message}`;
+    console.error(`   ❌ ${errMsg}`);
+    errors.push({ phase: 'adapter_init', message: errMsg, timestamp: new Date().toISOString() });
+    await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: [], summary: { errors } });
+    return {
+      figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
+      designError: { type: 'figma_window_not_open', message: errMsg, suggestedAction: 'Figma Desktop이 실행 중인지 확인하세요.' },
+      _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+    };
+  }
 
   const result: FigmaExplorationResult = {
     variationMatrix: [],
     annotations: [],
     componentStateMatrix: [],
-    interactionStates: [],
     totalFrameCount: 0,
     downloadedAssets: [],
   };
@@ -250,35 +314,53 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     }
     const { fileKey, nodeId } = parsed;
     const rootNodeId = nodeId || '0:1';
+    const fileDebug: any = { url, fileKey, rootNodeId, status: 'success' };
 
     console.log(`   📄 Exploring file: ${fileKey} (node: ${rootNodeId})`);
 
+    // --- getMetadata ---
+    const metaStart = Date.now();
     const metadataResult = await adapter.getMetadata(fileKey, rootNodeId);
+    const metaElapsed = Date.now() - metaStart;
+    const rawContent = metadataResult.content;
+    const contentSize = typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length;
+    const extractedPreview = extractMCPTextContent(rawContent);
+
+    fileDebug.getMetadata = {
+      calledAt: new Date(metaStart).toISOString(),
+      elapsedMs: metaElapsed,
+      responseChars: contentSize,
+      isError: !!metadataResult.isError,
+      responsePreview: typeof extractedPreview === 'string' ? extractedPreview.substring(0, 500) : null,
+    };
+
     if (metadataResult.isError) {
       console.log(`   ❌ Metadata fetch failed: ${metadataResult.content}`);
+      fileDebug.status = 'metadata_error';
+      errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: String(metadataResult.content), timestamp: new Date().toISOString() });
+      debugInfo.files.push(fileDebug);
       continue;
     }
 
-    const rawContent = metadataResult.content;
     const contentType = Array.isArray(rawContent) ? 'array' : typeof rawContent;
-    const contentSize = typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length;
-    const extractedPreview = extractMCPTextContent(rawContent);
     console.log(`      metadata response: type=${contentType}, size=${contentSize}, extracted=${extractedPreview ? extractedPreview.substring(0, 120) + '...' : 'null'}`);
 
     if (extractedPreview && isFigmaMCPSoftError(extractedPreview)) {
       console.log(`   ❌ Figma MCP soft error: "${extractedPreview}"`);
-      return {
-        figmaExplorationResult: emptyResult(),
-        designError: {
-          type: 'figma_window_not_open',
-          message: `Figma 파일이 열려있지 않습니다: ${extractedPreview}`,
-          suggestedAction: 'Figma Desktop에서 디자인 파일을 연 후 다시 시도하세요.',
-        },
-        _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
-      };
+      fileDebug.status = 'soft_error';
+      errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Soft error: ${extractedPreview}`, timestamp: new Date().toISOString() });
+      debugInfo.files.push(fileDebug);
+      // Continue to next file instead of aborting entire exploration
+      continue;
     }
 
     const nodes = parseMetadataXML(metadataResult.content);
+    fileDebug.getMetadata.parsedNodeCount = countNodes(nodes);
+
+    if (nodes.length === 0 && contentSize > 0) {
+      errors.push({ phase: 'parse_metadata', fileKey, nodeId: rootNodeId, message: `Parse returned 0 nodes from ${contentSize} chars response`, timestamp: new Date().toISOString() });
+    }
+
     const allFrames = findFrames(nodes);
     result.totalFrameCount += allFrames.length;
 
@@ -295,15 +377,33 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     const nodeSummary = buildNodeSummary(nodes);
     if (!result.nodeSummary) result.nodeSummary = [];
     result.nodeSummary.push(...nodeSummary);
-    console.log(`      nodeSummary: ${nodeSummary.length} entries (depth <= ${NODE_SUMMARY_MAX_DEPTH})`);
+    const maxDepthUsed = nodeSummary.length > 0 ? Math.max(...nodeSummary.map(n => n.depth)) : 0;
+    console.log(`      nodeSummary: ${nodeSummary.length} entries (max depth ${maxDepthUsed})`);
 
+    // --- getVariableDefs ---
+    const varStart = Date.now();
     try {
       const varResult = await adapter.getVariableDefs(fileKey, rootNodeId);
-      if (!varResult.isError) {
-        const rawVarContent = varResult.content;
-        const varContent = extractMCPTextContent(rawVarContent) ?? rawVarContent;
+      const varElapsed = Date.now() - varStart;
+      const varRawContent = varResult.content;
+      const varSize = typeof varRawContent === 'string' ? varRawContent.length : JSON.stringify(varRawContent).length;
+
+      fileDebug.getVariableDefs = {
+        calledAt: new Date(varStart).toISOString(),
+        elapsedMs: varElapsed,
+        responseChars: varSize,
+        status: varResult.isError ? 'error' : 'success',
+      };
+
+      if (varResult.isError) {
+        const errContent = typeof varRawContent === 'string' ? varRawContent : JSON.stringify(varRawContent);
+        console.warn(`      ⚠️ getVariableDefs returned isError: ${errContent.substring(0, 200)}`);
+        errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: errContent.substring(0, 500), timestamp: new Date().toISOString() });
+      } else {
+        const varContent = extractMCPTextContent(varRawContent) ?? varRawContent;
         const varStr = typeof varContent === 'string' ? varContent : JSON.stringify(varContent);
         const estimatedTokens = varStr.length / 3.5;
+        fileDebug.getVariableDefs.estimatedTokens = Math.round(estimatedTokens);
         console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
         let varData: unknown;
         if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
@@ -319,10 +419,20 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
         }
       }
     } catch (err: any) {
+      const varElapsed = Date.now() - varStart;
       console.warn(`      ⚠️ getVariableDefs failed: ${err.message}`);
+      fileDebug.getVariableDefs = { calledAt: new Date(varStart).toISOString(), elapsedMs: varElapsed, status: 'exception', error: err.message };
+      errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: err.message, timestamp: new Date().toISOString() });
     }
+
+    debugInfo.files.push(fileDebug);
   }
 
+  if (errors.length > 0) {
+    result.explorationErrors = errors;
+  }
+
+  const successFiles = debugInfo.files.filter((f: any) => f.status === 'success').length;
   console.log(`\n   📊 Exploration complete:`);
   console.log(`      Total frames: ${result.totalFrameCount}`);
   console.log(`      Variation groups: ${result.variationMatrix.length}`);
@@ -330,18 +440,42 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
   console.log(`      Component sets: ${result.componentStateMatrix.length}`);
   console.log(`      nodeSummary entries: ${result.nodeSummary?.length ?? 0}`);
   console.log(`      variableDefs: ${result.variableDefs ? 'loaded' : 'none'}`);
+  if (errors.length > 0) {
+    console.log(`      ⚠️ Errors: ${errors.length} (${errors.map(e => e.phase).join(', ')})`);
+  }
+
+  // Save debug + result files
+  debugInfo.completedAt = new Date().toISOString();
+  debugInfo.elapsedMs = Date.now() - phaseStart;
+  debugInfo.summary = {
+    totalFiles: figmaConfig.files.length,
+    successFiles,
+    failedFiles: figmaConfig.files.length - successFiles,
+    totalNodeCount: debugInfo.files.reduce((s: number, f: any) => s + (f.getMetadata?.parsedNodeCount ?? 0), 0),
+    nodeSummaryCount: result.nodeSummary?.length ?? 0,
+    variableDefsAvailable: !!result.variableDefs,
+    errorCount: errors.length,
+  };
 
   if (state.context?.featurePath) {
     try {
       const runtimeDir = getSessionRuntimeDir(state.context.featurePath, 'architect', 'design');
       await fs.mkdir(runtimeDir, { recursive: true });
-      await fs.writeFile(
-        path.join(runtimeDir, 'figma-exploration.json'),
-        JSON.stringify(result, null, 2),
-      );
-      console.log(`   💾 Saved figma-exploration.json sidecar`);
+      await Promise.all([
+        fs.writeFile(path.join(runtimeDir, 'figma-exploration.json'), JSON.stringify(result, null, 2)),
+        fs.writeFile(path.join(runtimeDir, 'figma-exploration-debug.json'), JSON.stringify(debugInfo, null, 2)),
+      ]);
+      console.log(`   💾 Saved figma-exploration.json + figma-exploration-debug.json`);
     } catch (err) {
       console.warn(`   ⚠️ Failed to save figma-exploration sidecar:`, err);
+    }
+
+    // Log phase completion to execution logger
+    if (state._httpJobId) {
+      try {
+        const logger = getExecutionLogger({ featurePath: state.context.featurePath, jobId: state._httpJobId, jobType: 'design' });
+        await logger.logPhaseComplete({ phase: 'figmaExplore', elapsedMs: debugInfo.elapsedMs!, details: debugInfo.summary });
+      } catch { /* non-blocking */ }
     }
   }
 
@@ -351,12 +485,28 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
   };
 }
 
+async function saveDebugFile(state: DesignGraphState, debugInfo: any): Promise<void> {
+  if (!state.context?.featurePath) return;
+  try {
+    const runtimeDir = getSessionRuntimeDir(state.context.featurePath, 'architect', 'design');
+    await fs.mkdir(runtimeDir, { recursive: true });
+    await fs.writeFile(path.join(runtimeDir, 'figma-exploration-debug.json'), JSON.stringify(debugInfo, null, 2));
+  } catch { /* non-blocking */ }
+}
+
+function countNodes(nodes: MetadataNode[]): number {
+  let count = nodes.length;
+  for (const n of nodes) {
+    if (n.children) count += countNodes(n.children);
+  }
+  return count;
+}
+
 function emptyResult(): FigmaExplorationResult {
   return {
     variationMatrix: [],
     annotations: [],
     componentStateMatrix: [],
-    interactionStates: [],
     totalFrameCount: 0,
     downloadedAssets: [],
   };
@@ -378,12 +528,23 @@ function extractVariableDefsSummary(content: unknown): unknown {
     const obj = typeof content === 'string' ? JSON.parse(content) : content;
     if (typeof obj !== 'object' || obj === null) return content;
     const summary: Record<string, number> = {};
+    const modes: Record<string, string[]> = {};
     for (const [key, value] of Object.entries(obj)) {
       summary[key] = Array.isArray(value) ? value.length
         : (typeof value === 'object' && value !== null) ? Object.keys(value).length
         : 1;
+      const valueObj = value as Record<string, unknown>;
+      if (typeof valueObj === 'object' && valueObj !== null) {
+        if ('modes' in valueObj) {
+          modes[key] = Object.keys(valueObj.modes as object);
+        } else if ('valuesByMode' in valueObj) {
+          modes[key] = Object.keys(valueObj.valuesByMode as object);
+        }
+      }
     }
-    return { _summary: true, collections: summary };
+    const result: Record<string, unknown> = { _summary: true, collections: summary };
+    if (Object.keys(modes).length > 0) result.modes = modes;
+    return result;
   } catch {
     return { _summary: true, error: 'parse_failed' };
   }

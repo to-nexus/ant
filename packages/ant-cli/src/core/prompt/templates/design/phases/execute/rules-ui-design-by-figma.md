@@ -16,7 +16,7 @@ You have access to Figma MCP tools for extracting design data directly from Figm
 ### Workflow
 
 1. **First**: Review the nodeSummary in Available Resources to identify target nodeIds
-2. **Then**: Use `figma_get_design_context` for detailed component analysis (ONE PER TURN)
+2. **Then**: Use `figma_get_design_context` for detailed component analysis. Batch independent calls (multiple queries, downloads) in one turn to reduce token waste. If a response is truncated with a [Child Nodes] outline, drill into relevant child nodes.
 3. **Download assets**: When `figma_get_design_context` returns asset download URLs, use `download_asset` to save them to `inputs/assets/`
 4. **Optionally**: Use `figma_get_screenshot` for additional visual context
 5. **Finally**: Generate the document using `<file>` or `<append>` XML tag (see below)
@@ -36,6 +36,16 @@ When `figma_get_design_context` returns download URLs for assets (icons, images,
 - **ui-spec.json**: Use `figma_get_design_context` per component/section for specification
 
 > ⚠️ **IMPORTANT**: The nodeSummary in Available Resources provides the structural overview. Use MCP tools for deeper inspection of specific nodes.
+
+### Document Authority for Code Job
+
+The documents you generate serve different authority levels in code implementation:
+
+- **ui-tokens.json**: SSOT for all visual values. Must be comprehensive -- no fallback source exists.
+- **ui-assets.json**: SSOT for all asset paths. Must be complete -- no fallback source exists.
+- **ui-spec.json**: Primary layout reference. Should be thorough -- code job may supplement from Figma if available; if not, spec is the sole layout source.
+
+**Principle**: Prioritize completeness for tokens and assets. For spec, capture all observable layout intent.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -540,9 +550,9 @@ Before outputting, verify:
 
 3. **Typical flow:**
    ```
-   Turn 1: Review nodeSummary + figma_get_design_context(node) → Wait
-   Turn 2: Additional figma_get_design_context() for details → Wait
-   Turn 3: <file>...</file> or <append>...</append> + <done>true</done>
+   Turn 1: Review nodeSummary + figma_get_design_context(section_node) → Wait
+   Turn 2: If truncated, drill into 1-2 most relevant child nodes → Wait
+   Turn 3+: Write output using gathered data + <done>true</done>
    ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
