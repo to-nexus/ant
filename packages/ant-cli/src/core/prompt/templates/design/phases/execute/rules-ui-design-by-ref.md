@@ -84,6 +84,26 @@ You have access to tools for exploring reference images and assets:
 - ✅ Use `<file>` to replace the entire document with modifications
 
 {{else}}
+
+{{#if forceAppend}}
+### Parallel Chapter (Append Mode)
+
+**⚠️ You MUST use `<append>` tag. The system deep-merges your output with other chapters.**
+
+```xml
+<append path="outputs/design/{{targetFile}}">
+{
+  {{#unless isLastTaskForDocument}}"_meta": { "lastSection": 1 },{{/unless}}
+  "YOUR_CATEGORY": { ... }
+}
+</append>
+```
+
+{{#if isLastTaskForDocument}}
+**This is the LAST task for this document — OMIT the `_meta` block.**
+{{/if}}
+
+{{else}}
 ### Scenario 1: New Document (First Chapter)
 
 **Detection**: Task ID is `ui-tokens`, `ui-assets`, `ui-spec`, or ends with `-ch1`
@@ -195,6 +215,7 @@ The system will automatically merge this into the existing JSON.
 - `ui-assets-ch2` → Use `<append path="outputs/design/ui-assets.json">` (merge into existing JSON)
 - `ui-spec-ch3` → Use `<append path="outputs/design/ui-spec.json">` (merge into existing JSON)
 
+{{/if}}
 {{/if}}
 
 ---
@@ -467,12 +488,13 @@ ui-spec.json documents **WHAT** to build, not **HOW** to build it.
 Before outputting, verify:
 
 **XML Tag Selection**:
-{{#if lastSectionNumber}}
+{{#if forceAppend}}
+- [ ] Used `<append>` (parallel chapter mode)
+{{else if lastSectionNumber}}
 - [ ] Used `<append>` (NOT `<file>`) because lastSectionNumber exists ({{lastSectionNumber}})
 {{else}}
 - [ ] Used `<file>` for first chapter (task ID has no `-ch` suffix or ends with `-ch1`)
 {{/if}}
-- [ ] Used `<append>` for continuation chapters (task ID ends with `-ch2`, `-ch3`, etc.)
 - [ ] Path starts with `outputs/design/`
 - [ ] Filename matches category (`ui-tokens.json`, `ui-assets.json`, or `ui-spec.json`)
 
