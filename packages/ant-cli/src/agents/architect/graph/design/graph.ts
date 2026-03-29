@@ -586,6 +586,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       maxWorkers,
       checkpointInterval: 60000,
       barriers: {
+        assets: true,
         spec: true,
       },
     },
@@ -688,6 +689,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       reason: result.interruptReason || 'recursion_limit',
       message: result.interruptReason === 'user_stopped'
         ? `Task stopped by user (${result.remainingQueue.length} task(s) remaining)`
+        : result.interruptReason === 'figma_rate_limited'
+        ? `Figma API rate limit exceeded. Please retry later. (${result.remainingQueue.length} task(s) remaining)`
         : `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
       timestamp: new Date().toISOString(),
       canResume: result.remainingQueue.length > 0,

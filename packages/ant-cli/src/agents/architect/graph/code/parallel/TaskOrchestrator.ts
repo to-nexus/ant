@@ -27,6 +27,7 @@ import type {
   WorkerSnapshot,
 } from './types';
 import { getTaskConcurrency } from './types';
+import { isFigmaRateLimitError } from '../../../../../periphery/adapters/figma/errors';
 
 /**
  * Classify whether an error is deterministic (will always fail on retry)
@@ -375,6 +376,28 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.runningTasks.delete(workerId);
 
       this.callbacks.onTaskFailure?.(task, error, workerId);
+
+      // ✅ Figma rate limit: immediate global interrupt — all tasks are blocked.
+      // Inlined (not via handleInterruption) because AsyncMutex is non-reentrant.
+      if (isFigmaRateLimitError(error)) {
+        task.interrupted = true;
+        this.hasInterruptedTasks = true;
+        this.interruptReason = 'figma_rate_limited';
+        this.failedTasks.push({ task, error, timestamp: new Date().toISOString() });
+        console.error(`[Orchestrator] Figma rate limit — interrupting all tasks`);
+        const runningTaskIds = Array.from(this.runningTasks.values()).map(t => t.id);
+        this.callbacks.onInterruption?.('figma_rate_limited', runningTaskIds);
+        try {
+          await this.saveCheckpoint({ reason: 'figma_rate_limited', canResume: true });
+        } catch (err) {
+          console.warn(`[Orchestrator] Post-rate-limit checkpoint failed:`, err);
+        }
+        this.drain();
+        this.signalWorkersToStop();
+        this.broadcastKanban();
+        this.checkAllDone();
+        return;
+      }
 
       // ✅ Consecutive timeout detection: if infrastructure is down (sleep, network),
       // all LLM calls will timeout. Pause orchestrator instead of burning retries.
