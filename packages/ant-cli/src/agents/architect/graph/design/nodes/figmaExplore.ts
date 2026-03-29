@@ -133,6 +133,10 @@ function findAnnotationTexts(
   return annotations;
 }
 
+const VARIATION_MAX_FRAMES_PER_GROUP = 8;
+const VARIATION_MIN_WIDTH_RATIO = 1.5;
+const VARIATION_MAX_DISTINCT_WIDTHS = 6;
+
 function buildVariationMatrix(
   nodes: MetadataNode[]
 ): FigmaExplorationResult['variationMatrix'] {
@@ -143,17 +147,27 @@ function buildVariationMatrix(
       const childFrames = node.children.filter(
         c => c.type === 'FRAME' && c.width && c.width > 300
       );
-      if (childFrames.length > 1) {
-        matrix.push({
-          section: node.name,
-          pageNodeId: node.id,
-          frames: childFrames.map(f => ({
-            nodeId: f.id,
-            name: f.name,
-            width: f.width || 0,
-            height: f.height || 0,
-          })),
-        });
+
+      if (childFrames.length >= 2 && childFrames.length <= VARIATION_MAX_FRAMES_PER_GROUP) {
+        const widths = childFrames.map(f => Math.round(f.width!));
+        const distinctWidths = new Set(widths);
+        const minW = Math.min(...widths);
+        const maxW = Math.max(...widths);
+
+        if (distinctWidths.size >= 2
+            && distinctWidths.size <= VARIATION_MAX_DISTINCT_WIDTHS
+            && maxW / minW >= VARIATION_MIN_WIDTH_RATIO) {
+          matrix.push({
+            section: node.name,
+            pageNodeId: node.id,
+            frames: childFrames.map(f => ({
+              nodeId: f.id,
+              name: f.name,
+              width: f.width || 0,
+              height: f.height || 0,
+            })),
+          });
+        }
       }
     }
     if (node.children) {

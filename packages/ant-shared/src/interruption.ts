@@ -14,6 +14,7 @@ export type InterruptionReason =
   | 'server_crash'         // Server/worker killed unexpectedly (SIGKILL, OOM, etc.)
   | 'timeout'              // Job timeout
   | 'server_shutdown'      // Server graceful shutdown
+  | 'figma_rate_limited'   // Figma MCP/API rate limit exceeded
   | 'unknown';             // Unknown reason
 
 /** Details about a job interruption */
