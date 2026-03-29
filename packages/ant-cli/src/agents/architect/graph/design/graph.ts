@@ -488,6 +488,32 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
           } catch (_) { /* non-critical */ }
         }
       },
+      onWorkerTerminate: (workerId: number) => {
+        if (state.deps?.workflowUpdate?.clearWorkers && state._httpJobId) {
+          Promise.resolve(
+            state.deps.workflowUpdate.clearWorkers(state._httpJobId, [workerId])
+          ).catch((err: Error) => {
+            console.warn(`[Design ParallelOrchestrator] Failed to clear terminated worker ${workerId}:`, err.message);
+          });
+        }
+      },
+      onInterruption: (reason, runningTaskIds) => {
+        if (state.context?.featurePath && state._httpJobId) {
+          import('../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+            const execLogger = getExecutionLogger({
+              featurePath: state.context.featurePath!,
+              jobId: state._httpJobId!,
+              jobType: 'design',
+            });
+            execLogger.logJobInterrupted({
+              reason,
+              runningTaskIds,
+              remainingTaskCount: taskQueue.size(),
+              completedTaskCount: orchestrator.getCompletedTasks().length,
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      },
       onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
         if (state.deps?.kanbanUpdate && state._httpJobId) {
           state.deps.kanbanUpdate.updateTaskQueue(
@@ -504,16 +530,25 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       onCheckpoint: async (checkpoint) => {
         if (state.deps?.session && state.context.featureFolder) {
           try {
+            // Merge failed tasks into taskQueue so full task definitions survive
+            // process termination (user stop, kill, etc.).
+            const failedAsQueue = checkpoint.failedTasks.map(f => ({
+              ...f.task,
+              _failed: true,
+              _failureReason: f.error.message,
+            }));
+            const failedIds = new Set(failedAsQueue.map((t: any) => t.id));
+            const dedupedQueue = checkpoint.taskQueue.filter(t => !failedIds.has(t.id));
+
             await state.deps.session.updateArtifacts(
               state.context.project,
               state.context.featureFolder,
               'design',
               {
                 state: {
-                  taskQueue: checkpoint.taskQueue,
+                  taskQueue: [...failedAsQueue, ...dedupedQueue],
                   completedTasks: checkpoint.completedTasks.map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
-                  // ✅ Persist failed tasks so they survive process termination
                   failedTasks: checkpoint.failedTasks.map(f => ({
                     taskId: f.task.id,
                     taskName: f.task.name,
@@ -521,7 +556,6 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                     timestamp: f.timestamp,
                   })),
                   tokenUsage: checkpoint.tokenUsage,
-                  // ✅ Preserve estimating phase token usage snapshot in checkpoint
                   estimatingTokenUsage: (state as any)._estimatingTokenUsage,
                   jobId: (state as any).jobId,
                   jobTiming: (state as any).jobTiming,
@@ -529,12 +563,12 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   uiDesignSource: state.uiDesignSource,
                   figmaConfig: state.figmaConfig,
                   detectionReport: state.detectionReport,
-                  ...(checkpoint.reason ? {
+                  ...(checkpoint.interruption ? {
                     interruption: {
-                      reason: checkpoint.reason,
-                      message: `Design paused: ${checkpoint.reason}`,
+                      reason: checkpoint.interruption.reason,
+                      message: `Design paused: ${checkpoint.interruption.reason}`,
                       timestamp: new Date().toISOString(),
-                      canResume: checkpoint.canResume ?? true,
+                      canResume: checkpoint.interruption.canResume,
                     },
                   } : {}),
                 },
