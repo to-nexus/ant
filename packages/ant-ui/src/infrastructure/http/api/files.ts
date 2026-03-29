@@ -5,6 +5,8 @@ export interface FileNode {
   path: string;
   type: 'file' | 'directory';
   children?: FileNode[];
+  size?: number;
+  modifiedTime?: string;
 }
 
 export interface FileContent {

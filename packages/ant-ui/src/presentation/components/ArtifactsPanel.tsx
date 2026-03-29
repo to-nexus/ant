@@ -18,8 +18,7 @@ import { HintBadge } from '@/presentation/components/common/HintBadge';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
 import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
-import { getFigmaConfig } from '@/infrastructure/http/api/figma';
-import { isFigmaDataPopulated, UI_VISIBLE_INPUT_DIRS, UI_VISIBLE_OUTPUT_DIRS, UI_VISIBLE_INPUT_FILES } from '@ant/shared';
+import { UI_VISIBLE_INPUT_DIRS, UI_VISIBLE_OUTPUT_DIRS, UI_VISIBLE_INPUT_FILES } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -51,11 +50,10 @@ interface FigmaStatusIndicatorProps {
   bridgeConnected: boolean;
   figmaDesktopReachable: boolean;
   onOpenSettings: () => void;
-  onSelectFile: () => void;
   t: (key: string) => string;
 }
 
-function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReachable, onOpenSettings, onSelectFile, t }: FigmaStatusIndicatorProps) {
+function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReachable, onOpenSettings, t }: FigmaStatusIndicatorProps) {
   if (isPopulated === null) return null;
 
   if (!isPopulated) {
@@ -625,26 +623,13 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     dropErrorTimerRef.current = setTimeout(() => setDropError(null), 3000);
   }, []);
 
-  // Figma config state — reloads when fileTree changes (covers saves + feature switches)
-  const [isFigmaPopulated, setIsFigmaPopulated] = useState<boolean | null>(null);
+  // Figma config state — from Zustand store (updated by SSE fileTree handler + direct save)
+  const figmaPopulated = useStore((state) => state.figmaPopulated);
+  const refreshFigmaPopulated = useStore((state) => state.refreshFigmaPopulated);
 
   useEffect(() => {
-    if (!selectedProject || !selectedFeature) {
-      setIsFigmaPopulated(null);
-      return;
-    }
-    getFigmaConfig(selectedProject, selectedFeature)
-      .then((config) => {
-        setIsFigmaPopulated(isFigmaDataPopulated(config));
-        const hasFigmaInTree = fileTree
-          ?.find(n => n.name === 'inputs')
-          ?.children?.some(n => n.name === 'figma.json');
-        if (!hasFigmaInTree) {
-          refreshFileTree();
-        }
-      })
-      .catch(() => setIsFigmaPopulated(false));
-  }, [selectedProject, selectedFeature, fileTree]);
+    refreshFigmaPopulated();
+  }, [selectedProject, selectedFeature]);
 
   // Refresh file tree when project or feature changes
   useEffect(() => {
@@ -973,14 +958,13 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           fileIndicators={{
             'figma.json': (
               <FigmaStatusIndicator
-                isPopulated={isFigmaPopulated}
+                isPopulated={figmaPopulated}
                 bridgeConnected={bridgeConnected === true}
                 figmaDesktopReachable={figmaDesktopReachable}
                 onOpenSettings={() => {
                   openMainPanelTab('accountConfig');
                   setAccountConfigScrollTarget('figma');
                 }}
-                onSelectFile={() => handleFileSelect('inputs/figma.json')}
                 t={t}
               />
             ),

@@ -184,10 +184,10 @@ export function usePreviewManager(
       }
     };
 
-    sseManager.registerHandler('preview', handler);
+    const handlerId = sseManager.registerHandlerWithId('preview', handler);
 
     return () => {
-      sseManager.unregisterHandler('preview', handler);
+      sseManager.unregisterHandlerById(handlerId);
     };
   }, [isPrimary, selectedProject, selectedFeature, setPreviewStatus, setPreviewLoading]);
 

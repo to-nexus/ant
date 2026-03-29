@@ -11,13 +11,15 @@
  * Architecture:
  * - React와 완전 독립
  * - 애플리케이션 생명주기 동안 단 1개 인스턴스 (Singleton)
- * - 메모리 누수 방지를 위한 cleanup 보장
+ * - ID 기반 핸들러 등록/해제로 누수 방지
  * 
  * Usage:
- *   // Register handlers for different message types
- *   sseManager.registerHandler('kanban', (data) => {
+ *   // Register handlers with ID for reliable cleanup
+ *   const id = sseManager.registerHandlerWithId('kanban', (data) => {
  *     useStore.getState().updateKanban(data);
  *   });
+ *   // Unregister by ID
+ *   sseManager.unregisterHandlerById(id);
  *   
  *   // Connect to unified SSE endpoint
  *   sseManager.connect(projectId, featureName);
@@ -117,18 +119,7 @@ class SSEManager {
   }
   
   /**
-   * Register message handler for a specific type
-   * Prefer registerHandlerWithId for better cleanup support.
-   */
-  registerHandler(type: SSEMessageType, handler: SSEMessageHandler): void {
-    if (!this.handlers.has(type)) {
-      this.handlers.set(type, []);
-    }
-    this.handlers.get(type)!.push(handler);
-  }
-  
-  /**
-   * ✅ Register handler with ID - enables reliable cleanup
+   * Register handler with ID - enables reliable cleanup
    * Returns a HandlerId that must be used for unregistration
    */
   registerHandlerWithId(type: SSEMessageType, handler: SSEMessageHandler): HandlerId {
@@ -158,30 +149,6 @@ class SSEManager {
       }
     }
     this.handlerRegistry.delete(id);
-  }
-  
-  /**
-   * Clear all handlers for a specific type (or all types)
-   */
-  clearHandlers(type?: SSEMessageType): void {
-    if (type) {
-      this.handlers.delete(type);
-    } else {
-      this.handlers.clear();
-    }
-  }
-  
-  /**
-   * Unregister message handler
-   */
-  unregisterHandler(type: SSEMessageType, handler: SSEMessageHandler): void {
-    const handlers = this.handlers.get(type);
-    if (handlers) {
-      const index = handlers.indexOf(handler);
-      if (index > -1) {
-        handlers.splice(index, 1);
-      }
-    }
   }
   
   /**
@@ -485,26 +452,6 @@ class SSEManager {
     this.workflowConnections.forEach((_, jobId) => {
       this.disconnectWorkflow(jobId);
     });
-  }
-  
-  /**
-   * Cleanup all connections
-   */
-  cleanup(): void {
-    this.disconnect();
-    
-    this.workflowConnections.forEach((_, jobId) => {
-      this.disconnectWorkflow(jobId);
-    });
-    
-    this.handlers.clear();
-    this.statusCallback = null;
-    this.onReconnectCallback = null;
-
-    if (this.visibilityHandler) {
-      document.removeEventListener('visibilitychange', this.visibilityHandler);
-      this.visibilityHandler = null;
-    }
   }
   
   /**

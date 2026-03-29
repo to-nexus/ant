@@ -87,6 +87,7 @@ export const createProjectSlice: StateCreator<
         jobStartPending: false,
         sseReconnectGrace: false,
         connectionStatus: 'connected',
+        figmaPopulated: null,
       } as any);
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
@@ -121,6 +122,7 @@ export const createProjectSlice: StateCreator<
         jobStartPending: false,
         sseReconnectGrace: false,
         connectionStatus: 'connected',
+        figmaPopulated: null,
       } as any);
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
@@ -207,6 +209,7 @@ export const createProjectSlice: StateCreator<
     
     set({ 
       selectedFeature: featureName,
+      figmaPopulated: null,
     } as any);
     
     // Clear related state from other slices

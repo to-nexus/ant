@@ -27,6 +27,7 @@ export interface FileState {
   fileReloadTarget: string | undefined;
   lastViewMode: 'raw' | 'preview';
   unseenArtifacts: string[];  // Unseen artifact file paths for badge notifications
+  figmaPopulated: boolean | null;  // null=loading, true=has files, false=empty/error
 }
 
 export interface QueuePosition {

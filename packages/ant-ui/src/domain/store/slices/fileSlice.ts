@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import { FileState } from '../types';
 import type { FileNode, FileContent } from '@/infrastructure/http/api';
+import { isFigmaDataPopulated } from '@ant/shared';
 
 export interface FileActions {
   selectFile: (filePath: string | undefined) => void;
@@ -11,6 +12,8 @@ export interface FileActions {
   setLastViewMode: (mode: 'raw' | 'preview') => void;
   setUnseenArtifacts: (paths: string[]) => void;
   markArtifactsSeen: (paths: string[]) => void;
+  setFigmaPopulated: (value: boolean | null) => void;
+  refreshFigmaPopulated: () => Promise<void>;
 }
 
 export type FileSlice = FileState & FileActions;
@@ -26,6 +29,7 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   fileReloadTarget: undefined,
   lastViewMode: 'raw',
   unseenArtifacts: [],
+  figmaPopulated: null,
 
   // ==================
   // Actions
@@ -130,6 +134,32 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
           }
         ).catch(() => {});
       });
+    }
+  },
+
+  setFigmaPopulated: (value: boolean | null) => {
+    set({ figmaPopulated: value });
+  },
+
+  refreshFigmaPopulated: async () => {
+    const { selectedProject, selectedFeature, fileTree, refreshFileTree } = get();
+    if (!selectedProject || !selectedFeature) {
+      set({ figmaPopulated: null });
+      return;
+    }
+    try {
+      const { getFigmaConfig } = await import('@/infrastructure/http/api/figma');
+      const config = await getFigmaConfig(selectedProject, selectedFeature);
+      set({ figmaPopulated: isFigmaDataPopulated(config) });
+
+      const hasFigmaInTree = fileTree
+        ?.find((n: any) => n.name === 'inputs')
+        ?.children?.some((n: any) => n.name === 'figma.json');
+      if (!hasFigmaInTree) {
+        refreshFileTree();
+      }
+    } catch {
+      set({ figmaPopulated: false });
     }
   },
 });
