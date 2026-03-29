@@ -145,6 +145,9 @@ export interface DesignTask extends BaseTask {
   /** Pre-computed at decompose time: true if this is the last task targeting the same file. */
   isLastTaskForDocument?: boolean;
 
+  /** Pre-computed at decompose time: true for non-first chapters that must use <append> in parallel. */
+  forceAppend?: boolean;
+
   /**
    * Source files from inputs/sources/ relevant to this task (set by decompose).
    * MUST be set when multiple source files exist.

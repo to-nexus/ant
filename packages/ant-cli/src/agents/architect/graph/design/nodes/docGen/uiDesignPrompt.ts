@@ -549,25 +549,14 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
      taskId.startsWith('ui-assets') ? 'ui-assets.json' :
      taskId.startsWith('ui-spec') ? 'ui-spec.json' : 'ui-spec.json');
   
-  // ✅ Check if this is the last task for this document
-  // If no more tasks in queue target the same file, don't output metadata
-  // CRITICAL: Exclude current task from the count (it may still be in queue)
-  const currentTaskId = state.currentTask?.id;
-  const allQueuedTasks = state.taskQueue?.getAll?.() || [];
-  const remainingTasksForFile = allQueuedTasks.filter(
-    (task: any) => {
-      // Exclude current task from remaining count
-      if (task.id === currentTaskId) return false;
-      const taskTargetFile = task.targetFile || 
-        (task.id?.startsWith('ui-tokens') ? 'ui-tokens.json' :
-         task.id?.startsWith('ui-assets') ? 'ui-assets.json' :
-         task.id?.startsWith('ui-spec') ? 'ui-spec.json' : null);
-      return taskTargetFile === actualTargetFile;
-    }
-  );
-  const isLastTaskForDocument = remainingTasksForFile.length === 0;
+  // Pre-computed at decompose time (taskQueue is not accessible in worker subgraph)
+  const isLastTaskForDocument = !!(state.currentTask as DesignTask)?.isLastTaskForDocument;
+  const forceAppend = !!(state.currentTask as DesignTask)?.forceAppend;
   if (isLastTaskForDocument) {
     console.log(`📄 [DocGen UI] This is the LAST task for ${actualTargetFile} - will NOT output metadata`);
+  }
+  if (forceAppend) {
+    console.log(`📄 [DocGen UI] forceAppend=true for ${taskId} — parallel chapter, will use <append>`);
   }
   
   // ✅ Check if file exists and extract last section number + existing sections
@@ -684,10 +673,10 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     sectionPattern,
     targetFile: actualTargetFile,
     previousChaptersSummary,
-    isLastTaskForDocument,  // ✅ If true, don't output metadata comments
-    pathPattern,  // ✅ NEW: For ui-assets ch2+ to follow ch1's destination paths
-    // existingDocContent removed: LLM uses read_file/edit_file for large file efficiency
-    jobMode: state.detectionReport?.jobMode,  // ✅ NEW: For refactor mode handling (generate/refactor/explain)
+    isLastTaskForDocument,
+    forceAppend,
+    pathPattern,
+    jobMode: state.detectionReport?.jobMode,
     userLanguage: state.context.userLanguage || 'en',
   };
 
@@ -724,6 +713,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
             // Summarize large content
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
             isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
+            forceAppend: injectedVariables.forceAppend,
             pathPattern: injectedVariables.pathPattern,
             previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,
             existingDocContent: '(removed — LLM uses read_file/edit_file)',

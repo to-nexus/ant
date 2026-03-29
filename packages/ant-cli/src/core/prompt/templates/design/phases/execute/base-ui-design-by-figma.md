@@ -43,6 +43,21 @@
 
 ════════════════════════════════════════════════════════════════════════════════
 
+{{else if forceAppend}}
+🔀 PARALLEL CHAPTER — APPEND MODE 🔀
+════════════════════════════════════════════════════════════════════════════════
+
+**This is a parallel chapter. You MUST use `<append>` tag.**
+
+{{#if targetFile}}
+**Target file: `{{targetFile}}`** (defined by decompose, DO NOT change!)
+{{else}}
+**Target file: `ui-spec.json`** (default)
+{{/if}}
+
+Your chapter generates INDEPENDENT content — other chapters handle other categories.
+The system merges all chapters via deep merge automatically.
+
 {{else if lastSectionNumber}}
 🚨 CONTINUING EXISTING DOCUMENT 🚨
 ════════════════════════════════════════════════════════════════════════════════
