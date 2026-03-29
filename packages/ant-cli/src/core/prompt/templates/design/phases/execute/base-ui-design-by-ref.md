@@ -21,29 +21,24 @@
 
 ⚠️ **CRITICAL INSTRUCTIONS:**
 
-1. **Full document provided below** - You have the COMPLETE current document
-2. **Identify target section** - Find the section mentioned in your task
-3. **Modify in place** - Change values WITHIN the existing structure
-4. **Use `<file>` tag** - Output the COMPLETE document with modifications (this REPLACES the file)
+1. **Read the target file** using `read_file` on `outputs/design/{{targetFile}}`
+2. **Identify target section** — find the section mentioned in your task
+3. **Modify surgically** using `edit_file` with precise `old_str`/`new_str`
 
 **DO NOT:**
-- ❌ Add new top-level keys (like "verification" or "analysis")  
-- ❌ Use `<append>` tag (this adds new keys instead of modifying)
-- ❌ Remove existing content
+- ❌ Add new top-level keys (like "verification" or "analysis")
+- ❌ Output the complete file — modify ONLY the affected section(s)
+- ❌ Remove existing content unless explicitly requested
 
 **DO:**
-- ✅ Modify values within the existing JSON structure
-- ✅ Preserve all unrelated sections exactly as they are
-- ✅ Output the complete modified JSON with `<file>` tag
+- ✅ Use `read_file` to inspect the current document structure
+- ✅ Use `edit_file` to make targeted modifications
+- ✅ Preserve all unrelated sections (they remain untouched automatically)
 
-{{#if existingDocContent}}
-### 📄 EXISTING DOCUMENT (MODIFY THIS)
+{{#if previousChaptersSummary}}
+### 📋 EXISTING SECTIONS IN DOCUMENT
 
-```json
-{{{existingDocContent}}}
-```
-
-⚠️ **Find the target section, modify it, and output the COMPLETE JSON above with your changes.**
+{{{previousChaptersSummary}}}
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -219,31 +214,6 @@ Use semantic token names:
 {{> design/phases/execute/injections/ui-spec-guide-by-ref}}
 {{/if}}
 
-{{#if existingDocContent}}
-════════════════════════════════════════════════════════════════════════════════
-📄 **EXISTING DOCUMENT - READ AND EXTEND**
-════════════════════════════════════════════════════════════════════════════════
-
-**You are CONTINUING this document.** Review the existing structure below and EXTEND it.
-
-**⚠️ CRITICAL RULES:**
-1. **DO NOT recreate** keys/sections that already exist
-2. **MATCH the existing structure** (naming conventions, nesting patterns)
-3. **ADD new content** that complements what's already there
-4. **USE `<append>`** tag to merge your additions
-
-**Existing content:**
-
-```json
-{{{existingDocContent}}}
-```
-
-{{#if sectionPattern}}
-**Structure pattern: `{{sectionPattern}}`**
-{{/if}}
-
-════════════════════════════════════════════════════════════════════════════════
-{{else}}
 {{#if previousChaptersSummary}}
 ════════════════════════════════════════════════════════════════════════════════
 🚫 **FORBIDDEN SECTIONS - ALREADY DOCUMENTED**
@@ -253,9 +223,13 @@ Use semantic token names:
 
 {{{previousChaptersSummary}}}
 
+Use `read_file` on `outputs/design/{{targetFile}}` to inspect existing structure before extending.
+
 **⚠️ DUPLICATE PREVENTION:**
 1. Check if topic name appears above → **SKIP entirely**
 2. Your task suggests scope; this list is **ground truth**
+3. **MATCH the existing structure** (naming conventions, nesting patterns)
+4. **USE `<append>`** tag to merge your additions
 
 {{#if sectionPattern}}
 **⚠️ REQUIRED STRUCTURE PATTERN: `{{sectionPattern}}`**
@@ -270,7 +244,6 @@ Use semantic token names:
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
-{{/if}}
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════

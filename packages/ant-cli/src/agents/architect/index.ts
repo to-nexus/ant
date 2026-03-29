@@ -428,7 +428,8 @@ export async function architectAgent(
             kanbanUpdate: deps?.kanbanUpdate,  // ✅ Pass Kanban update port (undefined in child process)
             fileTreeUpdate: deps?.fileTreeUpdate,  // ✅ Pass file tree update port (undefined in child process)
             workflowUpdate: deps?.workflowUpdate,  // ✅ Pass workflow update port for Agent Workflow visualization
-            previewUpdate: deps?.previewUpdate,    // ✅ For preview structureType broadcast
+            previewUpdate: deps?.previewUpdate,
+            redis: deps?.redis,
           },
           gitPort: deps?.git,
           planText: "",

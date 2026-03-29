@@ -63,54 +63,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.tokenUsage = session.state.tokenUsage;
         initial._estimatingTokenUsage = (session.state as any).estimatingTokenUsage;  // ✅ Restore estimating phase snapshot
 
-        // ✅ Reconcile interrupted tasks whose output files already exist on disk.
-        // When the process dies after docGen writes a file but before reportCompletion
-        // saves the checkpoint, the task appears interrupted despite work being done.
-        // Auto-complete such tasks to avoid redundant re-execution.
-        if (initial.context?.featurePath && initial.deps?.fileSystem) {
-          const fs = initial.deps.fileSystem as any;
-          const tasksInQueue = initial.taskQueue.getAll();
-          const reconciledIds: string[] = [];
-
-          for (const task of tasksInQueue) {
-            const t = task as any;
-            if (t.interrupted && t.targetFile) {
-              try {
-                const filePath = path.join(initial.context.featurePath, 'outputs', 'design', t.targetFile);
-                const content = await fs.readFile(filePath);
-                if (content && typeof content === 'string' && content.length > 500) {
-                  // File has substantial content — task output was already written
-                  const { TaskTimingHelper } = await import('../code/state');
-                  const completedTask = TaskTimingHelper.completeTask(task);
-                  completedTask.interrupted = false;
-
-                  initial.completedTasks = [...(initial.completedTasks || []), completedTask.id];
-                  initial.completedTasksDetails = [...(initial.completedTasksDetails || []), completedTask];
-                  reconciledIds.push(task.id);
-                  console.log(`♻️  [DesignRunner] Auto-completed interrupted task "${task.name}" — output file already exists (${content.length} chars)`);
-                }
-              } catch {
-                // File doesn't exist — task genuinely needs re-execution
-              }
-            }
-          }
-
-          // Remove reconciled tasks from the queue
-          if (reconciledIds.length > 0) {
-            const reconciledSet = new Set(reconciledIds);
-            const remaining = tasksInQueue.filter(t => !reconciledSet.has(t.id));
-            const { TaskQueue: TQ } = await import('../code/state');
-            initial.taskQueue = TQ.from<DesignTask>(remaining);
-            console.log(`♻️  [DesignRunner] Reconciled ${reconciledIds.length} task(s). ${remaining.length} remaining in queue.`);
-
-            // If all tasks were reconciled, clear the interruption so the job completes normally
-            if (remaining.length === 0) {
-              console.log(`♻️  [DesignRunner] All tasks reconciled — clearing interruption`);
-              initial.isResume = false;
-            }
-          }
-        }
-
         // ✅ Restore detectionReport (required for workType routing in docGen)
         if ((session.state as any).detectionReport) {
           initial.detectionReport = (session.state as any).detectionReport;

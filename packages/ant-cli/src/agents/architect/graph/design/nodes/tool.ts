@@ -10,8 +10,8 @@ import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 import { executeSearchWeb } from '../../../tools/searchWeb';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
-import { createMCPTransport, extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
-import { FigmaMCPAdapter } from '../../../../../periphery/adapters/figma/FigmaMCPAdapter';
+import { extractMCPTextContent, isFigmaMCPSoftError, createMCPAdapter } from '../../../../../periphery/adapters/figma/MCPTransport';
+import type { FigmaMCPAdapter } from '../../../../../periphery/adapters/figma/FigmaMCPAdapter';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -179,7 +179,12 @@ async function executeDesignTool(
     console.log(`   🖼️  Multimodal: Image added to conversation (${Math.round(imageData.base64.length / 1024)}KB base64)`);
   } else {
     const toolFilePath = args.path || args.filename;
-    const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath);
+    const isFigmaTool = name.startsWith('figma_');
+    const figmaContext = isFigmaTool ? {
+      queriedNodeId: args.nodeId,
+      nodeSummary: state.figmaExplorationResult?.nodeSummary,
+    } : undefined;
+    const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath, figmaContext);
     toolResultContent = truncation.content;
     truncationInfo = { wasTruncated: truncation.wasTruncated, originalTokens: truncation.originalTokens, truncatedTokens: truncation.truncatedTokens };
     if (truncation.wasTruncated) {
@@ -194,10 +199,12 @@ async function executeDesignTool(
   if (jobId && featurePath && taskId) {
     try {
       const logger = getExecutionLogger({ featurePath, jobId, jobType: 'design' });
+      const resultStr = typeof result === 'string' ? result : JSON.stringify(result ?? '');
       await logger.logToolCall(taskId, {
         toolName: name,
         args,
-        resultChars: typeof result === 'string' ? result.length : JSON.stringify(result ?? '').length,
+        resultChars: resultStr.length,
+        resultPreview: resultStr.length <= 500 ? resultStr : undefined,
         wasTruncated: truncationInfo?.wasTruncated ?? false,
         originalTokens: truncationInfo?.originalTokens,
         truncatedTokens: truncationInfo?.truncatedTokens,
@@ -1017,24 +1024,8 @@ const FIGMA_TOOL_METHOD_MAP: Record<string, keyof FigmaMCPAdapter> = {
   figma_get_variable_defs: 'getVariableDefs',
 };
 
-let _cachedMcpTransport: { key: string; adapter: FigmaMCPAdapter } | null = null;
-
 export function getMCPAdapter(state: DesignGraphState): FigmaMCPAdapter {
-  const serverMode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
-  const cacheKey = `${serverMode}:${state.context?.userId || 'local'}`;
-
-  if (_cachedMcpTransport?.key === cacheKey) {
-    return _cachedMcpTransport.adapter;
-  }
-
-  const transport = createMCPTransport({
-    serverMode,
-    userId: state.context?.userId,
-    redis: state.deps?.redis,
-  });
-  const adapter = new FigmaMCPAdapter(transport);
-  _cachedMcpTransport = { key: cacheKey, adapter };
-  return adapter;
+  return createMCPAdapter({ userId: state.context?.userId, redis: state.deps?.redis });
 }
 
 const _figmaResponseCache = new Map<string, string>();

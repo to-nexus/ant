@@ -169,7 +169,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         description: state.currentTask.description,
       },
       isSpecDriven: !!state.selectedSpec,
-    } as any,
+      hasUiDoc: !!state.parsedUiDocs,
+      figmaAvailable: state.figmaAvailable || false,
+      figmaStartNodeId: state.figmaStartNodeId,
+    },
     state.detectionReport?.jobMode,
     state.currentTask.type
   );
@@ -323,7 +326,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           uiImageBlocks.push({
             type: 'text',
             text:
-              `# UI Images (Figma-derived)\n` +
+              `# UI Reference Images\n` +
               `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
               `Use them to match layout/spacing/visual states.\n` +
               `IMPORTANT: Treat these as reference only. Do NOT assume these files are available in the app runtime (e.g. not copied into \`public/\` automatically).\n` +

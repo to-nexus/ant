@@ -329,10 +329,50 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   const prd = source?.prd || undefined;
   const sourceDocuments = source?.sourceDocuments;
   
-  // Load parsed UI documents (Figma-derived) for split injection
+  // Load parsed UI documents for split injection
   const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
   
   console.log(`📄 [Resolve] Design: ${design ? 'loaded' : 'none'}, PRD: ${prd ? 'loaded' : 'none'}, UI: ${parsedUiDocs ? 'loaded' : 'none'}`);
+
+  // ── Figma MCP availability detection (2-stage) ──
+  let figmaAvailable = false;
+  let figmaFileKey: string | undefined;
+  let figmaStartNodeId: string | undefined;
+
+  try {
+    const figmaJsonPath = path.join(featurePath, 'inputs', 'figma.json');
+    const figmaRaw = await fileSystem?.readFile?.(figmaJsonPath);
+    if (figmaRaw) {
+      const { isFigmaDataPopulated, extractFigmaUrlParts } = await import('@ant/shared');
+      const figmaConfig = JSON.parse(figmaRaw);
+
+      if (isFigmaDataPopulated(figmaConfig)) {
+        const serverMode = process.env.ANT_SERVER_MODE || 'local';
+        if (serverMode === 'local') {
+          const { checkLocalMCPAvailability } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+          figmaAvailable = await checkLocalMCPAvailability();
+        } else {
+          const { createMCPTransport } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+          const transport = createMCPTransport({ serverMode: 'cloud', userId: state.context?.userId, redis: state.deps?.redis });
+          figmaAvailable = await transport.isAvailable();
+        }
+
+        if (figmaAvailable && figmaConfig.files?.[0]) {
+          const parts = extractFigmaUrlParts(figmaConfig.files[0]);
+          if (parts.fileKey) {
+            figmaFileKey = parts.fileKey;
+            figmaStartNodeId = parts.nodeId;
+          } else {
+            figmaAvailable = false;
+          }
+        }
+      }
+    }
+  } catch {
+    // figma.json missing or malformed — non-critical
+  }
+
+  console.log(`🎨 [Resolve] Figma MCP: ${figmaAvailable ? `available (fileKey=${figmaFileKey})` : 'unavailable'}`);
 
   // ✅ Load all design documents (api-contract-*.md / fe-system-*.md / be-system-*.md)
   const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
@@ -396,20 +436,22 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // Profile detection moved to detectEnvironment node (LLM-based)
 
-  // ✅ Return minimal state (profile only, NO mode - mode determined in detectEnvironment)
   const result = {
     ...state,
     directive,
     prd,
     sourceDocuments,
-    parsedUiDocs: parsedUiDocs || undefined,  // ✅ Parsed UI docs for split injection (null → undefined)
+    parsedUiDocs: parsedUiDocs || undefined,
     design,
-    designDocPath,  // ✅ Add design document file path for environment inference
-    designDocs,     // ✅ Add structured design docs for detectEnvironment
-    specDocs: Object.keys(specDocs).length > 0 ? specDocs : undefined,  // ✅ Spec docs for decompose selection
-    sessionContext: sessionContextForLLM,  // ✅ Include compressed session context
-    profile,  // ✅ ONLY profile!
-    referenceContexts,  // Empty array (references loaded per-task)
+    designDocPath,
+    designDocs,
+    specDocs: Object.keys(specDocs).length > 0 ? specDocs : undefined,
+    sessionContext: sessionContextForLLM,
+    profile,
+    referenceContexts,
+    figmaAvailable,
+    figmaFileKey,
+    figmaStartNodeId,
   };
   
   // ✅ Record phase timing

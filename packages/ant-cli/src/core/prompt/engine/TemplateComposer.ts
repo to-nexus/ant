@@ -111,11 +111,10 @@ export class TemplateComposer {
         // ✅ Used in {{#if filteredCatalog}} — replaces full catalog partial with assigned-only guide
         filteredCatalog: assembled.filteredCatalog || undefined,
         
-        // ✅ Used in {{#if hasUiDoc}} for UI specification existence
-        hasUiDoc: (assembled as any).hasUiDoc || false,
-
-        // ✅ Used in {{#if isSpecDriven}} for spec vs system-design document type branching
-        isSpecDriven: (assembled as any).isSpecDriven || false
+        hasUiDoc: assembled.hasUiDoc || false,
+        isSpecDriven: assembled.isSpecDriven || false,
+        figmaAvailable: assembled.figmaAvailable || false,
+        figmaStartNodeId: assembled.figmaStartNodeId || undefined
       }),
       failedTemplates,
       true // critical: base template failure = job must fail

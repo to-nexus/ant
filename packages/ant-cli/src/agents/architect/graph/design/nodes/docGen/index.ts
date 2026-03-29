@@ -86,22 +86,28 @@ export async function docGen(
     useSourceFileTool = result.useSourceFileTool;
   }
   
+  // Figma mode detection (used for both budget thresholds and tool selection)
+  const isFigmaUiDesign = workType === 'ui-design' && state.uiDesignSource === 'figma';
+
   // Progressive call counter + budget warning injection
+  // Figma tasks get higher thresholds to accommodate drill-down queries
+  const softWarnAt = isFigmaUiDesign ? 8 : 5;
+  const hardWarnAt = isFigmaUiDesign ? 12 : 8;
   const noOutputCount = state._noOutputCallCount || 0;
   if (noOutputCount >= 1) {
     const remaining = MAX_NO_OUTPUT_CALLS - noOutputCount;
     let warningText: string;
-    if (noOutputCount >= 8) {
+    if (noOutputCount >= hardWarnAt) {
       warningText = `\n\n⚠️ SYSTEM WARNING [call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls, ${remaining} remaining]\n` +
         `STOP all reading. You MUST write your document NOW using <file> or <append> tags, or this task will be TERMINATED. ` +
         `Use the information already in your conversation history.`;
-    } else if (noOutputCount >= 5) {
+    } else if (noOutputCount >= softWarnAt) {
       warningText = `\n\n⚠️ WARNING [call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls]\n` +
         `You MUST start writing your document NOW. You have gathered enough context from source documents. ` +
         `Do NOT read more — begin output immediately using <file> or <append> tags.`;
     } else {
       warningText = `\n\n[call budget: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} tool-only calls]\n` +
-        `Reminder: you MUST start writing output by call 5-7. Read in broad ranges (300-500+ lines) and do not exhaustively read every section.`;
+        `Reminder: you MUST start writing output by call ${softWarnAt}-${softWarnAt + 2}. Read in broad ranges (300-500+ lines) and do not exhaustively read every section.`;
     }
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'user') {
@@ -114,12 +120,11 @@ export async function docGen(
         ];
       }
     }
-    const level = noOutputCount >= 8 ? 'URGENT' : noOutputCount >= 5 ? 'WARNING' : 'INFO';
+    const level = noOutputCount >= hardWarnAt ? 'URGENT' : noOutputCount >= softWarnAt ? 'WARNING' : 'INFO';
     console.log(`⚠️  [DocGen] Budget ${level}: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} no-output calls, ${remaining} remaining`);
   }
 
   // Tool activation: Select appropriate tool set based on work type
-  const isFigmaUiDesign = workType === 'ui-design' && state.uiDesignSource === 'figma';
   const tools = isExplainMode
     ? getToolsByNames(TOOL_SETS.designExplain)
     : isFigmaUiDesign

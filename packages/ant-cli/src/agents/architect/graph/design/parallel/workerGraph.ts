@@ -54,6 +54,24 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 0: User stop requested — do NOT mark task as completed
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const isStopRequested = typeof (state as any)._isStopRequested === 'function'
+    ? (state as any)._isStopRequested()
+    : false;
+
+  if (isStopRequested) {
+    console.log(`🛑 [Design Worker checkTaskStatus] User stop requested — NOT marking task as completed`);
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+    }
+    return {
+      _taskCompleted: false,
+      violations: [],
+    } as any;
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Gate 1: Call budget exhausted — fail task (not silently complete)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state._callLimitReached && state.currentTask) {
@@ -110,6 +128,25 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     }
 
     console.log(`✅ [Worker] Design task "${completedTask.name}" completed!`);
+
+    // Log task_complete to debug/logs/ (inside workerGraph where state._docGenCallIndex is accessible)
+    if (state.context?.featurePath && state._httpJobId) {
+      const { getExecutionLogger } = await import('../../../../../core/utils/executionLogger');
+      const execLogger = getExecutionLogger({
+        featurePath: state.context.featurePath,
+        jobId: state._httpJobId,
+        jobType: 'design',
+      });
+      execLogger.logTaskComplete(completedTask.id, {
+        taskName: completedTask.name,
+        elapsedMs: completedTask.timing?.elapsedTime || 0,
+        inputTokens: completedTask.tokenUsage?.inputTokens || 0,
+        outputTokens: completedTask.tokenUsage?.outputTokens || 0,
+        cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
+        cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
+        llmCallCount: state._docGenCallIndex || 0,
+      }).catch(() => {});
+    }
 
     // Strip internal markers from output file when last chapter for a document completes
     const taskForMarkers = state.currentTask as any;

@@ -1001,6 +1001,11 @@ export class XMLStreamParser implements IStreamParser {
           }
         });
       }
+      // If inside append, DISCARD — partial JSON would corrupt the output file
+      // via the fallback text-append path in FileRenderer
+      else if (this.context.insideAppend && this.context.currentFilePath) {
+        console.warn(`⚠️ [XMLParser] Discarding unterminated <append> block on finalize for ${this.context.currentFilePath}`);
+      }
       // If inside analysis, emit remaining content as response
       else if (this.context.insideAnalysis) {
         if (hasActualContent) {

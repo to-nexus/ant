@@ -49,6 +49,10 @@ export interface TaskArtifacts {
   parsedUiDocs?: ParsedUiDocs;
   profile?: CodebaseProfile;
   lessons?: any;
+  hasUiDoc?: boolean;
+  isSpecDriven?: boolean;
+  figmaAvailable?: boolean;
+  figmaStartNodeId?: string;
 }
 
 // ============================================

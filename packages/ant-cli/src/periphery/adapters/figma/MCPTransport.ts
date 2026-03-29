@@ -6,7 +6,8 @@
  */
 
 import type { FigmaMCPTool, MCPToolResult } from '@ant/shared';
-import { BRIDGE_MCP_REQUEST_TIMEOUT_MS } from '@ant/shared';
+import { BRIDGE_MCP_REQUEST_TIMEOUT_MS, FIGMA_MCP_ENDPOINT } from '@ant/shared';
+import { FigmaMCPAdapter } from './FigmaMCPAdapter';
 
 export interface MCPTransport {
   callTool(name: FigmaMCPTool, args: Record<string, unknown>): Promise<MCPToolResult>;
@@ -315,4 +316,48 @@ export function createMCPTransport(options: {
     throw new Error('BridgeMCPTransport requires userId and redis');
   }
   return new BridgeMCPTransport(options.userId, options.redis);
+}
+
+/**
+ * Check if Figma Desktop MCP is reachable (local mode only).
+ * Sends a minimal HTTP request to localhost:3845.
+ */
+export async function checkLocalMCPAvailability(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(FIGMA_MCP_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'ping', id: 1 }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return res.ok || res.status === 400;
+  } catch {
+    return false;
+  }
+}
+
+let _cachedAdapter: { key: string; adapter: FigmaMCPAdapter } | null = null;
+
+/**
+ * Create a shared FigmaMCPAdapter with module-level caching.
+ * Reuses the adapter for the same serverMode + userId combination.
+ */
+export function createMCPAdapter(opts: { userId?: string; redis?: any }): FigmaMCPAdapter {
+  const serverMode = (process.env.ANT_SERVER_MODE || 'local') as 'local' | 'cloud';
+  const cacheKey = `${serverMode}:${opts.userId || 'local'}`;
+
+  if (_cachedAdapter?.key === cacheKey) {
+    return _cachedAdapter.adapter;
+  }
+
+  const transport = createMCPTransport({ serverMode, userId: opts.userId, redis: opts.redis });
+  const adapter = new FigmaMCPAdapter(transport);
+  _cachedAdapter = { key: cacheKey, adapter };
+  return adapter;
 }

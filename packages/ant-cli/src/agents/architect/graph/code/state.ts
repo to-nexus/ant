@@ -209,10 +209,15 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // Design-prescribed dependencies (extracted by decompose LLM via <prescribedDependencies> tag, injected into plan prompts)
   designDocUnknownPackages?: string[];
   
+  // Figma MCP state
+  figmaAvailable?: boolean;
+  figmaFileKey?: string;
+  figmaStartNodeId?: string;
+
   // Dependencies
   deps?: { 
-    git?: GitPort;          // ✅ REFACTORED: Git operations only (no file I/O)
-    fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;  // ✅ NEW: File I/O operations
+    git?: GitPort;
+    fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;
     memory?: MemoryPort; 
     llm?: LLMClient;
     promptEngine?: PromptEngine;
@@ -220,13 +225,14 @@ export interface ArchitectGraphState extends TaskArtifacts {
     chunk?: ChunkPort;
     session?: SessionPort;
     command?: CommandPort;
-    retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;  // ✅ For reference loading
-    vectorDB?: MemoryPort;  // ✅ Explicit vectorDB port (same as memory)
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ For path resolution (tenant-aware)
-    kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
-    fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;  // ✅ For real-time file tree updates
-    workflowUpdate?: import('../../../../core/ports').WorkflowStateUpdatePort;  // ✅ For real-time workflow visualization
-    previewUpdate?: import('../../../../core/ports/preview').PreviewUpdatePort;  // ✅ For preview structureType broadcast
+    retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;
+    vectorDB?: MemoryPort;
+    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;
+    kanbanUpdate?: TaskQueueUpdatePort;
+    fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
+    workflowUpdate?: import('../../../../core/ports').WorkflowStateUpdatePort;
+    previewUpdate?: import('../../../../core/ports/preview').PreviewUpdatePort;
+    redis?: any;
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   

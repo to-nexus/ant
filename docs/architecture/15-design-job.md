@@ -71,7 +71,7 @@ checkTaskStatus -> [router]
 
 ### figmaExplore 노드
 
-Figma 모드 전용 노드. `detectEnvironment` 이후, `decompose` 이전에 실행된다. 프로그래밍적으로 Figma MCP 도구를 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State, Interaction State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다.
+Figma 모드 전용 노드. `detectEnvironment` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 상세 알고리즘은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
 
 ### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
 
@@ -105,7 +105,7 @@ ui-tokens.json (의존 없음)
     -> ui-spec.json (ui-tokens + ui-assets 참조)
 ```
 
-각 챕터 태스크는 자신의 범위만 생성한다. `lastSectionNumber`로 이전 섹션 번호를 추적하고, `<!-- LAST_SECTION: N -->` 메타데이터로 마지막 섹션을 기록한다.
+각 챕터 태스크는 자신의 범위만 생성한다. `lastSectionNumber`로 이전 섹션 번호를 추적하고, JSON `_meta.lastSection`으로 마지막 섹션을 기록한다. 이어쓰기 시 전체 파일을 프롬프트에 넣지 않고 `previousChaptersSummary`(키 이름 목록)만 주입하며, LLM이 필요하면 `read_file`로 드릴링한다.
 
 ## 경계
 

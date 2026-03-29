@@ -32,6 +32,13 @@ export interface AssembledContext {
   };
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Prompt Flags
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  hasUiDoc?: boolean;
+  figmaAvailable?: boolean;
+  figmaStartNodeId?: string;
+  
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Code Context (Unified Structure)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   projectCodeContext?: ProjectCodeContext;       // Main project code (retrieved via RAG)
@@ -167,6 +174,10 @@ export class ContextAssembler {
         beDesigns: { [name: string]: string };
       };
       designDomain?: 'game' | 'service';
+      hasUiDoc?: boolean;
+      isSpecDriven?: boolean;
+      figmaAvailable?: boolean;
+      figmaStartNodeId?: string;
     }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
@@ -190,13 +201,17 @@ export class ContextAssembler {
       assembled.referenceRequests = artifacts.referenceRequests;
       assembled.designDocs = artifacts.designDocs;
       assembled.designDomain = artifacts.designDomain;
-      // ✅ UI specification existence flag (for conditional prompt guidance)
-      if ((artifacts as any).hasUiDoc !== undefined) {
-        (assembled as any).hasUiDoc = (artifacts as any).hasUiDoc;
+      if (artifacts.hasUiDoc !== undefined) {
+        assembled.hasUiDoc = artifacts.hasUiDoc;
       }
-      // ✅ Spec-driven mode flag (for conditional prompt guidance)
-      if ((artifacts as any).isSpecDriven !== undefined) {
-        (assembled as any).isSpecDriven = (artifacts as any).isSpecDriven;
+      if (artifacts.isSpecDriven !== undefined) {
+        assembled.isSpecDriven = artifacts.isSpecDriven;
+      }
+      if (artifacts.figmaAvailable !== undefined) {
+        assembled.figmaAvailable = artifacts.figmaAvailable;
+      }
+      if (artifacts.figmaStartNodeId !== undefined) {
+        assembled.figmaStartNodeId = artifacts.figmaStartNodeId;
       }
     }
     
