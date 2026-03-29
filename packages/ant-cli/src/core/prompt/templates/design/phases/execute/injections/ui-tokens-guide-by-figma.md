@@ -61,6 +61,13 @@ For the categories specified in YOUR task description, capture ALL instances vis
 - `spacing` - margins, paddings, gaps
 - `effects` - radius, shadows, blur, transitions
 
+### Mode Support
+
+If Figma variable definitions include mode data (e.g. light/dark themes):
+Preserve the mode structure as-is from Figma variables.
+
+**Constraint**: Do NOT invent mode values. Only document modes present in `figma_get_variable_defs` output.
+
 ```json
 {
   "_meta": {

@@ -329,6 +329,34 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   /**
+   * Report that a task was stopped (not completed, not failed).
+   * Called when the worker subgraph returns _taskCompleted: false (e.g. user stop).
+   *
+   * The task is returned to the queue as interrupted so it is NOT lost — this is
+   * critical because reportStopped may acquire the lock BEFORE handleInterruption,
+   * and without re-queuing, the task would vanish from all lists.
+   *
+   * No checkpoint is saved here; handleInterruption is responsible for the
+   * definitive interruption checkpoint.
+   */
+  async reportStopped(workerId: number): Promise<void> {
+    await this.lock.runExclusive(async () => {
+      const task = this.runningTasks.get(workerId);
+      this.runningTasks.delete(workerId);
+
+      if (task) {
+        task.interrupted = true;
+        this.taskQueue.push(task);
+        console.log(`[Orchestrator] Task "${task.name}" stopped by worker ${workerId} — returned to queue. running=${this.runningTasks.size}, queue=${this.taskQueue.size()}`);
+      } else {
+        console.warn(`[Orchestrator] reportStopped: no task found for worker ${workerId}`);
+      }
+
+      this.checkAllDone();
+    });
+  }
+
+  /**
    * Report task failure.
    *
    * Strategy:
@@ -740,13 +768,21 @@ export class TaskOrchestrator<T extends BaseTask> {
     const queueTasks = this.taskQueue.getAll().filter(t => !runningIds.has(t.id));
     const fullQueue = [...runningAsTasks, ...queueTasks];
 
+    // Use explicit param if provided; otherwise fall back to instance state.
+    // This prevents post-interruption checkpoint saves (e.g. from reportCompletion)
+    // from overwriting the interruption metadata that handleInterruption saved.
+    const effectiveInterruption = interruption ??
+      (this.hasInterruptedTasks && this.interruptReason
+        ? { reason: this.interruptReason, canResume: true }
+        : undefined);
+
     const checkpoint: ParallelCheckpoint<T> = {
       taskQueue: fullQueue,
       completedTasks: this.completedTasks,
       failedTasks: this.failedTasks,
       tokenUsage: this.accumulatedTokenUsage,
       parallelMode: true,
-      ...(interruption ? { interruption } : {}),
+      ...(effectiveInterruption ? { interruption: effectiveInterruption } : {}),
     };
 
     await this.callbacks.onCheckpoint?.(checkpoint);

@@ -94,24 +94,21 @@ export interface AnnotationEntry {
   nodeId: string;
 }
 
+export interface VariantProperty {
+  property: string;
+  value: string;
+}
+
 export interface ComponentStateEntry {
   componentName: string;
+  variantAxes?: string[];
   frames: Array<{
     nodeId: string;
     name: string;
     stateName: string;
+    variantProperties?: VariantProperty[];
     width: number;
     height: number;
-  }>;
-}
-
-export interface InteractionStateEntry {
-  groupName: string;
-  trigger: string;
-  frames: Array<{
-    nodeId: string;
-    name: string;
-    state: string;
   }>;
 }
 
@@ -119,11 +116,32 @@ export interface FigmaExplorationResult {
   variationMatrix: VariationMatrixEntry[];
   annotations: AnnotationEntry[];
   componentStateMatrix: ComponentStateEntry[];
-  interactionStates: InteractionStateEntry[];
   variableDefs?: unknown;
   totalFrameCount: number;
   downloadedAssets: string[];
   nodeSummary?: FigmaNodeSummary[];
+  explorationErrors?: FigmaExplorationError[];
+}
+
+export interface FigmaExplorationError {
+  phase: 'adapter_init' | 'get_metadata' | 'get_variable_defs' | 'parse_metadata';
+  fileKey?: string;
+  nodeId?: string;
+  message: string;
+  timestamp: string;
+}
+
+/**
+ * Extract fileKey and optional nodeId from a Figma URL.
+ * URL format: https://figma.com/design/:fileKey/:fileName?node-id=1-2
+ */
+export function extractFigmaUrlParts(url: string): { fileKey?: string; nodeId?: string } {
+  const keyMatch = url.match(/figma\.com\/(?:design|file)\/([^\/]+)/);
+  const nodeMatch = url.match(/node-id=([^&]+)/);
+  return {
+    fileKey: keyMatch?.[1],
+    nodeId: nodeMatch?.[1]?.replace(/-/g, ':'),
+  };
 }
 
 export interface FigmaNodeSummary {
@@ -132,4 +150,6 @@ export interface FigmaNodeSummary {
   type: string;
   depth: number;
   childCount: number;
+  dimensions?: { width: number; height: number };
+  isComponent?: boolean;
 }

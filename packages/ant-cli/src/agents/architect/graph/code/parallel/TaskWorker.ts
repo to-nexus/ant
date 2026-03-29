@@ -83,6 +83,11 @@ export class TaskWorker<T extends BaseTask> {
         if (batchSplit) {
           // Task was re-enqueued via batch split — release worker slot, don't mark as completed
           await this.orchestrator.reportBatchSplit(this.workerId, task);
+        } else if (result?._taskCompleted === false && !hasUnresolvedViolations) {
+          // Task was stopped (e.g. user stop) — return to queue, don't mark as completed.
+          // handleInterruption's checkpoint will include it as interrupted.
+          console.log(`[Worker ${this.workerId}] Task "${task.name}" stopped (not completed) — reporting as stopped`);
+          await this.orchestrator.reportStopped(this.workerId);
         } else if (hasUnresolvedViolations) {
           const violationTypes = result.violations.map((v: any) => v.type || 'unknown').join(', ');
           const err = new Error(

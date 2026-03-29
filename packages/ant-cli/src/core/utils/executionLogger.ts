@@ -258,6 +258,7 @@ export class ExecutionLogger {
     toolName: string;
     args: Record<string, any>;
     resultChars: number;
+    resultPreview?: string;
     wasTruncated: boolean;
     originalTokens?: number;
     truncatedTokens?: number;

@@ -23,7 +23,7 @@ Figma 모드가 우선한다. figma.json이 populated이면 references/에 파�
 | 항목 | by-ref | by-figma |
 |------|--------|----------|
 | 입력 소스 | `inputs/references/` 이미지 | `inputs/figma.json` 설정 |
-| 보조 입력 | `inputs/assets/` (사용자 제공) | `inputs/assets/` (figmaExplore가 자동 다운로드) |
+| 보조 입력 | `inputs/assets/` (사용자 제공) | `inputs/assets/` (사용자 제공) |
 | 출력 | `outputs/design/ui-tokens.json`, `ui-assets.json`, `ui-spec.json` | 동일 |
 | 문서 의존 체인 | tokens → assets → spec | 동일 |
 
@@ -53,16 +53,26 @@ decompose가 문서별 chaptering을 수행한다:
 
 XML 스트리밍 방식으로 JSON 문서를 생성한다. `<file>` 태그로 신규 파일, `<append>` 태그로 기존 파일 확장. `<done>true</done>` 시그널로 태스크 완료를 선언한다. conversationHistory 기반 멀티턴 대화로 tool calling을 포함한다.
 
-### 공통 규칙 (rules-ui-design-common.md)
+JSON 파일의 `<append>` 처리는 `FileRenderer.handleDesignAppend`가 담당하며, 기존 JSON과 새 JSON을 `deepMerge`로 합친다 (객체는 재귀 병합, 배열은 연결, 원시값은 소스 우선).
 
-모드에 무관한 공유 규칙:
+### 대형 문서 처리 전략
 
-- OUTPUT FORMAT: XML 태그 (`<file>`, `<append>`)
-- SCOPE BOUNDARIES: 챕터 범위 제한, duplicate prevention
-- DOCUMENT DEPENDENCY CHAIN: tokens → assets → spec 순서 보장
-- Metadata Rules: `_meta` 필드
-- TASK COMPLETION SIGNAL: `<done>true</done>`
-- Section numbering: `lastSectionNumber` 기반 연속 번호
+챕터 이어쓰기 시 기존 문서의 전체 내용을 프롬프트에 주입하지 않는다. 대신:
+
+- `previousChaptersSummary`: 기존 최상위 키/섹션 이름 목록만 주입 (중복 방지용)
+- `lastSectionNumber`: 이전 마지막 섹션 번호 (연속 번호 보장)
+- `sectionPattern`: 기존 문서의 구조 패턴 (`top-level` 또는 `nested`)
+- LLM이 상세 확인이 필요하면 `read_file`로 특정 구간을 드릴링
+
+Refactor 모드(기존 섹션 수정)에서도 전체 파일을 프롬프트에 넣지 않고, `read_file` + `edit_file`로 외과적 수정을 수행한다.
+
+### Document Authority (Code Job 계약)
+
+Design Job이 생성하는 문서의 Code Job에서의 권위 수준:
+
+- **ui-tokens.json**: SSOT — 시각적 값의 유일한 원천. fallback 없음
+- **ui-assets.json**: SSOT — 에셋 경로의 유일한 원천. fallback 없음
+- **ui-spec.json**: Primary — 레이아웃의 1차 참조. spec이 침묵하는 세부사항은 프레임워크 best practices 적용
 
 ## by-ref 파이프라인 (Reference/Screenshot 기반)
 
@@ -88,7 +98,7 @@ inputs/references/ (이미지)
 | `list_reference_images` | inputs/references/ 파일 목록 |
 | `list_assets` | inputs/assets/ 파일 목록 |
 | `read_file` | 기존 문서, PRD 읽기 |
-| `edit_file` | 문서 작성 |
+| `edit_file` | 문서 수정 |
 | `list_files`, `delete_file`, `mkdir` | 파일 조작 |
 
 ### 프롬프트 템플릿
@@ -96,11 +106,12 @@ inputs/references/ (이미지)
 ```
 templates/design/phases/execute/
   base-ui-design-by-ref.md           ← 최상위 템플릿 (WHAT)
-  rules-ui-design-by-ref.md          ← 모드 규칙 (HOW) — common include
+  rules-ui-design-by-ref.md          ← 모드 규칙 (HOW)
   injections/
     ui-tokens-guide-by-ref.md        ← 토큰 추출 가이드
     ui-assets-guide-by-ref.md        ← 에셋 분류 가이드
     ui-spec-guide-by-ref.md          ← 스펙 작성 가이드
+    ui-continuation.md               ← Turn 2+ 이어쓰기 안내
 
 templates/design/phases/decompose/
   base-ui-design-by-ref.md           ← decompose 템플릿
@@ -117,50 +128,69 @@ Figma Desktop MCP 도구로 디자인 데이터를 구조적으로 추출한다.
 
 ```
 detectEnvironment (uiDesignSource = 'figma')
-  → figmaExplore (Phase 0: 구조 탐색 + 매트릭스 생성)
+  → figmaExplore (Phase 0: 프로그래밍적 구조 탐색 + 매트릭스 생성)
   → decompose (매트릭스 기반 태스크 분해)
   → plan → docGen ⇄ tool (Phase 1-3: 문서 생성)
 ```
 
 ### Phase 0: figmaExplore 노드
 
-docGen과 동일한 LLM + tool loop 구조. Figma 파일의 구조를 탐색하고 후속 문서 생성을 위한 매트릭스를 생성한다.
+프로그래밍적으로 Figma MCP 어댑터를 직접 호출하는 노드. LLM 호출이나 프롬프트 템플릿 없이, 코드 로직으로 Figma 파일의 구조를 탐색하고 후속 문서 생성을 위한 매트릭스를 생성한다.
 
 수행 작업:
 
-- 페이지 목록 조회 (figma.json의 fileKey 기반)
-- get_metadata로 노드 트리 탐색
+- 페이지 목록 조회 (`figma.json`의 URL에서 추출한 fileKey + rootNodeId 기반)
+- `get_metadata`로 노드 트리 탐색
 - **Variation Matrix** 생성: 섹션별 페이지 프레임 + 테마 변형 (light/dark)
 - **Annotation** 수집: 섹션 직속 text 노드 (디자이너 주석)
-- **Component State Matrix** 생성: 섹션 외부 컴포넌트 변형 (active/closed 등)
-- **Interaction State** 수집: hover/focus/error 프레임 그룹
-- 에셋 노드 탐색 + 다운로드 → `inputs/assets/`
-- nodeSummary 생성: 노드 트리를 컴팩트한 목록으로 변환 (LLM이 특정 nodeId로 조회할 수 있게 가이드)
-- get_variable_defs로 디자인 변수 확인
+- **Component State Matrix** 생성: COMPONENT_SET 하위 변형 프레임 + variant 파싱
+- **nodeSummary** 생성: 노드 트리를 컴팩트한 목록으로 변환 (LLM이 특정 nodeId로 조회할 수 있게 가이드)
+- `get_variable_defs`로 디자인 변수 확인
 
-출력: `state.figmaExplorationResult` (매트릭스, 어노테이션, 에셋 경로, 변수 정의)
+출력: `state.figmaExplorationResult` + 사이드카 파일 `figma-exploration.json`, `figma-exploration-debug.json`
 
-도구 세트: `TOOL_SETS.figmaExplore` (get_metadata, get_variable_defs, figma_export_assets, figma_get_screenshot, read_file, list_files, edit_file, mkdir)
+도구 세트: `TOOL_SETS.figmaExplore` (`read_file`, `edit_file`, `list_files`, `mkdir`, `figma_get_metadata`, `figma_get_design_context`, `figma_get_screenshot`, `figma_get_variable_defs`)
+
+### figmaExplore 핵심 알고리즘
+
+**nodeSummary 생성** (`scanAllNodes` + `buildNodeSummary`):
+
+- `NODE_SUMMARY_MAX_ENTRIES = 300` — 엔트리 예산 기반 adaptive depth
+- 깊이 0부터 시작하여 예산 내에서 최대 깊이까지 수집
+- 수집 대상 노드 타입: `NODE_SUMMARY_TYPES` (FRAME, COMPONENT, COMPONENT_SET, INSTANCE, GROUP, SECTION, TEXT, VECTOR, BOOLEAN_OPERATION)
+- 각 엔트리에 `dimensions` (width/height)과 `isComponent` 플래그 포함
+
+**Component State Matrix** (`buildComponentStateMatrix`):
+
+- COMPONENT_SET 노드의 children을 순회
+- `parseVariantName(name)` 함수가 "Property1=Value1, Property2=Value2" 포맷을 파싱하여 `VariantProperty[]` 생성
+- 결과: `ComponentStateEntry.variantAxes` (프로퍼티 이름 목록), `frames[].variantProperties` (프레임별 variant 값)
+
+**Variable Definitions** (`extractVariableDefsSummary`):
+
+- `get_variable_defs` 결과를 요약 (컬렉션별 변수 수)
+- `modes` 또는 `valuesByMode` 키가 있으면 모드 목록도 보존
+- 토큰 예산: `MAX_VARIABLE_DEFS_TOKENS = 8000` 초과 시 요약으로 전환
 
 ### Phase 1: ui-tokens.json 생성
 
-- get_design_context 반환 코드에서 CSS variable 정의 추출
+- `get_design_context` 반환 코드에서 CSS variable 정의 추출
 - Variation Matrix에서 light/dark 쌍 식별하여 양쪽 호출
 - CSS 변수 fallback 값 비교로 dual-theme 토큰 도출
-- get_variable_defs 데이터 활용 (spacing, sizing, color)
+- `get_variable_defs` 데이터 활용 (spacing, sizing, color)
+- Mode Support: Figma 변수에 modes/valuesByMode가 있으면 모드별 값 구조를 보존
 
 ### Phase 2: ui-assets.json 생성
 
-- figmaExplore가 다운로드한 inputs/assets/ 기반
+- 사용자 제공 inputs/assets/ 기반 에셋 분류
 - 에셋 분류: iconLibrary, icons, images, dynamicAssets
 - figmaNodeId 필수 기록 (재 export 용)
 - rendering 필드, SVG themeAdaptation 포함
 
 ### Phase 3: ui-spec.json 생성
 
-- Variation Matrix 모든 프레임에 대해 get_design_context 개별 호출
-- Component State Matrix + Interaction State 모든 프레임 개별 호출
-- Coverage 100% 검증: 3개 매트릭스 총 프레임 수 = 조회 수 확인
+- Variation Matrix 모든 프레임에 대해 `get_design_context` 개별 호출
+- Component State Matrix 모든 프레임 개별 호출
 - 공용 컴포넌트 추출 (2+ 페이지 반복 패턴)
 - 컴포넌트 최소 깊이 검증
 
@@ -170,7 +200,7 @@ docGen과 동일한 LLM + tool loop 구조. Figma 파일의 구조를 탐색하�
 inputs/figma.json
   → resolve: state.figmaConfig 로드
   → detectEnvironment: uiDesignSource = 'figma', uiReferences = undefined
-  → figmaExplore: MCP 도구로 탐색 → state.figmaExplorationResult
+  → figmaExplore: MCP 어댑터 직접 호출 → state.figmaExplorationResult
   → decompose: 매트릭스 기반 복잡도 평가 → taskQueue
   → docGen: buildResourcesSummary(figmaExplorationResult) → LLM 프롬프트 주입
   → LLM: figma_get_design_context 등으로 상세 데이터 추출 → JSON 문서 생성
@@ -184,26 +214,23 @@ inputs/figma.json
 | `figma_get_design_context` | 상세 디자인 데이터 (코드 + 스크린샷 + 힌트) |
 | `figma_get_screenshot` | 노드 스크린샷 |
 | `figma_get_variable_defs` | Figma Variables 정의 |
-| `figma_export_assets` | 에셋 내보내기 |
 | `list_assets` | inputs/assets/ 파일 목록 |
+| `download_asset` | 에셋 다운로드 |
 | `read_file` | 기존 문서, PRD 읽기 |
-| `edit_file` | 문서 작성 |
+| `edit_file` | 문서 수정 |
 | `list_files`, `delete_file`, `mkdir` | 파일 조작 |
 
 ### 프롬프트 템플릿
 
 ```
-templates/design/phases/explore/
-  base-figma-explore.md              ← figmaExplore 노드 (WHAT)
-  rules-figma-explore.md             ← figmaExplore 규칙 (HOW)
-
 templates/design/phases/execute/
   base-ui-design-by-figma.md         ← 최상위 템플릿 (WHAT)
-  rules-ui-design-by-figma.md        ← 모드 규칙 (HOW) — common include
+  rules-ui-design-by-figma.md        ← 모드 규칙 (HOW)
   injections/
     ui-tokens-guide-by-figma.md      ← MCP 기반 토큰 추출 가이드
     ui-assets-guide-by-figma.md      ← 에셋 매핑 가이드
     ui-spec-guide-by-figma.md        ← 매트릭스 기반 스펙 작성 가이드
+    ui-continuation-by-figma.md      ← 이어쓰기 안내
 
 templates/design/phases/decompose/
   base-ui-design-by-figma.md         ← decompose 템플릿
@@ -212,15 +239,9 @@ templates/design/phases/decompose/
 
 ## 템플릿 구조
 
-### 3계층 분리 (common / by-ref / by-figma)
+### 2계층 분리 (by-ref / by-figma)
 
-```
-rules-ui-design-common.md
-  ├── rules-ui-design-by-ref.md   ({{> rules-ui-design-common}} + reference 도구 규칙)
-  └── rules-ui-design-by-figma.md ({{> rules-ui-design-common}} + MCP 도구 워크플로)
-```
-
-common 계층에는 도구에 종속되지 않는 규칙(XML 출력, 스코프, 의존 체인, 메타데이터, 완료 시그널)만 포함한다. 모드별 계층에는 해당 모드의 도구 사용법과 워크플로만 포함한다. 이 분리로 중복 없이(MECE) 전체 규칙을 커버한다.
+by-ref과 by-figma가 각각 독립적인 규칙 세트를 가진다. 공통 규칙은 각 규칙 파일 내에서 중복 없이 관리한다.
 
 ### 코드 레이어 분기 (uiDesignPrompt.ts)
 
@@ -245,6 +266,17 @@ uiDesignSource === 'figma' → TOOL_SETS.uiDesignFigma
 otherwise                  → TOOL_SETS.uiDesign
 ```
 
+### nodeSummary LLM 표시 (buildNodeSummaryDisplay)
+
+docGen 프롬프트에 nodeSummary를 표시할 때, 토큰 크기에 따라 전략이 다르다:
+
+- `NODESUMMARY_TOKEN_THRESHOLD = 2500` 이하: 전체 nodeSummary를 그대로 표시 (각 노드에 dimensions, isComponent 표시)
+- 초과 시: 구조적 아웃라인으로 전환 — depth 0-1 노드 + COMPONENT_SET/SECTION 노드만 + 하위 노드 수 카운트
+
+### nodeSummary 도구 결과 트렁케이션 (toolResultManager)
+
+figma_get_metadata 등 도구 결과가 클 때, `buildFigmaChildOutline`이 자식 노드를 아웃라인으로 축약한다. 각 자식 노드에 dimensions 정보를 포함하여 레이아웃 판단을 지원한다.
+
 ## Figma 연동 인프라
 
 → 상세: [26-figma-integration-infra.md](26-figma-integration-infra.md) (감지·인증·연결 흐름, MCP 전송 경로, 프론트엔드 상태 판정)
@@ -256,25 +288,18 @@ Figma 연동의 유일한 정규 입력 파일. 피처 생성 시 빈 문서로 
 ```json
 {
   "files": [
-    {
-      "url": "https://www.figma.com/design/ABC/My-Design",
-      "fileKey": "ABC",
-      "pages": [
-        { "nodeId": "0:1", "name": "Login", "role": "page" }
-      ]
-    }
-  ],
-  "config": {
-    "extractAssets": true,
-    "extractScreenshots": true,
-    "themes": ["light", "dark"]
-  }
+    "https://www.figma.com/design/ABC/My-Design?node-id=0-1"
+  ]
 }
 ```
 
+타입: `FigmaDataConfig` (`@ant/shared/figma.ts`). `files`는 Figma URL 문자열 배열이며, `parseFigmaUrl()`이 fileKey와 nodeId를 추출한다.
+
+레거시 형식(객체 배열, config 포함)은 `migrateFigmaConfig()`으로 자동 변환된다.
+
 ### Figma 연동 조건 (All-or-Nothing)
 
-Figma 모드는 Full MCP 접근이 필수다. MCP 불완전 시 잡을 차단하고 연동 완료를 안내한다. detectEnvironment에서 MCP 가용성을 검증한다. 불가 시 `designError`로 잡을 차단한다. MCP 전송 경로(로컬/클라우드)는 [26-figma-integration-infra.md](26-figma-integration-infra.md) 참조.
+Figma 모드는 Full MCP 접근이 필수다. `detectEnvironment`에서 MCP 가용성을 검증한다. MCP 불완전 시 `designError`로 잡을 차단하고 연동 완료를 안내한다. MCP 전송 경로(로컬/클라우드)는 [26-figma-integration-infra.md](26-figma-integration-infra.md) 참조.
 
 ### FigmaExplorationResult
 
@@ -285,17 +310,32 @@ interface FigmaExplorationResult {
   variationMatrix: VariationMatrixEntry[];
   annotations: AnnotationEntry[];
   componentStateMatrix: ComponentStateEntry[];
-  interactionStates: InteractionStateEntry[];
-  variableDefs?: any;
+  variableDefs?: unknown;
   totalFrameCount: number;
   downloadedAssets: string[];
   nodeSummary?: FigmaNodeSummary[];
 }
 ```
 
+`ComponentStateEntry`는 `variantAxes?: string[]`와 `frames[].variantProperties?: VariantProperty[]`를 포함하며, `parseVariantName()`이 variant 이름에서 구조적 데이터를 추출한다.
+
+`FigmaNodeSummary`는 `dimensions?: { width: number; height: number }`와 `isComponent?: boolean` 필드를 포함한다.
+
+### 알려진 제약
+
+- `downloadedAssets`는 현재 항상 빈 배열. 에셋 자동 다운로드 기능은 미구현 상태이며, 사용자가 `inputs/assets/`에 수동 배치한다
+- figmaExplore는 프롬프트 템플릿 없이 순수 코드 노드로 동작 (`templates/design/phases/explore/` 디렉터리 없음)
+
+## Code Job에서의 소비
+
+→ 상세: [14-code-job.md](14-code-job.md) "UI Design Document Consumption" 섹션
+
+Design Job 산출물(ui-tokens.json, ui-assets.json, ui-spec.json)은 Code Job에서 `ArtifactService.loadParsedUiContext()`를 통해 로딩되며, `UiDocParser`가 ui-spec.json을 메모리상에서 논리적 섹션으로 분할하여 태스크별로 필요한 부분만 주입한다.
+
 ## 경계
 
 - Design Job 개요: [15-design-job.md](15-design-job.md)
+- Figma 연동 인프라: [26-figma-integration-infra.md](26-figma-integration-infra.md)
+- Code Job의 UI 문서 소비: [14-code-job.md](14-code-job.md)
 - 프롬프트 시스템: [13-prompt-system.md](13-prompt-system.md)
-- 실시간 시스템 (Bridge WebSocket): [21-realtime-system.md](21-realtime-system.md)
 - 공유 계약 타입: [01-shared-contracts.md](01-shared-contracts.md)

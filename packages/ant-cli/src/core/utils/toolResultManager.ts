@@ -15,6 +15,12 @@
 
 import { TokenBudgetManager } from './tokenBudget';
 import { generateFileOutline } from './fileOutline';
+import type { FigmaNodeSummary } from '@ant/shared';
+
+export interface FigmaContext {
+  queriedNodeId?: string;
+  nodeSummary?: FigmaNodeSummary[];
+}
 
 export interface TruncationConfig {
   maxTokensPerResult: number;     // Tool 결과당 최대 토큰 (기본: 5000)
@@ -63,6 +69,7 @@ export class ToolResultManager {
     result: any,
     error?: string,
     filePath?: string,
+    figmaContext?: FigmaContext,
   ): TruncationResult {
     if (error && this.config.preserveErrors) {
       return {
@@ -87,7 +94,7 @@ export class ToolResultManager {
       case 'figma_get_metadata':
       case 'figma_get_design_context':
       case 'figma_get_variable_defs':
-        return this.truncateFigma(result);
+        return this.truncateFigma(result, figmaContext);
       default:
         return this.truncateGeneric(result);
     }
@@ -383,10 +390,10 @@ export class ToolResultManager {
   }
 
   /**
-   * 일반 tool 결과 truncation
-   * 전략: JSON을 compact하게 포맷, 토큰 초과시 간단히 잘라냄
+   * Figma MCP 결과 truncation (read_file 드릴다운 패턴 적용)
+   * 전략: 앞부분 보존 + [Child Nodes] outline + 드릴다운 안내
    */
-  private truncateFigma(result: any): TruncationResult {
+  private truncateFigma(result: any, figmaContext?: FigmaContext): TruncationResult {
     const FIGMA_TOKEN_LIMIT = 20000;
     const resultStr = typeof result === 'object' ? JSON.stringify(result) : String(result);
     const originalTokens = this.tokenManager.estimateTokens(resultStr);
@@ -400,63 +407,44 @@ export class ToolResultManager {
       };
     }
 
-    // JSON-aware structural pruning: remove deep children first
-    try {
-      const parsed = typeof result === 'object' ? result : JSON.parse(resultStr);
-      const pruned = this.pruneDeepChildren(parsed, FIGMA_TOKEN_LIMIT);
-      const prunedStr = JSON.stringify(pruned);
-      const truncatedTokens = this.tokenManager.estimateTokens(prunedStr);
+    const lines = resultStr.split('\n');
+    const keepRatio = FIGMA_TOKEN_LIMIT / originalTokens;
+    const keepLines = Math.max(20, Math.floor(lines.length * keepRatio));
 
-      console.log(`\n✂️  [ToolResult] Figma structural pruning:`);
-      console.log(`   Original: ${originalTokens.toLocaleString()} tokens`);
-      console.log(`   Pruned: ${truncatedTokens.toLocaleString()} tokens`);
+    const parts: string[] = [
+      ...lines.slice(0, keepLines),
+      `\n... (${lines.length - keepLines} lines omitted, ${originalTokens.toLocaleString()} tokens → ${FIGMA_TOKEN_LIMIT.toLocaleString()} limit) ...\n`,
+    ];
 
-      return {
-        content: prunedStr,
-        wasTruncated: true,
-        originalTokens,
-        truncatedTokens,
-        reason: `Figma result structurally pruned from ${originalTokens} to ${truncatedTokens} tokens`,
-      };
-    } catch {
-      const maxChars = FIGMA_TOKEN_LIMIT * 3.5;
-      const truncated = resultStr.substring(0, maxChars) + '\n... (Figma result truncated)';
-      const truncatedTokens = this.tokenManager.estimateTokens(truncated);
-      return {
-        content: truncated,
-        wasTruncated: true,
-        originalTokens,
-        truncatedTokens,
-        reason: `Figma result fallback-truncated from ${originalTokens} to ${truncatedTokens} tokens`,
-      };
-    }
-  }
-
-  private pruneDeepChildren(obj: any, tokenLimit: number, currentDepth = 0): any {
-    if (obj === null || typeof obj !== 'object') return obj;
-
-    if (Array.isArray(obj)) {
-      const result: any[] = [];
-      for (const item of obj) {
-        result.push(this.pruneDeepChildren(item, tokenLimit, currentDepth));
-        const check = JSON.stringify(result);
-        if (this.tokenManager.estimateTokens(check) > tokenLimit * 0.8) {
-          result.push({ _pruned: true, remainingItems: obj.length - result.length });
-          break;
-        }
+    let hasChildOutline = false;
+    if (figmaContext?.queriedNodeId && figmaContext?.nodeSummary?.length) {
+      const childOutline = buildFigmaChildOutline(figmaContext.queriedNodeId, figmaContext.nodeSummary);
+      if (childOutline) {
+        parts.push(`[Child Nodes]\n${childOutline}\n`);
+        hasChildOutline = true;
       }
-      return result;
     }
 
-    const pruned: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (key === 'children' && Array.isArray(value) && currentDepth >= 2) {
-        pruned[key] = `[${(value as any[]).length} children pruned at depth ${currentDepth}]`;
-        continue;
-      }
-      pruned[key] = this.pruneDeepChildren(value, tokenLimit, currentDepth + 1);
+    if (hasChildOutline) {
+      parts.push('Response was truncated. Query only the child nodes relevant to your current task using figma_get_design_context with a specific child nodeId above.');
+    } else {
+      parts.push('Response was truncated. Use a more specific nodeId from nodeSummary to get detailed data for a smaller section.');
     }
-    return pruned;
+
+    const truncated = parts.join('\n');
+    const truncatedTokens = this.tokenManager.estimateTokens(truncated);
+
+    console.log(`\n✂️  [ToolResult] Figma truncated with child outline:`);
+    console.log(`   Original: ${originalTokens.toLocaleString()} tokens (${lines.length} lines)`);
+    console.log(`   Truncated: ${truncatedTokens.toLocaleString()} tokens (kept ${keepLines} lines)`);
+
+    return {
+      content: truncated,
+      wasTruncated: true,
+      originalTokens,
+      truncatedTokens,
+      reason: `Figma result truncated with child outline from ${originalTokens} to ${truncatedTokens} tokens`,
+    };
   }
 
   private truncateGeneric(result: any): TruncationResult {
@@ -497,5 +485,31 @@ export class ToolResultManager {
       reason: `Result too large`,
     };
   }
+}
+
+/**
+ * Build a child node outline from nodeSummary for a given parent nodeId.
+ * nodeSummary is a depth-first flat array; children of the queried node
+ * are consecutive entries with depth = parent.depth + 1.
+ */
+export function buildFigmaChildOutline(
+  queriedNodeId: string,
+  nodeSummary: FigmaNodeSummary[]
+): string | null {
+  const parentIdx = nodeSummary.findIndex(n => n.nodeId === queriedNodeId);
+  if (parentIdx === -1) return null;
+  const parent = nodeSummary[parentIdx];
+  const children: FigmaNodeSummary[] = [];
+  for (let i = parentIdx + 1; i < nodeSummary.length; i++) {
+    if (nodeSummary[i].depth <= parent.depth) break;
+    if (nodeSummary[i].depth === parent.depth + 1) children.push(nodeSummary[i]);
+  }
+  if (children.length === 0) return null;
+  return children
+    .map(c => {
+      const dim = c.dimensions ? ` ${c.dimensions.width}x${c.dimensions.height}` : '';
+      return `  ${c.type} "${c.name}" nodeId=${c.nodeId} (${c.childCount} children)${dim}`;
+    })
+    .join('\n');
 }
 

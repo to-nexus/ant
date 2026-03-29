@@ -205,6 +205,8 @@ export class PromptEngine {
       designDomain?: 'game' | 'service';
       hasUiDoc?: boolean;  // ✅ Derived from existingDesignDocs (ui-* files present)
       isSpecDriven?: boolean;  // ✅ true when designDoc comes from spec document (not system design)
+      figmaAvailable?: boolean;
+      figmaStartNodeId?: string;
     },
     mode?: JobMode,
     taskType?: string
