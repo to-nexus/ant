@@ -145,8 +145,8 @@ export function useGitChanges(
         }
       };
 
-      sseManager.registerHandler('gitChange', handleGitChange);
-      unregister = () => sseManager.unregisterHandler('gitChange', handleGitChange);
+      const id = sseManager.registerHandlerWithId('gitChange', handleGitChange);
+      unregister = () => sseManager.unregisterHandlerById(id);
     })();
 
     return () => {
@@ -174,8 +174,8 @@ export function useGitChanges(
         }, 3000);
       };
 
-      sseManager.registerHandler('fileTree', handleFileTreeUpdate);
-      unregister = () => sseManager.unregisterHandler('fileTree', handleFileTreeUpdate);
+      const id = sseManager.registerHandlerWithId('fileTree', handleFileTreeUpdate);
+      unregister = () => sseManager.unregisterHandlerById(id);
     })();
 
     return () => {

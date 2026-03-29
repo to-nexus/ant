@@ -25,11 +25,6 @@ export const PREVIEW_MESSAGES = {
   LOG_STATUS_CHECK_FAILED: 'Failed to check preview status',
 } as const;
 
-export const PREVIEW_POLLING = {
-  INTERVAL_MS: 5000,
-  INITIAL_DELAY_MS: 1000,
-} as const;
-
 export const PREVIEW_LOG_PATTERNS = {
   INSTALLING: 'Installing dependencies',
   INSTALL_SUCCESS: 'Dependencies installed',

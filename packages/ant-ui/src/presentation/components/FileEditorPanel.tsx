@@ -167,6 +167,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const figmaDesktopReachable = useStore((state) => state.figmaDesktopReachable);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
+  const setFigmaPopulated = useStore((state) => state.setFigmaPopulated);
 
   const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
   const figmaWarning = useMemo(() => {
@@ -325,13 +326,22 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
 
   const handleSave = async () => {
     if (!selectedProject || !selectedFeature || !selectedFile) return;
-    if (isBinaryImageFile) return; // Binary files are not editable here
+    if (isBinaryImageFile) return;
     
     try {
       setSaving(true);
       await saveFileContent(selectedProject, selectedFeature, selectedFile, editedContent);
       setFileContent(editedContent);
       setHasChanges(false);
+
+      if (isFigmaFile) {
+        try {
+          const parsed = JSON.parse(editedContent);
+          setFigmaPopulated(isFigmaDataPopulated(parsed));
+        } catch {
+          setFigmaPopulated(false);
+        }
+      }
     } catch (error) {
       console.error('Failed to save file:', error);
       showError(t('error.saveFailed'), { title: t('common:error.title') });
