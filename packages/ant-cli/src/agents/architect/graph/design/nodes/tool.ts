@@ -12,6 +12,7 @@ import { executeSearchWeb } from '../../../tools/searchWeb';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 import { extractMCPTextContent, isFigmaMCPSoftError, createMCPAdapter } from '../../../../../periphery/adapters/figma/MCPTransport';
 import type { FigmaMCPAdapter } from '../../../../../periphery/adapters/figma/FigmaMCPAdapter';
+import { FigmaRateLimitError } from '../../../../../periphery/adapters/figma/errors';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -110,6 +111,7 @@ async function executeDesignTool(
             }
           }
         } catch (err: any) {
+          if (err instanceof FigmaRateLimitError) throw err;
           await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, error: true, _mergeIndex: figmaMergeIdx });
           result = JSON.stringify({ error: err.message });
         }
@@ -152,6 +154,7 @@ async function executeDesignTool(
       : JSON.stringify(result, null, 2).substring(0, 200);
     console.log(`   Result: ${resultPreview}...`);
   } catch (e) {
+    if (e instanceof FigmaRateLimitError) throw e;
     error = (e as Error).message;
     console.error(`❌ [Tool] ${name} execution failed:`, error);
   }
@@ -1029,6 +1032,12 @@ export function getMCPAdapter(state: DesignGraphState): FigmaMCPAdapter {
 }
 
 const _figmaResponseCache = new Map<string, string>();
+const _figmaInflightRequests = new Map<string, Promise<string>>();
+let _figmaRateLimited = false;
+
+function isRateLimitResponse(content: string): boolean {
+  return /rate limit/i.test(content);
+}
 
 function buildRootCallGuidance(state: DesignGraphState, toolName: string): string {
   const nodeSummary = state.figmaExplorationResult?.nodeSummary;
@@ -1057,6 +1066,10 @@ async function handleFigmaMCPTool(
     throw new Error(`${toolName} requires fileKey and nodeId`);
   }
 
+  if (_figmaRateLimited) {
+    throw new FigmaRateLimitError();
+  }
+
   const cacheKey = `${toolName}:${fileKey}:${nodeId}`;
   const cached = _figmaResponseCache.get(cacheKey);
   if (cached) {
@@ -1064,6 +1077,32 @@ async function handleFigmaMCPTool(
     return cached;
   }
 
+  const inflight = _figmaInflightRequests.get(cacheKey);
+  if (inflight) {
+    console.log(`🔧 [FigmaMCP] In-flight dedup: ${toolName} (${fileKey}:${nodeId})`);
+    try { return await inflight; }
+    catch { /* inflight request failed, fall through to make own request */ }
+  }
+
+  if (_figmaRateLimited) throw new FigmaRateLimitError();
+
+  const promise = executeFigmaMCPCall(state, toolName, fileKey, nodeId);
+  _figmaInflightRequests.set(cacheKey, promise);
+  try {
+    const result = await promise;
+    _figmaResponseCache.set(cacheKey, result);
+    return result;
+  } finally {
+    _figmaInflightRequests.delete(cacheKey);
+  }
+}
+
+async function executeFigmaMCPCall(
+  state: DesignGraphState,
+  toolName: string,
+  fileKey: string,
+  nodeId: string,
+): Promise<string> {
   const adapter = getMCPAdapter(state);
 
   const method = FIGMA_TOOL_METHOD_MAP[toolName];
@@ -1074,6 +1113,13 @@ async function handleFigmaMCPTool(
   const mcpResult = await (adapter[method] as Function)(fileKey, nodeId);
 
   if (mcpResult.isError) {
+    const errorContent = typeof mcpResult.content === 'string'
+      ? mcpResult.content
+      : JSON.stringify(mcpResult.content);
+    if (isRateLimitResponse(errorContent)) {
+      _figmaRateLimited = true;
+      throw new FigmaRateLimitError(`Figma MCP rate limit (${toolName}): ${errorContent}`);
+    }
     throw new Error(`Figma MCP error (${toolName}): ${mcpResult.content}`);
   }
 
@@ -1085,7 +1131,6 @@ async function handleFigmaMCPTool(
     throw new Error(`Figma Desktop is not accessible: ${result}. Open a design file in Figma Desktop and retry.`);
   }
 
-  _figmaResponseCache.set(cacheKey, result);
   return result;
 }
 

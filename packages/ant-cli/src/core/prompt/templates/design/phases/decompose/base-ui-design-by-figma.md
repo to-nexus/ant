@@ -95,6 +95,19 @@ Use these nodeIds to scope tasks to specific design areas:
 **CONSTRAINT**: Assign relevant nodeIds to each task description so the executor can query specific nodes instead of root.
 {{/if}}
 
+{{#if variationMatrixSummary}}
+### Responsive / Variation Groups
+
+Each line: a design section with responsive width variants.
+Format: "section name" (pageNodeId): [distinct widths, largest first]
+
+```
+{{{variationMatrixSummary}}}
+```
+
+**CONSTRAINT**: When a section has responsive variants, the ui-spec task covering that section MUST include the pageNodeId in its description.
+{{/if}}
+
 ---
 
 ## 📊 CHAPTER-BASED TASK BREAKDOWN

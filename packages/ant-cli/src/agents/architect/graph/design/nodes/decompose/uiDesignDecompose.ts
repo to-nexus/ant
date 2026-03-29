@@ -87,12 +87,17 @@ export async function decomposeUiDesign(
       : 0,
     jobMode: state.detectionReport?.jobMode || 'generate',
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
-    figmaExplorationResult: isFigmaMode
-      ? JSON.stringify(state.figmaExplorationResult, null, 2)
-      : undefined,
     nodeSummary: isFigmaMode && state.figmaExplorationResult?.nodeSummary
       ? state.figmaExplorationResult.nodeSummary
           .map(n => `${'  '.repeat(n.depth)}${n.type} "${n.name}" nodeId=${n.nodeId} (${n.childCount} children)`)
+          .join('\n')
+      : undefined,
+    variationMatrixSummary: isFigmaMode && state.figmaExplorationResult?.variationMatrix?.length
+      ? state.figmaExplorationResult.variationMatrix
+          .map(v => {
+            const widths = [...new Set(v.frames.map(f => Math.round(f.width)))].sort((a, b) => b - a);
+            return `"${v.section}" (${v.pageNodeId}): [${widths.map(w => w + 'px').join(', ')}]`;
+          })
           .join('\n')
       : undefined,
   });
@@ -166,9 +171,17 @@ export async function decomposeUiDesign(
     // Build task queue
     const taskQueue = new TaskQueue<DesignTask>();
     response.tasks.forEach((task) => {
-      const parallelGroup = typeof task.parallelGroup === 'string'
-        ? task.parallelGroup
-        : task.targetFile.replace(/\.json$/, '');
+      const baseName = task.targetFile.replace(/\.json$/, '');
+      const isAssets = baseName === 'ui-assets';
+
+      // tokens/spec: chapter-specific parallelGroup (enables parallel execution)
+      // assets: shared group (keeps sequential — category conflicts possible)
+      let parallelGroup: string;
+      if (typeof task.parallelGroup === 'string') {
+        parallelGroup = isAssets ? baseName : task.parallelGroup;
+      } else {
+        parallelGroup = isAssets ? baseName : task.id;
+      }
       
       const sf: string[] = Array.isArray((task as any).sourceFiles) ? [...(task as any).sourceFiles] : [];
       if (isFigmaMode && !sf.includes('figma.json')) {
@@ -187,6 +200,21 @@ export async function decomposeUiDesign(
         parallelGroup,
       } as DesignTask);
     });
+
+    // Pre-compute forceAppend and isLastTaskForDocument per targetFile group
+    const tasksByFile = new Map<string, DesignTask[]>();
+    for (const task of taskQueue.getAll()) {
+      const file = task.targetFile || '';
+      if (!tasksByFile.has(file)) tasksByFile.set(file, []);
+      tasksByFile.get(file)!.push(task);
+    }
+    for (const tasks of tasksByFile.values()) {
+      tasks.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+      for (let i = 0; i < tasks.length; i++) {
+        if (i > 0) tasks[i].forceAppend = true;
+        if (i === tasks.length - 1) tasks[i].isLastTaskForDocument = true;
+      }
+    }
 
     if (sourceFileNames.length > 0) {
       for (const task of taskQueue.getAll()) {

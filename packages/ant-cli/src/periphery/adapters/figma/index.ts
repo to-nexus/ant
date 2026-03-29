@@ -4,3 +4,4 @@
 
 export { FigmaMCPAdapter } from './FigmaMCPAdapter';
 export { MCPTransport, DirectMCPTransport, BridgeMCPTransport, createMCPTransport } from './MCPTransport';
+export { FigmaRateLimitError, isFigmaRateLimitError } from './errors';

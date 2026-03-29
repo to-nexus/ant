@@ -117,6 +117,24 @@ If Directive or PRD contains **explicit, specific instructions** that contradict
 
 Apply this format to `sections`, `components`, and `overlays`.
 
+### Key Naming Convention
+
+JSON keys fall into exactly two categories. Observe which category before naming:
+
+| Category | Rule | Applies to | Example |
+|----------|------|-----------|---------|
+| **Identifier key** | kebab-case | Object keys under `sections`, `components`, `overlays` | `"global-navigation"`, `"hero-section"` |
+| **Schema property** | camelCase | Structural fields describing layout/content/state | `flexDirection`, `contentOrder`, `alignItems` |
+
+**CONSTRAINT**: Do NOT mix categories.
+- Identifier keys name WHAT a UI element is
+- Schema properties describe HOW it is structured
+
+**FORBIDDEN** for identifier keys:
+- camelCase (`"heroSection"`) — this is a schema property pattern
+- Dot notation (`"6.4"`) — not a valid identifier
+- Bare numbers (`"10"`) — not descriptive
+
 ### 🚫 CRITICAL RULES
 
 1. **`sections`, `components`, `overlays` must be OBJECT, not array**
@@ -390,7 +408,7 @@ Observe and document:
 ```json
 {
   "header": { "layout": "fixed", "background": "transparent | opaque" },
-  "heroSection": { "startPosition": "viewport-top | below-header" }
+  "hero-section": { "startPosition": "viewport-top | below-header" }
 }
 ```
 
