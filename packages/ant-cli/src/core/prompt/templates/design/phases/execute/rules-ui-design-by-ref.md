@@ -103,6 +103,13 @@ You have access to tools for exploring reference images and assets:
 **This is the LAST task for this document — OMIT the `_meta` block.**
 {{/if}}
 
+### Parallel Chapter Scope Constraint
+
+**CONSTRAINT**: Generate ONLY content within the scope described in your task description.
+- If a topic is NOT mentioned in your task description, do NOT generate it
+- Another chapter is responsible for topics outside your scope
+- When uncertain whether a topic belongs to your scope, OMIT it
+
 {{else}}
 ### Scenario 1: New Document (First Chapter)
 

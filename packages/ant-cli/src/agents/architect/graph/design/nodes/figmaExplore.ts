@@ -18,6 +18,7 @@ import type { FigmaExplorationResult, FigmaExplorationError, FigmaNodeSummary, V
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getMCPAdapter } from './tool';
 import { extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
+import { isRateLimitResponse } from '../../../../../periphery/adapters/figma/errors';
 import { getSessionRuntimeDir } from '../../../../../core/utils/sessionPaths';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
@@ -359,12 +360,24 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     const contentType = Array.isArray(rawContent) ? 'array' : typeof rawContent;
     console.log(`      metadata response: type=${contentType}, size=${contentSize}, extracted=${extractedPreview ? extractedPreview.substring(0, 120) + '...' : 'null'}`);
 
+    if (extractedPreview && isRateLimitResponse(extractedPreview)) {
+      console.log(`   ❌ Figma API rate limited: "${extractedPreview}"`);
+      fileDebug.status = 'rate_limited';
+      errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Figma API rate limited: ${extractedPreview}`, timestamp: new Date().toISOString() });
+      debugInfo.files.push(fileDebug);
+      await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
+      return {
+        figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
+        designError: { type: 'figma_rate_limited', message: 'Figma API rate limit exceeded. Please retry later.', suggestedAction: 'Figma API rate limit에 도달했습니다. 잠시 후 다시 시도하세요.' },
+        _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+      };
+    }
+
     if (extractedPreview && isFigmaMCPSoftError(extractedPreview)) {
       console.log(`   ❌ Figma MCP soft error: "${extractedPreview}"`);
       fileDebug.status = 'soft_error';
       errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Soft error: ${extractedPreview}`, timestamp: new Date().toISOString() });
       debugInfo.files.push(fileDebug);
-      // Continue to next file instead of aborting entire exploration
       continue;
     }
 
@@ -408,6 +421,22 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
         responseChars: varSize,
         status: varResult.isError ? 'error' : 'success',
       };
+
+      const varExtracted = extractMCPTextContent(varRawContent);
+      const varTextForCheck = typeof varExtracted === 'string' ? varExtracted
+        : (typeof varRawContent === 'string' ? varRawContent : JSON.stringify(varRawContent));
+      if (isRateLimitResponse(varTextForCheck)) {
+        console.log(`   ❌ Figma API rate limited during getVariableDefs`);
+        errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: 'Figma API rate limited', timestamp: new Date().toISOString() });
+        result.explorationErrors = errors;
+        debugInfo.files.push(fileDebug);
+        await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
+        return {
+          figmaExplorationResult: result,
+          designError: { type: 'figma_rate_limited', message: 'Figma API rate limit exceeded. Please retry later.', suggestedAction: 'Figma API rate limit에 도달했습니다. 잠시 후 다시 시도하세요.' },
+          _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+        };
+      }
 
       if (varResult.isError) {
         const errContent = typeof varRawContent === 'string' ? varRawContent : JSON.stringify(varRawContent);

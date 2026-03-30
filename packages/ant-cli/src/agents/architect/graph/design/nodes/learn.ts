@@ -1,5 +1,6 @@
 import { DesignGraphState } from "../state";
 import { SessionTurn } from "../../../../../core/types";
+import { saveFigmaMCPDebugLog } from "./tool";
 
 /**
  * Learn Node - Finalize workflow and store lessons
@@ -195,6 +196,11 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     }
   }
   
+  // ✅ Flush Figma MCP debug log (cache hits, dedup, rate limits)
+  if (!_isWorkerContext) {
+    try { await saveFigmaMCPDebugLog(state); } catch { /* non-blocking */ }
+  }
+
   // ✅ Log job_complete to debug/logs/ and cleanup loggers
   if (!_isWorkerContext && state.context?.featurePath && state._httpJobId) {
     const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');

@@ -148,14 +148,20 @@ Format: "section name" (pageNodeId): [distinct widths, largest first]
 
 **⚠️ CRITICAL: ch1 establishes the PATTERN. ch2+ follows the same pattern.**
 
-| Task ID | Priority | Scope |
-|---------|----------|-------|
-| ui-spec-ch1 | 300 | Global settings only: overview, breakpoints, layout rules. Use `## N.` top-level sections. |
-| ui-spec-ch2 | 310 | Navigation + Hero specs. Follow ch1's section pattern. |
-| ui-spec-ch3 | 320 | Main content sections (first half). Follow ch1's section pattern. |
-| ui-spec-ch4 | 330 | Main content sections (second half). Follow ch1's section pattern. |
-| ui-spec-ch5 | 340 | Footer + interactions + accessibility. Follow ch1's section pattern. |
-| ui-spec-components | 349 | (append) Shared reusable components. Observe ch2-ch5 for repeated UI patterns across pages. Extract generalized component definitions into top-level `components` key. Follow ch1's section pattern. Skip already-documented topics. |
+**Observation target**: Identify the distinct pages/views/features in the project requirements.
+
+**Chapter roles** — each chapter has exactly ONE role:
+
+| Role | Priority | Scope boundary |
+|------|----------|----------------|
+| **Structure** (ch1) | 300 | Document TOC + layout primitives ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. |
+| **Page** (ch2..chN-1) | 310–340 | ONE page or feature area. ALL component specs for that page INCLUDING its interactions, states, and animations. |
+| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library, global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by observing previous chapter outputs. |
+
+**MECE constraint**: Each topic belongs to exactly ONE chapter.
+- Behavior used in only ONE page → that page's chapter
+- Behavior used across 2+ pages → shared chapter
+- Do NOT create a separate "interactions + accessibility" chapter
 
 **⚠️ Pattern Consistency**:
 - ch1 writes actual content with a specific structure pattern (e.g., `## 1.`, `## 2.`)
