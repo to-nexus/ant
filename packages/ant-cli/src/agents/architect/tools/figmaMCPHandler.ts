@@ -10,7 +10,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { createMCPAdapter, extractMCPTextContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../periphery/adapters/figma/MCPTransport';
+import { createMCPAdapter, extractMCPTextContent, extractMCPImageContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../periphery/adapters/figma/MCPTransport';
 import type { FigmaMCPAdapter } from '../../../periphery/adapters/figma/FigmaMCPAdapter';
 import { FigmaRateLimitError, isRateLimitResponse } from '../../../periphery/adapters/figma/errors';
 import { getSessionDebugDir } from '../../../core/utils/sessionPaths';
@@ -23,6 +23,18 @@ export interface FigmaMCPCallOpts {
   userId?: string;
   redis?: any;
   taskId?: string;
+}
+
+export interface FigmaMCPImageResult {
+  __type: 'figma_image';
+  base64: string;
+  mimeType: string;
+}
+
+export type FigmaMCPResult = string | FigmaMCPImageResult;
+
+export function isFigmaImageResult(r: FigmaMCPResult): r is FigmaMCPImageResult {
+  return typeof r === 'object' && r !== null && (r as any).__type === 'figma_image';
 }
 
 interface FigmaMCPLogEntry {
@@ -45,8 +57,8 @@ const FIGMA_TOOL_METHOD_MAP: Record<string, keyof FigmaMCPAdapter> = {
   figma_get_variable_defs: 'getVariableDefs',
 };
 
-const _figmaResponseCache = new Map<string, string>();
-const _figmaInflightRequests = new Map<string, Promise<string>>();
+const _figmaResponseCache = new Map<string, FigmaMCPResult>();
+const _figmaInflightRequests = new Map<string, Promise<FigmaMCPResult>>();
 let _figmaRateLimited = false;
 
 const _figmaMCPLog: FigmaMCPLogEntry[] = [];
@@ -77,7 +89,7 @@ export async function callFigmaMCPTool(
   toolName: string,
   fileKey: string,
   nodeId: string,
-): Promise<string> {
+): Promise<FigmaMCPResult> {
   if (!fileKey || !nodeId) {
     throw new Error(`${toolName} requires fileKey and nodeId`);
   }
@@ -175,7 +187,7 @@ async function executeFigmaMCPCall(
   toolName: string,
   fileKey: string,
   nodeId: string,
-): Promise<string> {
+): Promise<FigmaMCPResult> {
   const adapter = getFigmaMCPAdapter({ userId: opts.userId, redis: opts.redis });
 
   const method = FIGMA_TOOL_METHOD_MAP[toolName];
@@ -187,20 +199,32 @@ async function executeFigmaMCPCall(
 
   const rawContent = mcpResult.content;
   const extracted = extractMCPTextContent(rawContent);
-  const textForCheck = extracted
-    ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
 
-  // Rate limit: Figma MCP Bridge may return isError:false for rate limits,
-  // so check extracted content regardless of the isError flag.
-  if (isRateLimitResponse(textForCheck)) {
-    _figmaRateLimited = true;
-    throw new FigmaRateLimitError(`Figma MCP rate limit (${toolName}): ${textForCheck}`);
+  // Error checks use text content only (errors are always text, never images)
+  if (extracted) {
+    if (isRateLimitResponse(extracted)) {
+      _figmaRateLimited = true;
+      throw new FigmaRateLimitError(`Figma MCP rate limit (${toolName}): ${extracted}`);
+    }
   }
 
   if (mcpResult.isError) {
-    throw new Error(`Figma MCP error (${toolName}): ${textForCheck}`);
+    const errText = extracted ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
+    throw new Error(`Figma MCP error (${toolName}): ${errText}`);
   }
 
+  // Image content: only for screenshot tool (other tools return text as primary content;
+  // e.g. get_design_context includes a supplementary screenshot alongside critical code/metadata text)
+  if (toolName === 'figma_get_screenshot') {
+    const imageContent = extractMCPImageContent(rawContent);
+    if (imageContent) {
+      const kb = Math.round(imageContent.base64.length / 1024);
+      console.log(`🖼️  [FigmaMCP] Image response: ${toolName} (${kb}KB ${imageContent.mimeType})`);
+      return { __type: 'figma_image', base64: imageContent.base64, mimeType: imageContent.mimeType };
+    }
+  }
+
+  // Text content fallback
   const result = extracted
     ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent, null, 2));
 

@@ -43,6 +43,29 @@ export function extractMCPTextContent(content: unknown): string | null {
 }
 
 /**
+ * Extract the first image content item from an MCP tool result.
+ * MCP image items: { type: "image", data: "base64...", mimeType: "image/png" }
+ * Handles the same wrapper formats as extractMCPTextContent.
+ */
+export function extractMCPImageContent(content: unknown): { base64: string; mimeType: string } | null {
+  if (!content || typeof content === 'string') return null;
+
+  if (typeof content === 'object' && !Array.isArray(content)) {
+    const arr = (content as any).content;
+    if (Array.isArray(arr)) return extractMCPImageContent(arr);
+  }
+
+  if (Array.isArray(content)) {
+    const img = content.find(
+      (item: any) => item?.type === 'image' && typeof item?.data === 'string' && typeof item?.mimeType === 'string',
+    );
+    if (img) return { base64: img.data, mimeType: img.mimeType };
+  }
+
+  return null;
+}
+
+/**
  * Known Figma MCP soft-error messages.
  * These are returned as successful JSON-RPC responses (no `error` field),
  * but the text content indicates the tool could not produce real data.

@@ -153,12 +153,17 @@ async function executeToolByName(
       case 'figma_get_screenshot':
       case 'figma_get_variable_defs':
       case 'figma_get_metadata': {
-        const { callFigmaMCPTool } = await import('../../../../tools/figmaMCPHandler');
+        const { callFigmaMCPTool, isFigmaImageResult } = await import('../../../../tools/figmaMCPHandler');
         if (!state.figmaFileKey) throw new Error('Figma fileKey not configured');
-        result = await callFigmaMCPTool(
+        const mcpResult = await callFigmaMCPTool(
           { userId: state.context?.userId, redis: state.deps?.redis, taskId: (state.currentTask as any)?.id },
           name, state.figmaFileKey, args.nodeId,
         );
+        if (isFigmaImageResult(mcpResult)) {
+          result = { __figmaImage: true, base64: mcpResult.base64, mimeType: mcpResult.mimeType };
+        } else {
+          result = mcpResult;
+        }
         break;
       }
       default:
@@ -166,9 +171,12 @@ async function executeToolByName(
     }
 
     console.log(`✅ [Tool] ${name} executed successfully`);
-    const resultPreview = typeof result === 'string'
-      ? result.substring(0, 200)
-      : JSON.stringify(result, null, 2).substring(0, 200);
+    const isImg = result && typeof result === 'object' && result.__figmaImage;
+    const resultPreview = isImg
+      ? `[image: ${Math.round(((result as any).base64?.length ?? 0) / 1024)}KB]`
+      : (typeof result === 'string'
+        ? result.substring(0, 200)
+        : JSON.stringify(result, null, 2).substring(0, 200));
     console.log(`   Result: ${resultPreview}...`);
   } catch (e) {
     const { isFigmaRateLimitError } = await import('../../../../../../periphery/adapters/figma/errors');
@@ -292,12 +300,35 @@ export async function tool(
     // Execute
     const { result, error } = await executeToolByName(name, state, args);
 
-    // Truncate result per tool (pass filePath for outline generation on read_file)
-    const toolFilePath = name === 'read_file' ? args.path : undefined;
-    const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath);
+    // Build tool result content: multimodal image or truncated text
+    let toolResultContent: any;
+    const isImageResult = result && typeof result === 'object' && result.__figmaImage;
 
-    if (truncation.wasTruncated) {
-      console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
+    if (isImageResult) {
+      const imgData = result as { __figmaImage: true; base64: string; mimeType: string };
+      toolResultContent = [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: imgData.mimeType,
+            data: imgData.base64,
+          },
+        },
+        {
+          type: 'text',
+          text: `✅ Figma screenshot captured.\n\nAnalyze the visual layout, spacing, colors, typography, and component structure visible above.`,
+        },
+      ];
+      console.log(`   🖼️  Multimodal: Figma screenshot added (${Math.round(imgData.base64.length / 1024)}KB ${imgData.mimeType})`);
+    } else {
+      const toolFilePath = name === 'read_file' ? args.path : undefined;
+      const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath);
+      toolResultContent = truncation.content;
+
+      if (truncation.wasTruncated) {
+        console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
+      }
     }
 
     // Accumulate Anthropic-format blocks
@@ -311,10 +342,10 @@ export async function tool(
     toolResultBlocks.push({
       type: 'tool_result',
       tool_use_id: id,
-      content: truncation.content,
+      content: toolResultContent,
     });
 
-    allToolResults.push({ toolCallId: id, result, error });
+    allToolResults.push({ toolCallId: id, result: isImageResult ? '[figma_image]' : result, error });
   }
 
   // Build batch conversation history (Anthropic multi-tool format)
