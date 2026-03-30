@@ -139,6 +139,8 @@ export function AppNavBar({}: AppNavBarProps) {
     setProjects([]);
     setSelectedProject(undefined);
     setSelectedFeature(undefined);
+
+    window.location.href = '/';
   };
   
   // Handle Editor mode switch
