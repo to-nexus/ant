@@ -93,6 +93,7 @@ export class ToolResultManager {
         return this.truncateListFiles(result);
       case 'figma_get_metadata':
       case 'figma_get_design_context':
+      case 'figma_get_screenshot':
       case 'figma_get_variable_defs':
         return this.truncateFigma(result, figmaContext);
       default:

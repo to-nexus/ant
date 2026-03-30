@@ -326,7 +326,7 @@ Sub-role is determined by priority:
   2. Typography utility file generation
   3. Global CSS entry file: Read the project's installed CSS framework/build tool configuration (postcss config, package.json dependencies, existing framework config) to determine the required initialization format, then produce a CSS entry file that initializes the framework's build pipeline first, followed by imports for token and typography files. A global CSS file that contains only token imports but no framework initialization is broken — the framework's build pipeline never activates.
   4. Framework bridge: CSS vars → utility classes via the installed framework's theme/config extension mechanism
-- **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks add category prefixes when generating classes (`text-` for fontSize, `bg-` for backgroundColor, `border-` for borderColor). When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix. Example: token key `text-medium-xs` → config key `medium-xs` (generates correct class `text-medium-xs`), NOT config key `text-medium-xs` (generates broken class `text-text-medium-xs`).
+- **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks add category prefixes when generating classes. When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix to avoid double-prefixed class names.
 - **Execution**: Read installed framework config → read tokens → generate files → wire imports → verify entry file initializes framework and imports all token sources
 
 **priority 201+ (Component Library)**
@@ -354,7 +354,7 @@ Sub-role is determined by priority:
 
 **Scope**: Apply visual styling to skeleton files. Create and modify only the files listed in the plan.
 
-**DOM contract**: Preserve the skeleton's element structure. Adding `className`/`style` is allowed. Adding, removing, or renaming DOM elements is NOT allowed.
+**DOM contract**: Preserve the skeleton's element structure. Adding visual attributes (classes, inline styles, data attributes) is allowed. Adding, removing, or renaming DOM elements is NOT allowed.
 
 **File organization**: Component files extracted from skeleton sections are within scope — same DOM elements, different file. The plan's `create` list specifies which extractions to perform.
 
