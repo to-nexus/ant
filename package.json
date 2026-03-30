@@ -31,11 +31,12 @@
     "build:site": "pnpm --filter @ant/site build",
 
     "start:ui": "pnpm --filter @ant/ui preview --port 4200",
+    "start:site": "pnpm --filter @ant/site start",
     "start:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli start:server",
-    "start:local:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm start:local\" \"pnpm start:ui\"",
+    "start:local:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm start:local\" \"pnpm start:ui\" \"pnpm start:site\"",
 
     "start:cloud": "pnpm --filter @ant/cli start:cloud",
-    "start:cloud:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm start:cloud\" \"pnpm start:ui\"",
+    "start:cloud:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm start:cloud\" \"pnpm start:ui\" \"pnpm start:site\"",
     "start:api-server": "pnpm --filter @ant/cli start:server",
     "start:realtime-server": "pnpm --filter @ant/cli start:realtime-server",
     "start:job-worker": "pnpm --filter @ant/cli start:job-worker",
