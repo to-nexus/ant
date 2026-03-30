@@ -62,25 +62,42 @@ export function createAuthRoutes(deps: {
   }
   
   /**
-   * Store OIDC state in Redis with TTL (multi-pod safe)
+   * Store OIDC state in Redis with TTL (multi-pod safe).
+   * Optionally stores a returnTo path for post-auth redirect.
    */
-  async function storeOidcState(state: string): Promise<void> {
+  async function storeOidcState(state: string, returnTo?: string): Promise<void> {
     if (!stateStore) {
       throw new Error('StateStore required for OIDC state management');
     }
-    await stateStore.setKeyWithTTL(`${OIDC_STATE_KEY_PREFIX}${state}`, '1', OIDC_STATE_TTL_SECONDS);
+    const value = returnTo ? JSON.stringify({ returnTo }) : '1';
+    await stateStore.setKeyWithTTL(`${OIDC_STATE_KEY_PREFIX}${state}`, value, OIDC_STATE_TTL_SECONDS);
   }
   
   /**
-   * Verify and consume OIDC state from Redis (atomic: get + delete)
+   * Verify and consume OIDC state from Redis (atomic: get + delete).
+   * Returns the stored returnTo path if present.
    */
-  async function verifyAndConsumeOidcState(state: string): Promise<boolean> {
-    if (!stateStore) return false;
+  async function verifyAndConsumeOidcState(state: string): Promise<{ valid: boolean; returnTo?: string }> {
+    if (!stateStore) return { valid: false };
     const key = `${OIDC_STATE_KEY_PREFIX}${state}`;
     const value = await stateStore.getKey(key);
-    if (!value) return false;
+    if (!value) return { valid: false };
     await stateStore.deleteKey(key);
-    return true;
+    let returnTo: string | undefined;
+    if (value !== '1') {
+      try { returnTo = JSON.parse(value).returnTo; } catch { /* ignore */ }
+    }
+    return { valid: true, returnTo };
+  }
+  
+  /**
+   * Validate returnTo path: must be a relative path starting with /
+   * Prevents open redirect attacks.
+   */
+  function sanitizeReturnTo(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    if (!raw.startsWith('/') || raw.startsWith('//')) return undefined;
+    return raw;
   }
   
   // ========================================
@@ -100,9 +117,9 @@ export function createAuthRoutes(deps: {
     }
     
     try {
-      // Generate CSRF state parameter (stored in Redis for multi-pod safety)
+      const returnTo = sanitizeReturnTo(req.query.returnTo);
       const state = crypto.randomBytes(32).toString('hex');
-      await storeOidcState(state);
+      await storeOidcState(state, returnTo);
       
       const authUrl = oidcService.getAuthorizationUrl(state);
       res.redirect(authUrl);
@@ -129,35 +146,41 @@ export function createAuthRoutes(deps: {
     
     const { code, error, state } = req.query;
     const frontendUrl = process.env.FRONTEND_URL || '';
+    const fallbackPath = '/app/';
     
-    // Handle OAuth errors
+    // Handle OAuth errors (redirect to App with error param)
     if (error) {
       logger.warn(`[Auth] Google OAuth error: ${error}`, { component: 'Auth' });
-      return res.redirect(`${frontendUrl}/?error=oauth_failed`);
+      return res.redirect(`${frontendUrl}${fallbackPath}?error=oauth_failed`);
     }
     
     if (!code || typeof code !== 'string') {
-      return res.redirect(`${frontendUrl}/?error=no_code`);
+      return res.redirect(`${frontendUrl}${fallbackPath}?error=no_code`);
     }
     
     // Verify CSRF state parameter (Redis-backed, multi-pod safe)
-    if (!state || typeof state !== 'string' || !(await verifyAndConsumeOidcState(state))) {
-      logger.warn('[Auth] Invalid or missing OIDC state parameter', { component: 'Auth' });
-      return res.redirect(`${frontendUrl}/?error=invalid_state`);
+    if (!state || typeof state !== 'string') {
+      logger.warn('[Auth] Missing OIDC state parameter', { component: 'Auth' });
+      return res.redirect(`${frontendUrl}${fallbackPath}?error=invalid_state`);
     }
     
+    const stateResult = await verifyAndConsumeOidcState(state);
+    if (!stateResult.valid) {
+      logger.warn('[Auth] Invalid or expired OIDC state parameter', { component: 'Auth' });
+      return res.redirect(`${frontendUrl}${fallbackPath}?error=invalid_state`);
+    }
+    
+    const returnTo = stateResult.returnTo || fallbackPath;
+    
     try {
-      // Exchange code for user info
       const oidcUser: OIDCUser = await oidcService.authenticateWithCode(code);
       
       if (!oidcUser.emailVerified) {
-        return res.redirect(`${frontendUrl}/?error=email_not_verified`);
+        return res.redirect(`${frontendUrl}${fallbackPath}?error=email_not_verified`);
       }
       
-      // Validate organization (to.nexus only)
       const { authContext, workspacePath } = await validateAndGetWorkspace(oidcUser.email);
       
-      // Create workspace for new user if needed
       try {
         await fs.promises.access(workspacePath);
       } catch {
@@ -165,10 +188,9 @@ export function createAuthRoutes(deps: {
         logger.info(`[Auth] Created workspace for ${oidcUser.email}`, { component: 'Auth' });
       }
       
-      // Issue JWT cookie (required for authentication)
       if (!jwtService) {
         logger.error('JWT service not available during OIDC callback', { component: 'Auth' });
-        return res.redirect(`${frontendUrl}/?error=auth_config_error`);
+        return res.redirect(`${frontendUrl}${fallbackPath}?error=auth_config_error`);
       }
       
       const token = jwtService.sign({
@@ -185,11 +207,14 @@ export function createAuthRoutes(deps: {
         jwtService.getCookieOptions(isProduction),
       );
       
-      // Clean redirect (no user data in URL)
-      res.redirect(`${frontendUrl}/?auth=success`);
+      // Redirect to returnTo path; append ?auth=success for SPA paths so App.tsx can detect login
+      const redirectUrl = returnTo.startsWith('/app')
+        ? `${frontendUrl}${returnTo}${returnTo.includes('?') ? '&' : '?'}auth=success`
+        : `${frontendUrl}${returnTo}`;
+      res.redirect(redirectUrl);
     } catch (error: any) {
       logger.error('[Auth] Google callback error', { component: 'Auth' }, error);
-      return res.redirect(`${frontendUrl}/?error=auth_failed`);
+      return res.redirect(`${frontendUrl}${fallbackPath}?error=auth_failed`);
     }
   });
   

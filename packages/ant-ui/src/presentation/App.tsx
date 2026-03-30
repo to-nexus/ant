@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { GlobalNavBar } from '@/presentation/components/GlobalNavBar';
-// Chat data는 ChatPanel에서만 사용 (App에서는 불필요)
+import { useLocation, useNavigate } from 'react-router-dom';
+import { AppNavBar } from '@/presentation/components/AppNavBar';
 import { fetchFeatureSession } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useKanban } from '@/application/hooks/features/useKanban';
@@ -16,28 +16,24 @@ import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
 import { LocalSetupGuide } from '@/presentation/pages/LocalSetupGuide';
-import { WelcomePage } from '@/presentation/pages/WelcomePage';
 import { QuickStart } from '@/presentation/pages/QuickStart';
 import { ChevronRight, Loader2 } from 'lucide-react';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
-// STORAGE_KEYS/loadFromStorage no longer needed in App — QuickStart handles its own persistence
-import { fetchAuthMe, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
+import { fetchAuthMe, getBackendMode } from '@/infrastructure/http/api';
 
 function App() {
-  // ✅ Route handling: Track current path
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const location = useLocation();
+  const navigate = useNavigate();
   
   // ✅ Handle Google OAuth callback (JWT cookie-based) + session validation on startup
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = new URLSearchParams(location.search);
     const authStatus = urlParams.get('auth');
     const errorParam = urlParams.get('error');
     
     if (authStatus === 'success') {
-      // JWT cookie was set by the server during OIDC callback redirect.
-      // Fetch user info from /api/auth/me to populate Zustand store.
       (async () => {
         try {
           const user = await fetchAuthMe();
@@ -53,22 +49,25 @@ function App() {
             console.error('[Auth] Failed to fetch user info after OAuth');
           }
           
-          // Clean up URL
-          window.history.replaceState({}, '', '/');
+          navigate('/', { replace: true });
         } catch (error) {
           console.error('[Auth] Failed to complete OAuth:', error);
         }
       })();
     } else if (errorParam) {
       console.error('[Auth] OAuth error:', errorParam);
-      window.history.replaceState({}, '', '/');
-    } else if (getBackendMode() === 'cloud' && useStore.getState().userEmail) {
-      // Session validation: localStorage has user but JWT cookie may have expired.
-      // Verify with /api/auth/me — if invalid, clear localStorage to force re-login.
+      navigate('/', { replace: true });
+    } else if (getBackendMode() === 'cloud') {
       (async () => {
         try {
           const user = await fetchAuthMe();
-          if (!user) {
+          if (user) {
+            if (!useStore.getState().userEmail) {
+              useStore.getState().setUser(user.email, user.organization);
+              useStore.getState().fetchProjects();
+              console.log('[Auth] Restored session from cookie:', user.email);
+            }
+          } else if (useStore.getState().userEmail) {
             console.warn('[Auth] JWT session expired, clearing stored user');
             useStore.getState().clearUser();
           }
@@ -77,15 +76,7 @@ function App() {
         }
       })();
     }
-  }, []);
-  
-  useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
-    };
-    
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   // ✅ Development: Render tracking for debugging
@@ -174,25 +165,6 @@ function App() {
     }
   }, [shouldShowQuickStart]);
   
-  // ✅ Auth handlers for WelcomePage — always redirect to Google OIDC
-  const getOAuthBackendBase = (): string => {
-    const mode = getBackendMode();
-    if (mode === 'cloud') {
-      return import.meta.env.VITE_CLOUD_BACKEND_BASE || '';
-    }
-    const port = getLocalBackendPort();
-    return `http://localhost:${port}`;
-  };
-  
-  const handleWelcomeSignUp = () => {
-    const backendBase = getOAuthBackendBase();
-    window.location.href = `${backendBase}/api/auth/google`;
-  };
-  
-  const handleWelcomeSignIn = () => {
-    const backendBase = getOAuthBackendBase();
-    window.location.href = `${backendBase}/api/auth/google`;
-  };
   const ideBaseUrl = useStore((state) => state.ideBaseUrl);
   const ideWorkspacePath = useStore((state) => state.ideWorkspacePath);
   const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
@@ -371,13 +343,12 @@ function App() {
 
   // ✅ File editor is now a MainPanel tab (FileEdit). No side panel toggling here.
 
-  // ✅ Show local setup guide for /local path
-  if (currentPath === '/local') {
+  if (location.pathname === '/local') {
     return (
       <ToastProvider>
         <AlertModalProvider>
           <>
-            <GlobalNavBar />
+            <AppNavBar />
             <LocalSetupGuide />
           </>
         </AlertModalProvider>
@@ -385,14 +356,12 @@ function App() {
     );
   }
 
-  // ✅ Onboarding: WelcomePage for unauthenticated cloud users
   if (shouldShowWelcome) {
     return (
       <ToastProvider>
         <AlertModalProvider>
           <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
-            <GlobalNavBar />
-            <WelcomePage onSignUp={handleWelcomeSignUp} onSignIn={handleWelcomeSignIn} />
+            <AppNavBar />
           </div>
         </AlertModalProvider>
       </ToastProvider>
@@ -405,7 +374,7 @@ function App() {
       <ToastProvider>
         <AlertModalProvider>
           <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
-            <GlobalNavBar />
+            <AppNavBar />
             <div className="flex-1 flex items-center justify-center">
               <Loader2 className="w-6 h-6 animate-spin text-gray-400 dark:text-gray-500" />
             </div>
@@ -422,7 +391,7 @@ function App() {
       <ToastProvider>
         <AlertModalProvider>
           <div className={`h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-all duration-350 ${viewOpacity}`}>
-            <GlobalNavBar />
+            <AppNavBar />
             <QuickStart
               existingProjectId={quickStartProjectId === '__new__' ? undefined : quickStartProjectId}
               onSkip={() => {
@@ -454,7 +423,7 @@ function App() {
         onDrop={(e) => e.preventDefault()}
       >
         {/* ✅ GNB uses hooks directly - no props needed */}
-        <GlobalNavBar />
+        <AppNavBar />
         
         {/* Main Layout */}
         {mainView === 'codeIde' ? (

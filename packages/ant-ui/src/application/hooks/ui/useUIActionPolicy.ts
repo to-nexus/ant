@@ -261,8 +261,8 @@ export function useUIActionPolicy(): UIActionPolicy {
  *   );
  * }
  * 
- * // In GlobalNavBar.tsx
- * export function GlobalNavBar() {
+ * // In AppNavBar.tsx
+ * export function AppNavBar() {
  *   const policy = useUIActionPolicy();
  *   
  *   return (
