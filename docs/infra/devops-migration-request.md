@@ -33,7 +33,17 @@
 |-------|-------|-------|
 | `ant-ui-{env}` | SPA 정적파일 (루트 서빙) | SPA 정적파일 (`/app/` prefix 포함) |
 | `ant-site-{env}` | 없음 | **신규 생성**: 마케팅 SSG 정적파일 |
-| `ant-releases-{env}` | 없음 | **신규 생성**: Desktop 앱 바이너리 |
+| `ant-releases-{env}` | 없음 | **신규 생성**: Desktop 앱 바이너리 (OS별 파일, 하단 구조 참조) |
+
+**ant-releases 버킷 구조**:
+```
+desktop/latest/macos-arm64.dmg      ← Apple Silicon
+desktop/latest/macos-x64.dmg        ← Intel Mac
+desktop/latest/windows-x64.exe      ← Windows (지원 예정)
+desktop/latest/linux-x64.deb        ← Linux Debian (지원 예정)
+desktop/latest/linux-x64.AppImage   ← Linux AppImage (지원 예정)
+desktop/v0.1.0/...                  ← 버전별 아카이브
+```
 
 ---
 
@@ -81,10 +91,10 @@
 
 ### ant-cli 환경변수
 
-| 변수 | 현재 값 | 변경 후 | 비고 |
-|------|--------|--------|------|
-| `FRONTEND_URL` | `https://ant.crosstoken.io` | 변경 없음 (확인만) | `/app` 포함하면 안 됨. OAuth 콜백이 `returnTo` 기반으로 Site/App 분기 리다이렉트 |
-| `GOOGLE_REDIRECT_URI` | `https://ant.crosstoken.io/api/auth/google/callback` | 변경 없음 | 기존과 동일 |
+| 변수 | 현재 값 (확인 필요) | 올바른 값 | 비고 |
+|------|---------------------|----------|------|
+| `FRONTEND_URL` | `https://ant.crosstoken.io` 또는 `https://ant.crosstoken.io/app` | **`https://ant.crosstoken.io`** (경로 없음) | **중요**: `/app` 포함 시 OAuth 리다이렉트 이중경로 버그 발생. 반드시 도메인 루트만 |
+| `GOOGLE_REDIRECT_URI` | `https://ant-server.crosstoken.io/api/auth/google/callback` | 변경 없음 | 백엔드 서버 도메인 기준. Google Cloud Console의 승인된 리다이렉트 URI와 일치해야 함 |
 
 ### Custom Error Response
 
@@ -141,6 +151,6 @@ Phase 4: 검증
 | Default Behavior origin 변경 | **중** | 기존 `/` 접속 시 App 대신 Site가 표시됨. 롤백 시 origin을 ant-ui로 복원 |
 | `/app/*` Behavior 추가 | **저** | 신규 Behavior. 삭제하면 원복 |
 | CloudFront Function | **저** | 비활성화하면 원복. S3 직접 접근에는 영향 없음 |
-| FRONTEND_URL | **저** | 값 변경 없음. 확인만 필요 |
+| FRONTEND_URL 확인 | **중** | 현재 `/app`이 포함되어 있다면 반드시 제거해야 함. 미수정 시 OAuth 리다이렉트 전면 장애 |
 
 **롤백 절차**: CloudFront Distribution의 Default Behavior origin을 `ant-ui-{env}`로 복원하고, `/app/*` Behavior를 삭제하면 기존 상태로 돌아간다.
