@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --port 4300",
     "build": "next build",
-    "start": "next start",
+    "start": "npx serve out -l 4300",
     "lint": "next lint"
   },
   "dependencies": {
