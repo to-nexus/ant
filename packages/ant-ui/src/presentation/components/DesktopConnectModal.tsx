@@ -75,9 +75,11 @@ export function DesktopConnectModal({ launchPhase, onRetry, onCancel }: DesktopC
               </button>
               <a
                 href={DESKTOP_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="px-4 py-1.5 text-sm font-medium rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
-                {t('desktop.downloadButton')}
+                {t('desktop.downloadButton')} ↗
               </a>
               <button
                 onClick={onCancel}
