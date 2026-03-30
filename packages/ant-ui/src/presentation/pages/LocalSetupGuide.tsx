@@ -1,12 +1,12 @@
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { ExternalLink, Terminal, Server, Laptop, CheckCircle, AlertCircle } from 'lucide-react';
 
 export function LocalSetupGuide() {
   const { t } = useTranslation('explorer');
+  const navigate = useNavigate();
   const handleBackToHome = () => {
-    // Navigate back to home page
-    window.history.pushState({}, '', '/');
-    window.dispatchEvent(new PopStateEvent('popstate'));
+    navigate('/');
   };
 
   return (

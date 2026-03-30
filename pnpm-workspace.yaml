@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
   # ant-cli: AI workflow backend + Cloud IDE (IDEService)
-  # ant-ui: Frontend UI
+  # ant-ui: Frontend UI (SPA at /app)
+  # ant-site: Marketing site (SSG at /)
 

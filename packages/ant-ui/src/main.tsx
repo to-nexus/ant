@@ -1,10 +1,9 @@
 import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import App from './presentation/App';
 import './index.css';
 import './i18n';
 
-// ✅ Disable browser's automatic scroll restoration
-// This prevents conflicts with Virtuoso's scroll management in chat
 if ('scrollRestoration' in history) {
   history.scrollRestoration = 'manual';
 }
@@ -16,5 +15,7 @@ if (!rootElement) {
 }
 
 ReactDOM.createRoot(rootElement).render(
-  <App />
+  <BrowserRouter basename="/app">
+    <App />
+  </BrowserRouter>
 );

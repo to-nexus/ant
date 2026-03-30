@@ -27,6 +27,9 @@
     "build:shared": "pnpm --filter @ant/shared build",
     "build:cli": "pnpm --filter @ant/shared build && pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
+    "build:site": "pnpm --filter @ant/site build",
+
+    "dev:site": "pnpm --filter @ant/site dev",
 
     "start:ui": "pnpm --filter @ant/ui preview --port 4200",
     "start:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli start:server",
