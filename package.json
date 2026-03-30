@@ -5,11 +5,12 @@
   "description": "ANT (AI-Native Transformation) - Monorepo",
   "scripts": {
     "dev:ui": "pnpm --filter @ant/ui dev",
+    "dev:site": "pnpm --filter @ant/site dev",
     "dev:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli dev:server",
-    "dev:local:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:local\" \"pnpm dev:ui\"",
+    "dev:local:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm dev:local\" \"pnpm dev:ui\" \"pnpm dev:site\"",
     
     "dev:cloud": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:cloud",
-    "dev:cloud:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:cloud\" \"pnpm dev:ui\"",
+    "dev:cloud:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm dev:cloud\" \"pnpm dev:ui\" \"pnpm dev:site\"",
     "dev:api-server": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:server",
     "dev:realtime-server": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:realtime-server",
     "dev:job-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:job-worker",
@@ -28,8 +29,6 @@
     "build:cli": "pnpm --filter @ant/shared build && pnpm --filter @ant/cli build",
     "build:ui": "pnpm --filter @ant/ui build",
     "build:site": "pnpm --filter @ant/site build",
-
-    "dev:site": "pnpm --filter @ant/site dev",
 
     "start:ui": "pnpm --filter @ant/ui preview --port 4200",
     "start:local": "ANT_SERVER_MODE=local pnpm --filter @ant/cli start:server",
