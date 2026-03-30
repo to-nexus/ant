@@ -11,7 +11,8 @@ import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 import { executeSearchWeb } from '../../../tools/searchWeb';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 import { FigmaRateLimitError } from '../../../../../periphery/adapters/figma/errors';
-import { callFigmaMCPTool } from '../../../tools/figmaMCPHandler';
+import { callFigmaMCPTool, isFigmaImageResult } from '../../../tools/figmaMCPHandler';
+import type { FigmaMCPResult } from '../../../tools/figmaMCPHandler';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -101,16 +102,22 @@ async function executeDesignTool(
         const figmaMergeIdx = await figmaChatAPI.showChatStatus('figma_calling', figmaStatusMeta);
         try {
           const figmaArgs = args as { fileKey: string; nodeId: string };
-          result = await callFigmaMCPTool(
+          const mcpResult: FigmaMCPResult = await callFigmaMCPTool(
             { userId: state.context?.userId, redis: state.deps?.redis, taskId: (state.currentTask as any)?.id },
             name, figmaArgs.fileKey, figmaArgs.nodeId,
           );
           await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, _mergeIndex: figmaMergeIdx });
 
-          if ((figmaNodeId === '0:1' || figmaNodeId === '0-1') && result && name !== 'figma_get_screenshot') {
-            const hasSummary = (state.figmaExplorationResult?.nodeSummary?.length ?? 0) > 0;
-            if (hasSummary) {
-              result = buildRootCallGuidance(state, name);
+          if (isFigmaImageResult(mcpResult)) {
+            // Tag for multimodal handling downstream (same pattern as read_reference_image)
+            result = { __figmaImage: true, base64: mcpResult.base64, mimeType: mcpResult.mimeType };
+          } else {
+            result = mcpResult;
+            if ((figmaNodeId === '0:1' || figmaNodeId === '0-1') && result && name !== 'figma_get_screenshot') {
+              const hasSummary = (state.figmaExplorationResult?.nodeSummary?.length ?? 0) > 0;
+              if (hasSummary) {
+                result = buildRootCallGuidance(state, name);
+              }
             }
           }
         } catch (err: any) {
@@ -152,9 +159,12 @@ async function executeDesignTool(
     }
 
     console.log(`✅ [Tool] ${name} executed successfully (args: ${JSON.stringify(args)})`);
-    const resultPreview = typeof result === 'string'
-      ? result.substring(0, 200)
-      : JSON.stringify(result, null, 2).substring(0, 200);
+    const isImg = result && typeof result === 'object' && (result.__figmaImage || result.type === 'image');
+    const resultPreview = isImg
+      ? `[image: ${Math.round(((result as any).base64?.length ?? 0) / 1024)}KB]`
+      : (typeof result === 'string'
+        ? result.substring(0, 200)
+        : JSON.stringify(result, null, 2).substring(0, 200));
     console.log(`   Result: ${resultPreview}...`);
   } catch (e) {
     if (e instanceof FigmaRateLimitError) throw e;
@@ -183,6 +193,23 @@ async function executeDesignTool(
       },
     ];
     console.log(`   🖼️  Multimodal: Image added to conversation (${Math.round(imageData.base64.length / 1024)}KB base64)`);
+  } else if (result && typeof result === 'object' && result.__figmaImage) {
+    const imgData = result as { __figmaImage: true; base64: string; mimeType: string };
+    toolResultContent = [
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: imgData.mimeType,
+          data: imgData.base64,
+        },
+      },
+      {
+        type: 'text',
+        text: `✅ Figma screenshot captured.\n\nAnalyze the visual layout, spacing, colors, typography, and component structure visible above.`,
+      },
+    ];
+    console.log(`   🖼️  Multimodal: Figma screenshot added (${Math.round(imgData.base64.length / 1024)}KB ${imgData.mimeType})`);
   } else {
     const toolFilePath = args.path || args.filename;
     const isFigmaTool = name.startsWith('figma_');
@@ -205,12 +232,15 @@ async function executeDesignTool(
   if (jobId && featurePath && taskId) {
     try {
       const logger = getExecutionLogger({ featurePath, jobId, jobType: 'design' });
-      const resultStr = typeof result === 'string' ? result : JSON.stringify(result ?? '');
+      const isImageResult = result && typeof result === 'object' && (result.__figmaImage || result.type === 'image');
+      const resultStr = isImageResult
+        ? `[image: ${Math.round(((result as any).base64?.length ?? 0) / 1024)}KB]`
+        : (typeof result === 'string' ? result : JSON.stringify(result ?? ''));
       await logger.logToolCall(taskId, {
         toolName: name,
         args,
         resultChars: resultStr.length,
-        resultPreview: resultStr.length <= 500 ? resultStr : undefined,
+        resultPreview: isImageResult ? resultStr : (resultStr.length <= 500 ? resultStr : undefined),
         wasTruncated: truncationInfo?.wasTruncated ?? false,
         originalTokens: truncationInfo?.originalTokens,
         truncatedTokens: truncationInfo?.truncatedTokens,
