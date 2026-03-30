@@ -23,3 +23,12 @@ export function isFigmaRateLimitError(error: Error): boolean {
   return error instanceof FigmaRateLimitError
     || /figma.*rate limit/i.test(error.message);
 }
+
+/**
+ * Detect Figma API rate-limit from MCP response content.
+ * Figma MCP Bridge returns rate-limit responses with isError: false,
+ * so this must be checked on the extracted text regardless of the isError flag.
+ */
+export function isRateLimitResponse(content: string): boolean {
+  return /rate limit/i.test(content);
+}

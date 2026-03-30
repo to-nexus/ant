@@ -48,10 +48,17 @@ Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{
 - ⚠️ **Blind spot**: Foundational context files (domain glossaries, shared models) are relevant to tasks that reference those domain concepts — do NOT skip them because they lack a direct section mapping
 {{/if}}
 
-### 7. Overlap Prevention
+### 7. Overlap Prevention (MECE Principle)
 
-- Add "Skip any topics already documented" to continuation chapter descriptions
-- Execution phase will automatically detect and skip duplicates
+**CONSTRAINT**: Each topic/component/behavior MUST be assigned to exactly ONE chapter.
+
+- ch1 defines ONLY document structure and layout primitives (breakpoints, grid, containers)
+- ch1 does NOT define component behavior, interaction patterns, toast systems, or accessibility
+- ch2+ page chapters each own ALL specs for that page including its interactions and states
+- Cross-cutting concerns (accessibility, toast, animations, keyboard navigation) belong ONLY to the shared components chapter
+- Do NOT create a separate "interactions + accessibility" chapter
+- If a behavior is used in only ONE page, it belongs to that page's chapter
+- If a behavior is used across MULTIPLE pages, it belongs to the shared components chapter
 
 ### 8. ui-assets.json Path Consistency (CRITICAL!)
 
