@@ -17,7 +17,7 @@ import { DesignGraphState } from '../state';
 import type { FigmaExplorationResult, FigmaExplorationError, FigmaNodeSummary, VariantProperty } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getFigmaMCPAdapter } from '../../../tools/figmaMCPHandler';
-import { extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
+import { extractMCPTextContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../../../periphery/adapters/figma/MCPTransport';
 import { isRateLimitResponse } from '../../../../../periphery/adapters/figma/errors';
 import { getSessionRuntimeDir } from '../../../../../core/utils/sessionPaths';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
@@ -373,7 +373,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
       };
     }
 
-    if (extractedPreview && isFigmaMCPSoftError(extractedPreview)) {
+    if (extractedPreview && (isFigmaMCPSoftError(extractedPreview) || isLikelyMCPErrorResponse(extractedPreview))) {
       console.log(`   ❌ Figma MCP soft error: "${extractedPreview}"`);
       fileDebug.status = 'soft_error';
       errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Soft error: ${extractedPreview}`, timestamp: new Date().toISOString() });
@@ -445,20 +445,27 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
       } else {
         const varContent = extractMCPTextContent(varRawContent) ?? varRawContent;
         const varStr = typeof varContent === 'string' ? varContent : JSON.stringify(varContent);
-        const estimatedTokens = varStr.length / 3.5;
-        fileDebug.getVariableDefs.estimatedTokens = Math.round(estimatedTokens);
-        console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
-        let varData: unknown;
-        if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
-          varData = varContent;
+
+        if (typeof varStr === 'string' && isLikelyMCPErrorResponse(varStr)) {
+          console.warn(`      ⚠️ getVariableDefs returned error-like response: ${varStr.substring(0, 200)}`);
+          fileDebug.getVariableDefs.status = 'soft_error';
+          errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: `Soft error: ${varStr.substring(0, 500)}`, timestamp: new Date().toISOString() });
         } else {
-          console.warn(`      ⚠️ variableDefs too large, storing keys only`);
-          varData = extractVariableDefsSummary(varContent);
-        }
-        if (!result.variableDefs) {
-          result.variableDefs = varData;
-        } else {
-          result.variableDefs = mergeVariableDefs(result.variableDefs, varData);
+          const estimatedTokens = varStr.length / 3.5;
+          fileDebug.getVariableDefs.estimatedTokens = Math.round(estimatedTokens);
+          console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
+          let varData: unknown;
+          if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
+            varData = varContent;
+          } else {
+            console.warn(`      ⚠️ variableDefs too large, storing keys only`);
+            varData = extractVariableDefsSummary(varContent);
+          }
+          if (!result.variableDefs) {
+            result.variableDefs = varData;
+          } else {
+            result.variableDefs = mergeVariableDefs(result.variableDefs, varData);
+          }
         }
       }
     } catch (err: any) {
@@ -520,6 +527,22 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
         await logger.logPhaseComplete({ phase: 'figmaExplore', elapsedMs: debugInfo.elapsedMs!, details: debugInfo.summary });
       } catch { /* non-blocking */ }
     }
+  }
+
+  if (result.totalFrameCount === 0 && (!result.nodeSummary || result.nodeSummary.length === 0)) {
+    const errMsg = errors.length > 0
+      ? `Figma exploration failed: ${errors[0].message}`
+      : 'Figma exploration returned no data from any configured file';
+    console.log(`   ❌ No usable Figma data — setting designError to halt job`);
+    return {
+      figmaExplorationResult: { ...result, explorationErrors: errors },
+      designError: {
+        type: 'figma_window_not_open' as const,
+        message: errMsg,
+        suggestedAction: 'Figma Desktop에서 해당 디자인 파일을 활성 탭으로 열고 다시 시도하세요.',
+      },
+      _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+    };
   }
 
   return {
