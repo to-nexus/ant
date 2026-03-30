@@ -299,11 +299,7 @@ UI design documents are available at `outputs/design/`. Use `read_file` to inspe
 ### Figma Visual Reference
 
 Figma design file is available.{{#if figmaStartNodeId}} Target node: `{{figmaStartNodeId}}`.{{else}} Use `figma_get_metadata` with nodeId `0:1` to discover available pages and frames.{{/if}}
-{{#if hasUiDoc}}
-Use `figma_get_design_context` and `figma_get_screenshot` to verify details the design docs did not capture. Design docs are authoritative — Figma supplements gaps, never overrides.
-{{else}}
 Use `figma_get_design_context` and `figma_get_screenshot` to inspect visual details while implementing. Use `figma_get_variable_defs` to extract design tokens if needed.
-{{/if}}
 {{/if}}
 
 {{/unless}}
@@ -360,9 +356,6 @@ Sub-role is determined by priority:
 
 {{#if hasUiDoc}}
 **Visual source**: Design tokens (ui-tokens.json) and layout properties (ui-spec.json). Token names, `visibleWhen` conditions, and `interactionStates` elements are all in scope.
-{{#if figmaAvailable}}
-**Supplementary**: Figma MCP tools available.{{#if figmaStartNodeId}} Target node: `{{figmaStartNodeId}}`.{{/if}} Use `figma_get_design_context` to verify layout details the spec did not capture. Spec is authoritative — Figma supplements gaps, never overrides.
-{{/if}}
 {{else}}
 {{#if figmaAvailable}}
 **Visual source**: Figma design file.{{#if figmaStartNodeId}} Start with node `{{figmaStartNodeId}}`.{{else}} Use `figma_get_metadata` with nodeId `0:1` to discover available pages and top-level frames first.{{/if}} Use `figma_get_design_context` to inspect node layout and properties. Use `figma_get_screenshot` for visual reference. Use `figma_get_variable_defs` to extract design tokens.
