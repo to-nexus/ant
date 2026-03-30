@@ -32,8 +32,8 @@ export interface UIActions {
   setQuickStartProjectId: (projectId: string | undefined) => void;
   // ✅ ProjectWizard modal (design/code wizard)
   setProjectSetupConfig: (config: { mode: 'design' | 'code'; existingProjectId?: string } | undefined) => void;
-  // ✅ Figma integration bridge state
-  setBridgeStatus: (status: { connected: boolean; detected: boolean; figmaDesktopReachable: boolean }) => void;
+  // ✅ Figma integration bridge state (single normalization point)
+  setBridgeStatus: (status: { connected: boolean; detected?: boolean; figmaDesktopReachable?: boolean }) => void;
   setAccountConfigScrollTarget: (target: string | null) => void;
 }
 
@@ -110,7 +110,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   bridgeConnected: null,
   bridgeDetected: false,
   figmaDesktopReachable: false,
-  bridgeStatusChecked: false,
   accountConfigScrollTarget: null,
 
   // ==================
@@ -325,9 +324,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   setBridgeStatus: (status) => {
     set({
       bridgeConnected: status.connected,
-      bridgeDetected: status.detected,
-      figmaDesktopReachable: status.figmaDesktopReachable,
-      bridgeStatusChecked: true,
+      bridgeDetected: status.detected ?? status.connected,
+      figmaDesktopReachable: status.figmaDesktopReachable ?? false,
     });
   },
 

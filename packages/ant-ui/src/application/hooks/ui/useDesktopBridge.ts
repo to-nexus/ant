@@ -49,29 +49,18 @@ export function useDesktopBridge(
         ? 'detected'
         : 'offline';
 
-  const applyStatus = useCallback(
-    (status: { connected: boolean; detected?: boolean; figmaDesktopReachable?: boolean }) => {
-      setBridgeStatus({
-        connected: status.connected,
-        detected: status.detected ?? status.connected,
-        figmaDesktopReachable: status.figmaDesktopReachable ?? false,
-      });
-    },
-    [setBridgeStatus],
-  );
-
   const fetchStatus = useCallback(async () => {
     try {
       const status = await checkBridgeStatus();
-      if (mountedRef.current) applyStatus(status);
+      if (mountedRef.current) setBridgeStatus(status);
       return status;
     } catch {
       if (mountedRef.current) {
-        setBridgeStatus({ connected: false, detected: false, figmaDesktopReachable: false });
+        setBridgeStatus({ connected: false });
       }
       return null;
     }
-  }, [applyStatus, setBridgeStatus]);
+  }, [setBridgeStatus]);
 
   const cleanupLaunchPolling = useCallback(() => {
     if (launchPollRef.current) {
@@ -91,7 +80,7 @@ export function useDesktopBridge(
       try {
         const status = await checkBridgeStatus();
         if (!mountedRef.current) return;
-        applyStatus(status);
+        setBridgeStatus(status);
         if (status.connected) {
           cleanupLaunchPolling();
           setLaunchPhase('success');
@@ -111,7 +100,7 @@ export function useDesktopBridge(
       }
       if (mountedRef.current) setLaunchPhase('failed');
     }, LAUNCH_TIMEOUT);
-  }, [cleanupLaunchPolling, applyStatus]);
+  }, [cleanupLaunchPolling, setBridgeStatus]);
 
   // --- Initial fetch on mount (regardless of enablePolling) ---
   useEffect(() => {
@@ -189,13 +178,13 @@ export function useDesktopBridge(
     setIsRefreshing(true);
     try {
       const status = await probeBridgeStatus();
-      if (mountedRef.current) applyStatus(status);
+      if (mountedRef.current) setBridgeStatus(status);
     } catch {
       await fetchStatus();
     } finally {
       if (mountedRef.current) setIsRefreshing(false);
     }
-  }, [applyStatus, fetchStatus]);
+  }, [setBridgeStatus, fetchStatus]);
 
   return {
     desktopStatus,

@@ -159,7 +159,6 @@ export interface DesignGraphState extends TaskArtifacts {
   designError?: {
     type: string;
     message: string;
-    suggestedAction?: string;
   };
   
   // ✅ UI document generation context
