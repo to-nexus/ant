@@ -538,9 +538,9 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             </button>
           )}
           {!bridgeConnected && !bridgeDetected && (
-            <a href={DESKTOP_DOWNLOAD_URL}
+            <a href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer"
                className="text-xs text-gray-400 dark:text-gray-500 hover:underline">
-              {t('figma.downloadAntDesktop')}
+              {t('figma.downloadAntDesktop')} ↗
             </a>
           )}
         </div>
