@@ -21,6 +21,7 @@ on:
           - ant-ui
           - ant-cli
           - ant-preview
+          - ant-site
       git_ref:
         description: 'Git reference (commit SHA, branch, or tag) to deploy'
         required: false
@@ -42,6 +43,7 @@ on:
     paths:
       - 'packages/ant-ui/**'
       - 'packages/ant-cli/**'
+      - 'packages/ant-site/**'
       - 'package.json'
 
   repository_dispatch:
@@ -61,6 +63,7 @@ jobs:
     outputs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
       ant-cli-changed: ${{ steps.detect.outputs.ant-cli-changed }}
+      ant-site-changed: ${{ steps.detect.outputs.ant-site-changed }}
       root-package-changed: ${{ steps.detect.outputs.root-package-changed }}
       deploy-all: ${{ steps.detect.outputs.root-package-changed == 'true' }}
     steps:
@@ -103,6 +106,15 @@ jobs:
           else
             echo "ant-cli-changed=false" >> $GITHUB_OUTPUT
             echo "❌ No ant-cli files changed"
+          fi
+          
+          # Check ant-site changes
+          if echo "$CHANGED_FILES" | grep -q "^packages/ant-site/"; then
+            echo "ant-site-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ ant-site files changed"
+          else
+            echo "ant-site-changed=false" >> $GITHUB_OUTPUT
+            echo "❌ No ant-site files changed"
           fi
 
   # ===========================================
@@ -157,6 +169,34 @@ jobs:
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
     secrets: inherit
+
+  # ===========================================
+  # Dev environment - ant-site deployment (S3 static upload)
+  # ===========================================
+  auto-ant-site-dev-deploy:
+    needs: detect-changes
+    if: (needs.detect-changes.outputs.ant-site-changed == 'true' || needs.detect-changes.outputs.root-package-changed == 'true') && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
+    runs-on: ["arc-runner-set"]
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
 
   # ===========================================
   # Dev environment - Deploy all when root package.json changes (main, dev, ci/* branches)

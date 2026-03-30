@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { checkHealth } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 
@@ -10,10 +11,10 @@ import { useStore } from '@/domain/store';
 export function useHealthCheck() {
   const backendMode = useStore((state) => state.backendMode);
   const userEmail = useStore((state) => state.userEmail);
+  const { pathname } = useLocation();
   
   useEffect(() => {
-    // Skip on /local page (setup guide)
-    if (window.location.pathname === '/local') {
+    if (pathname === '/local') {
       return;
     }
     
@@ -55,7 +56,7 @@ export function useHealthCheck() {
     }
     
     initialize();
-  }, [backendMode, userEmail]);
+  }, [backendMode, userEmail, pathname]);
 }
 
 

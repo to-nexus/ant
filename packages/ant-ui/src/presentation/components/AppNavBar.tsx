@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { useStore } from '@/domain/store';
@@ -24,23 +25,17 @@ function getOAuthBackendBase(): string {
   return `http://localhost:${port}`;
 }
 
-export interface GlobalNavBarProps {
-  // ✅ No props needed - uses hooks directly
+export interface AppNavBarProps {
+  // No props needed - uses hooks directly
 }
 
 /**
- * GlobalNavBar - Top-level navigation bar
- * 
- * Contains:
- * - App branding
- * - Theme toggle
- * - Connection status
- * - Deployment mode selector
- * 
- * ✅ Agent/Job selection and Run/Stop are now in Chat UI
+ * AppNavBar - Top-level navigation bar for the authenticated App (/app/*)
  */
-export function GlobalNavBar({}: GlobalNavBarProps) {
+export function AppNavBar({}: AppNavBarProps) {
   const { t } = useTranslation('nav');
+  const location = useLocation();
+  const navigate = useNavigate();
   const theme = useStore((state) => state.theme);
   const toggleTheme = useStore((state) => state.toggleTheme);
   const language = useStore((state) => state.language);
@@ -79,51 +74,37 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
   // Check if user is signed in
   const isSignedIn = !!userEmail && !!userOrganization;
   
-  // ✅ UI 선택 상태: /local 페이지면 'local', 아니면 backendMode
-  const uiSelectedMode = window.location.pathname === '/local' ? 'local' : backendMode;
+  const uiSelectedMode = location.pathname === '/local' ? 'local' : backendMode;
   
-  // Handle deployment mode change
   const handleModeChange = async (mode: 'local' | 'cloud') => {
-    // If on /local page and user clicks cloud, go back to home
-    if (window.location.pathname === '/local' && mode === 'cloud') {
-      // Switch to cloud mode and navigate home
+    if (location.pathname === '/local' && mode === 'cloud') {
       setBackendMode('cloud');
-      window.history.pushState({}, '', '/');
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      navigate('/');
       
-      // Reload projects in cloud mode
       const fetchProjects = useStore.getState().fetchProjects;
       fetchProjects();
       return;
     }
     
-    // Early return if same mode (but only for non-/local pages)
-    if (mode === backendMode && window.location.pathname !== '/local') return;
+    if (mode === backendMode && location.pathname !== '/local') return;
     
-    // ✅ Local 선택 시 health check 수행
     if (mode === 'local') {
       const isAvailable = await checkLocalBackend();
       
       if (isAvailable) {
-        // ✅ 로컬 서버 정상 응답 → 백엔드 전환
         setBackendMode('local');
         
-        // Reload projects after mode change
         const fetchProjects = useStore.getState().fetchProjects;
         fetchProjects();
       } else {
-        // ❌ 로컬 서버 응답 없음 → 안내 페이지만 표시 (backendMode 유지)
-        window.history.pushState({}, '', '/local');
-        window.dispatchEvent(new PopStateEvent('popstate'));
+        navigate('/local');
       }
       return;
     }
     
-    // Cloud 선택 시 (바로 전환)
     if (mode === 'cloud') {
       setBackendMode('cloud');
       
-      // ✅ Only reload projects if authenticated (cloud mode requires auth)
       if (isSignedIn) {
         const fetchProjects = useStore.getState().fetchProjects;
         fetchProjects();
@@ -131,15 +112,15 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
     }
   };
   
-  // Handle Sign In / Sign Up — always redirect to Google OIDC
+  // Handle Sign In / Sign Up — always redirect to Google OIDC with returnTo=/app/
   const handleSignInClick = () => {
     const backendBase = getOAuthBackendBase();
-    window.location.href = `${backendBase}/api/auth/google`;
+    window.location.href = `${backendBase}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
   
   const handleSignUpClick = () => {
     const backendBase = getOAuthBackendBase();
-    window.location.href = `${backendBase}/api/auth/google`;
+    window.location.href = `${backendBase}/api/auth/google?returnTo=${encodeURIComponent('/app/')}`;
   };
   
   // Handle sign out
@@ -203,14 +184,14 @@ export function GlobalNavBar({}: GlobalNavBarProps) {
       <div className="px-2 sm:px-4 py-2 sm:py-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
-            {/* ANT Logo - Neural Network Pattern */}
-            <img 
-              src={theme === 'dark' ? '/logo-dark.svg' : '/logo-light.svg'}
-              alt={t('brand.logoAlt')} 
-              className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0" 
-            />
-            
-            <h1 className="hidden md:block text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">ANT Works</h1>
+            <a href="/" className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
+              <img 
+                src={`${import.meta.env.BASE_URL}${theme === 'dark' ? 'logo-dark.svg' : 'logo-light.svg'}`}
+                alt={t('brand.logoAlt')} 
+                className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0" 
+              />
+              <h1 className="hidden md:block text-xl font-display font-bold text-gray-900 dark:text-white tracking-tight whitespace-nowrap">ANT Works</h1>
+            </a>
             
             {/* Deployment Mode Selector (hidden: only cloud mode active for now) */}
             <div className="deployment-mode-selector hidden items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
