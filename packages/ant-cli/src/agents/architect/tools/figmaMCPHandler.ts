@@ -10,7 +10,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { createMCPAdapter, extractMCPTextContent, isFigmaMCPSoftError } from '../../../periphery/adapters/figma/MCPTransport';
+import { createMCPAdapter, extractMCPTextContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../periphery/adapters/figma/MCPTransport';
 import type { FigmaMCPAdapter } from '../../../periphery/adapters/figma/FigmaMCPAdapter';
 import { FigmaRateLimitError, isRateLimitResponse } from '../../../periphery/adapters/figma/errors';
 import { getSessionDebugDir } from '../../../core/utils/sessionPaths';
@@ -89,7 +89,8 @@ export async function callFigmaMCPTool(
     throw new FigmaRateLimitError();
   }
 
-  const cacheKey = `${toolName}:${fileKey}:${nodeId}`;
+  const normalizedNodeId = nodeId.replace(/:/g, '-');
+  const cacheKey = `${toolName}:${fileKey}:${normalizedNodeId}`;
   const cached = _figmaResponseCache.get(cacheKey);
   if (cached) {
     console.log(`🔧 [FigmaMCP] Cache hit: ${toolName} (${fileKey}:${nodeId})`);
@@ -203,7 +204,7 @@ async function executeFigmaMCPCall(
   const result = extracted
     ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent, null, 2));
 
-  if (isFigmaMCPSoftError(result)) {
+  if (isFigmaMCPSoftError(result) || isLikelyMCPErrorResponse(result)) {
     throw new Error(`Figma Desktop is not accessible: ${result}. Open a design file in Figma Desktop and retry.`);
   }
 

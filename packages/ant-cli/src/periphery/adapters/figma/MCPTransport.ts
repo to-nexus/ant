@@ -51,12 +51,29 @@ const FIGMA_SOFT_ERROR_PATTERNS = [
   'no figma window open',
   'no file open',
   'plugin not running',
+  'only available if your active tab',
 ];
 
 export function isFigmaMCPSoftError(text: string): boolean {
   if (!text || text.length > 300) return false;
   const lower = text.toLowerCase();
   return FIGMA_SOFT_ERROR_PATTERNS.some(p => lower.includes(p));
+}
+
+/**
+ * Positive-validation heuristic: detect responses that are NOT valid data.
+ *
+ * Instead of maintaining an ever-growing list of error patterns, this checks
+ * whether the response looks like actual structured data (XML, JSON).
+ * A short plain-text response that isn't structured data is almost certainly
+ * an error message from the MCP server.
+ */
+export function isLikelyMCPErrorResponse(text: string): boolean {
+  if (!text || text.length > 500) return false;
+  if (isFigmaMCPSoftError(text)) return true;
+  const trimmed = text.trim();
+  if (trimmed.startsWith('<') || trimmed.startsWith('{') || trimmed.startsWith('[')) return false;
+  return true;
 }
 
 const MCP_ACCEPT = 'application/json, text/event-stream';
