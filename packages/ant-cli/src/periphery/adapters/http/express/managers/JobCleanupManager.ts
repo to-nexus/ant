@@ -420,7 +420,8 @@ export class JobCleanupManager {
             jobId,
             interruptionReason.reason,
             interruptionReason.message,
-            effectiveUserContext
+            effectiveUserContext,
+            interruptionReason.metadata
           );
         }
       } catch (error) {

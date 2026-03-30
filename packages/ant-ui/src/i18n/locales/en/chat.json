@@ -78,6 +78,43 @@
     "skipped": "Skipped",
     "allSkipped": "All questions skipped"
   },
+  "cancelled": {
+    "taskCancelled": "Task cancelled",
+    "workCancelled": "{{work}} cancelled",
+    "defaultSubtitle": "The task was stopped",
+    "resume": "Resume",
+    "resuming": "Resuming...",
+    "dismiss": "Dismiss",
+    "resumed": "Resumed",
+    "dismissed": "Dismissed",
+    "reasons": {
+      "recursion_limit": "Recursion limit reached",
+      "user_stopped": "Stopped by user",
+      "api_error": "API error occurred",
+      "process_crash": "Process crashed unexpectedly",
+      "server_crash": "Server crashed unexpectedly",
+      "figma_rate_limited": "Figma API rate limit exceeded",
+      "unknown": "Unknown error"
+    },
+    "designErrors": {
+      "figma_rate_limited": "Figma API rate limit exceeded",
+      "figma_window_not_open": "Figma Desktop is not open",
+      "figma_mcp_unavailable": "Cannot connect to Figma Desktop",
+      "figma_bridge_unavailable": "Ant Desktop connection failed",
+      "missing_documents": "Required documents not found"
+    },
+    "work": {
+      "analyzing": "Analysis",
+      "exploring": "Exploration",
+      "retrieving": "Retrieval",
+      "grepping": "Search",
+      "reading": "Reading",
+      "indexing": "Indexing",
+      "storing": "Storage",
+      "listing_files": "File Listing",
+      "searching_code": "Code Search"
+    }
+  },
   "policy": {
     "signInPlaceholder": "Please sign in to start chatting...",
     "signInMessage": "Please sign in from the navigation bar to continue",

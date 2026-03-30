@@ -42,7 +42,6 @@ interface ParsedDesignResponse {
   environmentReasoning?: string;
   errorMessage?: string;
   errorType?: string;
-  suggestedAction?: string;
 }
 
 function parseDetectResponse(raw: string): ParsedDesignResponse {
@@ -81,7 +80,6 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
         jobModeReasoning: "",
         errorMessage: parsed.errorMessage || "문서가 존재하지 않습니다",
         errorType: parsed.errorType || "missing_documents",
-        suggestedAction: parsed.suggestedAction || "먼저 문서를 생성해주세요",
       };
     }
     
@@ -295,7 +293,6 @@ async function resolveUIDesignSource(
         designError: {
           type: 'figma_mcp_unavailable',
           message: 'Figma Desktop이 실행되지 않았습니다.',
-          suggestedAction: 'Figma Desktop을 실행한 후 다시 시도하세요.',
         },
       };
     }
@@ -312,7 +309,6 @@ async function resolveUIDesignSource(
           message: !userId
             ? 'Ant Desktop 앱 연결 확인에 필요한 컨텍스트가 없습니다.'
             : 'Redis 연결이 없어 Ant Desktop 상태를 확인할 수 없습니다.',
-          suggestedAction: 'Ant Desktop 앱을 설치하고 연결한 후 다시 시도하세요.',
         },
       };
     }
@@ -328,7 +324,6 @@ async function resolveUIDesignSource(
           designError: {
             type: 'figma_bridge_unavailable',
             message: 'Ant Desktop 앱이 연결되지 않았거나 Figma Desktop이 응답하지 않습니다.',
-            suggestedAction: 'Ant Desktop 앱과 Figma Desktop을 실행한 후 다시 시도하세요.',
           },
         };
       }
@@ -338,7 +333,6 @@ async function resolveUIDesignSource(
         designError: {
           type: 'figma_bridge_unavailable',
           message: 'Ant Desktop 앱 연결 상태 확인에 실패했습니다.',
-          suggestedAction: 'Ant Desktop 앱을 설치하고 연결한 후 다시 시도하세요.',
         },
       };
     }
@@ -633,7 +627,7 @@ export async function detectEnvironment(
       console.log(`\n❌ Error: ${parsed.errorType}`);
       console.log(`   Message: ${parsed.errorMessage}`);
       
-      const errorText = `❌ **${parsed.errorMessage}**\n\n${parsed.suggestedAction}`;
+      const errorText = `❌ **${parsed.errorMessage}**`;
       await chatAPI.sendLLMEvent({ type: 'text', text: errorText });
       await chatAPI.finalizeMessage();
       
@@ -642,7 +636,6 @@ export async function detectEnvironment(
         designError: {
           type: parsed.errorType || 'unknown_error',
           message: parsed.errorMessage || 'An error occurred',
-          suggestedAction: parsed.suggestedAction,
         },
         _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
       };
@@ -763,7 +756,7 @@ export async function detectEnvironment(
       if (figmaDesignError) {
         console.log(`\n❌ Figma MCP unavailable: ${figmaDesignError.message}`);
         
-        const errorText = `❌ **${figmaDesignError.message}**\n\n${figmaDesignError.suggestedAction}`;
+        const errorText = `❌ **${figmaDesignError.message}**`;
         await chatAPI.sendLLMEvent({ type: 'text', text: errorText });
         await chatAPI.finalizeMessage();
         
