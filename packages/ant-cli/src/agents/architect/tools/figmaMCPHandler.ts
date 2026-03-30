@@ -25,16 +25,31 @@ export interface FigmaMCPCallOpts {
   taskId?: string;
 }
 
+export interface FigmaMCPImageData {
+  base64: string;
+  mimeType: string;
+}
+
 export interface FigmaMCPImageResult {
   __type: 'figma_image';
   base64: string;
   mimeType: string;
 }
 
-export type FigmaMCPResult = string | FigmaMCPImageResult;
+export interface FigmaMCPCompositeResult {
+  __type: 'figma_composite';
+  text: string;
+  image: FigmaMCPImageData;
+}
+
+export type FigmaMCPResult = string | FigmaMCPImageResult | FigmaMCPCompositeResult;
 
 export function isFigmaImageResult(r: FigmaMCPResult): r is FigmaMCPImageResult {
   return typeof r === 'object' && r !== null && (r as any).__type === 'figma_image';
+}
+
+export function isFigmaCompositeResult(r: FigmaMCPResult): r is FigmaMCPCompositeResult {
+  return typeof r === 'object' && r !== null && (r as any).__type === 'figma_composite';
 }
 
 interface FigmaMCPLogEntry {
@@ -167,6 +182,27 @@ export async function saveFigmaMCPDebugLog(featurePath: string, jobId: string): 
 }
 
 /**
+ * Save a Figma screenshot image to disk and return its feature-relative path.
+ * Used by both design and code job tool nodes to enable chat UI preview.
+ */
+export async function saveFigmaScreenshot(
+  featurePath: string,
+  nodeId: string,
+  base64: string,
+  mimeType: string,
+): Promise<string> {
+  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('jpeg') ? 'jpg' : 'png';
+  const safeNodeId = nodeId.replace(/:/g, '-');
+  const relativePath = `sessions/architect/debug/figma/screenshots/${safeNodeId}.${ext}`;
+  const fullPath = path.join(featurePath, relativePath);
+
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, Buffer.from(base64, 'base64'));
+
+  return relativePath;
+}
+
+/**
  * Reset module-level state. Call if you need a clean slate within the same process.
  * Normally not needed — each job runs in a separate child process.
  */
@@ -213,24 +249,32 @@ async function executeFigmaMCPCall(
     throw new Error(`Figma MCP error (${toolName}): ${errText}`);
   }
 
-  // Image content: only for screenshot tool (other tools return text as primary content;
-  // e.g. get_design_context includes a supplementary screenshot alongside critical code/metadata text)
-  if (toolName === 'figma_get_screenshot') {
-    const imageContent = extractMCPImageContent(rawContent);
-    if (imageContent) {
-      const kb = Math.round(imageContent.base64.length / 1024);
-      console.log(`🖼️  [FigmaMCP] Image response: ${toolName} (${kb}KB ${imageContent.mimeType})`);
-      return { __type: 'figma_image', base64: imageContent.base64, mimeType: imageContent.mimeType };
-    }
-  }
-
-  // Text content fallback
-  const result = extracted
+  const imageContent = extractMCPImageContent(rawContent);
+  const textContent = extracted
     ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent, null, 2));
 
-  if (isFigmaMCPSoftError(result) || isLikelyMCPErrorResponse(result)) {
-    throw new Error(`Figma Desktop is not accessible: ${result}. Open a design file in Figma Desktop and retry.`);
+  if (isFigmaMCPSoftError(textContent) || isLikelyMCPErrorResponse(textContent)) {
+    throw new Error(`Figma Desktop is not accessible: ${textContent}. Open a design file in Figma Desktop and retry.`);
   }
 
-  return result;
+  // screenshot tool: image is the primary (only) content
+  if (toolName === 'figma_get_screenshot' && imageContent) {
+    const kb = Math.round(imageContent.base64.length / 1024);
+    console.log(`🖼️  [FigmaMCP] Image response: ${toolName} (${kb}KB ${imageContent.mimeType})`);
+    return { __type: 'figma_image', base64: imageContent.base64, mimeType: imageContent.mimeType };
+  }
+
+  // design_context: text is primary, image is supplementary — return both
+  if (toolName === 'figma_get_design_context' && imageContent) {
+    const kb = Math.round(imageContent.base64.length / 1024);
+    console.log(`🖼️  [FigmaMCP] Composite response: ${toolName} (text ${textContent.length} chars + image ${kb}KB)`);
+    return {
+      __type: 'figma_composite',
+      text: textContent,
+      image: { base64: imageContent.base64, mimeType: imageContent.mimeType },
+    };
+  }
+
+  // metadata, variable_defs, etc.: text only
+  return textContent;
 }

@@ -9,7 +9,10 @@
 import { useState } from 'react';
 import { Loader2, Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
+import { useStore } from '@/domain/store';
 import { TruncatableText } from '@/presentation/components/common/TruncatableText';
+import { useImagePreview } from './useImagePreview';
+import { ImageLightbox } from './ImageLightbox';
 
 interface WorkingCardProps {
   content: MessageContent;
@@ -194,8 +197,13 @@ function getVariantConfig(variant: string, isProgress: boolean) {
 
 export function WorkingCard({ content, variant }: WorkingCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const isProgress = isProgressState(variant);
   const { Icon, iconClass, containerClass, iconColorClass, textClass, detailClass } = getVariantConfig(variant, isProgress);
+
+  const selectFile = useStore(state => state.selectFile);
+  const isScreenshot = !isProgress && variant === 'figma_called' && !!content.metadata?.imagePath;
+  const previewUrl = useImagePreview(isScreenshot ? content.metadata!.imagePath : undefined);
   
   // Extract data from metadata (for complete states)
   const filesList = content.metadata?.filesList || [];
@@ -253,15 +261,25 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
     );
   }
 
+  // downloaded asset → click opens file in editor (image preview already built-in)
+  const isDownloadedAsset = variant === 'downloaded' && !!content.metadata?.imagePath;
+  const handleCardClick = () => {
+    if (isDownloadedAsset) {
+      selectFile(content.metadata!.imagePath!);
+    } else if (hasExpandable) {
+      setIsExpanded(!isExpanded);
+    }
+  };
+
   // Complete state: expandable card with results
   return (
     <div className="border border-gray-200/50 dark:border-gray-700/50 rounded-lg overflow-hidden bg-transparent">
       <button 
         className={`w-full flex items-center gap-2 px-3 py-2 transition-colors 
                     ${containerClass}
-                    ${hasExpandable ? 'cursor-pointer' : 'cursor-default'}`}
-        onClick={() => hasExpandable && setIsExpanded(!isExpanded)}
-        disabled={!hasExpandable}
+                    ${hasExpandable || isDownloadedAsset ? 'cursor-pointer' : 'cursor-default'}`}
+        onClick={handleCardClick}
+        disabled={!hasExpandable && !isDownloadedAsset}
       >
         <Icon className={`w-4 h-4 flex-shrink-0 ${iconColorClass}`} />
         <TruncatableText
@@ -279,6 +297,23 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
           </div>
         )}
       </button>
+
+      {/* Screenshot preview block (figma_called with saved image) */}
+      {previewUrl && (
+        <div className="border-t border-gray-200/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/20 flex justify-center p-2">
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="rounded-md overflow-hidden border border-gray-200/60 dark:border-gray-600/60 hover:border-gray-400 dark:hover:border-gray-400 transition-colors cursor-zoom-in"
+          >
+            <img
+              src={previewUrl}
+              alt={content.metadata?.toolName || 'screenshot'}
+              className="max-h-40 w-auto object-contain bg-white/50 dark:bg-gray-800/50"
+            />
+          </button>
+        </div>
+      )}
       
       {hasExpandable && isExpanded && (
         <div className="border-t border-gray-200/50 dark:border-gray-700/50 max-h-60 overflow-y-auto scrollbar-thin bg-gray-50/20 dark:bg-gray-900/10">
@@ -323,6 +358,15 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Lightbox modal */}
+      {lightboxOpen && previewUrl && (
+        <ImageLightbox
+          src={previewUrl}
+          alt={content.metadata?.toolName || content.metadata?.filePath || 'preview'}
+          onClose={() => setLightboxOpen(false)}
+        />
       )}
     </div>
   );
