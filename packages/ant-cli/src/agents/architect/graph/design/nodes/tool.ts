@@ -4,18 +4,14 @@
  * NOTE: Code job의 tool 노드와 거의 동일하지만 DesignGraphState 사용
  */
 
-import * as fs from 'fs/promises';
-import * as path from 'path';
 import { DesignGraphState } from '../state';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 import { executeSearchWeb } from '../../../tools/searchWeb';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
-import { getSessionDebugDir } from '../../../../../core/utils/sessionPaths';
-import { extractMCPTextContent, isFigmaMCPSoftError, createMCPAdapter } from '../../../../../periphery/adapters/figma/MCPTransport';
-import type { FigmaMCPAdapter } from '../../../../../periphery/adapters/figma/FigmaMCPAdapter';
-import { FigmaRateLimitError, isRateLimitResponse } from '../../../../../periphery/adapters/figma/errors';
+import { FigmaRateLimitError } from '../../../../../periphery/adapters/figma/errors';
+import { callFigmaMCPTool } from '../../../tools/figmaMCPHandler';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -104,7 +100,11 @@ async function executeDesignTool(
         const figmaStatusMeta = { toolName: name, nodeId: figmaNodeId, nodeName: figmaNodeName };
         const figmaMergeIdx = await figmaChatAPI.showChatStatus('figma_calling', figmaStatusMeta);
         try {
-          result = await handleFigmaMCPTool(state, name, args as { fileKey: string; nodeId: string });
+          const figmaArgs = args as { fileKey: string; nodeId: string };
+          result = await callFigmaMCPTool(
+            { userId: state.context?.userId, redis: state.deps?.redis, taskId: (state.currentTask as any)?.id },
+            name, figmaArgs.fileKey, figmaArgs.nodeId,
+          );
           await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, _mergeIndex: figmaMergeIdx });
 
           if ((figmaNodeId === '0:1' || figmaNodeId === '0-1') && result && name !== 'figma_get_screenshot') {
@@ -1020,65 +1020,8 @@ async function handleHallucinatedFileWrite(
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// FIGMA MCP TOOL HANDLER
+// FIGMA MCP TOOL HANDLER (shared logic in tools/figmaMCPHandler.ts)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const FIGMA_TOOL_METHOD_MAP: Record<string, keyof FigmaMCPAdapter> = {
-  figma_get_metadata: 'getMetadata',
-  figma_get_design_context: 'getDesignContext',
-  figma_get_screenshot: 'getScreenshot',
-  figma_get_variable_defs: 'getVariableDefs',
-};
-
-export function getMCPAdapter(state: DesignGraphState): FigmaMCPAdapter {
-  return createMCPAdapter({ userId: state.context?.userId, redis: state.deps?.redis });
-}
-
-const _figmaResponseCache = new Map<string, string>();
-const _figmaInflightRequests = new Map<string, Promise<string>>();
-let _figmaRateLimited = false;
-
-interface FigmaMCPLogEntry {
-  ts: string;
-  tool: string;
-  cacheKey: string;
-  result: 'cache_hit' | 'inflight_dedup' | 'mcp_call' | 'rate_limited' | 'error';
-  elapsedMs?: number;
-  taskId?: string;
-}
-
-const _figmaMCPLog: FigmaMCPLogEntry[] = [];
-let _figmaMCPLogSaved = false;
-
-function logMCPEvent(entry: FigmaMCPLogEntry): void {
-  _figmaMCPLog.push(entry);
-}
-
-export async function saveFigmaMCPDebugLog(state: DesignGraphState): Promise<void> {
-  if (_figmaMCPLogSaved || _figmaMCPLog.length === 0) return;
-  const featurePath = state.context?.featurePath;
-  const jobId = state.jobId;
-  if (!featurePath || !jobId) return;
-
-  _figmaMCPLogSaved = true;
-  const cacheHits = _figmaMCPLog.filter(e => e.result === 'cache_hit').length;
-  const dedupHits = _figmaMCPLog.filter(e => e.result === 'inflight_dedup').length;
-  const mcpCalls = _figmaMCPLog.filter(e => e.result === 'mcp_call').length;
-  const rateLimits = _figmaMCPLog.filter(e => e.result === 'rate_limited').length;
-  const errors = _figmaMCPLog.filter(e => e.result === 'error').length;
-
-  const data = {
-    jobId,
-    summary: { totalEvents: _figmaMCPLog.length, cacheHits, dedupHits, mcpCalls, rateLimits, errors },
-    calls: _figmaMCPLog,
-  };
-
-  try {
-    const dir = getSessionDebugDir(featurePath, 'architect', 'figma');
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(dir, `mcp-${jobId}.json`), JSON.stringify(data, null, 2));
-  } catch { /* non-blocking */ }
-}
 
 function buildRootCallGuidance(state: DesignGraphState, toolName: string): string {
   const nodeSummary = state.figmaExplorationResult?.nodeSummary;
@@ -1097,100 +1040,6 @@ function buildRootCallGuidance(state: DesignGraphState, toolName: string): strin
   });
 }
 
-async function handleFigmaMCPTool(
-  state: DesignGraphState,
-  toolName: string,
-  args: { fileKey: string; nodeId: string }
-): Promise<string> {
-  const { fileKey, nodeId } = args;
-  if (!fileKey || !nodeId) {
-    throw new Error(`${toolName} requires fileKey and nodeId`);
-  }
-
-  const taskId = (state.currentTask as any)?.id as string | undefined;
-
-  if (_figmaRateLimited) {
-    logMCPEvent({ ts: new Date().toISOString(), tool: toolName, cacheKey: `${toolName}:${fileKey}:${nodeId}`, result: 'rate_limited', taskId });
-    throw new FigmaRateLimitError();
-  }
-
-  const cacheKey = `${toolName}:${fileKey}:${nodeId}`;
-  const cached = _figmaResponseCache.get(cacheKey);
-  if (cached) {
-    console.log(`🔧 [FigmaMCP] Cache hit: ${toolName} (${fileKey}:${nodeId})`);
-    logMCPEvent({ ts: new Date().toISOString(), tool: toolName, cacheKey, result: 'cache_hit', taskId });
-    return cached;
-  }
-
-  const inflight = _figmaInflightRequests.get(cacheKey);
-  if (inflight) {
-    console.log(`🔧 [FigmaMCP] In-flight dedup: ${toolName} (${fileKey}:${nodeId})`);
-    logMCPEvent({ ts: new Date().toISOString(), tool: toolName, cacheKey, result: 'inflight_dedup', taskId });
-    try { return await inflight; }
-    catch { /* inflight request failed, fall through to make own request */ }
-  }
-
-  if (_figmaRateLimited) {
-    logMCPEvent({ ts: new Date().toISOString(), tool: toolName, cacheKey, result: 'rate_limited', taskId });
-    throw new FigmaRateLimitError();
-  }
-
-  const callStart = Date.now();
-  const promise = executeFigmaMCPCall(state, toolName, fileKey, nodeId);
-  _figmaInflightRequests.set(cacheKey, promise);
-  try {
-    const result = await promise;
-    _figmaResponseCache.set(cacheKey, result);
-    logMCPEvent({ ts: new Date().toISOString(), tool: toolName, cacheKey, result: 'mcp_call', elapsedMs: Date.now() - callStart, taskId });
-    return result;
-  } catch (err) {
-    logMCPEvent({ ts: new Date().toISOString(), tool: toolName, cacheKey, result: err instanceof FigmaRateLimitError ? 'rate_limited' : 'error', elapsedMs: Date.now() - callStart, taskId });
-    throw err;
-  } finally {
-    _figmaInflightRequests.delete(cacheKey);
-  }
-}
-
-async function executeFigmaMCPCall(
-  state: DesignGraphState,
-  toolName: string,
-  fileKey: string,
-  nodeId: string,
-): Promise<string> {
-  const adapter = getMCPAdapter(state);
-
-  const method = FIGMA_TOOL_METHOD_MAP[toolName];
-  if (!method) {
-    throw new Error(`No MCP method mapping for tool: ${toolName}`);
-  }
-
-  const mcpResult = await (adapter[method] as Function)(fileKey, nodeId);
-
-  const rawContent = mcpResult.content;
-  const extracted = extractMCPTextContent(rawContent);
-  const textForCheck = extracted
-    ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
-
-  // Rate limit: Figma MCP Bridge returns isError:false for rate limits,
-  // so check extracted content regardless of the isError flag.
-  if (isRateLimitResponse(textForCheck)) {
-    _figmaRateLimited = true;
-    throw new FigmaRateLimitError(`Figma MCP rate limit (${toolName}): ${textForCheck}`);
-  }
-
-  if (mcpResult.isError) {
-    throw new Error(`Figma MCP error (${toolName}): ${textForCheck}`);
-  }
-
-  const result = extracted
-    ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent, null, 2));
-
-  if (isFigmaMCPSoftError(result)) {
-    throw new Error(`Figma Desktop is not accessible: ${result}. Open a design file in Figma Desktop and retry.`);
-  }
-
-  return result;
-}
 
 /**
  * Handle download_asset tool

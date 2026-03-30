@@ -420,6 +420,11 @@ function buildWorkerSubgraph() {
       isResume: null as any,
       _batchSplitRequeued: null as any,
       _awaitingFinalVerify: null as any,
+
+      // Figma MCP state
+      figmaAvailable: null as any,
+      figmaFileKey: null as any,
+      figmaStartNodeId: null as any,
     } as any,
   } as any);
 

@@ -1,50 +1,54 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Monitor, Box, Shield, Activity } from 'lucide-react';
+import { Download, Monitor, Box, Shield, Activity, Clock } from 'lucide-react';
 
-type OsPlatform = 'mac-arm' | 'mac-intel' | 'windows' | 'linux' | 'unknown';
+type DetectedPlatform = 'mac-arm' | 'mac-intel' | 'windows' | 'linux' | 'unknown';
+
+interface DownloadItem {
+  id: string;
+  label: string;
+  file: string;
+  desc: string;
+  platform: 'mac' | 'windows' | 'linux';
+  comingSoon?: boolean;
+}
 
 const DOWNLOAD_BASE = '/downloads/desktop/latest';
 
-const DOWNLOADS: Record<OsPlatform, { label: string; file: string; desc: string }[]> = {
-  'mac-arm': [
-    { label: 'macOS (Apple Silicon)', file: `${DOWNLOAD_BASE}/macos-arm64.dmg`, desc: 'M1/M2/M3/M4' },
-    { label: 'macOS (Intel)', file: `${DOWNLOAD_BASE}/macos-x64.dmg`, desc: 'Intel Mac' },
-  ],
-  'mac-intel': [
-    { label: 'macOS (Intel)', file: `${DOWNLOAD_BASE}/macos-x64.dmg`, desc: 'Intel Mac' },
-    { label: 'macOS (Apple Silicon)', file: `${DOWNLOAD_BASE}/macos-arm64.dmg`, desc: 'M1/M2/M3/M4' },
-  ],
-  'windows': [
-    { label: 'Windows', file: `${DOWNLOAD_BASE}/windows-x64.exe`, desc: 'Windows 10+, 64-bit' },
-  ],
-  'linux': [
-    { label: 'Linux (Debian)', file: `${DOWNLOAD_BASE}/linux-x64.deb`, desc: '.deb 패키지' },
-    { label: 'Linux (AppImage)', file: `${DOWNLOAD_BASE}/linux-x64.AppImage`, desc: 'AppImage' },
-  ],
-  'unknown': [],
-};
+const ALL_DOWNLOADS: DownloadItem[] = [
+  { id: 'mac-arm', label: 'macOS (Apple Silicon)', file: `${DOWNLOAD_BASE}/macos-arm64.dmg`, desc: 'M1/M2/M3/M4', platform: 'mac' },
+  { id: 'mac-intel', label: 'macOS (Intel)', file: `${DOWNLOAD_BASE}/macos-x64.dmg`, desc: 'Intel Mac', platform: 'mac' },
+  { id: 'windows', label: 'Windows', file: `${DOWNLOAD_BASE}/windows-x64.exe`, desc: 'Windows 10+, 64-bit', platform: 'windows', comingSoon: true },
+  { id: 'linux-deb', label: 'Linux (Debian)', file: `${DOWNLOAD_BASE}/linux-x64.deb`, desc: '.deb', platform: 'linux', comingSoon: true },
+  { id: 'linux-appimage', label: 'Linux (AppImage)', file: `${DOWNLOAD_BASE}/linux-x64.AppImage`, desc: 'AppImage', platform: 'linux', comingSoon: true },
+];
 
-function detectOS(): OsPlatform {
+function detectOS(): DetectedPlatform {
   if (typeof navigator === 'undefined') return 'unknown';
   const ua = navigator.userAgent.toLowerCase();
   if (ua.includes('mac')) {
-    // Apple Silicon detection heuristic
     if (navigator.platform === 'MacIntel' && 'maxTouchPoints' in navigator && navigator.maxTouchPoints > 0) {
       return 'mac-arm';
     }
-    return 'mac-arm'; // Default to ARM for newer Macs
+    return 'mac-arm';
   }
   if (ua.includes('win')) return 'windows';
   if (ua.includes('linux')) return 'linux';
   return 'unknown';
 }
 
+function getPlatformFromDetected(os: DetectedPlatform): 'mac' | 'windows' | 'linux' {
+  if (os === 'mac-arm' || os === 'mac-intel') return 'mac';
+  if (os === 'windows') return 'windows';
+  if (os === 'linux') return 'linux';
+  return 'mac';
+}
+
 export default function DownloadPage() {
   const { t } = useTranslation('site');
-  const [detectedOS, setDetectedOS] = useState<OsPlatform>('unknown');
+  const [detectedOS, setDetectedOS] = useState<DetectedPlatform>('unknown');
 
   useEffect(() => {
     setDetectedOS(detectOS());
@@ -54,10 +58,19 @@ export default function DownloadPage() {
   const winSteps = t('download.winSteps', { returnObjects: true }) as string[];
   const linuxSteps = t('download.linuxSteps', { returnObjects: true }) as string[];
 
-  const primaryDownloads = DOWNLOADS[detectedOS].length > 0 ? DOWNLOADS[detectedOS] : DOWNLOADS['mac-arm'];
-  const allPlatforms = Object.entries(DOWNLOADS)
-    .filter(([key]) => key !== 'unknown' && key !== detectedOS)
-    .flatMap(([, items]) => items);
+  const platform = getPlatformFromDetected(detectedOS);
+  const isArm = detectedOS === 'mac-arm' || detectedOS === 'unknown';
+
+  const primaryDownloads = useMemo(() => {
+    const items = ALL_DOWNLOADS.filter((d) => d.platform === platform);
+    if (platform === 'mac' && !isArm) return items.reverse();
+    return items;
+  }, [platform, isArm]);
+
+  const secondaryDownloads = useMemo(
+    () => ALL_DOWNLOADS.filter((d) => d.platform !== platform),
+    [platform],
+  );
 
   return (
     <>
@@ -83,51 +96,86 @@ export default function DownloadPage() {
       <section className="py-16 sm:py-20">
         <div className="max-w-xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="space-y-3">
-            {primaryDownloads.map((item, i) => (
-              <a
-                key={item.file}
-                href={item.file}
-                className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
-                  i === 0
-                    ? 'bg-gradient-to-r from-teal-950/30 to-cyan-950/30 border-teal-800/30 hover:border-teal-700/50'
-                    : 'bg-white/[0.03] border-white/5 hover:border-white/10'
-                }`}
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${i === 0 ? 'bg-teal-600' : 'bg-white/5'}`}>
-                    <Download className="w-5 h-5 text-white" />
+            {primaryDownloads.map((item, i) =>
+              item.comingSoon ? (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-5 rounded-2xl border bg-white/[0.02] border-white/5 opacity-60 cursor-default"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-white/5">
+                      <Clock className="w-5 h-5 text-gray-500" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-400">{item.label}</div>
+                      <div className="text-xs text-gray-600">{item.desc}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-semibold text-white">{item.label}</div>
-                    <div className="text-xs text-gray-500">{item.desc}</div>
-                  </div>
+                  <span className="text-xs font-medium text-amber-400/80 border border-amber-800/30 bg-amber-950/20 px-2 py-0.5 rounded-full">
+                    {t('download.comingSoon')}
+                  </span>
                 </div>
-                <span className={`text-xs font-medium ${i === 0 ? 'text-teal-300' : 'text-gray-500'}`}>
-                  {t('download.downloadBtn')}
-                </span>
-              </a>
-            ))}
+              ) : (
+                <a
+                  key={item.id}
+                  href={item.file}
+                  className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
+                    i === 0
+                      ? 'bg-gradient-to-r from-teal-950/30 to-cyan-950/30 border-teal-800/30 hover:border-teal-700/50'
+                      : 'bg-white/[0.03] border-white/5 hover:border-white/10'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${i === 0 ? 'bg-teal-600' : 'bg-white/5'}`}>
+                      <Download className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-white">{item.label}</div>
+                      <div className="text-xs text-gray-500">{item.desc}</div>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-medium ${i === 0 ? 'text-teal-300' : 'text-gray-500'}`}>
+                    {t('download.downloadBtn')}
+                  </span>
+                </a>
+              ),
+            )}
           </div>
 
-          {allPlatforms.length > 0 && (
+          {secondaryDownloads.length > 0 && (
             <details className="mt-6">
               <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-300 transition-colors text-center">
                 {t('download.otherOS')}
               </summary>
               <div className="mt-3 space-y-2">
-                {allPlatforms.map((item) => (
-                  <a
-                    key={item.file}
-                    href={item.file}
-                    className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all"
-                  >
-                    <div>
-                      <div className="text-sm text-gray-300">{item.label}</div>
-                      <div className="text-xs text-gray-500">{item.desc}</div>
+                {secondaryDownloads.map((item) =>
+                  item.comingSoon ? (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 opacity-60 cursor-default"
+                    >
+                      <div>
+                        <div className="text-sm text-gray-500">{item.label}</div>
+                        <div className="text-xs text-gray-600">{item.desc}</div>
+                      </div>
+                      <span className="text-xs font-medium text-amber-400/80 border border-amber-800/30 bg-amber-950/20 px-2 py-0.5 rounded-full">
+                        {t('download.comingSoon')}
+                      </span>
                     </div>
-                    <Download className="w-4 h-4 text-gray-500" />
-                  </a>
-                ))}
+                  ) : (
+                    <a
+                      key={item.id}
+                      href={item.file}
+                      className="flex items-center justify-between p-4 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all"
+                    >
+                      <div>
+                        <div className="text-sm text-gray-300">{item.label}</div>
+                        <div className="text-xs text-gray-500">{item.desc}</div>
+                      </div>
+                      <Download className="w-4 h-4 text-gray-500" />
+                    </a>
+                  ),
+                )}
               </div>
             </details>
           )}

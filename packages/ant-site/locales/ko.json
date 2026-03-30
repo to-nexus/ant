@@ -15,7 +15,7 @@
     "pages": "페이지",
     "links": "링크",
     "terms": "이용약관",
-    "privacy": "개인정보처리방침"
+    "privacy": "개인정보 처리방침"
   },
   "home": {
     "badge": "베타 서비스 운영 중 — 모든 기능 무료",
@@ -118,8 +118,8 @@
   "legal": {
     "termsTitle": "이용약관",
     "termsBody": "이용약관은 현재 준비 중입니다. 정식 출시 전에 게시될 예정입니다.",
-    "privacyTitle": "개인정보처리방침",
-    "privacyBody": "개인정보처리방침은 현재 준비 중입니다. 정식 출시 전에 게시될 예정입니다."
+    "privacyTitle": "개인정보 처리방침",
+    "privacyBody": "개인정보 처리방침은 현재 준비 중입니다. 정식 출시 전에 게시될 예정입니다."
   },
   "pricing": {
     "heroTitle1": "지금은 베타,",
@@ -168,6 +168,7 @@
     "heroTitle2": "다운로드",
     "heroDesc": "Figma 디자인 연동과 로컬 개발 환경 연결을 위한 데스크탑 컴패니언 앱입니다.",
     "downloadBtn": "다운로드",
+    "comingSoon": "지원 예정",
     "otherOS": "다른 OS 보기",
     "whatTitle": "Ant Desktop이 하는 일",
     "whatDesc": "Ant Desktop은 여러분의 로컬 환경과 ANT 클라우드를 연결하는 브리지입니다.",
