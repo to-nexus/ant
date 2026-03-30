@@ -4,7 +4,7 @@ import * as path from 'path';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { getSessionFilePathByJob, getAgentForJob, getSessionDebugDir } from '../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, getAgentForJob, getSessionDebugDir, DEBUG_SUBDIRS } from '../../../../core/utils/sessionPaths';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 
@@ -266,7 +266,7 @@ export function createFeaturesRoutes(deps: {
       if (cleanedJobIds.length > 0) {
         try {
           const agent = getAgentForJob(jobType);
-          const debugSubdirs = ['prompts', 'plans', 'logs', 'tokens'];
+          const debugSubdirs = DEBUG_SUBDIRS[agent] ?? [];
           for (const subdir of debugSubdirs) {
             const debugDir = getSessionDebugDir(featurePath, agent, subdir);
             let entries: fs.Dirent[];
