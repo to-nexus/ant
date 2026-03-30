@@ -578,6 +578,7 @@ function TriageChoiceVariant({ content, messageId }: { content: MessageContent; 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function CancelledChoiceVariant({ content, messageId }: { content: MessageContent; messageId: string }) {
+  const { t } = useTranslation('chat');
   const isRunning = useStore(state => state.isRunning);
   const kanbanData = useStore(state => state.kanban);
   const setDismissedInterruptTimestamp = useStore(state => state.setDismissedInterruptTimestamp);
@@ -587,21 +588,32 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
   const state = useChoiceCardState({
     content, messageId,
     contentType: 'cancelled',
-    // ✅ Multi-pod safe: filter by jobId to target the exact cancelled message
     metadataFilter: jobId ? { jobId } : undefined,
   });
 
   const originalType = content.metadata?.originalType;
   const reason = content.metadata?.reason;
+  const designErrorType = content.metadata?.designErrorType;
 
   const workLabel = (() => {
-    if (!originalType) return 'Task';
-    const labels: Record<string, string> = {
-      analyzing: 'Analysis', exploring: 'Exploration', retrieving: 'Retrieval',
-      grepping: 'Search', reading: 'Reading', indexing: 'Indexing',
-      storing: 'Storage', listing_files: 'File Listing', searching_code: 'Code Search',
-    };
-    return labels[originalType] || 'Task';
+    if (!originalType) return null;
+    const translated = t(`cancelled.work.${originalType}`, { defaultValue: '' });
+    return translated || null;
+  })();
+
+  const title = (() => {
+    if (designErrorType) {
+      const errTitle = t(`cancelled.designErrors.${designErrorType}`, { defaultValue: '' });
+      if (errTitle) return errTitle;
+    }
+    if (reason) {
+      const reasonTitle = t(`cancelled.reasons.${reason}`, { defaultValue: '' });
+      if (reasonTitle) return reasonTitle;
+    }
+    if (workLabel) {
+      return t('cancelled.workCancelled', { work: workLabel });
+    }
+    return t('cancelled.taskCancelled');
   })();
 
   const canResume = !isRunning && jobId && state.selectedProject && state.selectedFeature && !!reason;
@@ -611,26 +623,19 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
 
     state.setIsLoading(true);
     state.setLocalSelectedChoice('resume');
-    state.setLocalResolvedLabel('Resumed');
+    state.setLocalResolvedLabel(t('cancelled.resumed'));
 
     try {
-      // ✅ SSE protection: dismiss stale interruption to prevent auto-reconnect
-      // from resetting isRunning via updateKanban (same-jobType case)
       if (kanbanData?.interruption?.timestamp) {
         setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
       }
       useStore.getState().setRunning(true, jobId);
 
-      // ✅ Direct resumeJob with card's jobId (bypasses runJob's kanbanData dependency)
       const result = await resumeJob(jobId, state.selectedProject, state.selectedFeature, true);
 
-      // ✅ Persist choice card state BEFORE jobType switch (SSE reconnect reads persisted state)
-      await state.persistToBackend('resume', 'Resumed');
-      state.persistChoice('resume', 'Resumed');
+      await state.persistToBackend('resume', t('cancelled.resumed'));
+      state.persistChoice('resume', t('cancelled.resumed'));
 
-      // ✅ Switch jobType if backend resumed a different type than current UI
-      // setSelectedJobType triggers reconnectSSE('kanban') — a manual reconnect where
-      // sseReconnectGrace is NOT set. jobStartPending protects isRunning from stale kanban.
       if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
         useStore.setState({ jobStartPending: true });
         useStore.getState().setSelectedJobType(result.jobType);
@@ -651,18 +656,16 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
     if (state.isSelected || !state.selectedProject || !state.selectedFeature || !jobId) return;
 
     state.setLocalSelectedChoice('dismiss');
-    state.setLocalResolvedLabel('Dismissed');
+    state.setLocalResolvedLabel(t('cancelled.dismissed'));
 
     if (kanbanData?.interruption?.timestamp) {
       setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
     }
 
     try {
-      // Clear server-side 'paused' state so new jobs can start
       await dismissInterruptedJob(state.selectedProject, state.selectedFeature, jobId);
-      // ✅ Persist to backend via unified endpoint
-      await state.persistToBackend('dismiss', 'Dismissed');
-      state.persistChoice('dismiss', 'Dismissed');
+      await state.persistToBackend('dismiss', t('cancelled.dismissed'));
+      state.persistChoice('dismiss', t('cancelled.dismissed'));
     } catch (error) {
       console.error('[ChoiceCard:Cancelled] Failed:', error);
       state.setLocalSelectedChoice(null);
@@ -671,15 +674,15 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
   };
 
   const resolvedIcon: ResolvedIcon =
-    state.resolvedLabel === 'Dismissed' ? 'dismiss' :
-    state.resolvedLabel === 'Resumed' ? 'resume' : null;
+    state.selectedChoice === 'dismiss' ? 'dismiss' :
+    state.selectedChoice === 'resume' ? 'resume' : null;
 
   return (
     <ChoiceCardShell
       theme="orange"
       icon={<XCircle className="w-4 h-4" />}
-      title={originalType ? `${workLabel} cancelled` : 'Task cancelled'}
-      subtitle={content.content || 'The task was stopped'}
+      title={title}
+      subtitle={content.content || t('cancelled.defaultSubtitle')}
       isSelected={state.isSelected}
       resolvedLabel={state.resolvedLabel}
       resolvedIcon={resolvedIcon}
@@ -687,10 +690,10 @@ function CancelledChoiceVariant({ content, messageId }: { content: MessageConten
       {canResume && (
         <TwoButtonLayout
           theme="orange"
-          positiveLabel="Resume"
+          positiveLabel={t('cancelled.resume')}
           positiveIcon={<Play className="w-4 h-4" fill="currentColor" />}
-          positiveLoadingLabel="Resuming..."
-          negativeLabel="Dismiss"
+          positiveLoadingLabel={t('cancelled.resuming')}
+          negativeLabel={t('cancelled.dismiss')}
           isLoading={state.isLoading}
           disablePositive={isRunning}
           onPositive={handleResume}

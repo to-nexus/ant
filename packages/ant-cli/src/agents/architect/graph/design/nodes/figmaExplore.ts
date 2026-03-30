@@ -308,7 +308,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: [], summary: { errors } });
     return {
       figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-      designError: { type: 'figma_window_not_open', message: errMsg, suggestedAction: 'Figma Desktop이 실행 중인지 확인하세요.' },
+      designError: { type: 'figma_window_not_open', message: errMsg },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
     };
   }
@@ -368,7 +368,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
       await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
       return {
         figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-        designError: { type: 'figma_rate_limited', message: 'Figma API rate limit exceeded. Please retry later.', suggestedAction: 'Figma API rate limit에 도달했습니다. 잠시 후 다시 시도하세요.' },
+        designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${extractedPreview}` },
         _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
       };
     }
@@ -433,7 +433,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
         await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
         return {
           figmaExplorationResult: result,
-          designError: { type: 'figma_rate_limited', message: 'Figma API rate limit exceeded. Please retry later.', suggestedAction: 'Figma API rate limit에 도달했습니다. 잠시 후 다시 시도하세요.' },
+          designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${varTextForCheck}` },
           _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
         };
       }
@@ -539,7 +539,6 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
       designError: {
         type: 'figma_window_not_open' as const,
         message: errMsg,
-        suggestedAction: 'Figma Desktop에서 해당 디자인 파일을 활성 탭으로 열고 다시 시도하세요.',
       },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
     };

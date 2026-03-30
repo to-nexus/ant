@@ -78,6 +78,43 @@
     "skipped": "건너뜀",
     "allSkipped": "모든 질문 건너뜀"
   },
+  "cancelled": {
+    "taskCancelled": "작업이 중단되었습니다",
+    "workCancelled": "{{work}} 작업이 중단되었습니다",
+    "defaultSubtitle": "작업이 중지되었습니다",
+    "resume": "재개",
+    "resuming": "재개 중...",
+    "dismiss": "닫기",
+    "resumed": "재개됨",
+    "dismissed": "닫힘",
+    "reasons": {
+      "recursion_limit": "반복 횟수 한도 도달",
+      "user_stopped": "사용자가 중지함",
+      "api_error": "API 오류 발생",
+      "process_crash": "프로세스 비정상 종료",
+      "server_crash": "서버 비정상 종료",
+      "figma_rate_limited": "Figma API 요청 한도 초과",
+      "unknown": "알 수 없는 오류"
+    },
+    "designErrors": {
+      "figma_rate_limited": "Figma API 요청 한도 초과",
+      "figma_window_not_open": "Figma Desktop이 열려있지 않음",
+      "figma_mcp_unavailable": "Figma Desktop에 연결할 수 없음",
+      "figma_bridge_unavailable": "Ant Desktop 연결 실패",
+      "missing_documents": "필요한 문서가 없음"
+    },
+    "work": {
+      "analyzing": "분석",
+      "exploring": "탐색",
+      "retrieving": "검색",
+      "grepping": "코드 검색",
+      "reading": "읽기",
+      "indexing": "인덱싱",
+      "storing": "저장",
+      "listing_files": "파일 목록",
+      "searching_code": "코드 검색"
+    }
+  },
   "policy": {
     "signInPlaceholder": "로그인 후 채팅을 시작하세요...",
     "signInMessage": "네비게이션 바에서 로그인해주세요",

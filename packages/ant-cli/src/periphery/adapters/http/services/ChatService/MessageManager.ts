@@ -451,7 +451,8 @@ export class MessageManager {
     jobId: string,
     reason: string,
     message: string,
-    userContext?: UserContext
+    userContext?: UserContext,
+    interruptionMetadata?: Record<string, any>
   ): Promise<string> {
     // ✅ Use async version to ensure file/Redis is fully loaded
     const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
@@ -494,7 +495,8 @@ export class MessageManager {
         content: message,
         metadata: {
           jobId,
-          reason
+          reason,
+          ...(interruptionMetadata?.designErrorType && { designErrorType: interruptionMetadata.designErrorType }),
         }
       }],
       timestamp: new Date().toISOString(),

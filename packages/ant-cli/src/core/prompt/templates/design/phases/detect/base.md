@@ -255,7 +255,6 @@ Respond with ONLY JSON wrapped in `<detect>` tags. No markdown fences.
   "workType": "error",
   "workTypeReasoning": "1-2 sentences",
   "errorMessage": "human-readable error message",
-  "errorType": "missing_documents",
-  "suggestedAction": "what the user should do instead"
+  "errorType": "missing_documents"
 }
 </detect>

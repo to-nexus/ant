@@ -656,11 +656,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     
     // Bridge SSE handler (user-level: Ant Desktop connection status)
     sliceHandlerIds.push(sseManager.registerHandlerWithId('bridge', (data: any) => {
-      get().setBridgeStatus({
-        connected: data.connected,
-        detected: data.detected ?? data.connected,
-        figmaDesktopReachable: data.figmaDesktopReachable ?? false,
-      });
+      get().setBridgeStatus(data);
     }));
 
     // Transfer SSE handler
@@ -687,6 +683,16 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         set({ connectionStatus: status });
         console.log(`[Timing] SSE connectionStatus: ${currentStatus} -> ${status} @${Math.round(performance.now())}ms`);
       }
+
+      // Re-fetch bridge status on every SSE connect (initial + reconnect).
+      // Covers two cases:
+      //  1) Initial: bridge SSE events published before SSE connected are lost
+      //  2) Reconnect: status may have changed while SSE was down
+      if (status === 'connected') {
+        import('@/infrastructure/http/api/desktop').then(({ checkBridgeStatus }) => {
+          checkBridgeStatus().then((bs) => get().setBridgeStatus(bs)).catch(() => {});
+        }).catch(() => {});
+      }
     });
     
     // Register reconnect callback to protect isRunning from stale initial data
@@ -695,16 +701,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       console.log('[Store] SSE reconnected, enabling grace period');
       set({ sseReconnectGrace: true });
 
-      // Re-fetch bridge status and figma populated state on reconnect
-      import('@/infrastructure/http/api/desktop').then(({ checkBridgeStatus }) => {
-        checkBridgeStatus().then((status) => {
-          get().setBridgeStatus({
-            connected: status.connected,
-            detected: status.detected ?? status.connected,
-            figmaDesktopReachable: status.figmaDesktopReachable ?? false,
-          });
-        }).catch(() => {});
-      }).catch(() => {});
+      // Bridge status re-fetch is handled by statusCallback('connected') — no duplication here
       get().refreshFigmaPopulated?.();
 
       setTimeout(() => {
