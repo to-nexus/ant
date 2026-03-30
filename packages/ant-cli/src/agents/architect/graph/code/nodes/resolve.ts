@@ -121,6 +121,48 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
       }
     }
 
+    // ── Figma MCP re-detection on resume (runtime availability may have changed) ──
+    state.figmaAvailable = false;
+    state.figmaFileKey = undefined;
+    state.figmaStartNodeId = undefined;
+    try {
+      const featurePathResume = state.context.featurePath;
+      if (featurePathResume) {
+        const pathMod = await import('path');
+        const figmaJsonPath = pathMod.join(featurePathResume, 'inputs', 'figma.json');
+        const figmaRaw = await state.deps?.fileSystem?.readFile?.(figmaJsonPath);
+        if (figmaRaw) {
+          const { isFigmaDataPopulated, extractFigmaUrlParts } = await import('@ant/shared');
+          const figmaConfig = JSON.parse(figmaRaw);
+
+          if (isFigmaDataPopulated(figmaConfig)) {
+            const serverMode = process.env.ANT_SERVER_MODE || 'local';
+            let figmaUp = false;
+            if (serverMode === 'local') {
+              const { checkLocalMCPAvailability } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+              figmaUp = await checkLocalMCPAvailability();
+            } else {
+              const { createMCPTransport } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+              const transport = createMCPTransport({ serverMode: 'cloud', userId: state.context?.userId, redis: state.deps?.redis });
+              figmaUp = await transport.isAvailable();
+            }
+
+            if (figmaUp && figmaConfig.files?.[0]) {
+              const parts = extractFigmaUrlParts(figmaConfig.files[0]);
+              if (parts.fileKey) {
+                state.figmaAvailable = true;
+                state.figmaFileKey = parts.fileKey;
+                state.figmaStartNodeId = parts.nodeId;
+              }
+            }
+          }
+        }
+      }
+      console.log(`🎨 [Resolve/Resume] Figma MCP: ${state.figmaAvailable ? `available (fileKey=${state.figmaFileKey})` : 'unavailable'}`);
+    } catch {
+      console.log(`🎨 [Resolve/Resume] Figma MCP: detection failed, disabled`);
+    }
+
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Index runtime assets (text-only) for LLM task planning
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

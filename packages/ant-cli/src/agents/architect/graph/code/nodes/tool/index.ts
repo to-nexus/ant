@@ -153,27 +153,12 @@ async function executeToolByName(
       case 'figma_get_screenshot':
       case 'figma_get_variable_defs':
       case 'figma_get_metadata': {
-        const { createMCPAdapter, extractMCPTextContent, isFigmaMCPSoftError } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
-        const FIGMA_TOOL_METHOD_MAP: Record<string, string> = {
-          figma_get_metadata: 'getMetadata',
-          figma_get_design_context: 'getDesignContext',
-          figma_get_screenshot: 'getScreenshot',
-          figma_get_variable_defs: 'getVariableDefs',
-        };
-        const adapter = createMCPAdapter({ userId: state.context?.userId, redis: state.deps?.redis });
-        const fileKey = state.figmaFileKey!;
-        const nodeId = args.nodeId;
-        const method = FIGMA_TOOL_METHOD_MAP[name];
-        const mcpResult = await (adapter as any)[method](fileKey, nodeId);
-
-        if (mcpResult.isError) {
-          throw new Error(`Figma MCP error (${name}): ${typeof mcpResult.content === 'string' ? mcpResult.content : JSON.stringify(mcpResult.content)}`);
-        }
-        const extracted = extractMCPTextContent(mcpResult.content);
-        result = extracted ?? (typeof mcpResult.content === 'string' ? mcpResult.content : JSON.stringify(mcpResult.content, null, 2));
-        if (isFigmaMCPSoftError(result)) {
-          throw new Error(`Figma Desktop is not accessible: ${result}`);
-        }
+        const { callFigmaMCPTool } = await import('../../../../tools/figmaMCPHandler');
+        if (!state.figmaFileKey) throw new Error('Figma fileKey not configured');
+        result = await callFigmaMCPTool(
+          { userId: state.context?.userId, redis: state.deps?.redis, taskId: (state.currentTask as any)?.id },
+          name, state.figmaFileKey, args.nodeId,
+        );
         break;
       }
       default:
@@ -186,6 +171,9 @@ async function executeToolByName(
       : JSON.stringify(result, null, 2).substring(0, 200);
     console.log(`   Result: ${resultPreview}...`);
   } catch (e) {
+    const { isFigmaRateLimitError } = await import('../../../../../../periphery/adapters/figma/errors');
+    if (isFigmaRateLimitError(e as Error)) throw e;
+
     error = (e as Error).message;
     console.error(`❌ [Tool] ${name} execution failed:`, error);
 

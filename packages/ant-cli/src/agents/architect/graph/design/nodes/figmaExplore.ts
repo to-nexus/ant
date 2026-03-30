@@ -16,7 +16,7 @@ import * as fs from 'fs/promises';
 import { DesignGraphState } from '../state';
 import type { FigmaExplorationResult, FigmaExplorationError, FigmaNodeSummary, VariantProperty } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
-import { getMCPAdapter } from './tool';
+import { getFigmaMCPAdapter } from '../../../tools/figmaMCPHandler';
 import { extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
 import { isRateLimitResponse } from '../../../../../periphery/adapters/figma/errors';
 import { getSessionRuntimeDir } from '../../../../../core/utils/sessionPaths';
@@ -300,7 +300,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
 
   let adapter;
   try {
-    adapter = getMCPAdapter(state);
+    adapter = getFigmaMCPAdapter({ userId: state.context?.userId, redis: state.deps?.redis });
   } catch (err: any) {
     const errMsg = `MCP adapter init failed: ${err.message}`;
     console.error(`   ❌ ${errMsg}`);

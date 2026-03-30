@@ -260,7 +260,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // Skip turn recording in worker context (only main orchestrator should record)
   const _workerId = (state as any).workerId;
   const isWorkerContext = _workerId !== undefined && _workerId !== null;
-  
+
+  if (!isWorkerContext && state.figmaAvailable) {
+    try {
+      const { saveFigmaMCPDebugLog } = await import('../../../tools/figmaMCPHandler');
+      await saveFigmaMCPDebugLog(state.context?.featurePath || '', state._httpJobId || '');
+    } catch { /* non-blocking */ }
+  }
+
   // Determine whether this is the final learn invocation (all tasks completed).
   // Must be computed before hasOrchestratorFailure so we can clear stale interruptions.
   const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();

@@ -52,7 +52,7 @@ export async function getAvailableTools(state: ArchitectGraphState): Promise<Too
       if (!state.parsedUiDocs) {
         toolNames.push('figma_get_variable_defs');
       }
-      if (!state.figmaStartNodeId) {
+      if (!state.parsedUiDocs || !state.figmaStartNodeId) {
         toolNames.push('figma_get_metadata');
       }
     }

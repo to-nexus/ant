@@ -505,6 +505,9 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     designDocUnknownPackages: state.designDocUnknownPackages,
     _sharedFileBuffer: sharedFileBuffer,
     taskQueue: state.taskQueue,
+    figmaAvailable: state.figmaAvailable,
+    figmaFileKey: state.figmaFileKey,
+    figmaStartNodeId: state.figmaStartNodeId,
   };
 
   const graphBuilder = createCodeWorkerGraphBuilder();
@@ -1120,6 +1123,11 @@ export function buildCodeGraph() {
       interruption: null as any,         // Interruption details
       _planExploring: null as any,
       planConversationHistory: null as any,
+
+      // Figma MCP state
+      figmaAvailable: null as any,
+      figmaFileKey: null as any,
+      figmaStartNodeId: null as any,
     } as any,
   } as any);
   
