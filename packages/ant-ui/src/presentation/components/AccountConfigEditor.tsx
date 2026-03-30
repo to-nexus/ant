@@ -16,7 +16,7 @@ import { ConfigSection, ConfigIcons, ConfigStyles } from './ConfigSection';
 import { DangerZoneSection } from './common/DangerZoneSection';
 import { DesktopConnectModal } from './DesktopConnectModal';
 import { useDesktopBridge } from '@/application/hooks/ui/useDesktopBridge';
-import { GITHUB_RELEASES_URL, FIGMA_DOWNLOAD_URL, FIGMA_DEEPLINK_URL } from '@/presentation/constants/desktop';
+import { DESKTOP_DOWNLOAD_URL, FIGMA_DOWNLOAD_URL, FIGMA_DEEPLINK_URL } from '@/presentation/constants/desktop';
 import { AntDesktopIcon } from './common/AntDesktopIcon';
 
 interface AccountConfigEditorProps {
@@ -538,10 +538,9 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
             </button>
           )}
           {!bridgeConnected && !bridgeDetected && (
-            <a href={GITHUB_RELEASES_URL} target="_blank"
-               rel="noopener noreferrer"
+            <a href={DESKTOP_DOWNLOAD_URL}
                className="text-xs text-gray-400 dark:text-gray-500 hover:underline">
-              {t('figma.downloadAntDesktop')} ↗
+              {t('figma.downloadAntDesktop')}
             </a>
           )}
         </div>
