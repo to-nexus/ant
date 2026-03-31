@@ -145,6 +145,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
@@ -212,6 +218,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:site
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -240,6 +252,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
@@ -299,6 +317,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
@@ -324,6 +348,40 @@ jobs:
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
     secrets: inherit
+
+  # ===========================================
+  # Stage branch - ant-site deployment (S3 static upload)
+  # ===========================================
+  auto-ant-site-stage-deploy:
+    needs: detect-changes
+    if: (needs.detect-changes.outputs.ant-site-changed == 'true' || needs.detect-changes.outputs.root-package-changed == 'true') && startsWith(github.ref, 'refs/heads/stage')
+    runs-on: ["arc-runner-set"]
+    environment: stage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
 
   # ===========================================
   # Stage branch - ant-preview deployment
@@ -364,6 +422,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
@@ -424,6 +488,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
@@ -434,6 +504,41 @@ jobs:
         run: |
           aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+
+  # ===========================================
+  # Manual deployment workflow - ant-site (dev, stage only)
+  # ===========================================
+  manual-ant-site-deploy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-site' && github.event.inputs.environment != 'prod'
+    runs-on: ["arc-runner-set"]
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
 
   # ===========================================
   # Manual deployment workflow - ant-cli (dev, stage only)
@@ -494,6 +599,12 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
@@ -504,6 +615,40 @@ jobs:
         run: |
           aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+
+  release-deploy-ant-site:
+    if: >
+      (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-site')
+    runs-on: ["arc-runner-set"]
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
 
   release-deploy-ant-cli:
     if: >
