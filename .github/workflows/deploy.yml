@@ -145,6 +145,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -239,6 +240,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -297,6 +299,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -361,6 +364,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -420,6 +424,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -489,6 +494,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build:shared
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
