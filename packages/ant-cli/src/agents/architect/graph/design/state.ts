@@ -129,6 +129,12 @@ export interface DesignGraphState extends TaskArtifacts {
   /** Retry counter for asset validation (max 2 retries before forced completion) */
   _assetValidationRetried?: number;
 
+  /** Consecutive Figma MCP failure counter (reset on success, persists across tool→docGen loop) */
+  _figmaConsecutiveErrors?: number;
+
+  /** Set by tool node when Figma MCP fails N consecutive times — signals docGenRouter to stop */
+  _figmaConnectionLost?: boolean;
+
   // Results (populated by learn node)
   lessons?: string;
   

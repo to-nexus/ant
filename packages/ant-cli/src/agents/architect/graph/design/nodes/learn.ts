@@ -47,9 +47,26 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // already saved failure/interruption state. If learn overwrites it, failedTasks
   // and interruption details are lost (session.state = full replace).
   const hasOrchestratorFailure = (state as any).interruption?.reason === 'tasks_failed'
-    || (state as any).interruption?.reason === 'recursion_limit';
+    || (state as any).interruption?.reason === 'recursion_limit'
+    || (state as any).interruption?.reason === 'figma_rate_limited'
+    || (state as any).interruption?.reason === 'figma_connection_lost';
+  const hasDesignError = Boolean(state.designError);
+  const hasEarlyTermination = hasOrchestratorFailure || hasDesignError;
+
+  if (hasDesignError && !_isWorkerContext) {
+    try {
+      const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
+      const chatAPI = getChatAPIClient();
+      const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';
+      const errorText = isKo
+        ? `❌ **디자인 작업 실패:** ${state.designError!.message}`
+        : `❌ **Design job failed:** ${state.designError!.message}`;
+      await chatAPI.sendLLMEvent({ type: 'text', text: errorText });
+      await chatAPI.finalizeMessage();
+    } catch { /* non-blocking */ }
+  }
   
-  if (!_isWorkerContext && !hasOrchestratorFailure && state._httpJobId && state.deps?.kanbanUpdate) {
+  if (!_isWorkerContext && !hasEarlyTermination && state._httpJobId && state.deps?.kanbanUpdate) {
     const completedTasksDetails = state.completedTasksDetails || [];
     
     console.log(`\n🔥 [Learn] Final Kanban update`);
@@ -140,7 +157,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     }
   }
   
-  if (loadedFiles.length === 0 && !hasOrchestratorFailure) {
+  if (loadedFiles.length === 0 && !hasEarlyTermination) {
     throw new Error(`No design files found in outputs/design/ - docGen nodes must have run`);
   }
   
@@ -155,7 +172,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   let sessionId: string | undefined;
   let turnId: number | undefined;
   
-  if (state.deps?.session && !_isWorkerContext && !hasOrchestratorFailure) {
+  if (state.deps?.session && !_isWorkerContext && !hasEarlyTermination) {
     await saveSessionTurn(state);
     
     // Get session IDs for memory linking
@@ -171,7 +188,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // 3. Store lessons to vector memory + Index documents
-  if (state.deps?.memory && state.deps?.chunk && !hasOrchestratorFailure) {
+  if (state.deps?.memory && state.deps?.chunk && !hasEarlyTermination) {
     await storeLessonsToMemory(state, lessons, sessionId, turnId);
     
     // ✅ Request GC if available (helps with memory pressure before document indexing)
@@ -183,7 +200,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ Job completion token usage summary
-  if (!_isWorkerContext && !hasOrchestratorFailure) {
+  if (!_isWorkerContext && !hasEarlyTermination) {
     const jobTokens = (state as any).tokenUsage;
     if (jobTokens) {
       console.log(`\n📊 [Learn] Job Token Usage Summary:`);
@@ -206,7 +223,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');
     const { clearTokenLogger } = await import('../../../../../core/utils/tokenLogger');
     
-    if (!hasOrchestratorFailure) {
+    if (!hasEarlyTermination) {
       try {
         const jobTokens = (state as any).tokenUsage;
         const jobTiming = (state as any).jobTiming;
@@ -243,7 +260,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   // ✅ Spec completion choice card: offer to start development
   // Skip in worker context (main graph's learn handles it) and when orchestrator had failures
-  if (!_isWorkerContext && !hasOrchestratorFailure && state.detectionReport?.workType === 'spec' && !state.awaitingClarify) {
+  if (!_isWorkerContext && !hasEarlyTermination && state.detectionReport?.workType === 'spec' && !state.awaitingClarify) {
     try {
       const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
       const chatAPI = getChatAPIClient();

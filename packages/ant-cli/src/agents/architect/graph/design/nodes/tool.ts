@@ -13,6 +13,7 @@ import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 import { FigmaRateLimitError } from '../../../../../periphery/adapters/figma/errors';
 import { callFigmaMCPTool, isFigmaImageResult, isFigmaCompositeResult, saveFigmaScreenshot } from '../../../tools/figmaMCPHandler';
 import type { FigmaMCPResult } from '../../../tools/figmaMCPHandler';
+import { parseFigmaUrl } from '../../../../../core/ports/figma';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -102,10 +103,24 @@ async function executeDesignTool(
         const figmaMergeIdx = await figmaChatAPI.showChatStatus('figma_calling', figmaStatusMeta);
         try {
           const figmaArgs = args as { fileKey: string; nodeId: string };
+
+          const validFileKeys = (state.figmaConfig?.files || [])
+            .map(url => parseFigmaUrl(url)?.fileKey)
+            .filter(Boolean) as string[];
+          let safeFileKey = figmaArgs.fileKey;
+          if (validFileKeys.length === 1) {
+            safeFileKey = validFileKeys[0];
+          } else if (validFileKeys.length > 1 && !validFileKeys.includes(figmaArgs.fileKey)) {
+            console.warn(`⚠️  [Tool] LLM provided invalid fileKey "${figmaArgs.fileKey}", using "${validFileKeys[0]}"`);
+            safeFileKey = validFileKeys[0];
+          }
+
           const mcpResult: FigmaMCPResult = await callFigmaMCPTool(
             { userId: state.context?.userId, redis: state.deps?.redis, taskId: (state.currentTask as any)?.id },
-            name, figmaArgs.fileKey, figmaArgs.nodeId,
+            name, safeFileKey, figmaArgs.nodeId,
           );
+
+          state._figmaConsecutiveErrors = 0;
 
           // Save supplementary image (from screenshot or design_context) for chat preview
           let imagePath: string | undefined;
@@ -145,6 +160,11 @@ async function executeDesignTool(
           }
         } catch (err: any) {
           if (err instanceof FigmaRateLimitError) throw err;
+          state._figmaConsecutiveErrors = (state._figmaConsecutiveErrors || 0) + 1;
+          if (state.uiDesignSource === 'figma' && state._figmaConsecutiveErrors >= 3) {
+            console.error(`❌ [Tool] Figma MCP unavailable: ${state._figmaConsecutiveErrors} consecutive failures — flagging connection lost`);
+            state._figmaConnectionLost = true;
+          }
           await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, error: true, _mergeIndex: figmaMergeIdx });
           result = JSON.stringify({ error: err.message });
         }
@@ -395,6 +415,8 @@ export async function tool(
     _currentTaskTokenUsage: state._currentTaskTokenUsage,
     tokenUsage: (state as any).tokenUsage,
     _toolResultCache: state._toolResultCache,
+    _figmaConsecutiveErrors: state._figmaConsecutiveErrors,
+    _figmaConnectionLost: state._figmaConnectionLost,
     llmResponse: {
       ...state.llmResponse!,
       toolCalls: [],
