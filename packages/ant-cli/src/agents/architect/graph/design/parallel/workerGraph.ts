@@ -21,6 +21,7 @@ import path from 'node:path';
 import { learn } from '../nodes/learn';
 import type { WorkerGraphBuilder } from '../../code/parallel/types';
 import { routeAfterDocGen } from '../routers/docGenRouter';
+import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -28,9 +29,10 @@ const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/
  * Check task status within a design worker subgraph.
  * 
  * Validation gates (parity with code job checkTaskStatus):
- * 1. _callLimitReached → throw (TaskOrchestrator handles as failure)
- * 2. fileErrors → throw (incomplete file operations detected)
- * 3. Normal completion → mark task as completed
+ * 1.   _callLimitReached → throw (TaskOrchestrator handles as failure)
+ * 1.5. _figmaConnectionLost → throw FigmaMCPConnectionError (global interrupt)
+ * 2.   fileErrors → throw (incomplete file operations detected)
+ * 3.   Normal completion → mark task as completed
  */
 async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   // ✅ Increment recursion count (per-worker, track node execution for UI gauge)
@@ -92,6 +94,18 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     throw new Error(
       `Task "${state.currentTask.name}" exhausted call budget (${callIndex} calls) without producing valid output. ` +
       `This is a deterministic failure — the LLM could not generate the required document within the call limit.`
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 1.5: Figma MCP connection lost — global interrupt via TaskOrchestrator
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state._figmaConnectionLost && state.currentTask) {
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+    }
+    throw new FigmaMCPConnectionError(
+      `Figma MCP connection lost (${state._figmaConsecutiveErrors || 0} failures) for "${state.currentTask.name}"`
     );
   }
 
@@ -255,6 +269,9 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
       _callLimitReached: null as any,
       _toolResultCache: null as any,
       fileErrors: null as any,
+      // Figma MCP connection health
+      _figmaConsecutiveErrors: null as any,
+      _figmaConnectionLost: null as any,
       // Worker-specific
       workerId: null as any,
       _taskCompleted: null as any,
