@@ -80,7 +80,11 @@
     "parseError": "Parse error",
     "figmaEmpty": "No Figma URLs configured",
     "figmaNotConnected": "Ant Desktop not connected",
-    "figmaSetup": "Set up"
+    "figmaSetup": "Set up",
+    "syntaxError": "File has syntax errors. Using raw editor.",
+    "smartPlaceholder": {
+      "figma": "Paste Figma file URLs, one per line"
+    }
   },
   "featureDetails": {
     "title": "Feature Details",
@@ -94,6 +98,7 @@
     "title": "File Editor",
     "modified": "● Modified",
     "open": "Open",
+    "reset": "Reset",
     "revert": "Revert",
     "saving": "Saving...",
     "save": "Save",

@@ -10,6 +10,8 @@ import { Eye, FileText, AlertTriangle } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { JsonYamlPreview } from './JsonYamlPreview';
 import { isFigmaDataPopulated } from '@ant/shared';
+import { getSmartEditConfig } from './smartEdit/config';
+import { SmartEditEditor } from './smartEdit/SmartEditEditor';
 
 // Line-numbered editor component for code-like files
 interface LineNumberedEditorProps {
@@ -170,17 +172,53 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const setFigmaPopulated = useStore((state) => state.setFigmaPopulated);
 
   const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
-  const figmaWarning = useMemo(() => {
-    if (!isFigmaFile) return null;
-    try {
-      const parsed = JSON.parse(editedContent || '{}');
-      if (!isFigmaDataPopulated(parsed)) return 'empty';
-      if (bridgeConnected !== true || !figmaDesktopReachable) return 'not_connected';
-      return null;
-    } catch {
-      return 'empty';
+
+  // ── Smart edit ────────────────────────────────────────
+  const smartEditConfig = useMemo(
+    () => (selectedFile ? getSmartEditConfig(selectedFile) : null),
+    [selectedFile],
+  );
+
+  const deserializeResult = useMemo(
+    () => (smartEditConfig ? smartEditConfig.deserialize(editedContent) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [smartEditConfig, editedContent],
+  );
+
+  const useSmartEdit = deserializeResult?.ok === true;
+
+  // ── Header warning (single, priority-ordered) ────────
+  type HeaderWarningType = 'syntax_error' | 'figma_empty' | 'figma_not_connected';
+
+  const headerWarning = useMemo((): HeaderWarningType | null => {
+    if (smartEditConfig && deserializeResult && !deserializeResult.ok) {
+      return 'syntax_error';
     }
-  }, [isFigmaFile, editedContent, bridgeConnected, figmaDesktopReachable]);
+    if (isFigmaFile) {
+      try {
+        const parsed = JSON.parse(editedContent || '{}');
+        if (!isFigmaDataPopulated(parsed)) return 'figma_empty';
+      } catch {
+        return null;
+      }
+      if (bridgeConnected !== true || !figmaDesktopReachable) {
+        return 'figma_not_connected';
+      }
+    }
+    return null;
+  }, [smartEditConfig, deserializeResult, isFigmaFile, editedContent, bridgeConnected, figmaDesktopReachable]);
+
+  // ── Reset handler (smart edit files only) ─────────────
+  const handleReset = useCallback(() => {
+    if (!smartEditConfig) return;
+    const empty = smartEditConfig.createEmpty();
+    handleContentChange(empty);
+  }, [smartEditConfig]);
+
+  const isAlreadyEmpty = useMemo(
+    () => (smartEditConfig ? editedContent === smartEditConfig.createEmpty() : true),
+    [smartEditConfig, editedContent],
+  );
 
   // Check file types for preview support
   const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
@@ -404,24 +442,38 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </div>
           )}
 
-          {/* Figma status warning — shown when figma.json is open */}
-          {figmaWarning && (
+          {/* Header warning — single, priority-ordered */}
+          {headerWarning === 'syntax_error' && (
+            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+              <span className="text-xs text-red-700 dark:text-red-300">
+                {t('editor.syntaxError')}
+              </span>
+            </div>
+          )}
+          {headerWarning === 'figma_empty' && (
             <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
               <span className="text-xs text-amber-700 dark:text-amber-300">
-                {figmaWarning === 'empty' ? t('editor.figmaEmpty') : t('editor.figmaNotConnected')}
+                {t('editor.figmaEmpty')}
               </span>
-              {figmaWarning === 'not_connected' && (
-                <button
-                  onClick={() => {
-                    openMainPanelTab('accountConfig');
-                    setAccountConfigScrollTarget('figma');
-                  }}
-                  className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0 ml-1"
-                >
-                  {t('editor.figmaSetup')}
-                </button>
-              )}
+            </div>
+          )}
+          {headerWarning === 'figma_not_connected' && (
+            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="text-xs text-amber-700 dark:text-amber-300">
+                {t('editor.figmaNotConnected')}
+              </span>
+              <button
+                onClick={() => {
+                  openMainPanelTab('accountConfig');
+                  setAccountConfigScrollTarget('figma');
+                }}
+                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0 ml-1"
+              >
+                {t('editor.figmaSetup')}
+              </button>
             </div>
           )}
 
@@ -511,14 +563,33 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
           </div>
         ) : (
           <>
-            {/* Raw Editor - always with line numbers */}
-            <LineNumberedEditor
-              value={editedContent}
-              onChange={handleContentChange}
-            />
+            {/* Raw Editor — smart edit or line-numbered depending on config */}
+            {useSmartEdit && deserializeResult.ok ? (
+              <SmartEditEditor
+                content={editedContent}
+                config={smartEditConfig!}
+                initialResult={deserializeResult}
+                onChange={handleContentChange}
+              />
+            ) : (
+              <LineNumberedEditor
+                value={editedContent}
+                onChange={handleContentChange}
+              />
+            )}
             
             {/* Action buttons at the bottom */}
             <div className="flex gap-2 justify-end mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+              {smartEditConfig && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleReset}
+                  disabled={loading || saving || isAlreadyEmpty}
+                >
+                  {t('fileEditor.reset')}
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
