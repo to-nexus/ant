@@ -290,7 +290,8 @@ export class ChatService {
     jobId: string,
     reason: string,
     message: string,
-    userContext?: UserContext
+    userContext?: UserContext,
+    interruptionMetadata?: Record<string, any>
   ): Promise<string> {
     return this.messageManager.addCancelledMessageAsync(
       projectId,
@@ -298,7 +299,8 @@ export class ChatService {
       jobId,
       reason,
       message,
-      userContext
+      userContext,
+      interruptionMetadata
     );
   }
 

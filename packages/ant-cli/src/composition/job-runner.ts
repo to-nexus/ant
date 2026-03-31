@@ -158,7 +158,16 @@ async function runJob(params: JobParams): Promise<void> {
     }, error);
     
     reportProgress('failed', error.message);
-    reportResult(false, undefined, error.message);
+    reportResult(false, {
+      success: false,
+      job: params.jobType,
+      interruption: {
+        reason: 'process_crash',
+        message: error.message || 'Unexpected error occurred.',
+        timestamp: new Date().toISOString(),
+        canResume: true,
+      },
+    }, error.message);
     
     throw error;
   }

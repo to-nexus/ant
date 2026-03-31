@@ -11,15 +11,20 @@
  *       design.json
  *       code.json
  *       learn.json
- *       debug/
+ *       debug/              ← subdirs defined by DEBUG_SUBDIRS (SSOT)
  *         prompts/
  *         plans/
  *         logs/
- *         asks/
+ *         tokens/
+ *         figma/
+ *       runtime/
+ *         design/
+ *         code/
  *     planner/
  *       plan.json
  *       debug/
- *     chat.json          ← UI-level, not agent-nested
+ *         prompts/
+ *     chat.json             ← UI-level, not agent-nested
  */
 
 import * as fs from 'fs';
@@ -110,6 +115,21 @@ export function getChatSessionPath(featurePath: string): string {
 // ============================================
 
 /**
+ * Debug subdirectories per agent (Single Source of Truth).
+ * 
+ * Used by:
+ * - ensureCanonicalStructure() — auto-creates on page access
+ * - features.routes.ts — cleanup of debug artifacts on session clear
+ * 
+ * To add a new debug category, add the subdir name here.
+ * The directory will be auto-created for all features on next page access.
+ */
+export const DEBUG_SUBDIRS: Readonly<Record<string, readonly string[]>> = {
+  architect: ['prompts', 'plans', 'logs', 'tokens', 'figma'],
+  planner: ['prompts'],
+};
+
+/**
  * Get the debug directory path for an agent.
  * 
  * @example getSessionDebugDir('/path/to/feature', 'architect', 'prompts')
@@ -117,7 +137,7 @@ export function getChatSessionPath(featurePath: string): string {
  * 
  * @param featurePath - Absolute path to the feature directory
  * @param agent - Agent name
- * @param subdir - Debug subdirectory (e.g., 'prompts', 'plans', 'logs', 'asks')
+ * @param subdir - Debug subdirectory (e.g., 'prompts', 'plans', 'logs', 'figma')
  * @returns Absolute path to the debug subdirectory
  */
 export function getSessionDebugDir(featurePath: string, agent: string, subdir: string): string {
@@ -241,7 +261,14 @@ export async function ensureCanonicalStructure(featurePath: string): Promise<voi
   }
 
   const dirs = CANONICAL_FEATURE_DIRS.map(d => path.join(featurePath, d));
-  await Promise.all(dirs.map(d => fs.promises.mkdir(d, { recursive: true })));
+
+  const debugDirs = Object.entries(DEBUG_SUBDIRS).flatMap(([agent, subdirs]) =>
+    subdirs.map(sub => path.join(featurePath, 'sessions', agent, 'debug', sub)),
+  );
+
+  await Promise.all(
+    [...dirs, ...debugDirs].map(d => fs.promises.mkdir(d, { recursive: true })),
+  );
 
   await Promise.all(CANONICAL_FEATURE_FILES.map(async (file) => {
     const filePath = path.join(featurePath, file.relativePath);

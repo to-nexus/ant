@@ -153,12 +153,46 @@ async function executeToolByName(
       case 'figma_get_screenshot':
       case 'figma_get_variable_defs':
       case 'figma_get_metadata': {
-        const { callFigmaMCPTool } = await import('../../../../tools/figmaMCPHandler');
+        const { callFigmaMCPTool, isFigmaImageResult, isFigmaCompositeResult, saveFigmaScreenshot } = await import('../../../../tools/figmaMCPHandler');
+        const figmaChatAPI = getChatAPIClient();
         if (!state.figmaFileKey) throw new Error('Figma fileKey not configured');
-        result = await callFigmaMCPTool(
-          { userId: state.context?.userId, redis: state.deps?.redis, taskId: (state.currentTask as any)?.id },
-          name, state.figmaFileKey, args.nodeId,
-        );
+        const figmaNodeId = args.nodeId as string | undefined;
+        const figmaStatusMeta = { toolName: name, nodeId: figmaNodeId };
+        const figmaMergeIdx = await figmaChatAPI.showChatStatus('figma_calling', figmaStatusMeta);
+        try {
+          const mcpResult = await callFigmaMCPTool(
+            { userId: state.context?.userId, redis: state.deps?.redis, taskId: (state.currentTask as any)?.id },
+            name, state.figmaFileKey, args.nodeId,
+          );
+          let imagePath: string | undefined;
+          const imageData = isFigmaImageResult(mcpResult)
+            ? mcpResult
+            : isFigmaCompositeResult(mcpResult) ? mcpResult.image : null;
+          if (imageData && state.context?.featurePath && args.nodeId) {
+            try {
+              imagePath = await saveFigmaScreenshot(state.context.featurePath, args.nodeId, imageData.base64, imageData.mimeType);
+            } catch { /* non-critical */ }
+          }
+          await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, imagePath, _mergeIndex: figmaMergeIdx });
+
+          if (isFigmaImageResult(mcpResult)) {
+            result = { __figmaImage: true, base64: mcpResult.base64, mimeType: mcpResult.mimeType };
+          } else if (isFigmaCompositeResult(mcpResult)) {
+            result = {
+              __figmaComposite: true,
+              text: mcpResult.text,
+              base64: mcpResult.image.base64,
+              mimeType: mcpResult.image.mimeType,
+            };
+          } else {
+            result = mcpResult;
+          }
+        } catch (err: any) {
+          const { isFigmaRateLimitError } = await import('../../../../../../periphery/adapters/figma/errors');
+          if (isFigmaRateLimitError(err)) throw err;
+          await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, error: true, _mergeIndex: figmaMergeIdx });
+          result = JSON.stringify({ error: err.message });
+        }
         break;
       }
       default:
@@ -166,9 +200,14 @@ async function executeToolByName(
     }
 
     console.log(`✅ [Tool] ${name} executed successfully`);
-    const resultPreview = typeof result === 'string'
-      ? result.substring(0, 200)
-      : JSON.stringify(result, null, 2).substring(0, 200);
+    const isImg = result && typeof result === 'object' && (result.__figmaImage || result.__figmaComposite);
+    const resultPreview = isImg
+      ? (result.__figmaComposite
+        ? `[composite: text ${(result as any).text?.length ?? 0} chars + image ${Math.round(((result as any).base64?.length ?? 0) / 1024)}KB]`
+        : `[image: ${Math.round(((result as any).base64?.length ?? 0) / 1024)}KB]`)
+      : (typeof result === 'string'
+        ? result.substring(0, 200)
+        : JSON.stringify(result, null, 2).substring(0, 200));
     console.log(`   Result: ${resultPreview}...`);
   } catch (e) {
     const { isFigmaRateLimitError } = await import('../../../../../../periphery/adapters/figma/errors');
@@ -292,12 +331,57 @@ export async function tool(
     // Execute
     const { result, error } = await executeToolByName(name, state, args);
 
-    // Truncate result per tool (pass filePath for outline generation on read_file)
-    const toolFilePath = name === 'read_file' ? args.path : undefined;
-    const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath);
+    // Build tool result content: multimodal image or truncated text
+    let toolResultContent: any;
+    const isImageResult = result && typeof result === 'object' && result.__figmaImage;
+    const isCompositeResult = result && typeof result === 'object' && result.__figmaComposite;
 
-    if (truncation.wasTruncated) {
-      console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
+    if (isImageResult) {
+      const imgData = result as { __figmaImage: true; base64: string; mimeType: string };
+      toolResultContent = [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: imgData.mimeType,
+            data: imgData.base64,
+          },
+        },
+        {
+          type: 'text',
+          text: `✅ Figma screenshot captured.\n\nAnalyze the visual layout, spacing, colors, typography, and component structure visible above.`,
+        },
+      ];
+      console.log(`   🖼️  Multimodal: Figma screenshot added (${Math.round(imgData.base64.length / 1024)}KB ${imgData.mimeType})`);
+    } else if (isCompositeResult) {
+      const comp = result as { __figmaComposite: true; text: string; base64: string; mimeType: string };
+      const truncation = toolResultManager.truncateResult(name, comp.text, error);
+      toolResultContent = [
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: comp.mimeType,
+            data: comp.base64,
+          },
+        },
+        {
+          type: 'text',
+          text: typeof truncation.content === 'string' ? truncation.content : JSON.stringify(truncation.content),
+        },
+      ];
+      if (truncation.wasTruncated) {
+        console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
+      }
+      console.log(`   🖼️  Multimodal: Figma design context + screenshot (${Math.round(comp.base64.length / 1024)}KB ${comp.mimeType})`);
+    } else {
+      const toolFilePath = name === 'read_file' ? args.path : undefined;
+      const truncation = toolResultManager.truncateResult(name, result, error, toolFilePath);
+      toolResultContent = truncation.content;
+
+      if (truncation.wasTruncated) {
+        console.log(`📏 [Tool] Result truncated: ${truncation.originalTokens} → ${truncation.truncatedTokens} tokens`);
+      }
     }
 
     // Accumulate Anthropic-format blocks
@@ -311,10 +395,10 @@ export async function tool(
     toolResultBlocks.push({
       type: 'tool_result',
       tool_use_id: id,
-      content: truncation.content,
+      content: toolResultContent,
     });
 
-    allToolResults.push({ toolCallId: id, result, error });
+    allToolResults.push({ toolCallId: id, result: (isImageResult || isCompositeResult) ? '[figma_image]' : result, error });
   }
 
   // Build batch conversation history (Anthropic multi-tool format)

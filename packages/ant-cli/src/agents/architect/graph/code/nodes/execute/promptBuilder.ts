@@ -170,7 +170,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       },
       isSpecDriven: !!state.selectedSpec,
       hasUiDoc: !!state.parsedUiDocs,
-      figmaAvailable: state.figmaAvailable || false,
+      figmaAvailable: (state.figmaAvailable && !state.parsedUiDocs) || false,
       figmaStartNodeId: state.figmaStartNodeId,
     },
     state.detectionReport?.jobMode,

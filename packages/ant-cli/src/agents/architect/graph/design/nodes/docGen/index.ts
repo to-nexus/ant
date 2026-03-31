@@ -302,7 +302,14 @@ export async function docGen(
           node: 'docGen',
           callIndex: newCallIndex - 1,
           conversationHistoryLength: state.conversationHistory?.length || 0,
-          estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0),
+          estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => {
+            if (typeof m.content === 'string') return sum + m.content.length;
+            if (Array.isArray(m.content)) {
+              return sum + m.content.reduce((s: number, b: any) =>
+                s + (b.type === 'image' ? 200 : (typeof b.text === 'string' ? b.text.length : JSON.stringify(b).length)), 0);
+            }
+            return sum + JSON.stringify(m.content).length;
+          }, 0),
           taskCumulativeInput: taskUsage?.inputTokens || 0,
           taskCumulativeOutput: taskUsage?.outputTokens || 0,
         }

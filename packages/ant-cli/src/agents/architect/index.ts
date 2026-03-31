@@ -1,4 +1,5 @@
 import { ProjectContext, AgentJob, JobMode, ArchitectResult } from "./types";
+import type { InterruptionReason } from "../../core/types/session";
 import { retrieve } from "./memory";
 import { ArtifactService } from "../../infrastructure/workspace/ArtifactService";
 import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
@@ -197,8 +198,15 @@ export async function architectAgent(
         if (learnTriageResult.workStatus === 'blocked') {
           return {
             success: false,
+            status: 'paused',
             job: 'learn',
-            message: learnTriageResult.displayMessage || 'Prerequisites not met for this operation.'
+            interruption: {
+              reason: 'api_error' as InterruptionReason,
+              message: learnTriageResult.displayMessage || 'Prerequisites not met for this operation.',
+              timestamp: new Date().toISOString(),
+              canResume: false,
+            },
+            message: learnTriageResult.displayMessage || 'Prerequisites not met for this operation.',
           };
         }
       }
@@ -300,18 +308,36 @@ export async function architectAgent(
         if (triageResult.workStatus === 'blocked') {
           return {
             success: false,
+            status: 'paused',
             job: 'design',
-            message: triageResult.displayMessage || 'Prerequisites not met for this operation.'
+            interruption: {
+              reason: 'api_error' as InterruptionReason,
+              message: triageResult.displayMessage || 'Prerequisites not met for this operation.',
+              timestamp: new Date().toISOString(),
+              canResume: false,
+            },
+            message: triageResult.displayMessage || 'Prerequisites not met for this operation.',
           };
         }
       }
       
-      // ✅ Check for design error (e.g., modification without documents)
+      // ✅ Check for design error (e.g., Figma rate limit, window not open)
       if (d.designError) {
+        const reason: InterruptionReason =
+          d.designError.type === 'figma_rate_limited' ? 'figma_rate_limited' : 'api_error';
+
         return {
           success: false,
+          status: 'paused',
           job: 'design',
-          message: d.designError.message || 'Design operation failed.'
+          interruption: {
+            reason,
+            message: d.designError.message || 'Design operation failed.',
+            timestamp: new Date().toISOString(),
+            canResume: true,
+            metadata: { designErrorType: d.designError.type },
+          },
+          message: d.designError.message || 'Design operation failed.',
         };
       }
       
@@ -480,8 +506,15 @@ export async function architectAgent(
           if (codeTriageResult.workStatus === 'blocked') {
             return {
               success: false,
+              status: 'paused',
               job: 'code',
-              message: codeTriageResult.displayMessage || 'Prerequisites not met for this operation.'
+              interruption: {
+                reason: 'api_error' as InterruptionReason,
+                message: codeTriageResult.displayMessage || 'Prerequisites not met for this operation.',
+                timestamp: new Date().toISOString(),
+                canResume: false,
+              },
+              message: codeTriageResult.displayMessage || 'Prerequisites not met for this operation.',
             };
           }
         }
