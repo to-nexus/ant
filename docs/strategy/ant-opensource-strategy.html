@@ -914,10 +914,6 @@
           <div style="font-size:12px;color:#7888b0;line-height:1.6">Ant는 i18n(ko/en) 이미 탑재. 경쟁사 중 한국어 UI를 제공하는 제품은 없음.</div>
         </div>
         <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px 18px">
-          <div style="font-size:13px;font-weight:700;color:#e0e8ff;margin-bottom:6px">&#127759; 아시아 확장 교두보</div>
-          <div style="font-size:12px;color:#7888b0;line-height:1.6">한국에서 검증 후 일본·동남아 확장 시 "아시아 출신 대안"으로 포지셔닝 가능.</div>
-        </div>
-        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px 18px">
           <div style="font-size:13px;font-weight:700;color:#e0e8ff;margin-bottom:6px">&#128240; 국내 미디어 레버리지</div>
           <div style="font-size:12px;color:#7888b0;line-height:1.6">"한국 최초의 오픈소스 AI 코드 도구"는 국내 테크 미디어에서 강력한 헤드라인.</div>
         </div>
@@ -969,7 +965,7 @@
           </tr>
           <tr>
             <td>품질 병목</td>
-            <td>커뮤니티 기여로 <strong>테스트, 버그 픽스, 기능 제안</strong> 확보. 현재 부족한 테스트 커버리지를 외부 기여로 보완.</td>
+            <td>공개 전 핵심 경로 품질 확보가 전제. 이후 커뮤니티 이슈 리포트와 기여로 <strong>엣지케이스 발견, 버그 픽스</strong> 가속.</td>
           </tr>
           <tr>
             <td>생태계 부재</td>
@@ -1114,6 +1110,9 @@
       <span class="license-dot"></span>
       <span><strong>AGPL-3.0</strong> — SaaS 포크 방지. Supabase, Grafana 동일 모델.</span>
     </div>
+    <p style="font-size:13px;color:var(--text-dim);margin-top:10px;line-height:1.7">
+      <strong style="color:var(--orange)">유의:</strong> 일부 기업 법무팀은 AGPL을 사내 사용 금지 목록에 넣는다. Enterprise tier에서 별도 상용 라이선스(Dual License)를 제공하는 방안을 Phase 2 이후 검토 필요.
+    </p>
   </section>
 
   <!-- ======== 6. REVENUE ======== -->
@@ -1128,17 +1127,17 @@
       <div class="pricing-card">
         <div class="pricing-tier">Free</div>
         <div class="pricing-price">₩0</div>
-        <p class="pricing-desc">LLM 크레딧 제한, 개인 사용</p>
+        <p class="pricing-desc">LLM 크레딧 제한(월 N회)<br>단일 워크스페이스<br>커뮤니티 지원</p>
       </div>
       <div class="pricing-card featured">
         <div class="pricing-tier">Pro</div>
         <div class="pricing-price">₩3.5만<span class="unit">/월</span></div>
-        <p class="pricing-desc">크레딧 증가, 팀 기능</p>
+        <p class="pricing-desc">크레딧 대폭 증가 · 우선 큐<br>멀티 워크스페이스 · 팀 공유<br>프리뷰 배포</p>
       </div>
       <div class="pricing-card">
         <div class="pricing-tier">Enterprise</div>
         <div class="pricing-price">₩14만+<span class="unit">/seat</span></div>
-        <p class="pricing-desc">SSO, 감사 로그, SLA</p>
+        <p class="pricing-desc">SSO/SAML · 감사 로그<br>전용 인스턴스 · SLA<br>Dual License 옵션</p>
       </div>
     </div>
 
@@ -1269,10 +1268,31 @@
         </div>
       </div>
       <div class="risk-card">
-        <div class="risk-icon">&#128100;</div>
+        <div class="risk-icon">&#9878;</div>
         <div>
-          <h4>단독 개발 병목</h4>
-          <p>현재 1인 개발 체제. 커뮤니티 기여가 보완 가능하나 코어 결정은 병목. Phase 1 이후 팀 충원이 성장 속도 좌우.</p>
+          <h4>AGPL 기업 채택 장벽</h4>
+          <p>일부 기업 법무팀이 AGPL을 금지 목록에 넣음. Enterprise Dual License로 완화 가능하나, 기여자 중에서도 AGPL을 꺼리는 층 존재.</p>
+        </div>
+      </div>
+      <div class="risk-card">
+        <div class="risk-icon">&#128260;</div>
+        <div>
+          <h4>차별화 복제 가능성</h4>
+          <p>plan → design → code 파이프라인은 기능적 차별화이므로 경쟁사가 모방 가능. 지속적 우위는 프롬프트 최적화 데이터 + 커뮤니티 템플릿 생태계에서 확보해야 함.</p>
+        </div>
+      </div>
+      <div class="risk-card">
+        <div class="risk-icon">&#128736;</div>
+        <div>
+          <h4>해자와 기여 장벽의 역설</h4>
+          <p>인프라 복잡도가 셀프호스팅을 억제하지만, 동시에 기여자의 로컬 개발환경 설정도 어렵게 만듦. docker compose로 개발환경 원클릭 구성이 Phase 0 핵심 과제.</p>
+        </div>
+      </div>
+      <div class="risk-card">
+        <div class="risk-icon">&#9888;</div>
+        <div>
+          <h4>초기 품질 임계점</h4>
+          <p>커뮤니티는 이미 잘 작동하는 프로젝트에 모인다. Phase 0에서 핵심 경로 안정성과 데모 품질이 임계점을 넘지 못하면, 공개가 오히려 미완성 노출이 됨.</p>
         </div>
       </div>
       <div class="risk-card">
@@ -1280,13 +1300,6 @@
         <div>
           <h4>커뮤니티 관리 부담</h4>
           <p>이슈, PR 리뷰, 문서화에 시간 소요. 초기에는 코어 개발 속도와 트레이드오프.</p>
-        </div>
-      </div>
-      <div class="risk-card">
-        <div class="risk-icon">&#11088;</div>
-        <div>
-          <h4>초기 견인력 불확실</h4>
-          <p>데모/스크린샷 품질과 론칭 채널 전략이 GitHub star와 초기 사용자를 좌우. Phase 0의 데모 제작이 핵심.</p>
         </div>
       </div>
     </div>
