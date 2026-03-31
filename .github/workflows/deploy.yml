@@ -138,7 +138,7 @@ jobs:
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
@@ -204,7 +204,7 @@ jobs:
       - run: pnpm build:site
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
@@ -232,7 +232,7 @@ jobs:
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
@@ -290,7 +290,7 @@ jobs:
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
@@ -354,7 +354,7 @@ jobs:
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
@@ -413,7 +413,7 @@ jobs:
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
@@ -482,7 +482,7 @@ jobs:
       - run: pnpm build:ui
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
