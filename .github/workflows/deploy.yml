@@ -43,6 +43,7 @@ on:
     paths:
       - 'packages/ant-ui/**'
       - 'packages/ant-cli/**'
+      - 'packages/ant-shared/**'
       - 'packages/ant-site/**'
       - 'package.json'
 
@@ -99,8 +100,17 @@ jobs:
             echo "❌ No ant-ui files changed"
           fi
           
-          # Check ant-cli changes
-          if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/"; then
+          # Check ant-shared changes (triggers ant-cli rebuild since it's a build dependency)
+          if echo "$CHANGED_FILES" | grep -q "^packages/ant-shared/"; then
+            ANT_SHARED_CHANGED=true
+            echo "✅ ant-shared files changed (will trigger ant-cli rebuild)"
+          else
+            ANT_SHARED_CHANGED=false
+            echo "❌ No ant-shared files changed"
+          fi
+          
+          # Check ant-cli changes (also triggered by ant-shared changes)
+          if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/" || [ "$ANT_SHARED_CHANGED" = "true" ]; then
             echo "ant-cli-changed=true" >> $GITHUB_OUTPUT
             echo "✅ ant-cli files changed"
           else
