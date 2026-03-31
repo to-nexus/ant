@@ -46,6 +46,11 @@ export function routeAfterDocGen(state: DesignGraphState): string {
     return 'checkTaskStatus';
   }
 
+  if (state._figmaConnectionLost) {
+    console.warn(`⚠️  [DocGenRouter] Figma connection lost → checkTaskStatus`);
+    return 'checkTaskStatus';
+  }
+
   // Recursion limit approaching (read-only check)
   if (state.recursionLimit && state.recursionCount) {
     const remaining = state.recursionLimit - state.recursionCount;

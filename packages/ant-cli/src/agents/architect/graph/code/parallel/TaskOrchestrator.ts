@@ -27,7 +27,7 @@ import type {
   WorkerSnapshot,
 } from './types';
 import { getTaskConcurrency } from './types';
-import { isFigmaRateLimitError } from '../../../../../periphery/adapters/figma/errors';
+import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
 
 /**
  * Classify whether an error is deterministic (will always fail on retry)
@@ -391,6 +391,27 @@ export class TaskOrchestrator<T extends BaseTask> {
           await this.saveCheckpoint({ reason: 'figma_rate_limited', canResume: true });
         } catch (err) {
           console.warn(`[Orchestrator] Post-rate-limit checkpoint failed:`, err);
+        }
+        this.drain();
+        this.signalWorkersToStop();
+        this.broadcastKanban();
+        this.checkAllDone();
+        return;
+      }
+
+      // ✅ Figma connection lost: same global interrupt as rate limit
+      if (isFigmaMCPConnectionError(error)) {
+        task.interrupted = true;
+        this.hasInterruptedTasks = true;
+        this.interruptReason = 'figma_connection_lost';
+        this.failedTasks.push({ task, error, timestamp: new Date().toISOString() });
+        console.error(`[Orchestrator] Figma MCP connection lost — interrupting all tasks`);
+        const runningTaskIds = Array.from(this.runningTasks.values()).map(t => t.id);
+        this.callbacks.onInterruption?.('figma_connection_lost', runningTaskIds);
+        try {
+          await this.saveCheckpoint({ reason: 'figma_connection_lost', canResume: true });
+        } catch (err) {
+          console.warn(`[Orchestrator] Post-connection-lost checkpoint failed:`, err);
         }
         this.drain();
         this.signalWorkersToStop();

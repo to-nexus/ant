@@ -200,6 +200,105 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     } as any;
   }
   
+  // ✅ FIGMA CONNECTION LOST INTERRUPTION: Figma MCP failed N consecutive times
+  if (state._figmaConnectionLost && state.currentTask) {
+    const { TaskTimingHelper } = await import('../code/state');
+    const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
+    
+    const taskTokenUsage = getTaskTokenUsage(state as any);
+    if (taskTokenUsage) {
+      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+    }
+    
+    const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
+    (pausedTask as any).interrupted = true;
+    
+    console.warn(`⚠️  [checkTaskStatus] Figma connection lost for "${state.currentTask.name}" (${state._figmaConsecutiveErrors || 0} failures) — creating interruption`);
+    
+    const { TaskQueue: TQ } = await import('../../types/task');
+    const newQueue = new TQ<DesignTask>();
+    newQueue.push(pausedTask);
+    state.taskQueue?.getAll().forEach((t: any) => {
+      if (t.id !== state.currentTask!.id) newQueue.push(t);
+    });
+    
+    const interruption = {
+      reason: 'figma_connection_lost' as const,
+      message: `Figma Desktop connection lost after ${state._figmaConsecutiveErrors || 0} consecutive failures. Ensure Figma is open and retry.`,
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: {
+        consecutiveErrors: state._figmaConsecutiveErrors || 0,
+        tasksRemaining: newQueue.size(),
+        completedCount: (state.completedTasks || []).length,
+      }
+    };
+    
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'design',
+          {
+            state: {
+              taskQueue: newQueue.getAll(),
+              completedTasks: state.completedTasks || [],
+              completedTasksDetails: state.completedTasksDetails || [],
+              currentTask: undefined,
+              planText: state.planText,
+              conversationHistory: state.conversationHistory || [],
+              files: state.files || [],
+              filesToDelete: state.filesToDelete || [],
+              jobId: (state as any).jobId,
+              jobTiming: (state as any).jobTiming,
+              tokenUsage: (state as any).tokenUsage,
+              overrideDirective: state.overrideDirective,
+              chatSource: state.chatSource,
+              detectionReport: state.detectionReport,
+              uiDesignSource: state.uiDesignSource,
+              figmaConfig: state.figmaConfig,
+              interruption,
+            }
+          }
+        );
+        console.log(`💾 [checkTaskStatus] Figma interruption checkpoint saved (${(state.completedTasks || []).length} completed, ${newQueue.size()} remaining)\n`);
+      } catch (error) {
+        console.warn(`[checkTaskStatus] ⚠️  Failed to save Figma interruption checkpoint:`, error);
+      }
+    }
+    
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpJobId,
+        null,
+        newQueue.getAll(),
+        state.completedTasksDetails || [],
+        state.recursionCount,
+        state.recursionLimit,
+        (state as any).tokenUsage
+      );
+    }
+    
+    console.log(`⏸️  [checkTaskStatus] Figma connection lost. ${(state.completedTasks || []).length} completed, ${newQueue.size()} remaining`);
+    
+    return {
+      currentTask: undefined,
+      taskQueue: newQueue,
+      _figmaConnectionLost: false,
+      _figmaConsecutiveErrors: 0,
+      _callLimitReached: false,
+      _docGenCallIndex: 0,
+      _noOutputCallCount: 0,
+      _toolResultCache: undefined,
+      fileErrors: undefined,
+      interruption,
+      tokenUsage: (state as any).tokenUsage,
+      _assetValidationFailed: false,
+      _assetValidationRetried: 0,
+    } as any;
+  }
+  
   // ✅ FILE ERRORS: Log warnings but don't block in sequential mode
   // (Sequential mode doesn't throw — fileErrors are logged for diagnostics.
   //  In parallel mode, workerCheckTaskStatus throws for proper failure handling.)
@@ -691,6 +790,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
         ? `Task stopped by user (${result.remainingQueue.length} task(s) remaining)`
         : result.interruptReason === 'figma_rate_limited'
         ? `Figma API rate limit exceeded. Please retry later. (${result.remainingQueue.length} task(s) remaining)`
+        : result.interruptReason === 'figma_connection_lost'
+        ? `Figma Desktop connection lost. Ensure Figma is open and retry. (${result.remainingQueue.length} task(s) remaining)`
         : `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
       timestamp: new Date().toISOString(),
       canResume: result.remainingQueue.length > 0,
@@ -806,6 +907,10 @@ export function buildDesignGraph() {
       // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
       awaitingDetectClarify: null as any,
       awaitingClarify: null as any,
+
+      // ✅ Figma MCP connection health (tool → docGenRouter → checkTaskStatus)
+      _figmaConsecutiveErrors: null as any,
+      _figmaConnectionLost: null as any,
     } as any,
   } as any);
 
@@ -895,7 +1000,7 @@ export function buildDesignGraph() {
   );
   
   // ✅ Conditional routing from detectEnvironment
-  // - designError → END (e.g., modification without documents, Figma MCP unavailable)
+  // - designError → learn (cleanup, error message, endJob)
   // - awaitingDetectClarify → END (paused for user choice between spec/system-design)
   // - uiDesignSource === 'figma' → figmaExplore → decompose
   // - otherwise → decompose (reference mode or non-UI)
@@ -903,8 +1008,8 @@ export function buildDesignGraph() {
     "detectEnvironment" as any,
     ((s: DesignGraphState) => {
       if (s.designError) {
-        console.log(`❌ [Graph] Design error detected, terminating job`);
-        return "__end__";
+        console.log(`❌ [Graph] Design error detected → routing to learn for cleanup`);
+        return "learn";
       }
       if (s.awaitingDetectClarify) {
         console.log(`⏸️  [Graph] Detect clarify — paused for user choice`);
@@ -916,20 +1021,20 @@ export function buildDesignGraph() {
       }
       return "decompose";
     }) as any,
-    { __end__: "__end__", decompose: "decompose", figmaExplore: "figmaExplore" } as any
+    { learn: "learn", __end__: "__end__", decompose: "decompose", figmaExplore: "figmaExplore" } as any
   );
   
-  // ✅ figmaExplore → conditional: designError → END, otherwise → decompose
+  // ✅ figmaExplore → conditional: designError → learn, otherwise → decompose
   graph.addConditionalEdges(
     "figmaExplore" as any,
     ((s: DesignGraphState) => {
       if (s.designError) {
-        console.log(`❌ [Graph] Figma explore failed (${s.designError.type}), terminating job`);
-        return "__end__";
+        console.log(`❌ [Graph] Figma explore failed (${s.designError.type}) → routing to learn for cleanup`);
+        return "learn";
       }
       return "decompose";
     }) as any,
-    { __end__: "__end__", decompose: "decompose" } as any
+    { learn: "learn", decompose: "decompose" } as any
   );
   
   // ✅ Decompose → conditional: parallel or sequential

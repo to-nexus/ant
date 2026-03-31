@@ -24,6 +24,18 @@ export function isFigmaRateLimitError(error: Error): boolean {
     || /figma.*rate limit/i.test(error.message);
 }
 
+export class FigmaMCPConnectionError extends Error {
+  constructor(message = 'Figma MCP connection lost') {
+    super(message);
+    this.name = 'FigmaMCPConnectionError';
+  }
+}
+
+export function isFigmaMCPConnectionError(error: Error): boolean {
+  return error instanceof FigmaMCPConnectionError
+    || /figma.*connection lost/i.test(error.message);
+}
+
 /**
  * Detect Figma API rate-limit from MCP response content.
  * Figma MCP Bridge returns rate-limit responses with isError: false,
