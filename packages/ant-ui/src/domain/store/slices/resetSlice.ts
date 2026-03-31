@@ -30,7 +30,6 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => 
       bridgeConnected: null,
       bridgeDetected: false,
       figmaDesktopReachable: false,
-      bridgeStatusChecked: false,
       accountConfigScrollTarget: null,
       figmaPopulated: null,
     });
