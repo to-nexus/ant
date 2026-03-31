@@ -45,14 +45,15 @@
 ### 1.3 ant-releases-{env} (신규)
 
 - **용도**: Ant Desktop 설치파일 (`.dmg`, `.exe`, `.deb`, `.AppImage`)
+- **S3 키 = URL 경로** (CloudFront가 full path를 그대로 전달)
 - **구조 예시**:
   ```
-  desktop/latest/macos-arm64.dmg
-  desktop/latest/macos-x64.dmg
-  desktop/latest/windows-x64.exe
-  desktop/latest/linux-x64.deb
-  desktop/latest/linux-x64.AppImage
-  desktop/v0.1.0/...
+  downloads/desktop/latest/macos-arm64.dmg
+  downloads/desktop/latest/macos-x64.dmg
+  downloads/desktop/latest/windows-x64.exe
+  downloads/desktop/latest/linux-x64.deb
+  downloads/desktop/latest/linux-x64.AppImage
+  downloads/desktop/v0.1.0/...
   ```
 
 ---
@@ -279,18 +280,21 @@ OAuth 시작 시 `returnTo` 쿼리 파라미터로 인증 후 리다이렉트 �
 
 ## 8. ant-desktop 릴리즈 배포
 
-GitHub Actions에서 ant-desktop 릴리즈 시 빌드 산출물을 S3 `ant-releases-{env}` 버킷으로 업로드한다.
+`ant-desktop/.github/workflows/release.yml`의 `upload-cdn` job이 자동 처리한다.
+S3 키는 CloudFront URL 경로와 1:1 매칭 (`/downloads/desktop/...`).
 
 ```yaml
-- name: Upload release artifacts
-  run: |
-    VERSION=${{ github.ref_name }}
-    aws s3 cp dist/macos-arm64.dmg s3://ant-releases-${ENV}/desktop/${VERSION}/macos-arm64.dmg
-    aws s3 cp dist/macos-x64.dmg s3://ant-releases-${ENV}/desktop/${VERSION}/macos-x64.dmg
-    aws s3 cp dist/windows-x64.exe s3://ant-releases-${ENV}/desktop/${VERSION}/windows-x64.exe
-    aws s3 cp dist/linux-x64.deb s3://ant-releases-${ENV}/desktop/${VERSION}/linux-x64.deb
-    aws s3 cp dist/linux-x64.AppImage s3://ant-releases-${ENV}/desktop/${VERSION}/linux-x64.AppImage
-    
-    # latest 심링크 업데이트
-    aws s3 sync s3://ant-releases-${ENV}/desktop/${VERSION}/ s3://ant-releases-${ENV}/desktop/latest/ --delete
+# release.yml upload-cdn job 핵심 동작:
+# 1. gh release download → artifacts/
+# 2. rename: *_aarch64.dmg → macos-arm64.dmg 등
+# 3. versioned upload
+aws s3 sync renamed/ s3://ant-releases-${ENV}/downloads/desktop/${TAG}/ \
+  --cache-control "public, max-age=31536000, immutable"
+# 4. latest update
+aws s3 sync s3://ant-releases-${ENV}/downloads/desktop/${TAG}/ \
+  s3://ant-releases-${ENV}/downloads/desktop/latest/ \
+  --delete --cache-control "public, max-age=3600" --metadata-directive REPLACE
+# 5. CF invalidation
+aws cloudfront create-invalidation --distribution-id $CF_ID \
+  --paths "/downloads/desktop/${TAG}/*" "/downloads/desktop/latest/*"
 ```

@@ -109,7 +109,9 @@ desktop/v0.1.0/...                  ← 버전별 아카이브
 | `ANT_SITE_S3_BUCKET` | ant-site S3 버킷명 | `ant-site-dev` |
 | `ANT_SITE_CF_DISTRIBUTION_ID` | CloudFront Distribution ID | `E1234ABCDEF` |
 
-기존 `AWS_ROLE_ARN`, `AWS_REGION`은 그대로 사용.
+`AWS_ROLE_ARN`은 `ant-desktop-releases-github-actions-role`을 사용한다.
+이 role은 `to-nexus/ant`와 `to-nexus/ant-desktop` 두 레포가 공유하며, `ant-site-dev`, `ant-ui-dev`, `ant-releases-dev` S3 버킷 + CloudFront invalidation 권한을 포함한다.
+Terraform: `tf-nexus-ax/ax-dev/global/iam/ant-desktop-releases/`
 
 CI/CD 워크플로우(`deploy.yml`)에 ant-site 배포 job이 이미 추가되어 있으며, 위 변수만 설정하면 자동 배포가 동작한다.
 
