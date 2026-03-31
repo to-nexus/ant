@@ -102,15 +102,15 @@ jobs:
           
           # Check ant-shared changes (triggers ant-cli + ant-preview rebuild)
           if echo "$CHANGED_FILES" | grep -q "^packages/ant-shared/"; then
-            echo "ant-shared-changed=true" >> $GITHUB_OUTPUT
-            echo "✅ ant-shared files changed"
+            ANT_SHARED_CHANGED=true
+            echo "✅ ant-shared files changed (will trigger ant-cli rebuild)"
           else
-            echo "ant-shared-changed=false" >> $GITHUB_OUTPUT
+            ANT_SHARED_CHANGED=false
             echo "❌ No ant-shared files changed"
           fi
           
           # Check ant-cli changes (also triggered by ant-shared changes)
-          if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/" || echo "$CHANGED_FILES" | grep -q "^packages/ant-shared/"; then
+          if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/" || [ "$ANT_SHARED_CHANGED" = "true" ]; then
             echo "ant-cli-changed=true" >> $GITHUB_OUTPUT
             echo "✅ ant-cli files changed (or ant-shared dependency changed)"
           else
