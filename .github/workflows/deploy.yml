@@ -100,7 +100,7 @@ jobs:
             echo "❌ No ant-ui files changed"
           fi
           
-          # Check ant-shared changes (triggers ant-cli rebuild since it's a build dependency)
+          # Check ant-shared changes (triggers ant-cli + ant-preview rebuild)
           if echo "$CHANGED_FILES" | grep -q "^packages/ant-shared/"; then
             ANT_SHARED_CHANGED=true
             echo "✅ ant-shared files changed (will trigger ant-cli rebuild)"
@@ -112,7 +112,7 @@ jobs:
           # Check ant-cli changes (also triggered by ant-shared changes)
           if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/" || [ "$ANT_SHARED_CHANGED" = "true" ]; then
             echo "ant-cli-changed=true" >> $GITHUB_OUTPUT
-            echo "✅ ant-cli files changed"
+            echo "✅ ant-cli files changed (or ant-shared dependency changed)"
           else
             echo "ant-cli-changed=false" >> $GITHUB_OUTPUT
             echo "❌ No ant-cli files changed"
@@ -128,19 +128,39 @@ jobs:
           fi
 
   # ===========================================
-  # Dev environment - ant-ui deployment (main, dev, ci/* branches)
+  # Dev environment - ant-ui deployment (S3 static upload)
   # ===========================================
   auto-ant-ui-dev-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: dev
-      env: dev
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
+    runs-on: ["arc-runner-set"]
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:shared
+      - run: pnpm build:ui
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   # ===========================================
   # Dev environment - ant-cli deployment (main, dev, ci/* branches)
@@ -198,10 +218,16 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
       - run: pnpm build:site
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
@@ -214,14 +240,34 @@ jobs:
   auto-all-ant-ui-dev-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: dev
-      env: dev
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
+    runs-on: ["arc-runner-set"]
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:shared
+      - run: pnpm build:ui
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   auto-all-ant-cli-dev-deploy:
     needs: detect-changes
@@ -254,19 +300,39 @@ jobs:
     secrets: inherit
 
   # ===========================================
-  # Stage branch - ant-ui deployment
+  # Stage branch - ant-ui deployment (S3 static upload)
   # ===========================================
   auto-ant-ui-stage-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: stage
-      env: stage
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
+    runs-on: ["arc-runner-set"]
+    environment: stage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:shared
+      - run: pnpm build:ui
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   # ===========================================
   # Stage branch - ant-cli deployment
@@ -282,6 +348,40 @@ jobs:
       service_name: ant-cli
       dockerfile: ./packages/ant-cli/Dockerfile
     secrets: inherit
+
+  # ===========================================
+  # Stage branch - ant-site deployment (S3 static upload)
+  # ===========================================
+  auto-ant-site-stage-deploy:
+    needs: detect-changes
+    if: (needs.detect-changes.outputs.ant-site-changed == 'true' || needs.detect-changes.outputs.root-package-changed == 'true') && startsWith(github.ref, 'refs/heads/stage')
+    runs-on: ["arc-runner-set"]
+    environment: stage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
 
   # ===========================================
   # Stage branch - ant-preview deployment
@@ -310,14 +410,34 @@ jobs:
   auto-all-ant-ui-stage-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: stage
-      env: stage
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
+    runs-on: ["arc-runner-set"]
+    environment: stage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:shared
+      - run: pnpm build:ui
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   auto-all-ant-cli-stage-deploy:
     needs: detect-changes
@@ -354,16 +474,71 @@ jobs:
   # ===========================================
   manual-ant-ui-deploy:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui' && github.event.inputs.environment != 'prod'
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: ${{ github.event.inputs.environment }}
-      env: ${{ github.event.inputs.environment }}
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
-      git_ref: ${{ github.event.inputs.git_ref || '' }}
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
+    runs-on: ["arc-runner-set"]
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:shared
+      - run: pnpm build:ui
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+
+  # ===========================================
+  # Manual deployment workflow - ant-site (dev, stage only)
+  # ===========================================
+  manual-ant-site-deploy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-site' && github.event.inputs.environment != 'prod'
+    runs-on: ["arc-runner-set"]
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
 
   # ===========================================
   # Manual deployment workflow - ant-cli (dev, stage only)
@@ -410,16 +585,70 @@ jobs:
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-ui')
-    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
-    with:
-      environment: prod
-      env: prod
-      git_sha: ${{ github.sha }}
-      service_name: ant-ui
-      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
-      git_ref: ${{ github.event.inputs.git_ref || '' }}
-      dockerfile: ./packages/ant-ui/Dockerfile
-    secrets: inherit
+    runs-on: ["arc-runner-set"]
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:shared
+      - run: pnpm build:ui
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
+
+  release-deploy-ant-site:
+    if: >
+      (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-site')
+    runs-on: ["arc-runner-set"]
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.git_ref || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install --no-frozen-lockfile
+      - name: Install AWS CLI
+        run: |
+          if ! type aws >/dev/null 2>&1; then
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+          fi
+      - run: pnpm build:site
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AX_S3_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      - name: Deploy to S3 + invalidate CloudFront
+        run: |
+          aws s3 sync packages/ant-site/out/ s3://${{ vars.ANT_SITE_S3_BUCKET }}/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_SITE_CF_DISTRIBUTION_ID }} --paths "/*"
 
   release-deploy-ant-cli:
     if: >

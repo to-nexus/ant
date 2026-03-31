@@ -49,10 +49,8 @@ COPY packages/ant-cli/package.json ./packages/ant-cli/
 # Install dependencies (frozen lockfile for reproducibility)
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# Copy ant-shared source code and build it first
+# Copy source code
 COPY packages/ant-shared ./packages/ant-shared
-
-# Copy ant-cli source code
 COPY packages/ant-cli ./packages/ant-cli
 
 # Build ant-cli (builds @ant/shared first, then runs tests + build for @ant/cli)
@@ -141,14 +139,14 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml ./
 
-# Copy package.json files (ant-shared must be present for workspace resolution)
+# Copy package files (ant-shared must be present for workspace resolution)
 COPY packages/ant-shared/package.json ./packages/ant-shared/
 COPY packages/ant-cli/package.json ./packages/ant-cli/
 
 # Install all dependencies
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# Copy ant-shared built artifacts from builder stage (runtime dependency)
+# Copy ant-shared from builder
 COPY --from=builder /app/packages/ant-shared ./packages/ant-shared
 
 # Copy built artifacts from builder stage
@@ -230,14 +228,14 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml ./
 
-# Copy package.json files (ant-shared must be present for workspace resolution)
+# Copy package files (ant-shared must be present for workspace resolution)
 COPY packages/ant-shared/package.json ./packages/ant-shared/
 COPY packages/ant-cli/package.json ./packages/ant-cli/
 
 # Install all dependencies (tsx execution needs devDependencies like typescript)
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# Copy ant-shared built artifacts from builder stage (runtime dependency)
+# Copy ant-shared from builder
 COPY --from=builder /app/packages/ant-shared ./packages/ant-shared
 
 # Copy built artifacts from builder stage
