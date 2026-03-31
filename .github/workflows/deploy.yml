@@ -159,7 +159,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   # ===========================================
@@ -266,7 +266,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   auto-all-ant-cli-dev-deploy:
@@ -331,7 +331,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   # ===========================================
@@ -436,7 +436,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   auto-all-ant-cli-stage-deploy:
@@ -502,7 +502,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   # ===========================================
@@ -613,7 +613,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       - name: Deploy to S3 + invalidate CloudFront
         run: |
-          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/ --delete
+          aws s3 sync packages/ant-ui/dist/ s3://${{ vars.ANT_UI_S3_BUCKET }}/app/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ vars.ANT_UI_CF_DISTRIBUTION_ID }} --paths "/app/*"
 
   release-deploy-ant-site:
