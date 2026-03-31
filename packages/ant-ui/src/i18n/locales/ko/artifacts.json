@@ -80,7 +80,11 @@
     "parseError": "파싱 오류",
     "figmaEmpty": "Figma URL이 설정되지 않았습니다",
     "figmaNotConnected": "Ant Desktop 미연결",
-    "figmaSetup": "설정하기"
+    "figmaSetup": "설정하기",
+    "syntaxError": "파일 구문 오류로 일반 편집 모드로 전환되었습니다.",
+    "smartPlaceholder": {
+      "figma": "피그마 작업파일 경로를 입력하세요"
+    }
   },
   "featureDetails": {
     "title": "피처 상세",
@@ -94,6 +98,7 @@
     "title": "파일 편집기",
     "modified": "● 수정됨",
     "open": "열기",
+    "reset": "초기화",
     "revert": "되돌리기",
     "saving": "저장 중...",
     "save": "저장",
