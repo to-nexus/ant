@@ -228,7 +228,7 @@
     gap: 14px;
     margin: 20px 0;
   }
-  @media (max-width: 768px) { .card-grid-3 { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) { .card-grid-3 { grid-template-columns: 1fr !important; } }
 
   .feature-card {
     background: var(--surface);
@@ -883,7 +883,7 @@
     </div>
     <div class="stat-strip">
       <div class="stat-box">
-        <div class="stat-value">$26B</div>
+        <div class="stat-value">36조원</div>
         <div class="stat-label">AI 코드 도구 시장 2030 전망</div>
       </div>
       <div class="stat-box">
@@ -895,15 +895,131 @@
         <div class="stat-label">AI 코딩 도구 채택률 (2026.3)</div>
       </div>
     </div>
+    <div style="background:linear-gradient(135deg, #0d1b3e 0%, #1a0a2e 50%, #2d0a0a 100%);border:1px solid #2a3a6a;border-radius:16px;padding:40px 36px;margin:24px 0;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-40px;right:-20px;font-size:120px;opacity:0.06;line-height:1">&#127472;&#127479;</div>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">
+        <span style="font-size:32px">&#127472;&#127479;</span>
+        <h3 style="font-size:20px;font-weight:800;margin:0;letter-spacing:-0.3px;background:linear-gradient(135deg,#fff,#c8d8ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">한국 시장 기회 — K-Vibe Coding</h3>
+      </div>
+      <p style="font-size:14px;color:#8898c8;margin-bottom:24px;max-width:640px;line-height:1.7">
+        한국에서 제품화된 AI 코드 도구는 부재하다. Cursor, Devin, Bolt, Lovable 모두 미국 기업. 국내 대안이 없는 시장에서 Ant는 구조적 이점을 갖는다.
+      </p>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px 18px">
+          <div style="font-size:13px;font-weight:700;color:#e0e8ff;margin-bottom:6px">&#127970; 기업·공공 조달</div>
+          <div style="font-size:12px;color:#7888b0;line-height:1.6">데이터 주권, 보안 감사, 국내 기술 지원 요구. 해외 SaaS만 존재하는 시장에서 국산 대안은 조달 경쟁력.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px 18px">
+          <div style="font-size:13px;font-weight:700;color:#e0e8ff;margin-bottom:6px">&#128483; 한국어 UI</div>
+          <div style="font-size:12px;color:#7888b0;line-height:1.6">Ant는 i18n(ko/en) 이미 탑재. 경쟁사 중 한국어 UI를 제공하는 제품은 없음.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px 18px">
+          <div style="font-size:13px;font-weight:700;color:#e0e8ff;margin-bottom:6px">&#127759; 아시아 확장 교두보</div>
+          <div style="font-size:12px;color:#7888b0;line-height:1.6">한국에서 검증 후 일본·동남아 확장 시 "아시아 출신 대안"으로 포지셔닝 가능.</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px 18px">
+          <div style="font-size:13px;font-weight:700;color:#e0e8ff;margin-bottom:6px">&#128240; 국내 미디어 레버리지</div>
+          <div style="font-size:12px;color:#7888b0;line-height:1.6">"한국 최초의 오픈소스 AI 코드 도구"는 국내 테크 미디어에서 강력한 헤드라인.</div>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <!-- ======== 4. STRATEGY ======== -->
+  <!-- ======== 4. WHY OPEN SOURCE ======== -->
   <section>
     <div class="section-header">
       <span class="section-num">04</span>
-      <h2 class="section-title">전략: 풀 오픈소스 + 클라우드 병행</h2>
+      <h2 class="section-title">왜 오픈소스인가</h2>
     </div>
-    <p class="section-desc">ant-cli + ant-ui + ant-shared 전체 공개. 클라우드 호스팅 서비스로 수익화.</p>
+    <p class="section-desc">비공개 서비스의 구조적 한계를 분석하고, 오픈소스가 가져오는 전략적 이점을 평가한다.</p>
+
+    <h3><span class="h3-icon">&#128683;</span> 비공개(Closed Source) 전략의 한계</h3>
+    <div class="card-grid-3">
+      <div class="feature-card">
+        <div class="fc-icon" style="background:var(--red-bg);border:1px solid var(--red-border)">&#128176;</div>
+        <h4>사용자 확보 비용</h4>
+        <p>Cursor(약 12.9조원), Lovable(약 9.2조원) 등 조 단위 밸류에이션 경쟁사와 마케팅 예산으로 싸워야 함. 현재 팀 규모로는 비현실적.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon" style="background:var(--red-bg);border:1px solid var(--red-border)">&#128274;</div>
+        <h4>신뢰 장벽</h4>
+        <p>소스를 볼 수 없는 신생 서비스에 기업이 핵심 코드 생성을 맡기기 꺼림. 2026년 개발자 도구 시장에서 소스 비공개는 점점 불리.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon" style="background:var(--red-bg);border:1px solid var(--red-border)">&#9200;</div>
+        <h4>품질 병목</h4>
+        <p>테스트, 버그 리포트, 기능 확장 모두 내부 리소스에 의존. 1인 개발 체제에서 속도의 한계가 명확.</p>
+      </div>
+    </div>
+
+    <h3><span class="h3-icon">&#128161;</span> 오픈소스가 해결하는 것</h3>
+    <div class="table-card">
+      <table class="score-table">
+        <thead>
+          <tr><th>비공개의 문제</th><th>오픈소스의 해법</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>마케팅 비용 과다</td>
+            <td>GitHub star, 데모 GIF, HN/PH 론칭으로 <strong>자연 유입</strong>. 개발자 도구는 오픈소스가 최고의 마케팅 채널.</td>
+          </tr>
+          <tr>
+            <td>신뢰 부재</td>
+            <td>소스를 볼 수 있으므로 <strong>보안 감사, 커스터마이제이션</strong> 가능. 기업 도입 장벽 하락.</td>
+          </tr>
+          <tr>
+            <td>품질 병목</td>
+            <td>커뮤니티 기여로 <strong>테스트, 버그 픽스, 기능 제안</strong> 확보. 현재 부족한 테스트 커버리지를 외부 기여로 보완.</td>
+          </tr>
+          <tr>
+            <td>생태계 부재</td>
+            <td>플러그인, 통합, 프롬프트 템플릿을 <strong>커뮤니티가 확장</strong>. 단독으로 만들 수 없는 생태계.</td>
+          </tr>
+          <tr>
+            <td>인재 확보 어려움</td>
+            <td>오픈소스 프로젝트는 <strong>채용과 브랜딩</strong>에 강력한 자산.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3><span class="h3-icon">&#127919;</span> 기대 효과</h3>
+    <div class="card-grid-3" style="grid-template-columns: repeat(2, 1fr);">
+      <div class="feature-card">
+        <div class="fc-icon" style="background:var(--green-bg);border:1px solid var(--green-border)">&#128640;</div>
+        <h4>사용자 확보 속도</h4>
+        <p>유료 마케팅 대비 10-50배 낮은 CAC(고객 획득 비용). "git clone → docker compose up → 브라우저 체험" 퍼널이 곧 온보딩.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon" style="background:var(--green-bg);border:1px solid var(--green-border)">&#128295;</div>
+        <h4>제품 품질 가속</h4>
+        <p>커뮤니티 이슈 리포트와 PR이 내부 QA를 대체. Bolt.new는 오픈소스 후 14,000+ 포크에서 커뮤니티 기여를 흡수.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon" style="background:var(--green-bg);border:1px solid var(--green-border)">&#127942;</div>
+        <h4>시장 포지셔닝</h4>
+        <p>"AI 개발 프로세스 도구" 카테고리에서 오픈소스 레퍼런스가 되면, 후발 경쟁사가 이 위치를 빼앗기 어려움.</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon" style="background:var(--green-bg);border:1px solid var(--green-border)">&#128202;</div>
+        <h4>데이터 해자 구축</h4>
+        <p>클라우드 사용자의 익명 사용 패턴 → 프롬프트 최적화 → 품질 향상 → 더 많은 사용자 유입의 선순환.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======== 5. STRATEGY DESIGN ======== -->
+  <section>
+    <div class="section-header">
+      <span class="section-num">05</span>
+      <h2 class="section-title">전략 설계</h2>
+    </div>
+    <p class="section-desc">공개 범위, 경쟁 방어 구조, 라이선스를 설계한다.</p>
+
+    <h3><span class="h3-icon">&#128230;</span> 공개 범위: 풀스택</h3>
+    <p style="font-size:14px;color:var(--text-mid);margin-bottom:20px">
+      <strong>ant-cli + ant-ui + ant-shared 전체 공개.</strong> 백엔드만 공개하는 것은 전략적으로 의미가 없다. <code style="color:var(--accent-light);font-family:'JetBrains Mono',monospace;font-size:13px">ant-cli</code>는 CLI 도구가 아니라 4-Process 백엔드 서버이며, Ant의 가치는 시각적 파이프라인(칸반, 워크플로 그래프, 채팅, 실시간 진행, 프리뷰)에서 체감된다. 스크린샷과 데모가 GitHub 첫인상이 되어야 한다.
+    </p>
 
     <h3><span class="h3-icon">&#128214;</span> 선례</h3>
     <div class="precedent-card">
@@ -915,7 +1031,7 @@
             <div class="precedent-desc">UI 포함 풀 오픈소스, 5개월 만에 달성</div>
           </div>
         </div>
-        <div class="precedent-arr">$40M ARR</div>
+        <div class="precedent-arr">약 560억원 ARR</div>
       </div>
       <div class="precedent-row">
         <div class="precedent-left">
@@ -925,7 +1041,7 @@
             <div class="precedent-desc">Studio(관리 UI) 포함 오픈소스</div>
           </div>
         </div>
-        <div class="precedent-arr">$100M ARR</div>
+        <div class="precedent-arr">약 1,400억원 ARR</div>
       </div>
       <div class="precedent-row">
         <div class="precedent-left">
@@ -939,7 +1055,10 @@
       </div>
     </div>
 
-    <h3><span class="h3-icon">&#128737;</span> 자연 해자 3중 구조</h3>
+    <h3><span class="h3-icon">&#128737;</span> 자연 해자: 오픈소스해도 클라우드가 먹히는 이유</h3>
+    <p style="font-size:14px;color:var(--text-mid);margin-bottom:20px">
+      오픈소스 프로젝트에서 셀프호스팅 사용자의 <strong>5-15%만 장기 운영</strong>. 나머지는 관리형 서비스로 전환한다. Ant는 이 전환 압력이 특히 강하다:
+    </p>
 
     <div class="flow-card">
       <div class="flow-row">
@@ -997,10 +1116,10 @@
     </div>
   </section>
 
-  <!-- ======== 5. REVENUE ======== -->
+  <!-- ======== 6. REVENUE ======== -->
   <section>
     <div class="section-header">
-      <span class="section-num">05</span>
+      <span class="section-num">06</span>
       <h2 class="section-title">수익 모델 및 매출 추정</h2>
     </div>
 
@@ -1008,25 +1127,34 @@
     <div class="pricing-grid">
       <div class="pricing-card">
         <div class="pricing-tier">Free</div>
-        <div class="pricing-price">$0</div>
+        <div class="pricing-price">₩0</div>
         <p class="pricing-desc">LLM 크레딧 제한, 개인 사용</p>
       </div>
       <div class="pricing-card featured">
         <div class="pricing-tier">Pro</div>
-        <div class="pricing-price">$25<span class="unit">/mo</span></div>
+        <div class="pricing-price">₩3.5만<span class="unit">/월</span></div>
         <p class="pricing-desc">크레딧 증가, 팀 기능</p>
       </div>
       <div class="pricing-card">
         <div class="pricing-tier">Enterprise</div>
-        <div class="pricing-price">$100+<span class="unit">/seat</span></div>
+        <div class="pricing-price">₩14만+<span class="unit">/seat</span></div>
         <p class="pricing-desc">SSO, 감사 로그, SLA</p>
       </div>
     </div>
 
     <h3><span class="h3-icon">&#128200;</span> ARR 추정</h3>
-    <p style="font-size:13px;color:var(--text-dim);margin-bottom:8px">
-      전제: 프로젝트 전담 1명(풀스택 임원급), 회사 70명(DevOps 인프라 지원). 오픈소스→유료 전환율 2-5%.
-    </p>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 20px;margin-bottom:16px;font-size:13px;color:var(--text-mid);line-height:1.7">
+      <strong style="color:var(--accent-light)">ARR</strong>(Annual Recurring Revenue)은 구독 기반 서비스의 연간 반복 매출을 뜻한다. 실제 매출이 아니라 현재 유료 구독자 수 × 연간 구독료로 산출한 <strong>예상 연매출 규모</strong>이며, SaaS 기업의 성장 지표로 사용된다.
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:16px;font-size:13px;line-height:1.8">
+      <div style="color:var(--text);font-weight:700;font-family:'JetBrains Mono',monospace;font-size:12px;margin-bottom:8px">ARR = 유료 사용자 × ₩35,000/월 × 12개월</div>
+      <ul style="list-style:none;color:var(--text-mid);margin:0;padding:0">
+        <li style="padding:2px 0">· Pro 단가 ₩35,000/월 — Bolt·Lovable ₩35,000, Cursor ₩28,000과 동일 구간</li>
+        <li style="padding:2px 0">· MAU → 유료 전환율 2-5% — GitLab·Supabase·n8n 등 오픈소스 SaaS 공개 수치</li>
+        <li style="padding:2px 0">· Enterprise 매출 미포함, 이탈률(churn) 미반영 — 상쇄 구조로 Pro-only가 합리적 중간값</li>
+        <li style="padding:2px 0">· 환율 ₩1,400/$</li>
+      </ul>
+    </div>
 
     <div class="chart-card">
       <canvas id="revenueChart"></canvas>
@@ -1041,30 +1169,30 @@
           <tr>
             <td><span class="scenario-tag con">보수적</span></td>
             <td>무료 베타</td>
-            <td class="arr">$15K-$30K</td>
-            <td class="arr">$60K-$120K</td>
+            <td class="arr">2,100만-4,200만원</td>
+            <td class="arr">8,400만-1.7억원</td>
           </tr>
           <tr>
             <td><span class="scenario-tag base">기본</span></td>
             <td>무료 베타</td>
-            <td class="arr">$45K-$90K</td>
-            <td class="arr">$150K-$360K</td>
+            <td class="arr">6,300만-1.3억원</td>
+            <td class="arr">2.1억-5억원</td>
           </tr>
           <tr>
             <td><span class="scenario-tag opt">낙관적</span></td>
             <td>무료 베타</td>
-            <td class="arr">$150K-$300K</td>
-            <td class="arr">$600K-$1.5M</td>
+            <td class="arr">2.1억-4.2억원</td>
+            <td class="arr">8.4억-21억원</td>
           </tr>
         </tbody>
       </table>
     </div>
   </section>
 
-  <!-- ======== 6. ROADMAP ======== -->
+  <!-- ======== 7. ROADMAP ======== -->
   <section>
     <div class="section-header">
-      <span class="section-num">06</span>
+      <span class="section-num">07</span>
       <h2 class="section-title">실행 로드맵</h2>
     </div>
 
@@ -1125,10 +1253,10 @@
     </div>
   </section>
 
-  <!-- ======== 7. RISKS ======== -->
+  <!-- ======== 8. RISKS ======== -->
   <section>
     <div class="section-header">
-      <span class="section-num">07</span>
+      <span class="section-num">08</span>
       <h2 class="section-title">리스크</h2>
     </div>
 
@@ -1183,7 +1311,7 @@ new Chart(ctx, {
     datasets: [
       {
         label: '보수적',
-        data: [0, 22.5, 90],
+        data: [0, 0.3, 1.3],
         backgroundColor: 'rgba(96,165,250,0.35)',
         borderColor: 'rgba(96,165,250,0.8)',
         borderWidth: 1,
@@ -1192,7 +1320,7 @@ new Chart(ctx, {
       },
       {
         label: '기본',
-        data: [0, 67.5, 255],
+        data: [0, 0.9, 3.6],
         backgroundColor: 'rgba(251,191,36,0.35)',
         borderColor: 'rgba(251,191,36,0.8)',
         borderWidth: 1,
@@ -1201,7 +1329,7 @@ new Chart(ctx, {
       },
       {
         label: '낙관적',
-        data: [0, 225, 1050],
+        data: [0, 3.2, 14.7],
         backgroundColor: 'rgba(52,211,153,0.35)',
         borderColor: 'rgba(52,211,153,0.8)',
         borderWidth: 1,
@@ -1237,7 +1365,7 @@ new Chart(ctx, {
         bodyFont: { family: "'JetBrains Mono', monospace", size: 12 },
         callbacks: {
           label: function(c) {
-            return ' ' + c.dataset.label + ': $' + c.raw.toLocaleString() + 'K ARR';
+            return ' ' + c.dataset.label + ': ' + c.raw.toLocaleString() + '억원';
           }
         }
       }
@@ -1252,7 +1380,7 @@ new Chart(ctx, {
         ticks: {
           color: '#6e6e8a',
           font: { family: "'JetBrains Mono', monospace", size: 11 },
-          callback: function(v) { return '$' + v + 'K'; }
+          callback: function(v) { return v + '억원'; }
         },
         grid: { color: '#1a1a26' },
         border: { color: '#252538' }
