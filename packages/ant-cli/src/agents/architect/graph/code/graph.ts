@@ -917,7 +917,10 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             parallelMode: true,
             interruption: {
               reason: 'tasks_failed',
-              message: `${result.failedTasks.length} task(s) failed during parallel execution`,
+              message: [
+                `${result.failedTasks.length} task(s) failed during parallel execution`,
+                ...result.failedTasks.map(f => `- "${f.task.name}": ${f.error.message}`),
+              ].join('\n'),
               timestamp: new Date().toISOString(),
               canResume: true,
             },
@@ -949,7 +952,10 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       },
     } : result.hasFailures ? {
       reason: 'tasks_failed',
-      message: `${result.failedTasks.length} task(s) failed during parallel execution`,
+      message: [
+        `${result.failedTasks.length} task(s) failed during parallel execution`,
+        ...result.failedTasks.map(f => `- "${f.task.name}": ${f.error.message}`),
+      ].join('\n'),
       timestamp: new Date().toISOString(),
       canResume: true,
       metadata: {
