@@ -229,7 +229,7 @@ function ChoiceCardShell({
             </ReactMarkdown>
           </div>
           {subtitle && (
-            <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">
+            <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 whitespace-pre-line">
               {subtitle}
             </div>
           )}
