@@ -109,7 +109,6 @@ export interface UIState {
   bridgeConnected: boolean | null;       // null=unchecked, false=disconnected, true=connected
   bridgeDetected: boolean;
   figmaDesktopReachable: boolean;
-  bridgeStatusChecked: boolean;
   accountConfigScrollTarget: string | null;
 }
 

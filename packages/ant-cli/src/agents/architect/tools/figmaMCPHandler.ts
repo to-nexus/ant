@@ -10,7 +10,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { createMCPAdapter, extractMCPTextContent, isFigmaMCPSoftError } from '../../../periphery/adapters/figma/MCPTransport';
+import { createMCPAdapter, extractMCPTextContent, extractMCPImageContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../periphery/adapters/figma/MCPTransport';
 import type { FigmaMCPAdapter } from '../../../periphery/adapters/figma/FigmaMCPAdapter';
 import { FigmaRateLimitError, isRateLimitResponse } from '../../../periphery/adapters/figma/errors';
 import { getSessionDebugDir } from '../../../core/utils/sessionPaths';
@@ -23,6 +23,33 @@ export interface FigmaMCPCallOpts {
   userId?: string;
   redis?: any;
   taskId?: string;
+}
+
+export interface FigmaMCPImageData {
+  base64: string;
+  mimeType: string;
+}
+
+export interface FigmaMCPImageResult {
+  __type: 'figma_image';
+  base64: string;
+  mimeType: string;
+}
+
+export interface FigmaMCPCompositeResult {
+  __type: 'figma_composite';
+  text: string;
+  image: FigmaMCPImageData;
+}
+
+export type FigmaMCPResult = string | FigmaMCPImageResult | FigmaMCPCompositeResult;
+
+export function isFigmaImageResult(r: FigmaMCPResult): r is FigmaMCPImageResult {
+  return typeof r === 'object' && r !== null && (r as any).__type === 'figma_image';
+}
+
+export function isFigmaCompositeResult(r: FigmaMCPResult): r is FigmaMCPCompositeResult {
+  return typeof r === 'object' && r !== null && (r as any).__type === 'figma_composite';
 }
 
 interface FigmaMCPLogEntry {
@@ -45,8 +72,8 @@ const FIGMA_TOOL_METHOD_MAP: Record<string, keyof FigmaMCPAdapter> = {
   figma_get_variable_defs: 'getVariableDefs',
 };
 
-const _figmaResponseCache = new Map<string, string>();
-const _figmaInflightRequests = new Map<string, Promise<string>>();
+const _figmaResponseCache = new Map<string, FigmaMCPResult>();
+const _figmaInflightRequests = new Map<string, Promise<FigmaMCPResult>>();
 let _figmaRateLimited = false;
 
 const _figmaMCPLog: FigmaMCPLogEntry[] = [];
@@ -77,7 +104,7 @@ export async function callFigmaMCPTool(
   toolName: string,
   fileKey: string,
   nodeId: string,
-): Promise<string> {
+): Promise<FigmaMCPResult> {
   if (!fileKey || !nodeId) {
     throw new Error(`${toolName} requires fileKey and nodeId`);
   }
@@ -89,7 +116,8 @@ export async function callFigmaMCPTool(
     throw new FigmaRateLimitError();
   }
 
-  const cacheKey = `${toolName}:${fileKey}:${nodeId}`;
+  const normalizedNodeId = nodeId.replace(/:/g, '-');
+  const cacheKey = `${toolName}:${fileKey}:${normalizedNodeId}`;
   const cached = _figmaResponseCache.get(cacheKey);
   if (cached) {
     console.log(`🔧 [FigmaMCP] Cache hit: ${toolName} (${fileKey}:${nodeId})`);
@@ -154,6 +182,27 @@ export async function saveFigmaMCPDebugLog(featurePath: string, jobId: string): 
 }
 
 /**
+ * Save a Figma screenshot image to disk and return its feature-relative path.
+ * Used by both design and code job tool nodes to enable chat UI preview.
+ */
+export async function saveFigmaScreenshot(
+  featurePath: string,
+  nodeId: string,
+  base64: string,
+  mimeType: string,
+): Promise<string> {
+  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('jpeg') ? 'jpg' : 'png';
+  const safeNodeId = nodeId.replace(/:/g, '-');
+  const relativePath = `sessions/architect/debug/figma/screenshots/${safeNodeId}.${ext}`;
+  const fullPath = path.join(featurePath, relativePath);
+
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  await fs.writeFile(fullPath, Buffer.from(base64, 'base64'));
+
+  return relativePath;
+}
+
+/**
  * Reset module-level state. Call if you need a clean slate within the same process.
  * Normally not needed — each job runs in a separate child process.
  */
@@ -174,7 +223,7 @@ async function executeFigmaMCPCall(
   toolName: string,
   fileKey: string,
   nodeId: string,
-): Promise<string> {
+): Promise<FigmaMCPResult> {
   const adapter = getFigmaMCPAdapter({ userId: opts.userId, redis: opts.redis });
 
   const method = FIGMA_TOOL_METHOD_MAP[toolName];
@@ -186,26 +235,46 @@ async function executeFigmaMCPCall(
 
   const rawContent = mcpResult.content;
   const extracted = extractMCPTextContent(rawContent);
-  const textForCheck = extracted
-    ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
 
-  // Rate limit: Figma MCP Bridge may return isError:false for rate limits,
-  // so check extracted content regardless of the isError flag.
-  if (isRateLimitResponse(textForCheck)) {
-    _figmaRateLimited = true;
-    throw new FigmaRateLimitError(`Figma MCP rate limit (${toolName}): ${textForCheck}`);
+  // Error checks use text content only (errors are always text, never images)
+  if (extracted) {
+    if (isRateLimitResponse(extracted)) {
+      _figmaRateLimited = true;
+      throw new FigmaRateLimitError(`Figma MCP rate limit (${toolName}): ${extracted}`);
+    }
   }
 
   if (mcpResult.isError) {
-    throw new Error(`Figma MCP error (${toolName}): ${textForCheck}`);
+    const errText = extracted ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent));
+    throw new Error(`Figma MCP error (${toolName}): ${errText}`);
   }
 
-  const result = extracted
+  const imageContent = extractMCPImageContent(rawContent);
+  const textContent = extracted
     ?? (typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent, null, 2));
 
-  if (isFigmaMCPSoftError(result)) {
-    throw new Error(`Figma Desktop is not accessible: ${result}. Open a design file in Figma Desktop and retry.`);
+  if (isFigmaMCPSoftError(textContent) || isLikelyMCPErrorResponse(textContent)) {
+    throw new Error(`Figma Desktop is not accessible: ${textContent}. Open a design file in Figma Desktop and retry.`);
   }
 
-  return result;
+  // screenshot tool: image is the primary (only) content
+  if (toolName === 'figma_get_screenshot' && imageContent) {
+    const kb = Math.round(imageContent.base64.length / 1024);
+    console.log(`🖼️  [FigmaMCP] Image response: ${toolName} (${kb}KB ${imageContent.mimeType})`);
+    return { __type: 'figma_image', base64: imageContent.base64, mimeType: imageContent.mimeType };
+  }
+
+  // design_context: text is primary, image is supplementary — return both
+  if (toolName === 'figma_get_design_context' && imageContent) {
+    const kb = Math.round(imageContent.base64.length / 1024);
+    console.log(`🖼️  [FigmaMCP] Composite response: ${toolName} (text ${textContent.length} chars + image ${kb}KB)`);
+    return {
+      __type: 'figma_composite',
+      text: textContent,
+      image: { base64: imageContent.base64, mimeType: imageContent.mimeType },
+    };
+  }
+
+  // metadata, variable_defs, etc.: text only
+  return textContent;
 }

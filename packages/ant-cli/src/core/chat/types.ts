@@ -116,6 +116,8 @@ export interface MessageContentMetadata {
   // Learn metadata
   taskName?: string;      // For learning
   filesWritten?: number;  // For learned
+  // Image preview (for figma_called, downloaded, read — when result is an image)
+  imagePath?: string;       // Feature-relative path to saved image file
   // File card summary (lightweight persistence — content stripped, stats kept)
   lineCount?: number;       // Total lines written (file_create)
   diffBeforeLines?: number; // Lines removed (file_edit)

@@ -86,7 +86,8 @@ export class TokenBudgetManager {
    * - string
    * - array of { type: 'text', text: string }
    * - array of { type: 'tool_use', ... }
-   * - array of { type: 'tool_result', content: string }
+   * - array of { type: 'tool_result', content: string | any[] }
+   * - array of { type: 'image', source: { data: string } }
    */
   estimateMessageContent(content: string | any[]): number {
     if (typeof content === 'string') {
@@ -101,15 +102,36 @@ export class TokenBudgetManager {
     for (const block of content) {
       if (block.type === 'text' && block.text) {
         total += this.estimateTokens(block.text);
+      } else if (block.type === 'image') {
+        total += this.estimateImageTokens(block.source);
       } else if (block.type === 'tool_use') {
         total += this.estimateTokens(block.name || '');
         total += this.estimateTokens(JSON.stringify(block.input || {}));
       } else if (block.type === 'tool_result') {
-        total += this.estimateTokens(block.content || '');
+        if (typeof block.content === 'string') {
+          total += this.estimateTokens(block.content);
+        } else if (Array.isArray(block.content)) {
+          total += this.estimateMessageContent(block.content);
+        }
       }
     }
     
     return total;
+  }
+
+  /**
+   * Anthropic image token estimation.
+   * Anthropic charges based on image dimensions, not base64 size.
+   * Formula: ceil(width/32) * ceil(height/32) tokens (approx).
+   * Without dimension info, estimate from base64 byte size as a conservative proxy.
+   * A typical 1280x800 screenshot ≈ 1600 tokens.
+   */
+  estimateImageTokens(source?: { data?: string; media_type?: string }): number {
+    if (!source?.data) return 0;
+    const bytes = Math.ceil(source.data.length * 0.75);
+    if (bytes < 50_000) return 800;
+    if (bytes < 200_000) return 1600;
+    return 2400;
   }
   
   /**

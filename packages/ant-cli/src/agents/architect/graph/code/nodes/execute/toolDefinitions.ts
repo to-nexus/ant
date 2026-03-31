@@ -44,24 +44,20 @@ export async function getAvailableTools(state: ArchitectGraphState): Promise<Too
     toolNames.push('search_reference_code');
   }
 
-  if (state.figmaAvailable) {
+  const figmaToolsEnabled = state.figmaAvailable && !state.parsedUiDocs;
+  if (figmaToolsEnabled) {
     const taskType = state.currentTask?.type;
     const isFrontendTask = taskType === 'ui' || taskType === 'feature' || taskType === 'design-system';
     if (isFrontendTask) {
-      toolNames.push('figma_get_design_context', 'figma_get_screenshot');
-      if (!state.parsedUiDocs) {
-        toolNames.push('figma_get_variable_defs');
-      }
-      if (!state.parsedUiDocs || !state.figmaStartNodeId) {
-        toolNames.push('figma_get_metadata');
-      }
+      toolNames.push('figma_get_design_context', 'figma_get_screenshot',
+        'figma_get_variable_defs', 'figma_get_metadata');
     }
   }
 
   const promptPort = state.deps?.promptEngine?.deps?.promptPort;
   let tools = await getToolsByNamesWithTemplates(toolNames, promptPort);
 
-  if (state.figmaAvailable) {
+  if (figmaToolsEnabled) {
     tools = tools.map(t => removeFigmaFileKeyFromSchema(t));
   }
 

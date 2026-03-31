@@ -17,7 +17,7 @@ import { DesignGraphState } from '../state';
 import type { FigmaExplorationResult, FigmaExplorationError, FigmaNodeSummary, VariantProperty } from '@ant/shared';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getFigmaMCPAdapter } from '../../../tools/figmaMCPHandler';
-import { extractMCPTextContent, isFigmaMCPSoftError } from '../../../../../periphery/adapters/figma/MCPTransport';
+import { extractMCPTextContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../../../periphery/adapters/figma/MCPTransport';
 import { isRateLimitResponse } from '../../../../../periphery/adapters/figma/errors';
 import { getSessionRuntimeDir } from '../../../../../core/utils/sessionPaths';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
@@ -308,7 +308,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: [], summary: { errors } });
     return {
       figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-      designError: { type: 'figma_window_not_open', message: errMsg, suggestedAction: 'Figma Desktop이 실행 중인지 확인하세요.' },
+      designError: { type: 'figma_window_not_open', message: errMsg },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
     };
   }
@@ -368,12 +368,12 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
       await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
       return {
         figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-        designError: { type: 'figma_rate_limited', message: 'Figma API rate limit exceeded. Please retry later.', suggestedAction: 'Figma API rate limit에 도달했습니다. 잠시 후 다시 시도하세요.' },
+        designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${extractedPreview}` },
         _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
       };
     }
 
-    if (extractedPreview && isFigmaMCPSoftError(extractedPreview)) {
+    if (extractedPreview && (isFigmaMCPSoftError(extractedPreview) || isLikelyMCPErrorResponse(extractedPreview))) {
       console.log(`   ❌ Figma MCP soft error: "${extractedPreview}"`);
       fileDebug.status = 'soft_error';
       errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Soft error: ${extractedPreview}`, timestamp: new Date().toISOString() });
@@ -433,7 +433,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
         await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
         return {
           figmaExplorationResult: result,
-          designError: { type: 'figma_rate_limited', message: 'Figma API rate limit exceeded. Please retry later.', suggestedAction: 'Figma API rate limit에 도달했습니다. 잠시 후 다시 시도하세요.' },
+          designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${varTextForCheck}` },
           _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
         };
       }
@@ -445,20 +445,27 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
       } else {
         const varContent = extractMCPTextContent(varRawContent) ?? varRawContent;
         const varStr = typeof varContent === 'string' ? varContent : JSON.stringify(varContent);
-        const estimatedTokens = varStr.length / 3.5;
-        fileDebug.getVariableDefs.estimatedTokens = Math.round(estimatedTokens);
-        console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
-        let varData: unknown;
-        if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
-          varData = varContent;
+
+        if (typeof varStr === 'string' && isLikelyMCPErrorResponse(varStr)) {
+          console.warn(`      ⚠️ getVariableDefs returned error-like response: ${varStr.substring(0, 200)}`);
+          fileDebug.getVariableDefs.status = 'soft_error';
+          errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: `Soft error: ${varStr.substring(0, 500)}`, timestamp: new Date().toISOString() });
         } else {
-          console.warn(`      ⚠️ variableDefs too large, storing keys only`);
-          varData = extractVariableDefsSummary(varContent);
-        }
-        if (!result.variableDefs) {
-          result.variableDefs = varData;
-        } else {
-          result.variableDefs = mergeVariableDefs(result.variableDefs, varData);
+          const estimatedTokens = varStr.length / 3.5;
+          fileDebug.getVariableDefs.estimatedTokens = Math.round(estimatedTokens);
+          console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
+          let varData: unknown;
+          if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
+            varData = varContent;
+          } else {
+            console.warn(`      ⚠️ variableDefs too large, storing keys only`);
+            varData = extractVariableDefsSummary(varContent);
+          }
+          if (!result.variableDefs) {
+            result.variableDefs = varData;
+          } else {
+            result.variableDefs = mergeVariableDefs(result.variableDefs, varData);
+          }
         }
       }
     } catch (err: any) {
@@ -520,6 +527,21 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
         await logger.logPhaseComplete({ phase: 'figmaExplore', elapsedMs: debugInfo.elapsedMs!, details: debugInfo.summary });
       } catch { /* non-blocking */ }
     }
+  }
+
+  if (result.totalFrameCount === 0 && (!result.nodeSummary || result.nodeSummary.length === 0)) {
+    const errMsg = errors.length > 0
+      ? `Figma exploration failed: ${errors[0].message}`
+      : 'Figma exploration returned no data from any configured file';
+    console.log(`   ❌ No usable Figma data — setting designError to halt job`);
+    return {
+      figmaExplorationResult: { ...result, explorationErrors: errors },
+      designError: {
+        type: 'figma_window_not_open' as const,
+        message: errMsg,
+      },
+      _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+    };
   }
 
   return {

@@ -132,6 +132,8 @@ export interface MessageContent {
     // Plan card
     taskName?: string;        // For plan_generating/plan/task_response: task name in header
     completed?: boolean;      // For task_response: individual card completion signal
+    // Image preview (for figma_called, downloaded, read — when result is an image)
+    imagePath?: string;       // Feature-relative path to saved image file
     // File card summary (lightweight persistence — content stripped, stats kept)
     lineCount?: number;       // Total lines written (file_create)
     diffBeforeLines?: number; // Lines removed (file_edit)

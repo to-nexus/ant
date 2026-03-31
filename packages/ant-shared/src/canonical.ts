@@ -50,16 +50,13 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'sessions',                          visibility: 'internal' },
   { path: 'sessions/architect',                visibility: 'internal' },
   { path: 'sessions/architect/debug',          visibility: 'internal' },
-  { path: 'sessions/architect/debug/prompts',  visibility: 'internal' },
-  { path: 'sessions/architect/debug/plans',    visibility: 'internal' },
-  { path: 'sessions/architect/debug/logs',     visibility: 'internal' },
-  { path: 'sessions/architect/debug/tokens',   visibility: 'internal' },
+  // debug subdirectories are managed by DEBUG_SUBDIRS in sessionPaths.ts (SSOT)
   { path: 'sessions/architect/runtime',        visibility: 'internal' },
   { path: 'sessions/architect/runtime/design', visibility: 'internal' },
   { path: 'sessions/architect/runtime/code',   visibility: 'internal' },
   { path: 'sessions/planner',                  visibility: 'internal' },
   { path: 'sessions/planner/debug',            visibility: 'internal' },
-  { path: 'sessions/planner/debug/prompts',    visibility: 'internal' },
+  // planner debug subdirectories also managed by DEBUG_SUBDIRS
 ];
 
 // ============================================
