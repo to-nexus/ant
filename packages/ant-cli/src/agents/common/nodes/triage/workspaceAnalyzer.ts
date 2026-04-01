@@ -10,6 +10,7 @@ import * as path from 'path';
 import { WorkspaceState } from './types';
 import { MemoryPort } from '../../../../core/ports';
 import { isTemplateContent } from '../../../../core/utils/templateDetector';
+import { migrateFigmaConfig, isFigmaDataPopulated } from '@ant/shared';
 
 /**
  * Count files in a directory (non-recursive by default)
@@ -151,15 +152,13 @@ export async function analyzeWorkspace(
   if (fs.existsSync(figmaJsonPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(figmaJsonPath, 'utf-8'));
-      if (raw.files && Array.isArray(raw.files) && raw.files.length > 0) {
-        state.hasFigmaConfig = true;
-        state.figmaFileCount = raw.files.length;
-      }
+      const figmaConfig = migrateFigmaConfig(raw);
+      state.hasFigmaConfig = isFigmaDataPopulated(figmaConfig);
     } catch {
       // Invalid JSON — treat as no config
     }
   }
-  console.log(`🎨 [WorkspaceAnalyzer] Figma config: ${state.hasFigmaConfig ? `${state.figmaFileCount} file(s)` : 'none'}`);
+  console.log(`🎨 [WorkspaceAnalyzer] Figma config: ${state.hasFigmaConfig ? 'configured' : 'none'}`);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Check assets
@@ -284,7 +283,7 @@ export function formatWorkspaceState(state: WorkspaceState): string {
   lines.push('');
   lines.push('### References (ui-design)');
   lines.push(state.hasFigmaConfig
-    ? `✅ Figma: ${state.figmaFileCount || 'multiple'} file(s) configured`
+    ? '✅ Figma: file configured'
     : 'ℹ️ No Figma config');
   lines.push(state.hasScreens 
     ? `✅ Screens: ${state.screenCount || 'multiple'} files` 

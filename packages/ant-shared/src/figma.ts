@@ -12,7 +12,6 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export const FIGMA_FILENAME = 'figma.json';
-export const FIGMA_INPUT_PATH = 'inputs/figma.json';
 export const FIGMA_MCP_ENDPOINT = 'http://127.0.0.1:3845/mcp';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -20,35 +19,48 @@ export const FIGMA_MCP_ENDPOINT = 'http://127.0.0.1:3845/mcp';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
- * Simplified figma.json schema — just an array of Figma URLs.
- * Each URL points to a Figma file or a specific node within a file.
+ * figma.json schema — single Figma URL pointing to a file or node.
+ * Figma Desktop MCP only supports the active tab, so one file at a time.
  */
 export interface FigmaDataConfig {
-  files: string[];
+  file: string | null;
 }
 
 export function createEmptyFigmaData(): FigmaDataConfig {
-  return { files: [] };
+  return { file: null };
 }
 
 export function isFigmaDataPopulated(data: FigmaDataConfig | undefined | null): boolean {
   if (!data) return false;
-  return data.files.length > 0;
+  return !!data.file;
 }
 
 /**
- * Migrate legacy figma.json (object-based files[], config block) to
- * the simplified URL-only format. Safe to call on already-migrated data.
+ * Migrate legacy figma.json formats to the single-file schema.
+ * Handles: { files: string[] }, { files: {url:string}[] }, { file: string|null }.
+ * Safe to call on already-migrated data.
  */
 export function migrateFigmaConfig(raw: unknown): FigmaDataConfig {
   if (!raw || typeof raw !== 'object') return createEmptyFigmaData();
   const obj = raw as Record<string, unknown>;
-  if (!Array.isArray(obj.files)) return createEmptyFigmaData();
-  if (obj.files.length === 0) return { files: [] };
-  if (typeof obj.files[0] === 'object' && obj.files[0] !== null) {
-    return { files: obj.files.map((f: any) => f.url).filter(Boolean) };
+
+  // Already new format
+  if ('file' in obj && !('files' in obj)) {
+    const val = obj.file;
+    return { file: typeof val === 'string' && val ? val : null };
   }
-  return { files: obj.files.filter((f: unknown) => typeof f === 'string') };
+
+  // Legacy: files array
+  if (Array.isArray(obj.files)) {
+    if (obj.files.length === 0) return createEmptyFigmaData();
+    const first = obj.files[0];
+    if (typeof first === 'string') return { file: first || null };
+    if (first && typeof first === 'object' && 'url' in (first as any)) {
+      return { file: (first as any).url || null };
+    }
+  }
+
+  return createEmptyFigmaData();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -124,7 +136,7 @@ export interface FigmaExplorationResult {
 }
 
 export interface FigmaExplorationError {
-  phase: 'adapter_init' | 'get_metadata' | 'get_variable_defs' | 'parse_metadata';
+  phase: 'adapter_init' | 'get_metadata' | 'get_variable_defs' | 'parse_metadata' | 'parse_url';
   fileKey?: string;
   nodeId?: string;
   message: string;

@@ -115,15 +115,10 @@ The documents you generate serve different authority levels in code implementati
 ```xml
 <append path="outputs/design/{{targetFile}}">
 {
-  {{#unless isLastTaskForDocument}}"_meta": { "lastSection": 1 },{{/unless}}
   "YOUR_CATEGORY": { ... }
 }
 </append>
 ```
-
-{{#if isLastTaskForDocument}}
-**This is the LAST task for this document — OMIT the `_meta` block.**
-{{/if}}
 
 ### Parallel Chapter Scope Constraint
 
@@ -136,11 +131,6 @@ The documents you generate serve different authority levels in code implementati
 ### Scenario 1: New Document (First Chapter)
 
 **Detection**: Task ID is `ui-tokens`, `ui-assets`, `ui-spec`, or ends with `-ch1`
-**OR**: `lastSectionNumber` is NOT provided (starting fresh)
-
-{{#unless lastSectionNumber}}
-**You are in this scenario right now.**
-{{/unless}}
 
 Use `<file>` tag:
 
@@ -148,10 +138,6 @@ Use `<file>` tag:
 ```xml
 <file path="outputs/design/ui-tokens.json">
 {
-  "_meta": {
-    "lastSection": 1,
-    "sectionPattern": "top-level"
-  },
   "colors": { ... },
   "typography": { ... }
 }
@@ -162,10 +148,6 @@ Use `<file>` tag:
 ```xml
 <file path="outputs/design/ui-spec.json">
 {
-  "_meta": {
-    "lastSection": 1,
-    "sectionPattern": "top-level"
-  },
   "layout": { ... },
   "sections": {
     "hero": { ... }
@@ -173,10 +155,6 @@ Use `<file>` tag:
 }
 </file>
 ```
-
-{{#if isLastTaskForDocument}}
-**⚠️ EXCEPTION: Since this is the LAST task for this document, OMIT the `_meta` block!**
-{{/if}}
 
 **Filename determination:**
 - Task ID starts with `ui-tokens` → use `ui-tokens.json`
@@ -188,11 +166,6 @@ Use `<file>` tag:
 ### Scenario 2: Appending to Existing Document (Continuation Chapter)
 
 **Detection**: Task ID contains `-ch2`, `-ch3`, `-ch4`, etc.
-**OR**: `lastSectionNumber` is provided in the prompt context
-
-{{#if lastSectionNumber}}
-**⚠️ You are in this scenario right now! Last section was: {{lastSectionNumber}}**
-{{/if}}
 
 **⚠️ CRITICAL: If continuing a document, you MUST use `<append>`, NOT `<file>`!**
 
@@ -202,9 +175,6 @@ Use `<append>` tag:
 ```xml
 <append path="outputs/design/ui-tokens.json">
 {
-  "_meta": {
-    "lastSection": {{add lastSectionNumber 1}}
-  },
   "newCategory": { ... }
 }
 </append>
@@ -215,28 +185,12 @@ The system will automatically merge this into the existing JSON.
 ```xml
 <append path="outputs/design/ui-spec.json">
 {
-  "_meta": {
-    "lastSection": {{add lastSectionNumber 1}}
-  },
   "sections": {
     "newSection": { ... }
   }
 }
 </append>
 ```
-
-{{#if lastSectionNumber}}
-**Your continuation starts after section: {{lastSectionNumber}}**
-{{/if}}
-{{#if isLastTaskForDocument}}
-**⚠️ EXCEPTION: Since this is the LAST task, OMIT the `_meta` block!**
-{{/if}}
-
-{{#if lastSectionNumber}}
-**For this task:**
-- Previous section count: {{lastSectionNumber}}
-- Your `_meta.lastSection`: Update to reflect total after your additions
-{{/if}}
 
 **Examples**:
 - `ui-tokens-ch1` or `ui-tokens` → Use `<file path="outputs/design/ui-tokens.json">` (JSON format)
@@ -255,29 +209,6 @@ The system will automatically merge this into the existing JSON.
 2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag
 3. **Path prefix**: Always `outputs/design/`
 4. **One file per category**: All ui-tokens chapters → `ui-tokens.json`
-
-### Metadata Rules (`_meta` field)
-
-{{#if isLastTaskForDocument}}
-**⚠️ THIS IS THE LAST TASK FOR THIS DOCUMENT.**
-
-**YOU MUST STILL GENERATE CONTENT** using `<file>` or `<append>` tags as normal!
-Only difference: Do NOT include the `_meta` block in your output.
-{{else}}
-**Required `_meta` field (all documents are JSON):**
-```json
-{
-  "_meta": {
-    "lastSection": N,
-    "sectionPattern": "top-level"
-  },
-  ...actual data...
-}
-```
-
-- `lastSection`: Total number of sections/categories after this chapter
-- `sectionPattern`: `top-level` or `nested` (first chapter only)
-{{/if}}
 
 ### ❌ DO NOT
 
@@ -329,48 +260,6 @@ Only difference: Do NOT include the `_meta` block in your output.
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 STRICT SCOPE BOUNDARIES (CRITICAL!)
 ════════════════════════════════════════════════════════════════════════════════
-
-### ⚠️ FIRST CHAPTER (ui-spec-ch1) RESPONSIBILITIES
-
-**If your task ID ends with `-ch1` or has no `-ch` suffix for ui-spec:**
-
-**✅ ch1 MUST:**
-1. **Establish document outline** - Define the complete section structure that ALL subsequent chapters will follow
-2. **Document-level metadata** - Purpose, scope, global breakpoints, container widths
-3. **Define section skeleton** - List future section titles without detailed content
-
-**❌ ch1 MUST NOT:**
-- Write detailed component specifications
-- Include per-section layouts, colors, or behaviors
-- Generate content that belongs to ch2+
-
-**Why?** ch1 defines the **structural contract** that all subsequent chapters MUST honor.
-
----
-
-### ⚠️ STRUCTURAL CONSISTENCY (ch2+)
-
-**Subsequent chapters MUST:**
-1. **Follow ch1's structure** - Use the same section hierarchy established in ch1
-2. **Match section level** - If ch1 defined `## N. Section`, continue with `## N+1. Section` (not subsections)
-3. **Never create new structural patterns** - The document outline is frozen after ch1
-
-**Violation Example:**
-- ch1 defines: `## 1. Overview`, `## 2. Layout`
-- ch2 WRONG: Creates `## 3. Components` then puts specs as `### 3.1`, `### 3.2`
-- ch3 WRONG: Suddenly creates `## 4. About`, `## 5. Ecosystem` as top-level
-
-**Correct Approach:**
-- If ch1 established top-level sections per topic → ALL chapters use top-level sections
-- If ch1 established container + subsections → ALL chapters use same pattern
-
----
-
-### How Section Numbers Work
-
-1. **First chapter**: Start from `## 1.`
-2. **Continuation chapters**: Start from `## (lastSectionNumber + 1).`
-3. You determine how many sections based on content, NOT predefined ranges
 
 ### ⚠️ DUPLICATE PREVENTION RULES
 
@@ -519,30 +408,11 @@ Before outputting, verify:
 **XML Tag Selection**:
 {{#if forceAppend}}
 - [ ] Used `<append>` (parallel chapter mode)
-{{else if lastSectionNumber}}
-- [ ] Used `<append>` (NOT `<file>`) because lastSectionNumber exists ({{lastSectionNumber}})
 {{else}}
 - [ ] Used `<file>` for first chapter (task ID has no `-ch` suffix or ends with `-ch1`)
 {{/if}}
 - [ ] Path starts with `outputs/design/`
 - [ ] Filename matches category (`ui-tokens.json`, `ui-assets.json`, or `ui-spec.json`)
-
-**Section Numbering**:
-{{#if lastSectionNumber}}
-- [ ] First section is `## {{add lastSectionNumber 1}}.` (NOT `## 1.`)
-- [ ] Section numbers are sequential from {{add lastSectionNumber 1}}
-{{else}}
-- [ ] First section is `## 1.` (new document)
-- [ ] Section numbers are sequential (1, 2, 3...)
-{{/if}}
-
-**Metadata (`_meta` field)**:
-{{#unless isLastTaskForDocument}}
-- [ ] Included `_meta` field with `lastSection` value
-- [ ] Format: `"_meta": { "lastSection": N }` at top level of JSON object
-{{else}}
-- [ ] OMITTED `_meta` block (this is the last task)
-{{/unless}}
 
 **Content Quality**:
 - [ ] Content is in **Markdown table format** where appropriate

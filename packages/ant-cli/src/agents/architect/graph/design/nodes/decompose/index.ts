@@ -28,10 +28,10 @@ import { decomposeSpec } from "./specDecompose";
 function validateUiDesignPrerequisites(state: DesignGraphState): void {
   // Figma mode: references come from Figma MCP, not local files
   if (state.uiDesignSource === 'figma') {
-    if (!state.figmaConfig?.files?.length) {
+    if (!state.figmaConfig?.file) {
       throw new Error(
-        "No Figma files configured for UI document generation.\n\n" +
-        "Required: figma.json with at least one Figma URL in the 'files' array."
+        "No Figma file configured for UI document generation.\n\n" +
+        "Required: figma.json with a Figma URL in the 'file' field."
       );
     }
     return;

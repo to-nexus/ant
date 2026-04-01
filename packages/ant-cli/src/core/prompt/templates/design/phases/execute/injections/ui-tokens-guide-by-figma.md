@@ -51,7 +51,6 @@ For the categories specified in YOUR task description, capture ALL instances vis
 1. **Check your task description** - it specifies exactly which categories to generate
 2. **Generate ONLY those categories** - not more, not less
 3. **Other tasks handle other categories** - trust the task decomposition
-4. **Update `_meta.lastSection`** - increment by the number of categories YOU added
 
 ### JSON Structure
 
@@ -70,24 +69,15 @@ Preserve the mode structure as-is from Figma variables.
 
 ```json
 {
-  "_meta": {
-    "lastSection": N,
-    "sectionPattern": "top-level"
-  },
   // Include ONLY categories specified in YOUR task description
 }
 ```
-
-**Note**: `_meta.lastSection` = cumulative count of top-level data categories in the document.
 
 ### Output Format
 
 {{#if forceAppend}}
 **Parallel chapter**: Use `<append>` tag to merge your categories into the shared JSON.
 The system serializes concurrent writes via mutex and deep-merges automatically.
-{{else if lastSectionNumber}}
-**Continuation chapter**: Append additional categories to existing JSON structure.
-Use `<append>` tag to merge new keys into the existing JSON.
 {{else}}
 **First chapter**: Create complete JSON structure.
 Use `<file>` tag to create the initial JSON file.
@@ -101,18 +91,6 @@ Use `<file>` tag to create the initial JSON file.
 ```xml
 <append path="outputs/design/ui-tokens.json">
 {
-  "_meta": { "lastSection": 1 },
-  "YOUR_CATEGORY": { /* tokens extracted from Figma */ }
-}
-</append>
-```
-{{else if lastSectionNumber}}
-**Continuation task** - use `<append>` to add YOUR categories:
-
-```xml
-<append path="outputs/design/ui-tokens.json">
-{
-  "_meta": { "lastSection": {{add lastSectionNumber 1}} },
   "YOUR_CATEGORY": { /* tokens extracted from Figma */ }
 }
 </append>
@@ -123,7 +101,6 @@ Use `<file>` tag to create the initial JSON file.
 ```xml
 <file path="outputs/design/ui-tokens.json">
 {
-  "_meta": { "lastSection": 1, "sectionPattern": "top-level" },
   "YOUR_CATEGORY": { /* tokens extracted from Figma */ }
 }
 </file>

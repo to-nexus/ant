@@ -18,6 +18,7 @@ import { routeAfterTool } from "./routers/toolRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "./parallel/types";
+import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 
 /**
  * Node that handles task completion logic and state mutations.
@@ -808,12 +809,17 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     console.log(`   Drain reason: ${result.drainReason}`);
   }
 
+  // Mark job timing as paused so resume calculates accurate totalPausedDuration
+  const hasActualRemainingWork = result.remainingQueue.length > 0 || result.failedTasks.length > 0;
+  if ((result.hasInterruptedTasks && hasActualRemainingWork) || result.hasFailures) {
+    (state as any).jobTiming = JobTimingManager.pauseJob((state as any).jobTiming);
+  }
+
   // ✅ If any tasks were paused due to recursion limit AND there are actually
   // remaining tasks, save interrupted state for resume.
   // IMPORTANT: If interrupted tasks were retried and completed (hasInterruptedTasks
   // cleared by reportCompletion), this block is skipped entirely — no stale interruption.
   // Even if hasInterruptedTasks is still true (edge case), only save if remainingQueue > 0.
-  const hasActualRemainingWork = result.remainingQueue.length > 0 || result.failedTasks.length > 0;
   if (result.hasInterruptedTasks && hasActualRemainingWork && state.deps?.session && state.context.featureFolder) {
     try {
       const failedAsQueue = result.failedTasks.map(f => ({

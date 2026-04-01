@@ -13,6 +13,7 @@ import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
 import { routeAfterDocGen } from "./routers/docGenRouter";
+import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import path from "node:path";
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
@@ -557,6 +558,12 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     // ✅ Pass recursionLimit so worker subgraph uses the correct limit
     // Without this, LangGraph defaults to 25 which is too low for complex tasks
     recursionLimit: state.recursionLimit,  // ✅ Always set by runner.ts from env RECURSION_LIMIT
+    _allTasksSummary: taskQueue.getAll().map(t => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      targetFile: (t as any).targetFile,
+    })),
   };
 
   const graphBuilder = createDesignWorkerGraphBuilder();
@@ -730,6 +737,11 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     for (const f of result.failedTasks) {
       console.error(`   ❌ FAILED: "${f.task.name}" (id=${f.task.id}) — ${f.error.message}`);
     }
+  }
+
+  // Mark job timing as paused so resume calculates accurate totalPausedDuration
+  if (result.hasFailures || result.hasInterruptedTasks) {
+    (state as any).jobTiming = JobTimingManager.pauseJob((state as any).jobTiming);
   }
 
   // ✅ If any tasks permanently failed, save interrupted state to session

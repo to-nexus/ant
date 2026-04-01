@@ -272,6 +272,8 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
       // Figma MCP connection health
       _figmaConsecutiveErrors: null as any,
       _figmaConnectionLost: null as any,
+      // MECE: all sibling tasks for scope awareness
+      _allTasksSummary: null as any,
       // Worker-specific
       workerId: null as any,
       _taskCompleted: null as any,

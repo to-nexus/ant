@@ -128,11 +128,10 @@ export interface WorkspaceState {
   hasScreens: boolean;           // inputs/references/screens/
   hasComponents: boolean;        // inputs/references/components/
   hasAssets: boolean;            // inputs/assets/
-  hasFigmaConfig: boolean;       // inputs/figma.json with populated files array
+  hasFigmaConfig: boolean;       // inputs/figma.json with populated file value
   screenCount?: number;
   componentCount?: number;
   assetCount?: number;
-  figmaFileCount?: number;
   
   // Design job - system-design mode
   hasSystemDesignDoc: boolean;   // outputs/design/*-system-*.md or api-contract-*.md

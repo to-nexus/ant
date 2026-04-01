@@ -5,8 +5,8 @@
  * to build FigmaExplorationResult (variation matrix, component states, annotations).
  *
  * Steps:
- * 1. Parse figmaConfig to extract file keys and node IDs
- * 2. Call get_metadata for each file to build node tree
+ * 1. Parse figmaConfig.file to extract file key and node ID
+ * 2. Call get_metadata to build node tree
  * 3. Identify variation containers, annotations, and component states
  * 4. Return structured FigmaExplorationResult for downstream nodes
  */
@@ -275,8 +275,8 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   const figmaConfig = state.figmaConfig;
-  if (!figmaConfig?.files?.length) {
-    console.log('   ⚠️ No Figma files configured, skipping exploration');
+  if (!figmaConfig?.file) {
+    console.log('   ⚠️ No Figma file configured, skipping exploration');
     return {
       figmaExplorationResult: emptyResult(),
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
@@ -321,162 +321,174 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     downloadedAssets: [],
   };
 
-  for (const url of figmaConfig.files) {
-    const parsed = parseFigmaUrl(url);
-    if (!parsed) {
-      console.log(`   ⚠️ Invalid Figma URL: ${url}`);
-      continue;
-    }
-    const { fileKey, nodeId } = parsed;
-    const rootNodeId = nodeId || '0:1';
-    const fileDebug: any = { url, fileKey, rootNodeId, status: 'success' };
+  const url = figmaConfig.file;
+  const parsed = parseFigmaUrl(url);
+  if (!parsed) {
+    console.log(`   ⚠️ Invalid Figma URL: ${url}`);
+    errors.push({ phase: 'parse_url', message: `Invalid Figma URL: ${url}`, timestamp: new Date().toISOString() });
+    await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: [], summary: { errors } });
+    return {
+      figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
+      designError: { type: 'figma_window_not_open', message: `Invalid Figma URL: ${url}` },
+      _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+    };
+  }
 
-    console.log(`   📄 Exploring file: ${fileKey} (node: ${rootNodeId})`);
+  const { fileKey, nodeId } = parsed;
+  const rootNodeId = nodeId || '0:1';
+  const fileDebug: any = { url, fileKey, rootNodeId, status: 'success' };
 
-    // --- getMetadata ---
-    const metaStart = Date.now();
-    const metadataResult = await adapter.getMetadata(fileKey, rootNodeId);
-    const metaElapsed = Date.now() - metaStart;
-    const rawContent = metadataResult.content;
-    const contentSize = typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length;
-    const extractedPreview = extractMCPTextContent(rawContent);
+  console.log(`   📄 Exploring file: ${fileKey} (node: ${rootNodeId})`);
 
-    fileDebug.getMetadata = {
-      calledAt: new Date(metaStart).toISOString(),
-      elapsedMs: metaElapsed,
-      responseChars: contentSize,
-      isError: !!metadataResult.isError,
-      responsePreview: typeof extractedPreview === 'string' ? extractedPreview.substring(0, 500) : null,
+  // --- getMetadata ---
+  const metaStart = Date.now();
+  const metadataResult = await adapter.getMetadata(fileKey, rootNodeId);
+  const metaElapsed = Date.now() - metaStart;
+  const rawContent = metadataResult.content;
+  const contentSize = typeof rawContent === 'string' ? rawContent.length : JSON.stringify(rawContent).length;
+  const extractedPreview = extractMCPTextContent(rawContent);
+
+  fileDebug.getMetadata = {
+    calledAt: new Date(metaStart).toISOString(),
+    elapsedMs: metaElapsed,
+    responseChars: contentSize,
+    isError: !!metadataResult.isError,
+    responsePreview: typeof extractedPreview === 'string' ? extractedPreview.substring(0, 500) : null,
+  };
+
+  if (metadataResult.isError) {
+    console.log(`   ❌ Metadata fetch failed: ${metadataResult.content}`);
+    fileDebug.status = 'metadata_error';
+    errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: String(metadataResult.content), timestamp: new Date().toISOString() });
+    debugInfo.files.push(fileDebug);
+    await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
+    return {
+      figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
+      designError: { type: 'figma_window_not_open', message: String(metadataResult.content) },
+      _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+    };
+  }
+
+  const contentType = Array.isArray(rawContent) ? 'array' : typeof rawContent;
+  console.log(`      metadata response: type=${contentType}, size=${contentSize}, extracted=${extractedPreview ? extractedPreview.substring(0, 120) + '...' : 'null'}`);
+
+  if (extractedPreview && isRateLimitResponse(extractedPreview)) {
+    console.log(`   ❌ Figma API rate limited: "${extractedPreview}"`);
+    fileDebug.status = 'rate_limited';
+    errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Figma API rate limited: ${extractedPreview}`, timestamp: new Date().toISOString() });
+    debugInfo.files.push(fileDebug);
+    await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
+    return {
+      figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
+      designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${extractedPreview}` },
+      _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+    };
+  }
+
+  if (extractedPreview && (isFigmaMCPSoftError(extractedPreview) || isLikelyMCPErrorResponse(extractedPreview))) {
+    console.log(`   ❌ Figma MCP soft error: "${extractedPreview}"`);
+    fileDebug.status = 'soft_error';
+    errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Soft error: ${extractedPreview}`, timestamp: new Date().toISOString() });
+    debugInfo.files.push(fileDebug);
+    await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
+    return {
+      figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
+      designError: { type: 'figma_window_not_open', message: `Figma MCP error: ${extractedPreview}` },
+      _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
+    };
+  }
+
+  const nodes = parseMetadataXML(metadataResult.content);
+  fileDebug.getMetadata.parsedNodeCount = countNodes(nodes);
+
+  if (nodes.length === 0 && contentSize > 0) {
+    errors.push({ phase: 'parse_metadata', fileKey, nodeId: rootNodeId, message: `Parse returned 0 nodes from ${contentSize} chars response`, timestamp: new Date().toISOString() });
+  }
+
+  const allFrames = findFrames(nodes);
+  result.totalFrameCount += allFrames.length;
+
+  const variations = buildVariationMatrix(nodes);
+  result.variationMatrix.push(...variations);
+
+  const frameIds = new Set(allFrames.map(f => f.id));
+  const annotations = findAnnotationTexts(nodes, frameIds);
+  result.annotations.push(...annotations);
+
+  const componentStates = buildComponentStateMatrix(nodes);
+  result.componentStateMatrix.push(...componentStates);
+
+  const nodeSummary = buildNodeSummary(nodes);
+  if (!result.nodeSummary) result.nodeSummary = [];
+  result.nodeSummary.push(...nodeSummary);
+  const maxDepthUsed = nodeSummary.length > 0 ? Math.max(...nodeSummary.map(n => n.depth)) : 0;
+  console.log(`      nodeSummary: ${nodeSummary.length} entries (max depth ${maxDepthUsed})`);
+
+  // --- getVariableDefs ---
+  const varStart = Date.now();
+  try {
+    const varResult = await adapter.getVariableDefs(fileKey, rootNodeId);
+    const varElapsed = Date.now() - varStart;
+    const varRawContent = varResult.content;
+    const varSize = typeof varRawContent === 'string' ? varRawContent.length : JSON.stringify(varRawContent).length;
+
+    fileDebug.getVariableDefs = {
+      calledAt: new Date(varStart).toISOString(),
+      elapsedMs: varElapsed,
+      responseChars: varSize,
+      status: varResult.isError ? 'error' : 'success',
     };
 
-    if (metadataResult.isError) {
-      console.log(`   ❌ Metadata fetch failed: ${metadataResult.content}`);
-      fileDebug.status = 'metadata_error';
-      errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: String(metadataResult.content), timestamp: new Date().toISOString() });
-      debugInfo.files.push(fileDebug);
-      continue;
-    }
-
-    const contentType = Array.isArray(rawContent) ? 'array' : typeof rawContent;
-    console.log(`      metadata response: type=${contentType}, size=${contentSize}, extracted=${extractedPreview ? extractedPreview.substring(0, 120) + '...' : 'null'}`);
-
-    if (extractedPreview && isRateLimitResponse(extractedPreview)) {
-      console.log(`   ❌ Figma API rate limited: "${extractedPreview}"`);
-      fileDebug.status = 'rate_limited';
-      errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Figma API rate limited: ${extractedPreview}`, timestamp: new Date().toISOString() });
+    const varExtracted = extractMCPTextContent(varRawContent);
+    const varTextForCheck = typeof varExtracted === 'string' ? varExtracted
+      : (typeof varRawContent === 'string' ? varRawContent : JSON.stringify(varRawContent));
+    if (isRateLimitResponse(varTextForCheck)) {
+      console.log(`   ❌ Figma API rate limited during getVariableDefs`);
+      errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: 'Figma API rate limited', timestamp: new Date().toISOString() });
+      result.explorationErrors = errors;
       debugInfo.files.push(fileDebug);
       await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
       return {
-        figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-        designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${extractedPreview}` },
+        figmaExplorationResult: result,
+        designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${varTextForCheck}` },
         _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
       };
     }
 
-    if (extractedPreview && (isFigmaMCPSoftError(extractedPreview) || isLikelyMCPErrorResponse(extractedPreview))) {
-      console.log(`   ❌ Figma MCP soft error: "${extractedPreview}"`);
-      fileDebug.status = 'soft_error';
-      errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Soft error: ${extractedPreview}`, timestamp: new Date().toISOString() });
-      debugInfo.files.push(fileDebug);
-      continue;
-    }
+    if (varResult.isError) {
+      const errContent = typeof varRawContent === 'string' ? varRawContent : JSON.stringify(varRawContent);
+      console.warn(`      ⚠️ getVariableDefs returned isError: ${errContent.substring(0, 200)}`);
+      errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: errContent.substring(0, 500), timestamp: new Date().toISOString() });
+    } else {
+      const varContent = extractMCPTextContent(varRawContent) ?? varRawContent;
+      const varStr = typeof varContent === 'string' ? varContent : JSON.stringify(varContent);
 
-    const nodes = parseMetadataXML(metadataResult.content);
-    fileDebug.getMetadata.parsedNodeCount = countNodes(nodes);
-
-    if (nodes.length === 0 && contentSize > 0) {
-      errors.push({ phase: 'parse_metadata', fileKey, nodeId: rootNodeId, message: `Parse returned 0 nodes from ${contentSize} chars response`, timestamp: new Date().toISOString() });
-    }
-
-    const allFrames = findFrames(nodes);
-    result.totalFrameCount += allFrames.length;
-
-    const variations = buildVariationMatrix(nodes);
-    result.variationMatrix.push(...variations);
-
-    const frameIds = new Set(allFrames.map(f => f.id));
-    const annotations = findAnnotationTexts(nodes, frameIds);
-    result.annotations.push(...annotations);
-
-    const componentStates = buildComponentStateMatrix(nodes);
-    result.componentStateMatrix.push(...componentStates);
-
-    const nodeSummary = buildNodeSummary(nodes);
-    if (!result.nodeSummary) result.nodeSummary = [];
-    result.nodeSummary.push(...nodeSummary);
-    const maxDepthUsed = nodeSummary.length > 0 ? Math.max(...nodeSummary.map(n => n.depth)) : 0;
-    console.log(`      nodeSummary: ${nodeSummary.length} entries (max depth ${maxDepthUsed})`);
-
-    // --- getVariableDefs ---
-    const varStart = Date.now();
-    try {
-      const varResult = await adapter.getVariableDefs(fileKey, rootNodeId);
-      const varElapsed = Date.now() - varStart;
-      const varRawContent = varResult.content;
-      const varSize = typeof varRawContent === 'string' ? varRawContent.length : JSON.stringify(varRawContent).length;
-
-      fileDebug.getVariableDefs = {
-        calledAt: new Date(varStart).toISOString(),
-        elapsedMs: varElapsed,
-        responseChars: varSize,
-        status: varResult.isError ? 'error' : 'success',
-      };
-
-      const varExtracted = extractMCPTextContent(varRawContent);
-      const varTextForCheck = typeof varExtracted === 'string' ? varExtracted
-        : (typeof varRawContent === 'string' ? varRawContent : JSON.stringify(varRawContent));
-      if (isRateLimitResponse(varTextForCheck)) {
-        console.log(`   ❌ Figma API rate limited during getVariableDefs`);
-        errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: 'Figma API rate limited', timestamp: new Date().toISOString() });
-        result.explorationErrors = errors;
-        debugInfo.files.push(fileDebug);
-        await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
-        return {
-          figmaExplorationResult: result,
-          designError: { type: 'figma_rate_limited', message: `Figma API rate limited: ${varTextForCheck}` },
-          _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
-        };
-      }
-
-      if (varResult.isError) {
-        const errContent = typeof varRawContent === 'string' ? varRawContent : JSON.stringify(varRawContent);
-        console.warn(`      ⚠️ getVariableDefs returned isError: ${errContent.substring(0, 200)}`);
-        errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: errContent.substring(0, 500), timestamp: new Date().toISOString() });
+      if (typeof varStr === 'string' && isLikelyMCPErrorResponse(varStr)) {
+        console.warn(`      ⚠️ getVariableDefs returned error-like response: ${varStr.substring(0, 200)}`);
+        fileDebug.getVariableDefs.status = 'soft_error';
+        errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: `Soft error: ${varStr.substring(0, 500)}`, timestamp: new Date().toISOString() });
       } else {
-        const varContent = extractMCPTextContent(varRawContent) ?? varRawContent;
-        const varStr = typeof varContent === 'string' ? varContent : JSON.stringify(varContent);
-
-        if (typeof varStr === 'string' && isLikelyMCPErrorResponse(varStr)) {
-          console.warn(`      ⚠️ getVariableDefs returned error-like response: ${varStr.substring(0, 200)}`);
-          fileDebug.getVariableDefs.status = 'soft_error';
-          errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: `Soft error: ${varStr.substring(0, 500)}`, timestamp: new Date().toISOString() });
+        const estimatedTokens = varStr.length / 3.5;
+        fileDebug.getVariableDefs.estimatedTokens = Math.round(estimatedTokens);
+        console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
+        let varData: unknown;
+        if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
+          varData = varContent;
         } else {
-          const estimatedTokens = varStr.length / 3.5;
-          fileDebug.getVariableDefs.estimatedTokens = Math.round(estimatedTokens);
-          console.log(`      variableDefs: ~${Math.round(estimatedTokens)} tokens`);
-          let varData: unknown;
-          if (estimatedTokens < MAX_VARIABLE_DEFS_TOKENS) {
-            varData = varContent;
-          } else {
-            console.warn(`      ⚠️ variableDefs too large, storing keys only`);
-            varData = extractVariableDefsSummary(varContent);
-          }
-          if (!result.variableDefs) {
-            result.variableDefs = varData;
-          } else {
-            result.variableDefs = mergeVariableDefs(result.variableDefs, varData);
-          }
+          console.warn(`      ⚠️ variableDefs too large, storing keys only`);
+          varData = extractVariableDefsSummary(varContent);
         }
+        result.variableDefs = varData;
       }
-    } catch (err: any) {
-      const varElapsed = Date.now() - varStart;
-      console.warn(`      ⚠️ getVariableDefs failed: ${err.message}`);
-      fileDebug.getVariableDefs = { calledAt: new Date(varStart).toISOString(), elapsedMs: varElapsed, status: 'exception', error: err.message };
-      errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: err.message, timestamp: new Date().toISOString() });
     }
-
-    debugInfo.files.push(fileDebug);
+  } catch (err: any) {
+    const varElapsed = Date.now() - varStart;
+    console.warn(`      ⚠️ getVariableDefs failed: ${err.message}`);
+    fileDebug.getVariableDefs = { calledAt: new Date(varStart).toISOString(), elapsedMs: varElapsed, status: 'exception', error: err.message };
+    errors.push({ phase: 'get_variable_defs', fileKey, nodeId: rootNodeId, message: err.message, timestamp: new Date().toISOString() });
   }
+
+  debugInfo.files.push(fileDebug);
 
   if (errors.length > 0) {
     result.explorationErrors = errors;
@@ -498,9 +510,9 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
   debugInfo.completedAt = new Date().toISOString();
   debugInfo.elapsedMs = Date.now() - phaseStart;
   debugInfo.summary = {
-    totalFiles: figmaConfig.files.length,
+    totalFiles: 1,
     successFiles,
-    failedFiles: figmaConfig.files.length - successFiles,
+    failedFiles: 1 - successFiles,
     totalNodeCount: debugInfo.files.reduce((s: number, f: any) => s + (f.getMetadata?.parsedNodeCount ?? 0), 0),
     nodeSummaryCount: result.nodeSummary?.length ?? 0,
     variableDefsAvailable: !!result.variableDefs,

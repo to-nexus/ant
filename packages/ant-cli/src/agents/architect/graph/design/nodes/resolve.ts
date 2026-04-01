@@ -314,7 +314,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
       fs.mkdirSync(path.dirname(figmaJsonPath), { recursive: true });
       fs.writeFileSync(figmaJsonPath, JSON.stringify(figmaConfig, null, 2), 'utf-8');
     }
-    console.log(`📄 [Design Resolve] Loaded ${FIGMA_FILENAME}: ${figmaConfig.files?.length || 0} file(s)`);
+    console.log(`📄 [Design Resolve] Loaded ${FIGMA_FILENAME}: ${figmaConfig.file ? '1 file configured' : 'no file'}`);
   } catch {
     // Non-critical: figma.json may not exist or be invalid
   }
