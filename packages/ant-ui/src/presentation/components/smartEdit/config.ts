@@ -19,6 +19,8 @@ export interface SmartEditGroup {
   /** i18n key resolved by the editor component via t() */
   placeholder?: string;
   values: string[];
+  /** undefined = unlimited entries, 1 = single input (hides add button) */
+  maxValues?: number;
 }
 
 export type DeserializeResult =
@@ -50,19 +52,24 @@ export const SMART_EDIT_CONFIGS: SmartEditConfig[] = [
   {
     fileMatch: (path) => path.endsWith('figma.json'),
 
-    createEmpty: () => JSON.stringify({ files: [] }, null, 2) + '\n',
+    createEmpty: () => JSON.stringify({ file: null }, null, 2) + '\n',
 
     deserialize: (content) => {
       try {
         const data = JSON.parse(content);
-        const { files, ...preserved } = data;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { file, files: _legacyFiles, ...preserved } = data;
+        const value = typeof file === 'string' && file ? file
+          : (Array.isArray(_legacyFiles) && _legacyFiles[0]) ? String(_legacyFiles[0])
+          : null;
         return {
           ok: true,
           groups: [
             {
               key: null,
               placeholder: 'editor.smartPlaceholder.figma',
-              values: Array.isArray(files) ? files : [],
+              values: value ? [value] : [],
+              maxValues: 1,
             },
           ],
           preserved,
@@ -73,8 +80,8 @@ export const SMART_EDIT_CONFIGS: SmartEditConfig[] = [
     },
 
     serialize: (groups, preserved) => {
-      const values = groups[0]?.values.filter((l) => l.trim()) ?? [];
-      return JSON.stringify({ ...preserved, files: values }, null, 2) + '\n';
+      const value = groups[0]?.values[0]?.trim() || null;
+      return JSON.stringify({ ...preserved, file: value }, null, 2) + '\n';
     },
   },
 ];

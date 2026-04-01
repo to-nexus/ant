@@ -66,8 +66,6 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ```json
 {
   "_meta": {
-    "lastSection": 3,
-    "sectionPattern": "top-level",
     "pathPattern": {
       "<svg-category>": "src/assets/<svg-category>/",
       "<raster-category>": "public/<raster-category>/"
@@ -109,55 +107,12 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 **Note**: `_meta.pathPattern` ensures continuation chapters use the same destination paths.
 
-### Output Format
-
-{{#if lastSectionNumber}}
-**Continuation chapter**: Merge additional asset categories into existing JSON.
-{{else}}
-**First chapter**: Create initial JSON structure with asset mappings.
-{{/if}}
-
 ### Example Output
-
-{{#if lastSectionNumber}}
-**Continuation task** - use `<append>` to add YOUR asset categories:
-
-```xml
-<append path="outputs/design/ui-assets.json">
-{
-  "_meta": {
-    "lastSection": {{add lastSectionNumber 1}},
-    "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }
-  },
-  "icons": {
-    "icon-id": {
-      "src": "inputs/assets/...",
-      "dest": "src/assets/icons/...",
-      "format": "svg",
-      "themeAdaptation": "currentColor",
-      "usage": "Usage context"
-    }
-  },
-  "images": {
-    "image-id": {
-      "src": "inputs/assets/...",
-      "dest": "public/images/...",
-      "format": "png",
-      "usage": "Usage context"
-    }
-  }
-}
-</append>
-```
-{{else}}
-**First task** - use `<file>` to create the document:
 
 ```xml
 <file path="outputs/design/ui-assets.json">
 {
   "_meta": {
-    "lastSection": 1,
-    "sectionPattern": "top-level",
     "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }
   },
   "icons": {
@@ -180,7 +135,6 @@ Create a JSON mapping document that connects source assets to their runtime dest
 }
 </file>
 ```
-{{/if}}
 
 **Note**: Replace `YOUR_CATEGORY` with the actual category determined from the asset directory structure and filenames. The system automatically merges new categories.
 

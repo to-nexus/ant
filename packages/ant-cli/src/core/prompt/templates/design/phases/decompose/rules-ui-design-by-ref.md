@@ -186,17 +186,13 @@ The system uses per-file mutex + deep merge for concurrent writes. Cross-documen
 ### ui-spec-ch1 (Critical)
 
 **MUST include in description:**
-- "Establish document outline (numbered TOC)"
-- "Global breakpoints, container widths"
+- "Global settings: breakpoints, grid, containers"
 - "NO component specs"
 
-**ch1 creates the structural contract. ch2+ fill in content following that structure.**
-
-### ch2+ (Continuation)
+### ch2+ (Page/Shared)
 
 **MUST include in description:**
 - "(append)" indicator
-- "Follow ch1 outline structure"
 - "Skip documented topics"
 
 ---
@@ -215,10 +211,10 @@ Before outputting, verify:
 - ✅ Every task has `parallelGroup` (task ID for tokens/spec, shared basename for assets)
 
 ### Chapter Count
-- ✅ At least 2 chapters for ui-spec (ch1 = outline, ch2+ = content)
+- ✅ At least 2 chapters for ui-spec (ch1 = global settings, ch2+ = page/shared content)
 - ✅ Chapter count reflects complexity (more content → more chapters)
 
 ### Task Descriptions
-- ✅ **ui-spec-ch1 description includes "establish outline" or "TOC"**
-- ✅ **ch2+ descriptions include "(append)" and "follow ch1 structure"**
+- ✅ **ui-spec-ch1 description includes "global settings" or "breakpoints"**
+- ✅ **ch2+ descriptions include "(append)" and "skip documented topics"**
 {{/if}}

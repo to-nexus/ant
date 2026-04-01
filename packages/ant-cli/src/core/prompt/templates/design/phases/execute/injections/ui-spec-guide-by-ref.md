@@ -58,7 +58,6 @@ If Directive or PRD contains **explicit, specific instructions** that contradict
 
 ```json
 {
-  "_meta": { "lastSection": 0 },
   "meta": {
     "title": "UI Specification",
     "breakpoints": {
@@ -106,6 +105,9 @@ If Directive or PRD contains **explicit, specific instructions** that contradict
     "responsive": { /* breakpoint differences */ }
   }
 }
+```
+
+**⚠️ Responsive field**: Every section and component MUST include a `"responsive"` key. If no breakpoint difference is observed, use empty object `{}`.
 ```
 
 **Intent examples:**
@@ -378,9 +380,13 @@ When exact color is uncertain, use description:
 }
 ```
 
-**Constraint**: Do NOT duplicate full component specs in page sections. Page sections reference shared components by ID and add context-specific overrides only.
+**Constraint**: Do NOT duplicate full component specs in page sections. Page sections describe USAGE CONTEXT for shared components — which component, which variant, context-specific overrides.
+
+**Constraint**: Do NOT include variant lists, interaction state tables, or size definitions in page sections for shared components.
 
 **Constraint**: Extract only truly shared patterns. A component used in exactly one place belongs in that page's section, not in top-level `components`.
+
+**⚠️ Blind spot**: `variants`, `interactionStates`, `sizes` are the most common duplication vectors between page sections and the `components` key. Page sections reference by component ID only.
 
 ---
 

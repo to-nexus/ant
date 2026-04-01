@@ -126,11 +126,11 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
     const trimmed = value.trim();
     if (!trimmed) return;
 
-    // Support pasting multiple lines at once
     const lines = trimmed.split('\n').map(l => l.trim()).filter(Boolean);
-    onValuesChange([...group.values, ...lines]);
+    const merged = [...group.values, ...lines];
+    onValuesChange(group.maxValues ? merged.slice(0, group.maxValues) : merged);
     setNewValue('');
-  }, [group.values, onValuesChange]);
+  }, [group.values, group.maxValues, onValuesChange]);
 
   const handleNewRowKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -144,10 +144,11 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
     if (pasted.includes('\n')) {
       e.preventDefault();
       const lines = pasted.split('\n').map(l => l.trim()).filter(Boolean);
-      onValuesChange([...group.values, ...lines]);
+      const merged = [...group.values, ...lines];
+      onValuesChange(group.maxValues ? merged.slice(0, group.maxValues) : merged);
       setNewValue('');
     }
-  }, [group.values, onValuesChange]);
+  }, [group.values, group.maxValues, onValuesChange]);
 
   const handleExistingRowKeyDown = useCallback((index: number, e: React.KeyboardEvent) => {
     if (e.key === 'Backspace' && group.values[index] === '') {
@@ -195,32 +196,34 @@ function GroupEditor({ group, resolvedPlaceholder, onValuesChange, disabled }: G
           />
         ))}
 
-        {/* New entry row */}
-        <div className="flex items-center gap-0 bg-gray-50/50 dark:bg-gray-900/30">
-          <div className="flex-shrink-0 w-10 py-2.5 flex items-center justify-center">
-            <Plus className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+        {/* New entry row (hidden when maxValues reached) */}
+        {!(group.maxValues && group.values.length >= group.maxValues) && (
+          <div className="flex items-center gap-0 bg-gray-50/50 dark:bg-gray-900/30">
+            <div className="flex-shrink-0 w-10 py-2.5 flex items-center justify-center">
+              <Plus className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+            </div>
+            <input
+              ref={newRowRef}
+              type="text"
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              onKeyDown={handleNewRowKeyDown}
+              onPaste={handleNewRowPaste}
+              onBlur={() => {
+                if (newValue.trim()) handleAdd(newValue);
+              }}
+              placeholder={resolvedPlaceholder}
+              disabled={disabled}
+              className="flex-1 py-2.5 px-3 text-sm bg-transparent border-0
+                text-gray-900 dark:text-white
+                placeholder:text-gray-400 dark:placeholder:text-gray-500
+                focus:outline-none
+                disabled:opacity-50 disabled:cursor-not-allowed"
+              spellCheck={false}
+            />
+            <div className="flex-shrink-0 w-8" />
           </div>
-          <input
-            ref={newRowRef}
-            type="text"
-            value={newValue}
-            onChange={(e) => setNewValue(e.target.value)}
-            onKeyDown={handleNewRowKeyDown}
-            onPaste={handleNewRowPaste}
-            onBlur={() => {
-              if (newValue.trim()) handleAdd(newValue);
-            }}
-            placeholder={resolvedPlaceholder}
-            disabled={disabled}
-            className="flex-1 py-2.5 px-3 text-sm bg-transparent border-0
-              text-gray-900 dark:text-white
-              placeholder:text-gray-400 dark:placeholder:text-gray-500
-              focus:outline-none
-              disabled:opacity-50 disabled:cursor-not-allowed"
-            spellCheck={false}
-          />
-          <div className="flex-shrink-0 w-8" />
-        </div>
+        )}
       </div>
     </div>
   );

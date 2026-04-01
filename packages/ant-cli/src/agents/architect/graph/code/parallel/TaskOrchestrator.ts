@@ -643,6 +643,10 @@ export class TaskOrchestrator<T extends BaseTask> {
   }
 
   private assignTask(workerId: number, task: T): T {
+    // Clear stale failure markers from previous attempts (e.g., resume after tasks_failed)
+    delete (task as any)._failed;
+    delete (task as any)._failureReason;
+
     // Always reset timing — stale startedAt from failed/checkpoint-restored tasks
     // would cause cumulative elapsed time across sequential tasks.
     task.timing = {

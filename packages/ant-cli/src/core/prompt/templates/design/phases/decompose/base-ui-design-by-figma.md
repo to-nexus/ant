@@ -146,27 +146,21 @@ Format: "section name" (pageNodeId): [distinct widths, largest first]
 
 #### ui-spec.json (multi-chapter)
 
-**⚠️ CRITICAL: ch1 establishes the PATTERN. ch2+ follows the same pattern.**
-
 **Observation target**: Identify the distinct pages/views/features in the project requirements.
 
 **Chapter roles** — each chapter has exactly ONE role:
 
 | Role | Priority | Scope boundary |
 |------|----------|----------------|
-| **Structure** (ch1) | 300 | Document TOC + layout primitives ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. |
-| **Page** (ch2..chN-1) | 310–340 | ONE page or feature area. ALL component specs for that page INCLUDING its interactions, states, and animations. |
-| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library, global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by observing previous chapter outputs. |
+| **Structure** (ch1) | 300 | Global settings ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. |
+| **Page** (ch2..chN-1) | 310–340 | ONE page or feature area. Page-specific layout, content, and component usage. Page-only behaviors (used in this page only) fully specified here. Shared components referenced by ID — do NOT redefine their variants/states/sizes. |
+| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library (full variant/state/size definitions), global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by observing previous chapter outputs. |
 
 **MECE constraint**: Each topic belongs to exactly ONE chapter.
 - Behavior used in only ONE page → that page's chapter
 - Behavior used across 2+ pages → shared chapter
 - Do NOT create a separate "interactions + accessibility" chapter
-
-**⚠️ Pattern Consistency**:
-- ch1 writes actual content with a specific structure pattern (e.g., `## 1.`, `## 2.`)
-- ch2+ **reads FORBIDDEN SECTIONS** to see the pattern, then continues with same pattern
-- NO placeholder/outline system (append-only architecture)
+- Page chapters reference shared components by ID only — do NOT duplicate variant lists, interaction states, or size definitions
 
 ---
 

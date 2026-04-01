@@ -58,20 +58,11 @@
 Your chapter generates INDEPENDENT content — other chapters handle other categories.
 The system merges all chapters via deep merge automatically.
 
-{{else if lastSectionNumber}}
-🚨 CONTINUING EXISTING DOCUMENT 🚨
-════════════════════════════════════════════════════════════════════════════════
+{{#if siblingTasks}}
+### SIBLING CHAPTERS (same document)
 
-**Last section in document: ## {{lastSectionNumber}}**
-**Your first section MUST be: ## {{add lastSectionNumber 1}}**
-
-{{#if targetFile}}
-**Target file: `{{targetFile}}`** (defined by decompose, DO NOT change!)
-{{else}}
-**Target file: `ui-spec.json`** (default)
+{{{siblingTasks}}}
 {{/if}}
-
-⚠️ You MUST append to existing document using `<append>` tag (see rules)
 
 {{else}}
 🆕 NEW DOCUMENT - START FROM DOCUMENT TITLE
@@ -235,18 +226,6 @@ Use `read_file` on `outputs/design/{{targetFile}}` to inspect existing structure
 2. Your task suggests scope; this list is **ground truth**
 3. **MATCH the existing structure** (naming conventions, nesting patterns)
 4. **USE `<append>`** tag to merge your additions
-
-{{#if sectionPattern}}
-**⚠️ REQUIRED STRUCTURE PATTERN: `{{sectionPattern}}`**
-{{#if (eq sectionPattern "top-level")}}
-- Use `## N.` for each topic (NOT nested `### N.M`)
-{{else}}
-- Use nested structure `### N.M` under container sections
-{{/if}}
-{{else}}
-**⚠️ STRUCTURAL CONSISTENCY:**
-- Analyze the pattern above and follow it exactly
-{{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
