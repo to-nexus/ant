@@ -361,7 +361,6 @@ export function buildTriagePrompt(params: {
     hasAssets: workspaceState.hasAssets,
     assetCount: workspaceState.assetCount || 0,
     hasFigmaConfig: workspaceState.hasFigmaConfig,
-    figmaFileCount: workspaceState.figmaFileCount || 0,
     hasUiDocs: workspaceState.hasUiDocs,
     hasSystemDesignDoc: workspaceState.hasSystemDesignDoc,
     hasSpecDocs: workspaceState.hasSpecDocs,

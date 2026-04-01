@@ -392,8 +392,8 @@ function buildResourcesSummary(state: DesignGraphState): string {
     resourcesSummary += '- `figma_get_screenshot` — visual rendering of a node\n';
     resourcesSummary += '- `figma_get_variable_defs` — design tokens/variables defined in the file\n\n';
 
-    if (state.figmaConfig?.files?.length) {
-      resourcesSummary += `- **Figma files**: ${state.figmaConfig.files.length} file(s) configured\n`;
+    if (state.figmaConfig?.file) {
+      resourcesSummary += `- **Figma file**: 1 file configured\n`;
     }
     if (state.figmaExplorationResult) {
       const er = state.figmaExplorationResult;
@@ -522,9 +522,8 @@ async function loadPreviousUiDocs(
  * 
  * Loads design/phases/execute/base-ui-design-{by-ref|by-figma}.md based on state.uiDesignSource
  * - Includes corresponding rules and injection guides via partials
- * 
- * ✅ NEW: Tracks lastSectionNumber for chapter-based append (same as System Design)
- * ✅ NEW: Injects previousChaptersSummary to prevent duplicate content
+ * - Injects previousChaptersSummary to prevent duplicate content
+ * - Injects siblingTasks for MECE awareness in parallel chapters
  */
 export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promise<string> {
   const promptPort = state.deps?.promptEngine;
@@ -533,9 +532,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     throw new Error('[DocGen] PromptEngine is required but not available in state.deps');
   }
   
-  // ✅ NEW: Load lastSectionNumber for chapter-based append (same as System Design)
-  let lastSectionNumber = 0;
-  let sectionPattern = '';  // 'top-level' or 'nested'
   let previousChaptersSummary = '';
   let existingFileContent = '';
   
@@ -576,31 +572,13 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         if (existingFileContent) {
           const isJsonFile = actualTargetFile.endsWith('.json');
           
-          // ✅ JSON files: Parse and read _meta field (all UI docs are now JSON)
           if (isJsonFile) {
             try {
               const parsed = JSON.parse(existingFileContent);
-              if (parsed._meta) {
-                if (typeof parsed._meta.lastSection === 'number') {
-                  lastSectionNumber = parsed._meta.lastSection;
-                  console.log(`📄 [DocGen UI] Found lastSection in ${actualTargetFile}: ${lastSectionNumber} (from _meta)`);
-                }
-                if (parsed._meta.sectionPattern) {
-                  sectionPattern = parsed._meta.sectionPattern;
-                  console.log(`📄 [DocGen UI] Found sectionPattern in ${actualTargetFile}: ${sectionPattern}`);
-                }
-              }
-              // For JSON, count top-level keys (excluding _meta) as "sections"
               const dataKeys = Object.keys(parsed).filter(k => k !== '_meta');
-              if (!lastSectionNumber && dataKeys.length > 0) {
-                lastSectionNumber = dataKeys.length;
-                console.log(`📄 [DocGen UI] Estimated lastSection from ${dataKeys.length} top-level keys in ${actualTargetFile}`);
-              }
-              // Generate previousChaptersSummary from top-level keys
               if (dataKeys.length > 0) {
                 previousChaptersSummary = dataKeys.map((k, i) => `- Category ${i + 1}: ${k}`).join('\n');
               }
-              // For ui-spec.json with sections object
               if (parsed.sections && typeof parsed.sections === 'object' && !Array.isArray(parsed.sections)) {
                 const sectionKeys = Object.keys(parsed.sections);
                 if (sectionKeys.length > 0) {
@@ -610,37 +588,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
             } catch (parseError) {
               console.warn(`📄 [DocGen UI] Failed to parse ${actualTargetFile} as JSON:`, parseError);
             }
-          }
-          // Non-JSON files (should not happen for UI docs)
-          else {
-            const metadataLines = existingFileContent.trim().split('\n').slice(-5);
-            
-            for (const line of metadataLines) {
-              const lastSectionMatch = line.match(/<!-- LAST_SECTION: (\d+) -->/);
-              if (lastSectionMatch) {
-                lastSectionNumber = parseInt(lastSectionMatch[1]);
-                console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from metadata)`);
-              }
-              
-              const patternMatch = line.match(/<!-- SECTION_PATTERN: (\w+) -->/);
-              if (patternMatch) {
-                sectionPattern = patternMatch[1];
-                console.log(`📄 [DocGen UI] Found section pattern in ${actualTargetFile}: ${sectionPattern}`);
-              }
-            }
-            
-            // Fallback: scan for section headers (## N.)
-            if (!lastSectionNumber) {
-              const sectionMatches = existingFileContent.match(/^## (\d+)\./gm);
-              if (sectionMatches) {
-                const numbers = sectionMatches.map((m: string) => parseInt(m.match(/\d+/)?.[0] || '0'));
-                lastSectionNumber = Math.max(...numbers);
-                console.log(`📄 [DocGen UI] Found last section in ${actualTargetFile}: ${lastSectionNumber} (from scanning)`);
-              }
-            }
-            
-            // Extract section titles for previousChaptersSummary
-            previousChaptersSummary = extractPreviousSectionsSummary(existingFileContent);
           }
           
           if (previousChaptersSummary) {
@@ -664,18 +611,23 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     }
   }
   
-  // Load from template with task context + lastSectionNumber for Handlebars conditionals
+  // Build sibling tasks summary for MECE awareness in parallel chapters
+  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = (state as any)._allTasksSummary || [];
+  const siblingTasks = allTasks
+    .filter(t => t.targetFile === actualTargetFile && t.id !== taskId)
+    .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 120) || ''}`)
+    .join('\n');
+
   const injectedVariables = {
     taskId: state.currentTask?.id,
     taskName: state.currentTask?.name,
     taskDescription,
-    lastSectionNumber,
-    sectionPattern,
     targetFile: actualTargetFile,
     previousChaptersSummary,
     isLastTaskForDocument,
     forceAppend,
     pathPattern,
+    siblingTasks: siblingTasks || '',
     jobMode: state.detectionReport?.jobMode,
     userLanguage: state.context.userLanguage || 'en',
   };
@@ -726,36 +678,6 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   }
   
   return template;
-}
-
-/**
- * Extract section titles from existing file content to create a summary
- * of what has already been documented (to prevent duplication)
- */
-function extractPreviousSectionsSummary(content: string): string {
-  if (!content) return '';
-  
-  const lines = content.split('\n');
-  const sections: string[] = [];
-  
-  for (const line of lines) {
-    // Match ## N. Title or ### N.N. Subsection Title
-    const sectionMatch = line.match(/^(#{2,3})\s+(\d+(?:\.\d+)?\.?)\s+(.+)$/);
-    if (sectionMatch) {
-      const level = sectionMatch[1].length;
-      const number = sectionMatch[2];
-      const title = sectionMatch[3].trim();
-      
-      // Format: "- Section N: Title" or "  - Subsection N.N: Title"
-      const indent = level === 2 ? '' : '  ';
-      const prefix = level === 2 ? 'Section' : 'Subsection';
-      sections.push(`${indent}- ${prefix} ${number} ${title}`);
-    }
-  }
-  
-  if (sections.length === 0) return '';
-  
-  return sections.join('\n');
 }
 
 /**

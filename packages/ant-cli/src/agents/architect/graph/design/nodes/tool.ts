@@ -104,15 +104,13 @@ async function executeDesignTool(
         try {
           const figmaArgs = args as { fileKey: string; nodeId: string };
 
-          const validFileKeys = (state.figmaConfig?.files || [])
-            .map(url => parseFigmaUrl(url)?.fileKey)
-            .filter(Boolean) as string[];
           let safeFileKey = figmaArgs.fileKey;
-          if (validFileKeys.length === 1) {
-            safeFileKey = validFileKeys[0];
-          } else if (validFileKeys.length > 1 && !validFileKeys.includes(figmaArgs.fileKey)) {
-            console.warn(`⚠️  [Tool] LLM provided invalid fileKey "${figmaArgs.fileKey}", using "${validFileKeys[0]}"`);
-            safeFileKey = validFileKeys[0];
+          if (state.figmaConfig?.file) {
+            const parsed = parseFigmaUrl(state.figmaConfig.file);
+            if (parsed?.fileKey && parsed.fileKey !== figmaArgs.fileKey) {
+              console.warn(`⚠️  [Tool] LLM provided invalid fileKey "${figmaArgs.fileKey}", using "${parsed.fileKey}"`);
+              safeFileKey = parsed.fileKey;
+            }
           }
 
           const mcpResult: FigmaMCPResult = await callFigmaMCPTool(

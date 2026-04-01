@@ -147,8 +147,8 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
               figmaUp = await transport.isAvailable();
             }
 
-            if (figmaUp && figmaConfig.files?.[0]) {
-              const parts = extractFigmaUrlParts(figmaConfig.files[0]);
+            if (figmaUp && figmaConfig.file) {
+              const parts = extractFigmaUrlParts(figmaConfig.file);
               if (parts.fileKey) {
                 state.figmaAvailable = true;
                 state.figmaFileKey = parts.fileKey;
@@ -399,8 +399,8 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
           figmaAvailable = await transport.isAvailable();
         }
 
-        if (figmaAvailable && figmaConfig.files?.[0]) {
-          const parts = extractFigmaUrlParts(figmaConfig.files[0]);
+        if (figmaAvailable && figmaConfig.file) {
+          const parts = extractFigmaUrlParts(figmaConfig.file);
           if (parts.fileKey) {
             figmaFileKey = parts.fileKey;
             figmaStartNodeId = parts.nodeId;

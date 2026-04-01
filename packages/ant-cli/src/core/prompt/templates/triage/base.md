@@ -18,7 +18,7 @@ You analyze user input to determine intent and execution readiness.
 {{#if hasDirective}}✅ Directive{{else}}ℹ️ No directive{{/if}}
 
 ### References
-{{#if hasFigmaConfig}}✅ Figma: {{figmaFileCount}} design file(s) configured{{/if}}
+{{#if hasFigmaConfig}}✅ Figma: design file configured{{/if}}
 {{#if hasScreens}}✅ Screens: {{screenCount}} files{{else}}{{#unless hasFigmaConfig}}❌ No screen references{{/unless}}{{/if}}
 {{#if hasComponents}}✅ Components: {{componentCount}} files{{else}}ℹ️ No component references{{/if}}
 {{#if hasAssets}}✅ Assets: {{assetCount}} files{{else}}ℹ️ No assets{{/if}}
