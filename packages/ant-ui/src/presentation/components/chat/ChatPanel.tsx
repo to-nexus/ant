@@ -23,22 +23,32 @@ interface ChatPanelProps {
 
 type WatermarkVariant = 'color' | 'mono';
 
+const BASE = import.meta.env.BASE_URL;
+
+const WATERMARK_MAP: Record<string, Record<WatermarkVariant, string>> = {
+  planner: {
+    color: `${BASE}watermarks/planner-color.svg`,
+    mono: `${BASE}watermarks/planner-mono.svg`,
+  },
+  architect: {
+    color: `${BASE}watermarks/architect-color.svg`,
+    mono: `${BASE}watermarks/architect-mono.svg`,
+  },
+};
+
+function getWatermarkSrc(
+  selectedAgent: string | null | undefined,
+  variant: WatermarkVariant
+): string | null {
+  if (!selectedAgent) return null;
+  return WATERMARK_MAP[selectedAgent]?.[variant] ?? null;
+}
+
 function getWatermarkStyle(
   selectedAgent: string | null | undefined,
   variant: WatermarkVariant
 ): CSSProperties | null {
-  const watermarkMap: Record<string, Record<WatermarkVariant, string>> = {
-    planner: {
-      color: '/watermarks/planner-color.svg',
-      mono: '/watermarks/planner-mono.svg',
-    },
-    architect: {
-      color: '/watermarks/architect-color.svg',
-      mono: '/watermarks/architect-mono.svg',
-    },
-  };
-
-  const src = selectedAgent ? watermarkMap[selectedAgent]?.[variant] : null;
+  const src = getWatermarkSrc(selectedAgent, variant);
   if (!src) return null;
 
   return {
@@ -46,6 +56,29 @@ function getWatermarkStyle(
     backgroundRepeat: 'no-repeat',
     backgroundPosition: 'center',
   };
+}
+
+function WatermarkIcon({ src, size, className, fallback }: {
+  src: string | null;
+  size: number;
+  className?: string;
+  fallback: React.ReactNode;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (!src || failed) return <>{fallback}</>;
+
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      className={className}
+      aria-hidden="true"
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export function ChatPanel({
@@ -157,8 +190,8 @@ export function ChatPanel({
   }, [lastAssistantMessage?.id, fileOperationCount]);  // ✅ 파일 operation 개수만 추적
 
   const hasMessages = messages.length > 0;
-  const emptyStateWatermarkStyle = useMemo(
-    () => getWatermarkStyle(selectedAgent, 'color'),
+  const emptyStateWatermarkSrc = useMemo(
+    () => getWatermarkSrc(selectedAgent, 'color'),
     [selectedAgent]
   );
   const historyWatermarkStyle = useMemo(
@@ -188,18 +221,12 @@ export function ChatPanel({
         {messages.length === 0 && chatPolicy.emptyStateMessage && (
           <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
-              {emptyStateWatermarkStyle ? (
-                <div
-                  className="mx-auto mb-4 h-14 w-14"
-                  style={{
-                    ...emptyStateWatermarkStyle,
-                    backgroundSize: '56px 56px',
-                  }}
-                  aria-hidden="true"
-                />
-              ) : (
-                <div className="text-4xl mb-4">💬</div>
-              )}
+              <WatermarkIcon
+                src={emptyStateWatermarkSrc}
+                size={56}
+                className="mx-auto mb-4"
+                fallback={<div className="text-4xl mb-4">💬</div>}
+              />
               <p className="text-sm text-gray-600 dark:text-gray-300 shimmer-text">
                 {chatPolicy.emptyStateMessage}
               </p>
@@ -211,25 +238,34 @@ export function ChatPanel({
         {messages.length === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
           <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
-              {emptyStateWatermarkStyle ? (
-                <div
-                  className="mx-auto mb-4 h-28 w-28 watermark-empty-icon"
-                  style={{
-                    ...emptyStateWatermarkStyle,
-                    backgroundSize: '112px 112px',
-                  }}
-                  aria-hidden="true"
-                />
-              ) : (
-                /* ✨ Animated sparkle with float effect (크기 + 위치 + 회전) */
-                <div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon">✨</div>
-              )}
-
+              <WatermarkIcon
+                src={emptyStateWatermarkSrc}
+                size={112}
+                className="mx-auto mb-4 watermark-empty-icon"
+                fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon">✨</div>}
+              />
               <p className="text-sm text-gray-700 dark:text-gray-200 font-medium mb-2 shimmer-text">
                 {t('policy.readyToStart')}
               </p>
               <p className="text-xs text-gray-600 dark:text-gray-300 shimmer-text">
                 {chatPolicy.readyEmptyStateMessage}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State Fallback - job-running / job-interrupted with no messages yet */}
+        {messages.length === 0 && !chatPolicy.emptyStateMessage && !chatPolicy.readyEmptyStateMessage && (
+          <div className="flex-1 min-h-0 flex items-center justify-center p-8">
+            <div className="text-center max-w-sm">
+              <WatermarkIcon
+                src={emptyStateWatermarkSrc}
+                size={112}
+                className="mx-auto mb-4 watermark-empty-icon opacity-60"
+                fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon opacity-60">✨</div>}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 shimmer-text">
+                {chatPolicy.inputPlaceholder}
               </p>
             </div>
           </div>
