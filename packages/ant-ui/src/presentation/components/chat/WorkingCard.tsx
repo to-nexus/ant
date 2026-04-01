@@ -14,6 +14,9 @@ import { TruncatableText } from '@/presentation/components/common/TruncatableTex
 import { useImagePreview } from './useImagePreview';
 import { ImageLightbox } from './ImageLightbox';
 
+const PREVIEW_MAX_H_SCREENSHOT = 160; // figma_called: full screenshot (px)
+const PREVIEW_MAX_H_ASSET = 40;       // downloaded: compact asset thumbnail (px)
+
 interface WorkingCardProps {
   content: MessageContent;
   variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'reading_source' | 'read_source' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned' | 'downloading' | 'downloaded' | 'figma_calling' | 'figma_called';
@@ -201,9 +204,11 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
   const isProgress = isProgressState(variant);
   const { Icon, iconClass, containerClass, iconColorClass, textClass, detailClass } = getVariantConfig(variant, isProgress);
 
+  const selectedFile = useStore(state => state.selectedFile);
   const selectFile = useStore(state => state.selectFile);
-  const isScreenshot = !isProgress && variant === 'figma_called' && !!content.metadata?.imagePath;
-  const previewUrl = useImagePreview(isScreenshot ? content.metadata!.imagePath : undefined);
+  const setLastViewMode = useStore(state => state.setLastViewMode);
+  const hasImagePreview = !isProgress && (variant === 'figma_called' || variant === 'downloaded') && !!content.metadata?.imagePath;
+  const previewUrl = useImagePreview(hasImagePreview ? content.metadata!.imagePath : undefined);
   
   // Extract data from metadata (for complete states)
   const filesList = content.metadata?.filesList || [];
@@ -263,9 +268,18 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
 
   // downloaded asset → click opens file in editor (image preview already built-in)
   const isDownloadedAsset = variant === 'downloaded' && !!content.metadata?.imagePath;
+  const openAssetPreview = () => {
+    const path = content.metadata!.imagePath!;
+    if (selectedFile === path) {
+      selectFile(undefined);
+    } else {
+      setLastViewMode('preview');
+      selectFile(path);
+    }
+  };
   const handleCardClick = () => {
     if (isDownloadedAsset) {
-      selectFile(content.metadata!.imagePath!);
+      openAssetPreview();
     } else if (hasExpandable) {
       setIsExpanded(!isExpanded);
     }
@@ -298,18 +312,21 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
         )}
       </button>
 
-      {/* Screenshot preview block (figma_called with saved image) */}
+      {/* Image preview block — screenshot (figma_called) or asset thumbnail (downloaded) */}
       {previewUrl && (
-        <div className="border-t border-gray-200/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/20 flex justify-center p-2">
+        <div className={`border-t border-gray-200/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/20 p-2
+                         flex justify-center`}>
           <button
             type="button"
-            onClick={() => setLightboxOpen(true)}
-            className="rounded-md overflow-hidden border border-gray-200/60 dark:border-gray-600/60 hover:border-gray-400 dark:hover:border-gray-400 transition-colors cursor-zoom-in"
+            onClick={isDownloadedAsset ? openAssetPreview : () => setLightboxOpen(true)}
+            className={`rounded-md overflow-hidden border border-gray-200/60 dark:border-gray-600/60 hover:border-gray-400 dark:hover:border-gray-400 transition-colors
+                        ${isDownloadedAsset ? 'cursor-pointer' : 'cursor-zoom-in'}`}
           >
             <img
               src={previewUrl}
-              alt={content.metadata?.toolName || 'screenshot'}
-              className="max-h-40 w-auto object-contain bg-white/50 dark:bg-gray-800/50"
+              alt={content.metadata?.toolName || content.metadata?.filename || 'preview'}
+              style={{ maxHeight: isDownloadedAsset ? PREVIEW_MAX_H_ASSET : PREVIEW_MAX_H_SCREENSHOT }}
+              className="w-auto object-contain bg-white/50 dark:bg-gray-800/50"
             />
           </button>
         </div>
@@ -360,8 +377,8 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
         </div>
       )}
 
-      {/* Lightbox modal */}
-      {lightboxOpen && previewUrl && (
+      {/* Lightbox modal (figma_called only) */}
+      {lightboxOpen && previewUrl && variant === 'figma_called' && (
         <ImageLightbox
           src={previewUrl}
           alt={content.metadata?.toolName || content.metadata?.filePath || 'preview'}
