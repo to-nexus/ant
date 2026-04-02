@@ -45,7 +45,8 @@
     "architect": "Optimized for coding tasks",
     "planner": "Creates & refines PRDs (product requirements)",
     "reviewer": "Reviews code & provides feedback",
-    "doc": "Generates documentation"
+    "doc": "Generates documentation",
+    "creator": "Generates visual & creative assets"
   },
   "jobMode": {
     "design": {
@@ -63,7 +64,27 @@
     "plan": {
       "label": "📋 Plan",
       "description": "Define & refine product requirements"
+    },
+    "visual": {
+      "label": "🖼️ Visual",
+      "description": "Generate images, icons & visual assets"
     }
+  },
+  "draftSelection": {
+    "title": "{{count}} draft candidates",
+    "subtitle": "Click a thumbnail to expand, or select to render.",
+    "draftLabel": "Draft {{number}}",
+    "draftAlt": "Draft {{number}}",
+    "selected": "Selected",
+    "select": "Select",
+    "selectDraft": "Select Draft {{number}}",
+    "draftSelected": "Draft {{number}} selected",
+    "customLabel": "Custom: \"{{text}}\"",
+    "placeholder": "Or describe changes (e.g. make it darker, change color to blue...)",
+    "send": "Send",
+    "previousDraft": "Previous draft",
+    "nextDraft": "Next draft",
+    "close": "Close"
   },
   "clarify": {
     "freeInput": "Type your answer...",
@@ -94,6 +115,7 @@
       "process_crash": "Process crashed unexpectedly",
       "server_crash": "Server crashed unexpectedly",
       "figma_rate_limited": "Figma API rate limit exceeded",
+      "figma_connection_lost": "Figma connection lost",
       "unknown": "Unknown error"
     },
     "designErrors": {
@@ -101,6 +123,9 @@
       "figma_window_not_open": "Figma Desktop is not open",
       "figma_mcp_unavailable": "Cannot connect to Figma Desktop",
       "figma_bridge_unavailable": "Ant Desktop connection failed",
+      "figma_data_error": "Figma data retrieval failed",
+      "figma_invalid_config": "Invalid Figma configuration",
+      "figma_no_data": "No data from Figma file",
       "missing_documents": "Required documents not found"
     },
     "work": {
