@@ -419,6 +419,13 @@ export async function orchestrator(params: {
       const sketchImageClient = createImageGenerationClient(configData, configData.llmModels?.visual?.sketch);
       const renderImageClient = createImageGenerationClient(configData, configData.llmModels?.visual?.render);
 
+      const { VisualProcessorClient } = await import('../periphery/adapters/visualProcessor/VisualProcessorClient');
+      const { NoopBackgroundRemoval } = await import('../periphery/adapters/visualProcessor/NoopBackgroundRemoval');
+      const visualProcessorUrl = process.env.ANT_VISUAL_PROCESSOR_URL || 'http://localhost:4103';
+      const backgroundRemoval = configData.visualSettings?.removeBackground !== false
+        ? new VisualProcessorClient(visualProcessorUrl)
+        : new NoopBackgroundRemoval();
+
       let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
       let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
       let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
@@ -444,7 +451,7 @@ export async function orchestrator(params: {
       const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
       const session = new FileSessionAdapter(featurePath, 'creator', project, featureName, fileTreeUpdate);
 
-      const { runVisualGraph } = await import("../agents/creator/index");
+      const { runVisualGraph } = await import("../agents/creator/graph/visual/graph");
 
       const result = await runVisualGraph({
         directive: input,
@@ -463,6 +470,7 @@ export async function orchestrator(params: {
           kanbanUpdate,
           fileTreeUpdate,
           workflowUpdate,
+          backgroundRemoval,
         },
         visualSettings: configData.visualSettings,
         _httpJobId: jobId,

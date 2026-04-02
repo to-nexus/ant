@@ -11,6 +11,7 @@ import { VisualGraphState, SvgDraft } from '../types.js';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 
 export async function engraveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -24,6 +25,9 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'engrave', 0);
   }
+
+  const chatAPI = getChatAPIClient();
+  await chatAPI.startMessage();
 
   const llm = state.deps.engraveLLM;
   const promptPort = state.deps.promptPort;
@@ -89,6 +93,7 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   }
 
   if (svgDrafts.length === 0) {
+    await chatAPI.finalizeMessage();
     return {
       svgDrafts: undefined,
       visualError: 'SVG generation failed — no valid output produced',

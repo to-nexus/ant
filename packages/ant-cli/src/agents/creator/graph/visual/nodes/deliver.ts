@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
-import { VisualGraphState, VisualConversationEntry } from '../types.js';
+import { VisualGraphState, VisualConversationEntry, ASSET_OUTPUT_SPECS } from '../types.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 
@@ -57,8 +57,62 @@ async function deliverFinalImage(
   featurePath: string,
   phaseStart: number
 ): Promise<Partial<VisualGraphState>> {
-  const image = state.finalImage!;
-  const ext = mimeToExt(image.mimeType);
+  let imageData = state.finalImage!.data;
+  let imageMime = state.finalImage!.mimeType;
+  const spec = ASSET_OUTPUT_SPECS[state.assetType || 'general'];
+
+  // Step 1: Background removal (in-memory, only when spec requires it)
+  if (spec.requiresBgRemoval && state.deps?.backgroundRemoval) {
+    try {
+      const available = await state.deps.backgroundRemoval.isAvailable();
+      if (available) {
+        console.log('🔲 [Visual:Deliver] Removing background via visual-processor...');
+        const chatAPI = getChatAPIClient();
+        await chatAPI.showChatStatus('processing', { action: 'bg_removal', target: state.assetType || 'image' });
+
+        const result = await state.deps.backgroundRemoval.removeBackground(imageData, imageMime);
+        imageData = result.data;
+        imageMime = result.mimeType;
+
+        const sizeKB = (imageData.length / 1024).toFixed(1);
+        await chatAPI.showChatStatus('processed', { action: 'bg_removal', target: state.assetType || 'image', sizeKB });
+        console.log(`🔲 [Visual:Deliver] Background removed (${imageData.length} bytes)`);
+      } else {
+        console.warn('🔲 [Visual:Deliver] visual-processor not available, skipping bg-removal');
+        const chatAPI = getChatAPIClient();
+        await chatAPI.showChatStatus('processed', {
+          action: 'bg_removal',
+          target: state.assetType || 'image',
+          error: 'visual-processor not available',
+        });
+      }
+    } catch (err: any) {
+      const chatAPI = getChatAPIClient();
+      await chatAPI.showChatStatus('processed', { action: 'bg_removal', target: state.assetType || 'image', error: err.message });
+      console.warn('⚠️ [Visual:Deliver] Background removal failed, using original:', err.message);
+    }
+  }
+
+  // Step 2: Format conversion (in-memory, when source format != target format)
+  const targetMime = `image/${spec.format}`;
+  if (imageMime !== targetMime) {
+    try {
+      let pipeline = sharp(imageData);
+      switch (spec.format) {
+        case 'png':  pipeline = pipeline.png(); break;
+        case 'jpeg': pipeline = pipeline.jpeg({ quality: spec.quality || 85 }); break;
+        case 'webp': pipeline = pipeline.webp({ quality: spec.quality || 85 }); break;
+      }
+      imageData = await pipeline.toBuffer();
+      imageMime = targetMime as typeof imageMime;
+      console.log(`📦 [Visual:Deliver] Converted to ${spec.format} (${imageData.length} bytes)`);
+    } catch (err: any) {
+      console.warn('⚠️ [Visual:Deliver] Format conversion failed, using current format:', err.message);
+    }
+  }
+
+  // Step 3: Single disk write with the fully processed image
+  const ext = mimeToExt(imageMime);
   const timestamp = Date.now();
   const filename = `gen-${timestamp}.${ext}`;
   const outputDir = path.join(featurePath, 'inputs/assets/gen');
@@ -66,20 +120,21 @@ async function deliverFinalImage(
   fs.mkdirSync(outputDir, { recursive: true });
 
   const outputPath = path.join(outputDir, filename);
-  fs.writeFileSync(outputPath, image.data);
-  console.log(`📦 [Visual:Deliver] Saved final image: ${outputPath} (${image.data.length} bytes)`);
+  fs.writeFileSync(outputPath, imageData);
+  console.log(`📦 [Visual:Deliver] Saved final image: ${outputPath} (${imageData.length} bytes)`);
 
+  // Thumbnail (flatten alpha to white for JPEG compatibility)
   let thumbnailPath: string | undefined;
   try {
     const draftsDir = path.join(outputDir, 'drafts');
     fs.mkdirSync(draftsDir, { recursive: true });
     const thumbFilename = `gen-${timestamp}-thumb.jpeg`;
     thumbnailPath = path.join(draftsDir, thumbFilename);
-    await sharp(image.data)
+    await sharp(imageData)
+      .flatten({ background: '#ffffff' })
       .resize(200, 200, { fit: 'inside' })
       .jpeg({ quality: 70 })
       .toFile(thumbnailPath);
-    console.log(`📦 [Visual:Deliver] Generated thumbnail: ${thumbnailPath}`);
   } catch (err: any) {
     console.warn('⚠️ [Visual:Deliver] Thumbnail generation failed:', err.message);
     thumbnailPath = undefined;
@@ -88,12 +143,13 @@ async function deliverFinalImage(
   try {
     const chatAPI = getChatAPIClient();
     const relativePath = `inputs/assets/gen/${filename}`;
-    const sizeKB = (image.data.length / 1024).toFixed(1);
+    const sizeKB = (imageData.length / 1024).toFixed(1);
     await chatAPI.showChatStatus('downloaded', {
       filename,
       sizeKB,
       imagePath: relativePath,
     });
+    await chatAPI.finalizeMessage();
   } catch (err: any) {
     console.warn('⚠️ [Visual:Deliver] Chat notification failed:', err.message);
   }
@@ -169,7 +225,18 @@ async function deliverDraftImages(
 
   try {
     const chatAPI = getChatAPIClient();
-    await chatAPI.sendDraftSelection(draftEntries);
+    await chatAPI.sendClarifyCards([{
+      question: `${draftEntries.length} draft candidates`,
+      options: draftEntries.map(d => ({
+        label: `Draft ${d.index + 1}`,
+        imagePath: d.imagePath,
+        thumbnailPath: d.thumbnailPath,
+        value: `draft_${d.index}`,
+      })),
+      allowFreeText: true,
+      allowRegenerate: true,
+    }]);
+    await chatAPI.finalizeMessage();
   } catch (err: any) {
     console.warn('⚠️ [Visual:Deliver] Chat notification failed:', err.message);
   }
@@ -225,6 +292,7 @@ async function deliverSvgDrafts(
         sizeKB,
         imagePath: relativePath,
       });
+      await chatAPI.finalizeMessage();
     } catch (err: any) {
       console.warn('⚠️ [Visual:Deliver] Chat notification failed:', err.message);
     }
@@ -294,7 +362,18 @@ async function deliverSvgDrafts(
 
   try {
     const chatAPI = getChatAPIClient();
-    await chatAPI.sendDraftSelection(draftEntries);
+    await chatAPI.sendClarifyCards([{
+      question: `${draftEntries.length} draft candidates`,
+      options: draftEntries.map(d => ({
+        label: `Draft ${d.index + 1}`,
+        imagePath: d.imagePath,
+        thumbnailPath: d.thumbnailPath,
+        value: `draft_${d.index}`,
+      })),
+      allowFreeText: true,
+      allowRegenerate: true,
+    }]);
+    await chatAPI.finalizeMessage();
   } catch (err: any) {
     console.warn('⚠️ [Visual:Deliver] Chat notification failed:', err.message);
   }

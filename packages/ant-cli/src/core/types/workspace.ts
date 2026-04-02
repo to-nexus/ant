@@ -47,6 +47,7 @@ export interface LLMModels {
 export interface VisualSettings {
   candidateCount?: number;                         // Draft candidate count (default: 3, range: 1-4)
   defaultAspectRatio?: string;                     // e.g. "1:1", "16:9"
+  removeBackground?: boolean;                      // Enable bg-removal via visual-processor (default: true)
 }
 
 /**

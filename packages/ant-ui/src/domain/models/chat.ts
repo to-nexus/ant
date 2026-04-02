@@ -33,6 +33,8 @@ export type MessageContentType =
   | 'stored'         // Storing lessons complete
   | 'learning'       // Learning from code changes (in progress)
   | 'learned'        // Learning complete
+  | 'processing'     // Visual post-processing in progress (bg removal, upscale, etc.)
+  | 'processed'      // Visual post-processing complete
   | 'downloading'    // Asset download in progress (Figma design)
   | 'downloaded'     // Asset download complete
   | 'figma_calling'  // Figma MCP tool call in progress
@@ -124,9 +126,20 @@ export interface MessageContent {
     title?: string;           // For choice_card: card title
     evalType?: string;        // For eval_save: type of evaluation
     evalContent?: string;     // For eval_save: evaluation content to save
-    // Clarifying Choice Card — compound card (planner generate mode)
-    clarifyBlocks?: Array<{ question: string; options: string[] }>;  // For clarifying: all questions + options
+    // Clarifying Choice Card — compound card (planner generate mode, visual draft selection)
+    clarifyBlocks?: Array<{
+      question: string;
+      options: Array<string | {
+        label: string;
+        imagePath: string;
+        thumbnailPath: string;
+        value: string;
+      }>;
+      allowFreeText?: boolean;
+      allowRegenerate?: boolean;
+    }>;
     resolvedAnswers?: Record<number, string>;  // For clarifying: per-question answers after submission
+    customText?: string;  // For clarifying: free-text feedback submitted
     // Context Loaded
     items?: Array<{ label: string; detail?: string }>;  // For context_loaded: loaded items
     // Plan card
@@ -134,8 +147,6 @@ export interface MessageContent {
     completed?: boolean;      // For task_response: individual card completion signal
     // Image preview (for figma_called, downloaded, read — when result is an image)
     imagePath?: string;       // Feature-relative path to saved image file
-    // Draft Selection (for choice_card cardType='draft_selection')
-    drafts?: Array<{ index: number; imagePath: string; thumbnailPath: string }>;
     selectedDraftIndex?: number;  // Persisted after user selects a draft
     // File card summary (lightweight persistence — content stripped, stats kept)
     lineCount?: number;       // Total lines written (file_create)

@@ -27,6 +27,7 @@ export * from "./workspace";
 export * from "./preview";               // Preview update broadcasting
 export * from "./portRegistry";         // Preview/IDE state management
 export * from "./imageGeneration";     // Image generation (Gemini etc.)
+export * from "./backgroundRemoval";   // Background removal (visual-processor sidecar)
 export * from "./stateStore";           // Cloud Scalability - StateStorePort
 export * from "./ideOrchestrator";      // Cloud Scalability - IDEOrchestratorPort
 // Note: Preview moved to ant-preview service (see 10-cloud-architecture.md)

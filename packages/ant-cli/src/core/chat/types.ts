@@ -200,6 +200,7 @@ export const CHAT_STATUS_TYPES = new Set([
   'listing_files', 'listed_files',
   'searching_code', 'searched_code',
   'searching_reference', 'searched_reference',
+  'processing', 'processed',
   'downloading', 'downloaded',
   'figma_calling', 'figma_called',
   'command_running', 'command_streaming', 'command'
@@ -211,7 +212,7 @@ export const CHAT_STATUS_TYPES = new Set([
 export const COMPLETED_CHAT_STATUS_TYPES = new Set([
   'grepped', 'explored', 'read', 'read_source', 'command', 'learned',
   'listed_files', 'searched_code', 'searched_reference',
-  'downloaded', 'figma_called'
+  'processed', 'downloaded', 'figma_called'
 ]);
 
 /**
@@ -252,6 +253,7 @@ export type ChatStatusType =
   | 'learning' | 'learned' 
   | 'context_loaded'  // ✅ Context loaded notification (eval report, PRD, design docs, etc.)
   | 'choice_card'    // ✅ Generic choice card (eval_save, prd_apply, etc.)
+  | 'processing' | 'processed'
   | 'downloading' | 'downloaded'
   | 'figma_calling' | 'figma_called'
   | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed'

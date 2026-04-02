@@ -17,7 +17,6 @@ import { EvalSaveVariant } from './EvalSaveVariant';
 import { PrdApplyVariant } from './PrdApplyVariant';
 import { SpecCompleteVariant } from './SpecCompleteVariant';
 import { ClarifyingVariant } from './ClarifyingVariant';
-import { DraftSelectionVariant } from './DraftSelectionVariant';
 
 interface ChoiceCardProps {
   content: MessageContent;
@@ -39,8 +38,6 @@ export function ChoiceCard({ content, variant, messageId }: ChoiceCardProps) {
       return <ClarifyingVariant content={content} messageId={messageId} />;
     case 'spec_complete':
       return <SpecCompleteVariant content={content} messageId={messageId} />;
-    case 'draft_selection':
-      return <DraftSelectionVariant content={content} messageId={messageId} />;
     default:
       return null;
   }

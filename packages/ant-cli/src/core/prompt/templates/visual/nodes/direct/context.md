@@ -4,6 +4,31 @@
 ## Current Request
 {{{currentDirective}}}
 
+{{#if isDraftFeedback}}
+
+## Draft Feedback Mode
+
+The user is providing feedback on {{availableDraftCount}} draft candidates. NO final image has been produced yet.
+
+Previous generation prompt:
+{{{lastEngineeredPrompt}}}
+
+Your routing decision is constrained to exactly **TWO options**:
+
+1. **`sketch`** — Generate a NEW set of draft candidates
+   - User wants a different direction, more options, or style adjustments applied across all new drafts
+   - Rewrite `engineeredPrompt` to reflect the requested changes
+   - If the user references a specific draft's style ("3번 느낌으로", "like draft 2"), incorporate that style direction into the new prompt
+
+2. **`render`** — Produce the FINAL image from a specific draft
+   - User explicitly references a specific draft number AND wants it finalized (with or without minor changes)
+   - Set `selectedDraftIndex` to the referenced draft (0-based)
+   - Write `engineeredPrompt` incorporating the requested changes
+
+Default to `sketch` when uncertain — the user chose to type feedback instead of clicking a draft directly, which signals they want more exploration.
+
+{{/if}}
+
 {{#if isRefactor}}
 
 ## Refactor Context

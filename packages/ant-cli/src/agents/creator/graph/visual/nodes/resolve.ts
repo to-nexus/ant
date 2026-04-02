@@ -35,6 +35,7 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
   let isResume = state.isResume ?? false;
   let lastEngineeredPrompt: string | undefined;
   let lastOutputPath: string | undefined;
+  let lastAssetType: string | undefined;
   let availableDraftPaths: string[] | undefined;
   let clarifyCount = state.clarifyCount || 0;
 
@@ -54,6 +55,10 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
       if (sessionData.state?.lastOutputPath) {
         lastOutputPath = sessionData.state.lastOutputPath;
         console.log(`📂 [Visual:Resolve] Restored lastOutputPath: ${lastOutputPath}`);
+      }
+      if (sessionData.state?.assetType) {
+        lastAssetType = sessionData.state.assetType;
+        console.log(`📂 [Visual:Resolve] Restored assetType: ${lastAssetType}`);
       }
 
       // Restore clarify count from conversation (count assistant→user pairs)
@@ -90,10 +95,38 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
   }
 
   const userDirective = state.overrideDirective || state.directive;
+
+  // Parse structured draft intent from overrideDirective prefix
+  let draftIntent: VisualGraphState['draftIntent'];
+  let isDraftFeedback = false;
+  let selectedDraftIndex: number | undefined;
+  let parsedDirective = userDirective;
+
+  const intentMatch = userDirective?.match(
+    /^\[DRAFT_(FINALIZE|REGENERATE|FEEDBACK)(?::(\d+))?\](?:\s*(.*))?$/s
+  );
+  if (intentMatch) {
+    const [, action, indexStr, rest] = intentMatch;
+    if (action === 'FINALIZE') {
+      draftIntent = 'finalize';
+      selectedDraftIndex = indexStr != null ? parseInt(indexStr, 10) : undefined;
+      parsedDirective = `Selected draft ${(selectedDraftIndex ?? 0) + 1} for final rendering`;
+      console.log(`📂 [Visual:Resolve] Draft intent: finalize (draft ${selectedDraftIndex})`);
+    } else if (action === 'REGENERATE') {
+      draftIntent = 'regenerate';
+      parsedDirective = 'Requested draft regeneration with fresh exploration';
+      console.log('📂 [Visual:Resolve] Draft intent: regenerate');
+    } else if (action === 'FEEDBACK') {
+      isDraftFeedback = true;
+      parsedDirective = rest?.trim() || userDirective;
+      console.log(`📂 [Visual:Resolve] Draft feedback: "${parsedDirective?.substring(0, 60)}"`);
+    }
+  }
+
   if (userDirective) {
     conversation.push({
       role: 'user',
-      content: userDirective,
+      content: parsedDirective || userDirective,
       timestamp: new Date().toISOString(),
     });
     console.log('📝 [Visual:Resolve] Appended user directive to conversation');
@@ -103,15 +136,27 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
   }
 
-  return {
+  const result: Partial<VisualGraphState> = {
     conversation,
     isResume,
     lastEngineeredPrompt,
     lastOutputPath,
     availableDraftPaths,
     clarifyCount,
-    directive: state.overrideDirective || state.directive,
+    draftIntent,
+    isDraftFeedback,
+    selectedDraftIndex,
+    directive: parsedDirective || state.overrideDirective || state.directive,
+    overrideDirective: parsedDirective || state.overrideDirective,
     _uiLocale: state._uiLocale || detectUILocale(state.directive),
     _phaseTimings: { ...state._phaseTimings, resolve: Date.now() - phaseStart },
   };
+
+  // Restore assetType from session when classify will be skipped (deterministic paths)
+  if (draftIntent && lastAssetType) {
+    result.assetType = lastAssetType as any;
+    console.log(`📂 [Visual:Resolve] Pre-setting assetType=${lastAssetType} (classify will be skipped)`);
+  }
+
+  return result;
 }

@@ -12,6 +12,12 @@ import type { MessageContent } from '../chat/types';
 import type { ChatStatusType } from './types';
 import { logger } from '../../utils/logger';
 
+const PROCESSING_LABELS: Record<string, { progress: string; complete: string }> = {
+  bg_removal: { progress: 'Removing background', complete: 'Background removed' },
+  upscale: { progress: 'Upscaling image', complete: 'Image upscaled' },
+  optimize: { progress: 'Optimizing image', complete: 'Image optimized' },
+};
+
 function formatFigmaTarget(nodeId?: string, nodeName?: string): string | null {
   if (!nodeId) return null;
   if (nodeId === '0:1' || nodeId === '0-1') return null;
@@ -341,6 +347,24 @@ export class ChatStatusHandler {
         ).join(', ');
       }
       
+      case 'processing': {
+        const action = metadata?.action ?? 'processing';
+        const label = PROCESSING_LABELS[action] ?? { progress: action, complete: action };
+        const target = metadata?.target ?? '';
+        return target ? `${label.progress}: ${target}...` : `${label.progress}...`;
+      }
+
+      case 'processed': {
+        const action = metadata?.action ?? 'processing';
+        const label = PROCESSING_LABELS[action] ?? { progress: action, complete: action };
+        const target = metadata?.target ?? '';
+        const error = metadata?.error;
+        if (error) return `❌ ${label.complete} failed${target ? `: ${target}` : ''}`;
+        const sizeKB = metadata?.sizeKB;
+        const base = target ? `${label.complete}: ${target}` : label.complete;
+        return sizeKB ? `${base} (${sizeKB} KB)` : base;
+      }
+
       case 'downloading': {
         const filename = metadata?.filename ?? 'asset';
         return `Downloading: ${filename}...`;
