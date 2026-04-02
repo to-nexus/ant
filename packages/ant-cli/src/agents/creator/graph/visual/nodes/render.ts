@@ -13,6 +13,7 @@ import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiIm
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import type { ImageGenerationOptions } from '../../../../../core/ports/imageGeneration.js';
+import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 
 export async function renderNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -26,6 +27,9 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'render', 0);
   }
+
+  const chatAPI = getChatAPIClient();
+  await chatAPI.startMessage();
 
   const imageClient = state.deps.renderImageClient;
   let prompt = state.engineeredPrompt || state.directive || '';
@@ -51,6 +55,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
     const generated = await imageClient.generate(prompt, genOptions);
 
     if (generated.length === 0) {
+      await chatAPI.finalizeMessage();
       return {
         finalImage: undefined,
         visualError: 'Render produced no output',
@@ -95,6 +100,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
 
     if (err instanceof SafetyBlockError) {
       console.warn('🛡️ [Visual:Render] Safety filter blocked generation');
+      await chatAPI.finalizeMessage();
       return {
         finalImage: undefined,
         visualError: 'Final rendering was blocked by safety filter. Please modify your request.',
@@ -104,6 +110,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
     }
 
     console.error('❌ [Visual:Render] Rendering failed:', err.message);
+    await chatAPI.finalizeMessage();
     return {
       finalImage: undefined,
       visualError: `Render failed: ${err.message}`,

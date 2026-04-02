@@ -8,6 +8,7 @@
 import { TriageableState, TriageResult, WorkspaceState } from '../../../common/nodes/triage/types.js';
 import { LLMClient } from '../../../../core/ports/llm.js';
 import { ImageGenerationPort, GeneratedImage } from '../../../../core/ports/imageGeneration.js';
+import { BackgroundRemovalPort } from '../../../../core/ports/backgroundRemoval.js';
 import { PromptPort } from '../../../../core/ports/prompt.js';
 import { TaskQueueUpdatePort, FileTreeUpdatePort } from '../../../../core/ports/index.js';
 import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow.js';
@@ -62,6 +63,29 @@ export type VisualAssetType = 'logo' | 'icon' | 'hero' | 'illustration' | 'gener
 export const VISUAL_ASSET_TYPES: readonly VisualAssetType[] = ['logo', 'icon', 'hero', 'illustration', 'general'] as const;
 
 /**
+ * Output specification derived from asset type.
+ * Determines target format and required post-processing for the deliver node.
+ */
+export interface VisualOutputSpec {
+  format: 'png' | 'jpeg' | 'webp';
+  requiresBgRemoval: boolean;
+  quality?: number;
+}
+
+/**
+ * Asset type → output spec mapping.
+ * Deliver node uses this to decide post-processing (bg-removal, format conversion)
+ * on finalImage only — drafts are saved as-is for selection preview.
+ */
+export const ASSET_OUTPUT_SPECS: Record<VisualAssetType, VisualOutputSpec> = {
+  logo:         { format: 'png',  requiresBgRemoval: true },
+  icon:         { format: 'png',  requiresBgRemoval: true },
+  illustration: { format: 'png',  requiresBgRemoval: true },
+  hero:         { format: 'jpeg', requiresBgRemoval: false, quality: 90 },
+  general:      { format: 'jpeg', requiresBgRemoval: false, quality: 85 },
+};
+
+/**
  * Dependencies for visual graph nodes
  */
 export interface VisualGraphDeps {
@@ -75,6 +99,7 @@ export interface VisualGraphDeps {
   kanbanUpdate?: TaskQueueUpdatePort;
   fileTreeUpdate?: FileTreeUpdatePort;
   workflowUpdate?: WorkflowStateUpdatePort;
+  backgroundRemoval?: BackgroundRemovalPort;
 }
 
 /**
@@ -119,6 +144,10 @@ export interface VisualGraphState extends TriageableState {
 
   // Clarify counter (hard limit to prevent infinite clarify loops)
   clarifyCount?: number;
+
+  // Draft selection intent (set by resolve from overrideDirective prefix)
+  draftIntent?: 'finalize' | 'regenerate' | 'refine_explore' | 'refine_finalize';
+  isDraftFeedback?: boolean;
 
   // Control flow
   routeDecision?: 'sketch' | 'render' | 'engrave' | 'clarify' | 'end';

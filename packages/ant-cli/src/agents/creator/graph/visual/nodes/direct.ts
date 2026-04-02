@@ -12,6 +12,7 @@ import { VisualGraphState } from '../types.js';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 
 const MAX_CLARIFY = 5;
 
@@ -28,6 +29,41 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'direct', 0);
   }
 
+  // Deterministic fast-path for finalize/regenerate (no LLM call needed)
+  // Skip deterministic path if safety was blocked — need LLM to revise the prompt
+  if (state.draftIntent === 'finalize' && !state.safetyBlocked) {
+    console.log(`🎬 [Visual:Direct] Deterministic: finalize draft ${state.selectedDraftIndex} → render`);
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
+    }
+    return {
+      routeDecision: 'render',
+      engineeredPrompt: state.lastEngineeredPrompt,
+      selectedDraftIndex: state.selectedDraftIndex,
+      needsSketches: false,
+      draftIntent: undefined,
+      _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
+    };
+  }
+
+  if (state.draftIntent === 'regenerate' && !state.safetyBlocked) {
+    console.log('🎬 [Visual:Direct] Deterministic: regenerate → sketch (reuse prompt, new seed)');
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
+    }
+    return {
+      routeDecision: 'sketch',
+      engineeredPrompt: state.lastEngineeredPrompt,
+      needsSketches: true,
+      draftIntent: undefined,
+      _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
+    };
+  }
+
+  if (state.safetyBlocked && (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate')) {
+    console.log(`🎬 [Visual:Direct] Safety blocked on ${state.draftIntent} → falling through to LLM for prompt revision`);
+  }
+
   const directLLM = state.deps.directLLM;
   const promptPort = state.deps.promptPort;
 
@@ -39,9 +75,9 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   const currentDirective = state.overrideDirective || state.directive || '';
 
   const assetType = state.assetType || 'general';
-  const isRefactor = state.jobMode === 'refactor';
+  const isRefactor = state.jobMode === 'refactor' && !state.isDraftFeedback;
 
-  console.log(`🎬 [Visual:Direct] jobMode=${state.jobMode || 'generate'}, assetType=${assetType}`);
+  console.log(`🎬 [Visual:Direct] jobMode=${state.jobMode || 'generate'}, assetType=${assetType}, isDraftFeedback=${!!state.isDraftFeedback}`);
 
   const systemPrompt = await promptPort.render('visual/nodes/direct/base', {
     isLogo: assetType === 'logo',
@@ -57,6 +93,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     conversationContext: conversationContext || '(no previous conversation)',
     currentDirective,
     isRefactor,
+    isDraftFeedback: state.isDraftFeedback,
     lastEngineeredPrompt: state.lastEngineeredPrompt,
     lastOutputPath: state.lastOutputPath,
     safetyBlocked: state.safetyBlocked,
@@ -74,6 +111,9 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
+
+  const chatAPI = getChatAPIClient();
+  await chatAPI.startMessage();
 
   let result: any;
 
@@ -95,6 +135,9 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   } catch (err: any) {
     if (err instanceof SyntaxError || err.name === 'SyntaxError') {
       console.warn(`⚠️ [Visual:Direct] JSON parse failed, falling back to clarify: ${err.message}`);
+      const fallbackMsg = 'I had trouble processing that request. Could you describe the visual asset you want more specifically?';
+      await chatAPI.sendLLMEvent({ type: 'text', text: fallbackMsg });
+      await chatAPI.finalizeMessage();
       if (state.deps?.workflowUpdate && state._httpJobId) {
         await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
       }
@@ -105,7 +148,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
           ...state.conversation,
           {
             role: 'assistant' as const,
-            content: 'I had trouble processing that request. Could you describe the visual asset you want more specifically?',
+            content: fallbackMsg,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -113,6 +156,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       };
     }
     console.error('❌ [Visual:Direct] LLM call failed:', err.message);
+    await chatAPI.finalizeMessage();
     throw err;
   }
 
@@ -124,6 +168,10 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   console.log(`🎬 [Visual:Direct] Route: ${result.route}`);
   console.log(`🎬 [Visual:Direct] Reasoning: ${result.reasoning}`);
+
+  if (result.reasoning) {
+    await chatAPI.sendLLMEvent({ type: 'text', text: result.reasoning });
+  }
 
   if (state._httpJobId) {
     try {
@@ -144,11 +192,19 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
   }
 
+  // When isDraftFeedback, classify the LLM route into refine_explore or refine_finalize
+  let resolvedDraftIntent: VisualGraphState['draftIntent'];
+  if (state.isDraftFeedback) {
+    resolvedDraftIntent = result.route === 'render' ? 'refine_finalize' : 'refine_explore';
+    console.log(`🎬 [Visual:Direct] Draft feedback resolved: ${resolvedDraftIntent} (LLM route=${result.route})`);
+  }
+
   const updates: Partial<VisualGraphState> = {
     engineeredPrompt: result.engineeredPrompt,
     routeDecision: result.route,
     resolvedAspectRatio: result.aspectRatio || undefined,
     selectedDraftIndex: result.selectedDraftIndex ?? state.selectedDraftIndex,
+    draftIntent: resolvedDraftIntent || state.draftIntent,
     visualError: undefined,
     safetyBlocked: false,
     _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
@@ -170,8 +226,10 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
         timestamp: new Date().toISOString(),
       },
     ];
+    await chatAPI.sendLLMEvent({ type: 'text', text: result.clarifyQuestion });
   }
 
+  await chatAPI.finalizeMessage();
   return updates;
 }
 

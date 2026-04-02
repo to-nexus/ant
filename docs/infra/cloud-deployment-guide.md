@@ -113,6 +113,7 @@ Service names used for K8s Service Discovery (not hardcoded ports)
 | **Redis** | State, Queue, Pub/Sub | ElastiCache Cluster | N/A |
 | **ChromaDB** | Vector DB (Code Search/RAG) | Vertical (Single Pod) | N/A |
 | **Embedder** | Text Embedding Generation | Horizontal (HPA) | Round-robin |
+| **visual-processor** | Image Background Removal (rembg/BiRefNet) | Horizontal (HPA) | Round-robin |
 
 > **Why No Sticky Session?**: All services use Redis-based state management. SSE uses Redis Pub/Sub (all pods subscribe and can deliver). Preview/IDE use Redis State (any pod can lookup and proxy to correct target). Reconnections to different pods work correctly.
 
@@ -298,6 +299,65 @@ resources:
 > ⚠️ ChromaDB does not currently support built-in clustering.
 > For large-scale environments, consider managed services like [Chroma Cloud](https://www.trychroma.com/) or Pinecone.
 
+### 2.9 visual-processor (Background Removal)
+
+> **Note:** Python FastAPI sidecar for AI background removal. Uses rembg + BiRefNet model.
+> Stateless service — horizontal scaling possible. Model weights reside in process memory (~1.5 GB per pod).
+
+```yaml
+resources:
+  requests:
+    cpu: "1"
+    memory: "2Gi"
+  limits:
+    cpu: "2"
+    memory: "4Gi"
+```
+
+| Item | Minimum | Recommended |
+|-----|-----|-----|
+| Image | Custom (rembg + FastAPI) | Custom |
+| Replicas | 1 | 2+ (HPA) |
+| CPU Request | 1 | 2 |
+| Memory Request | 2Gi | 4Gi |
+| GPU | - | Optional (significantly faster) |
+| Port | 4103 | 4103 |
+
+**Model Download:**
+- Default model (birefnet-general) is ~1.2 GB, downloaded on first startup
+- Use a PVC or pre-baked image to avoid download delay on pod scaling
+- Docker volume `rembg-models` maps to `~/.u2net/` for local dev
+
+**Scaling:**
+
+| Load | Replicas | RAM |
+|------|----------|-----|
+| Low (<10 req/min) | 1 | 2–4 GB |
+| Medium (10–50 req/min) | 2–3 | 4–12 GB total |
+| High (>50 req/min) | GPU pods | 2 GB + VRAM |
+
+**GPU Support (Future):**
+- Replace `rembg[cpu]` with `rembg[gpu]` in `requirements.txt`
+- Use `nvidia/cuda:12.1.0-runtime-ubuntu22.04` as base image
+- Add NVIDIA device plugin to K8s nodes
+
+**Communication:**
+- ant-job → visual-processor (HTTP): Background removal requests from deliver node
+- Endpoint: `POST /remove-bg`, `GET /health`
+
+**Environment Variables:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `REMBG_MODEL` | No | `birefnet-general` | Default model to preload at startup |
+| `MAX_FILE_SIZE_MB` | No | `20` | Max upload file size in MB |
+| `MAX_CONCURRENCY` | No | `1` | Concurrent requests per worker process |
+| `PROCESSING_TIMEOUT_S` | No | `60` | Per-request processing timeout (seconds) |
+| `MAX_PIXELS` | No | `16777216` | Max image pixels (width x height). Default = 4096x4096 |
+| `UVICORN_WORKERS` | No | `2` | Worker process count. Total throughput = workers × MAX_CONCURRENCY |
+
+> Set `ANT_VISUAL_PROCESSOR_URL` in ant-job environment to point to visual-processor service URL (e.g., `http://visual-processor:4103`).
+
 ---
 
 ## 3. Kubernetes Deployment Guide
@@ -308,8 +368,8 @@ resources:
 
 | Resource | Purpose |
 |--------|------|
-| Deployment | ant-api, ant-realtime, ant-job, ant-preview |
-| Service | ant-api, ant-realtime, ant-preview (ClusterIP) |
+| Deployment | ant-api, ant-realtime, ant-job, ant-preview, visual-processor |
+| Service | ant-api, ant-realtime, ant-preview, visual-processor (ClusterIP) |
 | Ingress | ALB → ant-api (/api/*), ant-realtime (/realtime/*), ant-preview (/preview/*) |
 | PVC | EFS (workspaces), gp3 (chromadb) |
 | Secret | API Keys, Redis URL |
@@ -336,6 +396,7 @@ resources:
 | ant-realtime | `node dist/start-realtime-server.js` |
 | ant-job | `node dist/start-job-worker.js` |
 | ant-preview | `node dist/start-preview-server.js` |
+| visual-processor | `uvicorn server:app --host 0.0.0.0 --port 4103` |
 
 ### 3.3 Key Configuration Principles
 

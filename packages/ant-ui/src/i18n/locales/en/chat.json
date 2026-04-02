@@ -82,6 +82,8 @@
     "customLabel": "Custom: \"{{text}}\"",
     "placeholder": "Or describe changes (e.g. make it darker, change color to blue...)",
     "send": "Send",
+    "regenerate": "Regenerate Drafts",
+    "regenerateLabel": "Regenerate requested",
     "previousDraft": "Previous draft",
     "nextDraft": "Next draft",
     "close": "Close"
