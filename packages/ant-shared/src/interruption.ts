@@ -15,6 +15,7 @@ export type InterruptionReason =
   | 'timeout'              // Job timeout
   | 'server_shutdown'      // Server graceful shutdown
   | 'figma_rate_limited'   // Figma MCP/API rate limit exceeded
+  | 'figma_connection_lost' // Figma MCP connection lost (consecutive failures)
   | 'unknown';             // Unknown reason
 
 /** Details about a job interruption */

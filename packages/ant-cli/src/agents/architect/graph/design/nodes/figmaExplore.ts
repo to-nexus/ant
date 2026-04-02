@@ -18,7 +18,7 @@ import type { FigmaExplorationResult, FigmaExplorationError, FigmaNodeSummary, V
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
 import { getFigmaMCPAdapter } from '../../../tools/figmaMCPHandler';
 import { extractMCPTextContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../../../periphery/adapters/figma/MCPTransport';
-import { isRateLimitResponse } from '../../../../../periphery/adapters/figma/errors';
+import { isRateLimitResponse, classifyFigmaError } from '../../../../../periphery/adapters/figma/errors';
 import { getSessionRuntimeDir } from '../../../../../core/utils/sessionPaths';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 
@@ -308,7 +308,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: [], summary: { errors } });
     return {
       figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-      designError: { type: 'figma_window_not_open', message: errMsg },
+      designError: { type: 'figma_mcp_unavailable', message: errMsg },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
     };
   }
@@ -329,7 +329,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: [], summary: { errors } });
     return {
       figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-      designError: { type: 'figma_window_not_open', message: `Invalid Figma URL: ${url}` },
+      designError: { type: 'figma_invalid_config', message: `Invalid Figma URL: ${url}` },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
     };
   }
@@ -357,14 +357,20 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
   };
 
   if (metadataResult.isError) {
-    console.log(`   ❌ Metadata fetch failed: ${metadataResult.content}`);
+    const errContent = String(metadataResult.content);
+    console.log(`   ❌ Metadata fetch failed: ${errContent}`);
     fileDebug.status = 'metadata_error';
-    errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: String(metadataResult.content), timestamp: new Date().toISOString() });
+    errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: errContent, timestamp: new Date().toISOString() });
     debugInfo.files.push(fileDebug);
     await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
+    const cat = classifyFigmaError(errContent);
+    const errType = cat === 'rate_limit' ? 'figma_rate_limited'
+      : cat === 'connection' ? 'figma_mcp_unavailable'
+      : cat === 'environment' ? 'figma_window_not_open'
+      : 'figma_data_error';
     return {
       figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-      designError: { type: 'figma_window_not_open', message: String(metadataResult.content) },
+      designError: { type: errType, message: errContent },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
     };
   }
@@ -391,9 +397,13 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     errors.push({ phase: 'get_metadata', fileKey, nodeId: rootNodeId, message: `Soft error: ${extractedPreview}`, timestamp: new Date().toISOString() });
     debugInfo.files.push(fileDebug);
     await saveDebugFile(state, { ...debugInfo, completedAt: new Date().toISOString(), elapsedMs: Date.now() - phaseStart, files: debugInfo.files, summary: { errors } });
+    const cat = classifyFigmaError(extractedPreview);
+    const errType = cat === 'environment' ? 'figma_window_not_open'
+      : cat === 'connection' ? 'figma_mcp_unavailable'
+      : 'figma_data_error';
     return {
       figmaExplorationResult: { ...emptyResult(), explorationErrors: errors },
-      designError: { type: 'figma_window_not_open', message: `Figma MCP error: ${extractedPreview}` },
+      designError: { type: errType, message: `Figma MCP error: ${extractedPreview}` },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },
     };
   }
@@ -549,7 +559,7 @@ export async function figmaExplore(state: DesignGraphState): Promise<Partial<Des
     return {
       figmaExplorationResult: { ...result, explorationErrors: errors },
       designError: {
-        type: 'figma_window_not_open' as const,
+        type: 'figma_no_data' as const,
         message: errMsg,
       },
       _phaseTimings: { ...(state._phaseTimings || {}), figmaExplore: Date.now() - phaseStart },

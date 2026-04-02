@@ -323,8 +323,11 @@ export async function architectAgent(
       
       // ✅ Check for design error (e.g., Figma rate limit, window not open)
       if (d.designError) {
+        const FIGMA_ENV_TYPES = ['figma_mcp_unavailable', 'figma_window_not_open', 'figma_bridge_unavailable'];
         const reason: InterruptionReason =
-          d.designError.type === 'figma_rate_limited' ? 'figma_rate_limited' : 'api_error';
+          d.designError.type === 'figma_rate_limited' ? 'figma_rate_limited'
+          : FIGMA_ENV_TYPES.includes(d.designError.type) ? 'figma_connection_lost'
+          : 'api_error';
 
         return {
           success: false,
