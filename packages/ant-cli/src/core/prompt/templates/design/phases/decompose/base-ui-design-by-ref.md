@@ -109,12 +109,12 @@ You are analyzing UI complexity to break it into tasks.
 
 | Task ID | Priority | Topic |
 |---------|----------|-------|
-| ui-assets-ch1 | 200 | First batch of assets. Define canonical destination path patterns based on observed asset categories. Output PATH_PATTERN metadata. |
-| ui-assets-ch2 | 210 | Icons & Graphics. MUST follow ch1's path patterns exactly. Skip assets already documented. |
+| ui-assets-ch1 | 200 | First batch of assets. Include `_meta.pathPattern` in JSON mapping categories to destination directories. |
+| ui-assets-ch2 | 210 | Icons & Graphics. Read `_meta.pathPattern` from existing JSON — follow those paths exactly. Skip assets already documented. |
 
 **Task Description Requirements:**
-- **ch1 MUST include**: "Define canonical destination paths" and "Output `<!-- PATH_PATTERN: ... -->` metadata"
-- **ch2+ MUST include**: "Follow ch1's path patterns exactly" and "Skip assets already documented in ch1"
+- **ch1 MUST include**: "Include `_meta.pathPattern` in JSON output (mapping category to destination directory)"
+- **ch2+ MUST include**: "Read `_meta.pathPattern` from existing JSON — follow those paths exactly" and "Skip assets already documented in ch1"
 
 #### ui-spec.json (multi-chapter)
 
@@ -132,7 +132,11 @@ You are analyzing UI complexity to break it into tasks.
 - Behavior used in only ONE page → that page's chapter
 - Behavior used across 2+ pages → shared chapter
 - Do NOT create a separate "interactions + accessibility" chapter
-- Page chapters reference shared components by ID only — do NOT duplicate variant lists, interaction states, or size definitions
+
+**Component Ownership Contract** (prevents duplication between page and shared chapters):
+- Shared chapter description MUST start with `Components: <id1>, <id2>, ...` listing every component ID it will define. These IDs become JSON keys — use short, kebab-case names (e.g., `gnb`, `button`, `input`, `dropdown`, `table-data`, `tab-bar`).
+- Each page chapter description MUST include: `Shared components [<id1>, <id2>, ...]: reference by componentRef only — do NOT redefine.`
+- A component used in exactly ONE page belongs in that page's chapter, NOT in shared.
 
 ---
 

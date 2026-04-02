@@ -59,6 +59,8 @@ Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{
 - Do NOT create a separate "interactions + accessibility" chapter
 - If a behavior is used in only ONE page, it belongs to that page's chapter
 - If a behavior is used across MULTIPLE pages, it belongs to the shared components chapter
+- Shared chapter description MUST list component IDs it will define: `Components: <id1>, <id2>, ...` — these become JSON keys
+- Each page chapter description MUST repeat the shared component list: `Shared components [<id1>, <id2>, ...]: reference by componentRef only`
 
 ### 8. ui-assets.json: Download First + Path Consistency (CRITICAL!)
 
@@ -66,17 +68,16 @@ Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{
 
 **ui-assets-ch1 description MUST include:**
 - "Download FIRST, document AFTER — `src` fields must reference real downloaded file paths (Code Job requires local paths, not Figma URLs)"
-- "Define canonical destination path patterns based on observed asset categories"
-- "Output `<!-- PATH_PATTERN: <category>=<dest-path>, ... -->` metadata"
+- "Include `_meta.pathPattern` in JSON output mapping each asset category to its destination directory (e.g., `{ \"_meta\": { \"pathPattern\": { \"icons\": \"src/assets/icons/\", \"images\": \"public/images/\" } } }`)"
 
 **ui-assets-ch2+ descriptions MUST include:**
 - "Download first, then document — Code Job cannot use assets that only exist as Figma URLs"
-- "Follow ch1's path patterns exactly - do NOT create new subdirectories"
+- "Read existing ui-assets.json to extract `_meta.pathPattern` — follow those destination paths exactly, do NOT create new subdirectories"
 - "Skip any assets already documented in ch1"
 
 **Why download first?** The `src` field in ui-assets.json must point to real local files. Code Job reads these paths to integrate assets — Figma URLs are not usable at code generation time.
 
-**Why path patterns?** Without explicit path patterns, ch2 may create inconsistent destination paths.
+**Why path patterns?** Without `_meta.pathPattern`, ch2 may create inconsistent destination paths. The system reads `_meta.pathPattern` from JSON to inject path context into subsequent chapters.
 
 ### 9. Responsive Node Cross-Reference
 

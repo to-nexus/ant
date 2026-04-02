@@ -42,8 +42,8 @@ interface JobParams {
   jobId: string;
   projectId: string;
   feature: string;
-  jobType: 'code' | 'design' | 'learn' | 'inline-ask';
-  agent: 'architect' | 'reviewer' | 'planner' | 'doc';
+  jobType: 'code' | 'design' | 'learn' | 'inline-ask' | 'visual';
+  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator';
   mode: 'generate' | 'refactor' | 'explain';
   userId: string;
   orgId: string;
@@ -70,8 +70,8 @@ function getJobParams(): JobParams {
     jobId: process.env.ANT_JOB_ID!,
     projectId: process.env.ANT_PROJECT_ID!,
     feature: process.env.ANT_FEATURE!,
-    jobType: process.env.ANT_JOB_TYPE as 'code' | 'design' | 'learn',
-    agent: process.env.ANT_AGENT as 'architect' | 'reviewer' | 'planner' | 'doc',
+    jobType: process.env.ANT_JOB_TYPE as 'code' | 'design' | 'learn' | 'visual',
+    agent: process.env.ANT_AGENT as 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator',
     mode: (process.env.ANT_MODE || 'generate') as 'generate' | 'refactor' | 'explain',
     userId: process.env.ANT_USER_ID!,
     orgId: process.env.ANT_ORG_ID!,

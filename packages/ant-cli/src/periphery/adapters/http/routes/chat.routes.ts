@@ -74,6 +74,14 @@ export function createChatRoutes(deps: {
 
     const userContext = extractUserContext(req);
     deps.chatService.clearMessages(projectId, featureName, userContext);
+
+    // Chat clearing may delete draft images from disk.
+    // The file tree system is push-based (no file watcher), so we must
+    // explicitly notify after any file-system mutation.
+    if (deps.fileTreeNotifier) {
+      deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
+    }
+
     res.json({ success: true });
   });
 

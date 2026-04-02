@@ -59,20 +59,21 @@ Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{
 - Do NOT create a separate "interactions + accessibility" chapter
 - If a behavior is used in only ONE page, it belongs to that page's chapter
 - If a behavior is used across MULTIPLE pages, it belongs to the shared components chapter
+- Shared chapter description MUST list component IDs it will define: `Components: <id1>, <id2>, ...` — these become JSON keys
+- Each page chapter description MUST repeat the shared component list: `Shared components [<id1>, <id2>, ...]: reference by componentRef only`
 
 ### 8. ui-assets.json Path Consistency (CRITICAL!)
 
 **When creating ui-assets tasks:**
 
 **ui-assets-ch1 description MUST include:**
-- "Define canonical destination path patterns based on observed asset categories"
-- "Output `<!-- PATH_PATTERN: <category>=<dest-path>, ... -->` metadata"
+- "Include `_meta.pathPattern` in JSON output mapping each asset category to its destination directory (e.g., `{ \"_meta\": { \"pathPattern\": { \"icons\": \"src/assets/icons/\", \"images\": \"public/images/\" } } }`)"
 
 **ui-assets-ch2+ descriptions MUST include:**
-- "Follow ch1's path patterns exactly - do NOT create new subdirectories"
+- "Read existing ui-assets.json to extract `_meta.pathPattern` — follow those destination paths exactly, do NOT create new subdirectories"
 - "Skip any assets already documented in ch1"
 
-**Why?** Without explicit path patterns, ch2 may create inconsistent destination paths.
+**Why?** Without `_meta.pathPattern`, ch2 may create inconsistent destination paths. The system reads `_meta.pathPattern` from JSON to inject path context into subsequent chapters.
 
 ---
 

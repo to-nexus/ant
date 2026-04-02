@@ -7,11 +7,13 @@ interface TabButtonProps {
   label: string;
   isActive: boolean;
   isJobTab?: boolean;
+  jobId?: string;
   showText?: boolean;
   showCloseButton?: boolean;
   title?: string;
   onClick: () => void;
   onClose?: () => void;
+  onCopyJobId?: () => void;
 }
 
 export function TabButton({
@@ -19,11 +21,13 @@ export function TabButton({
   label,
   isActive,
   isJobTab = false,
+  jobId,
   showText = true,
   showCloseButton = false,
   title,
   onClick,
-  onClose
+  onClose,
+  onCopyJobId,
 }: TabButtonProps) {
   const { t } = useTranslation('nav');
   return (
@@ -41,6 +45,20 @@ export function TabButton({
       <div className="flex items-center gap-2 flex-1">
         <Icon className="w-4 h-4 flex-shrink-0" />
         {showText && <span className={isJobTab ? "whitespace-nowrap" : ""}>{label}</span>}
+        {showText && jobId && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopyJobId?.();
+            }}
+            className="ml-0.5 px-1.5 py-0.5 text-[10px] font-mono whitespace-nowrap rounded
+              bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400
+              hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
+            title={jobId}
+          >
+            {jobId}
+          </button>
+        )}
       </div>
       {showCloseButton && (
         <button

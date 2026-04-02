@@ -17,6 +17,13 @@ const LABELS: Record<string, Record<UILocale, string>> = {
   // Planner agent nodes
   generate:  { ko: 'PRD 생성 중',         en: 'Generating PRD' },
   write:     { ko: 'PRD 저장 중',         en: 'Saving PRD' },
+  // Creator agent (visual job) nodes
+  classify:  { ko: '에셋 유형 분석 중',    en: 'Classifying asset type' },
+  direct:    { ko: '프롬프트 설계 중',     en: 'Engineering prompt' },
+  sketch:    { ko: '시안 생성 중',         en: 'Generating drafts' },
+  render:    { ko: '최종 이미지 생성 중',   en: 'Rendering final image' },
+  engrave:   { ko: 'SVG 코드 생성 중',     en: 'Generating SVG' },
+  deliver:   { ko: '결과물 저장 중',       en: 'Saving output' },
 };
 
 /**

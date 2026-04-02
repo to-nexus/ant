@@ -26,6 +26,12 @@ export const AVAILABLE_JOBS = [
     label: '📚 Learn', 
     description: 'Analyze & document',
     agent: 'Architect'
+  },
+  {
+    value: 'visual' as const,
+    label: '🖼️ Visual',
+    description: 'Generate visual assets',
+    agent: 'Creator'
   }
 ] as const;
 

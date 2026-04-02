@@ -35,7 +35,7 @@ export class TriageDataLoader {
     // ✅ Use centralized WorkspacePathResolver for CLI internal resource paths
     const cliRoot = WorkspacePathResolver.getCliRoot();
     const jobsDir = path.join(cliRoot, 'core/data/triage/jobs');
-    const jobFiles = ['design.yaml', 'code.yaml', 'learn.yaml', 'plan.yaml'];
+    const jobFiles = ['design.yaml', 'code.yaml', 'learn.yaml', 'plan.yaml', 'visual.yaml'];
     
     console.log(`📂 [TriageDataLoader] Loading jobs from: ${jobsDir}`);
     

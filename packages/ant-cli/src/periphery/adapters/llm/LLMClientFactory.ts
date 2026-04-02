@@ -6,10 +6,13 @@
  */
 
 import { LLMClient } from '../../../core/ports/llm';
+import { ImageGenerationPort } from '../../../core/ports/imageGeneration';
 import { AnthropicLLMClient } from './AnthropicLLMClient';
 import { OpenAILLMClient } from './OpenAILLMClient';
+import { GeminiLLMClient } from './GeminiLLMClient';
+import { GeminiImageClient } from './GeminiImageClient';
 
-export type ModelProvider = 'anthropic' | 'openai';
+export type ModelProvider = 'anthropic' | 'openai' | 'google';
 
 interface LLMConfig {
   temperature?: number;
@@ -21,8 +24,8 @@ interface LLMConfig {
  * Job/Node context for model selection
  */
 export interface LLMContext {
-  jobType: 'design' | 'code' | 'learn' | 'plan';
-  nodeType?: 'decompose' | 'plan' | 'docGen' | 'execute' | 'tool' | 'validate' | 'learn' | 'detectEnvironment';
+  jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
+  nodeType?: 'decompose' | 'plan' | 'docGen' | 'execute' | 'tool' | 'validate' | 'learn' | 'detectEnvironment' | 'direct' | 'sketch' | 'render' | 'engrave';
 }
 
 /**
@@ -39,6 +42,10 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
   
   if (normalized.startsWith('gpt') || normalized.startsWith('o1') || normalized.startsWith('o3')) {
     return 'openai';
+  }
+  
+  if (normalized.startsWith('gemini')) {
+    return 'google';
   }
   
   // Default to anthropic
@@ -144,8 +151,34 @@ export function createLLMClient(
         timeout,
       });
     
+    case 'google':
+      return new GeminiLLMClient(agentJob, {
+        apiKey: process.env.GEMINI_API_KEY,
+        modelName,
+        temperature,
+        maxTokens,
+      });
+    
     default:
       throw new Error(`Unsupported LLM provider: ${provider}`);
   }
+}
+
+/**
+ * Create Image Generation client for visual job.
+ * Uses Gemini Nano Banana models (gemini-*-image-preview).
+ */
+export function createImageGenerationClient(
+  workspaceConfig?: any,
+  modelNameOverride?: string
+): ImageGenerationPort {
+  const modelName = modelNameOverride
+    || workspaceConfig?.llmModels?.visual?.sketch
+    || 'gemini-3.1-flash-image-preview';
+
+  return new GeminiImageClient({
+    apiKey: process.env.GEMINI_API_KEY,
+    modelName,
+  });
 }
 

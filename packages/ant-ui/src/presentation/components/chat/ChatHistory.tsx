@@ -331,6 +331,30 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
   const hasActiveStreamingAssistant = lastMessage?.role === 'assistant' && lastMessage?.isStreaming;
   const showTypingInFooter = isRunning && !hasActiveStreamingAssistant;
 
+  // Scroll to bottom when typing indicator appears.
+  // Virtuoso's followOutput only triggers on data-length changes, not Footer slot changes.
+  // Without this, the indicator renders below the viewport and stays invisible.
+  const prevShowTypingRef = useRef(false);
+  useEffect(() => {
+    if (showTypingInFooter && !prevShowTypingRef.current && initialScrollDone.current && autoScrollRef.current) {
+      const scrollToEnd = () => {
+        virtuosoRef.current?.scrollToIndex({
+          index: messages.length - 1,
+          align: 'end',
+          behavior: 'auto',
+        });
+      };
+      const rafId = requestAnimationFrame(scrollToEnd);
+      const t1 = setTimeout(scrollToEnd, 100);
+      prevShowTypingRef.current = showTypingInFooter;
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(t1);
+      };
+    }
+    prevShowTypingRef.current = showTypingInFooter;
+  }, [showTypingInFooter, messages.length]);
+
   const Footer = useCallback(() => {
     if (!showTypingInFooter) return null;
     return (

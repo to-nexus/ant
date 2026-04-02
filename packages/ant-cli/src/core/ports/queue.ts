@@ -20,8 +20,8 @@ import { UserContext } from '../types/user';
 
 export interface JobPayload {
   jobId: string;
-  type: import('../types/task').DecomposableJobType | 'inline-ask';
-  agent: 'architect' | 'reviewer' | 'planner' | 'doc';
+  type: import('../types/task').DecomposableJobType | 'inline-ask' | 'visual';
+  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator';
   projectId: string;
   feature: string;
   featureName: string;  // Alias for feature (used in status tracking)

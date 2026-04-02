@@ -43,6 +43,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       { value: 'code', label: 'Code' },
       { value: 'design', label: 'Design' },
       { value: 'learn', label: 'Learn' }
+    ]},
+    { value: 'creator', label: 'Creator', enabled: true, jobs: [
+      { value: 'visual', label: 'Visual' }
     ]}
   ]);
   const [showFileList, setShowFileList] = useState(false);  // ✅ Cursor-style file list toggle
@@ -108,6 +111,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             { value: 'code', label: 'Code' },
             { value: 'design', label: 'Design' },
             { value: 'learn', label: 'Learn' }
+          ]},
+          { value: 'creator', label: 'Creator', enabled: true, jobs: [
+            { value: 'visual', label: 'Visual' }
           ]}
         ]);
       }
@@ -139,7 +145,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       architect: { emoji: '🤖', description: t('agent.architect') },
       planner: { emoji: '📋', description: t('agent.planner') },
       reviewer: { emoji: '🔍', description: t('agent.reviewer') },
-      doc: { emoji: '📝', description: t('agent.doc') }
+      doc: { emoji: '📝', description: t('agent.doc') },
+      creator: { emoji: '🎨', description: t('agent.creator') }
     };
     const meta = metadata[agent.value] || { emoji: '🤖', description: agent.label };
     return {
@@ -161,6 +168,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       code: { emoji: '💻', description: t('jobMode.code.description') },
       learn: { emoji: '📚', description: t('jobMode.learn.description') },
       plan: { emoji: '📋', description: t('jobMode.plan.description') },
+      visual: { emoji: '🖼️', description: t('jobMode.visual.description') },
     };
     const meta = metadata[job.value] || { emoji: '🎯', description: job.label };
     return {
@@ -203,7 +211,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   }, [isRunning, showJobMenu, showAgentMenu]);
 
   const handleJobSelect = (jobValue: string) => {
-    setSelectedJobType(jobValue as 'design' | 'code' | 'learn' | 'plan');
+    setSelectedJobType(jobValue as 'design' | 'code' | 'learn' | 'plan' | 'visual');
     setShowJobMenu(false);
   };
 
@@ -214,7 +222,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
     const agentData = agents.find((a: Agent) => a.value === agentValue);
     const firstJobType = agentData?.jobs?.[0]?.value;
     if (firstJobType) {
-      setSelectedJobType(firstJobType as 'design' | 'code' | 'learn' | 'plan');
+      setSelectedJobType(firstJobType as 'design' | 'code' | 'learn' | 'plan' | 'visual');
     }
   };
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '@/domain/store';
 import { fetchQueuePosition } from '@/infrastructure/http/api';
+import { sseManager } from '@/infrastructure/sse/SSEManager';
 
 interface UseJobRestorationOptions {
   connectionStatus: string;
@@ -100,8 +101,14 @@ export function useJobRestoration({
           store.setRunning(true, jobId, mode as 'generate' | 'refactor' | 'explain');
           useStore.setState({ 
             taskStartTime: startTime,
-            elapsedTime: elapsed 
+            elapsedTime: elapsed,
+            sseReconnectGrace: true,
           });
+          
+          // Connect workflow SSE for the restored job.
+          // initializeSSE runs before restoration and sees currentJobId=undefined,
+          // so workflow SSE must be connected explicitly here.
+          sseManager.connectWorkflow(jobId);
           
           console.log('[useJobRestoration] Store state after restoration:', {
             isRunning: store.isRunning,

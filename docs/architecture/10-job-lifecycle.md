@@ -14,6 +14,7 @@ Job은 사용자의 작업 요청 단위이다. HTTP 요청으로 시작되어 B
 | `plan` | planner | PRD |
 | `ask` | architect | 채팅 응답 |
 | `inline-ask` | architect | 채팅 응답 (Job 컨텍스트 내) |
+| `visual` | creator | 비주얼 에셋 (PNG, WebP, JPEG, SVG) |
 
 ## 실행 흐름
 
@@ -56,6 +57,7 @@ job-runner.ts
         architect + learn  -> runLearnGraph()
         architect + ask    -> runInlineAsk()
         planner + plan     -> runPlanGraph()
+        creator + visual   -> runVisualGraph()
 ```
 
 ### 4. Execute

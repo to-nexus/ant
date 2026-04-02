@@ -704,6 +704,14 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     
     try {
       await deleteFileOrDirectory(selectedProject, selectedFeature, itemPath);
+
+      const staleUnseen = unseenArtifacts.filter(
+        p => p === itemPath || p.startsWith(itemPath + '/')
+      );
+      if (staleUnseen.length > 0) {
+        markArtifactsSeen(staleUnseen);
+      }
+
       await refreshFileTree();
       if (selectedFile === itemPath) {
         selectFile('');

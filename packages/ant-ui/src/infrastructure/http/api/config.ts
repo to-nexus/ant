@@ -10,6 +10,10 @@ export interface JobLLMConfig {
   validate?: string;
   learn?: string;
   detectEnvironment?: string;
+  direct?: string;
+  sketch?: string;
+  render?: string;
+  engrave?: string;
 }
 
 export interface ProjectConfig {
@@ -23,6 +27,7 @@ export interface ProjectConfig {
     code?: JobLLMConfig;
     learn?: JobLLMConfig;
     plan?: JobLLMConfig;
+    visual?: JobLLMConfig;
   };
 }
 

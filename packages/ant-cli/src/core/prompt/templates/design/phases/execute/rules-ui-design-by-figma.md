@@ -426,6 +426,11 @@ Before outputting, verify:
 - [ ] **Repeating patterns identified**: Components/sections with identical visual structure grouped
 - [ ] **Specification consistency verified**: Same visual pattern → Same layout properties (no exceptions)
 
+**Shared Component References (for ui-spec.json page chapters)**:
+- [ ] If task description lists `Shared components [...]`, those IDs are referenced via `componentRef` only
+- [ ] Shared component variants/interactionStates/sizes are NOT redefined in page sections
+- [ ] `componentRef` values match the exact IDs from task description
+
 ════════════════════════════════════════════════════════════════════════════════
 
 ## 🚨 TASK COMPLETION SIGNAL (CRITICAL)
