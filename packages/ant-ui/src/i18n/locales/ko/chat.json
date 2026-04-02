@@ -45,7 +45,8 @@
     "architect": "코딩 작업에 최적화",
     "planner": "PRD(제품 요구사항 정의서) 작성 및 개선",
     "reviewer": "코드 리뷰 및 피드백 제공",
-    "doc": "문서 생성"
+    "doc": "문서 생성",
+    "creator": "비주얼 및 크리에이티브 에셋 생성"
   },
   "jobMode": {
     "design": {
@@ -63,7 +64,27 @@
     "plan": {
       "label": "📋 Plan",
       "description": "제품 요구사항 정의 및 개선"
+    },
+    "visual": {
+      "label": "🖼️ Visual",
+      "description": "이미지, 아이콘 및 비주얼 에셋 생성"
     }
+  },
+  "draftSelection": {
+    "title": "{{count}}개의 시안 후보",
+    "subtitle": "썸네일을 클릭하여 확대하거나, 선택하여 렌더링하세요.",
+    "draftLabel": "시안 {{number}}",
+    "draftAlt": "시안 {{number}}",
+    "selected": "선택됨",
+    "select": "선택",
+    "selectDraft": "시안 {{number}} 선택",
+    "draftSelected": "시안 {{number}} 선택됨",
+    "customLabel": "직접 입력: \"{{text}}\"",
+    "placeholder": "변경 사항을 설명하세요 (예: 더 어둡게, 색상을 파란색으로...)",
+    "send": "전송",
+    "previousDraft": "이전 시안",
+    "nextDraft": "다음 시안",
+    "close": "닫기"
   },
   "clarify": {
     "freeInput": "직접 입력...",
@@ -94,6 +115,7 @@
       "process_crash": "프로세스 비정상 종료",
       "server_crash": "서버 비정상 종료",
       "figma_rate_limited": "Figma API 요청 한도 초과",
+      "figma_connection_lost": "Figma 연결 끊김",
       "unknown": "알 수 없는 오류"
     },
     "designErrors": {
@@ -101,6 +123,9 @@
       "figma_window_not_open": "Figma Desktop이 열려있지 않음",
       "figma_mcp_unavailable": "Figma Desktop에 연결할 수 없음",
       "figma_bridge_unavailable": "Ant Desktop 연결 실패",
+      "figma_data_error": "Figma 데이터 조회 실패",
+      "figma_invalid_config": "잘못된 Figma 설정",
+      "figma_no_data": "Figma 파일에서 데이터 없음",
       "missing_documents": "필요한 문서가 없음"
     },
     "work": {

@@ -1,20 +1,26 @@
 /**
- * ImageLightbox — Full-screen modal overlay for expanding chat image previews.
+ * Lightbox components for full-screen image previews.
  *
- * Opens via native <dialog> (top-layer, no z-index wars).
- * Click backdrop or press Escape to close.
+ * BaseLightbox  — shared dialog shell (native <dialog>, backdrop, close button)
+ * ImageLightbox — single image preview (used by WorkingCard for Figma screenshots)
+ * DraftLightbox — carousel with navigation arrows, index indicator, and "Select this" action
  */
 
-import { useRef, useEffect, useCallback } from 'react';
-import { X } from 'lucide-react';
+import { useRef, useEffect, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { X, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
-interface ImageLightboxProps {
-  src: string;
-  alt?: string;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// BaseLightbox
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface BaseLightboxProps {
   onClose: () => void;
+  children: React.ReactNode;
 }
 
-export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
+function BaseLightbox({ onClose, children }: BaseLightboxProps) {
+  const { t } = useTranslation('chat');
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -38,20 +44,123 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
       onClick={handleBackdropClick}
       onClose={onClose}
     >
-      <div className="flex items-center justify-center w-full h-full p-8">
+      <div className="relative flex items-center justify-center w-full h-full p-8">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
-          aria-label="Close"
+          className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors z-10"
+          aria-label={t('draftSelection.close')}
         >
           <X className="w-5 h-5" />
         </button>
-        <img
-          src={src}
-          alt={alt || 'Preview'}
-          className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
-        />
+        {children}
       </div>
     </dialog>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ImageLightbox (single image — Figma screenshots, etc.)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface ImageLightboxProps {
+  src: string;
+  alt?: string;
+  onClose: () => void;
+}
+
+export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
+  return (
+    <BaseLightbox onClose={onClose}>
+      <img
+        src={src}
+        alt={alt || 'Preview'}
+        className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
+      />
+    </BaseLightbox>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DraftLightbox (carousel with navigation + select action)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface DraftLightboxProps {
+  /** Object URLs for each draft (full-size images) */
+  images: Array<{ index: number; objectUrl: string }>;
+  /** Which draft to show initially */
+  startIndex: number;
+  onClose: () => void;
+  onSelect: (draftIndex: number) => void;
+  disabled?: boolean;
+}
+
+export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled }: DraftLightboxProps) {
+  const { t } = useTranslation('chat');
+  const [currentPos, setCurrentPos] = useState(() => {
+    const pos = images.findIndex(img => img.index === startIndex);
+    return pos >= 0 ? pos : 0;
+  });
+
+  const current = images[currentPos];
+  const hasPrev = currentPos > 0;
+  const hasNext = currentPos < images.length - 1;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' && hasPrev) setCurrentPos(p => p - 1);
+      if (e.key === 'ArrowRight' && hasNext) setCurrentPos(p => p + 1);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasPrev, hasNext]);
+
+  if (!current) return null;
+
+  return (
+    <BaseLightbox onClose={onClose}>
+      {hasPrev && (
+        <button
+          onClick={() => setCurrentPos(p => p - 1)}
+          className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          aria-label={t('draftSelection.previousDraft')}
+        >
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+      )}
+
+      <div className="flex flex-col items-center gap-4 max-w-[90vw] max-h-[90vh]">
+        <img
+          src={current.objectUrl}
+          alt={t('draftSelection.draftAlt', { number: current.index + 1 })}
+          className="max-w-[85vw] max-h-[75vh] object-contain rounded-lg shadow-2xl"
+        />
+
+        <div className="flex items-center gap-4">
+          <span className="text-white/70 text-sm font-medium">
+            {currentPos + 1} / {images.length}
+          </span>
+          <button
+            onClick={() => onSelect(current.index)}
+            disabled={disabled}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200
+              bg-teal-500 hover:bg-teal-600 text-white shadow-lg hover:shadow-xl
+              ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <Check className="w-4 h-4" />
+            {t('draftSelection.selectDraft', { number: current.index + 1 })}
+          </button>
+        </div>
+      </div>
+
+      {hasNext && (
+        <button
+          onClick={() => setCurrentPos(p => p + 1)}
+          className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          aria-label={t('draftSelection.nextDraft')}
+        >
+          <ChevronRight className="w-6 h-6" />
+        </button>
+      )}
+    </BaseLightbox>
   );
 }
