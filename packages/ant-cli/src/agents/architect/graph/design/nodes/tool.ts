@@ -10,7 +10,7 @@ import { TokenBudgetManager } from '../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../core/utils/toolResultManager';
 import { executeSearchWeb } from '../../../tools/searchWeb';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
-import { FigmaRateLimitError } from '../../../../../periphery/adapters/figma/errors';
+import { FigmaRateLimitError, classifyFigmaError } from '../../../../../periphery/adapters/figma/errors';
 import { callFigmaMCPTool, isFigmaImageResult, isFigmaCompositeResult, saveFigmaScreenshot } from '../../../tools/figmaMCPHandler';
 import type { FigmaMCPResult } from '../../../tools/figmaMCPHandler';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
@@ -158,10 +158,15 @@ async function executeDesignTool(
           }
         } catch (err: any) {
           if (err instanceof FigmaRateLimitError) throw err;
-          state._figmaConsecutiveErrors = (state._figmaConsecutiveErrors || 0) + 1;
-          if (state.uiDesignSource === 'figma' && state._figmaConsecutiveErrors >= 3) {
-            console.error(`❌ [Tool] Figma MCP unavailable: ${state._figmaConsecutiveErrors} consecutive failures — flagging connection lost`);
-            state._figmaConnectionLost = true;
+          const errCategory = classifyFigmaError(err);
+          if (errCategory === 'connection' || errCategory === 'environment') {
+            state._figmaConsecutiveErrors = (state._figmaConsecutiveErrors || 0) + 1;
+            if (state.uiDesignSource === 'figma' && state._figmaConsecutiveErrors >= 3) {
+              console.error(`❌ [Tool] Figma MCP unavailable (${errCategory}): ${state._figmaConsecutiveErrors} consecutive failures — flagging connection lost`);
+              state._figmaConnectionLost = true;
+            }
+          } else {
+            console.warn(`⚠️ [Tool] Figma MCP data error: ${err.message} — not counting toward connection failures`);
           }
           await figmaChatAPI.showChatStatus('figma_called', { ...figmaStatusMeta, error: true, _mergeIndex: figmaMergeIdx });
           result = JSON.stringify({ error: err.message });
