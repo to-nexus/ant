@@ -1,7 +1,8 @@
 {
   "brand": {
-    "title": "ANT Works",
-    "logoAlt": "ANT Works Logo"
+    "title": "1 Ant",
+    "logoAlt": "1 Ant Logo",
+    "tabTitle": "1 Ant - Worker Ant"
   },
   "deploymentMode": {
     "local": "Local",
@@ -34,6 +35,7 @@
   },
   "tabs": {
     "removeJobId": "Remove job ID",
+    "copiedJobId": "Job ID copied to clipboard",
     "closeTab": "Close {{label}} tab",
     "job": "Job",
     "projectConfig": "Project Config",
