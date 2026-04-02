@@ -10,12 +10,13 @@ ANT의 에이전트는 LangGraph StateGraph로 구현된다. 각 에이전트는
 |-------|------|----------|
 | planner | PRD 작성/수정 | plan |
 | architect | 설계, 구현, 학습, 질의응답 | design, code, learn, ask, inline-ask |
+| creator | 크리에이티브 에셋 생산 (visual, audible, animation 등) | visual (향후 audible 등 확장) |
 | reviewer | 코드 리뷰 (예정) | review |
 | doc | 문서 생성 (예정) | doc |
 
 ### 에이전트 간 관계
 
-planner의 산출물(`inputs/sources/prd.md`)이 architect의 입력이 된다. planner -> architect -> reviewer 순서로 워크플로우가 진행된다.
+planner의 산출물(`inputs/sources/prd.md`)이 architect의 입력이 된다. creator는 독립적으로 동작하며, PRD나 directive를 참조하여 프로젝트 에셋을 생산한다. 현재 visual job이 구현되어 있으며, audible/animation 등은 향후 추가 예정이다. planner -> architect -> reviewer 순서로 워크플로우가 진행된다.
 
 ## LangGraph 패턴
 
@@ -110,6 +111,8 @@ sessions/
         learn.json
     planner/
         plan.json
+    creator/
+        visual.json
     chat.json          (에이전트 무관, UI 레벨)
 ```
 
@@ -117,9 +120,9 @@ sessions/
 
 | 타입 | 값 | 의미 |
 |------|---|------|
-| `JobType` | code, design, learn, ask, plan, inline-ask | 전체 Job 타입 |
+| `JobType` | code, design, learn, ask, plan, inline-ask, visual | 전체 Job 타입 |
 | `DecomposableJobType` | code, design, learn | 태스크 분해가 있는 Job |
-| `SessionableJobType` | code, design, learn, plan | 세션 파일을 가지는 Job |
+| `SessionableJobType` | code, design, learn, plan, visual | 세션 파일을 가지는 Job |
 
 ## 경계
 
@@ -129,3 +132,4 @@ sessions/
 - Design Job 상세: [15-design-job.md](15-design-job.md)
 - Planner Job 상세: [16-planner-job.md](16-planner-job.md)
 - Ask 시스템: [17-ask-system.md](17-ask-system.md)
+- Visual Job 상세: [18-visual-job.md](18-visual-job.md)

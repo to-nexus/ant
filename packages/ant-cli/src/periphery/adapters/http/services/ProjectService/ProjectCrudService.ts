@@ -141,7 +141,14 @@ export class ProjectCrudService {
           default: modelSonnet,
         },
         plan: {
-          default: modelSonnet,
+          default: modelOpus,
+        },
+        visual: {
+          default: 'gemini-3.1-pro-preview',
+          direct: 'gemini-3.1-pro-preview',
+          sketch: 'gemini-3.1-flash-image-preview',
+          render: 'gemini-3-pro-image-preview',
+          engrave: 'gemini-3.1-pro-preview',
         }
       }
     };
@@ -335,9 +342,25 @@ export class ProjectCrudService {
       }
       
       if (!config.llmModels.plan) {
-        config.llmModels.plan = { default: fallbackSonnet };
+        config.llmModels.plan = { default: fallbackOpus };
       } else if (!config.llmModels.plan.default) {
-        config.llmModels.plan.default = fallbackSonnet;
+        config.llmModels.plan.default = fallbackOpus;
+      }
+      
+      if (!config.llmModels.visual) {
+        config.llmModels.visual = {
+          default: 'gemini-3.1-pro-preview',
+          direct: 'gemini-3.1-pro-preview',
+          sketch: 'gemini-3.1-flash-image-preview',
+          render: 'gemini-3-pro-image-preview',
+          engrave: 'gemini-3.1-pro-preview',
+        };
+      } else {
+        if (!config.llmModels.visual.default) config.llmModels.visual.default = 'gemini-3.1-pro-preview';
+        if (!config.llmModels.visual.direct) config.llmModels.visual.direct = 'gemini-3.1-pro-preview';
+        if (!config.llmModels.visual.sketch) config.llmModels.visual.sketch = 'gemini-3.1-flash-image-preview';
+        if (!config.llmModels.visual.render) config.llmModels.visual.render = 'gemini-3-pro-image-preview';
+        if (!config.llmModels.visual.engrave) config.llmModels.visual.engrave = 'gemini-3.1-pro-preview';
       }
       
       return config;
@@ -359,7 +382,14 @@ export class ProjectCrudService {
             default: fallbackSonnet,
           },
           plan: {
-            default: fallbackSonnet,
+            default: fallbackOpus,
+          },
+          visual: {
+            default: 'gemini-3.1-pro-preview',
+            direct: 'gemini-3.1-pro-preview',
+            sketch: 'gemini-3.1-flash-image-preview',
+            render: 'gemini-3-pro-image-preview',
+            engrave: 'gemini-3.1-pro-preview',
           }
         }
       };

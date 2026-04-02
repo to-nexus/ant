@@ -45,6 +45,7 @@ const JOB_TO_AGENT: Record<string, string> = {
   learn: 'architect',
   ask: 'architect',      // ask debug logs go under architect
   plan: 'planner',
+  visual: 'creator',
 };
 
 /**
@@ -115,18 +116,20 @@ export function getChatSessionPath(featurePath: string): string {
 // ============================================
 
 /**
- * Debug subdirectories per agent (Single Source of Truth).
+ * Debug subdirectories per agent (Single Source of Truth for creation).
  * 
  * Used by:
  * - ensureCanonicalStructure() — auto-creates on page access
  * - features.routes.ts — cleanup of debug artifacts on session clear
  * 
- * To add a new debug category, add the subdir name here.
- * The directory will be auto-created for all features on next page access.
+ * To add a new debug category, add the subdir name here AND add the
+ * corresponding entry to CANONICAL_DIR_DEFS in @ant/shared/canonical.ts
+ * so it is preserved (emptied, not deleted) during canonical cleanup.
  */
 export const DEBUG_SUBDIRS: Readonly<Record<string, readonly string[]>> = {
   architect: ['prompts', 'plans', 'logs', 'tokens', 'figma'],
   planner: ['prompts'],
+  creator: ['prompts'],
 };
 
 /**
@@ -188,6 +191,7 @@ export const SESSION_SEARCH_MAP: Array<{ agent: string; job: SessionableJobType 
   { agent: 'architect', job: 'design' },
   { agent: 'architect', job: 'learn' },
   { agent: 'planner', job: 'plan' },
+  { agent: 'creator', job: 'visual' },
 ];
 
 /**

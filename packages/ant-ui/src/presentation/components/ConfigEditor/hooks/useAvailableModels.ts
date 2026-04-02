@@ -4,6 +4,7 @@ export interface AvailableModel {
   id: string;
   displayName: string;
   provider: string;
+  recommended?: boolean;
 }
 
 export function useAvailableModels() {
@@ -21,7 +22,8 @@ export function useAvailableModels() {
         setAvailableModels(response.models.map(m => ({
           id: m.id,
           displayName: m.displayName,
-          provider: m.provider
+          provider: m.provider,
+          recommended: m.recommended,
         })));
         
         setDefaultModelId(response.default);

@@ -25,16 +25,9 @@ export function useModelName(
         }
         
         // Get job-level configuration
-        let jobConfig: any = null;
-        if (selectedJobType === 'design') {
-          jobConfig = config.llmModels.design;
-        } else if (selectedJobType === 'code') {
-          jobConfig = config.llmModels.code;
-        } else if (selectedJobType === 'learn') {
-          jobConfig = config.llmModels.learn;
-        } else if (selectedJobType === 'plan') {
-          jobConfig = config.llmModels.plan;
-        }
+        const jobConfig = selectedJobType
+          ? (config.llmModels as Record<string, any>)[selectedJobType] ?? null
+          : null;
         
         if (!jobConfig) {
           setModelName(null);

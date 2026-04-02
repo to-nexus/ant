@@ -2,6 +2,7 @@ import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
 import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { TabButton } from './components/TabButton';
 import { JobControls } from './components/JobControls';
 import { useTranslation } from 'react-i18next';
@@ -29,10 +30,15 @@ export function MainPanelTabsBar() {
   const clearJobTab = useStore((state) => state.clearJobTab);
   const isRunning = useStore((state) => state.isRunning);
   const { showConfirm, showInfo } = useAlertModalContext();
+  const { toast } = useToastContext();
 
-  const getJobTabLabel = () => {
-    if (!currentJobId || isJobTabCleared) return t('tabs.job');
-    return `${t('tabs.job')} (${currentJobId})`;
+  const getJobTabLabel = () => t('tabs.job');
+
+  const handleCopyJobId = () => {
+    if (currentJobId) {
+      navigator.clipboard.writeText(currentJobId);
+      toast.success(t('tabs.copiedJobId'));
+    }
   };
 
   const handleJobTabClose = () => {
@@ -117,11 +123,13 @@ export function MainPanelTabsBar() {
           label={getJobTabLabel()}
           isActive={activeTab === 'job'}
           isJobTab={true}
+          jobId={!isJobTabCleared ? currentJobId : undefined}
           showText={activeTab === 'job'}
           showCloseButton={!!currentJobId}
           title={currentJobId && !isJobTabCleared ? `Job ID: ${currentJobId}` : t('tabs.job')}
           onClick={() => selectMainPanelTab('job')}
           onClose={handleJobTabClose}
+          onCopyJobId={handleCopyJobId}
         />
 
         {/* Dynamic tabs */}

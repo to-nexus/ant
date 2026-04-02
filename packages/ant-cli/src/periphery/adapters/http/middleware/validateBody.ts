@@ -42,7 +42,7 @@ export function validateBody<T extends z.ZodTypeAny>(schema: T) {
  * POST /projects/:id/features/:feature/execute
  */
 export const executeJobSchema = z.object({
-  task: z.enum(['design', 'code', 'learn', 'plan']),
+  task: z.enum(['design', 'code', 'learn', 'plan', 'visual']),
   agent: z.string().optional(),
   mode: z.string().optional(),
   language: z.string().optional(),

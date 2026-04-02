@@ -202,7 +202,8 @@ function getAgentDisplayName(agentId: string): string {
     'architect': 'Architect',
     'reviewer': 'Reviewer',
     'planner': 'Planner',
-    'doc': 'Documentation'
+    'doc': 'Documentation',
+    'creator': 'Creator'
   };
   
   return agentNames[agentId] || agentId.charAt(0).toUpperCase() + agentId.slice(1);

@@ -87,6 +87,8 @@
     "enabled": "Enabled",
     "selectModel": "-- Select Model --",
     "useJobDefault": "-- Use Job Default --",
+    "jobDefault": "default",
+    "custom": "Custom",
     "jobTitle": "{{name}} Job",
     "llmDescription": "Configure models for different jobs and nodes. Each job requires a default model. Nodes can optionally use a different model, otherwise they use the job default.",
     "repoNotConnected": "Not connected",
@@ -111,7 +113,8 @@
     "baseBranchEditable": "Set the default branch name for initialization (e.g., main, master)"
   },
   "llmModels": {
-    "title": "LLM Models by Job and Node",
+    "title": "LLM Settings by Job Node",
+    "nodeOverrides": "Node-level overrides",
     "loading": "Loading available models...",
     "default": "Default",
     "decompose": "Decompose",
@@ -125,7 +128,16 @@
     "defaultCodeDesc": "Default model for all code nodes",
     "codeExecuteDesc": "Code generation and editing",
     "defaultLearnDesc": "Default model for learning tasks",
-    "defaultPlanDesc": "Default model for PRD generation (Planner agent)"
+    "defaultPlanDesc": "Default model for PRD generation (Planner agent)",
+    "defaultVisualDesc": "Default model for all visual asset generation nodes",
+    "direct": "Art Direction",
+    "directDesc": "Prompt engineering and routing decisions",
+    "sketch": "Sketch",
+    "sketchDesc": "Draft image exploration (fast model)",
+    "render": "Render",
+    "renderDesc": "Final high-quality image generation",
+    "engrave": "Engrave",
+    "engraveDesc": "SVG code generation for simple shapes"
   },
   "dangerZone": {
     "deleteProject": "Delete Project",

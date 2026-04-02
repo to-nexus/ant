@@ -14,7 +14,7 @@ import { TerminalCard } from './TerminalCard';
 import { FileCard } from './FileCard';
 import { ToolActionCard } from './ToolActionCard';
 import { ContextLoadedCard } from './ContextLoadedCard';
-import { ChoiceCard } from './ChoiceCard';
+import { ChoiceCard } from './choiceCard';
 import { PlanCard } from './PlanCard';
 import { TaskResponseCard } from './TaskResponseCard';
 import { TypingIndicator } from './TypingIndicator';
@@ -344,6 +344,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
       }
       if (cardType === 'spec_complete') {
         return <ChoiceCard content={content} variant="spec_complete" messageId={messageId} />;
+      }
+      if (cardType === 'draft_selection') {
+        return <ChoiceCard content={content} variant="draft_selection" messageId={messageId} />;
       }
       return null;
     }

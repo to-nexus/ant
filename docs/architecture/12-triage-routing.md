@@ -138,6 +138,7 @@ plan job에서 다른 job으로 redirect 시 `hasTargetJobPrerequisites()` 함�
 | design | hasPrd \|\| hasScreens \|\| hasComponents \|\| hasAssets |
 | code | hasPrd \|\| hasDesignDoc \|\| hasCodebase |
 | learn | hasCodebase |
+| visual | 항상 true (directive만으로 충분) |
 | plan | 항상 true |
 
 **설계 결정**: `hasDirective`는 의도적으로 제외. directive는 채팅 입력 시 항상 true이므로 포함하면 guard가 무력화된다. 이 guard는 plan outbound에서만 적용하며, 다른 job에서는 directive만으로 충분한 입력이 된다.
@@ -277,7 +278,8 @@ packages/ant-cli/src/
 │       ├── code.yaml         # Code job 정의
 │       ├── design.yaml       # Design job 정의
 │       ├── learn.yaml        # Learn job 정의
-│       └── plan.yaml         # Plan job 정의
+│       ├── plan.yaml         # Plan job 정의
+│       └── visual.yaml       # Visual job 정의
 └── infrastructure/choice/
     └── ChoiceService.ts      # 사용자 선택 관리 (Redis)
 

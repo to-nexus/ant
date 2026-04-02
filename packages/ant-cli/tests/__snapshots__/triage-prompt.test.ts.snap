@@ -77,6 +77,7 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 | UI specification (ui-spec, ui-tokens, ui-assets), visual design document | \`design\` |
 | System architecture, API design document | \`design\` |
 | Spec document (feature-scoped planning) | \`design\` |
+| Image, icon, illustration, logo, or visual asset generation | \`visual\` |
 | Codebase indexing | \`learn\` |
 | No specific artifact named | → Step 5 |
 
@@ -427,6 +428,33 @@ Improves quality, adds missing sections, clarifies requirements.
 - → to_learn: Request target is codebase analysis or indexing output. Redirect is only valid when workspace has input materials for the target job.
 
 
+### visual job (agent: creator)
+Generates visual assets (images, icons, illustrations) for the project.
+Uses AI image generation models to create project-specific assets.
+Conversational workflow: maintains context across multiple turns.
+
+
+#### Mode: generate
+Creates new visual assets from user directive.
+Supports progressive refinement: sketch exploration → selection → final render.
+
+
+
+**Scope:**
+- Image asset generation (PNG, WebP, JPEG)
+- Icon and illustration creation
+- SVG code generation for simple shapes
+- Progressive refinement with draft exploration
+- Conversational iteration on visual output
+
+**Redirect signals:**
+- → to_design: Request target is a design document or UI specification, not a visual asset.
+
+- → to_code: Request target is source code implementation, not a visual asset.
+
+- → to_plan: Request target is a product requirements document, not a visual asset.
+
+
 
 
 ## RESPONSE FORMAT
@@ -441,8 +469,8 @@ Improves quality, adds missing sections, clarifies requirements.
   "continuationType": "supplement" | "newScope",  // only when EXISTING TASK CONTEXT is present
   
   "workStatus": "proceed" | "redirect" | "blocked",
-  "suggestedAgent": "architect | planner",
-  "suggestedJob": "design | code | learn | plan",
+  "suggestedAgent": "architect | planner | creator",
+  "suggestedJob": "design | code | learn | plan | visual",
   "redirectReason": "Why redirect is needed",
   "missingPrerequisites": { "required": [], "recommended": [] },
   "canProceed": true | false,

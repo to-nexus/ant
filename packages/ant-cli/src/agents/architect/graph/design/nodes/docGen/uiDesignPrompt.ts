@@ -615,7 +615,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = (state as any)._allTasksSummary || [];
   const siblingTasks = allTasks
     .filter(t => t.targetFile === actualTargetFile && t.id !== taskId)
-    .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 120) || ''}`)
+    .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 200) || ''}`)
     .join('\n');
 
   const injectedVariables = {
@@ -662,13 +662,14 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
             `design/phases/execute/injections/ui-spec-guide-${templateSuffix}`,
           ],
           injectedVariables: {
-            // Summarize large content
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
+            targetFile: injectedVariables.targetFile,
+            jobMode: injectedVariables.jobMode,
             isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
             forceAppend: injectedVariables.forceAppend,
             pathPattern: injectedVariables.pathPattern,
             previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,
-            existingDocContent: '(removed — LLM uses read_file/edit_file)',
+            siblingTasks: injectedVariables.siblingTasks ? `[${injectedVariables.siblingTasks.length} chars]` : undefined,
           },
         }
       );

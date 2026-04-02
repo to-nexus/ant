@@ -93,7 +93,7 @@ export async function recoverStaleJobs(
         });
 
         const mapping = await stateStore.getJobMapping(job.jobId);
-        const jobType = (mapping?.jobType || job.type || 'code') as 'design' | 'code' | 'learn' | 'plan';
+        const jobType = (mapping?.jobType || job.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
 
         const interruption: InterruptionDetails = {
           reason: 'server_crash',
@@ -179,7 +179,7 @@ async function recoverMissedCompletions(
 
         const payload = bullJob.data;
         const mapping = await stateStore.getJobMapping(bullJob.id);
-        const jobType = (mapping?.jobType || payload?.type || 'code') as 'design' | 'code' | 'learn' | 'plan';
+        const jobType = (mapping?.jobType || payload?.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
         const projectId = mapping?.projectId || payload?.projectId;
         const featureName = mapping?.featureName || payload?.feature;
 

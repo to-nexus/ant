@@ -1,0 +1,120 @@
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { parseClassifyResponse } from '../src/agents/creator/graph/visual/nodes/classifyParser';
+
+beforeAll(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+describe('parseClassifyResponse', () => {
+  it('parses valid <classify> XML response with jobMode', () => {
+    const input = `<classify>
+{ "assetType": "logo", "jobMode": "generate", "reasoning": "User explicitly asked for a logo" }
+</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('logo');
+    expect(result.jobMode).toBe('generate');
+    expect(result.reasoning).toContain('logo');
+  });
+
+  it('parses refactor jobMode', () => {
+    const input = `<classify>{"assetType":"icon","jobMode":"refactor","reasoning":"Modifying existing icon"}</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('icon');
+    expect(result.jobMode).toBe('refactor');
+  });
+
+  it('parses valid icon classification', () => {
+    const input = `<classify>{"assetType":"icon","jobMode":"generate","reasoning":"UI icon request"}</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('icon');
+    expect(result.jobMode).toBe('generate');
+  });
+
+  it('parses hero classification', () => {
+    const input = `<classify>{ "assetType": "hero", "jobMode": "generate", "reasoning": "Background image" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('hero');
+  });
+
+  it('parses illustration classification', () => {
+    const input = `<classify>{ "assetType": "illustration", "jobMode": "refactor", "reasoning": "Adjusting existing scene" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('illustration');
+    expect(result.jobMode).toBe('refactor');
+  });
+
+  it('parses general classification', () => {
+    const input = `<classify>{ "assetType": "general", "jobMode": "generate", "reasoning": "Unclear type" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('general');
+  });
+
+  it('defaults jobMode to generate when missing', () => {
+    const input = `<classify>{ "assetType": "logo", "reasoning": "No mode field" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('logo');
+    expect(result.jobMode).toBe('generate');
+  });
+
+  it('defaults jobMode to generate for unknown value', () => {
+    const input = `<classify>{ "assetType": "icon", "jobMode": "edit", "reasoning": "Invalid mode" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('icon');
+    expect(result.jobMode).toBe('generate');
+  });
+
+  it('falls back to JSON without XML wrapper', () => {
+    const input = `{ "assetType": "icon", "jobMode": "refactor", "reasoning": "No XML wrapper" }`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('icon');
+    expect(result.jobMode).toBe('refactor');
+  });
+
+  it('falls back to ```json code block', () => {
+    const input = "```json\n{ \"assetType\": \"hero\", \"jobMode\": \"generate\", \"reasoning\": \"code block\" }\n```";
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('hero');
+    expect(result.jobMode).toBe('generate');
+  });
+
+  it('normalizes unknown asset type to general', () => {
+    const input = `<classify>{ "assetType": "banner", "jobMode": "generate", "reasoning": "Not a valid type" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('general');
+  });
+
+  it('normalizes case-insensitive asset type', () => {
+    const input = `<classify>{ "assetType": "LOGO", "jobMode": "REFACTOR", "reasoning": "Uppercase" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('logo');
+    expect(result.jobMode).toBe('refactor');
+  });
+
+  it('returns defaults on completely invalid response', () => {
+    const input = 'This is not JSON at all, just free text rambling';
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('general');
+    expect(result.jobMode).toBe('generate');
+    expect(result.reasoning).toContain('Classification failed');
+  });
+
+  it('returns defaults on empty string', () => {
+    const result = parseClassifyResponse('');
+    expect(result.assetType).toBe('general');
+    expect(result.jobMode).toBe('generate');
+  });
+
+  it('returns defaults on malformed JSON', () => {
+    const input = `<classify>{ assetType: logo }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('general');
+    expect(result.jobMode).toBe('generate');
+  });
+
+  it('returns defaults when all fields are missing', () => {
+    const input = `<classify>{ "reasoning": "no type or mode" }</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('general');
+    expect(result.jobMode).toBe('generate');
+  });
+});

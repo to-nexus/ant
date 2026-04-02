@@ -56,7 +56,9 @@ export class PromptLogger {
 
   constructor(options: PromptLoggerOptions) {
     this.options = options;
-    const agent = options.jobType === 'plan' ? 'planner' : 'architect';
+    const agent = options.jobType === 'plan' ? 'planner'
+                : options.jobType === 'visual' ? 'creator'
+                : 'architect';
     this.logDirPath = getSessionDebugDir(options.featurePath, agent, 'prompts');
     this.logFilePath = path.join(
       this.logDirPath,
@@ -311,7 +313,7 @@ export function clearPromptLogger(jobType: 'design' | 'code' | 'plan', jobId: st
 export async function logPrompt(
   featurePath: string,
   jobId: string,
-  jobType: 'design' | 'code' | 'plan',
+  jobType: 'design' | 'code' | 'plan' | 'visual',
   nodeId: string,
   promptLength: number,
   options?: {

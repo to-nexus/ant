@@ -4,7 +4,7 @@ import { runPlanGraph } from "../agents/planner";
 import { docAgent } from "../agents/doc";
 import { runInlineAsk } from "../agents/architect/graph/ask/inlineAskRunner";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
-import { createLLMClient } from "../periphery/adapters/llm/LLMClientFactory";
+import { createLLMClient, createImageGenerationClient } from "../periphery/adapters/llm/LLMClientFactory";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
 import { FileProfileAdapter } from "../periphery/adapters/profile/FileProfileAdapter";
 import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
@@ -28,8 +28,8 @@ import * as path from "path";
  * This is the only place where concrete implementations are wired together.
  */
 export async function orchestrator(params: {
-  agent: "architect" | "reviewer" | "planner" | "doc";
-  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc" | "inline-ask";
+  agent: "architect" | "reviewer" | "planner" | "doc" | "creator";
+  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc" | "inline-ask" | "visual";
   input: string;
   project?: string;
   feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
@@ -400,6 +400,80 @@ export async function orchestrator(params: {
       return await docAgent(input, project || "default", { memory, llm });
     }
 
+    case "creator": {
+      if (!jobType || !['visual'].includes(jobType)) {
+        throw new Error(`Creator agent requires jobType: 'visual'`);
+      }
+
+      if (!featurePath) {
+        throw new Error('featurePath is required for visual tasks');
+      }
+
+      const config = new FileConfigAdapter();
+      const configData = await config.load(project || "default");
+
+      const promptPort = new FilePromptAdapter();
+      const llm = createLLMClient('creator', undefined, { jobType: 'visual' }, configData);
+      const directLLM = createLLMClient('creator', undefined, { jobType: 'visual', nodeType: 'direct' }, configData);
+      const engraveLLM = createLLMClient('creator', undefined, { jobType: 'visual', nodeType: 'engrave' }, configData);
+      const sketchImageClient = createImageGenerationClient(configData, configData.llmModels?.visual?.sketch);
+      const renderImageClient = createImageGenerationClient(configData, configData.llmModels?.visual?.render);
+
+      let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
+      let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
+      let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
+      let closeBroadcasters: (() => Promise<void>) | undefined = undefined;
+
+      if (process.env.ANT_REDIS_URL) {
+        try {
+          const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
+          const options = getBroadcasterOptionsFromEnv();
+          if (options) {
+            const broadcasters = createRealtimeBroadcasters(options);
+            kanbanUpdate = broadcasters.kanban;
+            fileTreeUpdate = broadcasters.fileTree;
+            workflowUpdate = broadcasters.workflow;
+            closeBroadcasters = () => broadcasters.close();
+            console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Creator]');
+          }
+        } catch (error: any) {
+          console.log('⚠️  Failed to initialize real-time broadcasters [Creator]:', error?.message);
+        }
+      }
+
+      const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
+      const session = new FileSessionAdapter(featurePath, 'creator', project, featureName, fileTreeUpdate);
+
+      const { runVisualGraph } = await import("../agents/creator/index");
+
+      const result = await runVisualGraph({
+        directive: input,
+        featurePath,
+        isResume: !!(overrideDirective && jobId),
+        chatSource,
+        skipTriage,
+        deps: {
+          llm,
+          directLLM,
+          engraveLLM,
+          sketchImageClient,
+          renderImageClient,
+          promptPort,
+          session,
+          kanbanUpdate,
+          fileTreeUpdate,
+          workflowUpdate,
+        },
+        visualSettings: configData.visualSettings,
+        _httpJobId: jobId,
+      });
+
+      const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
+      await drainChatBroadcaster();
+      await closeBroadcasters?.();
+
+      return result;
+    }
 
     default:
       throw new Error(`Unknown agent: ${agent}`);

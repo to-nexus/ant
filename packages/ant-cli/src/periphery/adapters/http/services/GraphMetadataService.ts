@@ -27,6 +27,7 @@ import { buildCodeGraph } from '../../../../agents/architect/graph/code/graph';
 import { buildDesignGraph } from '../../../../agents/architect/graph/design/graph';
 import { buildLearnGraph } from '../../../../agents/architect/graph/learn/graph';
 import { buildPlanGraph } from '../../../../agents/planner/graph/plan/graph';
+import { buildVisualGraph } from '../../../../agents/creator/graph/visual/graph';
 
 /**
  * 공통 Actor 정의
@@ -256,6 +257,8 @@ export class GraphMetadataService {
         return buildLearnGraph;
       case 'planner:plan':
         return buildPlanGraph;
+      case 'creator:visual':
+        return buildVisualGraph;
       default:
         return null;
     }

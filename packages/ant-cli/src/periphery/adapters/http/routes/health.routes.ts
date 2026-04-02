@@ -47,6 +47,14 @@ export function createHealthRoutes(): Router {
           { value: 'plan', label: 'Plan' },
         ]
       },
+      {
+        value: 'creator',
+        label: 'Creator',
+        enabled: true,
+        jobs: [
+          { value: 'visual', label: 'Visual' },
+        ]
+      },
     ]);
   });
   
