@@ -236,6 +236,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     case 'loading':
       return <WorkingCard content={content} variant="loading" />;
 
+    case 'processing':
+      return <WorkingCard content={content} variant="processing" />;
+
     case 'downloading':
       return <WorkingCard content={content} variant="downloading" />;
 
@@ -278,6 +281,9 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
     
     case 'loaded':
       return <WorkingCard content={content} variant="loaded" />;
+
+    case 'processed':
+      return <WorkingCard content={content} variant="processed" />;
 
     case 'downloaded':
       return <WorkingCard content={content} variant="downloaded" />;
@@ -344,9 +350,6 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
       }
       if (cardType === 'spec_complete') {
         return <ChoiceCard content={content} variant="spec_complete" messageId={messageId} />;
-      }
-      if (cardType === 'draft_selection') {
-        return <ChoiceCard content={content} variant="draft_selection" messageId={messageId} />;
       }
       return null;
     }

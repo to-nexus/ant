@@ -1,0 +1,26 @@
+# Visual Processor Infrastructure
+# Usage: docker compose up -d
+# Default model (birefnet-general) is preloaded at startup (~1.2 GB download on first run).
+# Model weights are persisted in a named volume to survive container rebuilds.
+
+services:
+  visual-processor:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ant-visual-processor
+    ports:
+      - "4103:4103"
+    environment:
+      - REMBG_MODEL=${REMBG_MODEL:-u2net}
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
+      - MAX_CONCURRENCY=${MAX_CONCURRENCY:-1}
+      - PROCESSING_TIMEOUT_S=${PROCESSING_TIMEOUT_S:-60}
+      - MAX_PIXELS=${MAX_PIXELS:-16777216}
+      - MAX_INFERENCE_DIM=${MAX_INFERENCE_DIM:-768}
+    volumes:
+      - rembg-models:/root/.u2net
+    restart: always
+
+volumes:
+  rembg-models:

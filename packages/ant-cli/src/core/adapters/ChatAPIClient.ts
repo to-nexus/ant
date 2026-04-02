@@ -559,30 +559,24 @@ export class ChatAPIClient {
 
   /**
    * Send a compound clarifying question card to the chat UI.
-   * Used by the planner agent during PRD generation to ask the user for input.
-   * All questions are bundled into a single card — the user answers all (or some)
-   * and submits once. Supports partial answers + free chat input hybrid.
+   *
+   * Supports two option flavors in the same block:
+   *   - `string`        → text-only option (planner, design)
+   *   - `ImageOption`    → thumbnail + label (visual draft selection)
+   *
+   * `allowRegenerate` adds a "regenerate" button (visual only).
    */
-  async sendClarifyCards(blocks: Array<{ question: string; options: string[] }>): Promise<void> {
+  async sendClarifyCards(blocks: Array<{
+    question: string;
+    options: Array<string | { label: string; imagePath: string; thumbnailPath: string; value: string }>;
+    allowFreeText?: boolean;
+    allowRegenerate?: boolean;
+  }>): Promise<void> {
     if (!this.enabled || blocks.length === 0) return;
     const metadata: Record<string, any> = {
       cardType: 'clarifying',
       title: blocks.length === 1 ? blocks[0].question : `${blocks.length} questions`,
       clarifyBlocks: blocks,
-    };
-    await this.showChatStatus('choice_card', metadata);
-  }
-
-  /**
-   * Send a draft image selection card to the chat UI.
-   * Displays thumbnails for each draft; user picks one to render or types custom feedback.
-   */
-  async sendDraftSelection(drafts: Array<{ index: number; imagePath: string; thumbnailPath: string }>): Promise<void> {
-    if (!this.enabled || drafts.length === 0) return;
-    const metadata: Record<string, any> = {
-      cardType: 'draft_selection',
-      title: `${drafts.length} draft candidates`,
-      drafts,
     };
     await this.showChatStatus('choice_card', metadata);
   }

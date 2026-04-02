@@ -104,19 +104,20 @@ Visual job의 모든 노드는 Gemini 모델만 사용한다.
 | 상황 | 방식 | UI 컴포넌트 |
 |------|------|-------------|
 | 최종 이미지/SVG 저장 | `showChatStatus('downloaded', ...)` | WorkingCard (이미지 프리뷰) |
-| 드래프트 후보 생성 | `sendDraftSelection(drafts)` → `choice_card(draft_selection)` | ChoiceCard > DraftSelectionVariant |
+| 드래프트 후보 생성 | `sendClarifyCards([{options: ImageOption[], allowRegenerate}])` → `choice_card(clarifying)` | ChoiceCard > ClarifyingVariant |
 
 #### 드래프트 선택 UI
 
-Sketch 노드가 복수의 드래프트를 생성하면, Deliver 노드가 각 드래프트의 썸네일을 생성하고 `choice_card(draft_selection)` 상태를 전송한다.
+Sketch 노드가 복수의 드래프트를 생성하면, Deliver 노드가 각 드래프트의 썸네일을 생성하고 `choice_card(clarifying)` 상태를 전송한다. 드래프트 선택은 Clarify 시스템의 이미지 옵션 확장으로 통합되어 있다.
 
 ```
-deliver → sharp 썸네일 생성 → chatAPI.sendDraftSelection(drafts)
-  → SSE → ChoiceCard(variant='draft_selection')
+deliver → sharp 썸네일 생성 → chatAPI.sendClarifyCards([{options: ImageOption[]}])
+  → SSE → ChoiceCard(variant='clarifying')
     → DraftRow × N (세로 리스트, 각 행에 썸네일 + "Select" 버튼)
     → 썸네일 클릭 → DraftLightbox (좌우 화살표 네비게이션 + "Select Draft N" 버튼)
-    → 선택 시: runJob(directive="Selected draft N for final rendering")
-    → 자유 입력: runJob(directive=사용자 텍스트)
+    → 선택 시: runJob(directive="[DRAFT_FINALIZE:N]")
+    → 자유 입력: runJob(directive="[DRAFT_FEEDBACK] 사용자 텍스트")
+    → 재생성: runJob(directive="[DRAFT_REGENERATE]")
 ```
 
 드래프트 저장 경로:
@@ -214,6 +215,7 @@ packages/ant-cli/src/agents/creator/
 
 ## 경계
 
+- Visual Processor (배경 제거 사이드카): [27-visual-processor.md](27-visual-processor.md)
 - 에이전트 아키텍처: [11-agent-architecture.md](11-agent-architecture.md)
 - Job 생명주기: [10-job-lifecycle.md](10-job-lifecycle.md)
 - Triage 라우팅: [12-triage-routing.md](12-triage-routing.md)

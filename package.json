@@ -16,8 +16,10 @@
     "dev:job-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:job-worker",
     "dev:preview-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:preview-worker",
     
-    "dev:infra": "concurrently \"docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d\"",
-    "dev:infra:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down",
+    "dev:infra": "concurrently \"docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml up -d\"",
+    "dev:infra:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml down",
+    "dev:infra:visual": "docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml up -d",
+    "dev:infra:visual:down": "docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml down",
     "dev:infra:redis": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d",
     "dev:infra:redis:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down",
     "dev:infra:vector": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d",

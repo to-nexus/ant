@@ -108,6 +108,12 @@ export function useJobExecution() {
         
         const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true);
         
+        // ✅ Restore correct jobType from server (interrupted job may differ from current UI mode)
+        if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
+          useStore.setState({ jobStartPending: true });
+          useStore.getState().setSelectedJobType(result.jobType);
+        }
+        
         // ✅ Update with new jobId from server
         setRunning(true, result.jobId);
       } catch (error) {

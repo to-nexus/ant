@@ -42,6 +42,10 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
   const result = state.triageResult;
 
   if (!result) {
+    if (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate') {
+      console.log(`[VisualTriageRouter] No triage + draftIntent=${state.draftIntent} → direct (skip classify)`);
+      return 'direct';
+    }
     console.log('[VisualTriageRouter] No triage result → classify');
     return 'classify';
   }
@@ -52,6 +56,10 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
   }
 
   if (result.workStatus === 'proceed') {
+    if (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate') {
+      console.log(`[VisualTriageRouter] proceed + draftIntent=${state.draftIntent} → direct (skip classify)`);
+      return 'direct';
+    }
     console.log('[VisualTriageRouter] proceed → classify');
     return 'classify';
   }
@@ -64,6 +72,11 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
   if (result.workStatus === 'blocked') {
     console.log('[VisualTriageRouter] blocked → __end__');
     return '__end__';
+  }
+
+  if (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate') {
+    console.log(`[VisualTriageRouter] default + draftIntent=${state.draftIntent} → direct (skip classify)`);
+    return 'direct';
   }
 
   console.log('[VisualTriageRouter] default → classify');
@@ -112,6 +125,10 @@ export function buildVisualGraph() {
       // Clarify counter
       clarifyCount: null as any,
 
+      // Draft selection intent
+      draftIntent: null as any,
+      isDraftFeedback: null as any,
+
       // Control flow
       routeDecision: null as any,
       needsSketches: null as any,
@@ -148,12 +165,13 @@ export function buildVisualGraph() {
   graph.addEdge('__start__' as any, 'resolve' as any);
   graph.addEdge('resolve' as any, 'triage' as any);
 
-  // Triage → classify or __end__
+  // Triage → classify | direct (skip classify for deterministic intents) | __end__
   graph.addConditionalEdges(
     'triage' as any,
     routeAfterVisualTriage as any,
     {
       classify: 'classify',
+      direct: 'direct',
       __end__: END,
     } as any
   );
@@ -357,6 +375,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           jobId: _httpJobId,
           lastEngineeredPrompt: finalState.lastEngineeredPrompt,
           lastOutputPath: finalState.lastOutputPath,
+          assetType: finalState.assetType,
         },
       });
       console.log(`💾 [Visual] Session saved (${finalState.conversation?.length || 0} conversation entries)`);

@@ -75,6 +75,7 @@ export type ChatStatusType =
   | 'choice_card'    // ✅ Generic choice card (eval_save, prd_apply, etc.)
   | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed'
   | 'file_conflict' | 'file_conflict_retry'
+  | 'processing' | 'processed'
   | 'downloading' | 'downloaded'
   | 'figma_calling' | 'figma_called'
   | 'plan_generating' | 'plan'

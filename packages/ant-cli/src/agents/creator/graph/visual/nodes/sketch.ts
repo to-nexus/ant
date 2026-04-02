@@ -12,6 +12,7 @@ import { VisualGraphState, DraftImage } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 
 export async function sketchNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -25,6 +26,9 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'sketch', 0);
   }
+
+  const chatAPI = getChatAPIClient();
+  await chatAPI.startMessage();
 
   const imageClient = state.deps.sketchImageClient;
   const candidateCount = state.visualSettings?.candidateCount ?? 3;
@@ -94,6 +98,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
 
     if (err instanceof SafetyBlockError) {
       console.warn('🛡️ [Visual:Sketch] Safety filter blocked generation');
+      await chatAPI.finalizeMessage();
       return {
         draftImages: undefined,
         visualError: 'Image generation was blocked by safety filter. Please modify your request.',
@@ -103,6 +108,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
     }
 
     console.error('❌ [Visual:Sketch] Generation failed:', err.message);
+    await chatAPI.finalizeMessage();
     return {
       draftImages: undefined,
       visualError: `Sketch generation failed: ${err.message}`,

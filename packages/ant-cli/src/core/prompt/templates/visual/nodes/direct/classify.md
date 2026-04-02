@@ -19,7 +19,9 @@ Classify the visual asset type and job mode for the current request.
 
 ### Mode Determination
 
-- If the conversation history indicates a previously generated asset AND the current request describes modification of that result (color change, style tweak, element adjustment) → `refactor`
+- If the conversation shows draft generation but NO final asset has been saved, and the current request is feedback on those drafts (rejection, style direction, selection) → `generate` (NOT refactor — drafts are exploration, not committed results)
+- `refactor` is ONLY for modifying a previously FINALIZED and saved asset (evidenced by a final image path in conversation history, not just draft files)
+- If the conversation history indicates a previously finalized asset AND the current request describes modification of that result (color change, style tweak, element adjustment) → `refactor`
 - If the user explicitly asks for a new or different asset unrelated to prior output → `generate`
 - If no prior asset generation is evident in the conversation → `generate`
 - When uncertain, default to `generate`

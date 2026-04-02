@@ -82,6 +82,8 @@
     "customLabel": "직접 입력: \"{{text}}\"",
     "placeholder": "변경 사항을 설명하세요 (예: 더 어둡게, 색상을 파란색으로...)",
     "send": "전송",
+    "regenerate": "시안 다시 뽑기",
+    "regenerateLabel": "시안 재생성 요청",
     "previousDraft": "이전 시안",
     "nextDraft": "다음 시안",
     "close": "닫기"
