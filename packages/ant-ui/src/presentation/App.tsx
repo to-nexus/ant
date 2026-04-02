@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AppNavBar } from '@/presentation/components/AppNavBar';
 import { fetchFeatureSession } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
@@ -26,7 +27,12 @@ import { fetchAuthMe, getBackendMode } from '@/infrastructure/http/api';
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  
+  const { t } = useTranslation('nav');
+
+  useEffect(() => {
+    document.title = t('brand.tabTitle');
+  }, [t]);
+
   // ✅ Handle Google OAuth callback (JWT cookie-based) + session validation on startup
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);

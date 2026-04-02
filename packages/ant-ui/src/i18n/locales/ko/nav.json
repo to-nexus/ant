@@ -1,7 +1,8 @@
 {
   "brand": {
-    "title": "ANT Works",
-    "logoAlt": "ANT Works 로고"
+    "title": "1 Ant",
+    "logoAlt": "1 Ant 로고",
+    "tabTitle": "1 Ant - 일개미"
   },
   "deploymentMode": {
     "local": "로컬",
@@ -34,6 +35,7 @@
   },
   "tabs": {
     "removeJobId": "작업 ID 제거",
+    "copiedJobId": "Job ID가 클립보드에 복사되었습니다",
     "closeTab": "{{label}} 탭 닫기",
     "job": "작업",
     "projectConfig": "프로젝트 설정",
