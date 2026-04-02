@@ -357,7 +357,10 @@ export class KanbanService {
         recursionLimit: sessionState.recursionLimit || finalLimit,
         jobTiming: sessionState.jobTiming,
         tokenUsage: sessionState.tokenUsage,
-        estimatingTokenUsage: (sessionState as any).estimatingTokenUsage
+        estimatingTokenUsage: (sessionState as any).estimatingTokenUsage,
+        estimatingLabel: (sessionState as any).estimatingLabel,
+        estimatingStartedAt: (sessionState as any).estimatingStartedAt,
+        estimatingNodeId: (sessionState as any).estimatingNodeId,
       };
     }
     
