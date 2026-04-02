@@ -47,7 +47,7 @@ export class JobCleanupManager {
     projectId?: string, 
     featureName?: string,
     interruptionReason?: InterruptionDetails,
-    explicitJobType?: 'design' | 'code' | 'learn' | 'plan',
+    explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
     userContext?: UserContext
   ): Promise<void> {
     logger.info(`cleanupJobState`, { 
@@ -83,7 +83,7 @@ export class JobCleanupManager {
     
     // Determine job type
     const jobStatus = this.stateTracker.getJobStatus(jobId);
-    const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn' | 'plan') || 'code';
+    const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'code';
     
     // End workflow tracking
     await this.deps.workflowStateService.endJob(jobId);
@@ -278,8 +278,8 @@ export class JobCleanupManager {
             }
           }
           
-          // Update jobTiming with pausedAt
-          if (sessionData.state.jobTiming) {
+          // Update jobTiming with pausedAt (skip if job already completed successfully)
+          if (sessionData.state.jobTiming && !sessionData.state.jobTiming.completedAt) {
             sessionData.state.jobTiming = {
               ...sessionData.state.jobTiming,
               pausedAt: new Date().toISOString()

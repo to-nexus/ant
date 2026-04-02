@@ -16,6 +16,17 @@ import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 
 /**
+ * Auto-resolve agent from job type when not explicitly provided.
+ */
+function resolveAgentForJobType(jobType: string): string {
+  switch (jobType) {
+    case 'plan': return 'planner';
+    case 'visual': return 'creator';
+    default: return 'architect';
+  }
+}
+
+/**
  * Job execution routes
  * 
  * Uses Redis StateStore for cross-pod job state management (always distributed).
@@ -23,7 +34,7 @@ import { logger } from '../../../../utils/logger';
 export function createJobRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   executeJob: (params: ExecuteJobParams) => Promise<any>;
-  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn' | 'plan', userContext?: { userId: string; organizationId: string }) => Promise<void>;
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual', userContext?: { userId: string; organizationId: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
   chatService: import('../services/ChatService').ChatService;
   stateStore: StateStorePort;
@@ -128,8 +139,10 @@ export function createJobRoutes(deps: {
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const inputFile = overrideDirective ? undefined : path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
       
+      const resolvedAgent = agent || resolveAgentForJobType(jobType);
+      
       const params: ExecuteJobParams = {
-        agent: agent || 'architect',
+        agent: resolvedAgent,
         jobType,
         project: projectId,
         feature: featureName,

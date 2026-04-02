@@ -483,6 +483,19 @@ export class SessionManager {
     
     // Delete file
     this.persistence.deleteSession(projectId, featureName, userContext);
+
+    // Clean up draft images associated with chat
+    try {
+      const chatFilePath = this.persistence.getChatFilePath(projectId, featureName, userContext);
+      const featurePath = path.resolve(path.dirname(chatFilePath), '..');
+      const draftsDir = path.join(featurePath, 'inputs', 'assets', 'gen', 'drafts');
+      if (fs.existsSync(draftsDir)) {
+        fs.rmSync(draftsDir, { recursive: true, force: true });
+        logger.info('Cleaned up draft images on chat clear', { component: 'SessionManager', projectId, featureName });
+      }
+    } catch (error) {
+      logger.warn('Failed to clean up draft images', { component: 'SessionManager' }, error);
+    }
     
     // Broadcast to frontend
     this.broadcaster?.broadcast(projectId, featureName, {

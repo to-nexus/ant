@@ -574,6 +574,20 @@ export class ChatAPIClient {
   }
 
   /**
+   * Send a draft image selection card to the chat UI.
+   * Displays thumbnails for each draft; user picks one to render or types custom feedback.
+   */
+  async sendDraftSelection(drafts: Array<{ index: number; imagePath: string; thumbnailPath: string }>): Promise<void> {
+    if (!this.enabled || drafts.length === 0) return;
+    const metadata: Record<string, any> = {
+      cardType: 'draft_selection',
+      title: `${drafts.length} draft candidates`,
+      drafts,
+    };
+    await this.showChatStatus('choice_card', metadata);
+  }
+
+  /**
    * Check if client is enabled
    */
   isEnabled(): boolean {

@@ -32,7 +32,7 @@ export interface JobStatusData {
   status: JobStatusValue;
   projectId: string;
   featureName: string;
-  type: DecomposableJobType | 'inline-ask';
+  type: DecomposableJobType | 'inline-ask' | 'visual';
   mode?: 'generate' | 'refactor' | 'explain';
   timestamp?: string;
   userContext?: UserContext;

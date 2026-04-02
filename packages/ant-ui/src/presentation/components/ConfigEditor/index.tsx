@@ -154,8 +154,8 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       llmModels: {
         ...prev.llmModels,
         [job]: {
-          ...(prev.llmModels?.[job as 'design' | 'code' | 'learn'] || {}),
-          [nodeType]: modelId || undefined  // Remove if empty string
+          ...(prev.llmModels?.[job as keyof NonNullable<typeof prev.llmModels>] || {}),
+          [nodeType]: modelId || undefined
         }
       }
     }));

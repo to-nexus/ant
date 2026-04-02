@@ -107,7 +107,7 @@ If Directive or PRD contains **explicit, specific instructions** that contradict
 }
 ```
 
-**⚠️ Responsive field**: Every section and component MUST include a `"responsive"` key. If no breakpoint difference is observed, use empty object `{}`.
+**⚠️ Responsive field**: Every top-level section, component, and overlay MUST include a `"responsive"` key at its root level. Nested children inherit the parent's responsive context — do NOT repeat `"responsive"` in every child node. If no breakpoint difference is observed, use empty object `{}`.
 ```
 
 **Intent examples:**
@@ -387,6 +387,8 @@ When exact color is uncertain, use description:
 **Constraint**: Extract only truly shared patterns. A component used in exactly one place belongs in that page's section, not in top-level `components`.
 
 **⚠️ Blind spot**: `variants`, `interactionStates`, `sizes` are the most common duplication vectors between page sections and the `components` key. Page sections reference by component ID only.
+
+**Constraint**: If your task description lists component IDs (e.g., `Components: gnb, button, ...`), use those exact IDs as JSON keys in `components`. Other chapters reference these IDs via `componentRef` — changing them breaks cross-chapter references.
 
 ---
 

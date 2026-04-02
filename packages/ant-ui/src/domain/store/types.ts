@@ -141,7 +141,7 @@ export interface AuthState {
   userEmail: string | undefined;
   userOrganization: string | undefined;
   selectedAgent: string;
-  selectedJobType: 'design' | 'code' | 'learn' | 'plan';
+  selectedJobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
 }
 
 export interface ConfigState {

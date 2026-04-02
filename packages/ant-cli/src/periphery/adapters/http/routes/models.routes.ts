@@ -9,7 +9,7 @@ import { Router, Request, Response } from 'express';
 export interface LLMModelInfo {
   id: string;                    // Model identifier (e.g., "claude-sonnet-4-20250929")
   displayName: string;           // Human-readable name (e.g., "CLAUDE SONNET 4")
-  provider: 'anthropic' | 'openai';
+  provider: 'anthropic' | 'openai' | 'google';
   description?: string;          // Brief description
   recommended?: boolean;         // Whether this is a recommended model
   capabilities?: string[];       // e.g., ["coding", "reasoning", "fast"]
@@ -32,6 +32,38 @@ const AVAILABLE_MODELS: LLMModelInfo[] = [
     description: 'Most capable Claude model, best for complex reasoning',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context', 'complex-analysis']
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    displayName: 'Gemini 3.1 Pro',
+    provider: 'google',
+    description: 'Advanced reasoning and prompt engineering for visual jobs',
+    recommended: true,
+    capabilities: ['reasoning', 'prompt-engineering']
+  },
+  {
+    id: 'gemini-3-flash-preview',
+    displayName: 'Gemini 3 Flash',
+    provider: 'google',
+    description: 'Fast classification and triage for visual jobs',
+    recommended: false,
+    capabilities: ['fast', 'classification']
+  },
+  {
+    id: 'gemini-3-pro-image-preview',
+    displayName: 'Gemini 3 Pro Image',
+    provider: 'google',
+    description: 'High-quality image generation for final renders',
+    recommended: true,
+    capabilities: ['image-generation', 'high-quality']
+  },
+  {
+    id: 'gemini-3.1-flash-image-preview',
+    displayName: 'Gemini 3.1 Flash Image',
+    provider: 'google',
+    description: 'Fast image generation for draft exploration',
+    recommended: false,
+    capabilities: ['image-generation', 'fast']
   },
 ];
 

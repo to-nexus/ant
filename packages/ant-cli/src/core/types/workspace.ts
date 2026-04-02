@@ -24,6 +24,10 @@ export interface JobLLMConfig {
   validate?: string;          // Validation node (code job only)
   learn?: string;             // Learning node
   detectEnvironment?: string; // Environment detection node
+  direct?: string;            // Art Direction node (visual job)
+  sketch?: string;            // Sketch exploration node (visual job)
+  render?: string;            // Final render node (visual job)
+  engrave?: string;           // SVG code generation node (visual job)
 }
 
 /**
@@ -34,6 +38,15 @@ export interface LLMModels {
   code?: JobLLMConfig;        // Code job configuration
   learn?: JobLLMConfig;       // Learn job configuration
   plan?: JobLLMConfig;        // Plan job configuration (Planner agent)
+  visual?: JobLLMConfig;      // Visual job configuration (Creator agent)
+}
+
+/**
+ * Visual job settings
+ */
+export interface VisualSettings {
+  candidateCount?: number;                         // Draft candidate count (default: 3, range: 1-4)
+  defaultAspectRatio?: string;                     // e.g. "1:1", "16:9"
 }
 
 /**
@@ -78,8 +91,11 @@ export interface WorkspaceConfig {
   
   // LLM settings
   // Priority: workspaceConfig.llmModels[job][node] > llmModels[job].default > env vars > hardcoded defaults
-  // Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai)
+  // Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai, gemini-* = google)
   llmModels?: LLMModels;            // Job/Node-specific model configuration
+  
+  // Visual job settings
+  visualSettings?: VisualSettings;
 }
 
 /**
@@ -117,6 +133,7 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
     owner: config.owner,
     repo: config.repo,
     llmModels: config.llmModels,
+    visualSettings: config.visualSettings,
   };
 }
 
@@ -146,6 +163,17 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
       plan: {
         default: modelSonnet,
       },
+      visual: {
+        default: 'gemini-3-flash-preview',
+        direct: 'gemini-3.1-pro-preview',
+        sketch: 'gemini-3.1-flash-image-preview',
+        render: 'gemini-3-pro-image-preview',
+        engrave: 'gemini-3.1-pro-preview',
+      },
+    },
+    visualSettings: {
+      candidateCount: 3,
+      defaultAspectRatio: '1:1',
     },
   };
 }

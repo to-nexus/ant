@@ -2,7 +2,22 @@
 
 ## 개요
 
-ANT의 프롬프트 시스템은 WHAT/HOW 분리 원칙으로 설계된다. 템플릿은 Handlebars 기반이며, 6단계 엔진 파이프라인을 통해 최종 프롬프트가 조립된다.
+ANT의 프롬프트 시스템은 WHAT/HOW 분리 원칙으로 설계된다. 템플릿은 Handlebars 기반이며, 용도에 따라 6단계 엔진 파이프라인 또는 `promptPort.render()` 직접 호출로 최종 프롬프트가 조립된다.
+
+## 대원칙: 프롬프트 하드코딩 금지
+
+모든 LLM 프롬프트 텍스트는 `.md` 템플릿 파일에 작성한다. TypeScript 코드에 시스템 프롬프트를 문자열 상수(`const SYSTEM_PROMPT = ...`)나 템플릿 리터럴로 하드코딩하지 않는다.
+
+코드에서 허용되는 것:
+- 동적 데이터 조립 (conversation slice, state 값 추출 등)
+- `promptPort.render()` 호출과 변수 전달
+- LLM 응답 파싱 로직
+
+코드에서 금지되는 것:
+- 시스템/사용자 프롬프트 텍스트를 TS 상수로 정의
+- 프롬프트 규칙이나 역할을 코드 내 문자열로 기술
+
+이유: 프롬프트 수정 시 코드 변경/빌드 없이 템플릿만 수정 가능, FPOP 검증 용이, 프롬프트 로깅/테스트 일관성.
 
 ## WHAT/HOW 분리
 
@@ -51,6 +66,12 @@ core/prompt/templates/
         injections/         (공통 injection 파셜)
     agents/
         architect/          (base.md, rules.md)
+        creator/            (base.md, rules.md)
+    visual/
+        nodes/
+            direct/         (base.md, rules.md, context.md)
+            engrave/        (base.md, rules.md)
+        injections/         (asset-logo.md, asset-icon.md, asset-hero.md)
     planner/
         plan/               (base.md, rules.md)
     triage/                 (base.md, rules.md)
@@ -58,7 +79,18 @@ core/prompt/templates/
     learn/                  (base.md, rules.md)
 ```
 
-## 엔진 파이프라인
+## 프롬프트 조립 경로
+
+프롬프트 조립에는 두 가지 경로가 존재한다. 두 경로 모두 동일한 인프라(`initPartials`, `FilePromptAdapter`, Handlebars)를 사용한다.
+
+| 경로 | 사용처 | 설명 |
+|------|--------|------|
+| A: PromptEngine 6-phase | code job, design system-design | 전체 파이프라인 (정규화, 컨텍스트, 모드, 템플릿, 정책, 형식) |
+| B: promptPort.render() 직접 | ui-design, spec, visual job | 6-phase를 거치지 않고 템플릿 직접 렌더링. 템플릿 내부에서 partial로 조립 |
+
+경로 B는 대화형 워크플로우나 단일 노드에 특화된 프롬프트처럼 6-phase 오케스트레이션이 과한 경우에 적합하다. 템플릿 내에서 `{{> partial_name}}`으로 rules/injections를 조립하므로 구조화 수준은 동일하다.
+
+## 엔진 파이프라인 (경로 A)
 
 PromptEngine은 6단계로 프롬프트를 조립한다.
 
@@ -164,5 +196,5 @@ npm run start:cloud → dist/ 기반 실행 (이미 검증됨)
 
 ## 경계
 
-- 각 에이전트의 프롬프트 사용: [14-code-job.md](14-code-job.md), [15-design-job.md](15-design-job.md), [16-planner-job.md](16-planner-job.md)
+- 각 에이전트의 프롬프트 사용: [14-code-job.md](14-code-job.md), [15-design-job.md](15-design-job.md), [16-planner-job.md](16-planner-job.md), [18-visual-job.md](18-visual-job.md)
 - Preview 관련 프롬프트: [22-preview-system.md](22-preview-system.md)

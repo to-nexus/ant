@@ -134,6 +134,9 @@ export interface MessageContent {
     completed?: boolean;      // For task_response: individual card completion signal
     // Image preview (for figma_called, downloaded, read — when result is an image)
     imagePath?: string;       // Feature-relative path to saved image file
+    // Draft Selection (for choice_card cardType='draft_selection')
+    drafts?: Array<{ index: number; imagePath: string; thumbnailPath: string }>;
+    selectedDraftIndex?: number;  // Persisted after user selects a draft
     // File card summary (lightweight persistence — content stripped, stats kept)
     lineCount?: number;       // Total lines written (file_create)
     diffBeforeLines?: number; // Lines removed (file_edit)

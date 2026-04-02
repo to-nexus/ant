@@ -73,6 +73,7 @@
 | UI specification (ui-spec, ui-tokens, ui-assets), visual design document | `design` |
 | System architecture, API design document | `design` |
 | Spec document (feature-scoped planning) | `design` |
+| Image, icon, illustration, logo, or visual asset generation | `visual` |
 | Codebase indexing | `learn` |
 | No specific artifact named | → Step 5 |
 

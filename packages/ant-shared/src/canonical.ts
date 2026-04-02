@@ -36,6 +36,8 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'inputs/directives/code',            visibility: 'internal' },
   { path: 'inputs/directives/learn',           visibility: 'internal' },
   { path: 'inputs/assets',                     visibility: 'ui:inputs' },
+  { path: 'inputs/assets/gen',                 visibility: 'internal' },
+  { path: 'inputs/assets/gen/drafts',          visibility: 'internal' },
   { path: 'inputs/references',                 visibility: 'ui:inputs' },
   // outputs
   { path: 'outputs',                           visibility: 'internal' },
@@ -49,14 +51,21 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   // sessions
   { path: 'sessions',                          visibility: 'internal' },
   { path: 'sessions/architect',                visibility: 'internal' },
-  { path: 'sessions/architect/debug',          visibility: 'internal' },
-  // debug subdirectories are managed by DEBUG_SUBDIRS in sessionPaths.ts (SSOT)
-  { path: 'sessions/architect/runtime',        visibility: 'internal' },
-  { path: 'sessions/architect/runtime/design', visibility: 'internal' },
-  { path: 'sessions/architect/runtime/code',   visibility: 'internal' },
-  { path: 'sessions/planner',                  visibility: 'internal' },
-  { path: 'sessions/planner/debug',            visibility: 'internal' },
-  // planner debug subdirectories also managed by DEBUG_SUBDIRS
+  { path: 'sessions/architect/debug',            visibility: 'internal' },
+  { path: 'sessions/architect/debug/prompts',    visibility: 'internal' },
+  { path: 'sessions/architect/debug/plans',      visibility: 'internal' },
+  { path: 'sessions/architect/debug/logs',       visibility: 'internal' },
+  { path: 'sessions/architect/debug/tokens',     visibility: 'internal' },
+  { path: 'sessions/architect/debug/figma',      visibility: 'internal' },
+  { path: 'sessions/architect/runtime',          visibility: 'internal' },
+  { path: 'sessions/architect/runtime/design',   visibility: 'internal' },
+  { path: 'sessions/architect/runtime/code',     visibility: 'internal' },
+  { path: 'sessions/planner',                    visibility: 'internal' },
+  { path: 'sessions/planner/debug',              visibility: 'internal' },
+  { path: 'sessions/planner/debug/prompts',      visibility: 'internal' },
+  { path: 'sessions/creator',                    visibility: 'internal' },
+  { path: 'sessions/creator/debug',              visibility: 'internal' },
+  { path: 'sessions/creator/debug/prompts',      visibility: 'internal' },
 ];
 
 // ============================================

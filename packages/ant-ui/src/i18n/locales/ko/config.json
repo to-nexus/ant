@@ -87,6 +87,8 @@
     "enabled": "활성화",
     "selectModel": "-- 모델 선택 --",
     "useJobDefault": "-- 작업 기본값 사용 --",
+    "jobDefault": "기본값",
+    "custom": "커스텀",
     "jobTitle": "{{name}} 작업",
     "llmDescription": "다양한 작업과 Node에 대한 모델을 설정합니다. 각 작업에는 기본 모델이 필요합니다. Node는 선택적으로 다른 모델을 사용할 수 있으며, 설정하지 않으면 작업 기본값을 사용합니다.",
     "repoNotConnected": "미연동",
@@ -111,7 +113,8 @@
     "baseBranchEditable": "초기화 시 사용할 기본 브랜치 이름 (예: main, master)"
   },
   "llmModels": {
-    "title": "작업 및 Node별 LLM 모델",
+    "title": "작업 노드별 LLM 설정",
+    "nodeOverrides": "노드별 모델 설정",
     "loading": "사용 가능한 모델 로딩 중...",
     "default": "기본",
     "decompose": "Decompose",
@@ -125,7 +128,16 @@
     "defaultCodeDesc": "모든 코드 노드의 기본 모델",
     "codeExecuteDesc": "코드 생성 및 편집",
     "defaultLearnDesc": "학습 태스크의 기본 모델",
-    "defaultPlanDesc": "PRD 생성의 기본 모델 (Planner 에이전트)"
+    "defaultPlanDesc": "PRD 생성의 기본 모델 (Planner 에이전트)",
+    "defaultVisualDesc": "모든 비주얼 에셋 생성 노드의 기본 모델",
+    "direct": "아트 디렉션",
+    "directDesc": "프롬프트 엔지니어링 및 라우팅 결정",
+    "sketch": "스케치",
+    "sketchDesc": "드래프트 이미지 탐색 (고속 모델)",
+    "render": "렌더",
+    "renderDesc": "최종 고품질 이미지 생성",
+    "engrave": "인그레이브",
+    "engraveDesc": "단순 도형의 SVG 코드 생성"
   },
   "dangerZone": {
     "deleteProject": "프로젝트 삭제",

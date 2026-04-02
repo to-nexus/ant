@@ -3,7 +3,7 @@ import { API_BASE, apiGet } from './client';
 export interface LLMModelInfo {
   id: string;
   displayName: string;
-  provider: 'anthropic' | 'openai';
+  provider: 'anthropic' | 'openai' | 'google';
   description?: string;
   recommended?: boolean;
   capabilities?: string[];

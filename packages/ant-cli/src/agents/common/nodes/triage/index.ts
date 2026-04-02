@@ -60,6 +60,8 @@ export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState)
       return ws.hasDesignDoc || ws.hasCodebase;
     case 'learn':
       return ws.hasCodebase;
+    case 'visual':
+      return true;
     default:
       return true;
   }

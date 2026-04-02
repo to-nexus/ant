@@ -4,7 +4,7 @@ import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from 
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
-  setSelectedJobType: (jobType: 'design' | 'code' | 'learn' | 'plan') => void;
+  setSelectedJobType: (jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual') => void;
   setUser: (email: string, organization: string) => void;
   clearUser: () => void;
 }
@@ -18,7 +18,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   userEmail: undefined,
   userOrganization: undefined,
   selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'planner',
-  selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan') || 'plan',
+  selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'plan',
 
   // ==================
   // Actions

@@ -52,8 +52,8 @@ The following tasks are in the queue for the currently interrupted {{currentJob}
   "continuationType": "supplement" | "newScope",  // only when EXISTING TASK CONTEXT is present
   
   "workStatus": "proceed" | "redirect" | "blocked",
-  "suggestedAgent": "architect | planner",
-  "suggestedJob": "design | code | learn | plan",
+  "suggestedAgent": "architect | planner | creator",
+  "suggestedJob": "design | code | learn | plan | visual",
   "redirectReason": "Why redirect is needed",
   "missingPrerequisites": { "required": [], "recommended": [] },
   "canProceed": true | false,

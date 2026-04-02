@@ -137,6 +137,23 @@ const SAMPLE_VARS: Record<string, any> = {
   hasDesignDoc: false,
   jobCapabilities: 'code, design, plan',
   agentCapabilities: 'architect',
+
+  // visual/nodes/direct/context
+  conversationContext: '[user] Create a logo for my app',
+  currentDirective: 'Create a minimalist logo',
+  isRefactor: false,
+  lastEngineeredPrompt: '',
+  lastOutputPath: '',
+  safetyBlocked: false,
+  visualError: '',
+  defaultAspectRatio: '1:1',
+  candidateCount: 3,
+
+  // visual/nodes/direct/rules (asset type conditional flags)
+  isLogo: true,
+  isIcon: false,
+  isHero: false,
+  isIllustration: false,
 };
 
 describe('Template Smoke Tests', () => {
@@ -265,6 +282,221 @@ describe('Template Smoke Tests', () => {
       const report = failures.map(f => `  ${f.name}: ${f.error}`).join('\n');
       expect.fail(`${failures.length} template(s) failed:\n${report}`);
     }
+  });
+
+  it('visual/nodes/direct/base includes creator identity, art direction role, and routing rules', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/base', SAMPLE_VARS);
+
+    expect(output).toContain('creative asset producer');
+    expect(output).toContain('art director');
+    expect(output).toContain('Routing Decision');
+    expect(output).toContain('Response Format');
+    expect(output).toContain('Single Asset Per Turn');
+  });
+
+  it('visual/nodes/direct/context injects conversation, directive, and settings', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      conversationContext: '[user] Make a blue icon',
+      currentDirective: 'Generate a blue app icon',
+      defaultAspectRatio: '16:9',
+      candidateCount: 5,
+    });
+
+    expect(output).toContain('[user] Make a blue icon');
+    expect(output).toContain('Generate a blue app icon');
+    expect(output).toContain('16:9');
+    expect(output).toContain('5');
+    expect(output).not.toContain('Safety Filter Alert');
+    expect(output).not.toContain('Previous Attempt Error');
+  });
+
+  it('visual/nodes/direct/context includes safety alert when safetyBlocked is true', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      safetyBlocked: true,
+    });
+
+    expect(output).toContain('Safety Filter Alert');
+    expect(output).toContain('**BLOCKED**');
+    expect(output).toContain('safety filter');
+  });
+
+  it('visual/nodes/direct/context includes error section when visualError is set', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      visualError: 'Image generation timed out',
+    });
+
+    expect(output).toContain('Previous Attempt Error');
+    expect(output).toContain('Image generation timed out');
+    expect(output).toContain('alternative route');
+  });
+
+  it('visual/nodes/direct/rules renders only the matching asset type guide', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const logoOutput = await adapter.render('visual/nodes/direct/rules', {
+      ...SAMPLE_VARS, isLogo: true, isIcon: false, isHero: false, isIllustration: false,
+    });
+    expect(logoOutput).toContain('Logo Principles');
+    expect(logoOutput).not.toContain('Icon Principles');
+    expect(logoOutput).not.toContain('Hero and Background Principles');
+
+    const iconOutput = await adapter.render('visual/nodes/direct/rules', {
+      ...SAMPLE_VARS, isLogo: false, isIcon: true, isHero: false, isIllustration: false,
+    });
+    expect(iconOutput).toContain('Icon Principles');
+    expect(iconOutput).not.toContain('Logo Principles');
+
+    const heroOutput = await adapter.render('visual/nodes/direct/rules', {
+      ...SAMPLE_VARS, isLogo: false, isIcon: false, isHero: true, isIllustration: false,
+    });
+    expect(heroOutput).toContain('Hero and Background Principles');
+    expect(heroOutput).not.toContain('Logo Principles');
+
+    const illustrationOutput = await adapter.render('visual/nodes/direct/rules', {
+      ...SAMPLE_VARS, isLogo: false, isIcon: false, isHero: false, isIllustration: true,
+    });
+    expect(illustrationOutput).toContain('Illustration Principles');
+    expect(illustrationOutput).not.toContain('Logo Principles');
+
+    const generalOutput = await adapter.render('visual/nodes/direct/rules', {
+      ...SAMPLE_VARS, isLogo: false, isIcon: false, isHero: false, isIllustration: false,
+    });
+    expect(generalOutput).not.toContain('Logo Principles');
+    expect(generalOutput).not.toContain('Icon Principles');
+    expect(generalOutput).not.toContain('Hero and Background Principles');
+    expect(generalOutput).not.toContain('Illustration Principles');
+    expect(generalOutput).toContain('Routing Decision');
+  });
+
+  it('visual/nodes/direct/classify renders with conversation context, directive, and jobMode', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/classify', {
+      conversationContext: '[user] I need a logo for my SaaS',
+      currentDirective: 'Create a clean logo',
+    });
+
+    expect(output).toContain('[user] I need a logo for my SaaS');
+    expect(output).toContain('Create a clean logo');
+    expect(output).toContain('<classify>');
+    expect(output).toContain('assetType');
+    expect(output).toContain('jobMode');
+    expect(output).toContain('"generate" or "refactor"');
+  });
+
+  it('visual/nodes/direct/context injects refactor context when isRefactor is true', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      isRefactor: true,
+      lastEngineeredPrompt: 'A minimalist blue logo with geometric shapes on white background',
+      lastOutputPath: '/workspace/inputs/assets/gen/gen-123.png',
+    });
+
+    expect(output).toContain('Refactor Context');
+    expect(output).toContain('modifying');
+    expect(output).toContain('minimalist blue logo');
+    expect(output).toContain('gen-123.png');
+    expect(output).toContain('Preserve all elements');
+  });
+
+  it('visual/nodes/direct/context omits refactor context when isRefactor is false', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      isRefactor: false,
+    });
+
+    expect(output).not.toContain('Refactor Context');
+    expect(output).not.toContain('Previous Engineered Prompt');
+  });
+
+  it('visual/nodes/direct/context shows available drafts section when drafts exist', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const withDrafts = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      availableDraftCount: 3,
+      lastDraftIndex: 2,
+    });
+    expect(withDrafts).toContain('Available Drafts');
+    expect(withDrafts).toContain('3 draft image');
+    expect(withDrafts).toContain('selectedDraftIndex');
+    expect(withDrafts).toContain('index 2');
+
+    const withoutDrafts = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+    });
+    expect(withoutDrafts).not.toContain('Available Drafts');
+  });
+
+  it('visual/nodes/direct/context shows clarify budget and exhausted warning', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const normal = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      clarifyCount: 2,
+      maxClarify: 5,
+      clarifyBudgetExhausted: false,
+    });
+    expect(normal).toContain('Clarify Budget');
+    expect(normal).toContain('2');
+    expect(normal).toContain('5');
+    expect(normal).not.toContain('BUDGET EXHAUSTED');
+
+    const exhausted = await adapter.render('visual/nodes/direct/context', {
+      ...SAMPLE_VARS,
+      clarifyCount: 5,
+      maxClarify: 5,
+      clarifyBudgetExhausted: true,
+    });
+    expect(exhausted).toContain('BUDGET EXHAUSTED');
+    expect(exhausted).toContain('MUST NOT route to `clarify`');
+  });
+
+  it('visual/nodes/direct/rules includes refactor mode routing section', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/direct/rules', SAMPLE_VARS);
+
+    expect(output).toContain('Refactor Mode Routing');
+    expect(output).toContain('targeted modification');
+  });
+
+  it('visual/nodes/engrave/base includes creator identity and SVG rules', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('visual/nodes/engrave/base', SAMPLE_VARS);
+
+    expect(output).toContain('creative asset producer');
+    expect(output).toContain('SVG');
+    expect(output).toContain('viewBox');
+  });
+
+  it('visual partial chains resolve correctly via collectResolvedPartials', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const directPartials = collectResolvedPartials(['visual/nodes/direct/base']);
+    expect(directPartials).toContain('agents/creator/base');
+    expect(directPartials).toContain('agents/creator/rules');
+    expect(directPartials).toContain('visual/nodes/direct/rules');
+
+    const engravePartials = collectResolvedPartials(['visual/nodes/engrave/base']);
+    expect(engravePartials).toContain('agents/creator/base');
+    expect(engravePartials).toContain('visual/nodes/engrave/rules');
   });
 
   it('all § section references in design templates match canonical catalog names', async () => {

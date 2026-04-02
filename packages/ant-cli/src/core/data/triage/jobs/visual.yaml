@@ -1,0 +1,36 @@
+# Visual Job Definition
+id: visual
+agent: creator
+description: |
+  Generates visual assets (images, icons, illustrations) for the project.
+  Uses AI image generation models to create project-specific assets.
+  Conversational workflow: maintains context across multiple turns.
+
+modes:
+  - id: generate
+    description: |
+      Creates new visual assets from user directive.
+      Supports progressive refinement: sketch exploration → selection → final render.
+    detection:
+      any_of:
+        - type: has_directive
+    prerequisites:
+      required:
+        - id: directive
+          type: has_directive
+          description: Asset description or visual requirements entered via chat
+      recommended: []
+    scope:
+      - Image asset generation (PNG, WebP, JPEG)
+      - Icon and illustration creation
+      - SVG code generation for simple shapes
+      - Progressive refinement with draft exploration
+      - Conversational iteration on visual output
+
+redirect_signals:
+  to_design: >
+    Request target is a design document or UI specification, not a visual asset.
+  to_code: >
+    Request target is source code implementation, not a visual asset.
+  to_plan: >
+    Request target is a product requirements document, not a visual asset.

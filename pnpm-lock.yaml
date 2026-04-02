@@ -41,6 +41,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.71.2
         version: 0.71.2(zod@4.1.12)
+      '@google/genai':
+        specifier: ^1.48.0
+        version: 1.48.0
       '@langchain/anthropic':
         specifier: ^1.0.0
         version: 1.0.0(@langchain/core@1.0.1(openai@6.14.0(ws@8.20.0)(zod@4.1.12)))(zod@4.1.12)
@@ -135,7 +138,7 @@ importers:
         specifier: ^4.3.1
         version: 4.3.1(express-rate-limit@8.3.0(express@5.1.0))
       sharp:
-        specifier: ^0.34.3
+        specifier: ^0.34.5
         version: 0.34.5
       simple-git:
         specifier: ^3.28.0
@@ -930,6 +933,15 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@google/genai@1.48.0':
+    resolution: {integrity: sha512-plonYK4ML2PrxsRD9SeqmFt76eREWkQdPCglOA6aYDzL1AAbE+7PUnT54SvpWGfws13L0AZEqGSpL7+1IPnTxQ==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@modelcontextprotocol/sdk': ^1.25.2
+    peerDependenciesMeta:
+      '@modelcontextprotocol/sdk':
+        optional: true
 
   '@grpc/grpc-js@1.14.3':
     resolution: {integrity: sha512-Iq8QQQ/7X3Sac15oB6p0FmUg/klxQvXLeileoqrTRGJYLV+/9tubbr9ipz0GKHjmXVsgFPo/+W+2cA8eNcR+XA==}
@@ -4496,6 +4508,17 @@ snapshots:
 
   '@esbuild/win32-x64@0.27.2':
     optional: true
+
+  '@google/genai@1.48.0':
+    dependencies:
+      google-auth-library: 10.5.0
+      p-retry: 4.6.2
+      protobufjs: 7.5.4
+      ws: 8.20.0
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
 
   '@grpc/grpc-js@1.14.3':
     dependencies:
