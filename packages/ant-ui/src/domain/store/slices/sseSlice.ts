@@ -230,6 +230,15 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       
       set(newState);
       
+      // Ensure workflow SSE is connected when job is running.
+      // After page refresh, useJobRestoration sets isRunning=true before live kanban arrives,
+      // so the auto-restore branch (isJobRunning && !isRunning) is never reached.
+      // This ensures workflow SSE is connected regardless of which branch was taken.
+      if (isJobRunning && kanbanJobId && !sseManager.isWorkflowConnected(kanbanJobId)) {
+        console.log(`[Store] 🔗 Connecting workflow SSE in else branch for ${kanbanJobId}`);
+        sseManager.connectWorkflow(kanbanJobId);
+      }
+      
       // ✅ CRITICAL: Also clear localStorage when SSE says no job is running
       // This handles edge cases where previous branches didn't trigger
       if (!currentFeatureIsRunning && !state.isRunning) {
@@ -360,6 +369,9 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           get().updateChatMessage(event.messageId, {
             contents: [...(existingMessage?.contents || []), event.content]
           });
+          if (event.content?.type === 'downloaded') {
+            setTimeout(() => get().refreshFileTree(), 1000);
+          }
           break;
           
         case 'content_update':
@@ -443,6 +455,10 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           
         case 'messages_cleared':
           set({ chatMessages: [] });
+          // Chat clearing may delete draft images from disk.
+          // Refresh file tree to reflect the deletion (safety net in case
+          // the server-side fileTree SSE broadcast arrives late or is missed).
+          get().refreshFileTree();
           break;
           
         case 'cancelled_message': {
@@ -489,10 +505,24 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         }
           
         // ✅ Cloud mode: Handle job status updates (from Redis Pub/Sub → SSE)
-        case 'job_status':
+        case 'job_status': {
           console.log('[Store] 📡 Received job_status event:', event.status, event.jobId);
           if (event.status === 'completed' || event.status === 'failed') {
-            const setRunning = get().setRunning;
+            const currentState = get();
+            if (currentState.jobStartPending && currentState.isRunning) {
+              console.log('[Store] 🛡️ Ignoring job_status completion - new job start pending');
+              get().refreshFileTree();
+              break;
+            }
+            // Ignore stale completion events from a different (previous) job.
+            // Without this check, a delayed completion event from job A could
+            // reset isRunning=false while job B is already running.
+            if (event.jobId && currentState.currentJobId && event.jobId !== currentState.currentJobId) {
+              console.log(`[Store] 🛡️ Ignoring job_status for stale job ${event.jobId} (current: ${currentState.currentJobId})`);
+              get().refreshFileTree();
+              break;
+            }
+            const setRunning = currentState.setRunning;
             if (setRunning) {
               console.log('[Store] ✅ Job completed/failed, setting isRunning=false');
               setRunning(false);
@@ -507,6 +537,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
             }
           }
           break;
+        }
         
         // ✅ Inline Ask: Handle completion with 3-way routing
         case 'inline_ask_complete': {
