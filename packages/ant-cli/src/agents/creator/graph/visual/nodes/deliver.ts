@@ -223,14 +223,14 @@ async function deliverDraftImages(
 
   console.log(`📦 [Visual:Deliver] Saved ${draftEntries.length} draft images with thumbnails`);
 
-  const keywords = extractKeywords(state.engineeredPrompt);
+  const variations = state.draftVariations;
 
   try {
     const chatAPI = getChatAPIClient();
     await chatAPI.sendClarifyCards([{
       question: `${draftEntries.length} draft candidates`,
       options: draftEntries.map(d => ({
-        label: keywords || `Draft ${d.index + 1}`,
+        label: variations?.[d.index]?.label || 'Draft',
         imagePath: d.imagePath,
         thumbnailPath: d.thumbnailPath,
         value: `draft_${d.index}`,
@@ -365,14 +365,14 @@ async function deliverSvgDrafts(
 
   console.log(`📦 [Visual:Deliver] Saved ${draftEntries.length} SVG drafts with thumbnails`);
 
-  const svgKeywords = extractKeywords(state.engineeredPrompt);
+  const svgVariations = state.draftVariations;
 
   try {
     const chatAPI = getChatAPIClient();
     await chatAPI.sendClarifyCards([{
       question: `${draftEntries.length} draft candidates`,
       options: draftEntries.map(d => ({
-        label: svgKeywords || `Draft ${d.index + 1}`,
+        label: svgVariations?.[d.index]?.label || 'Draft',
         imagePath: d.imagePath,
         thumbnailPath: d.thumbnailPath,
         value: `draft_${d.index}`,
@@ -434,47 +434,3 @@ function mimeToExt(mime: string): string {
   }
 }
 
-const KEYWORD_STOP_WORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
-  'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'being',
-  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
-  'may', 'might', 'must', 'shall', 'can', 'need', 'that', 'this', 'these', 'those',
-  'not', 'no', 'nor', 'so', 'if', 'then', 'than', 'too', 'very', 'just',
-  'about', 'above', 'after', 'again', 'against', 'all', 'am', 'any',
-  'because', 'before', 'below', 'between', 'both', 'each', 'few', 'more',
-  'most', 'other', 'out', 'over', 'same', 'some', 'such', 'through',
-  'under', 'until', 'up', 'while', 'into', 'its',
-  'clean', 'sharp', 'detailed', 'professional', 'quality', 'high', 'well-defined',
-  'rendering', 'render', 'edges', 'rich', 'depth', 'consistent', 'vibrant',
-  'balanced', 'intentional', 'production-ready', 'polished', 'finish', 'precision',
-  'fidelity', 'meticulous', 'pixel-perfect', 'refined', 'subtle',
-  'image', 'picture', 'featuring', 'using', 'based', 'without',
-]);
-
-/**
- * Extract concise style keywords from an engineered prompt.
- * Returns a " / " separated string like "Modern / Pastel / Cute / Ant".
- */
-function extractKeywords(prompt: string | undefined, maxKeywords = 5): string | undefined {
-  if (!prompt) return undefined;
-
-  const words = prompt
-    .replace(/["""''`]/g, '')
-    .replace(/[,;:.!?()\[\]{}]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2)
-    .map(w => w.toLowerCase())
-    .filter(w => !KEYWORD_STOP_WORDS.has(w) && !/^\d+$/.test(w));
-
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const w of words) {
-    if (seen.has(w)) continue;
-    seen.add(w);
-    unique.push(w);
-    if (unique.length >= maxKeywords) break;
-  }
-
-  if (unique.length === 0) return undefined;
-  return unique.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' / ');
-}

@@ -31,30 +31,72 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
   const aspectRatio = state.resolvedAspectRatio || state.visualSettings?.defaultAspectRatio || '1:1';
 
   const refImage = loadSketchReference(state);
+  const variations = state.draftVariations;
+  const basePrompt = state.basePrompt;
+  const usePerDraftPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
 
-  console.log(`✏️ [Visual:Sketch] Prompt: ${prompt.substring(0, 100)}...`);
-  console.log(`✏️ [Visual:Sketch] Candidates: ${candidateCount}, ratio: ${aspectRatio}${refImage ? ' +refImage' : ''}`);
+  if (usePerDraftPrompts) {
+    console.log(`✏️ [Visual:Sketch] Per-draft variation mode: basePrompt(${basePrompt!.length} chars) + ${variations!.length} variations, ratio: ${aspectRatio}${refImage ? ' +refImage' : ''}`);
+  } else {
+    console.log(`✏️ [Visual:Sketch] Prompt: ${prompt.substring(0, 100)}...`);
+    console.log(`✏️ [Visual:Sketch] Candidates: ${candidateCount}, ratio: ${aspectRatio}${refImage ? ' +refImage' : ''}`);
+  }
 
   try {
-    const generated = await imageClient.generate(prompt, {
-      numberOfImages: candidateCount,
-      outputFormat: 'jpeg',
-      aspectRatio,
-      temperature: 1.2,
-      referenceImage: refImage,
-    });
+    const draftImages: DraftImage[] = [];
 
-    const draftImages: DraftImage[] = generated.map((img, i) => ({
-      data: img.data,
-      mimeType: img.mimeType,
-      prompt: img.prompt,
-      modelConfig: {
-        model: (imageClient as any).modelName || 'gemini-3.1-flash-image-preview',
+    if (usePerDraftPrompts) {
+      // Per-draft variation: compose unique prompt for each draft
+      for (let i = 0; i < variations!.length; i++) {
+        const composedPrompt = `${basePrompt} ${variations![i].prompt}`.trim();
+        console.log(`✏️ [Visual:Sketch] Draft ${i + 1}/${variations!.length}: ${composedPrompt.substring(0, 80)}...`);
+
+        const generated = await imageClient.generate(composedPrompt, {
+          numberOfImages: 1,
+          outputFormat: 'jpeg',
+          aspectRatio,
+          temperature: 1.0,
+          referenceImage: refImage,
+        });
+
+        if (generated.length > 0) {
+          draftImages.push({
+            data: generated[0].data,
+            mimeType: generated[0].mimeType,
+            prompt: composedPrompt,
+            modelConfig: {
+              model: (imageClient as any).modelName || 'gemini-3.1-flash-image-preview',
+              aspectRatio,
+            },
+            modelResponseMetadata: generated[0].modelResponseMetadata || {},
+            index: i,
+          });
+        }
+      }
+    } else {
+      // Fallback: single prompt with numberOfImages (temperature-based variation)
+      const generated = await imageClient.generate(prompt, {
+        numberOfImages: candidateCount,
+        outputFormat: 'jpeg',
         aspectRatio,
-      },
-      modelResponseMetadata: img.modelResponseMetadata || {},
-      index: i,
-    }));
+        temperature: 1.2,
+        referenceImage: refImage,
+      });
+
+      for (let i = 0; i < generated.length; i++) {
+        draftImages.push({
+          data: generated[i].data,
+          mimeType: generated[i].mimeType,
+          prompt: generated[i].prompt,
+          modelConfig: {
+            model: (imageClient as any).modelName || 'gemini-3.1-flash-image-preview',
+            aspectRatio,
+          },
+          modelResponseMetadata: generated[i].modelResponseMetadata || {},
+          index: i,
+        });
+      }
+    }
 
     console.log(`✏️ [Visual:Sketch] Generated ${draftImages.length} drafts`);
 
@@ -62,8 +104,10 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       try {
         const byteSizes = draftImages.map((d, i) => `[draft ${i + 1}] ${d.data.length} bytes`).join(', ');
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'sketch', prompt.length, {
-          injectedVariables: { candidateCount, aspectRatio, hasReferenceImage: !!refImage },
-          hardcodedContent: `engineeredPrompt: ${prompt}\n\nResult: ${draftImages.length}/${candidateCount} drafts — ${byteSizes}`,
+          injectedVariables: { candidateCount, aspectRatio, hasReferenceImage: !!refImage, perDraftVariations: usePerDraftPrompts },
+          hardcodedContent: usePerDraftPrompts
+            ? `basePrompt: ${basePrompt}\nvariations: ${JSON.stringify(variations!.map(v => v.prompt))}\n\nResult: ${draftImages.length} drafts — ${byteSizes}`
+            : `engineeredPrompt: ${prompt}\n\nResult: ${draftImages.length}/${candidateCount} drafts — ${byteSizes}`,
         });
       } catch { /* non-critical */ }
     }

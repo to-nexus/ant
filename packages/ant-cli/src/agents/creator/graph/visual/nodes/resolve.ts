@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { VisualGraphState, VisualConversationEntry } from '../types.js';
+import { VisualGraphState, VisualConversationEntry, DraftVariation } from '../types.js';
 import { getEstimatingLabel, detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
 
 export async function resolveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
@@ -38,6 +38,8 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
   let lastAssetType: string | undefined;
   let lastJobMode: string | undefined;
   let availableDraftPaths: string[] | undefined;
+  let lastBasePrompt: string | undefined;
+  let lastDraftVariations: DraftVariation[] | undefined;
   let clarifyCount = state.clarifyCount || 0;
 
   try {
@@ -68,6 +70,14 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
       if (sessionData.state?.availableDraftPaths && Array.isArray(sessionData.state.availableDraftPaths)) {
         availableDraftPaths = sessionData.state.availableDraftPaths;
         console.log(`📂 [Visual:Resolve] Restored availableDraftPaths from session (${availableDraftPaths!.length} paths)`);
+      }
+      if (sessionData.state?.basePrompt) {
+        lastBasePrompt = sessionData.state.basePrompt;
+        console.log(`📂 [Visual:Resolve] Restored basePrompt (${lastBasePrompt!.length} chars)`);
+      }
+      if (sessionData.state?.draftVariations && Array.isArray(sessionData.state.draftVariations)) {
+        lastDraftVariations = sessionData.state.draftVariations;
+        console.log(`📂 [Visual:Resolve] Restored draftVariations (${lastDraftVariations!.length} variations)`);
       }
 
       // Restore clarify count from conversation (count assistant→user pairs)
@@ -167,8 +177,17 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     _phaseTimings: { ...state._phaseTimings, resolve: Date.now() - phaseStart },
   };
 
-  // Skip classify and restore session values for draft interactions (same pattern as skipTriage)
-  if (draftIntent || isDraftFeedback) {
+  // Detect clarify response: last session conversation entry is an assistant clarify question (not a draft delivery)
+  const lastConvBeforeUser = conversation.length >= 2 ? conversation[conversation.length - 2] : null;
+  const isClarifyResponse = !!lastConvBeforeUser
+    && lastConvBeforeUser.role === 'assistant'
+    && !lastConvBeforeUser.metadata?.savedAsset
+    && !draftIntent
+    && !isDraftFeedback;
+
+  // Skip triage + classify for all visual continuations (draft interactions + clarify responses)
+  if (draftIntent || isDraftFeedback || isClarifyResponse) {
+    result.skipTriage = true;
     result.skipClassify = true;
     if (lastAssetType) {
       result.assetType = lastAssetType as any;
@@ -176,7 +195,14 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     if (lastJobMode) {
       result.jobMode = lastJobMode as any;
     }
-    console.log(`📂 [Visual:Resolve] skipClassify=true (assetType=${lastAssetType || 'general'}, jobMode=${lastJobMode || 'generate'})`);
+    if (lastBasePrompt) {
+      result.basePrompt = lastBasePrompt;
+    }
+    if (lastDraftVariations) {
+      result.draftVariations = lastDraftVariations;
+    }
+    const bypassReason = draftIntent ? `draft:${draftIntent}` : isDraftFeedback ? 'draftFeedback' : 'clarifyResponse';
+    console.log(`📂 [Visual:Resolve] skipTriage+skipClassify=true (reason=${bypassReason}, assetType=${lastAssetType || 'general'}, jobMode=${lastJobMode || 'generate'})`);
   }
 
   return result;

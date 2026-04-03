@@ -8,7 +8,7 @@
  * Uses a single model: deps.directLLM.
  */
 
-import { VisualGraphState } from '../types.js';
+import { VisualGraphState, DraftVariation } from '../types.js';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
@@ -54,6 +54,8 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     return {
       routeDecision: 'sketch',
       engineeredPrompt: state.lastEngineeredPrompt,
+      basePrompt: state.basePrompt,
+      draftVariations: state.draftVariations,
       needsSketches: true,
       draftIntent: undefined,
       _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
@@ -200,7 +202,6 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   }
 
   const updates: Partial<VisualGraphState> = {
-    engineeredPrompt: result.engineeredPrompt,
     routeDecision: result.route,
     resolvedAspectRatio: result.aspectRatio || undefined,
     selectedDraftIndex: result.selectedDraftIndex ?? state.selectedDraftIndex,
@@ -210,10 +211,30 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
   };
 
-  if (result.route === 'sketch') {
-    updates.needsSketches = true;
-  } else if (result.route === 'engrave') {
-    updates.isSvgRequest = true;
+  if (result.route === 'sketch' || result.route === 'engrave') {
+    // Variation-based routes: basePrompt + variations[]
+    const variations: DraftVariation[] = Array.isArray(result.variations) ? result.variations : [];
+    updates.basePrompt = result.basePrompt || result.engineeredPrompt || '';
+    updates.draftVariations = variations;
+    updates.variationAxis = result.variationAxis || undefined;
+    // Compose a representative engineeredPrompt for logging/session (base + first variation)
+    updates.engineeredPrompt = variations.length > 0
+      ? `${updates.basePrompt} ${variations[0].prompt}`
+      : updates.basePrompt;
+
+    if (result.route === 'sketch') {
+      updates.needsSketches = true;
+    } else {
+      updates.isSvgRequest = true;
+    }
+    console.log(`🎬 [Visual:Direct] Variation axis: ${updates.variationAxis || 'N/A'}, ${variations.length} variations`);
+  } else if (result.route === 'render') {
+    updates.engineeredPrompt = result.engineeredPrompt;
+    updates.basePrompt = undefined;
+    updates.draftVariations = undefined;
+    updates.variationAxis = undefined;
+  } else {
+    updates.engineeredPrompt = result.engineeredPrompt;
   }
 
   if (result.route === 'clarify' && result.clarifyQuestion) {
