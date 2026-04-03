@@ -71,12 +71,27 @@ export function unregisterChatFlusher(): void {
  * @param reason - The interruption reason (e.g. 'user_stopped')
  * @param timeoutMs - Maximum time to wait for graceful shutdown (default 2500ms)
  */
-export async function handleGracefulShutdown(reason: string, timeoutMs = 2500): Promise<void> {
+export async function handleGracefulShutdown(reason: string, timeoutMs = 1800): Promise<void> {
   if (isShuttingDown) {
     console.log(`[GracefulShutdown] Already shutting down, skipping duplicate call`);
     return;
   }
   isShuttingDown = true;
+
+  const mem = process.memoryUsage();
+  console.log(JSON.stringify({
+    event: 'GRACEFUL_SHUTDOWN_START',
+    reason,
+    processUptime: `${Math.round(process.uptime())}s`,
+    memoryMB: {
+      rss: Math.round(mem.rss / 1048576),
+      heapUsed: Math.round(mem.heapUsed / 1048576),
+      heapTotal: Math.round(mem.heapTotal / 1048576),
+    },
+    hasActiveOrchestrator: !!activeOrchestrator,
+    timeoutMs,
+    timestamp: new Date().toISOString(),
+  }));
 
   if (activeOrchestrator) {
     console.log(`[GracefulShutdown] Interrupting orchestrator (reason: ${reason}, timeout: ${timeoutMs}ms)...`);

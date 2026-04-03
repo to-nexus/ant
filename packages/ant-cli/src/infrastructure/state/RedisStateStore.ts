@@ -399,6 +399,20 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
+  // Kill Reason Tracking (SIGTERM diagnostics)
+  // ============================================
+
+  async setKillReason(jobId: string, reason: string): Promise<void> {
+    const key = this.key(REDIS_KEYS.JOB.KILL_REASON, jobId);
+    await this.redis.set(key, JSON.stringify({ reason, ts: Date.now() }), 'EX', REDIS_TTL.JOB.KILL_REASON);
+  }
+
+  async getKillReason(jobId: string): Promise<string | null> {
+    const key = this.key(REDIS_KEYS.JOB.KILL_REASON, jobId);
+    return this.redis.get(key);
+  }
+
+  // ============================================
   // Port Registry - Preview (Full State Management)
   // ============================================
 
