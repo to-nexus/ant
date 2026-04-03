@@ -179,6 +179,9 @@ async function deliverFinalImage(
     routeDecision: undefined,
     needsSketches: undefined,
     isSvgRequest: undefined,
+    basePrompt: undefined,
+    draftVariations: undefined,
+    variationAxis: undefined,
     _phaseTimings: { ...state._phaseTimings, deliver: Date.now() - phaseStart },
   };
 }
@@ -257,7 +260,7 @@ async function deliverDraftImages(
   const savedDraftPaths = draftEntries.map(d => path.join(featurePath, d.imagePath));
 
   return {
-    lastEngineeredPrompt: state.engineeredPrompt,
+    lastEngineeredPrompt: state.basePrompt || state.engineeredPrompt,
     availableDraftPaths: savedDraftPaths,
     conversation: [...state.conversation, chapterMarker],
     draftImages: undefined,
@@ -327,6 +330,9 @@ async function deliverSvgDrafts(
       routeDecision: undefined,
       needsSketches: undefined,
       isSvgRequest: undefined,
+      basePrompt: undefined,
+      draftVariations: undefined,
+      variationAxis: undefined,
       _phaseTimings: { ...state._phaseTimings, deliver: Date.now() - phaseStart },
     };
   }
@@ -399,7 +405,7 @@ async function deliverSvgDrafts(
   const savedSvgDraftPaths = draftEntries.map(d => path.join(featurePath, d.imagePath));
 
   return {
-    lastEngineeredPrompt: state.engineeredPrompt,
+    lastEngineeredPrompt: state.basePrompt || state.engineeredPrompt,
     availableDraftPaths: savedSvgDraftPaths,
     conversation: [...state.conversation, chapterMarker],
     draftImages: undefined,
