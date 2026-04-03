@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Palette, Check, MessageSquare, RefreshCw } from 'lucide-react';
+import { Loader2, Palette, Check, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
@@ -170,6 +170,58 @@ function TextQuestionBlock({
 // Image option row (visual draft selection — auto-submit)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+function ExpandableTagLabel({ text }: { text: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const tags = useMemo(() => text.split(/\s*\/\s*/).filter(Boolean), [text]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setIsOverflowing(el.scrollHeight > el.clientHeight);
+  }, [tags]);
+
+  if (tags.length <= 1) {
+    return (
+      <span className="flex-1 min-w-0 text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+        {text}
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex-1 min-w-0">
+      <div
+        ref={containerRef}
+        className={`flex flex-wrap gap-1 ${isExpanded ? '' : 'max-h-6 overflow-hidden'}`}
+      >
+        {tags.map((tag, i) => (
+          <span
+            key={i}
+            className="inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 whitespace-nowrap"
+          >
+            {tag.trim()}
+          </span>
+        ))}
+      </div>
+      {isOverflowing && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setIsExpanded(prev => !prev); }}
+          className="mt-0.5 flex items-center gap-0.5 text-xs text-gray-400 hover:text-violet-500 transition-colors"
+        >
+          {isExpanded
+            ? <><ChevronUp className="w-3 h-3" /> <span>less</span></>
+            : <><ChevronDown className="w-3 h-3" /> <span>&hellip;more</span></>
+          }
+        </button>
+      )}
+    </div>
+  );
+}
+
 function DraftRow({
   draft,
   draftIndex,
@@ -190,12 +242,12 @@ function DraftRow({
 
   return (
     <div
-      className={`flex items-center gap-3 p-2 rounded-lg transition-all duration-200
+      className={`flex items-start gap-3 p-2 rounded-lg transition-all duration-200
         ${isSelectedDraft
           ? 'bg-violet-100/60 dark:bg-violet-900/20 ring-2 ring-violet-400'
           : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
     >
-      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 text-xs font-bold flex items-center justify-center">
+      <span className="flex-shrink-0 w-6 h-6 mt-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 text-xs font-bold flex items-center justify-center">
         {draftIndex + 1}
       </span>
 
@@ -213,19 +265,17 @@ function DraftRow({
         )}
       </button>
 
-      <span className="flex-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        {draft.label}
-      </span>
+      <ExpandableTagLabel text={draft.label} />
 
       {isSelectedDraft ? (
-        <span className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-violet-500 text-white">
+        <span className="flex-shrink-0 mt-0.5 flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-violet-500 text-white">
           <Check className="w-3.5 h-3.5" /> {t('draftSelection.selected')}
         </span>
       ) : !disabled ? (
         <button
           type="button"
           onClick={() => onSelectDraft(draft.value)}
-          className="px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150
+          className="flex-shrink-0 mt-0.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150
             bg-violet-500 hover:bg-violet-600 text-white hover:shadow-md"
         >
           {t('draftSelection.select')}
