@@ -43,10 +43,6 @@ Create a JSON mapping document that connects source assets to their runtime dest
 - Document only files that exist
 - Preserve original filenames unless semantic clarity requires change
 
-#### 2. Token Reference
-- Use token keys from `ui-tokens.json` when describing asset usage context
-- Example: `"overlay": "colors.overlay.dark"` instead of raw hex values
-
 ### JSON Structure
 
 **`dest` is determined by `format`:**
@@ -167,10 +163,9 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 ### Workflow
 
-1. Review the `# REFERENCE: ui-tokens.json` section in this prompt
-2. `list_assets` → Discover all available asset files
-3. Optionally use `read_reference_image` to understand asset context
-4. Generate ui-assets.json with complete mapping structure
+1. `list_assets` → Discover all available asset files
+2. Optionally use `read_reference_image` to understand asset context
+3. Generate ui-assets.json with complete mapping structure
 
 {{#if pathPattern}}
 ════════════════════════════════════════════════════════════════════════════════

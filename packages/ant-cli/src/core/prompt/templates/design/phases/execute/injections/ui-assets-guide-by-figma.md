@@ -50,10 +50,6 @@ Create a JSON mapping document that connects source assets to their runtime dest
 - Preserve Figma node names as filenames unless semantic clarity requires change
 - The `src` field in ui-assets.json must point to the actual downloaded file path (e.g., `inputs/assets/icons/logo.svg`)
 
-#### 3. Token Reference
-- Use token keys from `ui-tokens.json` when describing asset usage context
-- Example: `"overlay": "colors.overlay.dark"` instead of raw hex values
-
 ### JSON Structure
 
 **`dest` is determined by `format`:**
@@ -174,11 +170,10 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 ### Workflow
 
-1. Review the `# REFERENCE: ui-tokens.json` section in this prompt
-2. Review nodeSummary in Available Resources → Identify exportable asset nodes
-3. Query specific nodeIds (not root) for asset details and download URLs
-4. Download each asset to `inputs/assets/` before referencing it in ui-assets.json
-5. Generate ui-assets.json — every `src` path MUST point to a file that exists locally
+1. Review nodeSummary in Available Resources → Identify exportable asset nodes
+2. Query specific nodeIds (not root) for asset details and download URLs
+3. Download each asset to `inputs/assets/` before referencing it in ui-assets.json
+4. Generate ui-assets.json — every `src` path MUST point to a file that exists locally
 
 {{#if pathPattern}}
 ════════════════════════════════════════════════════════════════════════════════
