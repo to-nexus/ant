@@ -91,17 +91,29 @@ Job 완료 시 `job:status:updates` 채널로 API Server에 알린다. API Serve
 4. API Server에 알림
 5. 프론트엔드에 중단 ChoiceCard 표시
 
+### Kill Reason 추적 (Redis 기반)
+
+Worker가 child에 SIGTERM을 보내기 전에 Redis `ant:job:killReason:{jobId}` 키에 종료 사유를 기록한다. child의 SIGTERM handler가 이 값을 읽어 정확한 `InterruptionReason`을 결정한다.
+
+```
+Worker: setKillReason(jobId, reason) → Redis SET (TTL 60s) → child.kill('SIGTERM')
+Child:  SIGTERM → resolveKillReason(jobId) → Redis GET (100ms cap) → handleGracefulShutdown(reason)
+```
+
+Redis 키가 없으면 인프라(Kubernetes)가 Worker를 거치지 않고 직접 프로세스를 종료한 것으로 판단하여 `server_crash`를 사용한다.
+
 ### Child Process 종료 시나리오
 
-자식 프로세스가 종료되는 경로는 4가지이며, 모두 동일한 `killChildGracefully()` 패턴(SIGTERM → grace period 대기 → SIGKILL)을 따른다.
+자식 프로세스가 종료되는 경로는 5가지이다. 1-4는 Worker가 `killChildGracefully()` 패턴(SIGTERM → grace period 대기 → SIGKILL)으로 종료하며, 5는 인프라가 직접 종료한다.
 
 **1. 사용자 중지 (user_stopped)**
 
 ```
 사용자 → 중지 버튼 → API Server → Redis job:stop 채널 publish
-→ Job Worker가 구독 중 → killChildGracefully(child, 3s)
-→ Child SIGTERM 수신 → gracefulShutdown.ts → orchestrator.handleInterruption()
-→ 체크포인트 저장 → exit
+→ Job Worker가 구독 중 → setKillReason(jobId, 'user_stopped')
+→ killChildGracefully(child, 3s)
+→ Child SIGTERM 수신 → resolveKillReason → gracefulShutdown.ts
+→ orchestrator.handleInterruption() → 체크포인트 저장 → exit
 ```
 
 병렬로 cancellation polling(5초 간격)도 `isUserStopped` 플래그를 확인하여 SIGTERM을 보낸다. stop 채널보다 느리지만 Pub/Sub 유실 시 백업 역할.
@@ -110,7 +122,8 @@ Job 완료 시 `job:status:updates` 채널로 API Server에 알린다. API Serve
 
 ```
 Extension 2회 연속 실패 (5분 경과, lock 만료 직전)
-→ 모든 타이머 cleanup → killChildGracefully(child, 3s)
+→ 모든 타이머 cleanup → setKillReason(jobId, 'server_crash')
+→ killChildGracefully(child, 3s)
 → Child SIGTERM → graceful shutdown → 체크포인트 저장
 → moveToFinished의 "Missing lock" 에러 방지
 ```
@@ -122,7 +135,8 @@ Extension 2회 연속 실패 (5분 경과, lock 만료 직전)
 ```
 Worker/child 크래시 → lock extension 중단 → lock 만료
 → BullMQ stalledInterval(1분)에 stalled 감지 → stalled 이벤트
-→ killChildGracefully(child, 2s) (혹시 살아있을 경우)
+→ setKillReason(jobId, 'server_crash')
+→ killChildGracefully(child, 2.5s) (혹시 살아있을 경우)
 → 상태를 paused로 갱신, server_crash interruption publish
 ```
 
@@ -135,6 +149,18 @@ processJob 시작 시 동일 jobId의 기존 child 발견
 → killChildGracefully(existingChild, 3s) → 기존 child 종료
 → 새 child 스폰
 ```
+
+**5. 인프라 직접 종료 (K8s SIGTERM / KEDA scale-down / OOMKill)**
+
+```
+Kubernetes → Pod에 SIGTERM 전송 (terminationGracePeriodSeconds: 300s)
+→ Worker가 SIGTERM 수신 → shutdown() 호출
+→ 모든 active job에 setKillReason(jobId, 'server_shutdown') 병렬 기록
+→ 각 child에 SIGTERM → child가 resolveKillReason → graceful shutdown
+→ 체크포인트 저장 → exit(143)
+```
+
+Worker를 거치지 않고 child가 직접 SIGTERM을 받는 경우(OOMKill 등), Redis에 killReason이 없으므로 `server_crash`로 분류된다.
 
 ### Lock, Stall, Kill의 시간축 관계
 
@@ -164,6 +190,30 @@ processJob 시작 시 동일 jobId의 기존 child 발견
   │  T+0     T+2.5m   T+5m    T+6m                      │
   │  lock    💀crash   expire  stalled 감지 → paused     │
   └──────────────────────────────────────────────────────┘
+
+  ┌─── K8s Scale-Down ─────────────────────────────────┐
+  │  KEDA scale-down → Pod SIGTERM                      │
+  │  → Worker shutdown() → setKillReason(server_shutdown)│
+  │  → child SIGTERM → resolveKillReason (100ms)        │
+  │  → gracefulShutdown (1800ms) → checkpoint + exit    │
+  │  terminationGracePeriodSeconds: 300s                │
+  └────────────────────────────────────────────────────┘
+```
+
+### SIGTERM 타이밍 예산
+
+child가 SIGTERM을 받은 후 SIGKILL까지의 시간 예산 내에서 checkpoint가 완료되어야 한다.
+
+```
+  resolveKillReason: max 100ms (Promise.race cap)
+  diagnostics log:   ~1ms (sync)
+  gracefulShutdown:  max 1800ms (timeout)
+  ─────────────────────────
+  합계:              ~1901ms
+
+  Stall handler grace: 2500ms → 여유 599ms
+  Stop/Lock grace:     3000ms → 여유 1099ms
+  K8s termination:     300s   → 여유 충분
 ```
 
 상세 타이밍과 설정값은 [02-infrastructure.md § BullMQ](02-infrastructure.md)를 참조한다.

@@ -32,11 +32,15 @@
 
 import 'dotenv/config';
 import * as path from 'path';
+import Redis from 'ioredis';
 import { orchestrator } from './orchestrator';
 import { UnifiedWorkspaceResolver } from '../infrastructure/workspace/WorkspaceResolver';
 import { initPartials } from '../periphery/adapters/prompt/FilePromptAdapter';
 import { logger } from '../utils/logger';
 import { handleGracefulShutdown } from './gracefulShutdown';
+import { REDIS_KEYS } from '../infrastructure/state/redisConstants';
+import { createTLSOptions } from '../infrastructure/utils/redis';
+import type { InterruptionReason } from '../core/types/session';
 
 interface JobParams {
   jobId: string;
@@ -84,6 +88,25 @@ function getJobParams(): JobParams {
     chatSource: process.env.ANT_CHAT_SOURCE === 'true',
     skipTriage: process.env.ANT_SKIP_TRIAGE === 'true'
   };
+}
+
+// Pre-established Redis connection for SIGTERM handler (avoids connection latency during shutdown)
+let killReasonRedis: Redis | null = null;
+
+async function resolveKillReason(jobId: string): Promise<InterruptionReason> {
+  if (!killReasonRedis) return 'server_crash';
+  try {
+    const key = `${REDIS_KEYS.JOB.KILL_REASON}${jobId}`;
+    const raw = await Promise.race([
+      killReasonRedis.get(key),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 100)),
+    ]);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return (parsed.reason as InterruptionReason) || 'server_crash';
+    }
+  } catch { /* Redis unavailable = infrastructure kill */ }
+  return 'server_crash';
 }
 
 function reportProgress(phase: string, message: string, percentage?: number): void {
@@ -175,7 +198,21 @@ async function runJob(params: JobParams): Promise<void> {
 
 async function main(): Promise<void> {
   const params = getJobParams();
-  
+
+  // Pre-establish Redis connection for SIGTERM kill reason lookup
+  const redisUrl = process.env.ANT_REDIS_URL;
+  if (redisUrl) {
+    try {
+      killReasonRedis = new Redis(redisUrl, {
+        maxRetriesPerRequest: 1,
+        connectTimeout: 3000,
+        lazyConnect: false,
+        ...createTLSOptions(redisUrl),
+      });
+      killReasonRedis.on('error', () => {}); // suppress unhandled connection errors
+    } catch { /* best-effort — resolveKillReason will fallback to server_crash */ }
+  }
+
   const partialResult = await initPartials();
   if (partialResult.failed.length > 0) {
     console.error(`⛔ ${partialResult.failed.length} partial(s) failed to register`);
@@ -206,21 +243,34 @@ async function main(): Promise<void> {
 // ============================================
 // SIGTERM Handler — Graceful Shutdown
 // ============================================
-// When JobWorker sends SIGTERM (user clicked Stop), we attempt to:
-// 1. Interrupt the active orchestrator (push running tasks back to queue)
-// 2. Save a final checkpoint to the session file
-// 3. Exit cleanly with code 143 (128 + SIGTERM signal 15)
+// When SIGTERM is received, resolve the kill reason from Redis:
+// - Key exists → Worker set it (user_stopped / server_crash / server_shutdown)
+// - Key missing → infrastructure killed directly (K8s, OOMKill) → default server_crash
 //
-// The orchestrator has 2.5s to complete before we force-exit.
-// JobWorker waits 3s before sending SIGKILL, giving us a safety margin.
+// Timing budget (worst case: stall handler, 2500ms grace):
+//   resolveKillReason 100ms + gracefulShutdown 1800ms = 1900ms < 2500ms
 process.on('SIGTERM', async () => {
-  console.log(`\n🛑 [JobRunner] SIGTERM received — starting graceful shutdown...`);
+  const jobId = process.env.ANT_JOB_ID || 'unknown';
+  const reason = await resolveKillReason(jobId);
+
+  const mem = process.memoryUsage();
+  console.log(JSON.stringify({
+    event: 'SIGTERM_RECEIVED',
+    reason,
+    jobId,
+    uptimeSeconds: Math.round(process.uptime()),
+    memoryMB: { rss: Math.round(mem.rss / 1048576), heap: Math.round(mem.heapUsed / 1048576) },
+    timestamp: new Date().toISOString(),
+  }));
+
   try {
-    await handleGracefulShutdown('user_stopped');
+    await handleGracefulShutdown(reason);
   } catch (error: any) {
     console.error(`[JobRunner] Graceful shutdown error:`, error?.message);
   }
-  console.log(`[JobRunner] Exiting with code 143 (SIGTERM)`);
+
+  killReasonRedis?.disconnect();
+  console.log(`[JobRunner] Exiting with code 143 (SIGTERM, reason=${reason})`);
   process.exit(143);
 });
 

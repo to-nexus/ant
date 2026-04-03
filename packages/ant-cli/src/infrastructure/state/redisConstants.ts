@@ -49,6 +49,8 @@ export const REDIS_KEYS = {
     USER_STOPPED: `${REDIS_DOMAINS.JOB}:userStopped:`,
     /** Workflow node state - ant:job:workflow:{jobId} */
     WORKFLOW: `${REDIS_DOMAINS.JOB}:workflow:`,
+    /** Pre-SIGTERM kill reason (Worker sets before killing child, job-runner reads on SIGTERM) - ant:job:killReason:{jobId} */
+    KILL_REASON: `${REDIS_DOMAINS.JOB}:killReason:`,
   },
   
   /** Chat-related keys (ant:chat:*) */
@@ -125,6 +127,7 @@ export const REDIS_TTL = {
     MAPPING: 24 * 60 * 60,       // 24 hours
     USER_STOPPED: 60 * 60,       // 1 hour
     WORKFLOW: 24 * 60 * 60,      // 24 hours
+    KILL_REASON: 60,             // 60s — only needed during SIGTERM window
   },
   
   /** Chat-related TTLs */
