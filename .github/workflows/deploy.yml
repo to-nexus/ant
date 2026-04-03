@@ -113,7 +113,9 @@ jobs:
           fi
           
           # Check ant-cli changes (also triggered by ant-shared changes)
-          if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/" || [ "$ANT_SHARED_CHANGED" = "true" ]; then
+          # visual-processor 경로는 제외 (별도 빌드)
+          ANT_CLI_CHANGES=$(echo "$CHANGED_FILES" | grep "^packages/ant-cli/" | grep -v "visual-processor/server/" || true)
+          if [ -n "$ANT_CLI_CHANGES" ] || [ "$ANT_SHARED_CHANGED" = "true" ]; then
             echo "ant-cli-changed=true" >> $GITHUB_OUTPUT
             echo "✅ ant-cli files changed (or ant-shared dependency changed)"
           else
