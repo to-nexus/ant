@@ -443,24 +443,18 @@ function buildResourcesSummary(state: DesignGraphState): string {
  * So prior task outputs must be loaded from disk.
  * 
  * Dependency:
- * - ui-assets: needs ui-tokens.json
+ * - ui-tokens: no dependencies
+ * - ui-assets: no dependencies (independent from tokens)
  * - ui-spec: needs ui-tokens.json + ui-assets.json
  */
 async function loadPreviousUiDocs(
   state: DesignGraphState,
   taskId: string
 ): Promise<string> {
-  // ✅ Chapter-based approach: Load complete documents from previous categories
-  // - ui-tokens-ch*: No dependencies
-  // - ui-assets-ch*: Need complete ui-tokens.json
-  // - ui-spec-ch*: Need complete ui-tokens.json + ui-assets.json
-  
-  const isUiTokensTask = taskId.startsWith('ui-tokens');
-  const isUiAssetsTask = taskId.startsWith('ui-assets');
   const isUiSpecTask = taskId.startsWith('ui-spec');
   
-  // ui-tokens tasks don't need previous docs (foundation)
-  if (isUiTokensTask) {
+  // Only ui-spec tasks need previous docs (tokens + assets as REFERENCE)
+  if (!isUiSpecTask) {
     return '';
   }
   
@@ -478,40 +472,36 @@ async function loadPreviousUiDocs(
   const designOutputDir = path.join(featureDirRel, 'outputs/design');
   let injectedDocs = '';
   
-  // ✅ Load COMPLETE ui-tokens.json for ui-assets-* and ui-spec-*
-  if (isUiAssetsTask || isUiSpecTask) {
-    try {
-      const tokensPath = path.join(designOutputDir, 'ui-tokens.json');
-      const tokensContent = await fileSystem.readFile(tokensPath);
-      if (tokensContent && !tokensContent.includes('ant:template')) {
-        injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-        injectedDocs += `# REFERENCE: ui-tokens.json (ALL chapters completed)\n`;
-        injectedDocs += `> Use these token keys. Do NOT use raw values that are defined here.\n`;
-        injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-        injectedDocs += '```json\n' + tokensContent + '\n```';
-        console.log(`📄 [DocGen] Injected ui-tokens.json (${tokensContent.length} chars) for ${taskId}`);
-      }
-    } catch {
-      // File doesn't exist yet, skip
+  // Load COMPLETE ui-tokens.json for ui-spec-*
+  try {
+    const tokensPath = path.join(designOutputDir, 'ui-tokens.json');
+    const tokensContent = await fileSystem.readFile(tokensPath);
+    if (tokensContent && !tokensContent.includes('ant:template')) {
+      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
+      injectedDocs += `# REFERENCE: ui-tokens.json (ALL chapters completed)\n`;
+      injectedDocs += `> Use these token keys. Do NOT use raw values that are defined here.\n`;
+      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
+      injectedDocs += '```json\n' + tokensContent + '\n```';
+      console.log(`📄 [DocGen] Injected ui-tokens.json (${tokensContent.length} chars) for ${taskId}`);
     }
+  } catch {
+    // File doesn't exist yet, skip
   }
   
-  // ✅ Load COMPLETE ui-assets.json for ui-spec-*
-  if (isUiSpecTask) {
-    try {
-      const assetsPath = path.join(designOutputDir, 'ui-assets.json');
-      const assetsContent = await fileSystem.readFile(assetsPath);
-      if (assetsContent && !assetsContent.includes('ant:template')) {
-        injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-        injectedDocs += `# REFERENCE: ui-assets.json (ALL chapters completed)\n`;
-        injectedDocs += `> Reference these asset identifiers when documenting components.\n`;
-        injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-        injectedDocs += '```json\n' + assetsContent + '\n```';
-        console.log(`📄 [DocGen] Injected ui-assets.json (${assetsContent.length} chars) for ${taskId}`);
-      }
-    } catch {
-      // File doesn't exist yet, skip
+  // Load COMPLETE ui-assets.json for ui-spec-*
+  try {
+    const assetsPath = path.join(designOutputDir, 'ui-assets.json');
+    const assetsContent = await fileSystem.readFile(assetsPath);
+    if (assetsContent && !assetsContent.includes('ant:template')) {
+      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
+      injectedDocs += `# REFERENCE: ui-assets.json (ALL chapters completed)\n`;
+      injectedDocs += `> Reference these asset identifiers when documenting components.\n`;
+      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
+      injectedDocs += '```json\n' + assetsContent + '\n```';
+      console.log(`📄 [DocGen] Injected ui-assets.json (${assetsContent.length} chars) for ${taskId}`);
     }
+  } catch {
+    // File doesn't exist yet, skip
   }
   
   return injectedDocs;

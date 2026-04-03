@@ -286,27 +286,23 @@ For each topic in your task description:
 ## ⚠️ DOCUMENT DEPENDENCY CHAIN
 ════════════════════════════════════════════════════════════════════════════════
 
-Documents are generated in order. Previous documents are **automatically injected** as REFERENCE sections.
+ui-tokens and ui-assets run in parallel (no dependencies between them). ui-spec depends on both — previous documents are automatically injected as REFERENCE sections for spec tasks.
 
 ```
-ui-tokens.json (FIRST - no dependencies)
-     ↓
-ui-assets.json (SECOND - receives ui-tokens.json as REFERENCE)
-     ↓
-ui-spec.json (LAST - receives both previous documents as REFERENCE)
+ui-tokens.json (no dependencies)
+ui-assets.json (no dependencies)
+     ↓  ↓
+ui-spec.json (receives both ui-tokens.json AND ui-assets.json as REFERENCE)
 ```
 
 ### How to Use the REFERENCE Sections
 
-For dependent tasks, you will find REFERENCE sections in this prompt containing previously generated content:
+For dependent tasks (ui-spec), you will find REFERENCE sections in this prompt containing previously generated content:
 
 ```
-# REFERENCE: ui-tokens.json (generated in previous task)
+# REFERENCE: ui-tokens.json
+# REFERENCE: ui-assets.json
 ```
-
-**When generating ui-assets.json:**
-- Find and read the `# REFERENCE: ui-tokens.json` section in this prompt
-- Use token names when describing asset usage context
 
 **When generating ui-spec.json:**
 - Find and read both `# REFERENCE: ui-tokens.json` and `# REFERENCE: ui-assets.json` sections
@@ -370,7 +366,6 @@ For dependent tasks, you will find REFERENCE sections in this prompt containing 
 > Categories are determined by observing asset purpose from filenames and directory structure. Do NOT assume fixed categories.
 
 **Content Requirements**:
-- Reference **token names** from ui-tokens.json (e.g., `"overlay": "colors.overlay.dark"`)
 - Distinguish **background images** (decorative) vs **content images** (structural)
 
 ---

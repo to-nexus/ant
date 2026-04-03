@@ -97,11 +97,11 @@ system-design은 LLM 기반 태스크 분해(documentType + targetFiles)를 수�
 
 ## UI Design 문서 의존 체인
 
-UI 문서는 챕터 기반으로 순차 생성된다.
+UI 문서는 챕터 기반으로 생성된다. tokens와 assets는 병렬 실행되며, spec만 양쪽에 의존한다.
 
 ```
 ui-tokens.json (의존 없음)
-    -> ui-assets.json (ui-tokens 참조)
+ui-assets.json (의존 없음, tokens와 병렬)
     -> ui-spec.json (ui-tokens + ui-assets 참조)
 ```
 
