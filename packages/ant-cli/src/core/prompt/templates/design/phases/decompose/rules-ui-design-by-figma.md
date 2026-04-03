@@ -23,7 +23,7 @@ Adjust chapter count based on expected content:
 
 ### 4. Dependencies
 
-- ui-assets chapters depend on ALL ui-tokens chapters
+- ui-tokens and ui-assets are independent (run in parallel)
 - ui-spec chapters depend on ALL ui-tokens + ui-assets chapters
 - Chapters within same document are sequential (ch2 after ch1)
 
@@ -188,7 +188,7 @@ Add `"parallelGroup"` to every task.
 - `ui-assets.json` chapters → shared group `"ui-assets"` — keeps sequential (category conflict risk)
 - `ui-spec.json` chapters → use task ID as group (e.g., `"ui-spec-ch1"`, `"ui-spec-ch2"`) — enables parallel execution
 
-The system uses per-file mutex + deep merge for concurrent writes. Cross-document ordering (tokens → assets → spec) is enforced by priority barriers.
+The system uses per-file mutex + deep merge for concurrent writes. Cross-document ordering: tokens and assets run in parallel; spec waits for both via priority barrier.
 
 ---
 

@@ -25,7 +25,7 @@ Figma 모드가 우선한다. figma.json이 populated이면 references/에 파�
 | 입력 소스 | `inputs/references/` 이미지 | `inputs/figma.json` 설정 |
 | 보조 입력 | `inputs/assets/` (사용자 제공) | `inputs/assets/` (사용자 제공) |
 | 출력 | `outputs/design/ui-tokens.json`, `ui-assets.json`, `ui-spec.json` | 동일 |
-| 문서 의존 체인 | tokens → assets → spec | 동일 |
+| 문서 의존 체인 | tokens ∥ assets → spec | 동일 |
 
 ## 공통 구조
 
@@ -43,9 +43,9 @@ detectEnvironment
 
 decompose가 문서별 chaptering을 수행한다:
 
-- ch1: ui-tokens (의존 없음)
-- ch2: ui-assets (ui-tokens 참조)
-- ch3~chN: ui-spec (ui-tokens + ui-assets 참조, 복잡도에 따라 다중 챕터)
+- ch1~chN: ui-tokens (의존 없음, 챕터 간 병렬)
+- ch1~chN: ui-assets (의존 없음, tokens와 병렬, 챕터 간 순차)
+- ch1~chN: ui-spec (ui-tokens + ui-assets 참조, 복잡도에 따라 다중 챕터)
 
 각 챕터가 하나의 DesignTask로 taskQueue에 들어가며, plan → docGen → tool 루프를 개별 실행한다.
 
