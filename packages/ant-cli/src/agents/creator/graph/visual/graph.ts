@@ -105,6 +105,11 @@ export function buildVisualGraph() {
       resolvedAspectRatio: null as any,
       availableDraftPaths: null as any,
 
+      // Per-draft variation prompts
+      basePrompt: null as any,
+      draftVariations: null as any,
+      variationAxis: null as any,
+
       // Clarify counter
       clarifyCount: null as any,
 
@@ -360,6 +365,8 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           assetType: finalState.assetType,
           jobMode: finalState.jobMode,
           availableDraftPaths: finalState.availableDraftPaths,
+          basePrompt: finalState.basePrompt,
+          draftVariations: finalState.draftVariations,
         },
       });
       console.log(`💾 [Visual] Session saved (${finalState.conversation?.length || 0} conversation entries)`);
