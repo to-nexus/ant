@@ -56,6 +56,14 @@ export interface SvgDraft {
 }
 
 /**
+ * Per-draft variation: direction-specific prompt suffix + UI label
+ */
+export interface DraftVariation {
+  prompt: string;
+  label: string;
+}
+
+/**
  * Normalized asset type for conditional prompt injection
  */
 export type VisualAssetType = 'logo' | 'icon' | 'hero' | 'illustration' | 'general';
@@ -142,6 +150,11 @@ export interface VisualGraphState extends TriageableState {
   // LLM-resolved parameters (from direct node, take priority over defaults)
   resolvedAspectRatio?: string;
   availableDraftPaths?: string[];
+
+  // Per-draft variation prompts (from direct node for sketch/engrave routes)
+  basePrompt?: string;
+  draftVariations?: DraftVariation[];
+  variationAxis?: string;
 
   // Clarify counter (hard limit to prevent infinite clarify loops)
   clarifyCount?: number;

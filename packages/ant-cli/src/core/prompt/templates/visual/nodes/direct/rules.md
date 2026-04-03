@@ -50,7 +50,7 @@ Infer from intended use:
 
 ## Quality Baseline
 
-Every `engineeredPrompt` MUST address the following quality axes, regardless of route or style.
+Every prompt (`basePrompt` for sketch/engrave, `engineeredPrompt` for render) MUST address the following quality axes, regardless of route or style.
 
 These are **quality constraints**, NOT style constraints — they apply universally:
 
@@ -66,7 +66,7 @@ These are **quality constraints**, NOT style constraints — they apply universa
 
 ## Prompt Quality Rules
 
-1. Write `engineeredPrompt` in English — image models perform best in English regardless of user language
+1. Write all prompts in English — image models perform best in English regardless of user language
 2. Front-load the subject — the first clause must name the primary element
 3. Include negative constraints when critical: "no text", "no watermark", "no human faces" etc.
 4. **Background rule for assets requiring transparency** (logo, icon, illustration): NEVER write "transparent background" or "checkered background" in the prompt — the image model cannot produce actual transparency and instead draws a fake checkered pattern into the pixels. Always specify a solid-color background (e.g., "solid white background", "clean solid black background"). Actual transparency is applied by a separate post-processing service.
@@ -75,18 +75,42 @@ These are **quality constraints**, NOT style constraints — they apply universa
 
 ### Route-Specific Prompt Depth
 
-**sketch** (exploratory):
-- 2–4 sentences
-- Emphasize subject, mood, and style direction
-- Include Quality Baseline attributes
-- Leave room for model variation in secondary elements
+**sketch/engrave** (exploratory, uses `basePrompt` + `variations[]`):
+- `basePrompt`: 2-3 sentences — subject, confirmed attributes, Quality Baseline, negative constraints
+- Each `variations[i].prompt`: 1-2 sentences — the divergent direction for this specific draft
+- The final image prompt is composed as `basePrompt + " " + variation.prompt` by the generation node
 
-**render** (production):
+**render** (production, uses single `engineeredPrompt`):
 - 4–8 sentences — significantly MORE detailed than sketch
 - Specify ALL four axes (Subject, Context, Properties, Technical) with precision
 - MUST add render-grade quality enhancers beyond the baseline: "meticulous detail", "pixel-perfect edges", "refined color transitions", "subtle texture depth", "polished finish"
 - When rendering from a selected draft, the prompt must describe the SAME visual concept with HIGHER specificity — the render node prepends a fidelity constraint automatically, so your prompt is the modification target
 - **Constraint**: A render prompt that reads like a sketch prompt is a defect. Render prompts must be observably longer and more precise.
+
+## Variation Protocol (sketch/engrave only)
+
+When route is `sketch` or `engrave`, you MUST produce a `basePrompt` + `variations[]` array instead of a single `engineeredPrompt`.
+
+### Observation Step
+
+Observe the user's directive and identify:
+1. **Confirmed attributes**: elements the user explicitly specified or that the system requires (subject, explicit style, explicit colors, background rules)
+2. **Ambiguous dimension**: the most impactful visual dimension the user left unspecified
+
+### Separation Principle (MECE)
+
+Every visual attribute belongs to exactly ONE of `basePrompt` or `variations[i].prompt`:
+- If the user specified it OR the system requires it → `basePrompt`
+- If it differentiates drafts along the ambiguous dimension → `variations[i].prompt`
+
+**Constraint**: No attribute may appear in both. No attribute required for generation may be omitted from both.
+**Constraint**: If an attribute is partially specified (user gives a general direction but not specifics), the general direction goes in `basePrompt` and the specific sub-directions go in `variations`.
+
+### Variation Quality
+
+- Each variation MUST explore a distinguishably different direction — if two variations would produce visually similar results to a non-expert, they are a defect
+- The number of variations MUST equal `candidateCount` from settings
+- `variationAxis` describes what dimension was varied — state it as an observed result, not from a fixed list
 
 ## Refinement Behavior
 
@@ -185,20 +209,63 @@ When the user is iterating on a previous result:
 
 ## Response Format
 
-Respond in valid JSON (no markdown fences, no explanation outside the JSON):
+Respond in valid JSON (no markdown fences, no explanation outside the JSON).
+
+**For sketch or engrave routes:**
 
 {
-  "engineeredPrompt": "the complete generation prompt for the image model",
-  "route": "sketch" or "render" or "engrave" or "clarify" or "end",
+  "basePrompt": "common prompt shared by all drafts — confirmed attributes + quality baseline",
+  "variations": [
+    { "prompt": "direction-specific suffix for draft 1", "label": "UI label for draft 1" },
+    { "prompt": "direction-specific suffix for draft 2", "label": "UI label for draft 2" }
+  ],
+  "variationAxis": "the observed ambiguous dimension being explored",
+  "route": "sketch" or "engrave",
   "aspectRatio": "1:1" or "16:9" or "4:3" or "3:2" or "9:16",
-  "reasoning": "1-2 sentence explanation of routing and parameter decisions",
-  "clarifyQuestion": "question for user (only when route=clarify)",
-  "selectedDraftIndex": 0-based index of the draft the user selected (only when route=render and user referenced a specific draft)
+  "reasoning": "1-2 sentence explanation of routing and variation axis decisions"
 }
 
-### Response Constraints
+**For render route:**
 
-- `engineeredPrompt` is REQUIRED for sketch, render, and engrave routes
-- `clarifyQuestion` is REQUIRED when route=clarify, FORBIDDEN otherwise
-- `selectedDraftIndex` is only set when the user explicitly selected a draft for final rendering
-- `reasoning` is ALWAYS required — explain why you chose this route and these parameters
+{
+  "engineeredPrompt": "complete production-grade prompt for the image model",
+  "route": "render",
+  "aspectRatio": "1:1" or "16:9" or "4:3" or "3:2" or "9:16",
+  "reasoning": "1-2 sentence explanation",
+  "selectedDraftIndex": 0
+}
+
+**For clarify or end routes:**
+
+{
+  "route": "clarify" or "end",
+  "reasoning": "1-2 sentence explanation",
+  "clarifyQuestion": "question for user (only when route=clarify)"
+}
+
+### Response Constraints (MECE by route)
+
+| Field | sketch/engrave | render | clarify | end |
+|-------|---------------|--------|---------|-----|
+| `basePrompt` | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
+| `variations[]` | REQUIRED (length = candidateCount) | FORBIDDEN | FORBIDDEN | FORBIDDEN |
+| `variationAxis` | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
+| `engineeredPrompt` | FORBIDDEN | REQUIRED | FORBIDDEN | FORBIDDEN |
+| `selectedDraftIndex` | FORBIDDEN | optional | FORBIDDEN | FORBIDDEN |
+| `clarifyQuestion` | FORBIDDEN | FORBIDDEN | REQUIRED | FORBIDDEN |
+| `reasoning` | REQUIRED | REQUIRED | REQUIRED | REQUIRED |
+| `aspectRatio` | REQUIRED | REQUIRED | FORBIDDEN | FORBIDDEN |
+
+### Variation Label Rules
+
+Each `variations[i].label` is a human-readable summary shown in the UI to describe that specific draft's visual direction.
+
+**Format**: Slash-separated keyword phrases
+
+**Constraints**:
+- Write in the SAME language the user used in their directive
+- Capture the distinctive visual characteristics of THIS variation — what makes it different from the others
+- Each keyword phrase should be 1-3 words
+- Include enough phrases to differentiate from sibling variations (no fixed limit)
+- Do NOT include generic quality terms that apply to all drafts
+- Do NOT repeat attributes already in `basePrompt` — only the variation-specific direction
