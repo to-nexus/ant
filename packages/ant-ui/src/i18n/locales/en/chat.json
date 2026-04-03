@@ -86,7 +86,8 @@
     "regenerateLabel": "Regenerate requested",
     "previousDraft": "Previous draft",
     "nextDraft": "Next draft",
-    "close": "Close"
+    "close": "Close",
+    "imageNotFound": "Image no longer available"
   },
   "clarify": {
     "freeInput": "Type your answer...",
