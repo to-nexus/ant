@@ -182,12 +182,12 @@ POST /remove-bg
 
 | 모델 | 품질 | 속도 | 적합 용도 |
 |------|------|------|----------|
-| `birefnet-general` | Highest (SOTA) | Moderate | **기본값** — 로고, 아이콘, 제품 사진 |
+| `birefnet-general` | Highest (SOTA) | Moderate | 로고, 아이콘, 제품 사진 (고품질) |
 | `birefnet-general-lite` | High | Fast | 속도 우선 시 |
 | `birefnet-portrait` | Highest | Moderate | 인물/초상화 |
 | `birefnet-dis` | High | Moderate | 고밀도 객체 (DIS 특화) |
 | `birefnet-massive` | Highest | Slow | 최대 정밀도 필요 시 |
-| `u2net` | Good | Fast | 경량 범용 |
+| `u2net` | Good | Fast | **기본값** — 경량 범용 |
 | `u2netp` | Fair | Fastest | 최소 리소스 |
 | `u2net_human_seg` | Good | Fast | 인물 세그멘테이션 |
 | `isnet-general-use` | Good | Fast | 경량 범용 |
@@ -202,12 +202,13 @@ POST /remove-bg
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REMBG_MODEL` | `birefnet-general` | 기동 시 프리로드할 기본 모델 |
+| `REMBG_MODEL` | `u2net` | 기동 시 프리로드할 기본 모델 |
 | `MAX_FILE_SIZE_MB` | `20` | 업로드 파일 크기 제한 (MB) |
-| `MAX_PIXELS` | `16777216` | 최대 이미지 픽셀 수 (기본 4096x4096) |
+| `MAX_PIXELS` | `16777216` | 최대 이미지 픽셀 수 (기본 4096×4096) |
+| `MAX_INFERENCE_DIM` | `768` | 추론 전 축소할 최대 차원. 큰 이미지는 이 크기로 줄여서 처리 |
 | `MAX_CONCURRENCY` | `1` | worker당 동시 처리 가능 요청 수 |
 | `PROCESSING_TIMEOUT_S` | `60` | 단일 요청 처리 타임아웃 (초) |
-| `UVICORN_WORKERS` | `2` | 프로세스 수. worker × MAX_CONCURRENCY = 총 동시성 |
+| `UVICORN_WORKERS` | `1` | 프로세스 수. worker × MAX_CONCURRENCY = 총 동시성 |
 
 ---
 
@@ -215,11 +216,11 @@ POST /remove-bg
 
 | 항목 | 값 | 비고 |
 |------|---|------|
-| 모델 다운로드 | ~1.2 GB | 최초 1회, volume에 영속화 |
-| 모델 메모리 | ~1.5 GB × workers | worker별 독립 로드 |
+| 모델 다운로드 | ~170 MB (u2net) / ~1.2 GB (birefnet) | 최초 1회, volume에 영속화 |
+| 모델 메모리 | ~0.2–1.5 GB × workers | 모델에 따라 다름, worker별 독립 로드 |
 | 처리 시간 (CPU) | 3–5s | 1024×1024 이미지 기준 |
 | 처리 시간 (GPU) | <1s | CUDA 12.x 기준 (미구현) |
-| 기본 동시성 | 2 req | 2 workers × 1 concurrent |
+| 기본 동시성 | 1 req | 1 worker × 1 concurrent |
 
 ---
 
