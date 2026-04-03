@@ -47,7 +47,11 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
   const refImage = loadReferenceImage(state);
   if (refImage) {
     genOptions.referenceImage = refImage;
-    prompt = `Preserve the exact composition, art style, color palette, and character design of the provided reference image. Apply only the following modifications: ${prompt}`;
+    try {
+      prompt = await state.deps.promptPort.render('visual/nodes/render/fidelity-prefix', { engineeredPrompt: prompt });
+    } catch (err: any) {
+      console.warn(`🎨 [Visual:Render] Fidelity template failed, using raw prompt: ${err.message}`);
+    }
     console.log(`🎨 [Visual:Render] Using reference image (${refImage.data.length} bytes, ${refImage.mimeType}) with fidelity constraint`);
   }
 

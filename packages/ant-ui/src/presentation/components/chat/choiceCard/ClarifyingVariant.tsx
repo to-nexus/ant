@@ -172,12 +172,14 @@ function TextQuestionBlock({
 
 function DraftRow({
   draft,
+  draftIndex,
   isSelectedDraft,
   disabled,
   onClickThumbnail,
   onSelectDraft,
 }: {
   draft: ImageOption;
+  draftIndex: number;
   isSelectedDraft: boolean;
   disabled: boolean;
   onClickThumbnail: (value: string) => void;
@@ -193,6 +195,10 @@ function DraftRow({
           ? 'bg-violet-100/60 dark:bg-violet-900/20 ring-2 ring-violet-400'
           : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
     >
+      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300 text-xs font-bold flex items-center justify-center">
+        {draftIndex + 1}
+      </span>
+
       <button
         type="button"
         onClick={() => onClickThumbnail(draft.value)}
@@ -266,10 +272,11 @@ function ImageQuestionBlock({
 
   return (
     <div className="space-y-2">
-      {options.map(draft => (
+      {options.map((draft, idx) => (
         <DraftRow
           key={draft.value}
           draft={draft}
+          draftIndex={idx}
           isSelectedDraft={selectedValue === draft.value}
           disabled={disabled}
           onClickThumbnail={onThumbnailClick}
