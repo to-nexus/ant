@@ -2,10 +2,13 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY packages/ant-cli/src/periphery/integrations/visual-processor/server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY config.py processor.py app.py ./
+COPY packages/ant-cli/src/periphery/integrations/visual-processor/server/config.py \
+     packages/ant-cli/src/periphery/integrations/visual-processor/server/processor.py \
+     packages/ant-cli/src/periphery/integrations/visual-processor/server/app.py \
+     ./
 
 EXPOSE 4103
 
