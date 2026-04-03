@@ -267,6 +267,45 @@ export function formatDetectionReportForChat(
 }
 
 /**
+ * Visual Job의 classify 결과를 Chat UI용 마크다운으로 변환
+ */
+export function formatVisualClassifyForChat(
+  assetType: string,
+  jobMode: string,
+  reasoning: string,
+  language: UserLanguage = 'ko'
+): string {
+  const isKorean = language === 'ko';
+
+  const assetEmoji: Record<string, string> = {
+    logo: '🏷️', icon: '🔷', hero: '🖼️', illustration: '🎨', general: '📦',
+  };
+
+  const modeEmoji: Record<string, string> = {
+    generate: '✨', refactor: '🔧', explore: '📖',
+  };
+
+  let formatted = isKorean
+    ? `\n🏷️ **에셋 분류 완료**\n\n`
+    : `\n🏷️ **Asset Classification Complete**\n\n`;
+
+  formatted += isKorean
+    ? `${assetEmoji[assetType] || '📦'} **에셋 유형**: ${assetType}\n`
+    : `${assetEmoji[assetType] || '📦'} **Asset Type**: ${assetType}\n`;
+
+  formatted += isKorean
+    ? `${modeEmoji[jobMode] || '✨'} **작업 모드**: ${jobMode}\n`
+    : `${modeEmoji[jobMode] || '✨'} **Job Mode**: ${jobMode}\n`;
+
+  if (reasoning) {
+    formatted += `   └ ${reasoning}\n`;
+  }
+
+  formatted += '\n';
+  return formatted;
+}
+
+/**
  * Profile-only display for decompose node (environment + language + framework).
  * Avoids re-displaying jobMode already shown by detectEnvironment.
  */

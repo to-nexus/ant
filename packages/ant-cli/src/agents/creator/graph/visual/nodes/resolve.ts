@@ -60,6 +60,10 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
         lastAssetType = sessionData.state.assetType;
         console.log(`📂 [Visual:Resolve] Restored assetType: ${lastAssetType}`);
       }
+      if (sessionData.state?.availableDraftPaths && Array.isArray(sessionData.state.availableDraftPaths)) {
+        availableDraftPaths = sessionData.state.availableDraftPaths;
+        console.log(`📂 [Visual:Resolve] Restored availableDraftPaths from session (${availableDraftPaths!.length} paths)`);
+      }
 
       // Restore clarify count from conversation (count assistant→user pairs)
       if (conversation.length > 0) {
@@ -78,20 +82,26 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     console.warn('⚠️ [Visual:Resolve] Failed to load session:', err);
   }
 
-  // Scan drafts directory for available draft files (used by render for reference image)
-  const draftsDir = path.join(featurePath, 'inputs/assets/gen/drafts');
-  try {
-    if (fs.existsSync(draftsDir)) {
-      const files = fs.readdirSync(draftsDir)
-        .filter(f => /^draft-\d+-\d+\.(jpeg|jpg|png|webp|svg)$/i.test(f))
-        .sort();
-      if (files.length > 0) {
-        availableDraftPaths = files.map(f => path.join(draftsDir, f));
-        console.log(`📂 [Visual:Resolve] Found ${availableDraftPaths.length} draft files`);
+  // Fallback: scan drafts directory only if session didn't provide availableDraftPaths
+  if (!availableDraftPaths) {
+    const draftsDir = path.join(featurePath, 'inputs/assets/gen/drafts');
+    try {
+      if (fs.existsSync(draftsDir)) {
+        const files = fs.readdirSync(draftsDir)
+          .filter(f => /^draft-\d+-\d+\.(jpeg|jpg|png|webp|svg)$/i.test(f))
+          .sort();
+        if (files.length > 0) {
+          // Only keep the latest batch (highest timestamp) to prevent cross-batch index mismatch
+          const timestamps = files.map(f => f.match(/^draft-(\d+)-/)?.[1]).filter(Boolean) as string[];
+          const latestTs = timestamps.sort().pop();
+          const latestFiles = latestTs ? files.filter(f => f.startsWith(`draft-${latestTs}-`)) : files;
+          availableDraftPaths = latestFiles.map(f => path.join(draftsDir, f));
+          console.log(`📂 [Visual:Resolve] Fallback scan: ${availableDraftPaths.length} draft files (latest batch of ${files.length} total)`);
+        }
       }
+    } catch (err) {
+      console.warn('⚠️ [Visual:Resolve] Failed to scan drafts directory:', err);
     }
-  } catch (err) {
-    console.warn('⚠️ [Visual:Resolve] Failed to scan drafts directory:', err);
   }
 
   const userDirective = state.overrideDirective || state.directive;

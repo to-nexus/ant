@@ -376,6 +376,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           lastEngineeredPrompt: finalState.lastEngineeredPrompt,
           lastOutputPath: finalState.lastOutputPath,
           assetType: finalState.assetType,
+          availableDraftPaths: finalState.availableDraftPaths,
         },
       });
       console.log(`💾 [Visual] Session saved (${finalState.conversation?.length || 0} conversation entries)`);
