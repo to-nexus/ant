@@ -254,8 +254,11 @@ async function deliverDraftImages(
     },
   };
 
+  const savedDraftPaths = draftEntries.map(d => path.join(featurePath, d.imagePath));
+
   return {
     lastEngineeredPrompt: state.engineeredPrompt,
+    availableDraftPaths: savedDraftPaths,
     conversation: [...state.conversation, chapterMarker],
     draftImages: undefined,
     svgDrafts: undefined,
@@ -393,8 +396,11 @@ async function deliverSvgDrafts(
     },
   };
 
+  const savedSvgDraftPaths = draftEntries.map(d => path.join(featurePath, d.imagePath));
+
   return {
     lastEngineeredPrompt: state.engineeredPrompt,
+    availableDraftPaths: savedSvgDraftPaths,
     conversation: [...state.conversation, chapterMarker],
     draftImages: undefined,
     svgDrafts: undefined,

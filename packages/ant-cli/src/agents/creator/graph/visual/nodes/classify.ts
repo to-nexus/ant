@@ -13,6 +13,8 @@ import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { parseClassifyResponse } from './classifyParser.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
+import { formatVisualClassifyForChat } from '../../../../../core/types/detection.js';
 
 export async function classifyNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -58,6 +60,16 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
 
     const classified = parseClassifyResponse(rawContent);
     console.log(`🏷️ [Visual:Classify] Result: type=${classified.assetType}, mode=${classified.jobMode} (${classified.reasoning})`);
+
+    const chatAPI = getChatAPIClient();
+    const formattedReport = formatVisualClassifyForChat(
+      classified.assetType,
+      classified.jobMode,
+      classified.reasoning,
+      (state._uiLocale as any) || 'ko'
+    );
+    await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
+    await chatAPI.finalizeMessage();
 
     if (state._httpJobId) {
       try {
