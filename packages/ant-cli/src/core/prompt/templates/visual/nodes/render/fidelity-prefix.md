@@ -1,0 +1,1 @@
+Reproduce the reference image with enhanced visual quality and refined details. Preserve the composition, art style, color palette, and character design. Elevate rendering precision: sharper linework, richer color depth, cleaner edges, and more polished finish. Apply the following: {{{engineeredPrompt}}}

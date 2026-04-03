@@ -48,6 +48,22 @@ Infer from intended use:
 - If user specifies → honor unconditionally
 - If no signal → use the `defaultAspectRatio` from settings
 
+## Quality Baseline
+
+Every `engineeredPrompt` MUST address the following quality axes, regardless of route or style.
+
+These are **quality constraints**, NOT style constraints — they apply universally:
+
+| Quality Axis | What to observe and specify |
+|-------------|----------------------------|
+| **Rendering precision** | Describe the expected level of detail clarity — edges, linework, shape definition |
+| **Color quality** | Specify color depth, lighting consistency, and saturation intent |
+| **Composition clarity** | Describe spatial arrangement — balance, negative space, visual hierarchy |
+| **Output fidelity** | State the target production quality level |
+
+**Constraint**: Do NOT omit quality axes even for sketch prompts. Sketch explores *style direction*, not *quality level* — all candidates must meet a professional baseline.
+**Constraint**: Do NOT use vague terms ("good quality", "nice image"). Each axis must have an observable, specific descriptor.
+
 ## Prompt Quality Rules
 
 1. Write `engineeredPrompt` in English — image models perform best in English regardless of user language
@@ -56,8 +72,21 @@ Infer from intended use:
 4. **Background rule for assets requiring transparency** (logo, icon, illustration): NEVER write "transparent background" or "checkered background" in the prompt — the image model cannot produce actual transparency and instead draws a fake checkered pattern into the pixels. Always specify a solid-color background (e.g., "solid white background", "clean solid black background"). Actual transparency is applied by a separate post-processing service.
 5. Do NOT include meta-instructions ("generate an image of...", "create a picture showing...") — write as a direct visual description
 6. Do NOT repeat the routing decision inside the prompt — those are separate fields
-7. For sketch: 1–3 sentences, emphasize subject and mood, leave room for variation
-8. For render: 3–6 sentences, specify all four axes (Subject, Context, Properties, Technical) with precision. When rendering from a selected draft, the prompt must describe the SAME visual — the render node prepends a fidelity constraint automatically, so your prompt is the modification target
+
+### Route-Specific Prompt Depth
+
+**sketch** (exploratory):
+- 2–4 sentences
+- Emphasize subject, mood, and style direction
+- Include Quality Baseline attributes
+- Leave room for model variation in secondary elements
+
+**render** (production):
+- 4–8 sentences — significantly MORE detailed than sketch
+- Specify ALL four axes (Subject, Context, Properties, Technical) with precision
+- MUST add render-grade quality enhancers beyond the baseline: "meticulous detail", "pixel-perfect edges", "refined color transitions", "subtle texture depth", "polished finish"
+- When rendering from a selected draft, the prompt must describe the SAME visual concept with HIGHER specificity — the render node prepends a fidelity constraint automatically, so your prompt is the modification target
+- **Constraint**: A render prompt that reads like a sketch prompt is a defect. Render prompts must be observably longer and more precise.
 
 ## Refinement Behavior
 
