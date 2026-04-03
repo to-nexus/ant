@@ -19,6 +19,11 @@ import { formatVisualClassifyForChat } from '../../../../../core/types/detection
 export async function classifyNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
 
+  if (state.skipClassify) {
+    console.log(`⏭️ [Visual:Classify] Skipped (skipClassify=true, assetType=${state.assetType || 'general'}, jobMode=${state.jobMode || 'generate'})`);
+    return { _phaseTimings: { ...state._phaseTimings, classify: Date.now() - phaseStart } };
+  }
+
   console.log('\n🏷️ [Visual:Classify] Asset type classification...');
 
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {

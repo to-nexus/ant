@@ -133,6 +133,7 @@ export interface VisualGraphState extends TriageableState {
   // Asset classification & job mode
   assetType?: VisualAssetType;
   jobMode?: JobMode;
+  skipClassify?: boolean;
 
   // Session carry-over (preserved across invocations for refactor mode)
   lastEngineeredPrompt?: string;

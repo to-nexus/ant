@@ -36,6 +36,7 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
   let lastEngineeredPrompt: string | undefined;
   let lastOutputPath: string | undefined;
   let lastAssetType: string | undefined;
+  let lastJobMode: string | undefined;
   let availableDraftPaths: string[] | undefined;
   let clarifyCount = state.clarifyCount || 0;
 
@@ -59,6 +60,10 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
       if (sessionData.state?.assetType) {
         lastAssetType = sessionData.state.assetType;
         console.log(`📂 [Visual:Resolve] Restored assetType: ${lastAssetType}`);
+      }
+      if (sessionData.state?.jobMode) {
+        lastJobMode = sessionData.state.jobMode;
+        console.log(`📂 [Visual:Resolve] Restored jobMode: ${lastJobMode}`);
       }
       if (sessionData.state?.availableDraftPaths && Array.isArray(sessionData.state.availableDraftPaths)) {
         availableDraftPaths = sessionData.state.availableDraftPaths;
@@ -162,10 +167,16 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     _phaseTimings: { ...state._phaseTimings, resolve: Date.now() - phaseStart },
   };
 
-  // Restore assetType from session when classify will be skipped (deterministic paths)
-  if (draftIntent && lastAssetType) {
-    result.assetType = lastAssetType as any;
-    console.log(`📂 [Visual:Resolve] Pre-setting assetType=${lastAssetType} (classify will be skipped)`);
+  // Skip classify and restore session values for draft interactions (same pattern as skipTriage)
+  if (draftIntent || isDraftFeedback) {
+    result.skipClassify = true;
+    if (lastAssetType) {
+      result.assetType = lastAssetType as any;
+    }
+    if (lastJobMode) {
+      result.jobMode = lastJobMode as any;
+    }
+    console.log(`📂 [Visual:Resolve] skipClassify=true (assetType=${lastAssetType || 'general'}, jobMode=${lastJobMode || 'generate'})`);
   }
 
   return result;

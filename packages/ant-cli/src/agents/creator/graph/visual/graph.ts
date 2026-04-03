@@ -42,10 +42,6 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
   const result = state.triageResult;
 
   if (!result) {
-    if (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate') {
-      console.log(`[VisualTriageRouter] No triage + draftIntent=${state.draftIntent} → direct (skip classify)`);
-      return 'direct';
-    }
     console.log('[VisualTriageRouter] No triage result → classify');
     return 'classify';
   }
@@ -53,15 +49,6 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
   if (result.intent === 'ask') {
     console.log('[VisualTriageRouter] ask → __end__');
     return '__end__';
-  }
-
-  if (result.workStatus === 'proceed') {
-    if (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate') {
-      console.log(`[VisualTriageRouter] proceed + draftIntent=${state.draftIntent} → direct (skip classify)`);
-      return 'direct';
-    }
-    console.log('[VisualTriageRouter] proceed → classify');
-    return 'classify';
   }
 
   if (result.workStatus === 'redirect') {
@@ -74,12 +61,7 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
     return '__end__';
   }
 
-  if (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate') {
-    console.log(`[VisualTriageRouter] default + draftIntent=${state.draftIntent} → direct (skip classify)`);
-    return 'direct';
-  }
-
-  console.log('[VisualTriageRouter] default → classify');
+  console.log('[VisualTriageRouter] proceed → classify');
   return 'classify';
 }
 
@@ -113,6 +95,7 @@ export function buildVisualGraph() {
       // Asset classification & job mode
       assetType: null as any,
       jobMode: null as any,
+      skipClassify: null as any,
 
       // Session carry-over
       lastEngineeredPrompt: null as any,
@@ -165,13 +148,12 @@ export function buildVisualGraph() {
   graph.addEdge('__start__' as any, 'resolve' as any);
   graph.addEdge('resolve' as any, 'triage' as any);
 
-  // Triage → classify | direct (skip classify for deterministic intents) | __end__
+  // Triage → classify (handles its own skip via skipClassify) | __end__
   graph.addConditionalEdges(
     'triage' as any,
     routeAfterVisualTriage as any,
     {
       classify: 'classify',
-      direct: 'direct',
       __end__: END,
     } as any
   );
@@ -376,6 +358,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           lastEngineeredPrompt: finalState.lastEngineeredPrompt,
           lastOutputPath: finalState.lastOutputPath,
           assetType: finalState.assetType,
+          jobMode: finalState.jobMode,
           availableDraftPaths: finalState.availableDraftPaths,
         },
       });
