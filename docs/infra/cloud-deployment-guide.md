@@ -605,8 +605,9 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 
 ### Scaling
 
-- **ant-job**: KEDA + Redis Queue Depth-based recommended
+- **ant-job**: KEDA + metrics-api trigger (waiting + active job count) recommended
   - HPA (CPU/Memory) cannot reflect queue state
+  - See **KEDA ScaledObject** section below for configuration
 - **Concurrent Jobs = replicas × concurrency**
   - Increasing concurrency requires proportional pod memory increase
 
@@ -614,6 +615,68 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 
 - No timeout (runs until completion)
 - Configure BullMQ `jobTimeout` if needed
+
+### ant-job Pod Termination Protection
+
+ant-job processes long-running AI jobs (minutes to tens of minutes). Pod termination during active execution causes job interruption, so the following protection is required:
+
+```yaml
+# ant-job Deployment
+spec:
+  template:
+    spec:
+      terminationGracePeriodSeconds: 300  # 5 min — matches BullMQ lockDuration
+      # NOTE: preStop hook is NOT recommended for ant-job.
+      # ant-job does not receive HTTP traffic, so there is no need for
+      # connection draining. The SIGTERM handler already performs graceful
+      # shutdown (checkpoint saving). A preStop sleep would subtract from
+      # the terminationGracePeriodSeconds budget and reduce checkpoint time.
+```
+
+On SIGTERM, the ant-job worker:
+1. Records the kill reason to Redis (`server_shutdown`)
+2. Sends SIGTERM to all child job-runner processes
+3. Each job-runner saves a checkpoint (session file) enabling resume
+4. Process exits cleanly with code 143
+
+### KEDA ScaledObject Configuration
+
+ant-job exposes a metrics endpoint at `/api/health/metrics/queue` (no auth required) returning:
+```json
+{ "queueName": "ant-jobs", "waiting": 3, "active": 2, "total": 5 }
+```
+
+Recommended ScaledObject:
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ant-job-scaler
+spec:
+  scaleTargetRef:
+    name: ant-job
+  minReplicaCount: 1              # Always keep 1 replica warm
+  maxReplicaCount: 20
+  cooldownPeriod: 600             # 10 min — longer than typical job duration
+  pollingInterval: 15
+  fallback:
+    failureThreshold: 3           # After 3 failed polls (~45s)
+    replicas: 2                   # Maintain 2 replicas on metrics failure
+  triggers:
+    - type: metrics-api
+      metadata:
+        targetValue: "2"          # 2 jobs per pod
+        url: "http://ant-api:8080/api/health/metrics/queue"
+        valueLocation: "total"    # waiting + active (not just waiting)
+```
+
+Key design decisions:
+- **`total` (waiting + active)** as the metric — prevents scale-down while jobs are active
+- **`cooldownPeriod: 600`** — 10 minutes prevents premature scale-down for long jobs
+- **`minReplicaCount: 1`** — avoids cold-start latency for new jobs
+- **`fallback.replicas: 2`** — maintains capacity when metrics endpoint is unavailable
+- **No `preStop` hook** — SIGTERM handler handles graceful shutdown directly
 
 ### Authentication Mode
 

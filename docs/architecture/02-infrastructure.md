@@ -20,6 +20,7 @@ ANT의 모든 프로세스 간 통신과 상태 관리는 Redis를 통해 이루
 | `ant:job:mapping:{jobId}` | String (JSON) | projectId, featureName 매핑 |
 | `ant:job:userStopped:{jobId}` | String | 사용자 중지 플래그 |
 | `ant:job:workflow:{jobId}` | String (JSON) | 워크플로우 노드 상태 |
+| `ant:job:killReason:{jobId}` | String (JSON) | SIGTERM 전 종료 사유 (TTL 60s). Worker가 SET, job-runner가 GET |
 
 ### Chat 도메인 (`ant:chat:*`)
 
@@ -151,7 +152,7 @@ T=2.5min  Extension 시도 못 함 (프로세스 크래시)
 T=5.0min  Lock 만료
 T=6.0min  stalledInterval 주기에 BullMQ가 stalled 감지
           → stalled 이벤트 발생
-          → child kill (SIGTERM → 2s → SIGKILL)
+          → child kill (SIGTERM → 2.5s → SIGKILL)
           → 상태를 paused로 갱신, server_crash interruption publish
 ```
 
@@ -163,18 +164,21 @@ Mac wake 시 stalled handler가 `paused`로 전환한 뒤, processJob이 `comple
 
 ### Child Process Kill — 통합 패턴
 
-Child process를 종료해야 하는 시나리오가 4가지 있으며, 모두 `killChildGracefully(child, jobId, gracePeriodMs)` 메서드를 사용한다:
+Child process를 종료해야 하는 시나리오가 5가지 있다. 1-4는 `killChildGracefully(child, jobId, gracePeriodMs)` 메서드를 사용하며, 5는 K8s가 직접 종료한다.
 
-| 시나리오 | 트리거 | Grace Period |
-|---------|--------|-------------|
-| Stalled 감지 | BullMQ stalled 이벤트 | 2s (빠른 처리 필요) |
-| 사용자 중지 | Redis `job:stop` 채널 | 3s |
-| Lock 만료 임박 | Extension 연속 실패 | 3s |
-| Job 재처리 | 동일 jobId 중복 spawn | 3s |
+모든 Worker-initiated kill 경로는 SIGTERM 전에 `setKillReason(jobId, reason)`으로 Redis에 종료 사유를 기록한다. child의 SIGTERM handler가 이 값을 읽어 정확한 `InterruptionReason`을 결정한다.
 
-Kill 시퀀스: `SIGTERM → 대기(gracePeriodMs, early exit 감지) → pid 생존 확인 → SIGKILL`
+| 시나리오 | 트리거 | Grace Period | Kill Reason |
+|---------|--------|-------------|-------------|
+| Stalled 감지 | BullMQ stalled 이벤트 | 2.5s | `server_crash` |
+| 사용자 중지 | Redis `job:stop` 채널 | 3s | `user_stopped` |
+| Lock 만료 임박 | Extension 연속 실패 | 3s | `server_crash` |
+| Job 재처리 | 동일 jobId 중복 spawn | 3s | — |
+| 인프라 종료 | K8s SIGTERM / KEDA scale-down | 300s (terminationGracePeriod) | `server_shutdown` |
 
-Child는 SIGTERM을 받으면 `gracefulShutdown.ts`의 핸들러를 통해 체크포인트를 저장하고 종료한다. SIGKILL은 grace period 내 미종료 시에만 발동되는 최후 수단이다.
+Kill 시퀀스: `setKillReason → SIGTERM → 대기(gracePeriodMs, early exit 감지) → pid 생존 확인 → SIGKILL`
+
+Child는 SIGTERM을 받으면 `resolveKillReason(jobId)`으로 100ms 이내에 Redis에서 종료 사유를 읽고, `gracefulShutdown.ts`의 핸들러를 통해 체크포인트를 저장하고 종료한다. Redis 키가 없으면 인프라 직접 kill로 판단하여 `server_crash`를 사용한다. SIGKILL은 grace period 내 미종료 시에만 발동되는 최후 수단이다.
 
 ### Timer 관리
 

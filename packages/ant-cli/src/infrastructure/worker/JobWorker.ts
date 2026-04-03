@@ -64,6 +64,18 @@ export class JobWorker {
   }
 
   /**
+   * Record kill reason in Redis before sending SIGTERM to a child.
+   * Best-effort — never blocks the kill flow on failure.
+   */
+  private async setKillReason(jobId: string, reason: string): Promise<void> {
+    try {
+      await (this.stateStore as RedisStateStore).setKillReason(jobId, reason);
+    } catch {
+      // Best-effort — Redis failure must not delay kill
+    }
+  }
+
+  /**
    * Send SIGTERM to a child process and SIGKILL after grace period if still alive.
    * Unified kill pattern used by: stalled handler, stop signal, lock expiry, re-processed job cleanup.
    */
@@ -144,8 +156,8 @@ export class JobWorker {
       const stalledChild = this.runningProcesses.get(jobId);
       if (stalledChild && stalledChild.pid) {
         logger.warn(`Killing stalled child process: ${jobId} (PID: ${stalledChild.pid})`, { component: 'JobWorker', jobId });
-        // Short grace period — stalled handler should be fast
-        this.killChildGracefully(stalledChild, jobId, 2000).catch(() => {});
+        await this.setKillReason(jobId, 'server_crash');
+        this.killChildGracefully(stalledChild, jobId, 2500).catch(() => {});
         this.runningProcesses.delete(jobId);
       }
 
@@ -229,6 +241,7 @@ export class JobWorker {
         if (childProcess && childProcess.pid) {
           logger.info(`Killing child process for job: ${jobId} (PID: ${childProcess.pid})`, { component: 'JobWorker', jobId });
           try {
+            await this.setKillReason(jobId, 'user_stopped');
             await this.killChildGracefully(childProcess, jobId);
             this.runningProcesses.delete(jobId);
             logger.info(`Job stopped successfully: ${jobId}`, { component: 'JobWorker', jobId });
@@ -484,7 +497,9 @@ export class JobWorker {
         cleanup();
         const childProcess = this.runningProcesses.get(jobId);
         if (childProcess?.pid) {
-          this.killChildGracefully(childProcess, jobId).catch(() => {});
+          this.setKillReason(jobId, 'server_crash').then(() =>
+            this.killChildGracefully(childProcess, jobId)
+          ).catch(() => {});
         }
         return;
       }
@@ -509,7 +524,9 @@ export class JobWorker {
           cleanup();
           const childProcess = this.runningProcesses.get(jobId);
           if (childProcess?.pid) {
-            this.killChildGracefully(childProcess, jobId).catch(() => {});
+            this.setKillReason(jobId, 'server_crash').then(() =>
+              this.killChildGracefully(childProcess, jobId)
+            ).catch(() => {});
           }
         }
       }
@@ -523,6 +540,7 @@ export class JobWorker {
       const isStopped = await this.stateStore.isUserStopped(jobId);
       if (isStopped && child.pid) {
         cleanup();
+        await this.setKillReason(jobId, 'user_stopped');
         child.kill('SIGTERM');
       }
     }, CANCELLATION_POLL_INTERVAL));
@@ -656,11 +674,14 @@ export class JobWorker {
     }
 
     this.isShuttingDown = true;
-    logger.info('JobWorker shutting down...', { component: 'JobWorker' });
+    const activeJobs = Array.from(this.runningProcesses.keys());
+    logger.warn(`JobWorker shutting down — active jobs: [${activeJobs.join(', ')}]`, { component: 'JobWorker' });
 
-    // Kill all running processes
+    // Set kill reasons in parallel before sending SIGTERM
+    await Promise.all(activeJobs.map(jid => this.setKillReason(jid, 'server_shutdown')));
+
     for (const [jobId, process] of this.runningProcesses) {
-      logger.info(`Terminating job process: ${jobId}`, { component: 'JobWorker', jobId });
+      logger.info(`Terminating job process: ${jobId} (reason=server_shutdown)`, { component: 'JobWorker', jobId });
       process.kill('SIGTERM');
     }
 
