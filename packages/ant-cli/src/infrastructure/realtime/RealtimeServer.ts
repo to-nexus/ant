@@ -90,9 +90,17 @@ export class RealtimeServer {
         
         // Register WebSocket upgrade handler for /bridge/ws
         this.server.on('upgrade', (req, socket, head) => {
-          if (this.bridgeHandler?.shouldHandle(req)) {
-            this.bridgeHandler.handleUpgrade(req, socket, head);
+          const upgradeUrl = req.url || '(empty)';
+          const hasUpgradeHeader = !!req.headers['upgrade'];
+          const hasAuthHeader = !!req.headers['authorization'];
+          const shouldHandle = this.bridgeHandler?.shouldHandle(req) ?? false;
+
+          logger.warn(`🔌 [BridgeDiag] upgrade event: path=${upgradeUrl} upgrade=${hasUpgradeHeader} auth=${hasAuthHeader} shouldHandle=${shouldHandle}`, { component: 'RealtimeServer' });
+
+          if (shouldHandle) {
+            this.bridgeHandler!.handleUpgrade(req, socket, head);
           } else {
+            logger.warn(`🔌 [BridgeDiag] upgrade rejected — destroying socket: path=${upgradeUrl}`, { component: 'RealtimeServer' });
             socket.destroy();
           }
         });
@@ -142,6 +150,7 @@ export class RealtimeServer {
         publicPaths: [
           '/health',
           '/api/health',
+          '/bridge/health',
         ],
         publicPrefixes: [],
       }));
@@ -230,6 +239,15 @@ export class RealtimeServer {
         status: 'ok',
         service: 'realtime-server',
         timestamp: new Date().toISOString()
+      });
+    });
+
+    this.app.get('/bridge/health', (req: Request, res: Response) => {
+      res.json({
+        status: 'ok',
+        service: 'realtime-server',
+        bridge: 'reachable',
+        timestamp: new Date().toISOString(),
       });
     });
   }

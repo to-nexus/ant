@@ -49,6 +49,7 @@ Kubernetes 환경에서 각 프로세스가 독립 Pod으로 배포된다. Redis
 | 호스트 | 경로 | 대상 |
 |--------|------|------|
 | `ant.crosstoken.io` | `/realtime/*` | ant-realtime |
+| `ant.crosstoken.io` | `/bridge/*` | ant-realtime |
 | `ant.crosstoken.io` | `/api/*` | ant-api |
 | `ant.crosstoken.io` | `/ide/*` | ant-api |
 | `ant.crosstoken.io` | `/*` | ant-api (default) |

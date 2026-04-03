@@ -305,6 +305,7 @@ export class BridgeWebSocketHandler {
   private authenticate(req: IncomingMessage): { userId: string | null; orgId: string | null; status: BridgeSessionStatus } {
     const authHeader = req.headers['authorization'];
     if (!authHeader?.startsWith('Bearer ')) {
+      logger.warn(`🔌 [BridgeDiag] authenticate: no Authorization header (detected)`, { component: COMPONENT });
       return { userId: null, orgId: null, status: 'detected' };
     }
 
@@ -312,17 +313,21 @@ export class BridgeWebSocketHandler {
     const token = authHeader.slice(7);
 
     if (!isCloudMode) {
+      logger.info(`🔌 [BridgeDiag] authenticate: local mode → connected`, { component: COMPONENT });
       return { userId: 'local', orgId: 'local', status: 'connected' };
     }
 
     if (!this.jwtService) {
+      logger.warn(`🔌 [BridgeDiag] authenticate: no JwtService in cloud mode (ANT_JWT_SECRET missing?) → detected`, { component: COMPONENT });
       return { userId: null, orgId: null, status: 'detected' };
     }
 
     try {
       const payload = this.jwtService.verify(token);
+      logger.info(`🔌 [BridgeDiag] authenticate: JWT verified → userId=${payload.sub}, org=${payload.org}`, { component: COMPONENT });
       return { userId: payload.sub, orgId: payload.org, status: 'connected' };
-    } catch {
+    } catch (err: any) {
+      logger.warn(`🔌 [BridgeDiag] authenticate: JWT verify failed — ${err.message}`, { component: COMPONENT });
       return { userId: null, orgId: null, status: 'detected' };
     }
   }
