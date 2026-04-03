@@ -139,16 +139,16 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
           <span className="text-white/70 text-sm font-medium">
             {currentPos + 1} / {images.length}
           </span>
-          <button
-            onClick={() => onSelect(current.index)}
-            disabled={disabled}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200
-              bg-teal-500 hover:bg-teal-600 text-white shadow-lg hover:shadow-xl
-              ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <Check className="w-4 h-4" />
-            {t('draftSelection.selectDraft', { number: current.index + 1 })}
-          </button>
+          {!disabled && (
+            <button
+              onClick={() => onSelect(current.index)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200
+                bg-teal-500 hover:bg-teal-600 text-white shadow-lg hover:shadow-xl"
+            >
+              <Check className="w-4 h-4" />
+              {t('draftSelection.selectDraft', { number: current.index + 1 })}
+            </button>
+          )}
         </div>
       </div>
 
