@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Palette, Check, MessageSquare, RefreshCw } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 import type { MessageContent } from '@/domain/models/chat';
 import { useImagePreview } from '../useImagePreview';
 import { DraftLightbox } from '../ImageLightbox';
@@ -195,7 +196,6 @@ function DraftRow({
       <button
         type="button"
         onClick={() => onClickThumbnail(draft.value)}
-        disabled={disabled}
         className="flex-shrink-0 w-16 h-16 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer hover:ring-2 hover:ring-violet-300 transition-all"
       >
         {thumbUrl ? (
@@ -348,12 +348,14 @@ function LightboxLoader({
   startValue,
   onClose,
   onSelect,
+  onError,
   disabled,
 }: {
   drafts: ImageOption[];
   startValue: string;
   onClose: () => void;
   onSelect: (value: string) => void;
+  onError: () => void;
   disabled: boolean;
 }) {
   const imageUrls = drafts.map(d => ({
@@ -366,6 +368,14 @@ function LightboxLoader({
   const loaded = imageUrls.filter(i => i.objectUrl != null) as Array<{ value: string; index: number; objectUrl: string }>;
   const startIndex = drafts.findIndex(d => d.value === startValue);
   const targetReady = loaded.some(i => i.value === startValue);
+
+  useEffect(() => {
+    if (targetReady) return;
+    const timer = setTimeout(() => {
+      if (!targetReady) onError();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [targetReady, onError]);
 
   if (!targetReady) {
     return (
@@ -395,6 +405,7 @@ function LightboxLoader({
 
 export function ClarifyingVariant({ content, messageId }: VariantProps) {
   const { t } = useTranslation('chat');
+  const { toast } = useToastContext();
   const selectedAgent = useStore(state => state.selectedAgent);
   const selectedJobType = useStore(state => state.selectedJobType);
   const pendingAnswers = useStore(state => state.pendingClarifyAnswers);
@@ -582,6 +593,11 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
     setLightboxOpen(true);
   };
 
+  const handleImageLoadError = useCallback(() => {
+    setLightboxOpen(false);
+    toast.error(t('draftSelection.imageNotFound'));
+  }, [t, toast]);
+
   // Determine title and theme based on content type
   const isImageMode = hasImageBlocks && textBlocks.length === 0;
   const title = isImageMode
@@ -698,6 +714,7 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
           startValue={lightboxStartValue}
           onClose={() => setLightboxOpen(false)}
           onSelect={handleSelectDraft}
+          onError={handleImageLoadError}
           disabled={cardState.isLoading || cardState.isSelected}
         />
       )}

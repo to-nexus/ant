@@ -249,6 +249,7 @@ export class ContentMerger {
       loaded: 'loading',
       stored: 'storing',
       learned: 'learning',
+      processed: 'processing',
       searched_code: 'searching_code',
       listed_files: 'listing_files',
       searched_reference: 'searching_reference',
@@ -644,7 +645,7 @@ export class ContentMerger {
     const inProgressWorkTypes = new Set([
       'placeholder',  // Placeholder should be removed on cancel
       'analyzing', 'exploring', 'retrieving', 'grepping', 'reading', 'reading_source', 'loading',
-      'indexing', 'storing', 'learning', 'searching_code', 'listing_files',
+      'indexing', 'storing', 'learning', 'processing', 'searching_code', 'listing_files',
       'searching_reference', 'downloading', 'figma_calling'
     ]);
     
