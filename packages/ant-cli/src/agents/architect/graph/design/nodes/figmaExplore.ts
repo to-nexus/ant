@@ -95,9 +95,19 @@ function parseXMLToNodes(xml: string): MetadataNode[] {
   return nodes;
 }
 
+function decodeXMLEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
 function extractAttr(attrs: string, name: string): string | undefined {
   const pattern = new RegExp(`${name}=["']([^"']*)["']`);
-  return pattern.exec(attrs)?.[1];
+  const raw = pattern.exec(attrs)?.[1];
+  return raw ? decodeXMLEntities(raw) : undefined;
 }
 
 function findFrames(nodes: MetadataNode[]): MetadataNode[] {

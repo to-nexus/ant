@@ -32,14 +32,20 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   // Deterministic fast-path for finalize/regenerate (no LLM call needed)
   // Skip deterministic path if safety was blocked — need LLM to revise the prompt
   if (state.draftIntent === 'finalize' && !state.safetyBlocked) {
-    console.log(`🎬 [Visual:Direct] Deterministic: finalize draft ${state.selectedDraftIndex} → render`);
+    const idx = state.selectedDraftIndex ?? 0;
+    const variation = state.draftVariations?.[idx];
+    const prompt = (state.basePrompt && variation)
+      ? `${state.basePrompt} ${variation.prompt}`
+      : state.lastEngineeredPrompt;
+
+    console.log(`🎬 [Visual:Direct] Deterministic: finalize draft ${idx} → render (prompt=${prompt?.substring(0, 60)}...)`);
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
     }
     return {
       routeDecision: 'render',
-      engineeredPrompt: state.lastEngineeredPrompt,
-      selectedDraftIndex: state.selectedDraftIndex,
+      engineeredPrompt: prompt,
+      selectedDraftIndex: idx,
       needsSketches: false,
       draftIntent: undefined,
       _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
