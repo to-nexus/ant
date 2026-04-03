@@ -22,6 +22,7 @@ on:
           - ant-cli
           - ant-preview
           - ant-site
+          - ant-visual-processor
       git_ref:
         description: 'Git reference (commit SHA, branch, or tag) to deploy'
         required: false
@@ -45,6 +46,7 @@ on:
       - 'packages/ant-cli/**'
       - 'packages/ant-shared/**'
       - 'packages/ant-site/**'
+      - 'packages/ant-cli/src/periphery/integrations/visual-processor/server/**'
       - 'package.json'
 
   repository_dispatch:
@@ -65,6 +67,7 @@ jobs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
       ant-cli-changed: ${{ steps.detect.outputs.ant-cli-changed }}
       ant-site-changed: ${{ steps.detect.outputs.ant-site-changed }}
+      visual-processor-changed: ${{ steps.detect.outputs.visual-processor-changed }}
       root-package-changed: ${{ steps.detect.outputs.root-package-changed }}
       deploy-all: ${{ steps.detect.outputs.root-package-changed == 'true' }}
     steps:
@@ -125,6 +128,15 @@ jobs:
           else
             echo "ant-site-changed=false" >> $GITHUB_OUTPUT
             echo "❌ No ant-site files changed"
+          fi
+          
+          # Check visual-processor changes
+          if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/src/periphery/integrations/visual-processor/server/"; then
+            echo "visual-processor-changed=true" >> $GITHUB_OUTPUT
+            echo "✅ visual-processor files changed"
+          else
+            echo "visual-processor-changed=false" >> $GITHUB_OUTPUT
+            echo "❌ No visual-processor files changed"
           fi
 
   # ===========================================
@@ -198,6 +210,22 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
+    secrets: inherit
+
+  # ===========================================
+  # Dev environment - visual-processor deployment (main, dev, ci/* branches)
+  # Python FastAPI sidecar — AI image post-processing
+  # ===========================================
+  auto-visual-processor-dev-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.visual-processor-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: dev
+      env: dev
+      git_sha: ${{ github.sha }}
+      service_name: ant-visual-processor
+      dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
     secrets: inherit
 
   # ===========================================
@@ -297,6 +325,18 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
+    secrets: inherit
+
+  auto-all-ant-visual-processor-dev-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: dev
+      env: dev
+      git_sha: ${{ github.sha }}
+      service_name: ant-visual-processor
+      dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
     secrets: inherit
 
   # ===========================================
@@ -405,6 +445,21 @@ jobs:
     secrets: inherit
 
   # ===========================================
+  # Stage branch - visual-processor deployment
+  # ===========================================
+  auto-ant-visual-processor-stage-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.visual-processor-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: stage
+      env: stage
+      git_sha: ${{ github.sha }}
+      service_name: ant-visual-processor
+      dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
+    secrets: inherit
+
+  # ===========================================
   # Stage branch - Deploy all when root package.json changes
   # ===========================================
   auto-all-ant-ui-stage-deploy:
@@ -467,6 +522,18 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
+    secrets: inherit
+
+  auto-all-ant-visual-processor-stage-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: stage
+      env: stage
+      git_sha: ${{ github.sha }}
+      service_name: ant-visual-processor
+      dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
     secrets: inherit
 
   # ===========================================
@@ -579,6 +646,22 @@ jobs:
     secrets: inherit
 
   # ===========================================
+  # Manual deployment workflow - visual-processor (dev, stage only)
+  # ===========================================
+  manual-ant-visual-processor-deploy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-visual-processor' && github.event.inputs.environment != 'prod'
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: ${{ github.event.inputs.environment }}
+      env: ${{ github.event.inputs.environment }}
+      git_sha: ${{ github.sha }}
+      service_name: ant-visual-processor
+      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
+      git_ref: ${{ github.event.inputs.git_ref || '' }}
+      dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
+    secrets: inherit
+
+  # ===========================================
   # Release (prod) deployment via repository_dispatch or workflow_dispatch
   # ===========================================
   release-deploy-ant-ui:
@@ -684,4 +767,19 @@ jobs:
         PYTHON_VERSION=${{ vars.PREVIEW_PYTHON_VERSION }}
         RUST_VERSION=${{ vars.PREVIEW_RUST_VERSION }}
         JAVA_VERSION=${{ vars.PREVIEW_JAVA_VERSION }}
+    secrets: inherit
+
+  release-deploy-ant-visual-processor:
+    if: >
+      (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-visual-processor')
+    uses: to-nexus/cross-hub-workflows/.github/workflows/ant.yml@master
+    with:
+      environment: prod
+      env: prod
+      git_sha: ${{ github.sha }}
+      service_name: ant-visual-processor
+      ticket_id: ${{ github.event.inputs.ticket_id || '' }}
+      git_ref: ${{ github.event.inputs.git_ref || '' }}
+      dockerfile: ./packages/ant-cli/src/periphery/integrations/visual-processor/server/Dockerfile
     secrets: inherit
