@@ -299,10 +299,10 @@ resources:
 > ⚠️ ChromaDB does not currently support built-in clustering.
 > For large-scale environments, consider managed services like [Chroma Cloud](https://www.trychroma.com/) or Pinecone.
 
-### 2.9 visual-processor (Background Removal)
+### 2.9 visual-processor (Image Post-Processing)
 
-> **Note:** Python FastAPI sidecar for AI background removal. Uses rembg + BiRefNet model.
-> Stateless service — horizontal scaling possible. Model weights reside in process memory (~1.5 GB per pod).
+> **Note:** Python FastAPI sidecar for AI image post-processing. Currently supports background removal via rembg.
+> Stateless service — horizontal scaling possible. Model weights reside in process memory (~0.2–1.5 GB per pod depending on model).
 
 ```yaml
 resources:
@@ -316,16 +316,31 @@ resources:
 
 | Item | Minimum | Recommended |
 |-----|-----|-----|
-| Image | Custom (rembg + FastAPI) | Custom |
+| Image | Custom (rembg + FastAPI) | Custom (ECR) |
 | Replicas | 1 | 2+ (HPA) |
 | CPU Request | 1 | 2 |
 | Memory Request | 2Gi | 4Gi |
 | GPU | - | Optional (significantly faster) |
 | Port | 4103 | 4103 |
 
+**Dockerfile:**
+
+```dockerfile
+FROM python:3.10-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY config.py processor.py app.py ./
+EXPOSE 4103
+CMD ["sh", "-c", "uvicorn app:create_app --factory --host 0.0.0.0 --port 4103 --no-access-log --workers ${UVICORN_WORKERS}"]
+```
+
+> Source: `packages/ant-cli/src/periphery/integrations/visual-processor/server/`
+
 **Model Download:**
-- Default model (birefnet-general) is ~1.2 GB, downloaded on first startup
-- Use a PVC or pre-baked image to avoid download delay on pod scaling
+- Default model (`u2net`, ~170 MB) is downloaded on first startup
+- Higher-quality models (e.g. `birefnet-general`, ~1.2 GB) can be configured via `REMBG_MODEL`
+- Model weights are stored in `~/.u2net/` — use a PVC or pre-baked image to avoid download delay on pod scaling
 - Docker volume `rembg-models` maps to `~/.u2net/` for local dev
 
 **Scaling:**
@@ -342,21 +357,50 @@ resources:
 - Add NVIDIA device plugin to K8s nodes
 
 **Communication:**
-- ant-job → visual-processor (HTTP): Background removal requests from deliver node
-- Endpoint: `POST /remove-bg`, `GET /health`
+- ant-job → visual-processor (HTTP): Image processing requests from visual job deliver node
+- Endpoints: `POST /remove-bg`, `GET /health`, `GET /models`
+- Internal only (ClusterIP) — no Ingress needed
 
-**Environment Variables:**
+**Probes:**
+
+| Probe | Endpoint | Interval | Threshold |
+|-------|----------|----------|-----------|
+| Readiness | `GET /health` | 10s | 3 failures |
+| Liveness | `GET /health` | 30s | 3 failures |
+| Startup | `GET /health` | 5s | 60 failures (allow model download) |
+
+> ⚠️ Startup probe must be generous — first boot downloads the model (~170 MB–1.2 GB). Subsequent restarts with PVC are instant.
+
+**Environment Variables (visual-processor pod):**
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `REMBG_MODEL` | No | `birefnet-general` | Default model to preload at startup |
+| `REMBG_MODEL` | No | `u2net` | Model to preload at startup. See available models below |
 | `MAX_FILE_SIZE_MB` | No | `20` | Max upload file size in MB |
 | `MAX_CONCURRENCY` | No | `1` | Concurrent requests per worker process |
 | `PROCESSING_TIMEOUT_S` | No | `60` | Per-request processing timeout (seconds) |
-| `MAX_PIXELS` | No | `16777216` | Max image pixels (width x height). Default = 4096x4096 |
-| `UVICORN_WORKERS` | No | `2` | Worker process count. Total throughput = workers × MAX_CONCURRENCY |
+| `MAX_PIXELS` | No | `16777216` | Max image pixels (width × height). Default = 4096×4096 |
+| `MAX_INFERENCE_DIM` | No | `768` | Max dimension before downscale. Large images are shrunk before inference |
+| `UVICORN_WORKERS` | No | `1` | Worker process count. Total throughput = workers × MAX_CONCURRENCY |
 
-> Set `ANT_VISUAL_PROCESSOR_URL` in ant-job environment to point to visual-processor service URL (e.g., `http://visual-processor:4103`).
+**Available Models:**
+
+| Model | Size | Quality | Speed | Use Case |
+|-------|------|---------|-------|----------|
+| `u2net` (default) | ~170 MB | Good | Fast | General purpose, low resource |
+| `birefnet-general` | ~1.2 GB | Highest | Moderate | Best quality for logos, icons |
+| `birefnet-portrait` | ~1.2 GB | Highest | Moderate | Portrait photos |
+| `isnet-general-use` | ~170 MB | Good | Fast | Lightweight alternative |
+
+Full list: `GET /models` endpoint.
+
+**Environment Variables (ant-job pod):**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANT_VISUAL_PROCESSOR_URL` | Yes (cloud) | `http://localhost:4103` | visual-processor service URL |
+
+> In K8s, set to `http://visual-processor:4103` (ClusterIP service name).
 
 ---
 
@@ -396,7 +440,7 @@ resources:
 | ant-realtime | `node dist/start-realtime-server.js` |
 | ant-job | `node dist/start-job-worker.js` |
 | ant-preview | `node dist/start-preview-server.js` |
-| visual-processor | `uvicorn server:app --host 0.0.0.0 --port 4103` |
+| visual-processor | `uvicorn app:create_app --factory --host 0.0.0.0 --port 4103 --no-access-log --workers ${UVICORN_WORKERS}` |
 
 ### 3.3 Key Configuration Principles
 
@@ -417,6 +461,7 @@ resources:
 - ant-preview: `/health`
 - ant-job: No probe needed (Worker)
 - ant-ide: No probe needed (Pods managed by ant-api)
+- visual-processor: `/health` (startup probe 필요 — 최초 모델 다운로드 대기)
 
 **Secret Management:**
 - Use K8s Secret or AWS Secrets Manager for API Keys, Redis URL
