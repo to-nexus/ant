@@ -97,6 +97,14 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   const clarifyCount = state.clarifyCount || 0;
   const draftCount = state.availableDraftPaths?.length || 0;
 
+  const draftVariationList = state.isDraftFeedback && state.draftVariations?.length
+    ? state.draftVariations.map((v, i) => ({
+        number: i + 1,
+        label: v.label || `Draft ${i + 1}`,
+        prompt: v.prompt,
+      }))
+    : undefined;
+
   const userPrompt = await promptPort.render('visual/nodes/direct/context', {
     conversationContext: conversationContext || '(no previous conversation)',
     currentDirective,
@@ -113,6 +121,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     clarifyBudgetExhausted: clarifyCount >= MAX_CLARIFY,
     availableDraftCount: draftCount > 0 ? draftCount : undefined,
     lastDraftIndex: draftCount > 0 ? draftCount - 1 : undefined,
+    draftVariationList,
   });
 
   const messages = [
