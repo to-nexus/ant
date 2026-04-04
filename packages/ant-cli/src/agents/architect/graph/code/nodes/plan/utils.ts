@@ -2,6 +2,8 @@
  * Utility functions for Plan node
  */
 
+import type { MessageContentBlock, ToolUseContentBlock, ToolResultContentBlock } from '../../../../../../core/ports/llm';
+
 /**
  * Extract files read during Plan's tool loop from planConversationHistory.
  *
@@ -10,7 +12,7 @@
  * deduplicated file entries suitable for merging into projectCodeContext.
  */
 export function extractFilesFromPlanToolLoop(
-  history: Array<{ role: string; content: string | any[] }>,
+  history: Array<{ role: string; content: string | MessageContentBlock[] }>,
   existingPaths: Set<string>,
 ): Array<{ path: string; content: string; source: 'plan_tool_loop' }> {
   const files: Array<{ path: string; content: string; source: 'plan_tool_loop' }> = [];
@@ -20,11 +22,13 @@ export function extractFilesFromPlanToolLoop(
     const msg = history[i];
     if (msg.role !== 'assistant' || typeof msg.content === 'string') continue;
 
-    // Collect read_file tool_use blocks from assistant message
-    const readFileUses = new Map<string, string>(); // tool_use_id → path
+    const readFileUses = new Map<string, string>();
     for (const block of msg.content) {
-      if (block.type === 'tool_use' && block.name === 'read_file' && block.input?.path) {
-        readFileUses.set(block.id, block.input.path);
+      if (block.type === 'tool_use') {
+        const tb = block as ToolUseContentBlock;
+        if (tb.name === 'read_file' && tb.input?.path) {
+          readFileUses.set(tb.id, tb.input.path);
+        }
       }
     }
     if (readFileUses.size === 0) continue;
@@ -35,16 +39,16 @@ export function extractFilesFromPlanToolLoop(
 
     for (const block of nextMsg.content) {
       if (block.type !== 'tool_result') continue;
-      const filePath = readFileUses.get(block.tool_use_id);
+      const tb = block as ToolResultContentBlock;
+      const filePath = readFileUses.get(tb.tool_use_id);
       if (!filePath) continue;
 
-      // Skip if already in RAG context or already extracted
       if (existingPaths.has(filePath) || seenPaths.has(filePath)) continue;
 
-      const content = typeof block.content === 'string'
-        ? block.content
-        : Array.isArray(block.content)
-          ? block.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n')
+      const content = typeof tb.content === 'string'
+        ? tb.content
+        : Array.isArray(tb.content)
+          ? tb.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('\n')
           : '';
 
       if (content && !content.startsWith('Error:')) {

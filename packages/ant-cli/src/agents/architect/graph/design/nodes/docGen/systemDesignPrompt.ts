@@ -7,7 +7,7 @@
  */
 
 import { DesignGraphState } from '../../state';
-import { CacheableContent } from '../../../../../../core/ports/llm';
+import { CacheableContent, MessageContentBlock } from '../../../../../../core/ports/llm';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
@@ -15,7 +15,7 @@ import { buildSourceDocsForTask, buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD 
 import { DesignTask } from '../../../../types/task';
 
 export interface BuildMessagesResult {
-  messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }>;
+  messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
   useSourceFileTool: boolean;
 }
 
@@ -25,7 +25,7 @@ export interface BuildMessagesResult {
  * Handles system-design work type (fe-system, be-system, api-contract, etc.)
  */
 export async function buildMessages(state: DesignGraphState): Promise<BuildMessagesResult> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
+  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
   let useSourceFileTool = false;
   
   // NOTE: UI Design mode is handled separately in docGen() entry point
@@ -334,7 +334,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     try {
       // Calculate total text length from all messages
       const totalLength = messages.reduce((sum, m) => {
-        const content = m.content as CacheableContent[];
+        const content = m.content as MessageContentBlock[];
         return sum + content.reduce((s: number, c) => {
           if (c.type === 'text' && typeof c.text === 'string') {
             return s + c.text.length;

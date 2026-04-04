@@ -9,12 +9,15 @@
  */
 
 import { VisualGraphState, DraftVariation } from '../types.js';
-import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
+import type { LLMClient, LLMStreamEvent, ToolDefinition, MessageContentBlock, ToolUseContentBlock } from '../../../../../core/ports/llm.js';
+import { VISUAL_DRAFT_TOOLS, executeDraftTool } from './draftTools.js';
 
 const MAX_CLARIFY = 5;
+const MAX_TOOL_ROUNDS = 5;
 
 export async function directNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -105,6 +108,8 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       }))
     : undefined;
 
+  const hasDrafts = draftCount > 0;
+
   const userPrompt = await promptPort.render('visual/nodes/direct/context', {
     conversationContext: conversationContext || '(no previous conversation)',
     currentDirective,
@@ -119,12 +124,11 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     clarifyCount,
     maxClarify: MAX_CLARIFY,
     clarifyBudgetExhausted: clarifyCount >= MAX_CLARIFY,
-    availableDraftCount: draftCount > 0 ? draftCount : undefined,
-    lastDraftIndex: draftCount > 0 ? draftCount - 1 : undefined,
+    availableDraftCount: hasDrafts ? draftCount : undefined,
     draftVariationList,
   });
 
-  const messages = [
+  const messages: Array<{ role: string; content: string | MessageContentBlock[] }> = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
@@ -132,16 +136,16 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   const chatAPI = getChatAPIClient();
   await chatAPI.startMessage();
 
+  const tools = hasDrafts ? VISUAL_DRAFT_TOOLS : undefined;
+
   let result: any;
 
   try {
-    let rawContent: string;
-    if (directLLM.invokeWithUsage) {
-      const response = await directLLM.invokeWithUsage(messages);
-      accumulateTokenUsage(state as any, response.usage!, { taskLevel: true, jobLevel: true });
-      rawContent = response.content;
-    } else {
-      rawContent = await directLLM.invoke(messages);
+    const { text: rawContent, usage } = await streamWithToolLoop(
+      directLLM, messages, tools, state, MAX_TOOL_ROUNDS,
+    );
+    if (usage) {
+      accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true });
     }
 
     const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
@@ -267,6 +271,80 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   await chatAPI.finalizeMessage();
   return updates;
+}
+
+/**
+ * Stream LLM with tool loop — collects tool_use events, executes draft tools,
+ * appends results, and re-streams until the LLM produces final text or rounds
+ * are exhausted.
+ */
+async function streamWithToolLoop(
+  llm: LLMClient,
+  messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
+  tools: ToolDefinition[] | undefined,
+  state: VisualGraphState,
+  maxRounds: number,
+): Promise<{ text: string; usage?: TokenUsage }> {
+  let currentMessages = [...messages];
+  let accUsage: TokenUsage | undefined;
+
+  for (let round = 0; round < maxRounds; round++) {
+    let text = '';
+    const toolUses: Array<{ id: string; name: string; input: Record<string, any>; thoughtSignature?: string }> = [];
+
+    for await (const event of llm.stream(currentMessages, { tools })) {
+      if (event.type === 'text' && event.text) {
+        text += event.text;
+      }
+      if (event.type === 'tool_use' && event.toolUse) {
+        toolUses.push({
+          id: event.toolUse.id,
+          name: event.toolUse.name,
+          input: event.toolUse.input,
+          thoughtSignature: event.toolUse.thoughtSignature,
+        });
+      }
+      if (event.type === 'done' && event.usage) {
+        if (!accUsage) {
+          accUsage = { ...event.usage };
+        } else {
+          accUsage.inputTokens += event.usage.inputTokens || 0;
+          accUsage.outputTokens += event.usage.outputTokens || 0;
+          accUsage.totalTokens += event.usage.totalTokens || 0;
+        }
+      }
+    }
+
+    if (toolUses.length === 0) {
+      return { text, usage: accUsage };
+    }
+
+    console.log(`🔧 [Visual:Direct] Tool round ${round + 1}: ${toolUses.map(t => t.name).join(', ')}`);
+
+    const assistantBlocks: MessageContentBlock[] = [];
+    if (text) {
+      assistantBlocks.push({ type: 'text', text });
+    }
+    for (const tu of toolUses) {
+      assistantBlocks.push({
+        type: 'tool_use', id: tu.id, name: tu.name, input: tu.input,
+        ...(tu.thoughtSignature ? { thoughtSignature: tu.thoughtSignature } : {}),
+      } as ToolUseContentBlock);
+    }
+
+    const toolResultBlocks: MessageContentBlock[] = toolUses.map(tu =>
+      executeDraftTool(tu.id, tu.name, tu.input, state),
+    );
+
+    currentMessages = [
+      ...currentMessages,
+      { role: 'assistant', content: assistantBlocks },
+      { role: 'user', content: toolResultBlocks },
+    ];
+  }
+
+  console.warn(`⚠️ [Visual:Direct] Tool loop exhausted after ${maxRounds} rounds`);
+  return { text: '', usage: accUsage };
 }
 
 /**

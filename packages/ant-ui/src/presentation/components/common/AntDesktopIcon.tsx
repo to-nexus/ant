@@ -5,7 +5,7 @@ interface AntDesktopIconProps {
 
 /**
  * ANT neural-network logo as an inline SVG icon.
- * Matches the branding in /public/favicon.svg.
+ * Matches the branding in /public/favicon.png.
  * When `muted` is true, renders in currentColor (inherits text-gray-* from parent).
  */
 export function AntDesktopIcon({ className, muted }: AntDesktopIconProps) {

@@ -369,8 +369,8 @@ export async function tool(
   }
 
   // Execute ALL tool calls sequentially
-  const toolUseBlocks: any[] = [];
-  const toolResultBlocks: any[] = [];
+  const toolUseBlocks: import('../../../../../core/ports/llm').ToolUseContentBlock[] = [];
+  const toolResultBlocks: import('../../../../../core/ports/llm').ToolResultContentBlock[] = [];
 
   console.log(`🔧 [Tool] Executing ${toolCalls.length} tool call(s)`);
 
@@ -385,13 +385,10 @@ export async function tool(
     const { toolResultContent } = await executeDesignTool(name, state, args);
 
     toolUseBlocks.push({ type: 'tool_use', id, name, input: args });
-    toolResultBlocks.push({ type: 'tool_result', tool_use_id: id, content: toolResultContent });
+    toolResultBlocks.push({ type: 'tool_result', tool_use_id: id, tool_name: name, content: toolResultContent });
   }
 
-  // Build batch conversation history (Anthropic multi-tool format)
-  // Preserve thinking blocks so the API accepts thinking on subsequent turns.
-  // The signature field is required by the Anthropic API to validate unmodified thinking blocks.
-  const assistantContent: any[] = [];
+  const assistantContent: import('../../../../../core/ports/llm').MessageContentBlock[] = [];
   if (state.llmResponse?.thinking) {
     assistantContent.push({
       type: 'thinking' as const,

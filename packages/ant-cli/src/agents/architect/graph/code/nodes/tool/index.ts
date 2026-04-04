@@ -309,8 +309,8 @@ export async function tool(
   const chatAPI = getChatAPIClient();
 
   // Execute ALL tool calls sequentially, accumulate results
-  const toolUseBlocks: any[] = [];
-  const toolResultBlocks: any[] = [];
+  const toolUseBlocks: import('../../../../../../core/ports/llm').ToolUseContentBlock[] = [];
+  const toolResultBlocks: import('../../../../../../core/ports/llm').ToolResultContentBlock[] = [];
   const allToolResults: Array<{ toolCallId: string; result: any; error?: string }> = [];
 
   console.log(`🔧 [Tool] Executing ${toolCalls.length} tool call(s)`);
@@ -395,6 +395,7 @@ export async function tool(
     toolResultBlocks.push({
       type: 'tool_result',
       tool_use_id: id,
+      tool_name: name,
       content: toolResultContent,
     });
 
@@ -411,7 +412,7 @@ export async function tool(
   const textResponse = state.llmResponse?.textResponse || '';
   const cleanedText = cleanFileContentFromResponse(textResponse);
 
-  const assistantContent: any[] = [];
+  const assistantContent: import('../../../../../../core/ports/llm').MessageContentBlock[] = [];
 
   // Preserve thinking blocks for Anthropic API compatibility in multi-turn conversations.
   // When thinking is enabled, the assistant message must start with a thinking block.

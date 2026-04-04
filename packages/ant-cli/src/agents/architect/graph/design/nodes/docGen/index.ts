@@ -18,6 +18,7 @@
  *     - ui-tokens.json, ui-assets.json, ui-spec.json 생성
  */
 
+import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { DesignGraphState } from '../../state';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
@@ -510,8 +511,8 @@ function buildConversationHistory(
   thinkingSig: string,
   textResponse: string,
   hasToolCalls: boolean
-): Array<{ role: 'user' | 'assistant'; content: string | any[] }> {
-  let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
+): Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> {
+  let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
   
   if (state.conversationHistory && state.conversationHistory.length > 0) {
     // ✅ Tool loop: Extend existing history

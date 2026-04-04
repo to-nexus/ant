@@ -14,6 +14,9 @@ import {
   LLMInvokeResult,
   CacheableContent,
   ImageContentBlock,
+  MessageContentBlock,
+  ToolResultContentBlock,
+  ToolUseContentBlock,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetry } from '../../../core/utils/retry';
@@ -102,7 +105,7 @@ export class GeminiLLMClient implements LLMClient {
   }
 
   async *stream(
-    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -158,6 +161,7 @@ export class GeminiLLMClient implements LLMClient {
               id: `gemini-tool-${Date.now()}`,
               name: part.functionCall.name!,
               input: (part.functionCall.args as Record<string, any>) ?? {},
+              thoughtSignature: part.thoughtSignature,
             },
           };
         }
@@ -227,7 +231,7 @@ export class GeminiLLMClient implements LLMClient {
    * Extracts system instruction and builds content parts.
    */
   private convertMessages(
-    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>
   ): { systemInstruction: string | undefined; contents: any[] } {
     let systemInstruction: string | undefined;
     const contents: any[] = [];
@@ -249,7 +253,7 @@ export class GeminiLLMClient implements LLMClient {
     return { systemInstruction, contents };
   }
 
-  private extractText(content: string | CacheableContent[] | any[]): string {
+  private extractText(content: string | MessageContentBlock[]): string {
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
       return content
@@ -260,7 +264,7 @@ export class GeminiLLMClient implements LLMClient {
     return String(content);
   }
 
-  private convertContentToParts(content: string | CacheableContent[] | any[]): any[] {
+  private convertContentToParts(content: string | MessageContentBlock[]): any[] {
     if (typeof content === 'string') {
       return [{ text: content }];
     }
@@ -282,16 +286,45 @@ export class GeminiLLMClient implements LLMClient {
             data: imageBlock.source.data,
           },
         });
+      } else if (block.type === 'tool_use') {
+        const tb = block as ToolUseContentBlock;
+        parts.push({
+          functionCall: { name: tb.name, args: tb.input },
+          ...(tb.thoughtSignature ? { thoughtSignature: tb.thoughtSignature } : {}),
+        });
       } else if (block.type === 'tool_result') {
+        const tb = block as ToolResultContentBlock;
+        const textResult = this.extractToolResultText(tb.content);
         parts.push({
           functionResponse: {
-            name: block.tool_use_id || 'unknown',
-            response: { result: typeof block.content === 'string' ? block.content : JSON.stringify(block.content) },
+            name: tb.tool_name,
+            response: { result: textResult },
           },
         });
+        if (Array.isArray(tb.content)) {
+          for (const sub of tb.content) {
+            if (sub.type === 'image') {
+              parts.push({
+                inlineData: {
+                  mimeType: (sub as ImageContentBlock).source.media_type,
+                  data: (sub as ImageContentBlock).source.data,
+                },
+              });
+            }
+          }
+        }
       }
+      // 'thinking' blocks are Anthropic-specific; skip for Gemini
     }
 
     return parts;
+  }
+
+  private extractToolResultText(content: CacheableContent[] | string): string {
+    if (typeof content === 'string') return content;
+    return content
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map(b => b.text)
+      .join('\n');
   }
 }

@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
-import { AskGraphState, ConversationMessage, ContentBlock } from '../state.js';
+import { AskGraphState, ConversationMessage } from '../state.js';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';

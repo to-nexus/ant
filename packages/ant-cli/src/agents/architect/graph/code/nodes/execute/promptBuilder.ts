@@ -12,7 +12,7 @@ import { ArchitectGraphState } from "../../state";
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { compactAndPruneHistory } from "../../../../../../core/utils/historyManager";
 import { formatViolations } from "../shared/violationFormatter";
-import { CacheableContent } from "../../../../../../core/ports/llm";
+import { CacheableContent, MessageContentBlock } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
@@ -34,9 +34,9 @@ let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string }
  */
 export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   role: 'user' | 'assistant';
-  content: CacheableContent[];
+  content: MessageContentBlock[];
 }>> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
+  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
   
   // planText check (empty is normal for verification and explain tasks)
   if (state.planText) {
@@ -524,7 +524,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // Aggressive step 2: strip project context content blocks if still over
       if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
         console.warn(`⚠️  [Execute] Still over budget (${estimation.totalTokens.toLocaleString()}). Stripping project context block...`);
-        const contentBlocks = messages[0].content as CacheableContent[];
+        const contentBlocks = messages[0].content as MessageContentBlock[];
         // Block 2 (index 1) is project context — replace with minimal stub
         if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
           const original = contentBlocks[1].text;
@@ -553,9 +553,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
     if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
       console.warn(`⚠️  [Execute] First message over budget (no history). Stripping project context...`);
-      const contentBlocks = messages[0].content as CacheableContent[];
+      const contentBlocks = messages[0].content as MessageContentBlock[];
       if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
-        const original = contentBlocks[1].text;
+        const original = (contentBlocks[1] as { type: 'text'; text: string }).text;
         contentBlocks[1] = {
           ...contentBlocks[1],
           text: `[Project context omitted to fit token budget — use read_file and search_code tools to access codebase. Original size: ${original.length.toLocaleString()} chars]`

@@ -38,11 +38,60 @@ export type ImageContentBlock = {
 };
 
 /**
- * Content blocks for LLM messages.
- * Historically this was text-only for Anthropic prompt caching.
- * Now expanded to support multimodal image blocks.
+ * Content blocks for LLM messages (non-tool).
+ * Used by invoke/invokeWithUsage where tool calling is not involved.
  */
 export type CacheableContent = TextContentBlock | ImageContentBlock;
+
+/**
+ * Tool use content block — LLM requesting tool execution.
+ * Appears in assistant messages within conversation history.
+ */
+export type ToolUseContentBlock = {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, any>;
+  thoughtSignature?: string;
+};
+
+/**
+ * Tool result content block — result of executing a tool.
+ * Appears in user messages following an assistant tool_use.
+ *
+ * `content` may include ImageContentBlock for multimodal tool results
+ * (e.g. reading an image file for the LLM to analyze).
+ */
+export type ToolResultContentBlock = {
+  type: 'tool_result';
+  tool_use_id: string;
+  tool_name: string;
+  content: CacheableContent[] | string;
+  is_error?: boolean;
+};
+
+/**
+ * Thinking content block — Anthropic extended thinking.
+ * Preserved in conversation history so the API accepts thinking
+ * on subsequent turns. The signature field is required by the
+ * Anthropic API to validate unmodified thinking blocks.
+ */
+export type ThinkingContentBlock = {
+  type: 'thinking';
+  thinking: string;
+  signature?: string;
+};
+
+/**
+ * All content block types that can appear in LLM messages.
+ * Replaces the previous `any[]` escape hatch in stream() signatures.
+ */
+export type MessageContentBlock =
+  | TextContentBlock
+  | ImageContentBlock
+  | ToolUseContentBlock
+  | ToolResultContentBlock
+  | ThinkingContentBlock;
 
 /**
  * LLM Stream Event Types
@@ -106,6 +155,7 @@ export interface LLMStreamEvent {
     name: string;             // Tool name (e.g. "read_file", "delete_file", "run_command")
     input: Record<string, any>;  // Tool arguments
     type?: 'function' | 'command';  // Optional classification
+    thoughtSignature?: string;  // Gemini 3 thought signature (must be preserved in tool loop)
   };
   
   // ---- Error ----
@@ -169,22 +219,14 @@ export interface LLMClient {
   invokeWithUsage?(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<LLMInvokeResult>;
   
   /**
-   * 🎯 Unified streaming interface
-   * 
-   * Single stream method that handles:
-   * - Thinking blocks (Anthropic)
-   * - Tool calling (when tools provided)
-   * - Regular text generation
-   * - Prompt caching (Anthropic)
-   * 
-   * @param messages - Chat messages (content can be string, CacheableContent[], or tool results)
-   * @param options - Optional configuration
-   * @param options.tools - Available tools (enables tool calling)
-   * @param options.maxTokens - Maximum tokens to generate
-   * @returns AsyncIterable of structured events (thinking, text, tool_use, done)
+   * Unified streaming interface.
+   *
+   * Handles thinking blocks, tool calling, text generation, and prompt caching.
+   * Content accepts MessageContentBlock[] for tool-loop conversation history
+   * (tool_use, tool_result, thinking blocks) alongside CacheableContent[].
    */
   stream(
-    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;

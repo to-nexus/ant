@@ -246,16 +246,31 @@ Respond in valid JSON (no markdown fences, no explanation outside the JSON).
 
 ### Response Constraints (MECE by route)
 
-| Field | sketch/engrave | render | clarify | end |
-|-------|---------------|--------|---------|-----|
-| `basePrompt` | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
-| `variations[]` | REQUIRED (length = candidateCount) | FORBIDDEN | FORBIDDEN | FORBIDDEN |
-| `variationAxis` | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
-| `engineeredPrompt` | FORBIDDEN | REQUIRED | FORBIDDEN | FORBIDDEN |
-| `selectedDraftIndex` | FORBIDDEN | optional | FORBIDDEN | FORBIDDEN |
-| `clarifyQuestion` | FORBIDDEN | FORBIDDEN | REQUIRED | FORBIDDEN |
-| `reasoning` | REQUIRED | REQUIRED | REQUIRED | REQUIRED |
-| `aspectRatio` | REQUIRED | REQUIRED | FORBIDDEN | FORBIDDEN |
+| Field | sketch | engrave | render | clarify | end |
+|-------|--------|---------|--------|---------|-----|
+| `basePrompt` | REQUIRED | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
+| `variations[]` | REQUIRED (length = candidateCount) | REQUIRED (length = candidateCount) | FORBIDDEN | FORBIDDEN | FORBIDDEN |
+| `variationAxis` | REQUIRED | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
+| `engineeredPrompt` | FORBIDDEN | FORBIDDEN | REQUIRED | FORBIDDEN | FORBIDDEN |
+| `selectedDraftIndex` | optional | FORBIDDEN | optional | FORBIDDEN | FORBIDDEN |
+| `clarifyQuestion` | FORBIDDEN | FORBIDDEN | FORBIDDEN | REQUIRED | FORBIDDEN |
+| `reasoning` | REQUIRED | REQUIRED | REQUIRED | REQUIRED | REQUIRED |
+| `aspectRatio` | REQUIRED | REQUIRED | REQUIRED | FORBIDDEN | FORBIDDEN |
+
+### Draft Reference via Tools
+
+When draft images are available, you may use the provided tools to visually inspect them.
+
+**`selectedDraftIndex` determination**:
+- Parse from the user's text input (e.g., "draft 2" → index 1, 0-based)
+- If the user does not mention a specific draft, do NOT set `selectedDraftIndex`
+
+**Visual inspection purpose**:
+- When routing to `render` with a selected draft, inspect the draft's visual characteristics to write a more accurate `engineeredPrompt`
+- The tool exists to improve prompt quality, NOT to determine which draft was selected — that comes from the user's text
+
+**Constraint**: Do NOT set `selectedDraftIndex` without the user explicitly referencing a draft number in their message.
+**Constraint**: When a draft is selected for render, inspect it visually before writing the `engineeredPrompt` — a prompt written without observing the draft risks misrepresenting its characteristics.
 
 ### Variation Label Rules
 

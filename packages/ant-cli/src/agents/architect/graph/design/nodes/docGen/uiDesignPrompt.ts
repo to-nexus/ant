@@ -15,7 +15,7 @@
 
 import { DesignGraphState } from '../../state';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
-import { CacheableContent } from '../../../../../../core/ports/llm';
+import { CacheableContent, MessageContentBlock } from '../../../../../../core/ports/llm';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { buildSourceDocsForTask } from './sourceSelector';
@@ -34,7 +34,7 @@ import type { FigmaNodeSummary } from '@ant/shared';
  */
 export async function buildUiDesignMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
-  content: CacheableContent[];
+  content: MessageContentBlock[];
 }>> {
   const task = state.currentTask;
   
@@ -46,7 +46,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     console.log(`🎨 [DocGen] UI Design continuing with existing conversation (${conversationHistory.length} messages)`);
     
     // ✅ Code job pattern: Build fresh prompt + append history (skip initial user messages)
-    const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
+    const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
     
     // 1. Build fresh user prompt (always needed as first message)
     const freshPrompt = await buildUiDesignFreshPrompt(state);
@@ -88,7 +88,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
       } else {
         messages.push({
           role: msg.role as 'user' | 'assistant',
-          content: msg.content as CacheableContent[]
+          content: msg.content as MessageContentBlock[]
         });
       }
       isFirstMsg = false;

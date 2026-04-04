@@ -97,7 +97,7 @@ export interface DesignGraphState extends TaskArtifacts {
   
   conversationHistory?: Array<{
     role: 'user' | 'assistant';
-    content: string | any[];
+    content: string | import('../../../../core/ports/llm').MessageContentBlock[];
   }>;
   
   // ✅ Token usage (per-turn and job-level)
