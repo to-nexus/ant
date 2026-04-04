@@ -21,9 +21,11 @@ export default function HomePage() {
 
         <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="animate-fade-in-up">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 mb-8 rounded-full bg-emerald-950/40 border border-emerald-800/30 text-sm text-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              {t('home.badge')}
+            <div className="inline-flex items-center gap-4 mb-10">
+              <img src="/logo.png" alt="1 Ant" className="w-16 h-16 sm:w-20 sm:h-20 drop-shadow-[0_0_24px_rgba(16,185,129,0.15)]" />
+              <span className="text-2xl sm:text-3xl font-display font-bold text-white tracking-tight">
+                {t('home.brandPrefix')}<span className="text-orange-400">{t('home.brandHighlight')}</span>{t('home.brandSuffix')}
+              </span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display font-bold text-white leading-tight mb-6">

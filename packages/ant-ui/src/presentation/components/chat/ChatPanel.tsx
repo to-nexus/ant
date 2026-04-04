@@ -27,12 +27,12 @@ const BASE = import.meta.env.BASE_URL;
 
 const WATERMARK_MAP: Record<string, Record<WatermarkVariant, string>> = {
   planner: {
-    color: `${BASE}watermarks/planner-color.svg`,
-    mono: `${BASE}watermarks/planner-mono.svg`,
+    color: `${BASE}watermarks/planner-color.png`,
+    mono: `${BASE}watermarks/planner-mono.png`,
   },
   architect: {
-    color: `${BASE}watermarks/architect-color.svg`,
-    mono: `${BASE}watermarks/architect-mono.svg`,
+    color: `${BASE}watermarks/architect-color.png`,
+    mono: `${BASE}watermarks/architect-mono.png`,
   },
 };
 
@@ -223,7 +223,7 @@ export function ChatPanel({
             <div className="text-center max-w-sm">
               <WatermarkIcon
                 src={emptyStateWatermarkSrc}
-                size={56}
+                size={120}
                 className="mx-auto mb-4"
                 fallback={<div className="text-4xl mb-4">💬</div>}
               />
@@ -240,7 +240,7 @@ export function ChatPanel({
             <div className="text-center max-w-sm">
               <WatermarkIcon
                 src={emptyStateWatermarkSrc}
-                size={112}
+                size={120}
                 className="mx-auto mb-4 watermark-empty-icon"
                 fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon">✨</div>}
               />
@@ -260,7 +260,7 @@ export function ChatPanel({
             <div className="text-center max-w-sm">
               <WatermarkIcon
                 src={emptyStateWatermarkSrc}
-                size={112}
+                size={120}
                 className="mx-auto mb-4 watermark-empty-icon opacity-60"
                 fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon opacity-60">✨</div>}
               />

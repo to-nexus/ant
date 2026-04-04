@@ -68,6 +68,11 @@
     "hours": "{{count}}시간",
     "days": "{{count}}일"
   },
+  "brand": {
+    "prefix": "",
+    "highlight": "일개미",
+    "suffix": "와 함께"
+  },
   "serverDown": {
     "connecting": "서버 연결 시도중...",
     "title": "서버 연결 끊김",

@@ -41,6 +41,7 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
       toolResultBlocks.push({
         type: 'tool_result',
         tool_use_id: tc.id,
+        tool_name: tc.name,
         content: `Error: Unknown tool "${tc.name}"`,
       });
       continue;
@@ -59,6 +60,7 @@ export async function toolNode(state: PlanGraphState): Promise<Partial<PlanGraph
     toolResultBlocks.push({
       type: 'tool_result',
       tool_use_id: tc.id,
+      tool_name: tc.name,
       content: result,
     });
   }

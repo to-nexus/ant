@@ -155,8 +155,12 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
 }
 
 /**
- * Load the latest draft as a style reference for iterative sketching.
- * Only activated when previous drafts exist on disk.
+ * Load a draft as style reference for iterative sketching.
+ *
+ * Uses state.selectedDraftIndex when explicitly set.
+ * Returns undefined (no reference) when no explicit selection —
+ * prevents silently using the last draft as reference when the
+ * user did not request it.
  */
 function loadSketchReference(
   state: VisualGraphState
@@ -164,9 +168,20 @@ function loadSketchReference(
   const paths = state.availableDraftPaths;
   if (!paths || paths.length === 0) return undefined;
 
-  const latestPath = paths[paths.length - 1];
+  if (state.selectedDraftIndex == null) {
+    console.log('✏️ [Visual:Sketch] No explicit draft selection — generating without style reference');
+    return undefined;
+  }
+
+  const index = state.selectedDraftIndex;
+  if (index < 0 || index >= paths.length) {
+    console.warn(`✏️ [Visual:Sketch] selectedDraftIndex=${index} out of range (${paths.length} drafts)`);
+    return undefined;
+  }
+
+  const targetPath = paths[index];
   try {
-    const fullPath = path.isAbsolute(latestPath) ? latestPath : path.join(state.featurePath, latestPath);
+    const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(state.featurePath, targetPath);
     if (!fs.existsSync(fullPath)) {
       console.warn(`✏️ [Visual:Sketch] Reference draft not found: ${fullPath}`);
       return undefined;
@@ -178,7 +193,7 @@ function loadSketchReference(
       : ext === '.webp' ? 'image/webp'
       : 'image/jpeg';
 
-    console.log(`✏️ [Visual:Sketch] Using latest draft as style reference: ${fullPath} (${data.length} bytes)`);
+    console.log(`✏️ [Visual:Sketch] Using draft #${index} as style reference: ${fullPath} (${data.length} bytes)`);
     return { data, mimeType: mimeType as any };
   } catch (err: any) {
     console.warn(`✏️ [Visual:Sketch] Failed to load reference draft: ${err.message}`);

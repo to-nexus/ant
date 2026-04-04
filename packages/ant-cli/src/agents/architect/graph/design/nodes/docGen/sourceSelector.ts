@@ -12,7 +12,7 @@
  *   - Large projects: inject file index + provide read_source_doc tool
  */
 
-import type { LLMClient, ToolDefinition, LLMStreamEvent } from '../../../../../../core/ports/llm';
+import type { LLMClient, ToolDefinition, LLMStreamEvent, MessageContentBlock } from '../../../../../../core/ports/llm';
 import { generateFileOutline } from '../../../../../../core/utils/fileOutline';
 import type { TaskTokenUsage } from '@ant/shared';
 
@@ -382,7 +382,7 @@ export interface DecomposeToolLoopOptions {
  */
 export async function decomposeWithToolLoop(
   llm: LLMClient,
-  messages: Array<{ role: string; content: string | any[] }>,
+  messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
   tools: ToolDefinition[],
   toolHandler: (name: string, args: Record<string, any>) => string,
   options: DecomposeToolLoopOptions,
@@ -460,7 +460,7 @@ export async function decomposeWithToolLoop(
       }
 
       console.log(`   📄 ${tc.name}(${JSON.stringify(tc.input)}) → ${result.length.toLocaleString()} chars`);
-      toolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: result });
+      toolResults.push({ type: 'tool_result', tool_use_id: tc.id, tool_name: tc.name, content: result });
     }
 
     allMessages.push(

@@ -84,10 +84,7 @@ Adjust your prompt or routing strategy to avoid repeating this failure. If the e
 
 ## Available Drafts
 
-{{availableDraftCount}} draft image(s) from previous round(s) are available on disk as visual reference.
-
-When routing to `render`, you SHOULD set `selectedDraftIndex` (0-based) to use one as visual reference — especially during refinement.
-If the user did not explicitly pick a draft, select the most recent one (index {{lastDraftIndex}}).
+{{availableDraftCount}} draft image(s) from previous round(s) are available. You can inspect them visually via the provided tools to inform your prompt decisions.
 
 {{/if}}
 

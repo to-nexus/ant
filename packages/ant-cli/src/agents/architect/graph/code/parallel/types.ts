@@ -136,7 +136,7 @@ export type WorkerGraphBuilder = (includeInstallValidate: boolean) => {
  */
 export interface WorkerSnapshot {
   planText?: string;
-  conversationHistory?: any[];
+  conversationHistory?: Array<{ role: string; content: string | import('../../../../../core/ports/llm').MessageContentBlock[] }>;
   projectCodeContext?: {
     source: string;
     filePaths: string[];

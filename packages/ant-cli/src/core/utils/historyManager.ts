@@ -14,10 +14,11 @@
  */
 
 import { TokenBudgetManager } from './tokenBudget';
+import type { MessageContentBlock } from '../ports/llm';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
-  content: string | any[];
+  content: string | MessageContentBlock[];
 }
 
 export interface HistoryPruneConfig {
@@ -550,8 +551,8 @@ export function autoCompactHistory(
   tokenManager?: TokenBudgetManager
 ): { compacted: ConversationMessage[]; wasCompacted: boolean; summaryTokens: number } {
   const estimateContent = tokenManager
-    ? (c: string | any[]) => tokenManager.estimateMessageContent(c)
-    : (c: string | any[]) => {
+    ? (c: string | MessageContentBlock[]) => tokenManager.estimateMessageContent(c)
+    : (c: string | MessageContentBlock[]) => {
         if (typeof c === 'string') return Math.ceil(c.length / 3.5);
         return Math.ceil(JSON.stringify(c).length / 3.5);
       };

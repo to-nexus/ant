@@ -6,6 +6,7 @@ import { cn } from '@/shared/utils/design-system';
 import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { isValidName, delay, generateProjectName, generateFeatureName } from '@/presentation/components/ProjectWizardModal/constants';
+import { BrandHero } from '@/presentation/components/common/BrandHero';
 
 // ─── Ambient Canvas ─────────────────────────────────────────────────
 // Renders soft floating particles that drift upward — subtle "energy" feel.
@@ -410,11 +411,12 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
 
       {/* === Centered content === */}
       <div className="relative flex-1 flex flex-col items-center justify-center px-6 pb-24 z-10">
-        {/* Prompt text */}
+        {/* Brand hero + Prompt text */}
         <div
           className="text-center mb-8"
           style={{ animation: 'qsFadeInUp 0.7s ease-out both' }}
         >
+          <BrandHero logoSize={72} className="justify-center mb-6" />
           <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-3">
             {t('quickstart.prompt')}
           </h2>

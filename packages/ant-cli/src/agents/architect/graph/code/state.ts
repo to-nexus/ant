@@ -310,7 +310,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ NEW: Conversation History (멀티턴 대화)
   conversationHistory?: Array<{
     role: 'user' | 'assistant';
-    content: string | any[];     // Anthropic 형식 지원
+    content: string | import('../../../../core/ports/llm').MessageContentBlock[];
   }>;
 
   /** Per-task LLM call counter (reset on task transition, used for debug logging) */
@@ -327,7 +327,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   /** execute verification task fix 완료 후 plan 재진단 트리거 */
   _awaitingFinalVerify?: boolean;
   /** Plan-phase conversation only (separate from execute conversationHistory) */
-  planConversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
+  planConversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | import('../../../../core/ports/llm').MessageContentBlock[] }>;
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열

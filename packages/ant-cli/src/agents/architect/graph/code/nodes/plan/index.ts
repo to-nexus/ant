@@ -19,6 +19,7 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
+import type { MessageContentBlock } from "../../../../../../core/ports/llm";
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
@@ -51,7 +52,7 @@ function stripMarkdownFences(text: string): string {
  */
 function enrichContextFromPlanToolLoop(
   projectCodeContext: any,
-  planConversationHistory: Array<{ role: string; content: string | any[] }> | undefined,
+  planConversationHistory: Array<{ role: string; content: string | MessageContentBlock[] }> | undefined,
 ): any {
   if (!projectCodeContext || !planConversationHistory?.length) return projectCodeContext;
 

@@ -7,6 +7,7 @@
 
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
 import { TokenUsage } from '../../../common/graph/llmHelpers.js';
+import type { MessageContentBlock } from '../../../../core/ports/llm.js';
 
 /**
  * Tool call record for debugging
@@ -20,34 +21,11 @@ export interface AskToolCall {
 }
 
 /**
- * Anthropic native content block types
- */
-export interface TextContent {
-  type: 'text';
-  text: string;
-}
-
-export interface ToolUseContent {
-  type: 'tool_use';
-  id: string;
-  name: string;
-  input: Record<string, any>;
-}
-
-export interface ToolResultContent {
-  type: 'tool_result';
-  tool_use_id: string;
-  content: string;
-}
-
-export type ContentBlock = TextContent | ToolUseContent | ToolResultContent;
-
-/**
- * Anthropic native message format (same as Code Job)
+ * Message format for conversation history (same as Code Job)
  */
 export interface ConversationMessage {
   role: 'user' | 'assistant';
-  content: ContentBlock[] | string;
+  content: string | MessageContentBlock[];
 }
 
 /**

@@ -6,6 +6,7 @@
  * Supports batch execution of multiple tool calls.
  */
 
+import type { ToolResultContentBlock } from '../../../../../core/ports/llm.js';
 import { AskGraphState, AskToolCall, ConversationMessage } from '../state.js';
 import { executeTool } from '../tools.js';
 
@@ -22,7 +23,7 @@ export async function toolNode(state: AskGraphState): Promise<Partial<AskGraphSt
     return { pendingToolCalls: [] };
   }
   
-  const toolResultBlocks: any[] = [];
+  const toolResultBlocks: ToolResultContentBlock[] = [];
   const toolCallRecords: AskToolCall[] = [];
 
   if (DEBUG) {
@@ -64,6 +65,7 @@ export async function toolNode(state: AskGraphState): Promise<Partial<AskGraphSt
     toolResultBlocks.push({
       type: 'tool_result',
       tool_use_id: tc.id,
+      tool_name: tc.name,
       content: toolResultContent,
     });
   }
