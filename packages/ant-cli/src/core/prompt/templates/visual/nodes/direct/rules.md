@@ -25,6 +25,7 @@ When the user typed free-text feedback on draft candidates (no final image exist
 - `sketch`: user wants a new set of drafts (rejects all, requests direction change, requests style variations, references a draft's style for new exploration)
 - `render`: user explicitly picks a specific draft AND says to finalize it (with optional minor modifications)
 - Default to `sketch` — typing feedback instead of clicking a draft signals desire for more exploration
+- **Constraint**: When routing to `render` from draft feedback, the `engineeredPrompt` MUST preserve the selected draft's variation direction. Substituting a different style than the one used to generate that draft is a defect.
 
 ### Refactor Mode Routing
 

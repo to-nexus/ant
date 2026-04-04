@@ -13,6 +13,13 @@ The user is providing feedback on {{availableDraftCount}} draft candidates. NO f
 Previous base prompt (shared by all drafts):
 {{{lastEngineeredPrompt}}}
 
+{{#if draftVariationList}}
+Each draft was generated from the base prompt above plus a unique variation suffix:
+{{#each draftVariationList}}
+- Draft {{this.number}}: {{this.label}} — `{{this.prompt}}`
+{{/each}}
+{{/if}}
+
 Your routing decision is constrained to exactly **TWO options**:
 
 1. **`sketch`** — Generate a NEW set of draft candidates

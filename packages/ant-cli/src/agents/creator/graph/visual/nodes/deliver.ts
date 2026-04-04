@@ -182,6 +182,7 @@ async function deliverFinalImage(
     basePrompt: undefined,
     draftVariations: undefined,
     variationAxis: undefined,
+    availableDraftPaths: undefined,
     _phaseTimings: { ...state._phaseTimings, deliver: Date.now() - phaseStart },
   };
 }
@@ -248,9 +249,13 @@ async function deliverDraftImages(
 
   await notifyFileTree(state);
 
+  const variationSummary = state.draftVariations?.length
+    ? `\nVariations: ${state.draftVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
+    : '';
+
   const chapterMarker: VisualConversationEntry = {
     role: 'system',
-    content: `[${draftEntries.length} draft candidates saved for selection]`,
+    content: `[${draftEntries.length} draft candidates saved for selection]${variationSummary}`,
     timestamp: new Date().toISOString(),
     metadata: {
       chapterSummary: `Generated ${draftEntries.length} drafts from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
@@ -333,6 +338,7 @@ async function deliverSvgDrafts(
       basePrompt: undefined,
       draftVariations: undefined,
       variationAxis: undefined,
+      availableDraftPaths: undefined,
       _phaseTimings: { ...state._phaseTimings, deliver: Date.now() - phaseStart },
     };
   }
@@ -393,9 +399,13 @@ async function deliverSvgDrafts(
 
   await notifyFileTree(state);
 
+  const svgVariationSummary = state.draftVariations?.length
+    ? `\nVariations: ${state.draftVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
+    : '';
+
   const chapterMarker: VisualConversationEntry = {
     role: 'system',
-    content: `[${draftEntries.length} SVG draft candidates saved for selection]`,
+    content: `[${draftEntries.length} SVG draft candidates saved for selection]${svgVariationSummary}`,
     timestamp: new Date().toISOString(),
     metadata: {
       chapterSummary: `Generated ${draftEntries.length} SVG drafts from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
