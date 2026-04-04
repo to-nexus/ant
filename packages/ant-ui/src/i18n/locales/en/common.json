@@ -68,6 +68,11 @@
     "hours": "{{count}}h",
     "days": "{{count}}d"
   },
+  "brand": {
+    "prefix": "With ",
+    "highlight": "1 ANT",
+    "suffix": ""
+  },
   "serverDown": {
     "connecting": "Trying to reconnect to server...",
     "title": "Server Disconnected",

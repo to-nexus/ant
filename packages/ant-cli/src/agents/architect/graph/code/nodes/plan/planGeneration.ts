@@ -8,7 +8,7 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
-import { TextContentBlock } from "../../../../../../core/ports/llm";
+import { TextContentBlock, MessageContentBlock } from "../../../../../../core/ports/llm";
 import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
@@ -451,7 +451,7 @@ export const PLAN_TOOL_LOOP_MAX = 15;
 
 export type PlanWithToolsResult =
   | { planText: string }
-  | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; planConversationHistory: Array<{ role: 'user' | 'assistant'; content: string | any[] }>; _planExploring: true }
+  | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; planConversationHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>; _planExploring: true }
   | null;
 
 /**
@@ -459,7 +459,7 @@ export type PlanWithToolsResult =
  */
 export async function runPlanLLMWithTools(
   state: ArchitectGraphState,
-  messages: Array<{ role: 'user' | 'assistant'; content: string | any[] }>,
+  messages: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>,
   task: CodeTask
 ): Promise<PlanWithToolsResult> {
   const llm = state.deps?.llm as LLMClient | undefined;
@@ -648,7 +648,7 @@ export async function runPlanLLMWithTools(
  */
 export async function finalizePlanFromExploration(
   state: ArchitectGraphState,
-  history: Array<{ role: 'user' | 'assistant'; content: string | any[] }>,
+  history: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>,
   task: CodeTask,
 ): Promise<string | null> {
   const llm = state.deps?.llm as LLMClient | undefined;
@@ -670,7 +670,7 @@ export async function finalizePlanFromExploration(
       'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
       'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.';
 
-  const finalizeMessage: Array<{ role: 'user' | 'assistant'; content: string | any[] }> = [
+  const finalizeMessage: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> = [
     ...history,
     {
       role: 'user' as const,

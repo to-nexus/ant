@@ -91,7 +91,7 @@ export function SiteNavBar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <img src="/logo-dark.svg" alt="1 Ant" className="w-7 h-7" />
+            <img src="/logo.png" alt="1 Ant" className="w-8 h-8" />
             <span className="text-lg font-display font-bold text-white tracking-tight">
               1 Ant
             </span>

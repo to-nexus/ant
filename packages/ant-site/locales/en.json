@@ -19,7 +19,9 @@
     "privacy": "Privacy Policy"
   },
   "home": {
-    "badge": "Beta — All features free",
+    "brandPrefix": "With ",
+    "brandHighlight": "1 ANT",
+    "brandSuffix": "",
     "title1": "Ideas to Specs.",
     "title2": "Specs to Product.",
     "desc": "AI agents handle the entire development cycle — from PRD writing and design to code generation and live preview.",

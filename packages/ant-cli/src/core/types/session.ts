@@ -7,6 +7,7 @@
 
 import type { AgentJob } from './agent';
 import type { TaskTokenUsage, JobTiming, InterruptionDetails } from '@ant/shared';
+import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
 export type { InterruptionReason, InterruptionDetails } from '@ant/shared';
@@ -132,7 +133,7 @@ export interface SessionState {
   
   // Execution Context
   planText?: string;
-  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | any[] }>;
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
   files?: Array<{ path: string; content: string }>;
   filesToDelete?: string[];
   

@@ -185,7 +185,11 @@ function loadReferenceImage(
   const index = explicitIndex ?? (draftPaths.length - 1);
 
   if (explicitIndex == null) {
-    console.log(`🎨 [Visual:Render] Auto-selecting latest draft #${index} as reference (no explicit selection)`);
+    console.warn(
+      `🎨 [Visual:Render] WARNING: No explicit draft selection (selectedDraftIndex is null). ` +
+      `Auto-selecting last draft #${index} as fallback. ` +
+      `This suggests the direct LLM did not parse a specific draft number from user input.`
+    );
   }
 
   const draftPath = draftPaths[index];

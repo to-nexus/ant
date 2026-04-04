@@ -430,12 +430,10 @@ describe('Template Smoke Tests', () => {
     const withDrafts = await adapter.render('visual/nodes/direct/context', {
       ...SAMPLE_VARS,
       availableDraftCount: 3,
-      lastDraftIndex: 2,
     });
     expect(withDrafts).toContain('Available Drafts');
     expect(withDrafts).toContain('3 draft image');
-    expect(withDrafts).toContain('selectedDraftIndex');
-    expect(withDrafts).toContain('index 2');
+    expect(withDrafts).toContain('via the provided tools');
 
     const withoutDrafts = await adapter.render('visual/nodes/direct/context', {
       ...SAMPLE_VARS,

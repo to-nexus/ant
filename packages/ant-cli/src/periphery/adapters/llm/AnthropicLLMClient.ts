@@ -7,7 +7,7 @@
 
 // @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
+import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent, MessageContentBlock } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
 
@@ -152,7 +152,7 @@ export class AnthropicLLMClient implements LLMClient {
    * ✅ Retries on overloaded_error and api_error
    */
   async *stream(
-    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -177,7 +177,7 @@ export class AnthropicLLMClient implements LLMClient {
    * Internal streaming implementation with prompt caching support
    */
   private async *_streamInternal(
-    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -236,7 +236,7 @@ export class AnthropicLLMClient implements LLMClient {
       } : {}),
       messages: userMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
-        content: m.content,  // API directly accepts CacheableContent[]
+        content: m.content as any,
       })),
       ...(options?.tools && options.tools.length > 0 ? {
         tools: options.tools.map(t => ({

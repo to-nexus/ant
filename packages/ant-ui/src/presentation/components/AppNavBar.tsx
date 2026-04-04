@@ -188,7 +188,7 @@ export function AppNavBar({}: AppNavBarProps) {
           <div className="flex items-center space-x-1.5 sm:space-x-3 min-w-0">
             <a href="/" className="flex items-center space-x-1.5 sm:space-x-2 hover:opacity-80 transition-opacity">
               <img 
-                src={`${import.meta.env.BASE_URL}${theme === 'dark' ? 'logo-dark.svg' : 'logo-light.svg'}`}
+                src={`${import.meta.env.BASE_URL}logo.png`}
                 alt={t('brand.logoAlt')} 
                 className="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0" 
               />

@@ -8,9 +8,11 @@
  * 
  * 설계 원칙:
  * - Conservative estimation (실제보다 약간 많게 추정)
- * - Anthropic message format 지원 (string | any[])
+ * - Anthropic message format 지원 (string | MessageContentBlock[])
  * - Zero dependencies on LLM client
  */
+
+import type { MessageContentBlock } from '../ports/llm';
 
 export interface TokenAreaBudgets {
   systemPrompt: number;         // System prompt + rules + profile
@@ -86,10 +88,10 @@ export class TokenBudgetManager {
    * - string
    * - array of { type: 'text', text: string }
    * - array of { type: 'tool_use', ... }
-   * - array of { type: 'tool_result', content: string | any[] }
+   * - array of { type: 'tool_result', content: CacheableContent[] | string }
    * - array of { type: 'image', source: { data: string } }
    */
-  estimateMessageContent(content: string | any[]): number {
+  estimateMessageContent(content: string | MessageContentBlock[]): number {
     if (typeof content === 'string') {
       return this.estimateTokens(content);
     }
@@ -137,7 +139,7 @@ export class TokenBudgetManager {
   /**
    * 전체 메시지 배열의 토큰 추정
    */
-  estimateMessages(messages: Array<{ role: string; content: string | any[] }>): TokenEstimation {
+  estimateMessages(messages: Array<{ role: string; content: string | MessageContentBlock[] }>): TokenEstimation {
     let systemPrompt = 0;
     let conversationHistory = 0;
     let currentMessage = 0;
@@ -186,7 +188,7 @@ export class TokenBudgetManager {
   /**
    * 토큰 예산 체크 및 로깅
    */
-  checkBudget(messages: Array<{ role: string; content: string | any[] }>): TokenEstimation {
+  checkBudget(messages: Array<{ role: string; content: string | MessageContentBlock[] }>): TokenEstimation {
     const estimation = this.estimateMessages(messages);
     
     console.log(`\n📊 [TokenBudget] Estimation:`);

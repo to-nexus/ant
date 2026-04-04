@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     siteName: '1 Ant',
     locale: 'ko_KR',
   },
-  icons: { icon: '/favicon.svg' },
+  icons: { icon: '/favicon.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

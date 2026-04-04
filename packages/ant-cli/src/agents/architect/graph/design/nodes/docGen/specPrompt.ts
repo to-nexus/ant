@@ -12,7 +12,7 @@
  */
 
 import { DesignGraphState } from '../../state';
-import { CacheableContent } from '../../../../../../core/ports/llm';
+import { CacheableContent, MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildSourceDocsForTask } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
@@ -49,9 +49,9 @@ async function renderSpecSystemPrompt(
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
-  content: CacheableContent[];
+  content: MessageContentBlock[];
 }>> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: CacheableContent[] }> = [];
+  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
   const task = state.currentTask;
   const targetFile = task?.targetFile || 'spec-feature.md';
   const directive = state.overrideDirective || state.directive || '';

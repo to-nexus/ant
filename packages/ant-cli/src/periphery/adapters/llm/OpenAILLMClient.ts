@@ -6,7 +6,17 @@
  */
 
 import OpenAI from 'openai';
-import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
+import {
+  LLMClient,
+  LLMStreamEvent,
+  ToolDefinition,
+  LLMInvokeResult,
+  CacheableContent,
+  MessageContentBlock,
+  ToolUseContentBlock,
+  ToolResultContentBlock,
+  ImageContentBlock,
+} from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
 
@@ -110,7 +120,7 @@ export class OpenAILLMClient implements LLMClient {
    * ✅ Retries on overloaded_error and api_error
    */
   async *stream(
-    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
@@ -133,71 +143,40 @@ export class OpenAILLMClient implements LLMClient {
    * Internal streaming implementation
    */
   private async *_streamInternal(
-    messages: Array<{ role: string; content: string | CacheableContent[] | any[] }>,
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
-    // ✅ LOG: Actual API call with model name
     const toolsCount = options?.tools?.length || 0;
     console.log(`🔥 [API CALL] provider=openai model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount}`);
     
-    // ✅ Check if this is a Codex model that requires /v1/responses API
     const isCodexModel = this.modelName.includes('codex') || this.modelName.startsWith('gpt-5');
+    const openAIMessages = this.convertToOpenAIMessages(messages);
     
-    const toDataUrl = (img: any): string => {
-      const mediaType = img?.source?.media_type;
-      const data = img?.source?.data;
-      if (!mediaType || !data) throw new Error(`[OpenAILLMClient] Invalid image block (missing media_type/data)`);
-      return `data:${mediaType};base64,${data}`;
-    };
+    const toolsConfig = options?.tools?.length ? {
+      tools: options.tools.map(t => ({
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.input_schema,
+        },
+      })),
+    } : {};
 
-    const normalizeChatContent = (content: any): any => {
-      if (typeof content === 'string') return content;
-      if (!Array.isArray(content)) return content;
-
-      const hasImage = content.some((c: any) => c?.type === 'image');
-      if (!hasImage) {
-        // If it's CacheableContent[] text blocks, join into a single string
-        if (content.every((c: any) => c?.type === 'text')) {
-          return content.map((c: any) => c.text).join('');
-        }
-        return content;
-      }
-
-      // Multimodal parts (chat.completions)
-      return content.map((c: any) => {
-        if (c?.type === 'text') return { type: 'text', text: c.text };
-        if (c?.type === 'image') return { type: 'image_url', image_url: { url: toDataUrl(c) } };
-        return { type: 'text', text: String(c) };
-      });
-    };
-    
     if (isCodexModel) {
-      // Use newer responses API for Codex models.
-      // NOTE: If multimodal blocks are present, we fall back to chat.completions for now.
-      // Reason: responses API payload shape differs across SDK versions; chat.completions multimodal is stable here.
-      const hasImage = messages.some(m => Array.isArray(m.content) && (m.content as any[]).some((c: any) => c?.type === 'image'));
+      const hasImage = messages.some(m =>
+        Array.isArray(m.content) && m.content.some(c => c.type === 'image')
+      );
       if (hasImage) {
         console.warn(`⚠️  [OpenAILLMClient] Multimodal input detected. Falling back to chat.completions stream for model=${this.modelName}.`);
         const stream = await this.client.chat.completions.create({
           model: this.modelName,
-          messages: messages.map(m => ({
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: normalizeChatContent(m.content),
-          })),
-          ...(options?.tools && options.tools.length > 0 ? {
-            tools: options.tools.map(t => ({
-              type: 'function' as const,
-              function: {
-                name: t.name,
-                description: t.description,
-                parameters: t.input_schema,
-              },
-            })),
-          } : {}),
+          messages: openAIMessages,
+          ...toolsConfig,
           temperature: 0.7,
           max_tokens: options?.maxTokens || 16000,
           stream: true,
@@ -206,55 +185,149 @@ export class OpenAILLMClient implements LLMClient {
         return;
       }
 
-      // Text-only: keep existing responses API usage
       const stream = await (this.client as any).responses.create({
         model: this.modelName,
-        messages: messages.map(m => ({
-          role: m.role as 'user' | 'assistant' | 'system',
-          content: normalizeChatContent(m.content),
-        })),
-        ...(options?.tools && options.tools.length > 0 ? {
-          tools: options.tools.map(t => ({
-            type: 'function' as const,
-            function: {
-              name: t.name,
-              description: t.description,
-              parameters: t.input_schema,
-            },
-          })),
-        } : {}),
+        messages: openAIMessages,
+        ...toolsConfig,
         temperature: 0.7,
         max_tokens: options?.maxTokens || 16000,
         stream: true,
       });
-      
-      // Process responses API stream (similar format to chat completions)
       yield* this._processResponsesStream(stream);
     } else {
-      // Use standard chat completions API
       const stream = await this.client.chat.completions.create({
         model: this.modelName,
-        messages: messages.map(m => ({
-          role: m.role as 'user' | 'assistant' | 'system',
-          content: normalizeChatContent(m.content),
-        })),
-        ...(options?.tools && options.tools.length > 0 ? {
-          tools: options.tools.map(t => ({
-            type: 'function' as const,
-            function: {
-              name: t.name,
-              description: t.description,
-              parameters: t.input_schema,
-            },
-          })),
-        } : {}),
+        messages: openAIMessages,
+        ...toolsConfig,
         temperature: 0.7,
         max_tokens: options?.maxTokens || 16000,
         stream: true,
       });
-      
       yield* this._processChatCompletionsStream(stream);
     }
+  }
+
+  /**
+   * Convert unified MessageContentBlock[] messages to OpenAI's message format.
+   *
+   * OpenAI requires:
+   * - Assistant tool_use → `tool_calls` property on assistant message
+   * - Tool results → separate messages with `role: 'tool'`
+   * - Images in tool results → appended as a user message with image_url parts
+   * - Thinking blocks → stripped (OpenAI has no equivalent)
+   */
+  private convertToOpenAIMessages(
+    messages: Array<{ role: string; content: string | MessageContentBlock[] }>
+  ): any[] {
+    const result: any[] = [];
+
+    for (const msg of messages) {
+      if (typeof msg.content === 'string') {
+        result.push({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+        });
+        continue;
+      }
+
+      if (!Array.isArray(msg.content)) {
+        result.push({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: String(msg.content),
+        });
+        continue;
+      }
+
+      const blocks = msg.content;
+      const hasToolUse = blocks.some(b => b.type === 'tool_use');
+      const hasToolResult = blocks.some(b => b.type === 'tool_result');
+
+      if (msg.role === 'assistant' && hasToolUse) {
+        const textParts = blocks.filter(b => b.type === 'text').map(b => (b as { type: 'text'; text: string }).text).join('');
+        const toolCalls = blocks
+          .filter((b): b is ToolUseContentBlock => b.type === 'tool_use')
+          .map(b => ({
+            id: b.id,
+            type: 'function' as const,
+            function: { name: b.name, arguments: JSON.stringify(b.input) },
+          }));
+
+        result.push({
+          role: 'assistant' as const,
+          content: textParts || null,
+          tool_calls: toolCalls,
+        });
+      } else if (hasToolResult) {
+        const imagePartsForFollowUp: any[] = [];
+
+        for (const block of blocks) {
+          if (block.type === 'tool_result') {
+            const tb = block as ToolResultContentBlock;
+            const textContent = typeof tb.content === 'string'
+              ? tb.content
+              : tb.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('\n');
+
+            result.push({
+              role: 'tool' as const,
+              tool_call_id: tb.tool_use_id,
+              content: textContent,
+            });
+
+            if (Array.isArray(tb.content)) {
+              for (const sub of tb.content) {
+                if (sub.type === 'image') {
+                  const img = sub as ImageContentBlock;
+                  imagePartsForFollowUp.push({
+                    type: 'image_url',
+                    image_url: { url: `data:${img.source.media_type};base64,${img.source.data}` },
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        if (imagePartsForFollowUp.length > 0) {
+          result.push({
+            role: 'user' as const,
+            content: [
+              { type: 'text', text: 'The tool returned the following image(s) for visual inspection:' },
+              ...imagePartsForFollowUp,
+            ],
+          });
+        }
+      } else {
+        result.push({
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: this.convertBlocksToOpenAIParts(blocks),
+        });
+      }
+    }
+
+    return result;
+  }
+
+  private convertBlocksToOpenAIParts(blocks: MessageContentBlock[]): any {
+    const hasImage = blocks.some(b => b.type === 'image');
+    const textBlocks = blocks.filter(b => b.type === 'text');
+
+    if (!hasImage) {
+      return textBlocks.map(b => (b as { type: 'text'; text: string }).text).join('');
+    }
+
+    const parts: any[] = [];
+    for (const block of blocks) {
+      if (block.type === 'text') {
+        parts.push({ type: 'text', text: (block as { type: 'text'; text: string }).text });
+      } else if (block.type === 'image') {
+        const img = block as ImageContentBlock;
+        parts.push({
+          type: 'image_url',
+          image_url: { url: `data:${img.source.media_type};base64,${img.source.data}` },
+        });
+      }
+    }
+    return parts;
   }
   
   /**
