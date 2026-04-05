@@ -1,10 +1,10 @@
-import { Session, SessionTurn, SessionArtifacts } from "../types";
+import { Session, SessionRun, SessionArtifacts } from "../types";
 import { SessionableJobType } from '@ant/shared';
 
 /**
  * Session Port
  * 
- * Manages feature development sessions with turn-by-turn history.
+ * Manages feature development sessions with run-by-run history.
  * Sessions are stored in the workspace directory structure:
  * workspace/{project}/{feature}/sessions/{agent}/{job}.json
  * 
@@ -33,13 +33,13 @@ export interface SessionPort {
   save(session: Session, job: SessionableJobType): Promise<void>;
   
   /**
-   * Add a new turn to the session
+   * Add a new run to the session
    * @param project - Project name
    * @param feature - Feature name
    * @param job - Sessionable job type
-   * @param turn - Turn data to add
+   * @param run - Run data to add
    */
-  addTurn(project: string, feature: string, job: SessionableJobType, turn: SessionTurn): Promise<void>;
+  addRun(project: string, feature: string, job: SessionableJobType, run: SessionRun): Promise<void>;
   
   /**
    * Update session artifacts
@@ -51,13 +51,13 @@ export interface SessionPort {
   updateArtifacts(project: string, feature: string, job: SessionableJobType, artifacts: Partial<SessionArtifacts>): Promise<void>;
   
   /**
-   * Get the last turn from the session
+   * Get the last run from the session
    * @param project - Project name
    * @param feature - Feature name
    * @param job - Sessionable job type
-   * @returns Last turn or null if session is empty
+   * @returns Last run or null if session is empty
    */
-  getLastTurn(project: string, feature: string, job: SessionableJobType): Promise<SessionTurn | null>;
+  getLastRun(project: string, feature: string, job: SessionableJobType): Promise<SessionRun | null>;
   
   /**
    * Check if a session exists

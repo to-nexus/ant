@@ -10,6 +10,7 @@
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 import { ConversationEntry } from '../../../../core/types/session';
+import type { PromptPort } from '../../../../core/ports/prompt';
 
 export interface PlanGraphState {
   // Input
@@ -59,6 +60,7 @@ export interface PlanGraphState {
     kanbanUpdate?: any;
     fileTreeUpdate?: any;
     workflowUpdate?: any;
+    promptPort?: PromptPort;
     /** Mutable shared reference for SIGTERM handler access to latest graph state */
     stateSnapshot?: {
       conversationHistory: Array<{ role: string; content: any }>;

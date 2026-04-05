@@ -236,17 +236,17 @@ export interface ArchitectGraphState extends TaskArtifacts {
   };
   gitPort?: GitPort;  // For runner to use after graph execution
   
-  // ✅ Session Context (compressed for LLM)
+  // Session Context (compressed for LLM)
   sessionContext?: {
-    recentTurns: Array<{
-      turnId: number;
+    recentRuns: Array<{
+      runId: number;
       directive: string;
       mode: string;
       output: string;
     }>;
     summary?: string;
-    totalTurns: number;
-    currentTurn: number;
+    totalRuns: number;
+    currentRun: number;
     currentMode: string;
     windowSize: number;
     compressionRatio: number;

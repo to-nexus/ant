@@ -179,13 +179,13 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
       }
     }
     
-    // 5c. Load recent turn summaries (fallback context for non-conversation runs)
-    const turns = sessionData.turns || [];
-    if (turns.length > 0) {
-      recentTurnSummaries = turns.slice(-3).map((t: any) => 
-        `[Turn ${t.turnId}] ${t.input?.summary?.substring(0, 100) || 'N/A'}`
+    // 5c. Load recent run summaries (fallback context for non-conversation runs)
+    const runs = sessionData.runs || [];
+    if (runs.length > 0) {
+      recentTurnSummaries = runs.slice(-3).map((t: any) => 
+        `[Run ${t.runId}] ${t.input?.summary?.substring(0, 100) || 'N/A'}`
       );
-      console.log(`   Session: ${recentTurnSummaries?.length ?? 0} recent turns loaded`);
+      console.log(`   Session: ${recentTurnSummaries?.length ?? 0} recent runs loaded`);
     }
   } catch {
     // No session history

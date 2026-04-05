@@ -1,4 +1,4 @@
-import { SessionTurn } from "../types";
+import { SessionRun } from "../types";
 
 export type CodeMode = 'generate' | 'refactor' | 'explain';
 
@@ -6,15 +6,15 @@ export type CodeMode = 'generate' | 'refactor' | 'explain';
  * Session Context for LLM (Compressed)
  */
 export interface SessionContextForLLM {
-  recentTurns: Array<{
-    turnId: number;
+  recentRuns: Array<{
+    runId: number;
     directive: string;
     mode: string;
     output: string;
   }>;
   summary?: string;
-  totalTurns: number;
-  currentTurn: number;
+  totalRuns: number;
+  currentRun: number;
   currentMode: CodeMode;
   windowSize: number;
   compressionRatio: number;
@@ -31,62 +31,49 @@ export class SessionContextBuilder {
    * Build compressed session context for LLM
    */
   buildContextForLLM(
-    turns: SessionTurn[],
+    runs: SessionRun[],
     currentMode: CodeMode,
     currentDirective: string
   ): SessionContextForLLM {
     
-    const currentTurn = turns.length + 1;
+    const currentRun = runs.length + 1;
     
-    // No history
-    if (turns.length === 0) {
+    if (runs.length === 0) {
       return {
-        recentTurns: [],
-        totalTurns: 0,
-        currentTurn: 1,
+        recentRuns: [],
+        totalRuns: 0,
+        currentRun: 1,
         currentMode,
         windowSize: 0,
         compressionRatio: 0
       };
     }
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Step 1: Determine window size (mode-aware)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const windowSize = this.getWindowSize(currentMode, turns);
+    const windowSize = this.getWindowSize(currentMode, runs);
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Step 2: Select relevant recent turns (DETAILED)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const candidateTurns = turns.slice(-Math.min(windowSize, turns.length));
-    const recentTurns = this.selectRelevantTurns(
-      candidateTurns,
+    const candidateRuns = runs.slice(-Math.min(windowSize, runs.length));
+    const recentRuns = this.selectRelevantRuns(
+      candidateRuns,
       currentMode,
       currentDirective
     );
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Step 3: Summarize earlier turns (COMPRESSED)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     let summary: string | undefined;
-    const earlierTurnsCount = turns.length - windowSize;
-    if (earlierTurnsCount > 0) {
-      const earlierTurns = turns.slice(0, -windowSize);
-      summary = this.compressTurns(earlierTurns);
+    const earlierRunsCount = runs.length - windowSize;
+    if (earlierRunsCount > 0) {
+      const earlierRuns = runs.slice(0, -windowSize);
+      summary = this.compressRuns(earlierRuns);
     }
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Step 4: Calculate compression ratio
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const originalSize = turns.length;
-    const compressedSize = recentTurns.length + (summary ? 0.1 : 0);
+    const originalSize = runs.length;
+    const compressedSize = recentRuns.length + (summary ? 0.1 : 0);
     const compressionRatio = compressedSize / originalSize;
     
     return {
-      recentTurns,
+      recentRuns,
       summary,
-      totalTurns: turns.length,
-      currentTurn,
+      totalRuns: runs.length,
+      currentRun,
       currentMode,
       windowSize,
       compressionRatio
@@ -96,119 +83,87 @@ export class SessionContextBuilder {
   /**
    * Dynamic window size based on CURRENT mode
    */
-  private getWindowSize(currentMode: CodeMode, turns: SessionTurn[]): number {
+  private getWindowSize(currentMode: CodeMode, runs: SessionRun[]): number {
     switch (currentMode) {
       case 'refactor':
-        // Refactor: need previous code context
-        return Math.min(2, turns.length);
-      
+        return Math.min(2, runs.length);
       case 'generate':
-        // Generate: minimal context
-        return Math.min(1, turns.length);
-      
+        return Math.min(1, runs.length);
       case 'explain':
-        // Explain: minimal context
-        return Math.min(1, turns.length);
-      
+        return Math.min(1, runs.length);
       default:
         return 1;
     }
   }
   
-  /**
-   * Select relevant turns from candidates
-   */
-  private selectRelevantTurns(
-    candidateTurns: SessionTurn[],
+  private selectRelevantRuns(
+    candidateRuns: SessionRun[],
     currentMode: CodeMode,
     currentDirective: string
   ): Array<{
-    turnId: number;
+    runId: number;
     directive: string;
     mode: string;
     output: string;
   }> {
-    
-    return candidateTurns
-      .filter(turn => {
-        // Refactor mode: previous generate/refactor turns are relevant
+    return candidateRuns
+      .filter(run => {
         if (currentMode === 'refactor') {
-          const turnJob = turn.job || 'code';
-          return turnJob === 'code';
+          const runJob = run.job || 'code';
+          return runJob === 'code';
         }
-        
-        // Generate mode: previous generate turns (patterns)
         if (currentMode === 'generate') {
-          return turn.job === 'code';
+          return run.job === 'code';
         }
-        
-        // Explain mode: all modes
         return true;
       })
-      .map(turn => ({
-        turnId: turn.turnId,
-        directive: turn.input?.summary || '',
-        mode: (turn as any).mode || 'generate',
-        output: this.selectiveOutput(turn, currentMode)
+      .map(run => ({
+        runId: run.runId,
+        directive: run.input?.summary || '',
+        mode: (run as any).mode || 'generate',
+        output: this.selectiveOutput(run, currentMode)
       }));
   }
   
-  /**
-   * Selective output based on mode
-   */
-  private selectiveOutput(turn: SessionTurn, currentMode: CodeMode): string {
-    // Refactor mode: need previous output
+  private selectiveOutput(run: SessionRun, currentMode: CodeMode): string {
     if (currentMode === 'refactor') {
-      const files = turn.output?.files || [];
-      return turn.output?.summary || files.slice(0, 3).join(', ') || '';
+      const files = run.output?.files || [];
+      return run.output?.summary || files.slice(0, 3).join(', ') || '';
     }
-    
-    // Generate mode: just file list
     if (currentMode === 'generate') {
-      const files = turn.output?.files || [];
+      const files = run.output?.files || [];
       return `Created: ${files.slice(0, 3).join(', ')}${files.length > 3 ? '...' : ''}`;
     }
-    
-    // Explain mode: not needed
     return '';
   }
   
-  /**
-   * Compress earlier turns into summary
-   */
-  private compressTurns(turns: SessionTurn[]): string {
-    // Group by similar actions
-    const groups = this.groupTurnsByAction(turns);
+  private compressRuns(runs: SessionRun[]): string {
+    const groups = this.groupRunsByAction(runs);
     
     return groups.map(group => {
-      const turnRange = group.length > 1 
-        ? `Turn ${group[0].turnId}-${group[group.length - 1].turnId}`
-        : `Turn ${group[0].turnId}`;
+      const runRange = group.length > 1 
+        ? `Run ${group[0].runId}-${group[group.length - 1].runId}`
+        : `Run ${group[0].runId}`;
       
       const summary = group[0].input?.summary || 'Code work';
-      return `${turnRange}: ${summary}`;
+      return `${runRange}: ${summary}`;
     }).join('; ');
   }
   
-  /**
-   * Group consecutive turns by similar actions
-   */
-  private groupTurnsByAction(turns: SessionTurn[]): SessionTurn[][] {
-    const groups: SessionTurn[][] = [];
-    let currentGroup: SessionTurn[] = [];
+  private groupRunsByAction(runs: SessionRun[]): SessionRun[][] {
+    const groups: SessionRun[][] = [];
+    let currentGroup: SessionRun[] = [];
     
-    for (const turn of turns) {
+    for (const run of runs) {
       if (currentGroup.length === 0) {
-        currentGroup.push(turn);
+        currentGroup.push(run);
       } else {
-        const lastTurn = currentGroup[currentGroup.length - 1];
-        
-        // Same job type = same group
-        if (lastTurn.job === turn.job) {
-          currentGroup.push(turn);
+        const lastRun = currentGroup[currentGroup.length - 1];
+        if (lastRun.job === run.job) {
+          currentGroup.push(run);
         } else {
           groups.push(currentGroup);
-          currentGroup = [turn];
+          currentGroup = [run];
         }
       }
     }

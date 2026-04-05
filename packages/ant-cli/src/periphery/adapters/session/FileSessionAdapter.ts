@@ -1,7 +1,7 @@
 import { SessionPort, FileTreeUpdatePort } from "../../../core/ports";
 import { SessionableJobType } from '@ant/shared';
 import * as crypto from "crypto";
-import { Session, SessionTurn, SessionArtifacts } from "../../../core/types";
+import { Session, SessionRun, SessionArtifacts } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -46,14 +46,6 @@ class FileMutex {
  * 
  * Each sessionable job type (design, code, learn, planning) maintains its own session file
  * under its owning agent's subdirectory, preventing conflicts across agents and jobs.
- * 
- * Benefits:
- * - Human-readable JSON format
- * - Git version control
- * - Direct file access
- * - Easy backup and sharing
- * - AI can read directly
- * - Agent + Job isolation
  */
 export class FileSessionAdapter implements SessionPort {
   private featurePath: string;
@@ -69,7 +61,6 @@ export class FileSessionAdapter implements SessionPort {
     this.featurePath = featurePath;
     this.agent = agent;
     
-    // ✅ Extract projectId and featureName from featurePath if not provided
     if (projectId && featureName) {
       this.projectId = projectId;
       this.featureName = featureName;
@@ -85,10 +76,6 @@ export class FileSessionAdapter implements SessionPort {
   
   /**
    * Get the session file path (agent-nested)
-   * 
-   * Uses this.featurePath directly — the constructor already receives the correct
-   * resolved path. Re-resolving via workspaceResolver caused path mismatches
-   * (e.g., USER_ID vs ANT_USER_ID env var differences) leading to silent write failures.
    */
   private getSessionPath(_project: string, _feature: string, job: SessionableJobType): string {
     return getSessionFilePath(this.featurePath, this.agent, job);
@@ -96,7 +83,6 @@ export class FileSessionAdapter implements SessionPort {
   
   /**
    * Get or create a mutex for the given job type.
-   * Serializes all file operations for the same session file.
    */
   private getFileLock(job: SessionableJobType): FileMutex {
     if (!this.fileLocks.has(job)) {
@@ -114,7 +100,8 @@ export class FileSessionAdapter implements SessionPort {
   }
   
   /**
-   * Load an existing session or create a new one
+   * Load an existing session or create a new one.
+   * Rejects legacy format (pre-rename files with "turns" field) with an explicit error.
    */
   async load(project: string, feature: string, job: SessionableJobType): Promise<Session> {
     const sessionPath = this.getSessionPath(project, feature, job);
@@ -122,7 +109,6 @@ export class FileSessionAdapter implements SessionPort {
     try {
       const content = await fs.readFile(sessionPath, "utf-8");
       
-      // ✅ Handle empty file (0 bytes) - treat as new session
       if (!content || content.trim() === "") {
         console.log(`📝 Empty session file detected, creating new session`);
         return this.createNewSession(project, feature);
@@ -130,13 +116,22 @@ export class FileSessionAdapter implements SessionPort {
       
       const rawData = JSON.parse(content);
       
-      // Validate and parse with zod
+      // Reject legacy format (pre-rename "turns" field)
+      if (rawData.turns && !rawData.runs) {
+        console.error(`❌ Legacy session format detected: ${sessionPath}`);
+        console.error(`   This file uses the old "turns" field which is no longer supported.`);
+        console.error(`   Please delete this file and restart: rm "${sessionPath}"`);
+        throw new Error(
+          `Legacy session format not supported. File "${sessionPath}" contains "turns" instead of "runs". ` +
+          `Delete the file and retry.`
+        );
+      }
+      
       const session = safeParseSession(rawData);
       if (!session) {
         console.warn(`⚠️  Session file validation failed: ${sessionPath}`);
         console.warn(`Creating new session due to invalid format`);
         
-        // Delete corrupted file (no backup needed)
         try {
           await fs.unlink(sessionPath);
           console.log(`🗑️  Removed corrupted session file`);
@@ -144,18 +139,15 @@ export class FileSessionAdapter implements SessionPort {
           // Ignore if file doesn't exist
         }
         
-        // Return new session
         return this.createNewSession(project, feature);
       }
       
       return session;
     } catch (error: any) {
-      // If file doesn't exist, create a new session
       if (error.code === "ENOENT") {
         return this.createNewSession(project, feature);
       }
       
-      // ✅ Handle JSON parse errors - treat as corrupted
       if (error instanceof SyntaxError) {
         console.warn(`⚠️  Session file has invalid JSON: ${sessionPath}`);
         console.warn(`Error: ${error.message}`);
@@ -176,34 +168,27 @@ export class FileSessionAdapter implements SessionPort {
       feature,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      turns: [],
+      runs: [],
       artifacts: {}
     };
   }
   
   /**
    * Save the entire session (atomic write: temp file + rename).
-   * 
-   * Atomic write prevents partial/corrupt JSON when process is killed mid-write.
-   * The rename operation is atomic on POSIX systems when src and dest are on the
-   * same filesystem, ensuring readers always see a complete JSON file.
    */
   async save(session: Session, job: SessionableJobType): Promise<void> {
     await this.ensureDirectory(session.project, session.feature);
     const sessionPath = this.getSessionPath(session.project, session.feature, job);
     
-    // Update timestamp
     session.updatedAt = new Date().toISOString();
     
-    // Validate before saving
     try {
-      parseSession(session); // Will throw if invalid
+      parseSession(session);
     } catch (error) {
       console.error(`❌ Session validation failed before save:`, error);
       throw new Error(`Invalid session data: ${error}`);
     }
     
-    // ✅ Atomic write: write to temp file in same directory, then rename
     const content = JSON.stringify(session, null, 2);
     const dir = path.dirname(sessionPath);
     const tmpPath = path.join(dir, `.${path.basename(sessionPath)}.${process.pid}.tmp`);
@@ -212,48 +197,38 @@ export class FileSessionAdapter implements SessionPort {
       await fs.writeFile(tmpPath, content, "utf-8");
       await fs.rename(tmpPath, sessionPath);
     } catch (err) {
-      // Cleanup temp file on failure
       try { await fs.unlink(tmpPath); } catch { /* ignore */ }
       throw err;
     }
     
-    // ✅ Notify file tree update
     if (this.fileTreeUpdate) {
       this.fileTreeUpdate.notifyFileTreeUpdate(this.projectId, this.featureName);
     }
   }
   
   /**
-   * Add a new turn to the session (serialized with per-job lock)
+   * Add a new run to the session (serialized with per-job lock)
    */
-  async addTurn(project: string, feature: string, job: SessionableJobType, turn: SessionTurn): Promise<void> {
+  async addRun(project: string, feature: string, job: SessionableJobType, run: SessionRun): Promise<void> {
     const lock = this.getFileLock(job);
     await lock.runExclusive(async () => {
       const session = await this.load(project, feature, job);
       
-      // Set turn ID if not provided
-      if (!turn.turnId) {
-        turn.turnId = session.turns.length + 1;
+      if (!run.runId) {
+        run.runId = session.runs.length + 1;
       }
       
-      // Set timestamp if not provided
-      if (!turn.timestamp) {
-        turn.timestamp = new Date().toISOString();
+      if (!run.timestamp) {
+        run.timestamp = new Date().toISOString();
       }
       
-      session.turns.push(turn);
+      session.runs.push(run);
       await this.save(session, job);
     });
   }
   
   /**
    * Update session artifacts (serialized with per-job lock)
-   * 
-   * ✅ ENHANCED: Also handles 'state' field for resuming after recursion limit
-   * If artifacts contains 'state', it will be saved to session.state
-   * 
-   * The per-job lock prevents race conditions when multiple workers
-   * call saveCheckpoint → onCheckpoint → updateArtifacts concurrently.
    */
   async updateArtifacts(
     project: string,
@@ -265,13 +240,10 @@ export class FileSessionAdapter implements SessionPort {
     await lock.runExclusive(async () => {
       const session = await this.load(project, feature, job);
       
-      // Extract state if provided (it's not part of artifacts, but a top-level session field)
       const { state, ...actualArtifacts } = artifacts as any;
       
-      // Update artifacts
       session.artifacts = { ...session.artifacts, ...actualArtifacts };
       
-      // ✅ Update state if provided (for resuming after recursion limit)
       if (state !== undefined) {
         session.state = state;
       }
@@ -281,14 +253,14 @@ export class FileSessionAdapter implements SessionPort {
   }
   
   /**
-   * Get the last turn from the session
+   * Get the last run from the session
    */
-  async getLastTurn(project: string, feature: string, job: SessionableJobType): Promise<SessionTurn | null> {
+  async getLastRun(project: string, feature: string, job: SessionableJobType): Promise<SessionRun | null> {
     const session = await this.load(project, feature, job);
-    if (session.turns.length === 0) {
+    if (session.runs.length === 0) {
       return null;
     }
-    return session.turns[session.turns.length - 1];
+    return session.runs[session.runs.length - 1];
   }
   
   /**
@@ -304,4 +276,3 @@ export class FileSessionAdapter implements SessionPort {
     }
   }
 }
-

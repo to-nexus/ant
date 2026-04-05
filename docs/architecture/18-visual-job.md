@@ -136,11 +136,11 @@ Lightbox는 `BaseLightbox`를 공유 기반으로 하며, 기존 Figma 스크린
 | | `finalImage`, `selectedDraftIndex` |
 | | `routeDecision`, `needsSketches`, `isSvgRequest` |
 
-Deliver 노드 완료 시 임시 상태를 초기화하고, conversation에 "chapter marker" 요약을 추가한다.
+Deliver 노드 완료 시 임시 상태를 초기화하고, conversation에 `ConversationEntry`(role='system') chapter marker를 추가한다. `ConversationEntry`는 Plan과 동일한 통합 타입(`core/types/session.ts`)을 사용하며, `savedAsset`, `chapterSummary` metadata로 에셋 경로와 요약을 기록한다.
 
 ## 세션
 
-`{featurePath}/sessions/creator/visual.json`에 저장. `conversation` 배열이 핵심 상태이며, 중단/재개 시 대화 맥락이 복원된다.
+`{featurePath}/sessions/creator/visual.json`에 저장. `conversation` 배열이 핵심 상태이며, 중단/재개 시 대화 맥락이 복원된다. `compactJob` LLM 요약 결과는 `applyCompactionToConversation`을 통해 세션 저장 시 반영되어 conversation 무한 성장을 방지한다.
 
 ## 프롬프트 체계
 
