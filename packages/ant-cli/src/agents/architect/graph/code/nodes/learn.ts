@@ -1,6 +1,6 @@
 import * as path from "path";
 import { ArchitectGraphState } from "../state";
-import { SessionTurn } from "../../../../../core/types";
+import { SessionRun } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 import { getChatAPIClient } from "../../../../../core/adapters/ChatAPIClient";
 
@@ -256,8 +256,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   const filesWritten = filePaths.length;
   
-  // 3. Save turn to session file first (to get sessionId and turnId)
-  // Skip turn recording in worker context (only main orchestrator should record)
+  // 3. Save run to session file first (to get sessionId and runId)
+  // Skip run recording in worker context (only main orchestrator should record)
   const _workerId = (state as any).workerId;
   const isWorkerContext = _workerId !== undefined && _workerId !== null;
 
@@ -297,24 +297,22 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     || (state as any).interruption?.reason === 'recursion_limit';
   
   let sessionId: string | undefined;
-  let turnId: number | undefined;
+  let runId: number | undefined;
   
   if (state.deps?.session && !isWorkerContext && !hasOrchestratorFailure) {
-    // Load session to get sessionId
     const session = await state.deps.session.load(
       state.context.project,
       state.context.featureFolder || 'default',
-      'code'  // ✅ Specify job type
+      'code'
     );
     sessionId = session.sessionId;
     
-    // Create input summary (design doc reference)
     const inputSummary = state.design 
       ? `Design: ${state.design.substring(0, 150)}...`
       : `Directive: ${(state.directive || '').substring(0, 150)}...`;
     
-    const turn: SessionTurn = {
-      turnId: 0, // Will be set by adapter
+    const run: SessionRun = {
+      runId: 0, // Will be set by adapter
       job: 'code',
       timestamp: new Date().toISOString(),
       input: {
@@ -331,20 +329,19 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     };
     
-    await state.deps.session.addTurn(
+    await state.deps.session.addRun(
       state.context.project,
       state.context.featureFolder || 'default',
-      'code',  // ✅ Specify job type
-      turn
+      'code',
+      run
     );
     
-    // Get the turnId that was assigned
     const updatedSession = await state.deps.session.load(
       state.context.project,
       state.context.featureFolder || 'default',
-      'code'  // ✅ Specify job type
+      'code'
     );
-    turnId = updatedSession.turns[updatedSession.turns.length - 1]?.turnId;
+    runId = updatedSession.runs[updatedSession.runs.length - 1]?.runId;
     
     // ✅ Get error statistics
     const errorStats = errorStatsCollector.getStatistics();
@@ -434,7 +431,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     );
     
-    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/code.json`);
+    console.log(`💾 Session run saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/code.json`);
     if (state.taskQueue && !state.taskQueue.isEmpty()) {
       console.log(`💾 State snapshot saved: ${state.completedTasks?.length || 0} completed, ${state.taskQueue.size()} remaining`);
     }
@@ -478,7 +475,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
             taskName: taskName,
             // 🔗 Session tracking for traceability
             sessionId: sessionId,
-            turnId: turnId,
+            runId: runId,
             // ✅ Enhanced metadata (arrays converted to strings for ChromaDB)
             relatedFiles: (lessonMetadata.relatedFiles || []).join(','),  // ✅ Convert array to string
             tags: (lessonMetadata.tags || []).join(','),                    // ✅ Convert array to string
@@ -506,8 +503,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         await deps.memory.store(documents, contextData.project);
         
         console.log(`✅ [Async Lesson] ${result.chunks.length} lesson chunks stored to memory (batch)`);
-        if (sessionId && turnId) {
-          console.log(`🔗 [Async Learning] Linked to session: ${sessionId}, turn: ${turnId}`);
+        if (sessionId && runId) {
+          console.log(`🔗 [Async Learning] Linked to session: ${sessionId}, run: ${runId}`);
         }
       } catch (error) {
         // Non-fatal: log error but don't fail the entire workflow
@@ -822,10 +819,9 @@ function extractDesignTitle(designContent: string): string {
  * Extract directive ID from state
  */
 function extractDirectiveId(state: ArchitectGraphState): string {
-  // Generate directive ID from session
   const sessionId = (state as any).sessionId || 'unknown';
-  const turnId = (state as any).turnId || 0;
-  return `${sessionId.substring(0, 8)}-turn-${turnId}`;
+  const runId = (state as any).runId || 0;
+  return `${sessionId.substring(0, 8)}-run-${runId}`;
 }
 
 /**

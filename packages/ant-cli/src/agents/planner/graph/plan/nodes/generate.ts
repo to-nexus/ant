@@ -30,8 +30,30 @@ import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestr
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { logPrompt } from '../../../../../core/utils/promptLogger';
-import { buildPlanContext } from '../utils/PlanContextBuilder';
+import { compactJob, applyCompactionToConversation } from '../../../../../core/context';
+import type { ConversationCompaction } from '../../../../../core/context';
+import { PLAN_COMPACTION_THRESHOLD, PLAN_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS, PLAN_CONVERSATION_HISTORY_BUDGET } from '../../../../../core/context';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
+
+/**
+ * Prune conversationHistory (Anthropic-format ReAct messages) via compactRun.
+ * Used both before LLM call and before session persist.
+ */
+async function pruneConversationHistory(
+  history: Array<{ role: string; content: any }>,
+): Promise<Array<{ role: string; content: any }>> {
+  const { compactRun } = await import('../../../../../core/context');
+  const { TokenBudgetManager } = await import('../../../../../core/utils/tokenBudget');
+  const planTokenManager = new TokenBudgetManager({
+    areaBudgets: {
+      systemPrompt: 30_000,
+      projectContext: 30_000,
+      taskContext: 25_000,
+      conversationHistory: PLAN_CONVERSATION_HISTORY_BUDGET,
+    },
+  });
+  return compactRun(history as any, planTokenManager).result;
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Clarify Tag Parser
@@ -114,11 +136,14 @@ function formatConversationForPrompt(conversation: ConversationEntry[]): string 
   if (!conversation || conversation.length === 0) return '';
   
   return conversation.map(entry => {
+    if (entry.role === 'system') {
+      return `**[Previous context]**: ${entry.content}`;
+    }
     const roleLabel = entry.role === 'user' ? 'User' : 'Assistant';
     const artifactNote = entry.metadata?.hasArtifact
       ? ` [produced ${entry.metadata.mode || 'artifact'}]`
       : '';
-    // Truncate very long assistant responses to avoid context bloat
+    // Truncate very long assistant responses (system entries are already compressed)
     const content = entry.role === 'assistant' && entry.content.length > 500
       ? entry.content.substring(0, 500) + '...(truncated)'
       : entry.content;
@@ -126,16 +151,11 @@ function formatConversationForPrompt(conversation: ConversationEntry[]): string 
   }).join('\n\n');
 }
 
-function buildSystemPrompt(state: PlanGraphState): string {
+function buildSystemPrompt(
+  state: PlanGraphState,
+  compaction: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean },
+): string {
   const { base, rules } = loadPlanTemplates();
-  
-  // For conversation continuation: include prior turns as context (exclude last user msg)
-  // Uses PlanContextBuilder to apply sliding window — recent entries kept in detail,
-  // older entries compressed into a summary to prevent unbounded prompt growth.
-  const allButLast = state.isConversationContinuation && state.conversation?.length
-    ? state.conversation.slice(0, -1)  // Last user message goes into messages array
-    : [];
-  const { recentEntries, summary: conversationSummary } = buildPlanContext(allButLast);
   
   const basePrompt = base({
     isKorean: state.language === 'ko',
@@ -149,10 +169,10 @@ function buildSystemPrompt(state: PlanGraphState): string {
     hasRubric: !!state.rubricContent && !state.evalReport,
     recentTurnSummaries: state.recentTurnSummaries?.join('\n') || '',
     hasRecentTurns: (state.recentTurnSummaries?.length || 0) > 0,
-    conversationContext: formatConversationForPrompt(recentEntries),
-    hasConversation: recentEntries.length > 0,
-    conversationSummary: conversationSummary || '',
-    hasConversationSummary: !!conversationSummary,
+    conversationContext: formatConversationForPrompt(compaction.entries),
+    hasConversation: compaction.entries.length > 0,
+    conversationSummary: compaction.summary || '',
+    hasConversationSummary: !!compaction.summary,
   });
   
   return `${basePrompt}\n\n---\n\n${rules}`;
@@ -186,7 +206,31 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     throw new Error('LLM is required for generate node');
   }
   
-  const systemPrompt = buildSystemPrompt(state);
+  // Step 1: async compactJob — LLM-based conversation summary (before sync buildSystemPrompt)
+  const allButLast = state.isConversationContinuation && state.conversation?.length
+    ? state.conversation.slice(0, -1)
+    : [];
+  
+  let compactionResult: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean; tokensBefore: number; tokensAfter: number };
+  try {
+    compactionResult = allButLast.length > 0
+      ? await compactJob(allButLast, llm, state.deps!.promptPort!, {
+          threshold: PLAN_COMPACTION_THRESHOLD,
+          recentWindowSize: PLAN_COMPACTION_WINDOW,
+          maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
+        })
+      : { entries: [] as ConversationEntry[], wasCompacted: false, tokensBefore: 0, tokensAfter: 0 };
+  } catch (err) {
+    console.warn(`⚠️ [Planner:Generate] compactJob failed, using raw entries:`, err);
+    compactionResult = { entries: allButLast, wasCompacted: false, tokensBefore: 0, tokensAfter: 0 };
+  }
+  
+  const compactionMeta = compactionResult.wasCompacted
+    ? { summary: compactionResult.summary!, summarizedCount: allButLast.length - PLAN_COMPACTION_WINDOW }
+    : undefined;
+  
+  // Step 2: buildSystemPrompt is sync
+  const systemPrompt = buildSystemPrompt(state, compactionResult);
   
   // ✅ Log prompt structure to debug directory (aligned with code/design agents)
   if (state._httpJobId) {
@@ -205,8 +249,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
             mode: state.mode,
             hasExistingDocument: !!state.existingDocument,
             hasEvalReport: !!state.evalReport,
-            hasConversation: (state.conversation?.length || 0) > 0,
-            conversationEntries: state.conversation?.length || 0,
+            hasConversation: compactionResult.entries.length > 0,
+            conversationEntries: compactionResult.entries.length,
             isConversationContinuation: !!state.isConversationContinuation,
             isResume: !!state.isResume,
             recursionCount,
@@ -219,20 +263,22 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }
   }
   
-  // Build messages
+  // Build messages (with conversationHistory pruning for cross-Run accumulation)
   const messages: Array<{ role: string; content: any }> = [];
   
   if (state.conversationHistory.length === 0) {
-    // First LLM call in this run:
-    // For conversation continuation, use the latest user message from conversation
-    // For fresh run, use the directive
     const userMessage = state.isConversationContinuation && state.conversation?.length
       ? state.conversation[state.conversation.length - 1].content
       : state.directive;
     messages.push({ role: 'user', content: userMessage });
   } else {
-    // Subsequent calls in ReAct loop: use accumulated conversationHistory
-    messages.push(...state.conversationHistory);
+    try {
+      const prunedHistory = await pruneConversationHistory(state.conversationHistory);
+      messages.push(...prunedHistory);
+    } catch (err) {
+      console.warn(`⚠️ [Planner:Generate] pruneConversationHistory failed, using raw history:`, err);
+      messages.push(...state.conversationHistory);
+    }
   }
   
   // Setup tools
@@ -387,7 +433,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     // Save conversation with clarifying response (no PRD yet)
     // Pass updatedHistory for conversationHistory persistence
     const clarifyHistory = [...updatedHistory, { role: 'assistant', content: cleanedResponseText }];
-    await saveConversationToSession(state, cleanedResponseText, undefined, clarifyHistory);
+    await saveConversationToSession(state, cleanedResponseText, undefined, clarifyHistory, compactionMeta);
     
     // Finalize message
     await chatAPI.finalizeMessage();
@@ -492,7 +538,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       }
     }
     
-    // Record session turn (matching SessionTurnSchema: job, input, output required)
+    // Record session run
     try {
       const session = state.deps?.session;
       if (session) {
@@ -501,8 +547,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         
         const directiveSummary = (state.directive || '').substring(0, 200);
         
-        await session.addTurn(projectId, featureName, 'plan', {
-          turnId: 0, // Will be set by adapter
+        await session.addRun(projectId, featureName, 'plan', {
+          runId: 0, // Will be set by adapter
           job: 'plan',
           timestamp: new Date().toISOString(),
           input: {
@@ -522,7 +568,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     // Save conversation to session (multi-turn persistence)
     // Pass updatedHistory for conversationHistory persistence
     const prdHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
-    await saveConversationToSession(state, responseText, generatedDocument, prdHistory);
+    await saveConversationToSession(state, responseText, generatedDocument, prdHistory, compactionMeta);
     
     // Send PRD apply choice card
     try {
@@ -552,7 +598,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // Save conversation even when no PRD was generated (e.g. clarifying response)
   if (!generatedDocument) {
     const textOnlyHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
-    await saveConversationToSession(state, responseText, undefined, textOnlyHistory);
+    await saveConversationToSession(state, responseText, undefined, textOnlyHistory, compactionMeta);
   }
   
   // Finalize message (after choice card)
@@ -610,6 +656,7 @@ async function saveConversationToSession(
   generatedDocument: string | undefined,
   /** Current conversationHistory including the latest assistant response */
   currentConversationHistory?: Array<{ role: string; content: any }>,
+  compaction?: ConversationCompaction,
 ): Promise<void> {
   const featurePath = state.featurePath;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
@@ -651,7 +698,7 @@ async function saveConversationToSession(
         feature: process.env.ANT_FEATURE_NAME || 'skeleton',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        turns: [],
+        runs: [],
         artifacts: {},
         state: {},
       };
@@ -660,7 +707,16 @@ async function saveConversationToSession(
     if (!sessionData.state) {
       sessionData.state = {};
     }
-    sessionData.state.conversation = updatedConversation;
+    sessionData.state.conversation = applyCompactionToConversation(
+      updatedConversation,
+      compaction,
+      (summary): ConversationEntry => ({
+        role: 'system',
+        content: summary,
+        timestamp: new Date().toISOString(),
+        metadata: { chapterSummary: 'Conversation history summary' },
+      }),
+    );
     sessionData.state.jobId = state._httpJobId || sessionData.state.jobId;
     // ✅ Save additional state for resume support (aligned with design/code learn node pattern)
     sessionData.state.directive = state.directive;
@@ -670,9 +726,12 @@ async function saveConversationToSession(
     sessionData.state.tokenUsage = state.tokenUsage;
     sessionData.state.recursionCount = state.recursionCount;
     sessionData.state.recursionLimit = state.recursionLimit;
-    // ✅ Save conversationHistory (full LLM ReAct messages) for resume
     if (currentConversationHistory?.length) {
-      sessionData.state.conversationHistory = currentConversationHistory;
+      try {
+        sessionData.state.conversationHistory = await pruneConversationHistory(currentConversationHistory);
+      } catch {
+        sessionData.state.conversationHistory = currentConversationHistory;
+      }
     }
     sessionData.updatedAt = new Date().toISOString();
     

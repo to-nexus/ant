@@ -1,46 +1,42 @@
-import { Session, SessionTurn, SessionTurnOutput } from "../../core/types";
+import { Session, SessionRun, SessionRunOutput } from "../../core/types";
 
 /**
  * Format session context for prompt inclusion
  * 
  * Converts session history into a readable string for LLM context.
- * Shows recent turns to maintain conversation continuity.
+ * Shows recent runs to maintain conversation continuity.
  * 
  * Role: Provides short-term memory (what was done in this feature)
  * Complements Vector memory (long-term knowledge across features)
  */
 export function formatSessionContext(session: Session): string {
-  if (!session || session.turns.length === 0) {
+  if (!session || session.runs.length === 0) {
     return "";
   }
   
   const sections: string[] = [];
   
-  // Header
   sections.push(`
 🔄 Current Feature Work History
 ${"=".repeat(50)}
 Feature: ${session.feature}
 Session ID: ${session.sessionId}
 Started: ${new Date(session.createdAt).toLocaleString()}
-Total Turns: ${session.turns.length}
+Total Runs: ${session.runs.length}
 `);
   
-  // All turns (전체 히스토리가 맥락으로 중요)
-  // Note: TemplateComposer에서 truncate(2000)으로 토큰 제한 적용됨
-  for (const turn of session.turns) {
-    // Format input metadata (saves tokens by not including full content)
-    const inputLine = turn.input.source 
-      ? `Input: ${turn.input.summary}\nSource: ${turn.input.source}`
-      : `Input: ${turn.input.summary}`;
+  for (const run of session.runs) {
+    const inputLine = run.input.source 
+      ? `Input: ${run.input.summary}\nSource: ${run.input.source}`
+      : `Input: ${run.input.summary}`;
     
     sections.push(`
-━━━ Turn ${turn.turnId} (${turn.job}) ━━━
-Time: ${new Date(turn.timestamp).toLocaleString()}
+━━━ Run ${run.runId} (${run.job}) ━━━
+Time: ${new Date(run.timestamp).toLocaleString()}
 ${inputLine}
 
 Output:
-${formatTurnOutput(turn.output)}
+${formatRunOutput(run.output)}
 `);
   }
   
@@ -68,9 +64,9 @@ ${session.artifacts.keyDecisions.map(d => `  ${d}`).join('\n')}
 }
 
 /**
- * Format turn output for readability
+ * Format run output for readability
  */
-function formatTurnOutput(output: SessionTurnOutput): string {
+function formatRunOutput(output: SessionRunOutput): string {
   const lines: string[] = [];
   
   // Design outputs
@@ -112,6 +108,6 @@ function formatTurnOutput(output: SessionTurnOutput): string {
  * Get summary of session for logging
  */
 export function getSessionSummary(session: Session): string {
-  return `Session ${session.sessionId.substring(0, 8)}... (${session.turns.length} turns)`;
+  return `Session ${session.sessionId.substring(0, 8)}... (${session.runs.length} runs)`;
 }
 

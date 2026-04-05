@@ -57,7 +57,7 @@ export class TokenBudgetManager {
         systemPrompt: 30000,        // ~15% — base.md + rules.md + profile
         projectContext: 30000,      // ~15% — PRD, design doc, codebase context
         taskContext: 25000,         // ~12.5% — task plan, file tree, violations
-        conversationHistory: 75000, // ~37.5% — matches HistoryManager.maxTokens
+        conversationHistory: 75000, // ~37.5% — matches TurnPruner default maxTokens
         // Remaining ~20K is safety margin + output tokens
       },
     };

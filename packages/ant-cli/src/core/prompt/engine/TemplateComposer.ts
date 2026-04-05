@@ -438,37 +438,35 @@ export class TemplateComposer {
    * Format session context for prompt injection
    */
   private formatSessionContext(sessionContext?: {
-    recentTurns: Array<{
-      turnId: number;
+    recentRuns: Array<{
+      runId: number;
       directive: string;
       mode: string;
       output: string;
     }>;
     summary?: string;
-    totalTurns: number;
-    currentTurn: number;
+    totalRuns: number;
+    currentRun: number;
     currentMode: string;
   }): string {
-    if (!sessionContext || sessionContext.totalTurns === 0) {
-      return 'This is the first turn of the session.';
+    if (!sessionContext || sessionContext.totalRuns === 0) {
+      return 'This is the first run of the session.';
     }
     
-    let formatted = `You are on Turn ${sessionContext.currentTurn} of ${sessionContext.totalTurns}.\n\n`;
+    let formatted = `You are on Run ${sessionContext.currentRun} of ${sessionContext.totalRuns}.\n\n`;
     
-    // Recent turns
-    if (sessionContext.recentTurns.length > 0) {
+    if (sessionContext.recentRuns.length > 0) {
       formatted += '### Recent Work\n\n';
-      for (const turn of sessionContext.recentTurns) {
-        formatted += `**Turn ${turn.turnId}** (${turn.mode}):\n`;
-        formatted += `- Request: ${turn.directive}\n`;
-        if (turn.output) {
-          formatted += `- Output: ${turn.output}\n`;
+      for (const run of sessionContext.recentRuns) {
+        formatted += `**Run ${run.runId}** (${run.mode}):\n`;
+        formatted += `- Request: ${run.directive}\n`;
+        if (run.output) {
+          formatted += `- Output: ${run.output}\n`;
         }
         formatted += '\n';
       }
     }
     
-    // Earlier summary
     if (sessionContext.summary) {
       formatted += `### Earlier Work\n${sessionContext.summary}\n\n`;
     }

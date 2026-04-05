@@ -1,4 +1,4 @@
-import { AgentJob as CoreAgentJob, JobMode, ProjectContext as CoreProjectContext, SessionTurn as CoreSessionTurn } from "../../core/types";
+import { AgentJob as CoreAgentJob, JobMode, ProjectContext as CoreProjectContext, SessionRun as CoreSessionRun } from "../../core/types";
 
 export const DIRECTIVE_TYPES = {
   CODE: 'code',
@@ -10,7 +10,7 @@ export type DirectiveType = typeof DIRECTIVE_TYPES[keyof typeof DIRECTIVE_TYPES]
 
 // Re-export core types
 export type AgentJob = CoreAgentJob;
-export type SessionTurn = CoreSessionTurn;
+export type SessionRun = CoreSessionRun;
 export { JobMode };
 
 // Extend core ProjectContext with architect-specific fields

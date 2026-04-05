@@ -85,15 +85,15 @@ export interface AssembledContext {
     directive?: string;
   }>;
   sessionContext?: {
-    recentTurns: Array<{
-      turnId: number;
+    recentRuns: Array<{
+      runId: number;
       directive: string;
       mode: string;
       output: string;
     }>;
     summary?: string;
-    totalTurns: number;
-    currentTurn: number;
+    totalRuns: number;
+    currentRun: number;
     currentMode: string;
     windowSize: number;
     compressionRatio: number;

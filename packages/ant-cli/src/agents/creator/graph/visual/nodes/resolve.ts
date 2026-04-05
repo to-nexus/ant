@@ -7,7 +7,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { VisualGraphState, VisualConversationEntry, DraftVariation } from '../types.js';
+import { VisualGraphState, DraftVariation } from '../types.js';
+import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { getEstimatingLabel, detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
 
 export async function resolveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
@@ -31,7 +32,7 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
   }
 
   const sessionPath = path.join(featurePath, 'sessions/creator/visual.json');
-  let conversation: VisualConversationEntry[] = [];
+  let conversation: ConversationEntry[] = [];
   let isResume = state.isResume ?? false;
   let lastEngineeredPrompt: string | undefined;
   let lastOutputPath: string | undefined;

@@ -350,7 +350,7 @@ export class ModeController {
       }
       
       // Session context (compressed history)
-      if (context.sessionContext && context.sessionContext.totalTurns > 0) {
+      if (context.sessionContext && context.sessionContext.totalRuns > 0) {
         injections.push(`code/phases/execute/injections/session-context`);
       }
       

@@ -31,7 +31,9 @@ import { engraveNode, routeAfterEngrave } from './nodes/engrave.js';
 import { deliverNode } from './nodes/deliver.js';
 import { triage } from '../../../common/nodes/triage/index.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
+import { applyCompactionToConversation } from '../../../../core/context/compactJob.js';
 import { JobTimingManager } from '../../../common/graph/timing/JobTimingManager.js';
+import type { ConversationEntry } from '../../../../core/types/session.js';
 import type { JobTiming } from '../../../common/graph/timing/JobTimingManager.js';
 
 /**
@@ -133,6 +135,9 @@ export function buildVisualGraph() {
       isResume: null as any,
       _phaseTimings: null as any,
       _uiLocale: null as any,
+
+      // Persist pruning metadata
+      _conversationCompaction: null as any,
 
       // TriageableState compat
       pendingToolCalls: null as any,
@@ -354,9 +359,20 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
       const projectId = deps.session.projectId || process.env.ANT_PROJECT_ID || 'default';
       const featureName = deps.session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
 
+      const prunedConversation = applyCompactionToConversation(
+        finalState.conversation,
+        finalState._conversationCompaction,
+        (summary): ConversationEntry => ({
+          role: 'system',
+          content: summary,
+          timestamp: new Date().toISOString(),
+          metadata: { chapterSummary: 'Conversation history summary' },
+        }),
+      );
+
       await deps.session.updateArtifacts(projectId, featureName, 'visual', {
         state: {
-          conversation: finalState.conversation,
+          conversation: prunedConversation,
           directive: finalState.directive,
           tokenUsage: finalState.tokenUsage,
           jobId: _httpJobId,
@@ -369,7 +385,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           draftVariations: finalState.draftVariations,
         },
       });
-      console.log(`💾 [Visual] Session saved (${finalState.conversation?.length || 0} conversation entries)`);
+      console.log(`💾 [Visual] Session saved (${prunedConversation.length} conversation entries, was ${finalState.conversation?.length || 0})`);
 
       if (deps.fileTreeUpdate) {
         deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);

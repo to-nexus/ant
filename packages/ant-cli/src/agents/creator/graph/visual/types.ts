@@ -14,22 +14,11 @@ import { TaskQueueUpdatePort, FileTreeUpdatePort } from '../../../../core/ports/
 import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow.js';
 import { TokenUsage } from '../../../common/graph/llmHelpers.js';
 import { VisualSettings } from '../../../../core/types/workspace.js';
+import type { ConversationEntry } from '../../../../core/types/session.js';
+import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
 import type { JobMode } from '@ant/shared';
 
 export type { JobMode };
-
-/**
- * Conversation entry for multi-turn visual context
- */
-export interface VisualConversationEntry {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
-  metadata?: {
-    savedAsset?: string;
-    chapterSummary?: string;
-  };
-}
 
 /**
  * Draft image with full parameter preservation for render step
@@ -130,7 +119,7 @@ export interface VisualGraphState extends TriageableState {
   chatSource?: boolean;
 
   // Visual-specific state
-  conversation: VisualConversationEntry[];
+  conversation: ConversationEntry[];
   engineeredPrompt?: string;
   draftImages?: DraftImage[];
   svgDrafts?: SvgDraft[];
@@ -179,6 +168,9 @@ export interface VisualGraphState extends TriageableState {
   isResume?: boolean;
   _phaseTimings?: Record<string, number>;
   _uiLocale?: string;
+
+  // Persist pruning metadata (set by direct, consumed by graph.ts session save)
+  _conversationCompaction?: ConversationCompaction;
 
   // Pending tool calls (TriageableState compat)
   pendingToolCalls?: any[];
