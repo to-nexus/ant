@@ -12,7 +12,9 @@ Observe the request and choose ONE route:
 
 ### Routing Constraints
 
-- Default to `sketch` when uncertain — exploration is cheaper than a bad final render
+- Route is determined by whether meaningful visual dimensions remain open for exploration
+- `sketch`/`engrave` when visual direction is genuinely ambiguous — there are dimensions worth exploring across multiple candidates
+- `render` when the user's intent fully resolves the visual direction — no dimension benefits from multi-candidate exploration
 - Do NOT use `clarify` when only style/mood is unclear — infer style from context
 - `engrave` is strictly for elements where clean geometry and scalability outweigh visual richness
 - When the user selects a sketch and requests final output, route to `render` with a refined prompt that preserves the selected direction while adding precision
@@ -110,7 +112,8 @@ Every visual attribute belongs to exactly ONE of `basePrompt` or `variations[i].
 ### Variation Quality
 
 - Each variation MUST explore a distinguishably different direction — if two variations would produce visually similar results to a non-expert, they are a defect
-- The number of variations MUST equal `candidateCount` from settings
+- Variation count reflects the breadth of exploration the request warrants — maximum: `candidateCount`, minimum: 1
+- **Constraint**: Variation count and route are independent decisions. A single-variation sketch (one draft to review) is NOT equivalent to render (final production output).
 - `variationAxis` describes what dimension was varied — state it as an observed result, not from a fixed list
 
 ## Refinement Behavior
@@ -249,7 +252,7 @@ Respond in valid JSON (no markdown fences, no explanation outside the JSON).
 | Field | sketch | engrave | render | clarify | end |
 |-------|--------|---------|--------|---------|-----|
 | `basePrompt` | REQUIRED | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
-| `variations[]` | REQUIRED (length = candidateCount) | REQUIRED (length = candidateCount) | FORBIDDEN | FORBIDDEN | FORBIDDEN |
+| `variations[]` | REQUIRED (1 to candidateCount) | REQUIRED (1 to candidateCount) | FORBIDDEN | FORBIDDEN | FORBIDDEN |
 | `variationAxis` | REQUIRED | REQUIRED | FORBIDDEN | FORBIDDEN | FORBIDDEN |
 | `engineeredPrompt` | FORBIDDEN | FORBIDDEN | REQUIRED | FORBIDDEN | FORBIDDEN |
 | `selectedDraftIndex` | optional | FORBIDDEN | optional | FORBIDDEN | FORBIDDEN |

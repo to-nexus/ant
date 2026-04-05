@@ -78,7 +78,7 @@ Adjust your prompt or routing strategy to avoid repeating this failure. If the e
 
 ## Settings
 - Default aspect ratio: {{defaultAspectRatio}}
-- Candidate count: {{candidateCount}}
+- Max candidates per round: {{candidateCount}}
 
 {{#if availableDraftCount}}
 
