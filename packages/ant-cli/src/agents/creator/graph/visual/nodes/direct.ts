@@ -78,8 +78,34 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   const directLLM = state.deps.directLLM;
   const promptPort = state.deps.promptPort;
 
-  const conversationContext = state.conversation
-    .slice(-10)
+  const { compactJob, VISUAL_COMPACTION_THRESHOLD, VISUAL_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } = await import('../../../../../core/context');
+  const allButLast = state.conversation.length > 1
+    ? state.conversation.slice(0, -1)
+    : [];
+  let recentConv: typeof state.conversation;
+  let convSummary: string | undefined;
+  let compactionMeta: import('../../../../../core/context').ConversationCompaction | undefined;
+  try {
+    const result = allButLast.length > 0
+      ? await compactJob(allButLast, directLLM, promptPort, {
+          threshold: VISUAL_COMPACTION_THRESHOLD,
+          recentWindowSize: VISUAL_COMPACTION_WINDOW,
+          maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
+        })
+      : { entries: allButLast, summary: undefined, wasCompacted: false };
+    recentConv = result.entries;
+    convSummary = result.summary;
+    compactionMeta = result.wasCompacted
+      ? { summary: result.summary!, summarizedCount: allButLast.length - VISUAL_COMPACTION_WINDOW }
+      : undefined;
+  } catch (err) {
+    console.warn(`⚠️ [Visual:Direct] compactJob failed, using raw entries:`, err);
+    recentConv = allButLast;
+    convSummary = undefined;
+    compactionMeta = undefined;
+  }
+  const summaryBlock = convSummary ? `[Earlier conversation summary]\n${convSummary}\n\n` : '';
+  const conversationContext = summaryBlock + recentConv
     .map(entry => `[${entry.role}] ${entry.content}`)
     .join('\n');
 
@@ -227,6 +253,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     draftIntent: resolvedDraftIntent || state.draftIntent,
     visualError: undefined,
     safetyBlocked: false,
+    _conversationCompaction: compactionMeta,
     _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
   };
 

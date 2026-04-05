@@ -1,5 +1,5 @@
 import { DesignGraphState } from "../state";
-import { SessionTurn } from "../../../../../core/types";
+import { SessionRun } from "../../../../../core/types";
 import { saveFigmaMCPDebugLog } from '../../../tools/figmaMCPHandler';
 
 /**
@@ -170,10 +170,10 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // 2. Save turn to session file
   // Skip when orchestrator already saved failure state — overwriting would lose failedTasks/interruption
   let sessionId: string | undefined;
-  let turnId: number | undefined;
+  let runId: number | undefined;
   
   if (state.deps?.session && !_isWorkerContext && !hasEarlyTermination) {
-    await saveSessionTurn(state);
+    await saveSessionRun(state);
     
     // Get session IDs for memory linking
     const session = await state.deps.session.load(
@@ -182,14 +182,14 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       'design'
     );
     sessionId = session.sessionId;
-    turnId = session.turns[session.turns.length - 1]?.turnId;
+    runId = session.runs[session.runs.length - 1]?.runId;
     
-    console.log(`💾 Session turn saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/design.json`);
+    console.log(`💾 Session run saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/design.json`);
   }
   
   // 3. Store lessons to vector memory + Index documents
   if (state.deps?.memory && state.deps?.chunk && !hasEarlyTermination) {
-    await storeLessonsToMemory(state, lessons, sessionId, turnId);
+    await storeLessonsToMemory(state, lessons, sessionId, runId);
     
     // ✅ Request GC if available (helps with memory pressure before document indexing)
     if (global.gc) {
@@ -301,28 +301,25 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 }
 
 /**
- * Save session turn with all metadata
+ * Save session run with all metadata
  */
-async function saveSessionTurn(state: DesignGraphState): Promise<void> {
+async function saveSessionRun(state: DesignGraphState): Promise<void> {
   if (!state.deps?.session) return;
   
-  // Skip turn recording in worker context (only main orchestrator should record)
   const workerId = (state as any).workerId;
   if (workerId !== undefined && workerId !== null) return;
   
   const decisions = extractDesignDecisions(state).split('\n').filter(d => d.trim());
   
-  // Create input summary (truncate if too long)
   const inputSummary = (state.directive || '').length > 200 
     ? (state.directive || '').substring(0, 197) + '...' 
     : (state.directive || '');
   
-  // Create plan summary (first 3 lines)
   const planLines = state.planText.split('\n');
   const planSummary = planLines.slice(0, 3).join('\n') + (planLines.length > 3 ? '...' : '');
   
-  const turn: SessionTurn = {
-    turnId: 0, // Will be set by adapter
+  const run: SessionRun = {
+    runId: 0, // Will be set by adapter
     job: 'design',
     timestamp: new Date().toISOString(),
     input: {
@@ -334,18 +331,17 @@ async function saveSessionTurn(state: DesignGraphState): Promise<void> {
       size: (state.directive || '').length,
     },
     output: {
-      // ✅ Only store summaries, not paths (paths are deterministic from context)
       planSummary: planSummary.substring(0, 300),
       decisionCount: decisions.length,
       fileCount: state.files?.length || 1
     }
   };
   
-  await state.deps.session.addTurn(
+  await state.deps.session.addRun(
     state.context.project,
     state.context.featureFolder || 'default',
     'design',
-    turn
+    run
   );
   
   // Load existing session to preserve interruption details
@@ -405,7 +401,7 @@ async function storeLessonsToMemory(
   state: DesignGraphState,
   lessons: string,
   sessionId: string | undefined,
-  turnId: number | undefined
+  runId: number | undefined
 ): Promise<void> {
   if (!state.deps?.chunk || !state.deps?.memory) return;
   
@@ -423,7 +419,7 @@ async function storeLessonsToMemory(
         timestamp: new Date().toISOString(),
         // Session tracking for traceability
         sessionId: sessionId,
-        turnId: turnId
+        runId: runId
       }
     });
     
@@ -444,8 +440,8 @@ async function storeLessonsToMemory(
     await memory.store(documents, state.context.project);
     
     console.log(`✅ ${result.chunks.length} lesson chunks stored to memory (batch)`);
-    if (sessionId && turnId) {
-      console.log(`🔗 Linked to session: ${sessionId}, turn: ${turnId}`);
+    if (sessionId && runId) {
+      console.log(`🔗 Linked to session: ${sessionId}, run: ${runId}`);
     }
   } catch (error) {
     // Non-fatal: log error but don't fail workflow

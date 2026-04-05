@@ -13,7 +13,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
-import { VisualGraphState, VisualConversationEntry, ASSET_OUTPUT_SPECS } from '../types.js';
+import { VisualGraphState, ASSET_OUTPUT_SPECS } from '../types.js';
+import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 
@@ -156,7 +157,7 @@ async function deliverFinalImage(
 
   await notifyFileTree(state);
 
-  const chapterMarker: VisualConversationEntry = {
+  const chapterMarker: ConversationEntry = {
     role: 'system',
     content: `[Asset saved: inputs/assets/gen/${filename}]`,
     timestamp: new Date().toISOString(),
@@ -253,7 +254,7 @@ async function deliverDraftImages(
     ? `\nVariations: ${state.draftVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
     : '';
 
-  const chapterMarker: VisualConversationEntry = {
+  const chapterMarker: ConversationEntry = {
     role: 'system',
     content: `[${draftEntries.length} draft candidates saved for selection]${variationSummary}`,
     timestamp: new Date().toISOString(),
@@ -312,7 +313,7 @@ async function deliverSvgDrafts(
 
     await notifyFileTree(state);
 
-    const chapterMarker: VisualConversationEntry = {
+    const chapterMarker: ConversationEntry = {
       role: 'system',
       content: `[SVG saved: inputs/assets/gen/${filename}]`,
       timestamp: new Date().toISOString(),
@@ -403,7 +404,7 @@ async function deliverSvgDrafts(
     ? `\nVariations: ${state.draftVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
     : '';
 
-  const chapterMarker: VisualConversationEntry = {
+  const chapterMarker: ConversationEntry = {
     role: 'system',
     content: `[${draftEntries.length} SVG draft candidates saved for selection]${svgVariationSummary}`,
     timestamp: new Date().toISOString(),

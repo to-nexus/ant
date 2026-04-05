@@ -452,11 +452,10 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     ? await state.deps.session.load(context.project, context.featureFolder, 'code')
     : null;
   
-  // Build compressed session context for LLM
-  const sessionContextForLLM = session?.turns && session.turns.length > 0
+  const sessionContextForLLM = session?.runs && session.runs.length > 0
     ? sessionBuilder.buildContextForLLM(
-        session.turns,
-        'generate', // Placeholder, actual mode determined in detectEnvironment
+        session.runs,
+        'generate',
         directive || design || ''
       )
     : undefined;

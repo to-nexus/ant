@@ -372,6 +372,8 @@ export async function orchestrator(params: {
       // Detect language from directive
       const language = /[가-힣]/.test(input) ? 'ko' : 'en';
 
+      const planPromptPort = new FilePromptAdapter();
+
       const result = await runPlanGraph({
         directive: input,
         language: language as 'ko' | 'en',
@@ -380,7 +382,7 @@ export async function orchestrator(params: {
         isResume: !!(overrideDirective && jobId),  // continue endpoint sets both
         chatSource: chatSource,
         skipTriage: skipTriage,
-        deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate },
+        deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort },
         _httpJobId: jobId,
       });
 

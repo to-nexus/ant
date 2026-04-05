@@ -7,9 +7,28 @@
 
 // @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
-import { LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult, CacheableContent, MessageContentBlock } from '../../../core/ports/llm';
+import {
+  LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult,
+  CacheableContent, MessageContentBlock,
+  TextContentBlock, ImageContentBlock, ToolUseContentBlock, ToolResultContentBlock, ThinkingContentBlock,
+} from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../agents/architect/types/task';
 import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
+
+/**
+ * Anthropic Messages API accepted content block shapes.
+ * Used as the conversion target in convertBlock() to ensure
+ * only API-permitted fields are sent (whitelist approach).
+ */
+type AnthropicSubBlock =
+  | { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
+  | { type: 'image'; source: { type: 'base64'; media_type: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; data: string } };
+
+type AnthropicBlock =
+  | AnthropicSubBlock
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, any> }
+  | { type: 'tool_result'; tool_use_id: string; content: string | AnthropicSubBlock[]; is_error?: boolean }
+  | { type: 'thinking'; thinking: string; signature: string };
 
 export class AnthropicLLMClient implements LLMClient {
   private client: Anthropic;
@@ -105,10 +124,7 @@ export class AnthropicLLMClient implements LLMClient {
               budget_tokens: thinkingBudget,
             }
           } : {}),
-          messages: userMessages.map(m => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content as any,
-          })),
+          messages: this.convertMessages(userMessages),
         });
         return await stream.finalMessage();
       },
@@ -234,10 +250,7 @@ export class AnthropicLLMClient implements LLMClient {
           budget_tokens: thinkingBudget,
         }
       } : {}),
-      messages: userMessages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content as any,
-      })),
+      messages: this.convertMessages(userMessages),
       ...(options?.tools && options.tools.length > 0 ? {
         tools: options.tools.map(t => ({
           name: t.name,
@@ -465,6 +478,51 @@ export class AnthropicLLMClient implements LLMClient {
           },
         };
       }
+    }
+  }
+
+  private convertMessages(
+    messages: Array<{ role: string; content: string | MessageContentBlock[] | CacheableContent[] }>
+  ): Array<{ role: 'user' | 'assistant'; content: string | AnthropicBlock[] }> {
+    return messages.map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: typeof m.content === 'string'
+        ? m.content
+        : m.content.map(block => this.convertBlock(block)),
+    }));
+  }
+
+  private convertBlock(block: MessageContentBlock | CacheableContent): AnthropicBlock {
+    switch (block.type) {
+      case 'text': {
+        const b = block as TextContentBlock;
+        return { type: 'text', text: b.text, ...(b.cache_control && { cache_control: b.cache_control }) };
+      }
+      case 'image': {
+        const b = block as ImageContentBlock;
+        return { type: 'image', source: b.source };
+      }
+      case 'tool_use': {
+        const b = block as ToolUseContentBlock;
+        return { type: 'tool_use', id: b.id, name: b.name, input: b.input };
+      }
+      case 'tool_result': {
+        const b = block as ToolResultContentBlock;
+        return {
+          type: 'tool_result' as const,
+          tool_use_id: b.tool_use_id,
+          content: typeof b.content === 'string'
+            ? b.content
+            : b.content.map(sub => this.convertBlock(sub) as AnthropicSubBlock),
+          ...(b.is_error && { is_error: b.is_error }),
+        };
+      }
+      case 'thinking': {
+        const b = block as ThinkingContentBlock;
+        return { type: 'thinking', thinking: b.thinking, signature: b.signature || '' };
+      }
+      default:
+        return block as any;
     }
   }
 

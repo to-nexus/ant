@@ -437,7 +437,7 @@ export async function decomposeWithToolLoop(
 
     console.log(`🔧 [Decompose RAG] Round ${round + 1}: ${toolCalls.length} tool call(s)`);
 
-    const assistantContent: any[] = [];
+    const assistantContent: MessageContentBlock[] = [];
     if (thinking) {
       assistantContent.push({ type: 'thinking', thinking, signature: thinkingSignature });
     }
@@ -445,7 +445,7 @@ export async function decomposeWithToolLoop(
       assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
     }
 
-    const toolResults: any[] = [];
+    const toolResults: MessageContentBlock[] = [];
     for (const tc of toolCalls) {
       let result = toolHandler(tc.name, tc.input);
       cumulativeToolResultChars += result.length;

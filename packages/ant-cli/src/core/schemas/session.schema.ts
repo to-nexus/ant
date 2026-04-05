@@ -12,9 +12,9 @@ import { z } from "zod";
  */
 
 /**
- * SessionTurnInput Schema
+ * SessionRunInput Schema
  */
-export const SessionTurnInputSchema = z.object({
+export const SessionRunInputSchema = z.object({
   type: z.enum(['text', 'file', 'directive', 'design']),
   source: z.string().optional(),
   summary: z.string().max(200),
@@ -23,13 +23,13 @@ export const SessionTurnInputSchema = z.object({
 });
 
 /**
- * SessionTurnOutput Schema
+ * SessionRunOutput Schema
  */
-export const SessionTurnOutputSchema = z.object({
+export const SessionRunOutputSchema = z.object({
   // Design task outputs
   designPath: z.string().optional(),
-  planSummary: z.string().optional(),    // Summary instead of full plan
-  decisionCount: z.number().optional(),  // Count instead of full list
+  planSummary: z.string().optional(),
+  decisionCount: z.number().optional(),
   
   // Code task outputs
   branch: z.string().optional(),
@@ -40,19 +40,19 @@ export const SessionTurnOutputSchema = z.object({
   // Common outputs
   reportPath: z.string().optional(),
   error: z.string().optional(),
-}).passthrough(); // Allow additional properties for extensibility
+}).passthrough();
 
 /**
- * SessionTurn Schema
+ * SessionRun Schema
  */
-export const SessionTurnSchema = z.object({
-  turnId: z.number().int().positive(),
+export const SessionRunSchema = z.object({
+  runId: z.number().int().positive(),
   job: z.enum(['design', 'code', 'learn', 'review', 'plan', 'doc']),
   timestamp: z.string().datetime(),
-  input: SessionTurnInputSchema,
-  output: SessionTurnOutputSchema,
+  input: SessionRunInputSchema,
+  output: SessionRunOutputSchema,
   reference: z.object({
-    turnId: z.number().int().positive()
+    runId: z.number().int().positive()
   }).optional()
 });
 
@@ -63,17 +63,16 @@ export const SessionArtifactsSchema = z.object({
   latestDesign: z.string().optional(),
   activeBranch: z.string().optional(),
   keyDecisions: z.array(z.string()).optional(),
-}).passthrough(); // Allow additional properties
+}).passthrough();
 
 /**
  * SessionState Schema
- * ✅ Execution state for resuming after recursion limit
  */
 export const SessionStateSchema = z.object({
   taskQueue: z.array(z.any()).optional(),
   currentTask: z.any().optional(),
   completedTasks: z.array(z.string()).optional(),
-  completedTasksDetails: z.array(z.any()).optional(), // ✅ NEW: Full task objects
+  completedTasksDetails: z.array(z.any()).optional(),
   retries: z.number().optional(),
   maxRetries: z.number().optional(),
   previousAttempts: z.array(z.any()).optional(),
@@ -81,7 +80,7 @@ export const SessionStateSchema = z.object({
   lastViolations: z.array(z.any()).optional(),
   previousFileCount: z.number().optional(),
   resolvedCategories: z.array(z.string()).optional(),
-}).passthrough(); // Allow additional fields for flexibility
+}).passthrough();
 
 /**
  * Session Schema
@@ -92,9 +91,9 @@ export const SessionSchema = z.object({
   feature: z.string().min(1),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-  turns: z.array(SessionTurnSchema),
+  runs: z.array(SessionRunSchema),
   artifacts: SessionArtifactsSchema,
-  state: SessionStateSchema.optional(),  // ✅ Added for resuming
+  state: SessionStateSchema.optional(),
 });
 
 /**
@@ -102,9 +101,9 @@ export const SessionSchema = z.object({
  * (These should match the interfaces in core/types.ts)
  */
 export type SessionZod = z.infer<typeof SessionSchema>;
-export type SessionTurnZod = z.infer<typeof SessionTurnSchema>;
-export type SessionTurnInputZod = z.infer<typeof SessionTurnInputSchema>;
-export type SessionTurnOutputZod = z.infer<typeof SessionTurnOutputSchema>;
+export type SessionRunZod = z.infer<typeof SessionRunSchema>;
+export type SessionRunInputZod = z.infer<typeof SessionRunInputSchema>;
+export type SessionRunOutputZod = z.infer<typeof SessionRunOutputSchema>;
 export type SessionArtifactsZod = z.infer<typeof SessionArtifactsSchema>;
 
 /**
@@ -128,4 +127,3 @@ export function safeParseSession(data: unknown): SessionZod | null {
 export function validateSession(data: unknown): boolean {
   return SessionSchema.safeParse(data).success;
 }
-

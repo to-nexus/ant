@@ -1,7 +1,7 @@
 /**
  * Session & Interruption Types
  * 
- * Defines the session lifecycle: turns, state, interruptions, and artifacts.
+ * Defines the session lifecycle: runs, state, interruptions, and artifacts.
  * Sessions track job execution history and enable resume after interruption.
  */
 
@@ -14,11 +14,11 @@ export type { InterruptionReason, InterruptionDetails } from '@ant/shared';
 export type { JobTiming } from '@ant/shared';
 
 // ============================================
-// Session Turn Types
+// Session Run Types
 // ============================================
 
-/** Input metadata for a session turn */
-export interface SessionTurnInput {
+/** Input metadata for a session run (one BullMQ job execution) */
+export interface SessionRunInput {
   type: 'text' | 'file' | 'directive' | 'design';
   source?: string;        // File path (e.g., "inputs/sources/prd.md")
   summary: string;        // Brief summary (200 chars max)
@@ -26,8 +26,8 @@ export interface SessionTurnInput {
   size?: number;          // Content size in bytes
 }
 
-/** Output results of a session turn */
-export interface SessionTurnOutput {
+/** Output results of a session run */
+export interface SessionRunOutput {
   // Design task outputs
   designPath?: string;
   planSummary?: string;
@@ -45,15 +45,15 @@ export interface SessionTurnOutput {
   [key: string]: any;
 }
 
-/** A single turn in the conversation/workflow */
-export interface SessionTurn {
-  turnId: number;
+/** A single run in the session (one BullMQ job execution = one process) */
+export interface SessionRun {
+  runId: number;
   job: AgentJob;
   timestamp: string;
-  input: SessionTurnInput;
-  output: SessionTurnOutput;
+  input: SessionRunInput;
+  output: SessionRunOutput;
   reference?: {
-    turnId: number;
+    runId: number;
   };
 }
 
@@ -77,18 +77,24 @@ export interface SessionArtifacts {
  * A single entry in the agent-user semantic conversation history.
  * Stored per agent/job session and persisted across job runs.
  * 
- * Unlike conversationHistory (Anthropic format with tool_use/tool_result),
+ * Unlike conversationHistory (LLM message format with tool_use/tool_result),
  * this captures only semantic content — user intent and agent responses.
  * Tool call details are ephemeral within each run's ReAct loop.
+ * 
+ * The 'system' role is used for:
+ *  - Chapter markers (Visual deliver node: asset save notifications)
+ *  - Compaction summaries (persist pruning: summarized older entries)
  */
 export interface ConversationEntry {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
   metadata?: {
     hasArtifact?: boolean;   // This turn produced a PRD/design/code artifact
     artifactPath?: string;   // Path to the produced artifact
     mode?: string;           // generate, refine, etc.
+    savedAsset?: string;     // Visual: deliver node saved asset path
+    chapterSummary?: string; // Visual: chapter marker summary / persist pruning summary
   };
 }
 
@@ -179,7 +185,7 @@ export interface Session {
   feature: string;
   createdAt: string;
   updatedAt: string;
-  turns: SessionTurn[];
+  runs: SessionRun[];
   artifacts: SessionArtifacts;
   state?: SessionState;
 }
