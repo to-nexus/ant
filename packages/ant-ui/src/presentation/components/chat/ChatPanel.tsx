@@ -34,6 +34,10 @@ const WATERMARK_MAP: Record<string, Record<WatermarkVariant, string>> = {
     color: `${BASE}watermarks/architect-color.png`,
     mono: `${BASE}watermarks/architect-mono.png`,
   },
+  creator: {
+    color: `${BASE}watermarks/creator-color.png`,
+    mono: `${BASE}watermarks/creator-mono.png`,
+  },
 };
 
 function getWatermarkSrc(
