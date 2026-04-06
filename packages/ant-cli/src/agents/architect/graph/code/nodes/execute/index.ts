@@ -377,6 +377,13 @@ export async function execute(
   // ✅ Check if this is a continuation after tool calling
   const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
   
+  // ✅ Verification tasks with a remediation plan don't need extended thinking —
+  // the plan node already analyzed errors and produced a concrete fix plan.
+  // Enabling thinking here causes thinking-only responses (no tool calls),
+  // which Safety Net C (threshold=1) immediately kills, wasting an entire
+  // plan→execute→enforce cycle and triggering the "restart from beginning" loop.
+  const isVerificationWithPlan = state.currentTask?.type === 'verification' && !!state.planText;
+
   // ✅ Track token usage for this LLM call
   let capturedUsage: any = undefined;
   
@@ -385,7 +392,7 @@ export async function execute(
     for await (const event of llmToUse.stream(messages, {
       tools,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
-      enableThinking: !isAfterToolCall,
+      enableThinking: !isAfterToolCall && !isVerificationWithPlan,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
     })) {
       if (event.type === 'retry') {
@@ -716,7 +723,8 @@ export async function execute(
     
     // Thinking-only detection: log when LLM produces thinking but no text/tools
     if (toolCalls.length === 0 && !textResponse.trim() && thinking) {
-      console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${!isAfterToolCall}, history=${state.conversationHistory?.length ?? 0}, violations=${state.violations?.length ?? 0}`);
+      const actualEnableThinking = !isAfterToolCall && !isVerificationWithPlan;
+      console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${actualEnableThinking}, history=${state.conversationHistory?.length ?? 0}, violations=${state.violations?.length ?? 0}`);
       if (state.context?.featurePath && state._httpJobId) {
         const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
         getExecutionLogger({
@@ -727,7 +735,7 @@ export async function execute(
           thinkingLength: thinking.length,
           thinkingPreview: thinking.substring(0, 300),
           textResponse: textResponse.substring(0, 100),
-          enableThinking: !isAfterToolCall,
+          enableThinking: actualEnableThinking,
           toolsAvailable: tools?.length ?? 0,
           conversationHistoryLength: state.conversationHistory?.length ?? 0,
           violationsCount: state.violations?.length ?? 0,
