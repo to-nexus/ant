@@ -7,12 +7,12 @@
  * Implements TriageableState-compatible fields for shared triage node.
  */
 
-import { TokenUsage } from '../../../common/graph/llmHelpers';
+import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 import { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
 
-export interface PlanGraphState {
+export interface PlanGraphState extends PhaseTrackingState {
   // Input
   directive?: string;
   language: 'ko' | 'en';

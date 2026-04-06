@@ -20,7 +20,7 @@ import * as fsPromises from 'fs/promises';
 import Handlebars from 'handlebars';
 import { PlanGraphState } from '../state';
 import { ConversationEntry } from '../../../../../core/types/session';
-import { extractTokenUsageFromStreamEvent, accumulateTokenUsage } from '../../../../common/graph/llmHelpers';
+import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
@@ -211,7 +211,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     ? state.conversation.slice(0, -1)
     : [];
   
-  let compactionResult: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean; tokensBefore: number; tokensAfter: number };
+  let compactionResult: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean; tokensBefore: number; tokensAfter: number; tokenUsage?: import('@ant/shared').TaskTokenUsage };
   try {
     compactionResult = allButLast.length > 0
       ? await compactJob(allButLast, llm, state.deps!.promptPort!, {
@@ -223,6 +223,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   } catch (err) {
     console.warn(`⚠️ [Planner:Generate] compactJob failed, using raw entries:`, err);
     compactionResult = { entries: allButLast, wasCompacted: false, tokensBefore: 0, tokensAfter: 0 };
+  }
+  if (compactionResult.tokenUsage) {
+    accumulateTokenUsage(state, compactionResult.tokenUsage, { taskLevel: false, jobLevel: true });
   }
   
   const compactionMeta = compactionResult.wasCompacted
@@ -344,6 +347,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         const capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
           accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
+          upsertPhaseTokenUsage(state, 'generate', capturedUsage);
         }
         
         // ✅ Broadcast tokenUsage + recursion to kanban (enables token/recursion badges)
@@ -357,6 +361,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
             state.recursionLimit,
             state.tokenUsage,
           );
+        }
+        if (state.phaseTokenUsages && state.deps?.kanbanUpdate?.updatePhaseTokenUsages) {
+          state.deps.kanbanUpdate.updatePhaseTokenUsages(state.phaseTokenUsages);
         }
       }
     }

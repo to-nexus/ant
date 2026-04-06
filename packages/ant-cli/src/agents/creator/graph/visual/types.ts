@@ -12,7 +12,7 @@ import { BackgroundRemovalPort } from '../../../../core/ports/backgroundRemoval.
 import { PromptPort } from '../../../../core/ports/prompt.js';
 import { TaskQueueUpdatePort, FileTreeUpdatePort } from '../../../../core/ports/index.js';
 import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow.js';
-import { TokenUsage } from '../../../common/graph/llmHelpers.js';
+import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers.js';
 import { VisualSettings } from '../../../../core/types/workspace.js';
 import type { ConversationEntry } from '../../../../core/types/session.js';
 import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
@@ -103,7 +103,7 @@ export interface VisualGraphDeps {
 /**
  * Visual Graph State — conforms to TriageableState
  */
-export interface VisualGraphState extends TriageableState {
+export interface VisualGraphState extends TriageableState, PhaseTrackingState {
   // TriageableState fields
   featurePath: string;
   context: any;

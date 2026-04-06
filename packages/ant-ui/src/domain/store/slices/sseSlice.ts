@@ -86,6 +86,9 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     if (data.estimatingTokenUsage === undefined && existingKanban?.estimatingTokenUsage !== undefined) {
       data = { ...data, estimatingTokenUsage: existingKanban.estimatingTokenUsage };
     }
+    if (data.phaseTokenUsages === undefined && existingKanban?.phaseTokenUsages !== undefined) {
+      data = { ...data, phaseTokenUsages: existingKanban.phaseTokenUsages };
+    }
     
     const kanbanJobId = data.jobId;
     const { selectedProject, selectedFeature } = state;

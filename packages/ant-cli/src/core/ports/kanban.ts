@@ -12,7 +12,7 @@
  */
 
 import { BaseTask, TaskTokenUsage } from '../types/task';
-import type { JobTiming } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage } from '@ant/shared';
 
 export interface TaskQueueUpdatePort {
   /**
@@ -70,6 +70,12 @@ export interface TaskQueueUpdatePort {
    * so the frontend can show estimating vs task breakdown without subtraction.
    */
   setEstimatingTokenUsage?(tokenUsage: TaskTokenUsage): void;
+
+  /**
+   * Update per-phase token breakdown for non-task-queue jobs (visual/plan).
+   * Each entry represents a distinct graph node's cumulative token usage.
+   */
+  updatePhaseTokenUsages?(phases: PhaseTokenUsage[]): void;
 
   /**
    * Update a single in-progress task's token usage and re-broadcast.

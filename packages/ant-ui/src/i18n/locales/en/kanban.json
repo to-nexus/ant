@@ -35,7 +35,8 @@
     "byPhase": "By Phase",
     "estimating": "Planning:",
     "outputDescription": "billable · not cacheable",
-    "noTokenData": "No token usage data yet"
+    "noTokenData": "No token usage data yet",
+    "overhead": "Overhead"
   },
   "task": {
     "paused": "Paused"

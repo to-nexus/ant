@@ -87,6 +87,7 @@ export function buildPlanGraph() {
       deps: null as any,
       _httpJobId: null as any,
       tokenUsage: null as any,
+      phaseTokenUsages: null as any,
       recursionCount: null as any,
       recursionLimit: null as any,
     },

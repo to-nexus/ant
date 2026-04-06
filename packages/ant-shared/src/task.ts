@@ -53,6 +53,13 @@ export interface TaskTokenUsage {
   cacheCreationTokens?: number;
 }
 
+/** Per-phase token usage entry for non-task-queue jobs (visual, plan) */
+export interface PhaseTokenUsage {
+  phase: string;
+  label?: string;
+  tokenUsage: TaskTokenUsage;
+}
+
 // ============================================
 // Base Task
 // ============================================
@@ -121,6 +128,13 @@ export interface KanbanData {
 
   // Estimating phase token usage (decompose + detectEnvironment, before tasks)
   estimatingTokenUsage?: TaskTokenUsage;
+
+  /**
+   * Per-phase token breakdown for non-task-queue jobs (visual, plan).
+   * Each entry represents a distinct graph node's cumulative token usage.
+   * When present, the UI renders phase-based breakdown instead of task-based.
+   */
+  phaseTokenUsages?: PhaseTokenUsage[];
 
   // Job metadata
   jobType?: string;

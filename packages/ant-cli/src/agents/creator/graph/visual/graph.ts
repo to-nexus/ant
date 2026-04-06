@@ -153,6 +153,9 @@ export function buildVisualGraph() {
       // Persist pruning metadata
       _conversationCompaction: null as any,
 
+      // Phase-level token tracking
+      phaseTokenUsages: null as any,
+
       // TriageableState compat
       pendingToolCalls: null as any,
     },
@@ -416,6 +419,27 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
       }
     } catch (err) {
       console.warn('⚠️ [Visual] Failed to save session:', err);
+    }
+  }
+
+  // Final token broadcast so the UI badge shows the definitive total
+  if (_httpJobId && kanbanUpdate) {
+    if (finalState.tokenUsage && kanbanUpdate.updateTokenUsage) {
+      kanbanUpdate.updateTokenUsage(finalState.tokenUsage as any);
+    }
+    if (finalState.phaseTokenUsages && kanbanUpdate.updatePhaseTokenUsages) {
+      kanbanUpdate.updatePhaseTokenUsages(finalState.phaseTokenUsages as any);
+    }
+    if (kanbanUpdate.updateTaskQueue) {
+      kanbanUpdate.updateTaskQueue(
+        _httpJobId,
+        null,
+        [],
+        [],
+        0,
+        parseInt(process.env.RECURSION_LIMIT || '50', 10),
+        finalState.tokenUsage as any,
+      );
     }
   }
 

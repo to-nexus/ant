@@ -22,6 +22,7 @@ import {
   ImageGenerationOptions,
 } from '../../../core/ports/imageGeneration';
 import { withRetry } from '../../../core/utils/retry';
+import type { TaskTokenUsage } from '@ant/shared';
 
 export class GeminiImageClient implements ImageGenerationPort {
   private client: GoogleGenAI;
@@ -91,6 +92,13 @@ export class GeminiImageClient implements ImageGenerationPort {
             return null;
           }
 
+          const usageMeta = (response as any).usageMetadata;
+          const tokenUsage: TaskTokenUsage | undefined = usageMeta ? {
+            inputTokens: usageMeta.promptTokenCount ?? 0,
+            outputTokens: usageMeta.candidatesTokenCount ?? 0,
+            totalTokens: (usageMeta.promptTokenCount ?? 0) + (usageMeta.candidatesTokenCount ?? 0),
+          } : undefined;
+
           for (const part of response.candidates[0].content.parts) {
             if (part.inlineData?.data) {
               const responseMime = (part.inlineData.mimeType as string) || 'image/png';
@@ -105,10 +113,15 @@ export class GeminiImageClient implements ImageGenerationPort {
                 console.warn(`🎨 [IMAGE GEN] Format mismatch: requested=${requestedMime}, received=${normalizedMime}`);
               }
 
+              if (tokenUsage) {
+                console.log(`🎨 [IMAGE GEN] Token usage: ${tokenUsage.inputTokens} in / ${tokenUsage.outputTokens} out`);
+              }
+
               return {
                 data: Buffer.from(part.inlineData.data, 'base64'),
                 mimeType: normalizedMime,
                 prompt,
+                tokenUsage,
                 modelResponseMetadata: {
                   model: this.modelName,
                   aspectRatio,

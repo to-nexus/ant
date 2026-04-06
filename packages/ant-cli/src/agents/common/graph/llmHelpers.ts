@@ -8,7 +8,7 @@
  */
 
 import { LLMClient, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
-import { TaskTokenUsage } from '@ant/shared';
+import { TaskTokenUsage, PhaseTokenUsage } from '@ant/shared';
 import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger';
 
 /**
@@ -97,6 +97,51 @@ export function accumulateTokenUsage(
       state.tokenUsage.cacheCreationTokens = 
         (state.tokenUsage.cacheCreationTokens || 0) + usage.cacheCreationTokens;
     }
+  }
+}
+
+/**
+ * State interface for phase-level token tracking (visual/plan jobs).
+ */
+export interface PhaseTrackingState {
+  phaseTokenUsages?: PhaseTokenUsage[];
+}
+
+/**
+ * Upsert a phase's token usage into phaseTokenUsages array.
+ * Merges if a matching phase already exists (for looping nodes like generate/direct).
+ */
+export function upsertPhaseTokenUsage(
+  state: PhaseTrackingState,
+  phase: string,
+  usage: TaskTokenUsage,
+  label?: string,
+): void {
+  if (!state.phaseTokenUsages) {
+    state.phaseTokenUsages = [];
+  }
+
+  const existing = state.phaseTokenUsages.find(p => p.phase === phase);
+  if (existing) {
+    existing.tokenUsage.inputTokens += usage.inputTokens;
+    existing.tokenUsage.outputTokens += usage.outputTokens;
+    existing.tokenUsage.totalTokens =
+      existing.tokenUsage.inputTokens + existing.tokenUsage.outputTokens;
+    if (usage.cacheReadTokens) {
+      existing.tokenUsage.cacheReadTokens =
+        (existing.tokenUsage.cacheReadTokens || 0) + usage.cacheReadTokens;
+    }
+    if (usage.cacheCreationTokens) {
+      existing.tokenUsage.cacheCreationTokens =
+        (existing.tokenUsage.cacheCreationTokens || 0) + usage.cacheCreationTokens;
+    }
+    if (label) existing.label = label;
+  } else {
+    state.phaseTokenUsages.push({
+      phase,
+      label,
+      tokenUsage: { ...usage },
+    });
   }
 }
 

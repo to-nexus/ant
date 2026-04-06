@@ -155,6 +155,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
             jobId={kanbanData.jobId}
             tokenUsage={kanbanData.tokenUsage}
             estimatingTokenUsage={kanbanData.estimatingTokenUsage}
+            phaseTokenUsages={kanbanData.phaseTokenUsages}
             completedTasks={kanbanData.completed?.map(task => ({
               id: task.id || task.name,
               name: task.name,

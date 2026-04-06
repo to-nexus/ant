@@ -85,20 +85,26 @@ export async function compactJob<T extends CompactableEntry>(
     `\n🗜️  [CompactJob] Compacting ${oldEntries.length} old entries (${estimateTokens(oldEntries).toLocaleString()} tokens) via LLM...`,
   );
 
-  const summaryText = await llmClient.invoke(
-    [{ role: 'user', content: 'Summarize the conversation above.' }],
-    {
-      system: systemPrompt,
-      maxTokens: config.maxOutputTokens || COMPACTION_MAX_OUTPUT_TOKENS,
-    },
-  );
+  const invokeMessages = [{ role: 'user', content: 'Summarize the conversation above.' }];
+  const invokeOpts = {
+    system: systemPrompt,
+    maxTokens: config.maxOutputTokens || COMPACTION_MAX_OUTPUT_TOKENS,
+  };
+
+  const { summaryText, tokenUsage } = llmClient.invokeWithUsage
+    ? await (async () => {
+        const r = await llmClient.invokeWithUsage!(invokeMessages, invokeOpts);
+        return { summaryText: r.content, tokenUsage: r.usage };
+      })()
+    : { summaryText: await llmClient.invoke(invokeMessages, invokeOpts), tokenUsage: undefined };
 
   const recentTokens = estimateTokens(recentEntries);
   const summaryTokens = estimateTokens(summaryText);
 
   console.log(
     `🗜️  [CompactJob] Done: ${totalTokens.toLocaleString()} → ${(recentTokens + summaryTokens).toLocaleString()} tokens ` +
-    `(summary: ${summaryTokens.toLocaleString()}, recent ${recentEntries.length} entries: ${recentTokens.toLocaleString()})`,
+    `(summary: ${summaryTokens.toLocaleString()}, recent ${recentEntries.length} entries: ${recentTokens.toLocaleString()})` +
+    (tokenUsage ? ` [LLM: ${tokenUsage.inputTokens} in / ${tokenUsage.outputTokens} out]` : ''),
   );
 
   return {
@@ -107,6 +113,7 @@ export async function compactJob<T extends CompactableEntry>(
     wasCompacted: true,
     tokensBefore: totalTokens,
     tokensAfter: recentTokens + summaryTokens,
+    tokenUsage,
   };
 }
 

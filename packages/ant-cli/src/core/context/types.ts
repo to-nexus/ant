@@ -27,6 +27,8 @@ export interface CompactionResult<T> {
   wasCompacted: boolean;
   tokensBefore: number;
   tokensAfter: number;
+  /** Token usage consumed by the LLM summarization call (undefined when not compacted) */
+  tokenUsage?: import('@ant/shared').TaskTokenUsage;
 }
 
 export interface CompactionConfig {
