@@ -152,6 +152,7 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
       parsedDirective = 'Requested sketch regeneration with fresh exploration';
       console.log('📂 [Visual:Resolve] Sketch intent: regenerate');
     } else if (action === 'FEEDBACK') {
+      sketchIntent = 'feedback';
       parsedDirective = rest?.trim() || userDirective;
       console.log(`📂 [Visual:Resolve] Sketch feedback: "${parsedDirective?.substring(0, 60)}"`);
     }
