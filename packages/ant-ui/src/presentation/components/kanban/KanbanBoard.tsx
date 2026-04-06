@@ -36,7 +36,7 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
 
   // ✅ Detect newly completed tasks (skip animation on initial load)
   useEffect(() => {
-    const currentCompletedIds = new Set(kanbanData.completed.map(task => task.id || task.name));
+    const currentCompletedIds = new Set((kanbanData.completed ?? []).map(task => task.id || task.name));
     
     // ✅ On initial load, just set previous IDs without triggering animation
     if (isInitialLoad) {
