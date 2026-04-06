@@ -11,6 +11,7 @@ import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
+import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 
 export async function explainNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -21,11 +22,11 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('explain', state._uiLocale as any), 'explain');
   }
 
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'explain', 0);
-  }
-
   const llm = state.deps.explainLLM;
+
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'explain', 0, undefined, llm ? extractLLMInfo(llm) : undefined);
+  }
   const promptPort = state.deps.promptPort;
 
   const conversationContext = state.conversation

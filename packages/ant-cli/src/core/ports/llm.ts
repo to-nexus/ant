@@ -208,6 +208,9 @@ export interface LLMInvokeResult {
 }
 
 export interface LLMClient {
+  readonly provider: string;
+  readonly modelName: string;
+
   invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string>;
   
   /**

@@ -4,14 +4,17 @@
  * LangGraph 노드 실행 상태를 실시간으로 업데이트하기 위한 포트
  */
 
-// TaskInfo is shared between BE and FE (canonical source: @ant/shared)
-export type { TaskInfo } from '@ant/shared';
-import type { TaskInfo } from '@ant/shared';
+// TaskInfo and LLMInfo are shared between BE and FE (canonical source: @ant/shared)
+export type { TaskInfo, LLMInfo } from '@ant/shared';
+import type { TaskInfo, LLMInfo } from '@ant/shared';
+import type { LLMClient } from './llm';
 
-/** LLM provider/model info (BE-only) */
-export interface LLMInfo {
-  provider: string;  // 'anthropic' | 'openai'
-  model: string;     // 실제 모델명
+/**
+ * Extract LLMInfo from an LLMClient instance.
+ * Single source of truth: reads directly from the client that will make the actual API call.
+ */
+export function extractLLMInfo(client: LLMClient): LLMInfo {
+  return { provider: client.provider, model: client.modelName };
 }
 
 export interface WorkflowStateUpdatePort {

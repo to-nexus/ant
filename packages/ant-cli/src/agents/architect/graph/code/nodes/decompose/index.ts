@@ -13,6 +13,7 @@
  */
 
 import { LLMClient } from "../../../../../../core/ports";
+import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, TaskQueue } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
@@ -55,17 +56,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       priority: state.currentTask.priority
     } : undefined;
     
-    const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
-      provider: (llm as any).provider,
-      model: (llm as any).modelName
-    } : undefined;
-    
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'decompose', 
       0,
       taskInfo, 
-      llmInfo,
+      llm ? extractLLMInfo(llm) : undefined,
       state.recursionCount,
       state.recursionLimit
     );

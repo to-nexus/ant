@@ -30,6 +30,7 @@ import {
   DesignDomain,
 } from "../../../../../core/types/detection";
 import { isFigmaDataPopulated, UIDesignSource } from "@ant/shared";
+import { extractLLMInfo } from "../../../../../core/ports/workflow";
 
 interface ParsedDesignResponse {
   workType: "ui-design" | "system-design" | "spec" | "clarify" | "error";
@@ -422,7 +423,7 @@ export async function detectEnvironment(
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, "detectEnvironment", 0,
-      undefined, undefined,
+      undefined, state.deps?.llm ? extractLLMInfo(state.deps.llm) : undefined,
       state.recursionCount, state.recursionLimit
     );
   }

@@ -27,6 +27,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 import { getToolsByNames, TOOL_SETS } from '../../../../tools/definitions';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
+import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './systemDesignPrompt';
@@ -149,7 +150,8 @@ export async function docGen(
     } : undefined;
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 'docGen', (state as any).workerId ?? 0, taskInfo,
-      undefined, state.recursionCount, state.recursionLimit
+      state.deps?.llm ? extractLLMInfo(state.deps.llm) : undefined,
+      state.recursionCount, state.recursionLimit
     );
   }
   
