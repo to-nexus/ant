@@ -567,20 +567,20 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
     if (!cardState.selectedProject || !cardState.selectedFeature || cardState.isSelected) return;
 
     cardState.setIsLoading(true);
-    const draftIndex = parseInt(value.replace('draft_', ''), 10);
-    const label = t('draftSelection.draftSelected', { number: draftIndex + 1 });
+    const sketchIndex = parseInt(value.replace('sketch_', ''), 10);
+    const label = t('draftSelection.draftSelected', { number: sketchIndex + 1 });
     cardState.setLocalSelectedChoice(value);
     cardState.setLocalResolvedLabel(label);
     cardState.persistChoice(value, label);
-    await cardState.persistToBackend(value, label, { selectedDraftIndex: draftIndex });
+    await cardState.persistToBackend(value, label, { selectedSketchIndex: sketchIndex });
 
     setLightboxOpen(false);
 
     try {
       clearPendingClarify();
-      await runJob(selectedAgent, selectedJobType, `[DRAFT_FINALIZE:${draftIndex}]`);
+      await runJob(selectedAgent, selectedJobType, `[SKETCH_FINALIZE:${sketchIndex}]`);
     } catch (error) {
-      console.error('[ChoiceCard:Clarifying] Draft select failed:', error);
+      console.error('[ChoiceCard:Clarifying] Sketch select failed:', error);
     } finally {
       cardState.setIsLoading(false);
     }
@@ -617,7 +617,7 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
 
     try {
       clearPendingClarify();
-      await runJob(selectedAgent, selectedJobType, `[DRAFT_FEEDBACK] ${text}`);
+      await runJob(selectedAgent, selectedJobType, `[SKETCH_FEEDBACK] ${text}`);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Custom input failed:', error);
     } finally {
@@ -637,7 +637,7 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
 
     try {
       clearPendingClarify();
-      await runJob(selectedAgent, selectedJobType, '[DRAFT_REGENERATE]');
+      await runJob(selectedAgent, selectedJobType, '[SKETCH_REGENERATE]');
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Regenerate failed:', error);
     } finally {
@@ -666,8 +666,8 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
   const resolvedAnswers: Record<number, string> | undefined = content.metadata?.resolvedAnswers;
   const isResolved = cardState.isSelected && !!resolvedAnswers;
 
-  const selectedValue = content.metadata?.selectedDraftIndex != null
-    ? `draft_${content.metadata.selectedDraftIndex}`
+  const selectedValue = content.metadata?.selectedSketchIndex != null
+    ? `sketch_${content.metadata.selectedSketchIndex}`
     : cardState.selectedChoice || undefined;
   const customText: string | undefined = content.metadata?.customText;
 

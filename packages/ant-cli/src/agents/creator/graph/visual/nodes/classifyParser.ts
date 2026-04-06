@@ -8,7 +8,7 @@
 import { VisualAssetType, VISUAL_ASSET_TYPES } from '../types.js';
 import type { JobMode } from '@ant/shared';
 
-const VALID_JOB_MODES: readonly string[] = ['generate', 'refactor'] as const;
+const VALID_JOB_MODES: readonly string[] = ['generate', 'explain'] as const;
 
 export interface ClassifyResponse {
   assetType: VisualAssetType;

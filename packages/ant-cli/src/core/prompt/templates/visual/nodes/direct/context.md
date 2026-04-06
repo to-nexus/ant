@@ -4,56 +4,38 @@
 ## Current Request
 {{{currentDirective}}}
 
-{{#if isDraftFeedback}}
+{{#if lastEngineeredPrompt}}
 
-## Draft Feedback Mode
+## Previous Generation
 
-The user is providing feedback on {{availableDraftCount}} draft candidates. NO final image has been produced yet.
+The following prompt was used in the most recent generation:
 
-Previous base prompt (shared by all drafts):
 {{{lastEngineeredPrompt}}}
 
-{{#if draftVariationList}}
-Each draft was generated from the base prompt above plus a unique variation suffix:
-{{#each draftVariationList}}
-- Draft {{this.number}}: {{this.label}} — `{{this.prompt}}`
+{{/if}}
+
+{{#if sketchVariationList}}
+
+## Sketch Variations
+
+{{availableSketchCount}} sketch candidate(s) were generated from the base prompt above, each with a unique variation suffix:
+{{#each sketchVariationList}}
+- Sketch {{this.number}}: {{this.label}} — `{{this.prompt}}`
 {{/each}}
-{{/if}}
-
-Your routing decision is constrained to exactly **TWO options**:
-
-1. **`sketch`** — Generate a NEW set of draft candidates
-   - User wants a different direction, more options, or style adjustments applied across all new drafts
-   - If the user references a specific draft's direction, incorporate that direction into the new prompts
-
-2. **`render`** — Produce the FINAL image from a specific draft
-   - User explicitly references a specific draft number AND wants it finalized (with or without minor changes)
-
-Default to `sketch` when uncertain — the user chose to type feedback instead of clicking a draft directly, which signals they want more exploration.
 
 {{/if}}
-
-{{#if isRefactor}}
-
-## Refactor Context
-
-You are **modifying** an existing asset, NOT creating from scratch.
-
-### Previous Engineered Prompt
-{{{lastEngineeredPrompt}}}
 
 {{#if lastOutputPath}}
-### Reference Baseline
-The **final rendered image** at `{{{lastOutputPath}}}` is the baseline for modification. The render node will automatically use this final image as the visual reference — do NOT set `selectedDraftIndex`. Your `engineeredPrompt` should describe the complete desired result (previous elements + requested changes).
-{{/if}}
 
-Your `engineeredPrompt` MUST be based on the previous prompt above with targeted modifications applied. Preserve all elements the user did not ask to change.
+## Finalized Asset
+
+A final rendered image exists at `{{{lastOutputPath}}}`. The render node can automatically use this as the visual reference for img2img refinement.
 
 {{/if}}
 
 {{#if safetyBlocked}}
 
-## ⚠️ Safety Filter Alert
+## Safety Filter Alert
 
 The previous generation prompt was **BLOCKED** by the image model's safety filter.
 
@@ -68,7 +50,7 @@ Do NOT retry with the same or minimally modified prompt.
 
 {{#if visualError}}
 
-## ⚠️ Previous Attempt Error
+## Previous Attempt Error
 
 {{{visualError}}}
 
@@ -80,16 +62,16 @@ Adjust your prompt or routing strategy to avoid repeating this failure. If the e
 - Default aspect ratio: {{defaultAspectRatio}}
 - Max candidates per round: {{candidateCount}}
 
-{{#if availableDraftCount}}
+{{#if availableSketchCount}}
 
-## Available Drafts
+## Available Sketches
 
-{{availableDraftCount}} draft image(s) from previous round(s) are available. You can inspect them visually via the provided tools to inform your prompt decisions.
+{{availableSketchCount}} sketch image(s) from previous round(s) are available. You can inspect them visually via the provided tools to inform your prompt decisions.
 
 {{/if}}
 
 ## Clarify Budget
 - Used: {{clarifyCount}} / {{maxClarify}}
 {{#if clarifyBudgetExhausted}}
-- **⚠️ BUDGET EXHAUSTED**: You MUST NOT route to `clarify`. Proceed with the best interpretation of the user's intent.
+- **BUDGET EXHAUSTED**: You MUST NOT route to `clarify`. Proceed with the best interpretation of the user's intent.
 {{/if}}

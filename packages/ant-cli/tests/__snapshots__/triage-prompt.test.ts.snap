@@ -429,8 +429,9 @@ Improves quality, adds missing sections, clarifies requirements.
 
 
 ### visual job (agent: creator)
-Generates visual assets (images, icons, illustrations) for the project.
+Generates visual assets and provides expert consultation on visual design.
 Uses AI image generation models to create project-specific assets.
+Handles questions and analysis about visual styles, assets, and creative direction.
 Conversational workflow: maintains context across multiple turns.
 
 
@@ -444,8 +445,22 @@ Supports progressive refinement: sketch exploration → selection → final rend
 - Image asset generation (PNG, WebP, JPEG)
 - Icon and illustration creation
 - SVG code generation for simple shapes
-- Progressive refinement with draft exploration
+- Progressive refinement with sketch exploration
 - Conversational iteration on visual output
+
+#### Mode: explain
+Answers questions and provides expert consultation on any visual design topic.
+Covers general visual knowledge, creative direction, style guidance, technical advice,
+and analysis of existing assets when available. No image generation — text response only.
+
+
+
+**Scope:**
+- General visual design knowledge (styles, techniques, composition principles)
+- Creative direction consultation and recommendations
+- Technical guidance on asset formats, sizes, accessibility, and constraints
+- Analysis of existing sketches or finalized outputs when available
+- Pre-generation consultation (what to consider, which approach to take)
 
 **Redirect signals:**
 - → to_design: Request target is a design document or UI specification, not a visual asset.

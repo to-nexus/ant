@@ -7,7 +7,7 @@
  * System prompt loaded from visual/nodes/engrave/base.md template.
  */
 
-import { VisualGraphState, SvgDraft } from '../types.js';
+import { VisualGraphState, SvgSketch } from '../types.js';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
@@ -27,30 +27,30 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   const llm = state.deps.engraveLLM;
   const promptPort = state.deps.promptPort;
   const basePrompt = state.basePrompt;
-  const variations = state.draftVariations;
+  const variations = state.sketchVariations;
   const fallbackPrompt = state.engineeredPrompt || state.directive || '';
   const candidateCount = state.visualSettings?.candidateCount ?? 3;
-  const usePerDraftPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
+  const usePerSketchPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
 
   const systemPrompt = await promptPort.render('visual/nodes/engrave/base', {});
 
-  const svgDrafts: SvgDraft[] = [];
-  const draftCount = usePerDraftPrompts ? variations!.length : candidateCount;
+  const svgSketches: SvgSketch[] = [];
+  const sketchCount = usePerSketchPrompts ? variations!.length : candidateCount;
 
-  for (let i = 0; i < draftCount; i++) {
-    let draftPrompt: string;
-    if (usePerDraftPrompts) {
-      draftPrompt = `${basePrompt} ${variations![i].prompt}`.trim();
+  for (let i = 0; i < sketchCount; i++) {
+    let sketchPrompt: string;
+    if (usePerSketchPrompts) {
+      sketchPrompt = `${basePrompt} ${variations![i].prompt}`.trim();
     } else {
       const variationHint = candidateCount > 1
         ? `\n\nThis is variation ${i + 1} of ${candidateCount}. ${i > 0 ? 'Create a different style/approach from previous variations.' : ''}`
         : '';
-      draftPrompt = fallbackPrompt + variationHint;
+      sketchPrompt = fallbackPrompt + variationHint;
     }
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: draftPrompt },
+      { role: 'user', content: sketchPrompt },
     ];
 
     try {
@@ -70,7 +70,7 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
         svgCode = svgCode.replace(/^```(?:svg|xml)?\n?/, '').replace(/\n?```$/, '');
       }
 
-      svgDrafts.push({ code: svgCode, prompt: draftPrompt, index: i });
+      svgSketches.push({ code: svgCode, prompt: sketchPrompt, index: i });
       console.log(`✒️ [Visual:Engrave] SVG variation ${i + 1} generated (${svgCode.length} chars)`);
     } catch (err: any) {
       console.error(`❌ [Visual:Engrave] Variation ${i + 1} failed:`, err.message);
@@ -79,13 +79,13 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
 
   if (state._httpJobId) {
     try {
-      const svgSummary = svgDrafts.map((d, i) => `[variation ${i + 1}] ${d.code.length} chars`).join(', ');
-      const promptLen = systemPrompt.length + (usePerDraftPrompts ? basePrompt!.length : fallbackPrompt.length);
+      const svgSummary = svgSketches.map((d, i) => `[variation ${i + 1}] ${d.code.length} chars`).join(', ');
+      const promptLen = systemPrompt.length + (usePerSketchPrompts ? basePrompt!.length : fallbackPrompt.length);
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'engrave', promptLen, {
         templatePath: 'visual/nodes/engrave/base',
         usedTemplates: ['visual/nodes/engrave/base', 'visual/nodes/engrave/rules'],
-        injectedVariables: { basePrompt: basePrompt || fallbackPrompt, candidateCount: draftCount, perDraftVariations: usePerDraftPrompts },
-        hardcodedContent: `Generated ${svgDrafts.length}/${draftCount} SVGs: ${svgSummary}`,
+        injectedVariables: { basePrompt: basePrompt || fallbackPrompt, candidateCount: sketchCount, perSketchVariations: usePerSketchPrompts },
+        hardcodedContent: `Generated ${svgSketches.length}/${sketchCount} SVGs: ${svgSummary}`,
       });
     } catch { /* non-critical */ }
   }
@@ -98,18 +98,18 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'engrave', 0);
   }
 
-  if (svgDrafts.length === 0) {
+  if (svgSketches.length === 0) {
     return {
-      svgDrafts: undefined,
+      svgSketches: undefined,
       visualError: 'SVG generation failed — no valid output produced',
       _phaseTimings: { ...state._phaseTimings, engrave: Date.now() - phaseStart },
     };
   }
 
-  console.log(`✒️ [Visual:Engrave] Generated ${svgDrafts.length} SVG drafts`);
+  console.log(`✒️ [Visual:Engrave] Generated ${svgSketches.length} SVG sketches`);
 
   return {
-    svgDrafts,
+    svgSketches,
     visualError: undefined,
     _phaseTimings: { ...state._phaseTimings, engrave: Date.now() - phaseStart },
   };
@@ -119,11 +119,11 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
  * Router after engrave node
  */
 export function routeAfterEngrave(state: VisualGraphState): string {
-  if (state.svgDrafts && state.svgDrafts.length > 0) {
-    console.log('[EngraveRouter] SVG drafts generated → deliver');
+  if (state.svgSketches && state.svgSketches.length > 0) {
+    console.log('[EngraveRouter] SVG sketches generated → deliver');
     return 'deliver';
   }
 
-  console.log('[EngraveRouter] No SVG drafts → __end__');
+  console.log('[EngraveRouter] No SVG sketches → __end__');
   return '__end__';
 }

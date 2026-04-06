@@ -141,7 +141,6 @@ const SAMPLE_VARS: Record<string, any> = {
   // visual/nodes/direct/context
   conversationContext: '[user] Create a logo for my app',
   currentDirective: 'Create a minimalist logo',
-  isRefactor: false,
   lastEngineeredPrompt: '',
   lastOutputPath: '',
   safetyBlocked: false,
@@ -392,53 +391,50 @@ describe('Template Smoke Tests', () => {
     expect(output).toContain('<classify>');
     expect(output).toContain('assetType');
     expect(output).toContain('jobMode');
-    expect(output).toContain('"generate" or "refactor"');
+    expect(output).toContain('"generate" or "explain"');
   });
 
-  it('visual/nodes/direct/context injects refactor context when isRefactor is true', async () => {
+  it('visual/nodes/direct/context injects previous generation context when available', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const output = await adapter.render('visual/nodes/direct/context', {
       ...SAMPLE_VARS,
-      isRefactor: true,
       lastEngineeredPrompt: 'A minimalist blue logo with geometric shapes on white background',
       lastOutputPath: '/workspace/inputs/assets/gen/gen-123.png',
     });
 
-    expect(output).toContain('Refactor Context');
-    expect(output).toContain('modifying');
+    expect(output).toContain('Previous Generation');
     expect(output).toContain('minimalist blue logo');
     expect(output).toContain('gen-123.png');
-    expect(output).toContain('Preserve all elements');
+    expect(output).toContain('Finalized Asset');
   });
 
-  it('visual/nodes/direct/context omits refactor context when isRefactor is false', async () => {
+  it('visual/nodes/direct/context omits generation context when not available', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const output = await adapter.render('visual/nodes/direct/context', {
       ...SAMPLE_VARS,
-      isRefactor: false,
     });
 
-    expect(output).not.toContain('Refactor Context');
-    expect(output).not.toContain('Previous Engineered Prompt');
+    expect(output).not.toContain('Previous Generation');
+    expect(output).not.toContain('Finalized Asset');
   });
 
-  it('visual/nodes/direct/context shows available drafts section when drafts exist', async () => {
+  it('visual/nodes/direct/context shows available sketches section when sketches exist', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const withDrafts = await adapter.render('visual/nodes/direct/context', {
+    const withSketches = await adapter.render('visual/nodes/direct/context', {
       ...SAMPLE_VARS,
-      availableDraftCount: 3,
+      availableSketchCount: 3,
     });
-    expect(withDrafts).toContain('Available Drafts');
-    expect(withDrafts).toContain('3 draft image');
-    expect(withDrafts).toContain('via the provided tools');
+    expect(withSketches).toContain('Available Sketches');
+    expect(withSketches).toContain('3 sketch image');
+    expect(withSketches).toContain('via the provided tools');
 
-    const withoutDrafts = await adapter.render('visual/nodes/direct/context', {
+    const withoutSketches = await adapter.render('visual/nodes/direct/context', {
       ...SAMPLE_VARS,
     });
-    expect(withoutDrafts).not.toContain('Available Drafts');
+    expect(withoutSketches).not.toContain('Available Sketches');
   });
 
   it('visual/nodes/direct/context shows clarify budget and exhausted warning', async () => {
@@ -465,12 +461,12 @@ describe('Template Smoke Tests', () => {
     expect(exhausted).toContain('MUST NOT route to `clarify`');
   });
 
-  it('visual/nodes/direct/rules includes refactor mode routing section', async () => {
+  it('visual/nodes/direct/rules includes refinement routing section', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const output = await adapter.render('visual/nodes/direct/rules', SAMPLE_VARS);
 
-    expect(output).toContain('Refactor Mode Routing');
+    expect(output).toContain('Refinement Routing');
     expect(output).toContain('targeted modification');
   });
 

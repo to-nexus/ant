@@ -417,6 +417,7 @@ export async function orchestrator(params: {
       const promptPort = new FilePromptAdapter();
       const llm = createLLMClient('creator', undefined, { jobType: 'visual' }, configData);
       const directLLM = createLLMClient('creator', undefined, { jobType: 'visual', nodeType: 'direct' }, configData);
+      const explainLLM = createLLMClient('creator', undefined, { jobType: 'visual', nodeType: 'explain' }, configData);
       const engraveLLM = createLLMClient('creator', undefined, { jobType: 'visual', nodeType: 'engrave' }, configData);
       const sketchImageClient = createImageGenerationClient(configData, configData.llmModels?.visual?.sketch);
       const renderImageClient = createImageGenerationClient(configData, configData.llmModels?.visual?.render);
@@ -464,6 +465,7 @@ export async function orchestrator(params: {
         deps: {
           llm,
           directLLM,
+          explainLLM,
           engraveLLM,
           sketchImageClient,
           renderImageClient,

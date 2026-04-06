@@ -66,15 +66,22 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
     const classified = parseClassifyResponse(rawContent);
     console.log(`🏷️ [Visual:Classify] Result: type=${classified.assetType}, mode=${classified.jobMode} (${classified.reasoning})`);
 
-    const chatAPI = getChatAPIClient();
-    const formattedReport = formatVisualClassifyForChat(
-      classified.assetType,
-      classified.jobMode,
-      classified.reasoning,
-      (state._uiLocale as any) || 'ko'
-    );
-    await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
-    await chatAPI.finalizeMessage();
+    const previousAssetType = state.assetType;
+    const previousJobMode = state.jobMode;
+    const isUnchanged = previousAssetType && previousAssetType === classified.assetType
+      && previousJobMode && previousJobMode === classified.jobMode;
+
+    if (!isUnchanged) {
+      const chatAPI = getChatAPIClient();
+      const formattedReport = formatVisualClassifyForChat(
+        classified.assetType,
+        classified.jobMode,
+        classified.reasoning,
+        (state._uiLocale as any) || 'ko'
+      );
+      await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
+      await chatAPI.finalizeMessage();
+    }
 
     if (state._httpJobId) {
       try {
