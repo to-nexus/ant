@@ -89,6 +89,7 @@ export class SSEService {
     const broadcastChannel = getRealtimeBroadcastChannel(orgId, userId);
     if (!this.subscribedChannels.has(broadcastChannel)) {
       await this.stateStore.subscribe(broadcastChannel, (message: SSEBroadcastMessage) => {
+        logger.warn(`[SSE:PubSub] recv type=${message.type} project=${message.projectId}/${message.featureName}`, { component: 'SSEService' });
         if (!message.projectId || !message.featureName) {
           // User-level message (e.g., bridge status) — deliver to all user's clients
           this.broadcastToUser(orgId, userId, message.type, message.data);
@@ -277,7 +278,7 @@ export class SSEService {
     const clients = this.clients.get(key);
     
     if (!clients || clients.size === 0) {
-      // In multi-pod environment, this is normal
+      logger.warn(`[SSE:PubSub] no clients for key=${key} (registered: [${[...this.clients.keys()].join(', ')}])`, { component: 'SSEService' });
       return;
     }
     
@@ -298,6 +299,8 @@ export class SSEService {
         clients.delete(res);
       }
     });
+    
+    logger.warn(`[SSE:PubSub] delivered type=${type} to ${clients.size} client(s) key=${key}`, { component: 'SSEService' });
   }
   
   /**
