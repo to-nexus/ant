@@ -150,7 +150,7 @@ export interface VisualGraphState extends TriageableState {
   clarifyCount?: number;
 
   // Sketch selection intent (set by resolve from overrideDirective prefix)
-  sketchIntent?: 'finalize' | 'regenerate';
+  sketchIntent?: 'finalize' | 'regenerate' | 'feedback';
 
   // Control flow
   routeDecision?: 'sketch' | 'render' | 'engrave' | 'clarify' | 'end' | 'deliver';
