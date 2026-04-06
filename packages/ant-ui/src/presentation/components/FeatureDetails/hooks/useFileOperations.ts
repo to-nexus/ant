@@ -15,7 +15,7 @@ import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListTo
 export function useFileOperations(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
-  refreshFileTree: () => void
+  refreshFileTree: (options?: { force?: boolean }) => void
 ) {
   const selectFile = useStore((state) => state.selectFile);
   const selectedFile = useStore((state) => state.selectedFile);
@@ -37,7 +37,7 @@ export function useFileOperations(
     try {
       const fullPath = `${dirPath}/${fileName}`;
       await createFile(selectedProject, selectedFeature, fullPath, '');
-      await refreshFileTree();
+      await refreshFileTree({ force: false });
     } catch (error) {
       console.error('Failed to create file:', error);
       showError(t('error.fileCreateFailed'));
@@ -50,7 +50,7 @@ export function useFileOperations(
     try {
       const fullPath = `${dirPath}/${dirName}`;
       await createDirectory(selectedProject, selectedFeature, fullPath);
-      await refreshFileTree();
+      await refreshFileTree({ force: false });
     } catch (error) {
       console.error('Failed to create directory:', error);
       showError(t('error.dirCreateFailed'));
@@ -62,7 +62,7 @@ export function useFileOperations(
     
     try {
       await deleteFileOrDirectory(selectedProject, selectedFeature, itemPath);
-      await refreshFileTree();
+      await refreshFileTree({ force: false });
       
       if (selectedFile === itemPath) {
         selectFile('');
@@ -78,7 +78,7 @@ export function useFileOperations(
     
     try {
       const result = await uploadFiles(selectedProject, selectedFeature, dirPath, entries);
-      await refreshFileTree();
+      await refreshFileTree({ force: false });
 
       const normalizedDir = dirPath && dirPath.length > 0 ? dirPath.replace(/\/+$/, '') : '';
       const uploadedPaths = (result.uploadedFiles || []).map((name: string) =>
