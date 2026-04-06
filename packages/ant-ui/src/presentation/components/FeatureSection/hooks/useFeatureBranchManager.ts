@@ -94,9 +94,10 @@ export function useFeatureBranchManager(
       }
       
       // ✅ Check if we need to fetch
+      const hasRemote = !!gitStatus.remoteUrl;
       const shouldBypass = bypassFetchTimer;
       const skipResult = shouldSkipFetch(selectedProject, selectedFeature);
-      const shouldFetch = shouldBypass || !skipResult.skip;
+      const shouldFetch = hasRemote && (shouldBypass || !skipResult.skip);
       
       if (!shouldFetch) {
         // No fetch needed - just refresh status for this feature's worktree
