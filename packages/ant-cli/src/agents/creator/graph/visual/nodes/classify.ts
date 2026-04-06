@@ -9,7 +9,7 @@
  */
 
 import { VisualGraphState } from '../types.js';
-import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { parseClassifyResponse } from './classifyParser.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
@@ -57,7 +57,10 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
     let rawContent: string;
     if (llm.invokeWithUsage) {
       const response = await llm.invokeWithUsage(messages);
-      accumulateTokenUsage(state as any, response.usage!, { taskLevel: true, jobLevel: true });
+      if (response.usage) {
+        accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
+        upsertPhaseTokenUsage(state as any, 'classify', response.usage);
+      }
       rawContent = response.content;
     } else {
       rawContent = await llm.invoke(messages);

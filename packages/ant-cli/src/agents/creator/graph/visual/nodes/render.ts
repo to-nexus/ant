@@ -12,6 +12,7 @@ import { VisualGraphState } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import type { ImageGenerationOptions } from '../../../../../core/ports/imageGeneration.js';
 export async function renderNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -63,6 +64,15 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
 
     const finalImage = generated[0];
     console.log(`🎨 [Visual:Render] Rendered final image (${finalImage.data.length} bytes)`);
+
+    if (finalImage.tokenUsage) {
+      accumulateTokenUsage(state as any, finalImage.tokenUsage, { taskLevel: false, jobLevel: true });
+      if (state.deps?.kanbanUpdate?.updateTokenUsage) {
+        state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      }
+      upsertPhaseTokenUsage(state, 'render', finalImage.tokenUsage,
+        getEstimatingLabel('render', state._uiLocale as any));
+    }
 
     if (state._httpJobId) {
       try {

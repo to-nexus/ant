@@ -3,11 +3,18 @@
  * Interface for AI image generation services (Gemini, etc.)
  */
 
+import type { TaskTokenUsage } from '@ant/shared';
+
 export interface GeneratedImage {
   data: Buffer;
   mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
   prompt: string;
   modelResponseMetadata?: Record<string, any>;
+  /**
+   * Token usage for this image generation call (prompt processing tokens).
+   * May be undefined if the provider does not report token counts for image generation.
+   */
+  tokenUsage?: TaskTokenUsage;
 }
 
 export interface ImageGenerationOptions {

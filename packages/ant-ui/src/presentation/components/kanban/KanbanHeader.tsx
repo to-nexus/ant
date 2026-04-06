@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Timer, Coins } from 'lucide-react';
 import { formatElapsedTime } from '@/shared/utils/timeUtils';
 import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages } from '@/shared/utils/tokenUtils';
-import { JobTiming, TaskTokenUsage } from '@/domain/models/types';
+import { JobTiming, TaskTokenUsage, PhaseTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 import { useStore } from '@/domain/store';
 
@@ -307,9 +307,10 @@ export function ElapsedTimeBadge({
 }
 
 interface TokenUsageBadgeProps {
-  jobId?: string;  // ✅ Job identity to determine if badge should be shown
+  jobId?: string;
   tokenUsage?: TaskTokenUsage;
-  estimatingTokenUsage?: TaskTokenUsage;  // ✅ Direct estimating phase snapshot (no subtraction)
+  estimatingTokenUsage?: TaskTokenUsage;
+  phaseTokenUsages?: PhaseTokenUsage[];
   completedTasks?: Array<{
     id: string;
     name: string;
@@ -337,7 +338,7 @@ interface TokenUsageBadgeProps {
  *   2. Cache Efficiency — volume, hit rate, savings (when cache active)
  *   3. Phase Breakdown — planning + individual tasks
  */
-export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, completedTasks, inProgressTasks }: TokenUsageBadgeProps) {
+export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phaseTokenUsages, completedTasks, inProgressTasks }: TokenUsageBadgeProps) {
   const { t } = useTranslation('kanban');
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
@@ -453,62 +454,98 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, compl
           )}
 
           {/* ━━ Section 3: Phase Breakdown ━━ */}
-          {(tokenUsage || taskCount > 0) && (
+          {(tokenUsage || taskCount > 0 || (phaseTokenUsages && phaseTokenUsages.length > 0)) && (
             <div className="pt-1.5 mt-1 border-t border-gray-200 dark:border-slate-700">
               <div className="text-xs font-semibold text-gray-800 dark:text-gray-100 mb-1">{t('tokenStats.byPhase')}</div>
 
-              {/* Planning Phase */}
-              {tokenUsage && (
-                <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500 mb-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-700 dark:text-gray-200 font-semibold">{t('tokenStats.estimating')}</span>
-                    <span className="font-mono text-gray-700 dark:text-gray-200">
-                      {formatTokenCount(estimatingInput)} in · {formatTokenCount(estimatingOutput)} out
-                    </span>
-                  </div>
+              {/* Phase-based breakdown (visual/plan jobs) */}
+              {phaseTokenUsages && phaseTokenUsages.length > 0 ? (
+                <div className="pl-2 space-y-0.5 border-l-2 border-purple-400 dark:border-purple-500">
+                  {phaseTokenUsages.map((p) => {
+                    const m = getTokenUsageMetrics(p.tokenUsage);
+                    return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
+                      <div key={p.phase} className="flex justify-between items-center text-xs">
+                        <span className="text-gray-700 dark:text-gray-200 capitalize truncate max-w-[260px]" title={p.label || p.phase}>
+                          {p.label || p.phase}
+                        </span>
+                        <span className="font-mono text-gray-600 dark:text-gray-400">
+                          {formatTokenCount(m.billableInputTokens)} in · {formatTokenCount(m.outputTokens)} out
+                        </span>
+                      </div>
+                    ) : null;
+                  })}
+                  {/* Overhead row: difference between job total and sum of phases */}
+                  {(() => {
+                    const phaseSum = sumTokenUsages(phaseTokenUsages.map(p => p.tokenUsage));
+                    const phaseSumMetrics = getTokenUsageMetrics(phaseSum);
+                    const overheadIn = Math.max(0, effective.billableInputTokens - phaseSumMetrics.billableInputTokens);
+                    const overheadOut = Math.max(0, effective.outputTokens - phaseSumMetrics.outputTokens);
+                    return (overheadIn > 100 || overheadOut > 100) ? (
+                      <div className="flex justify-between items-center text-xs opacity-60">
+                        <span className="text-gray-500 dark:text-gray-500 italic">{t('tokenStats.overhead', 'Overhead')}</span>
+                        <span className="font-mono text-gray-500 dark:text-gray-500">
+                          {formatTokenCount(overheadIn)} in · {formatTokenCount(overheadOut)} out
+                        </span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
-              )}
+              ) : (
+                <>
+                  {/* Planning Phase (task-queue jobs) */}
+                  {tokenUsage && (
+                    <div className="pl-2 border-l-2 border-purple-400 dark:border-purple-500 mb-1">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-700 dark:text-gray-200 font-semibold">{t('tokenStats.estimating')}</span>
+                        <span className="font-mono text-gray-700 dark:text-gray-200">
+                          {formatTokenCount(estimatingInput)} in · {formatTokenCount(estimatingOutput)} out
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
-              {/* Tasks */}
-              {taskCount > 0 && (
-                <div className="pl-2 space-y-0.5 border-l-2 border-blue-400 dark:border-blue-500">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-700 dark:text-gray-200 font-semibold">
-                      {t('header.tasksCount', { count: taskCount })}
-                    </span>
-                    <span className="font-mono text-gray-700 dark:text-gray-200">
-                      {formatTokenCount(tasks.billableInputTokens)} in · {formatTokenCount(tasks.outputTokens)} out
-                    </span>
-                  </div>
-                  <div className="pl-2 space-y-0.5">
-                    {inProgressTasks?.filter(t => t.tokenUsage).map(task => {
-                      const m = getTokenUsageMetrics(task.tokenUsage!);
-                      return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
-                        <div key={task.id} className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
-                            • {task.name}
-                          </span>
-                          <span className="font-mono text-gray-600 dark:text-gray-400">
-                            {formatTokenCount(m.billableInputTokens)} / {formatTokenCount(m.outputTokens)}
-                          </span>
-                        </div>
-                      ) : null;
-                    })}
-                    {completedTasks?.map((task) => {
-                      const m = task.tokenUsage ? getTokenUsageMetrics(task.tokenUsage) : null;
-                      return (
-                        <div key={task.id} className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
-                            • {task.name}
-                          </span>
-                          <span className="font-mono text-gray-600 dark:text-gray-400">
-                            {m ? `${formatTokenCount(m.billableInputTokens)} / ${formatTokenCount(m.outputTokens)}` : '0'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                  {/* Tasks (task-queue jobs) */}
+                  {taskCount > 0 && (
+                    <div className="pl-2 space-y-0.5 border-l-2 border-blue-400 dark:border-blue-500">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                          {t('header.tasksCount', { count: taskCount })}
+                        </span>
+                        <span className="font-mono text-gray-700 dark:text-gray-200">
+                          {formatTokenCount(tasks.billableInputTokens)} in · {formatTokenCount(tasks.outputTokens)} out
+                        </span>
+                      </div>
+                      <div className="pl-2 space-y-0.5">
+                        {inProgressTasks?.filter(t => t.tokenUsage).map(task => {
+                          const m = getTokenUsageMetrics(task.tokenUsage!);
+                          return (m.billableInputTokens > 0 || m.outputTokens > 0) ? (
+                            <div key={task.id} className="flex justify-between items-center text-xs">
+                              <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
+                                • {task.name}
+                              </span>
+                              <span className="font-mono text-gray-600 dark:text-gray-400">
+                                {formatTokenCount(m.billableInputTokens)} / {formatTokenCount(m.outputTokens)}
+                              </span>
+                            </div>
+                          ) : null;
+                        })}
+                        {completedTasks?.map((task) => {
+                          const m = task.tokenUsage ? getTokenUsageMetrics(task.tokenUsage) : null;
+                          return (
+                            <div key={task.id} className="flex justify-between items-center text-xs">
+                              <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]" title={task.name}>
+                                • {task.name}
+                              </span>
+                              <span className="font-mono text-gray-600 dark:text-gray-400">
+                                {m ? `${formatTokenCount(m.billableInputTokens)} / ${formatTokenCount(m.outputTokens)}` : '0'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

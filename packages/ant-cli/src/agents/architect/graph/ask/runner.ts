@@ -30,6 +30,7 @@ export interface AskRunnerParams {
 export interface AskRunnerResult {
   response: string;
   toolCallCount: number;
+  tokenUsage?: import('@ant/shared').TaskTokenUsage;
 }
 
 /**
@@ -122,5 +123,6 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
   return {
     response: finalState.response || '',
     toolCallCount: finalState.toolCalls.length,
+    tokenUsage: finalState.tokenUsage,
   };
 }

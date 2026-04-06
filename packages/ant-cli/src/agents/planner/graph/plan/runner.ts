@@ -403,6 +403,23 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     kanbanUpdate.setJobTiming(jobTimingRef);
   }
   
+  // Final token broadcast so the UI badge shows the definitive total
+  // Order matters: set phase cache before updateTaskQueue broadcasts
+  if (finalState.phaseTokenUsages && kanbanUpdate?.updatePhaseTokenUsages) {
+    kanbanUpdate.updatePhaseTokenUsages(finalState.phaseTokenUsages);
+  }
+  if (_httpJobId && kanbanUpdate?.updateTaskQueue) {
+    kanbanUpdate.updateTaskQueue(
+      _httpJobId,
+      null,
+      [],
+      [],
+      finalState.recursionCount ?? 0,
+      finalState.recursionLimit ?? parseInt(process.env.RECURSION_LIMIT || '200', 10),
+      finalState.tokenUsage,
+    );
+  }
+
   console.log('\n✅ Planner Agent completed');
   console.log(`   Mode: ${finalState.mode}`);
   console.log(`   Document length: ${finalState.generatedDocument?.length || 0} chars`);
