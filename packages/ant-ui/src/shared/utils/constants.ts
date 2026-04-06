@@ -53,6 +53,15 @@ export function getAgentName(jobValue: string): string {
 }
 
 /**
+ * Resolve agent identifier for a given job type.
+ * Safe version: returns 'architect' as default for unknown types.
+ */
+export function resolveAgentForJobType(jobType: string): string {
+  const job = AVAILABLE_JOBS.find(j => j.value === jobType);
+  return job?.agent?.toLowerCase() || 'architect';
+}
+
+/**
  * Git fetch interval (in milliseconds)
  * Controls how often Git status is auto-refreshed per feature
  */

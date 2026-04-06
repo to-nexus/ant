@@ -138,6 +138,7 @@ export interface KanbanData {
 
   // Job metadata
   jobType?: string;
+  agent?: string;
 
   // Timing
   jobTiming?: JobTiming;

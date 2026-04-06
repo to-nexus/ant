@@ -66,7 +66,7 @@ export function useChoiceCardState({ content, messageId, contentType, contentFil
     if (!message) return;
 
     const matchFn = contentFilter
-      || ((c: MessageContent) => c.type === contentType);
+      || ((c: MessageContent) => c && c.type === contentType);
 
     const contentIndex = message.contents.findIndex(matchFn);
     if (contentIndex === -1) return;

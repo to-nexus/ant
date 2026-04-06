@@ -24,6 +24,8 @@ export const DEFAULT_LOCAL_BACKEND_PORT = 4100;
 const SESSION_STORAGE_KEYS = new Set<string>([
   STORAGE_KEYS.SELECTED_PROJECT,
   STORAGE_KEYS.PROJECT_LAST_FEATURES,
+  STORAGE_KEYS.SELECTED_AGENT,
+  STORAGE_KEYS.SELECTED_JOB_TYPE,
 ]);
 
 // Helper functions for storage (localStorage or sessionStorage based on key)

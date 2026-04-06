@@ -85,10 +85,10 @@ export function useJobExecution() {
         // matching the persisted state in chat.json (visible on page refresh).
         const chatMessages = useStore.getState().chatMessages;
         const cancelledMsg = chatMessages.find((m: { contents: Array<{ type: string; metadata?: { jobId?: string } }> }) =>
-          m.contents.some(c => c.type === 'cancelled' && c.metadata?.jobId === currentJobId)
+          m.contents.some(c => c && c.type === 'cancelled' && c.metadata?.jobId === currentJobId)
         );
         if (cancelledMsg) {
-          const contentIndex = cancelledMsg.contents.findIndex((c: { type: string }) => c.type === 'cancelled');
+          const contentIndex = cancelledMsg.contents.findIndex((c: { type: string }) => c && c.type === 'cancelled');
           if (contentIndex !== -1) {
             const updatedContents = [...cancelledMsg.contents];
             updatedContents[contentIndex] = {
