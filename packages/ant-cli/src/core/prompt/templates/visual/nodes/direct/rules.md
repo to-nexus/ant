@@ -204,10 +204,11 @@ When the user is iterating on a previous result:
 
 ## Response Format
 
-Respond in valid JSON (no markdown fences, no explanation outside the JSON).
+Wrap your JSON response in `<direct>` tags. No markdown fences, no explanation outside the tags.
 
 **For sketch or engrave routes:**
 
+<direct>
 {
   "basePrompt": "common prompt shared by all sketches — confirmed attributes + quality baseline",
   "variations": [
@@ -219,9 +220,11 @@ Respond in valid JSON (no markdown fences, no explanation outside the JSON).
   "aspectRatio": "1:1" or "16:9" or "4:3" or "3:2" or "9:16",
   "reasoning": "1-2 sentence explanation of routing and variation axis decisions"
 }
+</direct>
 
 **For render route:**
 
+<direct>
 {
   "engineeredPrompt": "complete production-grade prompt for the image model",
   "route": "render",
@@ -229,14 +232,17 @@ Respond in valid JSON (no markdown fences, no explanation outside the JSON).
   "reasoning": "1-2 sentence explanation",
   "selectedSketchIndex": 0
 }
+</direct>
 
 **For clarify or end routes:**
 
+<direct>
 {
   "route": "clarify" or "end",
   "reasoning": "1-2 sentence explanation",
   "clarifyQuestion": "question for user (only when route=clarify)"
 }
+</direct>
 
 ### Response Constraints (MECE by route)
 
