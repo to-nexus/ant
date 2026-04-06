@@ -292,10 +292,14 @@ export async function orchestrator(params: {
           if (process.env.ANT_SERVER_MODE === 'cloud') {
             try {
               const Redis = (await import('ioredis')).default;
-              codeRedis = new Redis(process.env.ANT_REDIS_URL);
+              const { createTLSOptions } = await import('../infrastructure/utils/redis');
+              const url = process.env.ANT_REDIS_URL;
+              codeRedis = new Redis(url, { ...createTLSOptions(url), maxRetriesPerRequest: 3, lazyConnect: true });
+              await codeRedis.connect();
               console.log('✅ Redis client created for Code Job Figma MCP [Cloud]');
             } catch (error: any) {
               console.log('⚠️  Failed to create Redis client for Code Figma MCP:', error?.message);
+              codeRedis = undefined;
             }
           }
         } else {
