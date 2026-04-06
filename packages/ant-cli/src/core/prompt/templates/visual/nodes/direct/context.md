@@ -66,7 +66,7 @@ Adjust your prompt or routing strategy to avoid repeating this failure. If the e
 
 ## Available Sketches
 
-{{availableSketchCount}} sketch image(s) from previous round(s) are available. You can inspect them visually via the provided tools to inform your prompt decisions.
+{{availableSketchCount}} sketch image(s) are embedded below as inline images. Analyze their visual characteristics directly to inform your routing and prompt decisions.
 
 {{/if}}
 

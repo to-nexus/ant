@@ -302,15 +302,9 @@ export class GeminiLLMClient implements LLMClient {
           },
         });
         if (Array.isArray(tb.content)) {
-          for (const sub of tb.content) {
-            if (sub.type === 'image') {
-              parts.push({
-                inlineData: {
-                  mimeType: (sub as ImageContentBlock).source.media_type,
-                  data: (sub as ImageContentBlock).source.data,
-                },
-              });
-            }
+          const imageCount = tb.content.filter(sub => sub.type === 'image').length;
+          if (imageCount > 0) {
+            console.warn(`⚠️ [GeminiLLM] Dropping ${imageCount} image(s) from tool_result "${tb.tool_name}" — Gemini does not reliably handle inlineData alongside functionResponse. Use prompt-level image embedding instead.`);
           }
         }
       }
