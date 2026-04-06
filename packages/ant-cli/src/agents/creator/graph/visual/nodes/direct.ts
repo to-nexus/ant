@@ -11,19 +11,24 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
-import { accumulateTokenUsage, TokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
-import type { LLMClient, LLMStreamEvent, ToolDefinition, MessageContentBlock, ToolUseContentBlock } from '../../../../../core/ports/llm.js';
+import type { LLMClient, ToolDefinition, MessageContentBlock, ToolUseContentBlock } from '../../../../../core/ports/llm.js';
 import type { GeneratedImage } from '../../../../../core/ports/imageGeneration.js';
 import { VISUAL_SKETCH_TOOLS, executeSketchTool } from './sketchTools.js';
+import { extractJsonFromLlmResponse } from '../../../../../core/utils/llmResponseParser.js';
 
 const MAX_CLARIFY = 5;
 const MAX_TOOL_ROUNDS = 5;
 
 export async function directNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
+  const tokensBefore = {
+    input: (state as any).tokenUsage?.inputTokens ?? 0,
+    output: (state as any).tokenUsage?.outputTokens ?? 0,
+  };
 
   console.log('\n🎬 [Visual:Direct] Art direction analysis...');
 
@@ -114,9 +119,12 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
           recentWindowSize: VISUAL_COMPACTION_WINDOW,
           maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
         })
-      : { entries: allButLast, summary: undefined, wasCompacted: false };
+      : { entries: allButLast, summary: undefined, wasCompacted: false, tokensBefore: 0, tokensAfter: 0 };
     recentConv = result.entries;
     convSummary = result.summary;
+    if (result.tokenUsage) {
+      accumulateTokenUsage(state as any, result.tokenUsage, { taskLevel: false, jobLevel: true });
+    }
     compactionMeta = result.wasCompacted
       ? { summary: result.summary!, summarizedCount: allButLast.length - VISUAL_COMPACTION_WINDOW }
       : undefined;
@@ -193,11 +201,10 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true });
     }
 
-    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new SyntaxError(`No JSON object found in response: ${rawContent.slice(0, 200)}`);
+    result = extractJsonFromLlmResponse(rawContent, { tag: 'direct' });
+    if (!result) {
+      throw new SyntaxError(`No valid JSON found in response: ${rawContent.slice(0, 200)}`);
     }
-    result = JSON.parse(jsonMatch[0]);
   } catch (err: any) {
     if (err instanceof SyntaxError || err.name === 'SyntaxError') {
       console.warn(`⚠️ [Visual:Direct] JSON parse failed, falling back to clarify: ${err.message}`);
@@ -209,7 +216,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       }
       return {
         routeDecision: 'clarify',
-        visualError: `Art direction response was malformed. Retrying.`,
+        visualError: undefined,
         conversation: [
           ...state.conversation,
           {
@@ -252,6 +259,16 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
     state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
+  }
+
+  const deltaInput = ((state as any).tokenUsage?.inputTokens ?? 0) - tokensBefore.input;
+  const deltaOutput = ((state as any).tokenUsage?.outputTokens ?? 0) - tokensBefore.output;
+  if (deltaInput > 0 || deltaOutput > 0) {
+    upsertPhaseTokenUsage(state, 'direct', {
+      inputTokens: deltaInput,
+      outputTokens: deltaOutput,
+      totalTokens: deltaInput + deltaOutput,
+    }, getEstimatingLabel('direct', state._uiLocale as any));
   }
 
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -316,6 +333,11 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
  * Stream LLM with tool loop — collects tool_use events, executes sketch tools,
  * appends results, and re-streams until the LLM produces final text or rounds
  * are exhausted.
+ *
+ * Safety mechanisms:
+ *   - Preserves last non-empty text across rounds as fallback
+ *   - On round exhaustion, makes one final tools-off call to force a text response
+ *   - Handles retry events by resetting round state
  */
 async function streamWithToolLoop(
   llm: LLMClient,
@@ -326,12 +348,28 @@ async function streamWithToolLoop(
 ): Promise<{ text: string; usage?: TokenUsage }> {
   let currentMessages = [...messages];
   let accUsage: TokenUsage | undefined;
+  let lastTextWithContent = '';
+
+  function mergeUsage(usage: TokenUsage) {
+    if (!accUsage) {
+      accUsage = { ...usage };
+    } else {
+      accUsage.inputTokens += usage.inputTokens || 0;
+      accUsage.outputTokens += usage.outputTokens || 0;
+      accUsage.totalTokens += usage.totalTokens || 0;
+    }
+  }
 
   for (let round = 0; round < maxRounds; round++) {
     let text = '';
     const toolUses: Array<{ id: string; name: string; input: Record<string, any>; thoughtSignature?: string }> = [];
 
     for await (const event of llm.stream(currentMessages, { tools })) {
+      if (event.type === 'retry') {
+        text = '';
+        toolUses.length = 0;
+        continue;
+      }
       if (event.type === 'text' && event.text) {
         text += event.text;
       }
@@ -344,18 +382,16 @@ async function streamWithToolLoop(
         });
       }
       if (event.type === 'done' && event.usage) {
-        if (!accUsage) {
-          accUsage = { ...event.usage };
-        } else {
-          accUsage.inputTokens += event.usage.inputTokens || 0;
-          accUsage.outputTokens += event.usage.outputTokens || 0;
-          accUsage.totalTokens += event.usage.totalTokens || 0;
-        }
+        mergeUsage(event.usage);
       }
     }
 
     if (toolUses.length === 0) {
-      return { text, usage: accUsage };
+      return { text: text || lastTextWithContent, usage: accUsage };
+    }
+
+    if (text.trim()) {
+      lastTextWithContent = text;
     }
 
     console.log(`🔧 [Visual:Direct] Tool round ${round + 1}: ${toolUses.map(t => t.name).join(', ')}`);
@@ -382,8 +418,25 @@ async function streamWithToolLoop(
     ];
   }
 
-  console.warn(`⚠️ [Visual:Direct] Tool loop exhausted after ${maxRounds} rounds`);
-  return { text: '', usage: accUsage };
+  // Tool loop exhausted — force a final text-only response (no tools available)
+  console.warn(`⚠️ [Visual:Direct] Tool loop exhausted after ${maxRounds} rounds, forcing final text-only call`);
+
+  currentMessages.push({
+    role: 'user',
+    content: 'Provide your final routing decision now. Respond with the JSON object inside <direct> tags.',
+  });
+
+  let finalText = '';
+  for await (const event of llm.stream(currentMessages, { tools: undefined })) {
+    if (event.type === 'text' && event.text) {
+      finalText += event.text;
+    }
+    if (event.type === 'done' && event.usage) {
+      mergeUsage(event.usage);
+    }
+  }
+
+  return { text: finalText || lastTextWithContent, usage: accUsage };
 }
 
 /**
