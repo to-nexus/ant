@@ -1,4 +1,5 @@
 import { LLMClient } from "../../../../../core/ports";
+import { extractLLMInfo } from "../../../../../core/ports/workflow";
 import { DesignGraphState } from "../state";
 import { DesignTask, TaskQueue } from "../../../types/task";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
@@ -35,17 +36,12 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       priority: state.currentTask.priority
     } : undefined;
     
-    const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
-      provider: (llm as any).provider,
-      model: (llm as any).modelName
-    } : undefined;
-    
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'revise',
       0,
       taskInfo,
-      llmInfo,
+      llm ? extractLLMInfo(llm) : undefined,
       state.recursionCount,
       state.recursionLimit
     );

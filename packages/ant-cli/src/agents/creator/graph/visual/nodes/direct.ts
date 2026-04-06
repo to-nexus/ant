@@ -19,6 +19,7 @@ import type { LLMClient, ToolDefinition, MessageContentBlock, ToolUseContentBloc
 import type { GeneratedImage } from '../../../../../core/ports/imageGeneration.js';
 import { executeSketchTool } from './sketchTools.js';
 import { extractJsonFromLlmResponse } from '../../../../../core/utils/llmResponseParser.js';
+import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 
 const MAX_CLARIFY = 5;
 const MAX_TOOL_ROUNDS = 5;
@@ -37,7 +38,8 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   }
 
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'direct', 0);
+    const directLLM = state.deps.directLLM;
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'direct', 0, undefined, directLLM ? extractLLMInfo(directLLM) : undefined);
   }
 
   // Deterministic fast-path for finalize/regenerate (no LLM call needed)

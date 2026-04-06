@@ -34,6 +34,7 @@ import { compactJob, applyCompactionToConversation } from '../../../../../core/c
 import type { ConversationCompaction } from '../../../../../core/context';
 import { PLAN_COMPACTION_THRESHOLD, PLAN_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS, PLAN_CONVERSATION_HISTORY_BUDGET } from '../../../../../core/context';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
+import { extractLLMInfo } from '../../../../../core/ports/workflow';
 
 /**
  * Prune conversationHistory (Anthropic-format ReAct messages) via compactRun.
@@ -192,18 +193,18 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('generate', state._uiLocale || 'en'), 'generate');
   }
   
+  const llm = state.deps?.llm;
+  if (!llm) {
+    throw new Error('LLM is required for generate node');
+  }
+
   // Workflow instrumentation (pass recursion info for badge display)
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 'generate', 0,
-      undefined, undefined,
+      undefined, extractLLMInfo(llm),
       recursionCount, state.recursionLimit,
     );
-  }
-  
-  const llm = state.deps?.llm;
-  if (!llm) {
-    throw new Error('LLM is required for generate node');
   }
   
   // Step 1: async compactJob — LLM-based conversation summary (before sync buildSystemPrompt)

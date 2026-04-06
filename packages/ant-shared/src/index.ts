@@ -9,7 +9,7 @@
  *   - task.ts         : TaskType, BaseTask, KanbanData, TaskTiming, TaskTokenUsage
  *   - interruption.ts : InterruptionReason, InterruptionDetails
  *   - detection.ts    : DetectionReport, JobMode, JobEnvironment
- *   - workflow.ts     : WorkflowRealtimeState, NodeHistoryEntry, TaskInfo
+ *   - workflow.ts     : WorkflowRealtimeState, NodeHistoryEntry, TaskInfo, LLMInfo
  */
 
 export * from './job';

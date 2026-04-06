@@ -86,7 +86,9 @@ export function getActorInfo(actorId: string, llmInfo?: { provider: string; mode
   if (actorId === 'llm' && llmInfo && info) {
     return {
       ...info,
-      provider: llmInfo.provider === 'anthropic' ? 'Anthropic' : 'OpenAI',
+      provider: llmInfo.provider === 'anthropic' ? 'Anthropic'
+              : llmInfo.provider === 'google' ? 'Google'
+              : 'OpenAI',
       model: llmInfo.model
     };
   }

@@ -11,6 +11,8 @@ import { VisualGraphState, SvgSketch } from '../types.js';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
+
 export async function engraveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
 
@@ -20,11 +22,11 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('engrave', state._uiLocale as any), 'engrave');
   }
 
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'engrave', 0);
-  }
-
   const llm = state.deps.engraveLLM;
+
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'engrave', 0, undefined, llm ? extractLLMInfo(llm) : undefined);
+  }
   const promptPort = state.deps.promptPort;
   const basePrompt = state.basePrompt;
   const variations = state.sketchVariations;

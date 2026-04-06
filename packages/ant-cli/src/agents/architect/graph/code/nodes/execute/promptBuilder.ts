@@ -296,7 +296,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const uiImageBlocks: CacheableContent[] = [];
   try {
-    const llmProvider = (state.deps?.llm as any)?.provider;
+    const llmProvider = state.deps?.llm?.provider;
     const canSendImages = llmProvider === 'anthropic';
 
     // ✅ Load reference images on-demand if this is a UI task

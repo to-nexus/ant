@@ -14,6 +14,7 @@ export type {
   NodeHistoryEntry,
   ActiveWorkerNode,
   WorkflowRealtimeState,
+  LLMInfo,
 } from '@ant/shared';
 
 // ============================================
