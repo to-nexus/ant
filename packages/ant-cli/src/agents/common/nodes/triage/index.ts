@@ -23,6 +23,7 @@ import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
 import { getEstimatingLabel } from '../../graph/timing/estimatingLabels.js';
 import { getSessionDebugDir } from '../../../../core/utils/sessionPaths.js';
+import { extractLLMInfo } from '../../../../core/ports/workflow.js';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -102,7 +103,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'triage', 0);
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'triage', 0, undefined, extractLLMInfo(llm));
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

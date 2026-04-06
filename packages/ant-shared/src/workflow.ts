@@ -5,6 +5,12 @@
  * Used for workflow visualization (node transitions, history).
  */
 
+/** LLM provider/model info for real-time workflow display */
+export interface LLMInfo {
+  provider: string;
+  model: string;
+}
+
 /** Task info piggybacked on workflow SSE */
 export interface TaskInfo {
   id?: string;
@@ -52,4 +58,7 @@ export interface WorkflowRealtimeState {
   // Recursion tracking (piggybacked on workflow SSE for real-time display)
   recursionCount?: number;
   recursionLimit?: number;
+
+  // LLM model info (updated on each node entry that uses LLM)
+  llmInfo?: LLMInfo | null;
 }

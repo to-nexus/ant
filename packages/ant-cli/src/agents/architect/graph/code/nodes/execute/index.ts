@@ -19,6 +19,7 @@
 
 import path from 'node:path';
 import { ArchitectGraphState } from '../../state';
+import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
@@ -245,10 +246,10 @@ export async function execute(
     } : undefined;
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
-      'execute',  // ✅ FIX: Must match graph.addNode() name!
+      'execute',
       (state as any).workerId ?? 0,
       taskInfo, 
-      undefined, // llmInfo
+      extractLLMInfo(llmToUse),
       state.recursionCount,
       state.recursionLimit
     );

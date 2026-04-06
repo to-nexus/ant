@@ -47,19 +47,15 @@ export interface JobStatusData {
 // ============================================
 
 // Shared types (canonical source: @ant/shared)
-export type { TaskInfo, NodeHistoryEntry } from '@ant/shared';
+export type { TaskInfo, NodeHistoryEntry, LLMInfo } from '@ant/shared';
 
-// BE-only types
-import { LLMInfo } from './workflow';
-export { LLMInfo } from './workflow';
-
+import type { LLMInfo } from '@ant/shared';
 import type { WorkflowRealtimeState as SharedWorkflowRealtimeState } from '@ant/shared';
 
 /**
  * Backend-extended WorkflowRealtimeState (stored in Redis).
- * Extends the shared type with BE-only fields (llmInfo).
- * llmInfo is stripped before sending to FE via SSE.
- * recursionCount/recursionLimit are now in shared type (sent to FE for real-time display).
+ * Narrows llmInfo from optional to required (always present in BE, null before first LLM call).
+ * llmInfo is included in SSE payload for FE workflow visualization.
  */
 export interface WorkflowRealtimeState extends SharedWorkflowRealtimeState {
   llmInfo: LLMInfo | null;

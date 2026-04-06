@@ -8,6 +8,7 @@
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 
 // ============================================
 // JSON Response Parsing
@@ -266,7 +267,8 @@ export async function enterDecomposeNode(state: DesignGraphState): Promise<void>
   } : undefined;
   await state.deps.workflowUpdate.enterNode(
     state._httpJobId, 'decompose', 0, taskInfo,
-    undefined, state.recursionCount, state.recursionLimit
+    state.deps?.llm ? extractLLMInfo(state.deps.llm) : undefined,
+    state.recursionCount, state.recursionLimit
   );
 }
 

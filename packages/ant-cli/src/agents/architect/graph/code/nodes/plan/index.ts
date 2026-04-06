@@ -20,6 +20,7 @@
 
 import { LLMClient } from "../../../../../../core/ports";
 import type { MessageContentBlock } from "../../../../../../core/ports/llm";
+import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
@@ -469,7 +470,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       'plan',
       (state as any).workerId ?? 0,
       taskInfo,
-      undefined,
+      state.deps?.llm ? extractLLMInfo(state.deps.llm as LLMClient) : undefined,
       state.recursionCount,
       state.recursionLimit
     );

@@ -12,6 +12,7 @@
 
 import { ArchitectGraphState } from '../../state';
 import { LLMClient } from '../../../../../../core/ports';
+import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { 
@@ -94,17 +95,12 @@ export async function detectEnvironment(
       priority: state.currentTask.priority
     } : undefined;
     
-    const llmInfo = (llm as any)?.provider && (llm as any)?.modelName ? {
-      provider: (llm as any).provider,
-      model: (llm as any).modelName
-    } : undefined;
-    
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'detectEnvironment',
       0,
       taskInfo,
-      llmInfo,
+      llm ? extractLLMInfo(llm) : undefined,
       state.recursionCount,
       state.recursionLimit
     );

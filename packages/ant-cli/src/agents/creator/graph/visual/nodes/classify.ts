@@ -15,6 +15,7 @@ import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLa
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { formatVisualClassifyForChat } from '../../../../../core/types/detection.js';
+import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 
 export async function classifyNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -30,11 +31,11 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('classify', state._uiLocale as any), 'classify');
   }
 
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'classify', 0);
-  }
-
   const llm = state.deps.llm;
+
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'classify', 0, undefined, llm ? extractLLMInfo(llm) : undefined);
+  }
   const promptPort = state.deps.promptPort;
 
   const conversationContext = state.conversation
