@@ -1,0 +1,145 @@
+/**
+ * Explain Node (Visual Graph)
+ *
+ * Text-only Q&A for visual design topics.
+ * Handles questions, analysis, and consultation — no image generation.
+ * Uses the explainLLM model (same tier as direct by default).
+ */
+
+import { VisualGraphState } from '../types.js';
+import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
+import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
+
+export async function explainNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
+  const phaseStart = Date.now();
+
+  console.log('\n💡 [Visual:Explain] Answering visual design question...');
+
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('explain', state._uiLocale as any), 'explain');
+  }
+
+  if (state.deps?.workflowUpdate && state._httpJobId) {
+    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'explain', 0);
+  }
+
+  const llm = state.deps.explainLLM;
+  const promptPort = state.deps.promptPort;
+
+  const conversationContext = state.conversation
+    .slice(-10)
+    .map(entry => `[${entry.role}] ${entry.content}`)
+    .join('\n');
+
+  const currentDirective = state.overrideDirective || state.directive || '';
+
+  const sketchVariationList = state.sketchVariations?.length
+    ? state.sketchVariations.map((v, i) => ({
+        number: i + 1,
+        label: v.label || `Sketch ${i + 1}`,
+        prompt: v.prompt,
+      }))
+    : undefined;
+
+  const sketchCount = state.availableSketchPaths?.length || 0;
+
+  try {
+    const systemPrompt = await promptPort.render('visual/nodes/explain/base', {});
+
+    const userPrompt = await promptPort.render('visual/nodes/explain/context', {
+      conversationContext: conversationContext || '(no previous conversation)',
+      currentDirective,
+      lastEngineeredPrompt: state.lastEngineeredPrompt,
+      lastOutputPath: state.lastOutputPath,
+      sketchVariationList,
+      availableSketchCount: sketchCount > 0 ? sketchCount : undefined,
+    });
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ];
+
+    const chatAPI = getChatAPIClient();
+    await chatAPI.startMessage();
+
+    let responseText = '';
+
+    if (llm.stream) {
+      for await (const event of llm.stream(messages)) {
+        if (event.type === 'text' && event.text) {
+          responseText += event.text;
+          await chatAPI.sendLLMEvent({ type: 'text', text: event.text });
+        }
+        if (event.type === 'done' && event.usage) {
+          accumulateTokenUsage(state as any, event.usage, { taskLevel: true, jobLevel: true });
+        }
+      }
+    } else if (llm.invokeWithUsage) {
+      const response = await llm.invokeWithUsage(messages);
+      responseText = response.content;
+      if (response.usage) {
+        accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
+      }
+      await chatAPI.sendLLMEvent({ type: 'text', text: responseText });
+    } else {
+      responseText = await llm.invoke(messages);
+      await chatAPI.sendLLMEvent({ type: 'text', text: responseText });
+    }
+
+    await chatAPI.finalizeMessage();
+
+    console.log(`💡 [Visual:Explain] Response: ${responseText.length} chars`);
+
+    if (state._httpJobId) {
+      try {
+        await logPrompt(state.featurePath, state._httpJobId, 'visual', 'explain', systemPrompt.length + userPrompt.length, {
+          templatePath: 'visual/nodes/explain/base',
+          usedTemplates: ['visual/nodes/explain/base', 'visual/nodes/explain/context'],
+          injectedVariables: { currentDirective, conversationEntries: state.conversation.length, hasSketchContext: !!sketchVariationList },
+          hardcodedContent: responseText.substring(0, 500),
+        });
+      } catch { /* non-critical */ }
+    }
+
+    if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+      state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
+    }
+
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'explain', 0);
+    }
+
+    return {
+      conversation: [
+        ...state.conversation,
+        {
+          role: 'assistant' as const,
+          content: responseText,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+      _phaseTimings: { ...state._phaseTimings, explain: Date.now() - phaseStart },
+    };
+  } catch (err: any) {
+    console.error('❌ [Visual:Explain] Failed:', err.message);
+
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'explain', 0);
+    }
+
+    const chatAPI = getChatAPIClient();
+    try {
+      if (!chatAPI.hasActiveMessage()) await chatAPI.startMessage();
+      await chatAPI.sendLLMEvent({ type: 'text', text: `I encountered an error while processing your question. Please try again.` });
+      await chatAPI.finalizeMessage();
+    } catch { /* cleanup */ }
+
+    return {
+      visualError: `Explain failed: ${err.message}`,
+      _phaseTimings: { ...state._phaseTimings, explain: Date.now() - phaseStart },
+    };
+  }
+}

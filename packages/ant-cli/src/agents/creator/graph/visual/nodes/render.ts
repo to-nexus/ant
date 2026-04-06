@@ -31,7 +31,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
   const aspectRatio = state.resolvedAspectRatio || state.visualSettings?.defaultAspectRatio || '1:1';
 
   console.log(`🎨 [Visual:Render] Prompt: ${prompt.substring(0, 100)}...`);
-  console.log(`🎨 [Visual:Render] Ratio: ${aspectRatio}, jobMode: ${state.jobMode || 'generate'}`);
+  console.log(`🎨 [Visual:Render] Ratio: ${aspectRatio}`);
 
   const genOptions: ImageGenerationOptions = {
     numberOfImages: 1,
@@ -67,7 +67,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
     if (state._httpJobId) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'render', prompt.length, {
-          injectedVariables: { aspectRatio, selectedDraftIndex: state.selectedDraftIndex, hasReferenceImage: !!refImage },
+          injectedVariables: { aspectRatio, selectedSketchIndex: state.selectedSketchIndex, hasReferenceImage: !!refImage },
           hardcodedContent: `engineeredPrompt: ${prompt}\n\nResult: ${finalImage.data.length} bytes, mimeType=${finalImage.mimeType}`,
         });
       } catch { /* non-critical */ }
@@ -160,49 +160,58 @@ function loadImageFromPath(
  * Load a reference image for rendering.
  *
  * Priority:
- *   1. lastOutputPath (refactor mode) — the final rendered image is the baseline
- *   2. explicit selectedDraftIndex
- *   3. auto-select latest draft (fallback)
+ *   1. explicit selectedSketchIndex → load that sketch
+ *   2. lastOutputPath → the final rendered image is the baseline
+ *   3. auto-select latest sketch (fallback)
  */
 function loadReferenceImage(
   state: VisualGraphState
 ): { data: Buffer; mimeType: 'image/png' | 'image/jpeg' | 'image/webp' } | undefined {
-  if (state.jobMode === 'refactor' && state.lastOutputPath) {
+  const explicitIndex = state.selectedSketchIndex;
+  const sketchPaths = state.availableSketchPaths;
+
+  // Priority 1: explicit sketch selection
+  if (explicitIndex != null && sketchPaths && sketchPaths.length > 0) {
+    const sketchPath = sketchPaths[explicitIndex];
+    if (!sketchPath) {
+      console.warn(`🎨 [Visual:Render] selectedSketchIndex=${explicitIndex} out of range (${sketchPaths.length} sketches)`);
+      return undefined;
+    }
+
+    const loaded = loadImageFromPath(sketchPath, state.featurePath);
+    if (loaded) {
+      console.log(`🎨 [Visual:Render] Loaded sketch #${explicitIndex}: ${sketchPath} (${loaded.data.length} bytes)`);
+    } else {
+      console.warn(`🎨 [Visual:Render] Sketch file not found: ${sketchPath}`);
+    }
+    return loaded;
+  }
+
+  // Priority 2: finalized output
+  if (state.lastOutputPath) {
     const loaded = loadImageFromPath(state.lastOutputPath, state.featurePath);
     if (loaded) {
-      console.log(`🎨 [Visual:Render] Using final output as reference (refactor): ${state.lastOutputPath} (${loaded.data.length} bytes)`);
+      console.log(`🎨 [Visual:Render] Using final output as reference: ${state.lastOutputPath} (${loaded.data.length} bytes)`);
       return loaded;
     }
-    console.warn(`🎨 [Visual:Render] lastOutputPath not found, falling back to drafts`);
+    console.warn('🎨 [Visual:Render] lastOutputPath not found, falling back to sketches');
   }
 
-  const draftPaths = state.availableDraftPaths;
-  if (!draftPaths || draftPaths.length === 0) {
-    return undefined;
-  }
+  // Priority 3: auto-select last sketch
+  if (!sketchPaths || sketchPaths.length === 0) return undefined;
 
-  const explicitIndex = state.selectedDraftIndex;
-  const index = explicitIndex ?? (draftPaths.length - 1);
+  const index = sketchPaths.length - 1;
+  console.warn(
+    `🎨 [Visual:Render] WARNING: No explicit sketch selection. ` +
+    `Auto-selecting last sketch #${index} as fallback.`
+  );
 
-  if (explicitIndex == null) {
-    console.warn(
-      `🎨 [Visual:Render] WARNING: No explicit draft selection (selectedDraftIndex is null). ` +
-      `Auto-selecting last draft #${index} as fallback. ` +
-      `This suggests the direct LLM did not parse a specific draft number from user input.`
-    );
-  }
-
-  const draftPath = draftPaths[index];
-  if (!draftPath) {
-    console.warn(`🎨 [Visual:Render] selectedDraftIndex=${index} out of range (${draftPaths.length} drafts)`);
-    return undefined;
-  }
-
-  const loaded = loadImageFromPath(draftPath, state.featurePath);
+  const sketchPath = sketchPaths[index];
+  const loaded = loadImageFromPath(sketchPath, state.featurePath);
   if (loaded) {
-    console.log(`🎨 [Visual:Render] Loaded draft #${index}: ${draftPath} (${loaded.data.length} bytes)`);
+    console.log(`🎨 [Visual:Render] Loaded sketch #${index}: ${sketchPath} (${loaded.data.length} bytes)`);
   } else {
-    console.warn(`🎨 [Visual:Render] Draft file not found: ${draftPath}`);
+    console.warn(`🎨 [Visual:Render] Sketch file not found: ${sketchPath}`);
   }
   return loaded;
 }

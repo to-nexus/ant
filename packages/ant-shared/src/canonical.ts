@@ -37,7 +37,7 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'inputs/directives/learn',           visibility: 'internal' },
   { path: 'inputs/assets',                     visibility: 'ui:inputs' },
   { path: 'inputs/assets/gen',                 visibility: 'internal' },
-  { path: 'inputs/assets/gen/drafts',          visibility: 'internal' },
+  { path: 'inputs/assets/gen/sketches',         visibility: 'internal' },
   { path: 'inputs/references',                 visibility: 'ui:inputs' },
   // outputs
   { path: 'outputs',                           visibility: 'internal' },

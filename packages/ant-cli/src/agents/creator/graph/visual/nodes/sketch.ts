@@ -1,21 +1,21 @@
 /**
  * Sketch Node (Visual Graph)
  *
- * Draft exploration — generates multiple candidate images using Flash model.
+ * Sketch exploration — generates multiple candidate images using Flash model.
  * Fast, low-cost generation for user to choose from.
  * Uses gemini-3.1-flash-image-preview (Nano Banana 2).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { VisualGraphState, DraftImage } from '../types.js';
+import { VisualGraphState, SketchImage } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 export async function sketchNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
 
-  console.log('\n✏️ [Visual:Sketch] Generating draft candidates...');
+  console.log('\n✏️ [Visual:Sketch] Generating sketch candidates...');
 
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('sketch', state._uiLocale as any), 'sketch');
@@ -31,25 +31,24 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
   const aspectRatio = state.resolvedAspectRatio || state.visualSettings?.defaultAspectRatio || '1:1';
 
   const refImage = loadSketchReference(state);
-  const variations = state.draftVariations;
+  const variations = state.sketchVariations;
   const basePrompt = state.basePrompt;
-  const usePerDraftPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
+  const usePerSketchPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
 
-  if (usePerDraftPrompts) {
-    console.log(`✏️ [Visual:Sketch] Per-draft variation mode: basePrompt(${basePrompt!.length} chars) + ${variations!.length} variations, ratio: ${aspectRatio}${refImage ? ' +refImage' : ''}`);
+  if (usePerSketchPrompts) {
+    console.log(`✏️ [Visual:Sketch] Per-sketch variation mode: basePrompt(${basePrompt!.length} chars) + ${variations!.length} variations, ratio: ${aspectRatio}${refImage ? ' +refImage' : ''}`);
   } else {
     console.log(`✏️ [Visual:Sketch] Prompt: ${prompt.substring(0, 100)}...`);
     console.log(`✏️ [Visual:Sketch] Candidates: ${candidateCount}, ratio: ${aspectRatio}${refImage ? ' +refImage' : ''}`);
   }
 
   try {
-    const draftImages: DraftImage[] = [];
+    const sketchImages: SketchImage[] = [];
 
-    if (usePerDraftPrompts) {
-      // Per-draft variation: compose unique prompt for each draft
+    if (usePerSketchPrompts) {
       for (let i = 0; i < variations!.length; i++) {
         const composedPrompt = `${basePrompt} ${variations![i].prompt}`.trim();
-        console.log(`✏️ [Visual:Sketch] Draft ${i + 1}/${variations!.length}: ${composedPrompt.substring(0, 80)}...`);
+        console.log(`✏️ [Visual:Sketch] Sketch ${i + 1}/${variations!.length}: ${composedPrompt.substring(0, 80)}...`);
 
         const generated = await imageClient.generate(composedPrompt, {
           numberOfImages: 1,
@@ -60,7 +59,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
         });
 
         if (generated.length > 0) {
-          draftImages.push({
+          sketchImages.push({
             data: generated[0].data,
             mimeType: generated[0].mimeType,
             prompt: composedPrompt,
@@ -84,7 +83,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       });
 
       for (let i = 0; i < generated.length; i++) {
-        draftImages.push({
+        sketchImages.push({
           data: generated[i].data,
           mimeType: generated[i].mimeType,
           prompt: generated[i].prompt,
@@ -98,16 +97,16 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       }
     }
 
-    console.log(`✏️ [Visual:Sketch] Generated ${draftImages.length} drafts`);
+    console.log(`✏️ [Visual:Sketch] Generated ${sketchImages.length} sketches`);
 
     if (state._httpJobId) {
       try {
-        const byteSizes = draftImages.map((d, i) => `[draft ${i + 1}] ${d.data.length} bytes`).join(', ');
+        const byteSizes = sketchImages.map((d, i) => `[sketch ${i + 1}] ${d.data.length} bytes`).join(', ');
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'sketch', prompt.length, {
-          injectedVariables: { candidateCount, aspectRatio, hasReferenceImage: !!refImage, perDraftVariations: usePerDraftPrompts },
-          hardcodedContent: usePerDraftPrompts
-            ? `basePrompt: ${basePrompt}\nvariations: ${JSON.stringify(variations!.map(v => v.prompt))}\n\nResult: ${draftImages.length} drafts — ${byteSizes}`
-            : `engineeredPrompt: ${prompt}\n\nResult: ${draftImages.length}/${candidateCount} drafts — ${byteSizes}`,
+          injectedVariables: { candidateCount, aspectRatio, hasReferenceImage: !!refImage, perSketchVariations: usePerSketchPrompts },
+          hardcodedContent: usePerSketchPrompts
+            ? `basePrompt: ${basePrompt}\nvariations: ${JSON.stringify(variations!.map(v => v.prompt))}\n\nResult: ${sketchImages.length} sketches — ${byteSizes}`
+            : `engineeredPrompt: ${prompt}\n\nResult: ${sketchImages.length}/${candidateCount} sketches — ${byteSizes}`,
         });
       } catch { /* non-critical */ }
     }
@@ -117,7 +116,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
     }
 
     return {
-      draftImages,
+      sketchImages,
       visualError: undefined,
       safetyBlocked: false,
       _phaseTimings: { ...state._phaseTimings, sketch: Date.now() - phaseStart },
@@ -138,7 +137,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
     if (err instanceof SafetyBlockError) {
       console.warn('🛡️ [Visual:Sketch] Safety filter blocked generation');
       return {
-        draftImages: undefined,
+        sketchImages: undefined,
         visualError: 'Image generation was blocked by safety filter. Please modify your request.',
         safetyBlocked: true,
         _phaseTimings: { ...state._phaseTimings, sketch: Date.now() - phaseStart },
@@ -147,7 +146,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
 
     console.error('❌ [Visual:Sketch] Generation failed:', err.message);
     return {
-      draftImages: undefined,
+      sketchImages: undefined,
       visualError: `Sketch generation failed: ${err.message}`,
       _phaseTimings: { ...state._phaseTimings, sketch: Date.now() - phaseStart },
     };
@@ -155,27 +154,27 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
 }
 
 /**
- * Load a draft as style reference for iterative sketching.
+ * Load a sketch as style reference for iterative sketching.
  *
- * Uses state.selectedDraftIndex when explicitly set.
+ * Uses state.selectedSketchIndex when explicitly set.
  * Returns undefined (no reference) when no explicit selection —
- * prevents silently using the last draft as reference when the
+ * prevents silently using the last sketch as reference when the
  * user did not request it.
  */
 function loadSketchReference(
   state: VisualGraphState
 ): { data: Buffer; mimeType: 'image/png' | 'image/jpeg' | 'image/webp' } | undefined {
-  const paths = state.availableDraftPaths;
+  const paths = state.availableSketchPaths;
   if (!paths || paths.length === 0) return undefined;
 
-  if (state.selectedDraftIndex == null) {
-    console.log('✏️ [Visual:Sketch] No explicit draft selection — generating without style reference');
+  if (state.selectedSketchIndex == null) {
+    console.log('✏️ [Visual:Sketch] No explicit sketch selection — generating without style reference');
     return undefined;
   }
 
-  const index = state.selectedDraftIndex;
+  const index = state.selectedSketchIndex;
   if (index < 0 || index >= paths.length) {
-    console.warn(`✏️ [Visual:Sketch] selectedDraftIndex=${index} out of range (${paths.length} drafts)`);
+    console.warn(`✏️ [Visual:Sketch] selectedSketchIndex=${index} out of range (${paths.length} sketches)`);
     return undefined;
   }
 
@@ -183,7 +182,7 @@ function loadSketchReference(
   try {
     const fullPath = path.isAbsolute(targetPath) ? targetPath : path.join(state.featurePath, targetPath);
     if (!fs.existsSync(fullPath)) {
-      console.warn(`✏️ [Visual:Sketch] Reference draft not found: ${fullPath}`);
+      console.warn(`✏️ [Visual:Sketch] Reference sketch not found: ${fullPath}`);
       return undefined;
     }
 
@@ -193,10 +192,10 @@ function loadSketchReference(
       : ext === '.webp' ? 'image/webp'
       : 'image/jpeg';
 
-    console.log(`✏️ [Visual:Sketch] Using draft #${index} as style reference: ${fullPath} (${data.length} bytes)`);
+    console.log(`✏️ [Visual:Sketch] Using sketch #${index} as style reference: ${fullPath} (${data.length} bytes)`);
     return { data, mimeType: mimeType as any };
   } catch (err: any) {
-    console.warn(`✏️ [Visual:Sketch] Failed to load reference draft: ${err.message}`);
+    console.warn(`✏️ [Visual:Sketch] Failed to load reference sketch: ${err.message}`);
     return undefined;
   }
 }
@@ -215,11 +214,11 @@ export function routeAfterSketch(state: VisualGraphState): string {
     return '__end__';
   }
 
-  if (state.draftImages && state.draftImages.length > 0) {
-    console.log('[SketchRouter] Drafts generated → deliver (for clarify/selection)');
+  if (state.sketchImages && state.sketchImages.length > 0) {
+    console.log('[SketchRouter] Sketches generated → deliver (for selection)');
     return 'deliver';
   }
 
-  console.log('[SketchRouter] No drafts → __end__');
+  console.log('[SketchRouter] No sketches → __end__');
   return '__end__';
 }

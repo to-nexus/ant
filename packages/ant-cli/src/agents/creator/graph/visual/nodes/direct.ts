@@ -8,13 +8,16 @@
  * Uses a single model: deps.directLLM.
  */
 
-import { VisualGraphState, DraftVariation } from '../types.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import { VisualGraphState, SketchVariation } from '../types.js';
 import { accumulateTokenUsage, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import type { LLMClient, LLMStreamEvent, ToolDefinition, MessageContentBlock, ToolUseContentBlock } from '../../../../../core/ports/llm.js';
-import { VISUAL_DRAFT_TOOLS, executeDraftTool } from './draftTools.js';
+import type { GeneratedImage } from '../../../../../core/ports/imageGeneration.js';
+import { VISUAL_SKETCH_TOOLS, executeSketchTool } from './sketchTools.js';
 
 const MAX_CLARIFY = 5;
 const MAX_TOOL_ROUNDS = 5;
@@ -34,28 +37,47 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   // Deterministic fast-path for finalize/regenerate (no LLM call needed)
   // Skip deterministic path if safety was blocked — need LLM to revise the prompt
-  if (state.draftIntent === 'finalize' && !state.safetyBlocked) {
-    const idx = state.selectedDraftIndex ?? 0;
-    const variation = state.draftVariations?.[idx];
+  if (state.sketchIntent === 'finalize' && !state.safetyBlocked) {
+    const idx = state.selectedSketchIndex ?? 0;
+    const variation = state.sketchVariations?.[idx];
     const prompt = (state.basePrompt && variation)
       ? `${state.basePrompt} ${variation.prompt}`
       : state.lastEngineeredPrompt;
 
-    console.log(`🎬 [Visual:Direct] Deterministic: finalize draft ${idx} → render (prompt=${prompt?.substring(0, 60)}...)`);
+    // Try loading the selected sketch directly — skip render if successful
+    const finalImage = loadSketchAsFinalImage(state, idx);
+    if (finalImage) {
+      console.log(`🎬 [Visual:Direct] Deterministic: finalize sketch ${idx} → deliver (${finalImage.data.length} bytes, skip render)`);
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
+      }
+      return {
+        routeDecision: 'deliver',
+        finalImage,
+        engineeredPrompt: prompt,
+        selectedSketchIndex: idx,
+        needsSketches: false,
+        sketchIntent: undefined,
+        _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
+      };
+    }
+
+    // Fallback: sketch load failed — route through render for regeneration
+    console.warn(`⚠️ [Visual:Direct] Sketch ${idx} load failed, falling back to render`);
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
     }
     return {
       routeDecision: 'render',
       engineeredPrompt: prompt,
-      selectedDraftIndex: idx,
+      selectedSketchIndex: idx,
       needsSketches: false,
-      draftIntent: undefined,
+      sketchIntent: undefined,
       _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
     };
   }
 
-  if (state.draftIntent === 'regenerate' && !state.safetyBlocked) {
+  if (state.sketchIntent === 'regenerate' && !state.safetyBlocked) {
     console.log('🎬 [Visual:Direct] Deterministic: regenerate → sketch (reuse prompt, new seed)');
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
@@ -64,15 +86,15 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       routeDecision: 'sketch',
       engineeredPrompt: state.lastEngineeredPrompt,
       basePrompt: state.basePrompt,
-      draftVariations: state.draftVariations,
+      sketchVariations: state.sketchVariations,
       needsSketches: true,
-      draftIntent: undefined,
+      sketchIntent: undefined,
       _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
     };
   }
 
-  if (state.safetyBlocked && (state.draftIntent === 'finalize' || state.draftIntent === 'regenerate')) {
-    console.log(`🎬 [Visual:Direct] Safety blocked on ${state.draftIntent} → falling through to LLM for prompt revision`);
+  if (state.safetyBlocked && (state.sketchIntent === 'finalize' || state.sketchIntent === 'regenerate')) {
+    console.log(`🎬 [Visual:Direct] Safety blocked on ${state.sketchIntent} → falling through to LLM for prompt revision`);
   }
 
   const directLLM = state.deps.directLLM;
@@ -112,9 +134,8 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   const currentDirective = state.overrideDirective || state.directive || '';
 
   const assetType = state.assetType || 'general';
-  const isRefactor = state.jobMode === 'refactor' && !state.isDraftFeedback;
 
-  console.log(`🎬 [Visual:Direct] jobMode=${state.jobMode || 'generate'}, assetType=${assetType}, isDraftFeedback=${!!state.isDraftFeedback}`);
+  console.log(`🎬 [Visual:Direct] jobMode=${state.jobMode || 'generate'}, assetType=${assetType}`);
 
   const systemPrompt = await promptPort.render('visual/nodes/direct/base', {
     isLogo: assetType === 'logo',
@@ -124,23 +145,21 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   });
 
   const clarifyCount = state.clarifyCount || 0;
-  const draftCount = state.availableDraftPaths?.length || 0;
+  const sketchCount = state.availableSketchPaths?.length || 0;
 
-  const draftVariationList = state.isDraftFeedback && state.draftVariations?.length
-    ? state.draftVariations.map((v, i) => ({
+  const sketchVariationList = state.sketchVariations?.length
+    ? state.sketchVariations.map((v, i) => ({
         number: i + 1,
-        label: v.label || `Draft ${i + 1}`,
+        label: v.label || `Sketch ${i + 1}`,
         prompt: v.prompt,
       }))
     : undefined;
 
-  const hasDrafts = draftCount > 0;
+  const hasSketches = sketchCount > 0;
 
   const userPrompt = await promptPort.render('visual/nodes/direct/context', {
     conversationContext: conversationContext || '(no previous conversation)',
     currentDirective,
-    isRefactor,
-    isDraftFeedback: state.isDraftFeedback,
     lastEngineeredPrompt: state.lastEngineeredPrompt,
     lastOutputPath: state.lastOutputPath,
     safetyBlocked: state.safetyBlocked,
@@ -150,8 +169,8 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     clarifyCount,
     maxClarify: MAX_CLARIFY,
     clarifyBudgetExhausted: clarifyCount >= MAX_CLARIFY,
-    availableDraftCount: hasDrafts ? draftCount : undefined,
-    draftVariationList,
+    availableSketchCount: hasSketches ? sketchCount : undefined,
+    sketchVariationList,
   });
 
   const messages: Array<{ role: string; content: string | MessageContentBlock[] }> = [
@@ -162,7 +181,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   const chatAPI = getChatAPIClient();
   await chatAPI.startMessage();
 
-  const tools = hasDrafts ? VISUAL_DRAFT_TOOLS : undefined;
+  const tools = hasSketches ? VISUAL_SKETCH_TOOLS : undefined;
 
   let result: any;
 
@@ -225,7 +244,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'direct', systemPrompt.length + userPrompt.length, {
         templatePath: 'visual/nodes/direct/base',
         usedTemplates: ['visual/nodes/direct/base', 'visual/nodes/direct/rules', 'visual/nodes/direct/context'],
-        injectedVariables: { assetType, isRefactor, currentDirective, conversationEntries: state.conversation.length },
+        injectedVariables: { assetType, currentDirective, conversationEntries: state.conversation.length },
         hardcodedContent: JSON.stringify({ route: result.route, engineeredPrompt: result.engineeredPrompt, reasoning: result.reasoning }),
       });
     } catch { /* non-critical */ }
@@ -239,18 +258,11 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'direct', 0);
   }
 
-  // When isDraftFeedback, classify the LLM route into refine_explore or refine_finalize
-  let resolvedDraftIntent: VisualGraphState['draftIntent'];
-  if (state.isDraftFeedback) {
-    resolvedDraftIntent = result.route === 'render' ? 'refine_finalize' : 'refine_explore';
-    console.log(`🎬 [Visual:Direct] Draft feedback resolved: ${resolvedDraftIntent} (LLM route=${result.route})`);
-  }
-
   const updates: Partial<VisualGraphState> = {
     routeDecision: result.route,
     resolvedAspectRatio: result.aspectRatio || undefined,
-    selectedDraftIndex: result.selectedDraftIndex ?? state.selectedDraftIndex,
-    draftIntent: resolvedDraftIntent || state.draftIntent,
+    selectedSketchIndex: result.selectedSketchIndex ?? state.selectedSketchIndex,
+    sketchIntent: state.sketchIntent,
     visualError: undefined,
     safetyBlocked: false,
     _conversationCompaction: compactionMeta,
@@ -259,9 +271,9 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   if (result.route === 'sketch' || result.route === 'engrave') {
     // Variation-based routes: basePrompt + variations[]
-    const variations: DraftVariation[] = Array.isArray(result.variations) ? result.variations : [];
+    const variations: SketchVariation[] = Array.isArray(result.variations) ? result.variations : [];
     updates.basePrompt = result.basePrompt || result.engineeredPrompt || '';
-    updates.draftVariations = variations;
+    updates.sketchVariations = variations;
     updates.variationAxis = result.variationAxis || undefined;
     // Compose a representative engineeredPrompt for logging/session (base + first variation)
     updates.engineeredPrompt = variations.length > 0
@@ -277,7 +289,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   } else if (result.route === 'render') {
     updates.engineeredPrompt = result.engineeredPrompt;
     updates.basePrompt = undefined;
-    updates.draftVariations = undefined;
+    updates.sketchVariations = undefined;
     updates.variationAxis = undefined;
   } else {
     updates.engineeredPrompt = result.engineeredPrompt;
@@ -301,7 +313,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 }
 
 /**
- * Stream LLM with tool loop — collects tool_use events, executes draft tools,
+ * Stream LLM with tool loop — collects tool_use events, executes sketch tools,
  * appends results, and re-streams until the LLM produces final text or rounds
  * are exhausted.
  */
@@ -360,7 +372,7 @@ async function streamWithToolLoop(
     }
 
     const toolResultBlocks: MessageContentBlock[] = toolUses.map(tu =>
-      executeDraftTool(tu.id, tu.name, tu.input, state),
+      executeSketchTool(tu.id, tu.name, tu.input, state),
     );
 
     currentMessages = [
@@ -372,6 +384,44 @@ async function streamWithToolLoop(
 
   console.warn(`⚠️ [Visual:Direct] Tool loop exhausted after ${maxRounds} rounds`);
   return { text: '', usage: accUsage };
+}
+
+/**
+ * Load a sketch file as a GeneratedImage for direct delivery (skip render).
+ * Returns undefined on any failure so the caller can fallback to render.
+ */
+function loadSketchAsFinalImage(
+  state: VisualGraphState,
+  index: number,
+): GeneratedImage | undefined {
+  const paths = state.availableSketchPaths;
+  if (!paths || index < 0 || index >= paths.length) return undefined;
+
+  try {
+    const sketchPath = paths[index];
+    const fullPath = path.isAbsolute(sketchPath)
+      ? sketchPath
+      : path.join(state.featurePath, sketchPath);
+
+    if (!fs.existsSync(fullPath)) return undefined;
+
+    const data = fs.readFileSync(fullPath);
+    const ext = path.extname(fullPath).toLowerCase();
+    const mimeType = (
+      ext === '.png' ? 'image/png'
+      : ext === '.webp' ? 'image/webp'
+      : 'image/jpeg'
+    ) as GeneratedImage['mimeType'];
+
+    const variation = state.sketchVariations?.[index];
+    const prompt = (state.basePrompt && variation)
+      ? `${state.basePrompt} ${variation.prompt}`
+      : state.lastEngineeredPrompt || '';
+
+    return { data, mimeType, prompt };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -395,6 +445,9 @@ export function routeAfterDirect(state: VisualGraphState): string {
     case 'engrave':
       console.log('[DirectRouter] → engrave');
       return 'engrave';
+    case 'deliver':
+      console.log('[DirectRouter] → deliver (finalize without render)');
+      return 'deliver';
     case 'clarify':
       console.log('[DirectRouter] → __end__ (clarify sent)');
       return '__end__';

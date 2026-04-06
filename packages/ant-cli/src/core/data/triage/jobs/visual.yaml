@@ -2,8 +2,9 @@
 id: visual
 agent: creator
 description: |
-  Generates visual assets (images, icons, illustrations) for the project.
+  Generates visual assets and provides expert consultation on visual design.
   Uses AI image generation models to create project-specific assets.
+  Handles questions and analysis about visual styles, assets, and creative direction.
   Conversational workflow: maintains context across multiple turns.
 
 modes:
@@ -24,8 +25,29 @@ modes:
       - Image asset generation (PNG, WebP, JPEG)
       - Icon and illustration creation
       - SVG code generation for simple shapes
-      - Progressive refinement with draft exploration
+      - Progressive refinement with sketch exploration
       - Conversational iteration on visual output
+
+  - id: explain
+    description: |
+      Answers questions and provides expert consultation on any visual design topic.
+      Covers general visual knowledge, creative direction, style guidance, technical advice,
+      and analysis of existing assets when available. No image generation — text response only.
+    detection:
+      any_of:
+        - type: has_directive
+    prerequisites:
+      required:
+        - id: directive
+          type: has_directive
+          description: Question or consultation request related to visual design
+      recommended: []
+    scope:
+      - General visual design knowledge (styles, techniques, composition principles)
+      - Creative direction consultation and recommendations
+      - Technical guidance on asset formats, sizes, accessibility, and constraints
+      - Analysis of existing sketches or finalized outputs when available
+      - Pre-generation consultation (what to consider, which approach to take)
 
 redirect_signals:
   to_design: >
