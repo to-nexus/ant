@@ -144,10 +144,13 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   }
 
   // Safety Net C: Final task without progress (computed by execute node, read-only here)
-  // Verification tasks use threshold=1: if the LLM produced only thinking once,
-  // route to checkTaskStatus immediately instead of retrying the same empty call.
+  // Verification tasks use threshold=1 by default. When planText is present (inline fix),
+  // threshold=2 allows recovery from a thinking-only first call: the second call runs
+  // with enableThinking=false (isAfterToolCall=true) and produces actual tool calls.
   const finalTaskLoopCount = state._finalTaskLoopCount || 0;
-  const loopThreshold = currentTask?.type === 'verification' ? 1 : 3;
+  const loopThreshold = currentTask?.type === 'verification'
+    ? (state.planText ? 2 : 1)
+    : 3;
   if (finalTaskLoopCount >= loopThreshold) {
     console.warn(`⚠️  [Router] Task stuck in loop (${finalTaskLoopCount}/${loopThreshold} iterations, no tools, no done)`);
     console.warn(`   🚨 Forcing checkTaskStatus to break the loop`);
