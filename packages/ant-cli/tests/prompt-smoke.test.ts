@@ -429,7 +429,7 @@ describe('Template Smoke Tests', () => {
     });
     expect(withSketches).toContain('Available Sketches');
     expect(withSketches).toContain('3 sketch image');
-    expect(withSketches).toContain('via the provided tools');
+    expect(withSketches).toContain('embedded below as inline images');
 
     const withoutSketches = await adapter.render('visual/nodes/direct/context', {
       ...SAMPLE_VARS,
