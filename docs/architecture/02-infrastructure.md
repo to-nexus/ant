@@ -237,7 +237,7 @@ BullMQ에 enqueue되는 payload에는 agent, jobType, projectId, featureName, di
 | `ANT_FEATURE` | Feature 경로 식별자 |
 | `ANT_FEATURE_NAME` | Feature 이름 별칭 |
 | `ANT_JOB_TYPE` | Job 타입 |
-| `ANT_AGENT` | 에이전트 타입 (`architect \| planner \| reviewer \| doc`) |
+| `ANT_AGENT` | 에이전트 타입 (`architect \| planner \| creator \| reviewer \| doc`) |
 | `ANT_MODE` | 실행 모드 (`generate \| refactor \| explain`) |
 | `ANT_USER_ID` | 사용자 ID (인증 세션 기반) |
 | `ANT_ORG_ID` | 조직 ID (인증 세션 기반) |

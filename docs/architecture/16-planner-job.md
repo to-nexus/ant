@@ -85,6 +85,27 @@ PRD 생성/수정 시 정보가 부족하면 LLM이 `<clarify>` 태그로 질문
 | `search_web` (Tavily) | O | O |
 | `edit_file` | X | O |
 
+## 파일 구조
+
+```
+agents/planner/
+    index.ts
+    graph/
+        tools.ts
+        plan/
+            graph.ts            (buildPlanGraph)
+            runner.ts           (runPlanGraph)
+            state.ts            (PlanGraphState, createInitialPlanState)
+            nodes/
+                resolve.ts      (PRD 존재 여부 → mode 결정)
+                generate.ts     (ReAct 루프, clarify/file 감지, conversation compaction)
+                tool.ts         (도구 실행)
+```
+
+## Conversation Compaction
+
+대화가 길어지면 `generate` 노드에서 `applyCompactionToConversation()`을 호출하여 오래된 턴을 LLM 기반으로 요약·압축한다. `PromptPort`가 deps로 주입되어 compaction 프롬프트 렌더링에 사용된다.
+
 ## State Persistence
 
 Plan Job은 ReAct 루프 단위로 상태를 저장한다.

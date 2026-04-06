@@ -141,7 +141,7 @@ GNB 인디케이터: `bridgeStatusChecked && bridgeConnected !== true`일 때만
 | 프론트 API (`checkBridgeStatus`, `openDesktopDeepLink`) | `packages/ant-ui/src/infrastructure/http/api/desktop.ts` |
 | 프론트 전역 상태 (`setBridgeStatus`) | `packages/ant-ui/src/domain/store/slices/uiSlice.ts` |
 | 설정 UI (Figma 연동 섹션) | `packages/ant-ui/src/presentation/components/AccountConfigEditor.tsx` |
-| GNB 인디케이터 | `packages/ant-ui/src/presentation/components/GlobalNavBar.tsx` |
+| GNB 인디케이터 | `packages/ant-ui/src/presentation/components/AppNavBar.tsx` |
 | Ant Desktop 브리지 클라이언트 | `ant-desktop/src-tauri/src/bridge/client.rs` |
 | Ant Desktop Figma 헬스 체크 | `ant-desktop/src-tauri/src/health/figma_check.rs` |
 | Ant Desktop 딥링크 처리 | `ant-desktop/src-tauri/src/auth/deeplink.rs` |
