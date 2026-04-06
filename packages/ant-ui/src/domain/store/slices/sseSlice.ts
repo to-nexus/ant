@@ -53,6 +53,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
   },
 
   updateKanban: (data) => {
+    console.log(`[Kanban:recv] ds=${data.dataSource} todo=${data.todo?.length ?? '?'} ip=${data.inProgress?.length ?? '?'} done=${data.completed?.length ?? '?'} jobId=${data.jobId ?? 'none'}`);
     const state = get();
     
     // Preserve jobTiming from existing state if not in incoming data.
@@ -133,7 +134,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     const shouldProtectRunningState = state.jobStartPending && state.isRunning && !isJobRunning;
     
     if (shouldProtectRunningState) {
-      console.log('[Store] 🛡️ Protecting isRunning state - job start pending, waiting for worker pod');
+      console.log(`[Store] 🛡️ Protecting isRunning state - job start pending, waiting for worker pod (ds=${data.dataSource})`);
       set({ 
         kanban: data,
         runningJobsByFeature: updatedRunningJobs
@@ -147,7 +148,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       // pod sends initial kanban (dataSource:'session') before the next live broadcast arrives.
       // Without this guard, that stale initial data would incorrectly set isRunning=false.
       if (state.sseReconnectGrace && data.dataSource === 'session') {
-        console.log('[Store] SSE reconnect grace: protecting isRunning from stale session data');
+        console.log(`[Store] SSE reconnect grace: protecting isRunning from stale session data (ds=${data.dataSource}, ip=${data.inProgress?.length ?? 0})`);
         set({ kanban: data, runningJobsByFeature: updatedRunningJobs });
         return;
       }
@@ -207,6 +208,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }
     }
     else {
+      console.log(`[Store] Kanban else branch: ds=${data.dataSource} isRunning=${state.isRunning} featureRunning=${currentFeatureIsRunning} ip=${data.inProgress?.length ?? 0}`);
       const newState: any = { 
         kanban: data,
         runningJobsByFeature: updatedRunningJobs,
@@ -700,7 +702,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           (!oldFigma && !!newFigma) ||
           (!!oldFigma && !newFigma);
 
-        get().setFileTree(tree);
+        get().setFileTree(tree ?? []);
 
         if (figmaChanged) {
           if (figmaRefreshTimer) clearTimeout(figmaRefreshTimer);
