@@ -327,10 +327,37 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       }
       
       switch (event.type) {
-        case 'initial_state':
-          console.log('[Store] 💬 Loading initial chat messages:', event.messages.length);
-          set({ chatMessages: event.messages });
+        case 'initial_state': {
+          const current = get().chatMessages;
+          if (current.length === 0) {
+            console.log('[Store] 💬 Loading initial chat messages:', event.messages.length);
+            set({ chatMessages: event.messages });
+            break;
+          }
+          const currentById = new Map<string, ChatMessage>(current.map((m: ChatMessage) => [m.id, m] as [string, ChatMessage]));
+          const merged: ChatMessage[] = [];
+          const seen = new Set<string>();
+
+          for (const incoming of event.messages as ChatMessage[]) {
+            const existing = currentById.get(incoming.id);
+            if (existing && existing.contents.length > incoming.contents.length) {
+              merged.push(existing);
+            } else {
+              merged.push(incoming);
+            }
+            seen.add(incoming.id);
+          }
+
+          for (const msg of current) {
+            if (!seen.has(msg.id)) {
+              merged.push(msg);
+            }
+          }
+
+          console.log(`[Store] 💬 initial_state merge: ${event.messages.length} incoming, ${current.length} existing → ${merged.length} merged`);
+          set({ chatMessages: merged });
           break;
+        }
           
         case 'user_message':
           // ✅ Cloud multi-pod: Check for duplicate message to prevent double-add
@@ -350,12 +377,10 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           }
           break;
           
-        case 'content_add':
-          // ✅ Cloud multi-pod: Check for duplicate content to prevent double-add
-          // This can happen when SSE reconnects or handlers are re-registered
-          const existingMessage = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
-          if (existingMessage) {
-            const isDuplicate = existingMessage.contents.some((c: MessageContent) => 
+        case 'content_add': {
+          const existingMsg = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
+          if (existingMsg) {
+            const isDuplicate = existingMsg.contents.some((c: MessageContent) => 
               c.type === event.content.type && 
               c.content === event.content.content &&
               c.metadata?.filePath === event.content.metadata?.filePath &&
@@ -365,14 +390,24 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
               console.log('[Store] 💬 Ignoring duplicate content_add event');
               break;
             }
+            get().updateChatMessage(event.messageId, {
+              contents: [...existingMsg.contents, event.content]
+            });
+          } else {
+            console.warn('[Store] 💬 content_add: message not found, creating placeholder:', event.messageId);
+            get().addChatMessage({
+              id: event.messageId,
+              role: 'assistant',
+              contents: [event.content],
+              timestamp: new Date().toISOString(),
+              isStreaming: true
+            } as ChatMessage);
           }
-          get().updateChatMessage(event.messageId, {
-            contents: [...(existingMessage?.contents || []), event.content]
-          });
           if (event.content?.type === 'downloaded') {
             setTimeout(() => get().refreshFileTree(), 1000);
           }
           break;
+        }
           
         case 'content_update':
           const message = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
