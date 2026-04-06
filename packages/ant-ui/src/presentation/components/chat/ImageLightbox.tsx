@@ -96,23 +96,25 @@ interface DraftLightboxProps {
 
 export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled }: DraftLightboxProps) {
   const { t } = useTranslation('chat');
-  const [currentPos, setCurrentPos] = useState(() => {
-    const pos = images.findIndex(img => img.index === startIndex);
-    return pos >= 0 ? pos : 0;
-  });
 
-  const current = images[currentPos];
-  const hasPrev = currentPos > 0;
-  const hasNext = currentPos < images.length - 1;
+  // Track by image INDEX (logical identity), not array position.
+  // images array grows as async loads complete — positional tracking would drift.
+  const [currentIndex, setCurrentIndex] = useState(startIndex);
+
+  const currentPos = images.findIndex(img => img.index === currentIndex);
+  const safePos = currentPos >= 0 ? currentPos : 0;
+  const current = images[safePos];
+  const hasPrev = safePos > 0;
+  const hasNext = safePos < images.length - 1;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' && hasPrev) setCurrentPos(p => p - 1);
-      if (e.key === 'ArrowRight' && hasNext) setCurrentPos(p => p + 1);
+      if (e.key === 'ArrowLeft' && hasPrev) setCurrentIndex(images[safePos - 1].index);
+      if (e.key === 'ArrowRight' && hasNext) setCurrentIndex(images[safePos + 1].index);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasPrev, hasNext]);
+  }, [hasPrev, hasNext, images, safePos]);
 
   if (!current) return null;
 
@@ -120,7 +122,7 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
     <BaseLightbox onClose={onClose}>
       {hasPrev && (
         <button
-          onClick={() => setCurrentPos(p => p - 1)}
+          onClick={() => setCurrentIndex(images[safePos - 1].index)}
           className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
           aria-label={t('draftSelection.previousDraft')}
         >
@@ -137,7 +139,7 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
 
         <div className="flex items-center gap-4">
           <span className="text-white/70 text-sm font-medium">
-            {currentPos + 1} / {images.length}
+            {safePos + 1} / {images.length}
           </span>
           {!disabled && (
             <button
@@ -154,7 +156,7 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
 
       {hasNext && (
         <button
-          onClick={() => setCurrentPos(p => p + 1)}
+          onClick={() => setCurrentIndex(images[safePos + 1].index)}
           className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
           aria-label={t('draftSelection.nextDraft')}
         >
