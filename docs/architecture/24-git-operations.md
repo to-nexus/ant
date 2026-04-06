@@ -221,8 +221,8 @@ LLM 코드 생성 시 `.git` 파일/디렉터리 손상 방지:
 | Git 상태 조회 | `packages/ant-cli/src/periphery/adapters/http/services/GitService/status/index.ts` |
 | 라우트 | `packages/ant-cli/src/periphery/adapters/http/routes/projects.routes.ts` |
 | UI 드롭다운 | `packages/ant-ui/src/presentation/components/ProjectSection.tsx` |
-| UI Git 버튼 | `packages/ant-ui/src/presentation/components/GitStatusButtons/index.tsx` |
-| UI 변경 패널 | `packages/ant-ui/src/presentation/components/GitStatusButtons/components/GitChangesPanel.tsx` |
+| UI Git 버튼 | `packages/ant-ui/src/presentation/components/GitStatusButton/index.tsx` |
+| UI 변경 패널 | `packages/ant-ui/src/presentation/components/GitStatusButton/components/GitChangesPanel.tsx` |
 | UI API 클라이언트 | `packages/ant-ui/src/infrastructure/http/api/github.ts` |
 
 ## 경계

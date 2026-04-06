@@ -9,8 +9,9 @@ ANT는 AI 에이전트 기반 소프트웨어 개발 플랫폼이다. pnpm 모�
 | 패키지 | npm 이름 | 역할 |
 |--------|----------|------|
 | `ant-cli` | `@ant/cli` | 백엔드. API 서버, Job Worker, Realtime 서버, Preview 서버 |
-| `ant-ui` | `@ant/ui` | 프론트엔드. React + Vite SPA |
+| `ant-ui` | `@ant/ui` | 프론트엔드. React 19 + Vite SPA |
 | `ant-shared` | `@ant/shared` | 공유 타입. 패키지 간 계약 정의 |
+| `ant-site` | - | 마케팅 사이트. Next.js SSG |
 
 `ant-cli`는 배포 시 역할별로 4개 프로세스로 실행된다. 코드베이스는 하나이며, 진입점과 환경변수로 역할이 결정된다.
 
@@ -71,7 +72,7 @@ Preview는 별도 호스트를 사용한다. SSR 앱의 절대 경로 리소스�
 
 ### 프론트엔드 (ant-ui)
 
-- Framework: React 18, Vite
+- Framework: React 19, Vite
 - State: Zustand
 - Styling: Tailwind CSS
 - UI: Radix UI, Lucide React, Framer Motion
