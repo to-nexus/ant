@@ -712,7 +712,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         markArtifactsSeen(staleUnseen);
       }
 
-      await refreshFileTree();
+      await refreshFileTree({ force: false });
       if (selectedFile === itemPath) {
         selectFile('');
       }

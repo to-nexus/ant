@@ -6,7 +6,7 @@ import { isFigmaDataPopulated } from '@ant/shared';
 export interface FileActions {
   selectFile: (filePath: string | undefined) => void;
   setFileTree: (tree: FileNode[]) => void;
-  refreshFileTree: () => Promise<void>;
+  refreshFileTree: (options?: { force?: boolean }) => Promise<void>;
   setFileContent: (content: FileContent | undefined) => void;
   triggerFileReload: (filePath?: string | undefined) => void;
   setLastViewMode: (mode: 'raw' | 'preview') => void;
@@ -69,7 +69,8 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     set({ fileTree: tree });
   },
 
-  refreshFileTree: async () => {
+  refreshFileTree: async (options?: { force?: boolean }) => {
+    const forceRefresh = options?.force ?? true;
     const state = get();
     const { selectedProject, selectedFeature, backendMode, userEmail, connectionStatus } = state;
     
@@ -84,9 +85,9 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     
     try {
       const tFetch = performance.now();
-      console.log(`[Timing] refreshFileTree REST start @${Math.round(tFetch)}ms`);
+      console.log(`[Timing] refreshFileTree REST start (force=${forceRefresh}) @${Math.round(tFetch)}ms`);
       const { fetchFileTree } = await import('@/infrastructure/http/api');
-      const tree = await fetchFileTree(selectedProject, selectedFeature, { force: true });
+      const tree = await fetchFileTree(selectedProject, selectedFeature, { force: forceRefresh });
       console.log(`[Timing] refreshFileTree REST done (nodes=${tree?.length ?? 0}) +${Math.round(performance.now() - tFetch)}ms @${Math.round(performance.now())}ms`);
       set({ fileTree: tree });
     } catch (error) {

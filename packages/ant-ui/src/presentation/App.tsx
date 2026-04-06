@@ -451,16 +451,29 @@ function App() {
                 </div>
               </div>
             ) : (
-              <iframe
-                key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
-                src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
-                className="w-full h-full border-0"
-                title="ANT Code Editor"
-                onLoad={() => {
-                  // Mark as loaded to stop auto-retries and prevent flicker
-                  useStore.getState().setIdeFrameLoaded(true);
-                }}
-              />
+              <div className="relative w-full h-full">
+                {!ideFrameLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-[#0d1117] z-10">
+                    <div className="max-w-lg w-full px-6">
+                      <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
+                        <div className="h-4 w-44 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
+                        <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
+                        <div className="h-3 w-5/6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-6" />
+                        <div className="text-sm text-gray-600 dark:text-gray-300">IDE를 로드하는 중...</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <iframe
+                  key={`ide-${selectedFeature || 'base'}-${ideReloadTimestamp}`}
+                  src={`${ideBaseUrl}/?folder=${encodeURIComponent(ideWorkspacePath || '/workspace')}&tk=${ideReloadTimestamp}`}
+                  className="w-full h-full border-0"
+                  title="ANT Code Editor"
+                  onLoad={() => {
+                    useStore.getState().setIdeFrameLoaded(true);
+                  }}
+                />
+              </div>
             )}
           </div>
         ) : (
