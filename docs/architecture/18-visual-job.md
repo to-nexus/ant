@@ -18,16 +18,18 @@ Visual Job은 Creator 에이전트의 첫 번째 job 타입으로, AI 이미지 
 
 ```
 __start__ → resolve → triage → classify → direct → (conditional)
-                                             │
-                               ┌─────────────┼─────────────┬──────────────┐
-                               ▼             ▼             ▼              ▼
-                             sketch        render        engrave        __end__
-                               │             │             │          (clarify/end)
-                               ▼             ▼             ▼
-                             deliver       deliver       deliver
-                               │             │             │
-                               ▼             ▼             ▼
-                             __end__       __end__       __end__
+                         │                   │
+                         │     ┌─────────────┼─────────────┬──────────────┬──────────────┐
+                         │     ▼             ▼             ▼              ▼              ▼
+                         │   sketch        render        engrave       explain        __end__
+                         │     │             │             │              │          (clarify/end)
+                         │     ▼             ▼             ▼              ▼
+                         │   deliver       deliver       deliver       __end__
+                         │     │             │             │
+                         │     ▼             ▼             ▼
+                         │   __end__       __end__       __end__
+                         │
+                         └── explain (mode=explain, classify 분기) → __end__
 
 Safety blocked (sketch/render) → direct로 루프백 (classify 재실행 불필요)
 ```
@@ -38,11 +40,12 @@ Safety blocked (sketch/render) → direct로 루프백 (classify 재실행 불�
 |------|------|------|
 | resolve | - | 세션 로드, conversation 복원 |
 | triage | gemini-3-flash-preview | 의도 분류 (공통 노드) |
-| classify | deps.llm (Flash) | 에셋 타입 분류 → VisualAssetType (logo/icon/hero/illustration/general) |
+| classify | deps.llm (Flash) | 에셋 타입 분류 → VisualAssetType (logo/icon/hero/illustration/general), mode=explain 분기 |
 | direct | deps.directLLM (Pro) | 아트 디렉션: assetType 기반 가이드 주입, 프롬프트 엔지니어링, 라우팅 결정 |
-| sketch | gemini-3.1-flash-image-preview | 드래프트 후보 이미지 생성 (빠르고 저비용) |
+| sketch | gemini-3.1-flash-image-preview | 스케치 후보 이미지 생성 (빠르고 저비용) |
 | render | gemini-3-pro-image-preview | 최종 고품질 이미지 렌더링 |
 | engrave | gemini-3.1-pro-preview | SVG 코드 생성 (텍스트 모델) |
+| explain | deps.explainLLM | 에셋 설명/분석 (이미지 생성 없이 대화 응답) |
 | deliver | - | 파일 저장, 썸네일 생성, 채팅 알림, 상태 초기화 |
 
 ## Direct 노드 라우팅
@@ -56,6 +59,8 @@ Direct 노드(아트 디렉터)가 요청을 분석하여 다음 중 하나로 �
 | `engrave` | 단순 도형/아이콘 SVG 요청 | 텍스트 모델로 SVG 코드 생성 |
 | `clarify` | 주제가 불명확 | 질문 후 종료 (다음 턴에 재시작) |
 | `end` | 비주얼 생성 아님 | 종료 |
+
+> classify 노드에서 `mode=explain`이면 direct를 거치지 않고 explain 노드로 직행한다.
 
 ## LLM 모델 전략
 
@@ -96,7 +101,7 @@ Visual job의 모든 노드는 Gemini 모델만 사용한다.
 |------|------|
 | 최종 이미지 | `{featurePath}/inputs/assets/gen/gen-{timestamp}.{ext}` |
 | 썸네일 | `{featurePath}/inputs/assets/gen/gen-{timestamp}-thumb.jpeg` |
-| 드래프트 이미지 | `{featurePath}/inputs/assets/gen/drafts/draft-{timestamp}-{index}.{ext}` |
+| 스케치 이미지 | `{featurePath}/inputs/assets/gen/sketches/sketch-{timestamp}-{index}.{ext}` |
 | SVG | `{featurePath}/inputs/assets/gen/gen-{timestamp}.svg` |
 
 ### 채팅 알림
@@ -104,25 +109,25 @@ Visual job의 모든 노드는 Gemini 모델만 사용한다.
 | 상황 | 방식 | UI 컴포넌트 |
 |------|------|-------------|
 | 최종 이미지/SVG 저장 | `showChatStatus('downloaded', ...)` | WorkingCard (이미지 프리뷰) |
-| 드래프트 후보 생성 | `sendClarifyCards([{options: ImageOption[], allowRegenerate}])` → `choice_card(clarifying)` | ChoiceCard > ClarifyingVariant |
+| 스케치 후보 생성 | `sendClarifyCards([{options: ImageOption[], allowRegenerate}])` → `choice_card(clarifying)` | ChoiceCard > ClarifyingVariant |
 
-#### 드래프트 선택 UI
+#### 스케치 선택 UI
 
-Sketch 노드가 복수의 드래프트를 생성하면, Deliver 노드가 각 드래프트의 썸네일을 생성하고 `choice_card(clarifying)` 상태를 전송한다. 드래프트 선택은 Clarify 시스템의 이미지 옵션 확장으로 통합되어 있다.
+Sketch 노드가 복수의 스케치를 생성하면, Deliver 노드가 각 스케치의 썸네일을 생성하고 `choice_card(clarifying)` 상태를 전송한다. 스케치 선택은 Clarify 시스템의 이미지 옵션 확장으로 통합되어 있다.
 
 ```
 deliver → sharp 썸네일 생성 → chatAPI.sendClarifyCards([{options: ImageOption[]}])
   → SSE → ChoiceCard(variant='clarifying')
-    → DraftRow × N (세로 리스트, 각 행에 썸네일 + "Select" 버튼)
-    → 썸네일 클릭 → DraftLightbox (좌우 화살표 네비게이션 + "Select Draft N" 버튼)
-    → 선택 시: runJob(directive="[DRAFT_FINALIZE:N]")
-    → 자유 입력: runJob(directive="[DRAFT_FEEDBACK] 사용자 텍스트")
-    → 재생성: runJob(directive="[DRAFT_REGENERATE]")
+    → SketchRow × N (세로 리스트, 각 행에 썸네일 + "Select" 버튼)
+    → 썸네일 클릭 → DraftLightbox (좌우 화살표 네비게이션 + "Select Sketch N" 버튼)
+    → 선택 시: runJob(directive="[SKETCH_FINALIZE:N]")
+    → 자유 입력: runJob(directive="[SKETCH_FEEDBACK] 사용자 텍스트")
+    → 재생성: runJob(directive="[SKETCH_REGENERATE]")
 ```
 
-드래프트 저장 경로:
-- 원본: `drafts/draft-{ts}-{index}.{ext}`
-- 썸네일: `drafts/thumbs/draft-{ts}-{index}-thumb.jpeg`
+스케치 저장 경로:
+- 원본: `sketches/sketch-{ts}-{index}.{ext}`
+- 썸네일: `sketches/sketch-{ts}-{index}-thumb.jpeg`
 
 Lightbox는 `BaseLightbox`를 공유 기반으로 하며, 기존 Figma 스크린샷용 `ImageLightbox`와 드래프트용 `DraftLightbox`로 분리된다.
 
@@ -130,10 +135,10 @@ Lightbox는 `BaseLightbox`를 공유 기반으로 하며, 기존 Figma 스크린
 
 | 영속 | 임시 (deliver 후 클리어) |
 |------|------------------------|
-| `conversation` (대화 이력) | `draftImages` |
-| `directive` | `svgDrafts` |
+| `conversation` (대화 이력) | `sketchImages` |
+| `directive` | `svgSketches` |
 | `tokenUsage` | `engineeredPrompt` |
-| | `finalImage`, `selectedDraftIndex` |
+| | `finalImage`, `selectedSketchIndex` |
 | | `routeDecision`, `needsSketches`, `isSvgRequest` |
 
 Deliver 노드 완료 시 임시 상태를 초기화하고, conversation에 `ConversationEntry`(role='system') chapter marker를 추가한다. `ConversationEntry`는 Plan과 동일한 통합 타입(`core/types/session.ts`)을 사용하며, `savedAsset`, `chapterSummary` metadata로 에셋 경로와 요약을 기록한다.
@@ -201,7 +206,7 @@ packages/ant-cli/src/agents/creator/
 ├── index.ts                          # Creator 에이전트 진입점
 └── graph/visual/
     ├── graph.ts                      # LangGraph 정의, runVisualGraph
-    ├── types.ts                      # VisualGraphState, DraftImage, SvgDraft, VisualAssetType
+    ├── types.ts                      # VisualGraphState, SketchImage, SvgSketch, VisualAssetType
     └── nodes/
         ├── resolve.ts                # 세션 로드, conversation 복원
         ├── classify.ts               # 에셋 타입 분류 노드 (deps.llm)
@@ -210,6 +215,7 @@ packages/ant-cli/src/agents/creator/
         ├── sketch.ts                 # 드래프트 후보 생성 (Flash 모델)
         ├── render.ts                 # 최종 고품질 렌더링 (Pro 모델)
         ├── engrave.ts                # SVG 코드 생성 (promptPort.render 사용)
+        ├── explain.ts                # 에셋 설명/분석 (텍스트만 응답)
         └── deliver.ts                # 파일 저장, 썸네일, 알림, 상태 초기화
 ```
 

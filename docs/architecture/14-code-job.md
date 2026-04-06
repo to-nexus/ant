@@ -103,7 +103,7 @@ LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
 
 - `error` 태스크: 검증 실패 시 오류를 파일별로 분리하여 독립 태스크로 재분해 (batch split)
 - `verification` 태스크: `VerificationTracker`가 build/test objective 완료를 추적. 모든 목표가 충족될 때까지 `checkTaskStatus -> enforce -> plan` 루프를 반복한다
-- `testgen` 태스크: 모든 feature 태스크 완료 후 테스트 코드 생성
+- `test-code` 태스크: 모든 feature 태스크 완료 후 테스트 코드 생성
 
 batch split은 단일 검증 실패를 여러 독립 error 태스크로 쪼개어 병렬 처리를 가능하게 한다. 분할된 태스크는 taskQueue에 삽입되고 `plan` 노드로 재진입한다.
 

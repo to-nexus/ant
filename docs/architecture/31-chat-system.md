@@ -32,19 +32,37 @@ API Server (ChatService):
 
 Job Worker는 API Server를 거치지 않고 직접 Redis에 접근한다.
 
+## 통합 메시지 콘텐츠 타입
+
+`MessageContent.type`은 단일 유니온 타입으로 모든 채팅 콘텐츠를 표현한다.
+
+| 카테고리 | 타입 |
+|----------|------|
+| Chat Status (진행 표시) | `placeholder`, `thinking`, `exploring`/`explored`, `retrieving`/`retrieved`, `grepping`/`grepped`, `reading`/`read`, `reading_source`/`read_source`, `indexing`/`indexed`, `analyzing`/`analyzed`, `loading`/`loaded`, `storing`/`stored`, `learning`/`learned`, `processing`/`processed`, `downloading`/`downloaded`, `figma_calling`/`figma_called` |
+| 일반 콘텐츠 | `text`, `cancelled`, `triage_choice`, `choice_card`, `context_loaded`, `task_response` |
+| 파일 연산 (실시간) | `file_creating`/`file_writing`/`file_create`/`file_create_failed`, `file_editing`/`file_updating`/`file_edit`/`file_edit_failed`, `file_deleting`/`file_delete`/`file_delete_failed`, `file_conflict`/`file_conflict_retry` |
+| 도구 연산 | `tool_action`, `listing_files`/`listed_files`, `searching_code`/`searched_code`, `searching_reference`/`searched_reference` |
+| 명령 실행 | `command_running`/`command_streaming`/`command` |
+| Plan 스트리밍 | `plan_generating`/`plan` |
+
+진행 중/완료 쌍(예: `exploring`→`explored`)은 ContentMerger의 fallback merge로 자동 매칭된다. `INFORMATIONAL_TYPES`(`context_loaded`)는 placeholder와 공존할 수 있다.
+
 ## ContentMerger
 
-새 콘텐츠 추가 시 placeholder 처리 규칙:
+새 콘텐츠 추가 시 Universal Placeholder System에 따른 8단계 처리 파이프라인:
 
-| 새 콘텐츠 타입 | 기존 placeholder | 동작 |
-|---------------|-----------------|------|
-| `placeholder` | 없음 | 추가 |
-| `placeholder` | 있음 | 교체 (in-place) |
-| `thinking` | 있음 | placeholder를 thinking으로 교체 |
-| `text`, `file`, `command` 등 | 있음 | placeholder 제거 + 새 콘텐츠 추가 |
-| INFORMATIONAL (`context_loaded`) | 있음 | placeholder 유지, 새 콘텐츠도 추가 (공존) |
+| 우선순위 | 케이스 | 동작 |
+|----------|--------|------|
+| 1 | 새 placeholder + 기존 placeholder 존재 | 기존 위치에서 in-place 교체 |
+| 2 | 비-informational 콘텐츠 + placeholder 존재 | placeholder와 병합 (placeholder 소멸) |
+| 3 | `_mergeIndex` 메타데이터 | 명시적 인덱스에 직접 병합 |
+| 4 | 완료 상태 (`explored`, `read` 등) | 역방향 검색으로 대응하는 진행 중 상태와 병합 |
+| 5 | 완료 타입 중복 | 무시 (dedup) |
+| 6 | thinking 블록 전환 | duration 계산, collapse 브로드캐스트 |
+| 7 | 같은 타입 스트리밍 | 내용 append (`text`, `thinking`, `plan_generating`, `task_response`, 동일 파일) |
+| 8 | 파일 연산 완료 | `activeFileOperations` 또는 타입 기반 검색으로 진행 중 카드 업데이트 |
 
-모든 콘텐츠 추가는 반드시 `ContentMerger.addContent()`를 경유해야 한다. 직접 push하면 placeholder가 잔존한다.
+Placeholder는 contents[] 배열의 **어느 위치에나** 존재할 수 있다 (informational 타입이 뒤에 추가될 수 있기 때문). 모든 콘텐츠 추가는 반드시 `ContentMerger.addContent()`를 경유해야 한다.
 
 ## Chat Activity Indicator (CAI)
 
@@ -74,6 +92,10 @@ Job Worker는 API Server를 거치지 않고 직접 Redis에 접근한다.
 
 isStreaming이 아닌 메시지의 잔여 placeholder는 렌더링하지 않는다 (방어적 필터링).
 
+## SSE 재연결 시 메시지 유실 방지
+
+SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지의 중간 콘텐츠가 유실될 수 있다. 이를 방지하기 위해 재연결 시 Redis에 저장된 현재 세션 스냅샷과 프론트엔드 상태를 동기화한다.
+
 ## Choice Card
 
 ### Variant
@@ -84,6 +106,7 @@ isStreaming이 아닌 메시지의 잔여 placeholder는 렌더링하지 않는�
 | `cancelled` | 작업 취소 후 재개/무시 |
 | `eval_save` | 평가 리포트 저장 |
 | `prd_apply` | PRD 적용 |
+| `spec_complete` | 스펙 완료 확인 |
 | `clarifying` | PRD 생성 시 다수 질문 (Compound Card) |
 
 ### Compound Clarifying Card

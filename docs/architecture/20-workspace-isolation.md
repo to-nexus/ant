@@ -12,25 +12,36 @@ ANT는 멀티테넌트 워크스페이스 구조를 사용한다. 조직, 사용
         {userId}/
             {projectId}/
                 config.json
-                codebase/                   (main 브랜치)
+                codebase/                       (main 브랜치)
                 features/
                     {featureName}/
                         inputs/
-                            sources/        (prd.md, directive.md)
-                            references/     (screens/, components/)
-                            assets/
+                            sources/            (prd.md, directive.md)
+                            directives/         (design/, code/, learn/)
+                            references/         (screens/, components/)
+                            assets/             (gen/sketches/)
+                            figma.json
                         outputs/
-                            design/         (설계 문서)
-                            plan/           (PRD staging)
-                            evals/          (평가 리포트)
+                            design/             (설계 문서)
+                            plan/               (PRD staging)
+                            evals/              (prd/, ui-design/, system-design/, code/)
                         sessions/
                             architect/
                                 design.json
                                 code.json
+                                learn.json
+                                debug/          (prompts/, plans/, logs/, tokens/, figma/)
+                                runtime/        (design/, code/)
                             planner/
                                 plan.json
+                                debug/          (prompts/)
+                            creator/
+                                visual.json
+                                debug/          (prompts/)
                             chat.json
 ```
+
+Feature 디렉토리 구조의 SSOT는 `@ant/shared/canonical.ts`이다. 모든 정규 디렉토리/파일은 해당 파일에서 visibility 태그와 함께 정의되며, 런타임에서 `isCanonicalDir()`로 정규 경로 여부를 O(1) 판정한다.
 
 ## 격리 계층
 
@@ -89,6 +100,7 @@ Job 실행 시 자식 프로세스에 화이트리스트 방식으로 환경변�
 
 ## 경계
 
+- Feature 구조 SSOT: [01-shared-contracts.md](01-shared-contracts.md) (`canonical.ts`)
 - 환경변수 상세: [02-infrastructure.md](02-infrastructure.md)
 - Job 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
 - IDE 격리: [23-cloud-ide.md](23-cloud-ide.md)
