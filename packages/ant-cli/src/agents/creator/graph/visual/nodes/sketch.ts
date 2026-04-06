@@ -12,6 +12,7 @@ import { VisualGraphState, SketchImage } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 export async function sketchNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
 
@@ -44,6 +45,8 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
 
   try {
     const sketchImages: SketchImage[] = [];
+    let phaseInputTokens = 0;
+    let phaseOutputTokens = 0;
 
     if (usePerSketchPrompts) {
       for (let i = 0; i < variations!.length; i++) {
@@ -59,6 +62,11 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
         });
 
         if (generated.length > 0) {
+          if (generated[0].tokenUsage) {
+            accumulateTokenUsage(state as any, generated[0].tokenUsage, { taskLevel: false, jobLevel: true });
+            phaseInputTokens += generated[0].tokenUsage.inputTokens;
+            phaseOutputTokens += generated[0].tokenUsage.outputTokens;
+          }
           sketchImages.push({
             data: generated[0].data,
             mimeType: generated[0].mimeType,
@@ -83,6 +91,11 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       });
 
       for (let i = 0; i < generated.length; i++) {
+        if (generated[i].tokenUsage) {
+          accumulateTokenUsage(state as any, generated[i].tokenUsage, { taskLevel: false, jobLevel: true });
+          phaseInputTokens += generated[i].tokenUsage.inputTokens;
+          phaseOutputTokens += generated[i].tokenUsage.outputTokens;
+        }
         sketchImages.push({
           data: generated[i].data,
           mimeType: generated[i].mimeType,
@@ -98,6 +111,17 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
     }
 
     console.log(`✏️ [Visual:Sketch] Generated ${sketchImages.length} sketches`);
+
+    if ((phaseInputTokens > 0 || phaseOutputTokens > 0) && state.deps?.kanbanUpdate?.updateTokenUsage) {
+      state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+    }
+    if (phaseInputTokens > 0 || phaseOutputTokens > 0) {
+      upsertPhaseTokenUsage(state, 'sketch', {
+        inputTokens: phaseInputTokens,
+        outputTokens: phaseOutputTokens,
+        totalTokens: phaseInputTokens + phaseOutputTokens,
+      }, getEstimatingLabel('sketch', state._uiLocale as any));
+    }
 
     if (state._httpJobId) {
       try {

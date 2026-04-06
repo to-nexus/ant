@@ -17,7 +17,7 @@ import { TriageableState, TriageResult, WorkspaceState } from './types.js';
 import { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
 import { parseTriageResponse } from './parser.js';
 import { AgentRegistry } from './AgentRegistry.js';
-import { accumulateTokenUsage } from '../../graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../graph/llmHelpers.js';
 import { runAskGraph } from '../../../architect/graph/ask/runner.js';
 import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
@@ -167,6 +167,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     
     if (response.usage) {
       accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
+      upsertPhaseTokenUsage(state as any, 'triage', response.usage);
       if ((state as any).deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
         (state as any).deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
       }
@@ -235,13 +236,21 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
       language,
       workspaceState: {
         ...workspaceState,
-        featurePath: state.context?.featurePath,  // ✅ Pass featurePath for debug logging
+        featurePath: state.context?.featurePath,
       },
       currentJob,
       currentAgent,
       deps: { llm },
       _httpJobId: state._httpJobId,
     });
+
+    if (askResult.tokenUsage) {
+      accumulateTokenUsage(state as any, askResult.tokenUsage, { taskLevel: true, jobLevel: true });
+      upsertPhaseTokenUsage(state as any, 'triage', askResult.tokenUsage);
+      if ((state as any).deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
+        (state as any).deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      }
+    }
     
     triageResult = {
       ...triageResult,

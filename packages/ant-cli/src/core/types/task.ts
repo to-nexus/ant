@@ -46,6 +46,7 @@ export interface TaskQueueSnapshot {
   recursionLimit: number;
   tokenUsage?: TaskTokenUsage;
   estimatingTokenUsage?: TaskTokenUsage;
+  phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
   // Node activity banner (for reconnect/recovery)
   estimatingLabel?: string;
   estimatingStartedAt?: string;

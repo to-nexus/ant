@@ -35,7 +35,8 @@
     "byPhase": "단계별",
     "estimating": "계획:",
     "outputDescription": "과금 · 캐시 불가",
-    "noTokenData": "토큰 사용 데이터 없음"
+    "noTokenData": "토큰 사용 데이터 없음",
+    "overhead": "기타"
   },
   "task": {
     "paused": "일시정지"

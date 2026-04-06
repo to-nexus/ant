@@ -22,7 +22,7 @@ import type {
   KanbanBroadcastMessage,
   DecomposableJobType
 } from '../types/task';
-import type { JobTiming } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage } from '@ant/shared';
 import { 
   getRealtimeBroadcastChannel,
   TASK_QUEUE_KEY_PREFIX,
@@ -49,6 +49,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedRecursionLimit?: number;
   private cachedTokenUsage?: TaskTokenUsage;
   private cachedEstimatingTokenUsage?: TaskTokenUsage;
+  private cachedPhaseTokenUsages?: PhaseTokenUsage[];
   // Cached task lists from last updateTaskQueue (NOT from broadcastKanbanUpdate,
   // which is also called during estimating with empty arrays).
   private cachedCurrentTasks: BaseTask[] = [];
@@ -161,6 +162,28 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
         tokenUsage,
       ).catch(err => {
         console.warn(`[KanbanBroadcaster] Failed to broadcast token usage:`, err.message);
+      });
+    }
+  }
+
+  /**
+   * Update per-phase token breakdown and re-broadcast if in estimating mode.
+   * Used by visual/plan jobs that don't have a task queue.
+   */
+  updatePhaseTokenUsages(phases: PhaseTokenUsage[]): void {
+    this.cachedPhaseTokenUsages = phases;
+
+    if (this.estimatingLabel) {
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        [],
+        [],
+        [],
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast phase token usages:`, err.message);
       });
     }
   }
@@ -284,6 +307,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionLimit: recursionLimit ?? 50,
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
+      ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       // Include estimating activity for reconnect/recovery
       ...(this.estimatingLabel && {
         estimatingLabel: this.estimatingLabel,
@@ -313,6 +337,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       recursionLimit,
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
+      ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       jobType: this.jobType,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)
       ...(this.jobTiming && { jobTiming: this.jobTiming }),
