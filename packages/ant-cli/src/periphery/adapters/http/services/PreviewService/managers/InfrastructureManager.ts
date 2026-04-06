@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process';
+import { spawn, execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
@@ -36,7 +36,7 @@ export class InfrastructureManager {
    */
   async isDockerAvailable(): Promise<boolean> {
     try {
-      execSync('docker info', { 
+      execFileSync('docker', ['info'], { 
         encoding: 'utf-8', 
         timeout: 5000,
         stdio: 'pipe',
@@ -329,7 +329,7 @@ export class InfrastructureManager {
       }
       args.push('ps', '--format', 'json');
 
-      const output = execSync(['docker', ...args].join(' '), {
+      const output = execFileSync('docker', args, {
         cwd: path.dirname(composeFile),
         encoding: 'utf-8',
         timeout: 10_000,
