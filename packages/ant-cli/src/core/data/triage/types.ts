@@ -44,12 +44,18 @@ export interface DetectionItem {
   none_of?: DetectionItem[];
 }
 
+export interface JobModeOutput {
+  name: string;
+  description: string;
+}
+
 export interface JobMode {
   id: string;
   description: string;  // Direct text
   detection: DetectionCondition;
   prerequisites: Prerequisites;
   scope: string[];  // Direct text array
+  outputs?: JobModeOutput[];  // What this mode produces
 }
 
 export interface RedirectSignals {

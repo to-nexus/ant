@@ -40,6 +40,13 @@ modes:
       - Asset mappings and icon system
       - UI component specifications with props and variants
       - Layout structure and responsive breakpoints
+    outputs:
+      - name: ui-tokens.md
+        description: Design system tokens (colors, typography, spacing, borders, shadows, breakpoints)
+      - name: ui-assets.md
+        description: Asset mappings (icons, images, logos with naming conventions)
+      - name: ui-spec.md
+        description: Component specifications (hierarchy, props, variants, layout, states)
 
   - id: system-design
     description: |
@@ -77,6 +84,9 @@ modes:
       - API interface design (REST, GraphQL, etc.)
       - Data model and schema design
       - Service boundaries and interactions
+    outputs:
+      - name: be-system-main.md
+        description: System architecture document (API specs, data models, services, error handling)
 
   - id: spec
     description: |
@@ -105,6 +115,9 @@ modes:
       - Multi-boundary bug analysis and root cause investigation
       - Cross-module impact analysis
       - Task decomposition for complex modifications
+    outputs:
+      - name: spec-*.md
+        description: Feature-scoped specification document (analysis, affected boundaries, implementation plan)
 
 redirect_signals:
   to_code: Design documents already exist AND the directive requests implementation as the output. Design job handles explanation, analysis, and investigation directly (has code reading tools).

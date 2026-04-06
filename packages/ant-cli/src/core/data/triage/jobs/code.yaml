@@ -35,6 +35,9 @@ modes:
       - File generation with proper structure
       - Import management
       - Test file generation
+    outputs:
+      - name: Source code files
+        description: Implementation files based on design specifications
 
   - id: modification
     description: |
@@ -60,6 +63,9 @@ modes:
       - Bug fixes
       - Feature additions
       - Performance optimizations
+    outputs:
+      - name: Modified source code
+        description: Updated files with applied changes
 
 redirect_signals:
   to_design: Request has modification intent, spans multiple boundaries with no relevant spec document, OR request explicitly targets a design artifact (specification, architecture document, UI spec). Pure explanation/analysis without modification intent stays in code job regardless of boundary count.
