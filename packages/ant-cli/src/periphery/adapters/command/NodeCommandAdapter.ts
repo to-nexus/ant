@@ -18,7 +18,7 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { isProcessGroupAlive } from "./processTree";
-import { splitOnShellOperators } from "../../../core/utils/shellParser";
+import { splitOnShellOperators, tokenizeShellSegment } from "../../../core/utils/shellParser";
 
 export class NodeCommandAdapter implements CommandPort {
   /**
@@ -132,13 +132,8 @@ export class NodeCommandAdapter implements CommandPort {
 
     const isAssignment = (token: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
 
-    // Limitation: tokenization uses whitespace splitting, not a full shell
-    // lexer. Quoted values in env assignments (e.g., FOO="bar baz") may be
-    // split incorrectly. In practice LLM-generated commands rarely hit this
-    // edge case, and the isAssignment heuristic covers FOO="..." patterns
-    // because the = prefix match still succeeds on the first fragment.
     const firstExecutableToken = (segment: string): string | null => {
-      const tokens = segment.trim().split(/\s+/).filter(Boolean);
+      const tokens = tokenizeShellSegment(segment.trim());
       if (tokens.length === 0) return null;
 
       let i = 0;
