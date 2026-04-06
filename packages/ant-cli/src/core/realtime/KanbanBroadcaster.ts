@@ -31,6 +31,7 @@ import {
   BroadcasterOptions 
 } from './types';
 import { UserContext } from '../types/user';
+import { getAgentForJobSafe } from '../utils/sessionPaths';
 
 export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private redis: Redis;
@@ -39,6 +40,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private readonly projectId: string;
   private readonly featureName: string;
   private readonly jobType: string;
+  private readonly agent: string;
   private readonly userContext?: UserContext;
   private jobTiming?: JobTiming;  // ✅ Stored once, included in every broadcast
   private estimatingLabel?: string;       // Current non-task node activity label
@@ -70,6 +72,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.projectId = options.projectId;
     this.featureName = options.featureName;
     this.jobType = options.jobType || 'code';
+    this.agent = getAgentForJobSafe(this.jobType);
     this.userContext = options.userContext;
     
     // Error & connection event handlers for diagnostics
@@ -339,6 +342,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       jobType: this.jobType,
+      agent: this.agent,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)
       ...(this.jobTiming && { jobTiming: this.jobTiming }),
       // ✅ Include node activity banner data (auto-cleared when tasks exist)

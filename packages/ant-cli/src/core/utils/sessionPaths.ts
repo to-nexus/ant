@@ -63,6 +63,14 @@ export function getAgentForJob(jobType: string): string {
   return agent;
 }
 
+/**
+ * Safe version that returns a default instead of throwing.
+ * Used in SSE/Kanban paths where unknown jobType should not crash the server.
+ */
+export function getAgentForJobSafe(jobType: string): string {
+  return JOB_TO_AGENT[jobType] || 'architect';
+}
+
 // ============================================
 // Session File Paths
 // ============================================

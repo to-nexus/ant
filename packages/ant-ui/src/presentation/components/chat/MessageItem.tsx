@@ -79,6 +79,8 @@ interface ContentBlockProps {
 }
 
 function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
+  if (!content) return null;
+  
   // ✅ Auto-scroll to bottom during streaming to prevent word-by-word disappearing
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
