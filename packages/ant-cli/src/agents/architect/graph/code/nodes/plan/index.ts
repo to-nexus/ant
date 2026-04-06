@@ -429,6 +429,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         state.recursionCount,
         state.recursionLimit
       );
+    } else if (!isWorkerCtx) {
+      if (!state._httpJobId) console.warn(`⚠️ [Plan] Kanban skipped: _httpJobId is missing`);
+      if (!state.deps?.kanbanUpdate) console.warn(`⚠️ [Plan] Kanban skipped: deps.kanbanUpdate is null (broadcaster not injected)`);
+    } else {
+      console.log(`📋 [Plan] Kanban skipped: isWorkerCtx=true (orchestrator handles)`);
     }
     
     // ✅ CRITICAL: Save checkpoint after task started so session has correct currentTask

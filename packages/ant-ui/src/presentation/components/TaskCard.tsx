@@ -71,9 +71,10 @@ export function TaskCard({
     refactor:       { color: 'bg-violet-500 dark:bg-violet-600 text-white', label: 'REFACTOR' },
   };
   
-  const typeBadge = typeBadgeMap[displayType.toLowerCase()] || { 
+  const safeType = displayType || 'task';
+  const typeBadge = typeBadgeMap[safeType.toLowerCase()] || { 
     color: 'bg-gray-400 dark:bg-gray-600 text-white', 
-    label: displayType.toUpperCase() 
+    label: safeType.toUpperCase() 
   };
   
   return (
