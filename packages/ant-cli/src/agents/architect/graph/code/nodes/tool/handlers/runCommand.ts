@@ -37,6 +37,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { AsyncMutex } from '../../../parallel/AsyncMutex';
 import { WorkerFileSystem } from '../../../parallel/WorkerFileSystem';
+import { splitOnShellOperators, hasActualPipe } from '../../../../../../../core/utils/shellParser';
 
 const GO_DEPENDENCY_PATTERN = /\bgo\s+(get|mod\s+tidy|mod\s+download)\b/;
 
@@ -120,8 +121,7 @@ function extractWriteTargets(command: string): string[] {
   // We only analyze the command portion before heredoc.
   const cmdPart = command.split(/<<-?\s*['"]?\w+['"]?/)[0] || command;
 
-  // Split compound commands to analyze each segment
-  const segments = cmdPart.split(/\s*(?:&&|\|\||;)\s*/g);
+  const segments = splitOnShellOperators(cmdPart);
 
   for (const seg of segments) {
     const trimmed = seg.trim();
@@ -372,6 +372,11 @@ Continue writing code files and output <done>true</done> when complete.`);
     // Long-running command: verify startup, then terminate (default)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (isLongRunning) {
+      if (!commandPort.isAllowed(normalizedCommand)) {
+        console.error(`\n   ❌ [run_command] Command not allowed: ${normalizedCommand}\n`);
+        return makeRejectionOutput(normalizedCommand,
+          `❌ COMMAND NOT ALLOWED: ${normalizedCommand}\n\nThe command contains disallowed executables. Only whitelisted commands are permitted.`);
+      }
       try {
         const longRunResult = await handleLongRunningCommand(
           state,
@@ -497,7 +502,8 @@ For verification: build success + server startup = task complete.`;
     // ✅ SIGPIPE tolerance: with `set -o pipefail`, piped commands like `cmd | head -N`
     // produce exit 141 (128 + SIGPIPE=13) when head closes early. This is normal pipe
     // truncation behavior, not a command failure. Build tools never exit with 141.
-    if (!success && exitCode === 141 && /\|/.test(normalizedCommand)) {
+    // Uses quote-aware pipe detection to avoid false positives from grep -E "a|b" patterns.
+    if (!success && exitCode === 141 && hasActualPipe(normalizedCommand)) {
       console.log(`\n   ℹ️  SIGPIPE (exit 141) in piped command — treating as success (pipe truncation)\n`);
       success = true;
       exitCode = 0;

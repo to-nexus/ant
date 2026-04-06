@@ -1,4 +1,4 @@
-import { spawn, execSync } from 'child_process';
+import { spawn, execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
@@ -585,7 +585,7 @@ export class DependencyInstaller {
    */
   private isCommandAvailable(cmd: string): boolean {
     try {
-      execSync(`which ${cmd}`, { stdio: 'ignore' });
+      execFileSync('which', [cmd], { stdio: 'ignore' });
       return true;
     } catch {
       return false;

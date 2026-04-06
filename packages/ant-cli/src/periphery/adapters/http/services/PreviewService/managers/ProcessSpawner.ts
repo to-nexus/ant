@@ -1,4 +1,4 @@
-import { spawn, ChildProcess, execSync } from 'child_process';
+import { spawn, ChildProcess, execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
@@ -40,18 +40,16 @@ export class ProcessSpawner {
     const orphans: OrphanProcess[] = [];
     
     try {
-      // Find node processes running with the codebase path
-      // This works on macOS and Linux
-      const psOutput = execSync(
-        `ps aux | grep -E "node|next|vite|npm" | grep "${codebasePath}" | grep -v grep`,
-        { encoding: 'utf-8', timeout: 5000 }
-      ).trim();
+      const psOutput = execFileSync('ps', ['aux'], { encoding: 'utf-8', timeout: 5000 }).trim();
       
       if (!psOutput) {
         return orphans;
       }
       
-      const lines = psOutput.split('\n').filter(line => line.trim());
+      const runtimePattern = /node|next|vite|npm/;
+      const lines = psOutput.split('\n').filter(line =>
+        runtimePattern.test(line) && line.includes(codebasePath)
+      );
       
       for (const line of lines) {
         const parts = line.trim().split(/\s+/);
@@ -69,10 +67,7 @@ export class ProcessSpawner {
       
       logger.debug(`Found ${orphans.length} orphan process(es) in ${codebasePath}`, { component: 'ProcessSpawner' });
     } catch (error: any) {
-      // grep returns exit code 1 if no matches - this is expected
-      if (error.status !== 1) {
-        logger.debug(`Error finding orphan processes: ${error.message}`, { component: 'ProcessSpawner' });
-      }
+      logger.debug(`Error finding orphan processes: ${error.message}`, { component: 'ProcessSpawner' });
     }
     
     return orphans;
@@ -111,10 +106,9 @@ export class ProcessSpawner {
    */
   async isPortInUse(port: number): Promise<boolean> {
     try {
-      const output = execSync(
-        `lsof -i :${port} -t 2>/dev/null || true`,
-        { encoding: 'utf-8', timeout: 3000 }
-      ).trim();
+      const output = execFileSync('lsof', ['-i', `:${port}`, '-t'], {
+        encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim();
       
       return output.length > 0;
     } catch {
@@ -127,10 +121,9 @@ export class ProcessSpawner {
    */
   killProcessOnPort(port: number): boolean {
     try {
-      const pids = execSync(
-        `lsof -i :${port} -t 2>/dev/null || true`,
-        { encoding: 'utf-8', timeout: 3000 }
-      ).trim();
+      const pids = execFileSync('lsof', ['-i', `:${port}`, '-t'], {
+        encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'ignore'],
+      }).trim();
       
       if (!pids) {
         return false;
@@ -597,7 +590,7 @@ export class ProcessSpawner {
 
   private isCommandAvailable(cmd: string): boolean {
     try {
-      execSync(`which ${cmd}`, { stdio: 'ignore' });
+      execFileSync('which', [cmd], { stdio: 'ignore' });
       return true;
     } catch {
       return false;
