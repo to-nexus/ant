@@ -18,6 +18,7 @@ import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { isProcessGroupAlive } from "./processTree";
+import { splitOnShellOperators } from "../../../core/utils/shellParser";
 
 export class NodeCommandAdapter implements CommandPort {
   /**
@@ -45,59 +46,70 @@ export class NodeCommandAdapter implements CommandPort {
     
     // Runtime - Node.js
     'node',
+    'tsx',       // TypeScript execution (tsx server.ts, tsx watch)
+    'nodemon',   // Node.js auto-restart daemon
     
     // Runtime - Go
-    'go',      // go build, go run, go mod tidy, go vet, go test, go get
-    'air',     // Go hot-reload dev server (cosmtrek/air)
+    'go',        // go build, go run, go mod tidy, go vet, go test, go get
+    'air',       // Go hot-reload dev server (cosmtrek/air)
+    
+    // Runtime - Rust
+    'cargo',     // cargo run, cargo build, cargo test
+    
+    // Runtime - Bun
+    'bun',       // bun run, bun build, bun test
     
     // Build tools
-    'make',    // Makefile targets (build, lint, test, run, etc.)
+    'make',      // Makefile targets (build, lint, test, run, etc.)
+    'tsc',       // TypeScript compiler (direct invocation)
+    'turbo',     // Turborepo (direct invocation)
+    'vite',      // Vite dev server / build (direct invocation)
     
     // File operations
-    'rm',      // File/directory removal
-    'rmdir',   // Remove empty directories
-    'mkdir',   // Directory creation
-    'cp',      // Copy files
-    'mv',      // Move files
-    'touch',   // Create empty files
-    'cd',      // Change directory
+    'rm',        // File/directory removal
+    'rmdir',     // Remove empty directories
+    'mkdir',     // Directory creation
+    'cp',        // Copy files
+    'mv',        // Move files
+    'touch',     // Create empty files
+    'cd',        // Change directory
     
     // File inspection
-    'ls',      // List directory contents
-    'cat',     // Display file contents
-    'head',    // Display file start
-    'tail',    // Display file end
-    'wc',      // Count lines/words/bytes
-    'file',    // Identify file type
-    'diff',    // Compare files
+    'ls',        // List directory contents
+    'cat',       // Display file contents
+    'head',      // Display file start
+    'tail',      // Display file end
+    'wc',        // Count lines/words/bytes
+    'file',      // Identify file type
+    'diff',      // Compare files
     
     // File searching
-    'find',    // Search for files
-    'grep',    // Search text patterns
-    'which',   // Locate command
+    'find',      // Search for files
+    'grep',      // Search text patterns
+    'which',     // Locate command
     
     // Text processing
-    'echo',    // Print text
-    'sort',    // Sort lines
-    'uniq',    // Remove duplicates
-    'awk',     // Text processing
-    'sed',     // Stream editor
+    'echo',      // Print text
+    'sort',      // Sort lines
+    'uniq',      // Remove duplicates
+    'awk',       // Text processing
+    'sed',       // Stream editor
     
     // Network
-    'curl',    // HTTP requests / API testing
-    'wget',    // Download files
+    'curl',      // HTTP requests / API testing
+    'wget',      // Download files
     
     // Containers
-    'docker',  // Docker CLI (docker compose up/down for infrastructure services)
+    'docker',    // Docker CLI (docker compose up/down for infrastructure services)
     
     // System info
-    'pwd',     // Print working directory
-    'tree',    // Directory tree (if installed)
+    'pwd',       // Print working directory
+    'tree',      // Directory tree (if installed)
     
     // Process management
-    'lsof',    // List open files (for port checking)
-    'kill',    // Kill processes
-    'xargs',   // Build and execute commands from stdin
+    'lsof',      // List open files (for port checking)
+    'kill',      // Kill processes
+    'xargs',     // Build and execute commands from stdin
 
     // Common shell builtins / env helpers used in compound commands
     'env',
@@ -111,32 +123,30 @@ export class NodeCommandAdapter implements CommandPort {
    * Check if a command is allowed
    */
   isAllowed(command: string): boolean {
-    // If the project explicitly opted out of allowlisting, allow everything.
     if (this.ALLOW_ALL_COMMANDS) return true;
 
     const normalized = command.trim();
     if (!normalized) return false;
 
-    // Split on common shell operators to validate each segment.
-    // This is not a full shell parser, but prevents the common false-positive
-    // where a safe command is preceded by "cd dir &&".
-    const segments = normalized.split(/\s*(?:&&|\|\||;|\|)\s*/g);
+    const segments = splitOnShellOperators(normalized);
 
     const isAssignment = (token: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
 
+    // Limitation: tokenization uses whitespace splitting, not a full shell
+    // lexer. Quoted values in env assignments (e.g., FOO="bar baz") may be
+    // split incorrectly. In practice LLM-generated commands rarely hit this
+    // edge case, and the isAssignment heuristic covers FOO="..." patterns
+    // because the = prefix match still succeeds on the first fragment.
     const firstExecutableToken = (segment: string): string | null => {
       const tokens = segment.trim().split(/\s+/).filter(Boolean);
       if (tokens.length === 0) return null;
 
-      // Skip leading env var assignments: FOO=bar npm install
       let i = 0;
       while (i < tokens.length && isAssignment(tokens[i])) i++;
       if (i >= tokens.length) return null;
 
-      // Allow common builtins explicitly (export/unset)
       if (tokens[i] === 'export' || tokens[i] === 'unset') return tokens[i];
 
-      // Strip wrapping parentheses occasionally used in subshell-like patterns
       const token = tokens[i].replace(/^\(+/, '').replace(/\)+$/, '');
       return token || null;
     };
@@ -144,10 +154,21 @@ export class NodeCommandAdapter implements CommandPort {
     for (const seg of segments) {
       const cmd = firstExecutableToken(seg);
       if (!cmd) continue;
-      if (!this.ALLOWED_COMMANDS.includes(cmd)) return false;
+      if (this.ALLOWED_COMMANDS.includes(cmd)) continue;
+      if (this.isAllowedRelativeBinary(cmd)) continue;
+      return false;
     }
 
     return true;
+  }
+
+  /**
+   * Allow ./relative-path binaries produced by compile-and-run workflows
+   * (e.g., `go build -o app && ./app`). Only simple names are permitted —
+   * no path traversal, no subdirectories, no flags.
+   */
+  private isAllowedRelativeBinary(cmd: string): boolean {
+    return /^\.\/[a-zA-Z_][\w.-]*$/.test(cmd);
   }
 
   /**
