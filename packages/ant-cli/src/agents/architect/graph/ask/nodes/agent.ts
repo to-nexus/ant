@@ -17,6 +17,7 @@ import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver.js';
 import { formatWorkspaceState } from '../../../../common/nodes/triage/workspaceAnalyzer.js';
+import { AgentRegistry } from '../../../../common/nodes/triage/AgentRegistry.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -60,6 +61,7 @@ function buildSystemPrompt(state: AskGraphState): string {
     currentJob: state.currentJob || 'Not selected',
     currentAgent: state.currentAgent || 'architect',
     question: state.question,
+    jobKnowledge: AgentRegistry.generateAskKnowledge(),
     // Workspace context
     hasWorkspace,
     workspaceState: hasWorkspace ? formatWorkspaceState(state.workspaceState) : '',
