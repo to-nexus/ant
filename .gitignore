@@ -74,3 +74,4 @@ workspaces/**/sessions/
 
 # Untracked docs
 docs/untracked/
+docs/tmp/
