@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { NodeCommandAdapter } from '../src/periphery/adapters/command/NodeCommandAdapter.js';
-import { splitOnShellOperators, hasActualPipe } from '../src/core/utils/shellParser.js';
+import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment } from '../src/core/utils/shellParser.js';
 
 const adapter = new NodeCommandAdapter();
 
@@ -165,6 +165,19 @@ describe('NodeCommandAdapter.isAllowed', () => {
     it('handles quoted values in env assignments', () => {
       expect(adapter.isAllowed('FOO="bar" npm install')).toBe(true);
     });
+
+    it('handles quoted values with spaces in env assignments', () => {
+      expect(adapter.isAllowed('FOO="bar baz" npm install')).toBe(true);
+      expect(adapter.isAllowed("MSG='hello world' echo done")).toBe(true);
+    });
+
+    it('handles multiple quoted env vars', () => {
+      expect(adapter.isAllowed('A="x y" B="1 2" npm run build')).toBe(true);
+    });
+
+    it('rejects disallowed command after quoted env var', () => {
+      expect(adapter.isAllowed('FOO="bar baz" python evil.py')).toBe(false);
+    });
   });
 });
 
@@ -205,6 +218,49 @@ describe('splitOnShellOperators', () => {
   it('handles multiple operators', () => {
     const result = splitOnShellOperators('cd dir && grep test | head; echo done');
     expect(result).toEqual(['cd dir ', ' grep test ', ' head', ' echo done']);
+  });
+});
+
+describe('tokenizeShellSegment', () => {
+  it('splits simple words on whitespace', () => {
+    expect(tokenizeShellSegment('npm run build')).toEqual(['npm', 'run', 'build']);
+  });
+
+  it('keeps double-quoted strings with spaces as one token', () => {
+    expect(tokenizeShellSegment('FOO="bar baz" npm install')).toEqual(['FOO="bar baz"', 'npm', 'install']);
+  });
+
+  it('keeps single-quoted strings with spaces as one token', () => {
+    expect(tokenizeShellSegment("echo 'hello world'")).toEqual(['echo', "'hello world'"]);
+  });
+
+  it('handles backslash escapes', () => {
+    expect(tokenizeShellSegment('echo hello\\ world')).toEqual(['echo', 'hello\\ world']);
+  });
+
+  it('handles mixed quotes', () => {
+    expect(tokenizeShellSegment(`A="x y" B='1 2' cmd`)).toEqual(['A="x y"', "B='1 2'", 'cmd']);
+  });
+
+  it('handles empty string', () => {
+    expect(tokenizeShellSegment('')).toEqual([]);
+    expect(tokenizeShellSegment('   ')).toEqual([]);
+  });
+
+  it('handles consecutive whitespace', () => {
+    expect(tokenizeShellSegment('  npm   install  ')).toEqual(['npm', 'install']);
+  });
+
+  it('handles unclosed double quote', () => {
+    expect(tokenizeShellSegment('echo "unclosed')).toEqual(['echo', '"unclosed']);
+  });
+
+  it('handles unclosed single quote', () => {
+    expect(tokenizeShellSegment("echo 'unclosed")).toEqual(['echo', "'unclosed"]);
+  });
+
+  it('handles adjacent quoted and unquoted text', () => {
+    expect(tokenizeShellSegment('FOO="bar"baz')).toEqual(['FOO="bar"baz']);
   });
 });
 
