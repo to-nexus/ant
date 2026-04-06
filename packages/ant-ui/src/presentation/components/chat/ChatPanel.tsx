@@ -124,7 +124,7 @@ export function ChatPanel({
     // ✅ CRITICAL: Track last assistant message's contents changes
     // This ensures fileStats updates when file operations complete (file_creating → file_create)
     messages.filter(m => m.role === 'assistant').pop()?.contents.length,
-    messages.filter(m => m.role === 'assistant').pop()?.contents.map(c => c.type).join(',')
+    messages.filter(m => m.role === 'assistant').pop()?.contents.filter(Boolean).map(c => c.type).join(',')
   ]);
   
   // ✅ CRITICAL: 파일 관련 content만 카운트 (thinking/text는 제외)
@@ -132,13 +132,12 @@ export function ChatPanel({
   const fileOperationCount = useMemo(() => {
     if (!lastAssistantMessage) return 0;
     return lastAssistantMessage.contents.filter(c => 
-      c.type === 'file_create' || 
+      c && (c.type === 'file_create' || 
       c.type === 'file_edit' || 
-      c.type === 'file_delete'
+      c.type === 'file_delete')
     ).length;
   }, [lastAssistantMessage?.id, lastAssistantMessage?.contents.length, 
-      // ✅ Also track changes in content types (e.g., file_creating → file_create)
-      lastAssistantMessage?.contents.map(c => c.type).join(',')]);
+      lastAssistantMessage?.contents.filter(Boolean).map(c => c.type).join(',')]);
   
   // ✅ CRITICAL: Memoize fileStats with stable dependencies
   // 파일 operation 개수가 변경될 때만 재계산 (thinking/text 스트리밍은 무시)
@@ -152,6 +151,7 @@ export function ChatPanel({
     const orderedPaths: string[] = []; // preserve first-seen order for display
     
     lastAssistantMessage.contents.forEach(content => {
+      if (!content) return;
       const filePath = content.metadata?.filePath;
       if (!filePath) return;
       

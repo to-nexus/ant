@@ -3,7 +3,8 @@ import { sseManager } from '@/infrastructure/sse/SSEManager';
 import type { HandlerId } from '@/infrastructure/sse/SSEManager';
 import type { ChatMessage, MessageContent } from '@/domain/models/chat';
 import type { KanbanData, FileNode } from '@/infrastructure/http/api';
-import { removeFromStorage, STORAGE_KEYS } from '../storage';
+import { removeFromStorage, saveToStorage, STORAGE_KEYS } from '../storage';
+import { resolveAgentForJobType } from '@/shared/utils/constants';
 
 function findFigmaJsonNode(tree: FileNode[]): FileNode | undefined {
   const inputs = tree?.find(n => n.name === 'inputs');
@@ -95,6 +96,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     const currentFeatureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
     
     const isJobRunning = data.dataSource === 'live' || data.dataSource === 'estimating';
+    
+    // Sync selectedAgent/selectedJobType from server SSOT (KanbanData).
+    // Prevents cross-tab contamination and stale state after reconnection.
+    if (data.jobType) {
+      const serverAgent = data.agent || resolveAgentForJobType(data.jobType);
+      const needsSync = state.selectedJobType !== data.jobType || state.selectedAgent !== serverAgent;
+      if (needsSync) {
+        console.log(`[Store] 🔄 Syncing agent/jobType from server: ${state.selectedAgent}/${state.selectedJobType} → ${serverAgent}/${data.jobType}`);
+        set({ selectedAgent: serverAgent, selectedJobType: data.jobType });
+        saveToStorage(STORAGE_KEYS.SELECTED_AGENT, serverAgent);
+        saveToStorage(STORAGE_KEYS.SELECTED_JOB_TYPE, data.jobType);
+      }
+    }
     
     // ✅ Cloud multi-pod: Clear jobStartPending when actual job starts running
     // This signals that the job has actually started on the worker pod
@@ -267,9 +281,8 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
   removeCancelledMessage: (jobId: string) => {
     set((state: any) => ({
       chatMessages: state.chatMessages.filter((msg: ChatMessage) => {
-        // Keep message unless it's a cancelled message for this job
         const isCancelledForJob = msg.contents.some(
-          (c: MessageContent) => c.type === 'cancelled' && c.metadata?.jobId === jobId
+          (c: MessageContent) => c && c.type === 'cancelled' && c.metadata?.jobId === jobId
         );
         return !isCancelledForJob;
       })
@@ -383,10 +396,14 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           break;
           
         case 'content_add': {
+          if (!event.content) {
+            console.warn('[Store] 💬 content_add: event.content is undefined, skipping');
+            break;
+          }
           const existingMsg = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
           if (existingMsg) {
             const isDuplicate = existingMsg.contents.some((c: MessageContent) => 
-              c.type === event.content.type && 
+              c && c.type === event.content.type && 
               c.content === event.content.content &&
               c.metadata?.filePath === event.content.metadata?.filePath &&
               c.metadata?.timestamp === event.content.metadata?.timestamp
@@ -417,10 +434,12 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         case 'content_update':
           const message = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
           if (message) {
+            if (event.contentIndex >= message.contents.length) {
+              console.warn(`[Store] 💬 content_update: index ${event.contentIndex} out of bounds (length ${message.contents.length}), skipping`);
+              break;
+            }
             const updatedContents = [...message.contents];
             const existing = updatedContents[event.contentIndex];
-            // Merge metadata instead of replacing — preserves locally-set fields
-            // like choiceSelected that the server event doesn't carry.
             updatedContents[event.contentIndex] = {
               ...existing,
               ...event.content,
@@ -515,7 +534,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
           if (incomingJobId) {
             const unresolvedMsgs = get().chatMessages.filter((m: ChatMessage) =>
               m.contents.some((c: MessageContent) =>
-                c.type === 'cancelled' &&
+                c && c.type === 'cancelled' &&
                 c.metadata?.jobId === incomingJobId &&
                 !c.metadata?.choiceSelected &&
                 !c.metadata?.resolved
@@ -523,7 +542,7 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
             );
             for (const oldMsg of unresolvedMsgs) {
               const contentIndex = oldMsg.contents.findIndex((c: MessageContent) =>
-                c.type === 'cancelled' && c.metadata?.jobId === incomingJobId
+                c && c.type === 'cancelled' && c.metadata?.jobId === incomingJobId
               );
               if (contentIndex !== -1) {
                 const updatedContents = [...oldMsg.contents];

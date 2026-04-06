@@ -10,6 +10,7 @@ import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 
 /**
  * Unified SSE Routes
@@ -56,6 +57,22 @@ export function createSSERoutes(deps: {
     await deps.sseService.registerClient(projectId, featureName, res, userContext);
     logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
 
+    // Resolve effective jobType: if a job is currently running for this feature,
+    // use its type instead of the client-requested one (server as SSOT).
+    let effectiveJob = job;
+    if (deps.stateStore) {
+      try {
+        const featureJobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+        const runningJob = featureJobs.find(j => j.status === 'running');
+        if (runningJob) {
+          effectiveJob = runningJob.type;
+          logger.debug(`Running job detected, overriding job param: ${job} → ${effectiveJob}`, { component: 'SSE', projectId, featureName, jobId: runningJob.jobId });
+        }
+      } catch (err) {
+        logger.warn(`Failed to check running jobs, using client-requested job: ${job}`, { component: 'SSE', projectId, featureName }, err);
+      }
+    }
+
     // Send initial states in parallel (Redis subscription is guaranteed active after registerClient).
     // Previously these were sequential awaits, causing fileTree to arrive 4-5s late because
     // getKanbanData reads EFS synchronously (readFileSync) before fileTree could be sent.
@@ -66,7 +83,7 @@ export function createSSERoutes(deps: {
         deps.kanbanService.getKanbanData(
           projectId,
           featureName,
-          job,
+          effectiveJob,
           deps.jobToProject,
           deps.jobs,
           deps.taskQueueSnapshots,

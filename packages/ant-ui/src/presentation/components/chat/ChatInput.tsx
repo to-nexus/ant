@@ -271,7 +271,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         const messages = useStore.getState().chatMessages;
         for (const msg of messages) {
           const clarifyIdx = msg.contents.findIndex(
-            (c: any) => c.type === 'choice_card' && c.metadata?.cardType === 'clarifying' && !c.metadata?.choiceSelected
+            (c: any) => c && c.type === 'choice_card' && c.metadata?.cardType === 'clarifying' && !c.metadata?.choiceSelected
           );
           if (clarifyIdx !== -1) {
             const updatedContents = [...msg.contents];
