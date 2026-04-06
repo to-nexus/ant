@@ -9,12 +9,13 @@
  *       direct:sketch  → sketch  → (conditional: deliver | direct)
  *       direct:render  → render  → (conditional: deliver | direct)
  *       direct:engrave → engrave → (conditional: deliver | __end__)
+ *       direct:deliver → deliver (finalize: sketch used as-is, no render)
  *       direct:clarify → __end__
  *       direct:end     → __end__
  *     triage:ask/redirect/blocked → __end__
  *
- *   sketch → deliver → __end__ (drafts saved, await user selection)
- *   render → deliver → __end__ (final image saved)
+ *   sketch → deliver → __end__ (sketches saved, await user selection)
+ *   render → deliver → __end__ (final image saved via img2img)
  *   engrave → deliver → __end__ (SVG saved)
  *
  * Safety blocked in sketch/render → loops back to direct for prompt revision.
@@ -29,6 +30,7 @@ import { sketchNode, routeAfterSketch } from './nodes/sketch.js';
 import { renderNode, routeAfterRender } from './nodes/render.js';
 import { engraveNode, routeAfterEngrave } from './nodes/engrave.js';
 import { deliverNode } from './nodes/deliver.js';
+import { explainNode } from './nodes/explain.js';
 import { triage } from '../../../common/nodes/triage/index.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { applyCompactionToConversation } from '../../../../core/context/compactJob.js';
@@ -67,6 +69,19 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
   return 'classify';
 }
 
+function routeAfterClassify(state: VisualGraphState): string {
+  if (state.sketchIntent) {
+    console.log(`[ClassifyRouter] sketchIntent=${state.sketchIntent} → direct`);
+    return 'direct';
+  }
+  if (state.jobMode === 'explain') {
+    console.log('[ClassifyRouter] explain mode → explain');
+    return 'explain';
+  }
+  console.log('[ClassifyRouter] generate mode → direct');
+  return 'direct';
+}
+
 export function buildVisualGraph() {
   const graph = new StateGraph<VisualGraphState>({
     channels: {
@@ -88,9 +103,9 @@ export function buildVisualGraph() {
       // Visual-specific state
       conversation: null as any,
       engineeredPrompt: null as any,
-      draftImages: null as any,
-      svgDrafts: null as any,
-      selectedDraftIndex: null as any,
+      sketchImages: null as any,
+      svgSketches: null as any,
+      selectedSketchIndex: null as any,
       finalImage: null as any,
       outputPath: null as any,
 
@@ -105,19 +120,18 @@ export function buildVisualGraph() {
 
       // LLM-resolved parameters
       resolvedAspectRatio: null as any,
-      availableDraftPaths: null as any,
+      availableSketchPaths: null as any,
 
-      // Per-draft variation prompts
+      // Per-sketch variation prompts
       basePrompt: null as any,
-      draftVariations: null as any,
+      sketchVariations: null as any,
       variationAxis: null as any,
 
       // Clarify counter
       clarifyCount: null as any,
 
-      // Draft selection intent
-      draftIntent: null as any,
-      isDraftFeedback: null as any,
+      // Sketch selection intent
+      sketchIntent: null as any,
 
       // Control flow
       routeDecision: null as any,
@@ -153,6 +167,7 @@ export function buildVisualGraph() {
   graph.addNode('render', renderNode as any);
   graph.addNode('engrave', engraveNode as any);
   graph.addNode('deliver', deliverNode as any);
+  graph.addNode('explain', explainNode as any);
 
   // Fixed edges
   graph.addEdge('__start__' as any, 'resolve' as any);
@@ -168,10 +183,16 @@ export function buildVisualGraph() {
     } as any
   );
 
-  // Classify → direct (always)
-  graph.addEdge('classify' as any, 'direct' as any);
+  // Classify → direct | explain (conditional based on jobMode + sketchIntent)
+  graph.addConditionalEdges(
+    'classify' as any,
+    routeAfterClassify as any,
+    { explain: 'explain', direct: 'direct' } as any
+  );
 
-  // Direct → sketch | render | engrave | __end__
+  graph.addEdge('explain' as any, '__end__' as any);
+
+  // Direct → sketch | render | engrave | deliver | __end__
   graph.addConditionalEdges(
     'direct' as any,
     routeAfterDirect as any,
@@ -179,6 +200,7 @@ export function buildVisualGraph() {
       sketch: 'sketch',
       render: 'render',
       engrave: 'engrave',
+      deliver: 'deliver',
       __end__: END,
     } as any
   );
@@ -274,14 +296,14 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
 
     conversation: [],
     engineeredPrompt: undefined,
-    draftImages: undefined,
-    svgDrafts: undefined,
-    selectedDraftIndex: undefined,
+    sketchImages: undefined,
+    svgSketches: undefined,
+    selectedSketchIndex: undefined,
     finalImage: undefined,
     outputPath: undefined,
 
     resolvedAspectRatio: undefined,
-    availableDraftPaths: undefined,
+    availableSketchPaths: undefined,
 
     clarifyCount: 0,
 
@@ -380,9 +402,9 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           lastOutputPath: finalState.lastOutputPath,
           assetType: finalState.assetType,
           jobMode: finalState.jobMode,
-          availableDraftPaths: finalState.availableDraftPaths,
+          availableSketchPaths: finalState.availableSketchPaths,
           basePrompt: finalState.basePrompt,
-          draftVariations: finalState.draftVariations,
+          sketchVariations: finalState.sketchVariations,
         },
       });
       console.log(`💾 [Visual] Session saved (${prunedConversation.length} conversation entries, was ${finalState.conversation?.length || 0})`);

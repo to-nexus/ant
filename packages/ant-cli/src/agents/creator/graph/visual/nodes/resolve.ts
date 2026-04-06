@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { VisualGraphState, DraftVariation } from '../types.js';
+import { VisualGraphState, SketchVariation } from '../types.js';
 import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { getEstimatingLabel, detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
 
@@ -38,9 +38,9 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
   let lastOutputPath: string | undefined;
   let lastAssetType: string | undefined;
   let lastJobMode: string | undefined;
-  let availableDraftPaths: string[] | undefined;
+  let availableSketchPaths: string[] | undefined;
   let lastBasePrompt: string | undefined;
-  let lastDraftVariations: DraftVariation[] | undefined;
+  let lastSketchVariations: SketchVariation[] | undefined;
   let clarifyCount = state.clarifyCount || 0;
 
   try {
@@ -68,17 +68,27 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
         lastJobMode = sessionData.state.jobMode;
         console.log(`📂 [Visual:Resolve] Restored jobMode: ${lastJobMode}`);
       }
-      if (sessionData.state?.availableDraftPaths && Array.isArray(sessionData.state.availableDraftPaths)) {
-        availableDraftPaths = sessionData.state.availableDraftPaths;
-        console.log(`📂 [Visual:Resolve] Restored availableDraftPaths from session (${availableDraftPaths!.length} paths)`);
+      if (lastJobMode === 'refactor') {
+        console.log(`📂 [Visual:Resolve] Migrating legacy jobMode 'refactor' → 'generate'`);
+        lastJobMode = 'generate';
+      }
+      if (sessionData.state?.availableSketchPaths && Array.isArray(sessionData.state.availableSketchPaths)) {
+        availableSketchPaths = sessionData.state.availableSketchPaths;
+        console.log(`📂 [Visual:Resolve] Restored availableSketchPaths from session (${availableSketchPaths!.length} paths)`);
+      } else if (sessionData.state?.availableDraftPaths && Array.isArray(sessionData.state.availableDraftPaths)) {
+        availableSketchPaths = sessionData.state.availableDraftPaths;
+        console.log(`📂 [Visual:Resolve] Restored availableSketchPaths from legacy session (${availableSketchPaths!.length} paths)`);
       }
       if (sessionData.state?.basePrompt) {
         lastBasePrompt = sessionData.state.basePrompt;
         console.log(`📂 [Visual:Resolve] Restored basePrompt (${lastBasePrompt!.length} chars)`);
       }
-      if (sessionData.state?.draftVariations && Array.isArray(sessionData.state.draftVariations)) {
-        lastDraftVariations = sessionData.state.draftVariations;
-        console.log(`📂 [Visual:Resolve] Restored draftVariations (${lastDraftVariations!.length} variations)`);
+      if (sessionData.state?.sketchVariations && Array.isArray(sessionData.state.sketchVariations)) {
+        lastSketchVariations = sessionData.state.sketchVariations;
+        console.log(`📂 [Visual:Resolve] Restored sketchVariations (${lastSketchVariations!.length} variations)`);
+      } else if (sessionData.state?.draftVariations && Array.isArray(sessionData.state.draftVariations)) {
+        lastSketchVariations = sessionData.state.draftVariations;
+        console.log(`📂 [Visual:Resolve] Restored sketchVariations from legacy session (${lastSketchVariations!.length} variations)`);
       }
 
       // Restore clarify count from conversation (count assistant→user pairs)
@@ -98,54 +108,52 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     console.warn('⚠️ [Visual:Resolve] Failed to load session:', err);
   }
 
-  // Fallback: scan drafts directory only if session didn't provide availableDraftPaths
-  if (!availableDraftPaths) {
-    const draftsDir = path.join(featurePath, 'inputs/assets/gen/drafts');
+  // Fallback: scan sketches directory only if session didn't provide availableSketchPaths
+  if (!availableSketchPaths) {
+    const sketchesDir = path.join(featurePath, 'inputs/assets/gen/sketches');
     try {
-      if (fs.existsSync(draftsDir)) {
-        const files = fs.readdirSync(draftsDir)
-          .filter(f => /^draft-\d+-\d+\.(jpeg|jpg|png|webp|svg)$/i.test(f))
+      if (fs.existsSync(sketchesDir)) {
+        const files = fs.readdirSync(sketchesDir)
+          .filter(f => /^sketch-\d+-\d+\.(jpeg|jpg|png|webp|svg)$/i.test(f))
           .sort();
         if (files.length > 0) {
           // Only keep the latest batch (highest timestamp) to prevent cross-batch index mismatch
-          const timestamps = files.map(f => f.match(/^draft-(\d+)-/)?.[1]).filter(Boolean) as string[];
+          const timestamps = files.map(f => f.match(/^sketch-(\d+)-/)?.[1]).filter(Boolean) as string[];
           const latestTs = timestamps.sort().pop();
-          const latestFiles = latestTs ? files.filter(f => f.startsWith(`draft-${latestTs}-`)) : files;
-          availableDraftPaths = latestFiles.map(f => path.join(draftsDir, f));
-          console.log(`📂 [Visual:Resolve] Fallback scan: ${availableDraftPaths.length} draft files (latest batch of ${files.length} total)`);
+          const latestFiles = latestTs ? files.filter(f => f.startsWith(`sketch-${latestTs}-`)) : files;
+          availableSketchPaths = latestFiles.map(f => path.join(sketchesDir, f));
+          console.log(`📂 [Visual:Resolve] Fallback scan: ${availableSketchPaths.length} sketch files (latest batch of ${files.length} total)`);
         }
       }
     } catch (err) {
-      console.warn('⚠️ [Visual:Resolve] Failed to scan drafts directory:', err);
+      console.warn('⚠️ [Visual:Resolve] Failed to scan sketches directory:', err);
     }
   }
 
   const userDirective = state.overrideDirective || state.directive;
 
-  // Parse structured draft intent from overrideDirective prefix
-  let draftIntent: VisualGraphState['draftIntent'];
-  let isDraftFeedback = false;
-  let selectedDraftIndex: number | undefined;
+  // Parse structured sketch intent from overrideDirective prefix
+  let sketchIntent: VisualGraphState['sketchIntent'];
+  let selectedSketchIndex: number | undefined;
   let parsedDirective = userDirective;
 
   const intentMatch = userDirective?.match(
-    /^\[DRAFT_(FINALIZE|REGENERATE|FEEDBACK)(?::(\d+))?\](?:\s*(.*))?$/s
+    /^\[SKETCH_(FINALIZE|REGENERATE|FEEDBACK)(?::(\d+))?\](?:\s*(.*))?$/s
   );
   if (intentMatch) {
     const [, action, indexStr, rest] = intentMatch;
     if (action === 'FINALIZE') {
-      draftIntent = 'finalize';
-      selectedDraftIndex = indexStr != null ? parseInt(indexStr, 10) : undefined;
-      parsedDirective = `Selected draft ${(selectedDraftIndex ?? 0) + 1} for final rendering`;
-      console.log(`📂 [Visual:Resolve] Draft intent: finalize (draft ${selectedDraftIndex})`);
+      sketchIntent = 'finalize';
+      selectedSketchIndex = indexStr != null ? parseInt(indexStr, 10) : undefined;
+      parsedDirective = `Selected sketch ${(selectedSketchIndex ?? 0) + 1} for final rendering`;
+      console.log(`📂 [Visual:Resolve] Sketch intent: finalize (sketch ${selectedSketchIndex})`);
     } else if (action === 'REGENERATE') {
-      draftIntent = 'regenerate';
-      parsedDirective = 'Requested draft regeneration with fresh exploration';
-      console.log('📂 [Visual:Resolve] Draft intent: regenerate');
+      sketchIntent = 'regenerate';
+      parsedDirective = 'Requested sketch regeneration with fresh exploration';
+      console.log('📂 [Visual:Resolve] Sketch intent: regenerate');
     } else if (action === 'FEEDBACK') {
-      isDraftFeedback = true;
       parsedDirective = rest?.trim() || userDirective;
-      console.log(`📂 [Visual:Resolve] Draft feedback: "${parsedDirective?.substring(0, 60)}"`);
+      console.log(`📂 [Visual:Resolve] Sketch feedback: "${parsedDirective?.substring(0, 60)}"`);
     }
   }
 
@@ -167,27 +175,25 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     isResume,
     lastEngineeredPrompt,
     lastOutputPath,
-    availableDraftPaths,
+    availableSketchPaths,
     clarifyCount,
-    draftIntent,
-    isDraftFeedback,
-    selectedDraftIndex,
+    sketchIntent,
+    selectedSketchIndex,
     directive: parsedDirective || state.overrideDirective || state.directive,
     overrideDirective: parsedDirective || state.overrideDirective,
     _uiLocale: state._uiLocale || detectUILocale(state.directive),
     _phaseTimings: { ...state._phaseTimings, resolve: Date.now() - phaseStart },
   };
 
-  // Detect clarify response: last session conversation entry is an assistant clarify question (not a draft delivery)
+  // Detect clarify response: last session conversation entry is an assistant clarify question (not a sketch delivery)
   const lastConvBeforeUser = conversation.length >= 2 ? conversation[conversation.length - 2] : null;
   const isClarifyResponse = !!lastConvBeforeUser
     && lastConvBeforeUser.role === 'assistant'
     && !lastConvBeforeUser.metadata?.savedAsset
-    && !draftIntent
-    && !isDraftFeedback;
+    && !sketchIntent;
 
-  // Skip triage + classify for all visual continuations (draft interactions + clarify responses)
-  if (draftIntent || isDraftFeedback || isClarifyResponse) {
+  // Skip triage + classify for all visual continuations (sketch interactions + clarify responses)
+  if (sketchIntent || isClarifyResponse) {
     result.skipTriage = true;
     result.skipClassify = true;
     if (lastAssetType) {
@@ -199,10 +205,10 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     if (lastBasePrompt) {
       result.basePrompt = lastBasePrompt;
     }
-    if (lastDraftVariations) {
-      result.draftVariations = lastDraftVariations;
+    if (lastSketchVariations) {
+      result.sketchVariations = lastSketchVariations;
     }
-    const bypassReason = draftIntent ? `draft:${draftIntent}` : isDraftFeedback ? 'draftFeedback' : 'clarifyResponse';
+    const bypassReason = sketchIntent ? `sketch:${sketchIntent}` : 'clarifyResponse';
     console.log(`📂 [Visual:Resolve] skipTriage+skipClassify=true (reason=${bypassReason}, assetType=${lastAssetType || 'general'}, jobMode=${lastJobMode || 'generate'})`);
   }
 

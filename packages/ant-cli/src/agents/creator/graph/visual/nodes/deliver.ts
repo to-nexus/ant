@@ -2,11 +2,11 @@
  * Deliver Node (Visual Graph)
  *
  * Handles final output:
- * 1. If draftImages exist (from sketch) → save and notify (image gallery for selection)
+ * 1. If sketchImages exist (from sketch) → save and notify (image gallery for selection)
  * 2. If finalImage exists (from render) → save to inputs/assets/gen/ and notify
- * 3. If svgDrafts exist (from engrave) → save and notify
+ * 3. If svgSketches exist (from engrave) → save and notify
  *
- * After saving, clears temporary state (draftImages, engineeredPrompt, etc.)
+ * After saving, clears temporary state (sketchImages, engineeredPrompt, etc.)
  * and adds a chapter marker to conversation history.
  */
 
@@ -37,10 +37,10 @@ export async function deliverNode(state: VisualGraphState): Promise<Partial<Visu
 
   if (state.finalImage) {
     result = await deliverFinalImage(state, featurePath, phaseStart);
-  } else if (state.draftImages && state.draftImages.length > 0) {
-    result = await deliverDraftImages(state, featurePath, phaseStart);
-  } else if (state.svgDrafts && state.svgDrafts.length > 0) {
-    result = await deliverSvgDrafts(state, featurePath, phaseStart);
+  } else if (state.sketchImages && state.sketchImages.length > 0) {
+    result = await deliverSketchImages(state, featurePath, phaseStart);
+  } else if (state.svgSketches && state.svgSketches.length > 0) {
+    result = await deliverSvgSketches(state, featurePath, phaseStart);
   } else {
     console.warn('⚠️ [Visual:Deliver] Nothing to deliver');
     result = { _phaseTimings: { ...state._phaseTimings, deliver: Date.now() - phaseStart } };
@@ -127,10 +127,10 @@ async function deliverFinalImage(
   // Thumbnail (flatten alpha to white for JPEG compatibility)
   let thumbnailPath: string | undefined;
   try {
-    const draftsDir = path.join(outputDir, 'drafts');
-    fs.mkdirSync(draftsDir, { recursive: true });
+    const sketchesDir = path.join(outputDir, 'sketches');
+    fs.mkdirSync(sketchesDir, { recursive: true });
     const thumbFilename = `gen-${timestamp}-thumb.jpeg`;
-    thumbnailPath = path.join(draftsDir, thumbFilename);
+    thumbnailPath = path.join(sketchesDir, thumbFilename);
     await sharp(imageData)
       .flatten({ background: '#ffffff' })
       .resize(200, 200, { fit: 'inside' })
@@ -172,73 +172,73 @@ async function deliverFinalImage(
     lastEngineeredPrompt: state.engineeredPrompt,
     lastOutputPath: outputPath,
     conversation: [...state.conversation, chapterMarker],
-    draftImages: undefined,
-    svgDrafts: undefined,
+    sketchImages: undefined,
+    svgSketches: undefined,
     engineeredPrompt: undefined,
     finalImage: undefined,
-    selectedDraftIndex: undefined,
+    selectedSketchIndex: undefined,
     routeDecision: undefined,
     needsSketches: undefined,
     isSvgRequest: undefined,
     basePrompt: undefined,
-    draftVariations: undefined,
+    sketchVariations: undefined,
     variationAxis: undefined,
-    availableDraftPaths: undefined,
+    availableSketchPaths: undefined,
     _phaseTimings: { ...state._phaseTimings, deliver: Date.now() - phaseStart },
   };
 }
 
-async function deliverDraftImages(
+async function deliverSketchImages(
   state: VisualGraphState,
   featurePath: string,
   phaseStart: number
 ): Promise<Partial<VisualGraphState>> {
-  const drafts = state.draftImages!;
+  const sketches = state.sketchImages!;
   const timestamp = Date.now();
-  const outputDir = path.join(featurePath, 'inputs/assets/gen/drafts');
+  const outputDir = path.join(featurePath, 'inputs/assets/gen/sketches');
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const draftEntries: Array<{ index: number; imagePath: string; thumbnailPath: string }> = [];
+  const sketchEntries: Array<{ index: number; imagePath: string; thumbnailPath: string }> = [];
 
-  for (const draft of drafts) {
-    const ext = mimeToExt(draft.mimeType);
-    const filename = `draft-${timestamp}-${draft.index}.${ext}`;
-    const thumbFilename = `draft-${timestamp}-${draft.index}-thumb.jpeg`;
+  for (const sketch of sketches) {
+    const ext = mimeToExt(sketch.mimeType);
+    const filename = `sketch-${timestamp}-${sketch.index}.${ext}`;
+    const thumbFilename = `sketch-${timestamp}-${sketch.index}-thumb.jpeg`;
 
-    const draftPath = path.join(outputDir, filename);
+    const sketchPath = path.join(outputDir, filename);
     const thumbPath = path.join(outputDir, thumbFilename);
 
-    fs.writeFileSync(draftPath, draft.data);
+    fs.writeFileSync(sketchPath, sketch.data);
 
     try {
-      await sharp(draft.data)
+      await sharp(sketch.data)
         .resize(200, 200, { fit: 'inside' })
         .jpeg({ quality: 70 })
         .toFile(thumbPath);
     } catch (err: any) {
-      console.warn(`⚠️ [Visual:Deliver] Thumbnail failed for draft ${draft.index}:`, err.message);
+      console.warn(`⚠️ [Visual:Deliver] Thumbnail failed for sketch ${sketch.index}:`, err.message);
     }
 
-    draftEntries.push({
-      index: draft.index,
-      imagePath: `inputs/assets/gen/drafts/${filename}`,
-      thumbnailPath: `inputs/assets/gen/drafts/${thumbFilename}`,
+    sketchEntries.push({
+      index: sketch.index,
+      imagePath: `inputs/assets/gen/sketches/${filename}`,
+      thumbnailPath: `inputs/assets/gen/sketches/${thumbFilename}`,
     });
   }
 
-  console.log(`📦 [Visual:Deliver] Saved ${draftEntries.length} draft images with thumbnails`);
+  console.log(`📦 [Visual:Deliver] Saved ${sketchEntries.length} sketch images with thumbnails`);
 
-  const variations = state.draftVariations;
+  const variations = state.sketchVariations;
 
   try {
     const chatAPI = getChatAPIClient();
     await chatAPI.sendClarifyCards([{
-      question: `${draftEntries.length} draft candidates`,
-      options: draftEntries.map(d => ({
-        label: variations?.[d.index]?.label || 'Draft',
+      question: `${sketchEntries.length} sketch candidates`,
+      options: sketchEntries.map(d => ({
+        label: variations?.[d.index]?.label || 'Sketch',
         imagePath: d.imagePath,
         thumbnailPath: d.thumbnailPath,
-        value: `draft_${d.index}`,
+        value: `sketch_${d.index}`,
       })),
       allowFreeText: true,
       allowRegenerate: true,
@@ -250,30 +250,30 @@ async function deliverDraftImages(
 
   await notifyFileTree(state);
 
-  const variationSummary = state.draftVariations?.length
-    ? `\nVariations: ${state.draftVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
+  const variationSummary = state.sketchVariations?.length
+    ? `\nVariations: ${state.sketchVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
     : '';
 
   const chapterMarker: ConversationEntry = {
     role: 'system',
-    content: `[${draftEntries.length} draft candidates saved for selection]${variationSummary}`,
+    content: `[${sketchEntries.length} sketch candidates saved for selection]${variationSummary}`,
     timestamp: new Date().toISOString(),
     metadata: {
-      chapterSummary: `Generated ${draftEntries.length} drafts from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
+      chapterSummary: `Generated ${sketchEntries.length} sketches from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
     },
   };
 
-  const savedDraftPaths = draftEntries.map(d => path.join(featurePath, d.imagePath));
+  const savedSketchPaths = sketchEntries.map(d => path.join(featurePath, d.imagePath));
 
   return {
     lastEngineeredPrompt: state.basePrompt || state.engineeredPrompt,
-    availableDraftPaths: savedDraftPaths,
+    availableSketchPaths: savedSketchPaths,
     conversation: [...state.conversation, chapterMarker],
-    draftImages: undefined,
-    svgDrafts: undefined,
+    sketchImages: undefined,
+    svgSketches: undefined,
     engineeredPrompt: undefined,
     finalImage: undefined,
-    selectedDraftIndex: undefined,
+    selectedSketchIndex: undefined,
     routeDecision: undefined,
     needsSketches: undefined,
     isSvgRequest: undefined,
@@ -281,26 +281,26 @@ async function deliverDraftImages(
   };
 }
 
-async function deliverSvgDrafts(
+async function deliverSvgSketches(
   state: VisualGraphState,
   featurePath: string,
   phaseStart: number
 ): Promise<Partial<VisualGraphState>> {
-  const drafts = state.svgDrafts!;
+  const sketches = state.svgSketches!;
 
-  if (drafts.length === 1) {
+  if (sketches.length === 1) {
     const outputDir = path.join(featurePath, 'inputs/assets/gen');
     fs.mkdirSync(outputDir, { recursive: true });
 
     const filename = `gen-${Date.now()}.svg`;
     const outputPath = path.join(outputDir, filename);
-    fs.writeFileSync(outputPath, drafts[0].code, 'utf-8');
+    fs.writeFileSync(outputPath, sketches[0].code, 'utf-8');
     console.log(`📦 [Visual:Deliver] Saved SVG: ${outputPath}`);
 
     try {
       const chatAPI = getChatAPIClient();
       const relativePath = `inputs/assets/gen/${filename}`;
-      const sizeKB = (Buffer.byteLength(drafts[0].code, 'utf-8') / 1024).toFixed(1);
+      const sizeKB = (Buffer.byteLength(sketches[0].code, 'utf-8') / 1024).toFixed(1);
       await chatAPI.showChatStatus('downloaded', {
         filename,
         sizeKB,
@@ -328,67 +328,67 @@ async function deliverSvgDrafts(
       lastEngineeredPrompt: state.engineeredPrompt,
       lastOutputPath: outputPath,
       conversation: [...state.conversation, chapterMarker],
-      draftImages: undefined,
-      svgDrafts: undefined,
+      sketchImages: undefined,
+      svgSketches: undefined,
       engineeredPrompt: undefined,
       finalImage: undefined,
-      selectedDraftIndex: undefined,
+      selectedSketchIndex: undefined,
       routeDecision: undefined,
       needsSketches: undefined,
       isSvgRequest: undefined,
       basePrompt: undefined,
-      draftVariations: undefined,
+      sketchVariations: undefined,
       variationAxis: undefined,
-      availableDraftPaths: undefined,
+      availableSketchPaths: undefined,
       _phaseTimings: { ...state._phaseTimings, deliver: Date.now() - phaseStart },
     };
   }
 
-  // Multiple SVG drafts: save files, generate thumbnails, use same draft selection UI as images
+  // Multiple SVG sketches: save files, generate thumbnails, use same sketch selection UI as images
   const timestamp = Date.now();
-  const outputDir = path.join(featurePath, 'inputs/assets/gen/drafts');
+  const outputDir = path.join(featurePath, 'inputs/assets/gen/sketches');
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const draftEntries: Array<{ index: number; imagePath: string; thumbnailPath: string }> = [];
+  const sketchEntries: Array<{ index: number; imagePath: string; thumbnailPath: string }> = [];
 
-  for (const draft of drafts) {
-    const filename = `draft-${timestamp}-${draft.index}.svg`;
-    const thumbFilename = `draft-${timestamp}-${draft.index}-thumb.jpeg`;
+  for (const sketch of sketches) {
+    const filename = `sketch-${timestamp}-${sketch.index}.svg`;
+    const thumbFilename = `sketch-${timestamp}-${sketch.index}-thumb.jpeg`;
 
-    const draftPath = path.join(outputDir, filename);
+    const sketchPath = path.join(outputDir, filename);
     const thumbPath = path.join(outputDir, thumbFilename);
 
-    fs.writeFileSync(draftPath, draft.code, 'utf-8');
+    fs.writeFileSync(sketchPath, sketch.code, 'utf-8');
 
     try {
-      await sharp(Buffer.from(draft.code))
+      await sharp(Buffer.from(sketch.code))
         .resize(200, 200, { fit: 'inside' })
         .jpeg({ quality: 70 })
         .toFile(thumbPath);
     } catch (err: any) {
-      console.warn(`⚠️ [Visual:Deliver] SVG thumbnail failed for draft ${draft.index}:`, err.message);
+      console.warn(`⚠️ [Visual:Deliver] SVG thumbnail failed for sketch ${sketch.index}:`, err.message);
     }
 
-    draftEntries.push({
-      index: draft.index,
-      imagePath: `inputs/assets/gen/drafts/${filename}`,
-      thumbnailPath: `inputs/assets/gen/drafts/${thumbFilename}`,
+    sketchEntries.push({
+      index: sketch.index,
+      imagePath: `inputs/assets/gen/sketches/${filename}`,
+      thumbnailPath: `inputs/assets/gen/sketches/${thumbFilename}`,
     });
   }
 
-  console.log(`📦 [Visual:Deliver] Saved ${draftEntries.length} SVG drafts with thumbnails`);
+  console.log(`📦 [Visual:Deliver] Saved ${sketchEntries.length} SVG sketches with thumbnails`);
 
-  const svgVariations = state.draftVariations;
+  const svgVariations = state.sketchVariations;
 
   try {
     const chatAPI = getChatAPIClient();
     await chatAPI.sendClarifyCards([{
-      question: `${draftEntries.length} draft candidates`,
-      options: draftEntries.map(d => ({
-        label: svgVariations?.[d.index]?.label || 'Draft',
+      question: `${sketchEntries.length} sketch candidates`,
+      options: sketchEntries.map(d => ({
+        label: svgVariations?.[d.index]?.label || 'Sketch',
         imagePath: d.imagePath,
         thumbnailPath: d.thumbnailPath,
-        value: `draft_${d.index}`,
+        value: `sketch_${d.index}`,
       })),
       allowFreeText: true,
       allowRegenerate: true,
@@ -400,30 +400,30 @@ async function deliverSvgDrafts(
 
   await notifyFileTree(state);
 
-  const svgVariationSummary = state.draftVariations?.length
-    ? `\nVariations: ${state.draftVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
+  const svgVariationSummary = state.sketchVariations?.length
+    ? `\nVariations: ${state.sketchVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
     : '';
 
   const chapterMarker: ConversationEntry = {
     role: 'system',
-    content: `[${draftEntries.length} SVG draft candidates saved for selection]${svgVariationSummary}`,
+    content: `[${sketchEntries.length} SVG sketch candidates saved for selection]${svgVariationSummary}`,
     timestamp: new Date().toISOString(),
     metadata: {
-      chapterSummary: `Generated ${draftEntries.length} SVG drafts from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
+      chapterSummary: `Generated ${sketchEntries.length} SVG sketches from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
     },
   };
 
-  const savedSvgDraftPaths = draftEntries.map(d => path.join(featurePath, d.imagePath));
+  const savedSvgSketchPaths = sketchEntries.map(d => path.join(featurePath, d.imagePath));
 
   return {
     lastEngineeredPrompt: state.basePrompt || state.engineeredPrompt,
-    availableDraftPaths: savedSvgDraftPaths,
+    availableSketchPaths: savedSvgSketchPaths,
     conversation: [...state.conversation, chapterMarker],
-    draftImages: undefined,
-    svgDrafts: undefined,
+    sketchImages: undefined,
+    svgSketches: undefined,
     engineeredPrompt: undefined,
     finalImage: undefined,
-    selectedDraftIndex: undefined,
+    selectedSketchIndex: undefined,
     routeDecision: undefined,
     needsSketches: undefined,
     isSvgRequest: undefined,
@@ -450,4 +450,3 @@ function mimeToExt(mime: string): string {
     default: return 'png';
   }
 }
-

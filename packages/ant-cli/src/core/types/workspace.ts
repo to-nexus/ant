@@ -28,6 +28,7 @@ export interface JobLLMConfig {
   sketch?: string;            // Sketch exploration node (visual job)
   render?: string;            // Final render node (visual job)
   engrave?: string;           // SVG code generation node (visual job)
+  explain?: string;           // Explain node (visual job — text Q&A, no image gen)
 }
 
 /**
@@ -45,7 +46,7 @@ export interface LLMModels {
  * Visual job settings
  */
 export interface VisualSettings {
-  candidateCount?: number;                         // Draft candidate count (default: 3, range: 1-4)
+  candidateCount?: number;                         // Sketch candidate count (default: 3, range: 1-4)
   defaultAspectRatio?: string;                     // e.g. "1:1", "16:9"
   removeBackground?: boolean;                      // Enable bg-removal via visual-processor (default: true)
 }
@@ -167,6 +168,7 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
       visual: {
         default: 'gemini-3-flash-preview',
         direct: 'gemini-3.1-pro-preview',
+        explain: 'gemini-3.1-pro-preview',
         sketch: 'gemini-3.1-flash-image-preview',
         render: 'gemini-3-pro-image-preview',
         engrave: 'gemini-3.1-pro-preview',

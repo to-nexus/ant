@@ -282,7 +282,7 @@ export function formatVisualClassifyForChat(
   };
 
   const modeEmoji: Record<string, string> = {
-    generate: '✨', refactor: '🔧', explore: '📖',
+    generate: '✨', explain: '💡',
   };
 
   let formatted = isKorean

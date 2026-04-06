@@ -16,11 +16,11 @@ describe('parseClassifyResponse', () => {
     expect(result.reasoning).toContain('logo');
   });
 
-  it('parses refactor jobMode', () => {
-    const input = `<classify>{"assetType":"icon","jobMode":"refactor","reasoning":"Modifying existing icon"}</classify>`;
+  it('parses explain jobMode', () => {
+    const input = `<classify>{"assetType":"icon","jobMode":"explain","reasoning":"Question about icon design"}</classify>`;
     const result = parseClassifyResponse(input);
     expect(result.assetType).toBe('icon');
-    expect(result.jobMode).toBe('refactor');
+    expect(result.jobMode).toBe('explain');
   });
 
   it('parses valid icon classification', () => {
@@ -37,10 +37,10 @@ describe('parseClassifyResponse', () => {
   });
 
   it('parses illustration classification', () => {
-    const input = `<classify>{ "assetType": "illustration", "jobMode": "refactor", "reasoning": "Adjusting existing scene" }</classify>`;
+    const input = `<classify>{ "assetType": "illustration", "jobMode": "generate", "reasoning": "Creating scene illustration" }</classify>`;
     const result = parseClassifyResponse(input);
     expect(result.assetType).toBe('illustration');
-    expect(result.jobMode).toBe('refactor');
+    expect(result.jobMode).toBe('generate');
   });
 
   it('parses general classification', () => {
@@ -64,10 +64,10 @@ describe('parseClassifyResponse', () => {
   });
 
   it('falls back to JSON without XML wrapper', () => {
-    const input = `{ "assetType": "icon", "jobMode": "refactor", "reasoning": "No XML wrapper" }`;
+    const input = `{ "assetType": "icon", "jobMode": "explain", "reasoning": "No XML wrapper" }`;
     const result = parseClassifyResponse(input);
     expect(result.assetType).toBe('icon');
-    expect(result.jobMode).toBe('refactor');
+    expect(result.jobMode).toBe('explain');
   });
 
   it('falls back to ```json code block', () => {
@@ -83,11 +83,18 @@ describe('parseClassifyResponse', () => {
     expect(result.assetType).toBe('general');
   });
 
-  it('normalizes case-insensitive asset type', () => {
-    const input = `<classify>{ "assetType": "LOGO", "jobMode": "REFACTOR", "reasoning": "Uppercase" }</classify>`;
+  it('normalizes case-insensitive asset type and mode', () => {
+    const input = `<classify>{ "assetType": "LOGO", "jobMode": "EXPLAIN", "reasoning": "Uppercase" }</classify>`;
     const result = parseClassifyResponse(input);
     expect(result.assetType).toBe('logo');
-    expect(result.jobMode).toBe('refactor');
+    expect(result.jobMode).toBe('explain');
+  });
+
+  it('defaults refactor jobMode to generate (legacy mode)', () => {
+    const input = `<classify>{"assetType":"icon","jobMode":"refactor","reasoning":"Legacy mode"}</classify>`;
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('icon');
+    expect(result.jobMode).toBe('generate');
   });
 
   it('returns defaults on completely invalid response', () => {

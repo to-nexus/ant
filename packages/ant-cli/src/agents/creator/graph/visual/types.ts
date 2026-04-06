@@ -21,9 +21,9 @@ import type { JobMode } from '@ant/shared';
 export type { JobMode };
 
 /**
- * Draft image with full parameter preservation for render step
+ * Sketch image with full parameter preservation for render step
  */
-export interface DraftImage {
+export interface SketchImage {
   data: Buffer;
   mimeType: 'image/png' | 'image/jpeg' | 'image/webp';
   prompt: string;
@@ -36,18 +36,18 @@ export interface DraftImage {
 }
 
 /**
- * SVG draft for engrave node
+ * SVG sketch for engrave node
  */
-export interface SvgDraft {
+export interface SvgSketch {
   code: string;
   prompt: string;
   index: number;
 }
 
 /**
- * Per-draft variation: direction-specific prompt suffix + UI label
+ * Per-sketch variation: direction-specific prompt suffix + UI label
  */
-export interface DraftVariation {
+export interface SketchVariation {
   prompt: string;
   label: string;
 }
@@ -72,7 +72,7 @@ export interface VisualOutputSpec {
 /**
  * Asset type → output spec mapping.
  * Deliver node uses this to decide post-processing (bg-removal, format conversion)
- * on finalImage only — drafts are saved as-is for selection preview.
+ * on finalImage only — sketches are saved as-is for selection preview.
  */
 export const ASSET_OUTPUT_SPECS: Record<VisualAssetType, VisualOutputSpec> = {
   logo:         { format: 'png',  requiresBgRemoval: true },
@@ -88,6 +88,7 @@ export const ASSET_OUTPUT_SPECS: Record<VisualAssetType, VisualOutputSpec> = {
 export interface VisualGraphDeps {
   llm: LLMClient;
   directLLM: LLMClient;
+  explainLLM: LLMClient;
   engraveLLM: LLMClient;
   sketchImageClient: ImageGenerationPort;
   renderImageClient: ImageGenerationPort;
@@ -121,9 +122,9 @@ export interface VisualGraphState extends TriageableState {
   // Visual-specific state
   conversation: ConversationEntry[];
   engineeredPrompt?: string;
-  draftImages?: DraftImage[];
-  svgDrafts?: SvgDraft[];
-  selectedDraftIndex?: number;
+  sketchImages?: SketchImage[];
+  svgSketches?: SvgSketch[];
+  selectedSketchIndex?: number;
   finalImage?: GeneratedImage;
   outputPath?: string;
 
@@ -132,28 +133,27 @@ export interface VisualGraphState extends TriageableState {
   jobMode?: JobMode;
   skipClassify?: boolean;
 
-  // Session carry-over (preserved across invocations for refactor mode)
+  // Session carry-over (preserved across invocations)
   lastEngineeredPrompt?: string;
   lastOutputPath?: string;
 
   // LLM-resolved parameters (from direct node, take priority over defaults)
   resolvedAspectRatio?: string;
-  availableDraftPaths?: string[];
+  availableSketchPaths?: string[];
 
-  // Per-draft variation prompts (from direct node for sketch/engrave routes)
+  // Per-sketch variation prompts (from direct node for sketch/engrave routes)
   basePrompt?: string;
-  draftVariations?: DraftVariation[];
+  sketchVariations?: SketchVariation[];
   variationAxis?: string;
 
   // Clarify counter (hard limit to prevent infinite clarify loops)
   clarifyCount?: number;
 
-  // Draft selection intent (set by resolve from overrideDirective prefix)
-  draftIntent?: 'finalize' | 'regenerate' | 'refine_explore' | 'refine_finalize';
-  isDraftFeedback?: boolean;
+  // Sketch selection intent (set by resolve from overrideDirective prefix)
+  sketchIntent?: 'finalize' | 'regenerate';
 
   // Control flow
-  routeDecision?: 'sketch' | 'render' | 'engrave' | 'clarify' | 'end';
+  routeDecision?: 'sketch' | 'render' | 'engrave' | 'clarify' | 'end' | 'deliver';
   needsSketches?: boolean;
   isSvgRequest?: boolean;
 

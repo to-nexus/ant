@@ -224,6 +224,7 @@ BullMQ에 enqueue되는 payload에는 agent, jobType, projectId, featureName, di
 | `ANT_ENCRYPTION_KEY` | Y | 암호화 키 |
 | `ANTHROPIC_API_KEY` | Y | Claude API 키 |
 | `OPENAI_API_KEY` | N | OpenAI API 키 |
+| `GEMINI_API_KEY` | Y | Gemini API 키 |
 
 ### 런타임 (자식 프로세스 주입)
 

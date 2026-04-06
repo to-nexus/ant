@@ -1,8 +1,8 @@
 /**
- * Draft inspection tools for the visual direct node.
+ * Sketch inspection tools for the visual direct node.
  *
- * Provides list_draft_images and read_draft_image tools so the LLM
- * can visually inspect draft candidates when determining how to
+ * Provides list_sketch_images and read_sketch_image tools so the LLM
+ * can visually inspect sketch candidates when determining how to
  * craft the engineeredPrompt.
  */
 
@@ -16,10 +16,10 @@ import type {
 } from '../../../../../core/ports/llm.js';
 import type { VisualGraphState } from '../types.js';
 
-export const VISUAL_DRAFT_TOOLS: ToolDefinition[] = [
+export const VISUAL_SKETCH_TOOLS: ToolDefinition[] = [
   {
-    name: 'list_draft_images',
-    description: 'List available draft candidate images with index and file info',
+    name: 'list_sketch_images',
+    description: 'List available sketch candidate images with index and file info',
     input_schema: {
       type: 'object',
       properties: {},
@@ -27,14 +27,14 @@ export const VISUAL_DRAFT_TOOLS: ToolDefinition[] = [
     },
   },
   {
-    name: 'read_draft_image',
-    description: 'Load a specific draft image for visual inspection. Returns the image as multimodal content.',
+    name: 'read_sketch_image',
+    description: 'Load a specific sketch image for visual inspection. Returns the image as multimodal content.',
     input_schema: {
       type: 'object',
       properties: {
         index: {
           type: 'number',
-          description: '0-based draft index',
+          description: '0-based sketch index',
         },
       },
       required: ['index'],
@@ -43,31 +43,31 @@ export const VISUAL_DRAFT_TOOLS: ToolDefinition[] = [
 ];
 
 /**
- * Execute a draft tool and return a properly typed ToolResultContentBlock.
+ * Execute a sketch tool and return a properly typed ToolResultContentBlock.
  */
-export function executeDraftTool(
+export function executeSketchTool(
   toolUseId: string,
   toolName: string,
   input: Record<string, any>,
   state: VisualGraphState,
 ): ToolResultContentBlock {
-  if (toolName === 'list_draft_images') {
-    return executeListDrafts(toolUseId, toolName, state);
+  if (toolName === 'list_sketch_images') {
+    return executeListSketches(toolUseId, toolName, state);
   }
-  if (toolName === 'read_draft_image') {
-    return executeReadDraft(toolUseId, toolName, input.index, state);
+  if (toolName === 'read_sketch_image') {
+    return executeReadSketch(toolUseId, toolName, input.index, state);
   }
   return buildToolResult(toolUseId, toolName, `Unknown tool: ${toolName}`, true);
 }
 
-function executeListDrafts(
+function executeListSketches(
   toolUseId: string,
   toolName: string,
   state: VisualGraphState,
 ): ToolResultContentBlock {
-  const paths = state.availableDraftPaths;
+  const paths = state.availableSketchPaths;
   if (!paths || paths.length === 0) {
-    return buildToolResult(toolUseId, toolName, 'No draft images available.');
+    return buildToolResult(toolUseId, toolName, 'No sketch images available.');
   }
 
   const list = paths.map((p, i) => {
@@ -84,19 +84,19 @@ function executeListDrafts(
   return buildToolResult(
     toolUseId,
     toolName,
-    `${paths.length} draft(s) available:\n${list.join('\n')}\n\nUse read_draft_image with the index to visually inspect a specific draft.`,
+    `${paths.length} sketch(es) available:\n${list.join('\n')}\n\nUse read_sketch_image with the index to visually inspect a specific sketch.`,
   );
 }
 
-function executeReadDraft(
+function executeReadSketch(
   toolUseId: string,
   toolName: string,
   index: number,
   state: VisualGraphState,
 ): ToolResultContentBlock {
-  const paths = state.availableDraftPaths;
+  const paths = state.availableSketchPaths;
   if (!paths || paths.length === 0) {
-    return buildToolResult(toolUseId, toolName, 'No draft images available.', true);
+    return buildToolResult(toolUseId, toolName, 'No sketch images available.', true);
   }
 
   if (index < 0 || index >= paths.length) {
@@ -108,14 +108,14 @@ function executeReadDraft(
     );
   }
 
-  const draftPath = paths[index];
-  const fullPath = path.isAbsolute(draftPath)
-    ? draftPath
-    : path.join(state.featurePath, draftPath);
+  const sketchPath = paths[index];
+  const fullPath = path.isAbsolute(sketchPath)
+    ? sketchPath
+    : path.join(state.featurePath, sketchPath);
 
   try {
     if (!fs.existsSync(fullPath)) {
-      return buildToolResult(toolUseId, toolName, `Draft file not found: ${draftPath}`, true);
+      return buildToolResult(toolUseId, toolName, `Sketch file not found: ${sketchPath}`, true);
     }
 
     const data = fs.readFileSync(fullPath);
@@ -127,7 +127,7 @@ function executeReadDraft(
 
     const base64 = data.toString('base64');
 
-    console.log(`🖼️ [DraftTools] Loaded draft #${index}: ${path.basename(fullPath)} (${(data.length / 1024).toFixed(1)} KB)`);
+    console.log(`🖼️ [SketchTools] Loaded sketch #${index}: ${path.basename(fullPath)} (${(data.length / 1024).toFixed(1)} KB)`);
 
     const content: CacheableContent[] = [
       {
@@ -136,13 +136,13 @@ function executeReadDraft(
       },
       {
         type: 'text',
-        text: `Draft #${index} loaded: ${path.basename(fullPath)}. Analyze its visual characteristics to inform your engineeredPrompt.`,
+        text: `Sketch #${index} loaded: ${path.basename(fullPath)}. Analyze its visual characteristics to inform your engineeredPrompt.`,
       },
     ];
 
     return buildToolResult(toolUseId, toolName, content);
   } catch (err: any) {
-    return buildToolResult(toolUseId, toolName, `Failed to read draft: ${err.message}`, true);
+    return buildToolResult(toolUseId, toolName, `Failed to read sketch: ${err.message}`, true);
   }
 }
 
