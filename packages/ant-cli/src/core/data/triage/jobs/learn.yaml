@@ -27,6 +27,9 @@ modes:
       - Architecture understanding
       - Dependency mapping
       - Convention detection
+    outputs:
+      - name: Vector embeddings
+        description: Indexed codebase in vector database for context-aware code generation
 
 redirect_signals:
   to_design: Request target is a design artifact (specification, architecture document, UI spec)

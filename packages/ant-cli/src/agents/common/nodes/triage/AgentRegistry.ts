@@ -183,6 +183,69 @@ class AgentRegistryClass {
   }
   
   /**
+   * Generate rich knowledge content for Ask system prompt.
+   * More detailed than generatePromptContext() — includes outputs, workflow guidance.
+   */
+  generateAskKnowledge(): string {
+    const jobs = this.getAllJobs();
+    const lines: string[] = [];
+
+    lines.push('## Job Types\n');
+    lines.push('| Job | Agent | Purpose |');
+    lines.push('|-----|-------|---------|');
+    for (const job of jobs) {
+      const purpose = job.description.split('\n')[0].trim();
+      lines.push(`| **${job.id}** | ${job.agent} | ${purpose} |`);
+    }
+    lines.push('');
+
+    for (const job of jobs) {
+      lines.push(`## ${job.id} Job\n`);
+      lines.push(job.description.trim());
+      lines.push('');
+
+      for (const mode of job.modes) {
+        lines.push(`### Mode: ${mode.id}\n`);
+        lines.push(mode.description.trim());
+        lines.push('');
+
+        if (mode.outputs && mode.outputs.length > 0) {
+          lines.push('**Outputs:**');
+          for (const output of mode.outputs) {
+            lines.push(`- \`${output.name}\`: ${output.description}`);
+          }
+          lines.push('');
+        }
+
+        if (mode.scope.length > 0) {
+          lines.push('**Scope:**');
+          for (const s of mode.scope) {
+            lines.push(`- ${s}`);
+          }
+          lines.push('');
+        }
+      }
+    }
+
+    lines.push('## Workflow Decision Principles\n');
+    lines.push('Workflow selection depends on observed input state:\n');
+    for (const job of jobs) {
+      for (const mode of job.modes) {
+        const allDescs = mode.prerequisites.required
+          .map(p => this.formatAskPrereqDescription(p))
+          .filter(Boolean);
+        if (allDescs.length > 0) {
+          lines.push(`- ${allDescs.join(' + ')} → **${job.id}** (${mode.id})`);
+        }
+      }
+    }
+    lines.push('');
+    lines.push('**Constraint**: Do NOT assume workflow. Observe actual inputs first.');
+
+    return lines.join('\n');
+  }
+
+  /**
    * Detect language from user input
    */
   detectLanguage(input: string): 'ko' | 'en' {
@@ -191,6 +254,17 @@ class AgentRegistryClass {
   }
   
   // Private methods
+
+  /**
+   * Format prerequisite for Ask knowledge — includes all prerequisites
+   * including has_directive (unlike triage, ask needs full workflow explanation).
+   */
+  private formatAskPrereqDescription(prereq: PrerequisiteCondition): string {
+    if (prereq.type === 'any_of' && prereq.items) {
+      return prereq.items.map(item => item.description).join(' OR ');
+    }
+    return prereq.description;
+  }
 
   /**
    * Resolve prerequisite description, handling `any_of` composites.

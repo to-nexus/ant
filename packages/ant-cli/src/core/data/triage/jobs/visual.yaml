@@ -27,6 +27,9 @@ modes:
       - SVG code generation for simple shapes
       - Progressive refinement with sketch exploration
       - Conversational iteration on visual output
+    outputs:
+      - name: Image assets
+        description: Generated visual assets (PNG, WebP, JPEG) and SVG code
 
   - id: explain
     description: |
@@ -48,6 +51,9 @@ modes:
       - Technical guidance on asset formats, sizes, accessibility, and constraints
       - Analysis of existing sketches or finalized outputs when available
       - Pre-generation consultation (what to consider, which approach to take)
+    outputs:
+      - name: Text response
+        description: Expert consultation and analysis (no image generation)
 
 redirect_signals:
   to_design: >
