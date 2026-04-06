@@ -17,7 +17,7 @@ import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import type { LLMClient, ToolDefinition, MessageContentBlock, ToolUseContentBlock } from '../../../../../core/ports/llm.js';
 import type { GeneratedImage } from '../../../../../core/ports/imageGeneration.js';
-import { VISUAL_SKETCH_TOOLS, executeSketchTool } from './sketchTools.js';
+import { executeSketchTool } from './sketchTools.js';
 import { extractJsonFromLlmResponse } from '../../../../../core/utils/llmResponseParser.js';
 
 const MAX_CLARIFY = 5;
@@ -165,6 +165,34 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   const hasSketches = sketchCount > 0;
 
+  const sketchImageBlocks: MessageContentBlock[] = [];
+  let embeddedSketchCount = 0;
+  if (hasSketches && state.availableSketchPaths) {
+    for (let i = 0; i < state.availableSketchPaths.length; i++) {
+      const sketchPath = state.availableSketchPaths[i];
+      const fullPath = path.isAbsolute(sketchPath)
+        ? sketchPath
+        : path.join(state.featurePath, sketchPath);
+      const thumbPath = fullPath.replace(/\.(jpeg|jpg|png|webp)$/i, '-thumb.jpeg');
+      const imagePath = fs.existsSync(thumbPath) ? thumbPath : fullPath;
+      if (fs.existsSync(imagePath)) {
+        const data = fs.readFileSync(imagePath);
+        const ext = path.extname(imagePath).toLowerCase();
+        const mediaType: 'image/png' | 'image/jpeg' | 'image/webp' =
+          ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        const label = state.sketchVariations?.[i]?.label || `Sketch ${i + 1}`;
+        sketchImageBlocks.push(
+          { type: 'text', text: `\n[Sketch #${i + 1}: ${label}]` },
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: data.toString('base64') } },
+        );
+        embeddedSketchCount++;
+      }
+    }
+    if (embeddedSketchCount > 0) {
+      console.log(`🖼️ [Visual:Direct] Embedded ${embeddedSketchCount} sketch thumbnail(s) in prompt`);
+    }
+  }
+
   const userPrompt = await promptPort.render('visual/nodes/direct/context', {
     conversationContext: conversationContext || '(no previous conversation)',
     currentDirective,
@@ -177,25 +205,28 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     clarifyCount,
     maxClarify: MAX_CLARIFY,
     clarifyBudgetExhausted: clarifyCount >= MAX_CLARIFY,
-    availableSketchCount: hasSketches ? sketchCount : undefined,
+    availableSketchCount: embeddedSketchCount > 0 ? embeddedSketchCount : undefined,
     sketchVariationList,
   });
 
+  const userContent: MessageContentBlock[] = [
+    { type: 'text', text: userPrompt },
+    ...sketchImageBlocks,
+  ];
+
   const messages: Array<{ role: string; content: string | MessageContentBlock[] }> = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt },
+    { role: 'user', content: userContent },
   ];
 
   const chatAPI = getChatAPIClient();
   await chatAPI.startMessage();
 
-  const tools = hasSketches ? VISUAL_SKETCH_TOOLS : undefined;
-
   let result: any;
 
   try {
     const { text: rawContent, usage } = await streamWithToolLoop(
-      directLLM, messages, tools, state, MAX_TOOL_ROUNDS,
+      directLLM, messages, undefined, state, MAX_TOOL_ROUNDS,
     );
     if (usage) {
       accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true });
