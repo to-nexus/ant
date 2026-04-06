@@ -1,839 +1,855 @@
-# PRD 평가 가이드 (Product Requirements Document Evaluation Guide)
+# PRD Evaluation Rubric
 
-> Ant CLI에서 외부 기획자가 작성한 PRD(prd.md)의 품질을 평가하고 개선점을 도출하기 위한 루브릭
+> Rubric for evaluating the quality of externally authored PRDs (`inputs/sources/prd.md`) in the Ant CLI pipeline.
 
-## 목차
+## Table of Contents
 
-1. [개요](#1-개요)
-2. [PRD의 역할과 흐름](#2-prd의-역할과-흐름)
-3. [평가 관점](#3-평가-관점)
-4. [평가 체크리스트](#4-평가-체크리스트)
-5. [등급 기준](#5-등급-기준)
-6. [보고서 템플릿](#6-보고서-템플릿)
-7. [사용 방법](#7-사용-방법)
+1. [Overview](#1-overview)
+2. [PRD Role in the Ant Pipeline](#2-prd-role-in-the-ant-pipeline)
+3. [Evaluation Categories](#3-evaluation-categories)
+4. [Evaluation Checklist](#4-evaluation-checklist)
+5. [Scoring Guide](#5-scoring-guide)
+6. [Report Template](#6-report-template)
+7. [Usage](#7-usage)
 
 ---
 
-## 1. 개요
+## 1. Overview
 
-### 목적
-- 외부 기획자가 작성한 PRD의 충분성 및 품질 평가
-- UI 문서(ui-spec, ui-tokens, ui-assets), 시스템 디자인, 코드 생성의 품질에 대한 PRD의 영향도 파악
-- PRD 작성 가이드라인 개선 및 기획자 교육 자료 도출
+### Purpose
 
-### PRD의 정의
-**PRD(Product Requirements Document)**는 Ant CLI에서 **모든 설계 및 구현의 근원(Source of Truth)**이 되는 문서입니다.
+- Evaluate whether an externally authored PRD contains sufficient information for the Ant pipeline to produce correct outputs.
+- The central question: **"Can the Design Job auto-generate a correct System Design from this PRD alone?"**
+- Identify gaps that would force the Design Job or Code Job to make assumptions.
 
-**위치**: `inputs/sources/prd.md` (단일 정규 파일)
+### PRD Definition
 
-**핵심 원칙**:
-- **"PRD = ABSOLUTE TRUTH"** - 모든 설계 및 구현 결정의 최종 권위
-- PRD에 명시되지 않은 것은 구현하지 않는다 (No invention)
-- PRD와 충돌 시 PRD가 우선 (PRD > directive > 기타 문서)
+**PRD (Product Requirements Document)** is the **Source of Truth** for all design and implementation decisions in Ant CLI.
 
-### 스코ープ
-- **입력**: PRD 문서 (`inputs/sources/prd.md`)
-- **출력 영향**: 
-  - Design Job → `ui-spec.json`, `ui-tokens.json`, `ui-assets.json`, `system-design.md`
-  - Code Job → 실제 코드베이스
-- **평가 대상**: PRD 내용의 완전성, 명확성, 구조화 정도
-- **평가 위치**: `outputs/evals/prd/evalprd-{timestamp}.md`
-  - `{timestamp}`: `YYYYMMDD-HHMMSS` 형식 (평가 시점)
+**Location**: `inputs/sources/prd.md`
 
-### 파일 구조
+**Core Principles**:
+- **"PRD = ABSOLUTE TRUTH"** — final authority for all design and implementation decisions.
+- What is not specified in the PRD must not be invented.
+- When conflicts arise: PRD > directive > other documents.
+
+### PRD vs System Design — Responsibility Boundary
+
+The Ant pipeline auto-generates System Design from PRD. This creates a clear responsibility split:
+
+| Responsibility | PRD (WHAT) | System Design (HOW) |
+|---------------|------------|---------------------|
+| Product goals, non-goals | Required | — |
+| Functional requirements (behavior, conditions, outcomes) | Required | — |
+| Non-functional requirements (performance, security, a11y) | Required | — |
+| User scenarios / flows | Required | — |
+| UI content (text, links, data) | Required | — |
+| Business constraints | Required | — |
+| Tech stack | **Optional** | Auto-determined |
+| Architecture patterns | Not expected | Auto-generated |
+| API contracts | Not expected | Auto-generated |
+| Data models | Not expected | Auto-generated |
+
+**Tech stack in PRD — optional with accuracy requirement:**
+- **Absent**: No penalty. The Design Job auto-selects appropriate technology.
+- **Present and accurate**: No penalty. Treated as an intentional engineering preference.
+- **Present but inaccurate**: Penalized. Version conflicts, non-existent libraries, or internal contradictions degrade downstream output.
+
+### Scope
+
+- **Input**: PRD document (`inputs/sources/prd.md`)
+- **Output impact**:
+  - Design Job → `ui-spec.json`, `ui-tokens.json`, `ui-assets.json`, system design documents
+  - Code Job → source code
+- **Evaluation target**: PRD content sufficiency for correct downstream auto-generation
+- **Evaluation output**: `outputs/evals/prd/evalprd-{timestamp}.md`
+
+### Workspace Structure
 
 ```
 ant-workspaces/{org}/{group}/{project}/
 └── features/{feature}/
-    ├── inputs/                        # [Input]
+    ├── inputs/
     │   └── sources/
-    │       └── prd.md                 # PRD 문서 ★
-    │
-    ├── outputs/                       # [Output]
-    │   ├── design/
-    │   │   ├── system-design.md       # 시스템 설계
-    │   │   ├── ui-spec.json           # UI 명세
-    │   │   ├── ui-tokens.json         # 디자인 토큰
-    │   │   └── ui-assets.json         # 에셋 매핑
-    │   └── evals/                     # 평가 리포트
-    │       └── prd/                   # PRD 평가 리포트
+    │       └── prd.md                 # PRD document ★
+    ├── outputs/
+    │   ├── design/                    # Auto-generated from PRD
+    │   │   ├── fe-system-*.md
+    │   │   ├── be-system-*.md
+    │   │   ├── api-contract-*.md
+    │   │   ├── ui-spec.json
+    │   │   ├── ui-tokens.json
+    │   │   └── ui-assets.json
+    │   └── evals/
+    │       └── prd/
     │           └── evalprd-{timestamp}.md
-    │
-    └── sessions/                      # [Process records]
-        ├── design.json                # Design Job 세션
-        ├── code.json                  # Code Job 세션
-        └── debug/                     # 디버그 데이터
-            ├── prompts/               # 프롬프트 로그
-            ├── plans/                 # 구현 계획
-            └── logs/                  # 실행 로그
+    └── sessions/
 ```
 
 ---
 
-## 2. PRD의 역할과 흐름
+## 2. PRD Role in the Ant Pipeline
 
-### 2.1 시스템 내 PRD 흐름
+### 2.1 Data Flow
 
 ```
-외부 기획자
-    ↓ 작성
+External Author
+    ↓ writes
 inputs/sources/prd.md (PRD)
-    ↓ 읽기 (ArtifactService)
-Design Job (설계 단계)
-    ├─ Detect Environment (환경 감지)
-    │   └─ PRD 기반 domain/environment 결정
-    ├─ UI Design Generation
-    │   ├─ ui-tokens.json (PRD에서 브랜드/플랫폼 제약 추출)
-    │   ├─ ui-assets.json (PRD에서 에셋 요구사항 추출)
-    │   └─ ui-spec.json (PRD에서 인터랙션/기능 요구사항 추출)
-    └─ System Design Generation
-        └─ system-design.md (PRD 제약사항을 의도로 변환)
+    ↓ read by ArtifactService
+Design Job
+    ├─ detectEnvironment: determines domain/environment from PRD alone
+    ├─ decompose: breaks down into system design tasks based on PRD
+    └─ docGen: generates system design treating PRD as "ABSOLUTE TRUTH"
+        └─► outputs/design/ (system design, UI design documents)
             ↓
-Code Job (구현 단계)
-    ├─ Plan (구현 계획)
-    │   └─ PRD 요구사항 기반 구현 범위 결정
-    └─ CodeGen (코드 생성)
-        └─ PRD 명세 준수 코드 생성
+Code Job (consumes PRD + system design simultaneously)
+    ├─ detectEnvironment: uses PRD + directive only (no system design)
+    ├─ decompose: plans implementation tasks
+    └─ execute: generates code from prdSpec + designDoc + directive
 ```
 
-### 2.2 PRD의 핵심 역할
+### 2.2 What Each Pipeline Stage Needs from PRD
 
-| 단계 | PRD의 역할 | 사용 방식 |
-|------|-----------|----------|
-| **환경 감지** | Domain/Environment 결정 근거 | `prdSpec` 변수로 주입, reasoning 생성 |
-| **UI 설계** | 시각적 의도, 인터랙션 요구사항 보완 | 스크린샷이 모호할 때 PRD로 의도 파악 |
-| **시스템 설계** | 아키텍처 제약사항(WHAT) 정의 | PRD 제약 → 의도 추출 → 아키텍처 결정 |
-| **코드 생성** | 구현 범위 및 기능 명세 | PRD 명시 항목만 구현, 추가 기능 금지 |
+| Stage | What it reads from PRD | Why it matters |
+|-------|----------------------|----------------|
+| **detectEnvironment** | Domain hints, platform signals | Determines frontend/backend/fullstack routing |
+| **System Design generation** | Functional requirements, business constraints, NFRs | Produces architecture, API contracts, domain models |
+| **UI Design generation** | Visual intent, interaction requirements, content | Produces UI specs, tokens, assets |
+| **Code decompose** | Scope, feature boundaries | Plans implementation tasks |
+| **Code execute** | Exact requirements (PRD injected alongside design to prevent information loss) | Ensures implementation matches intent |
 
-### 2.3 PRD 통합 원칙
+### 2.3 Screenshot vs PRD Roles
 
-**스크린샷 vs PRD 역할 분리:**
+| Source | Role | Content |
+|--------|------|---------|
+| **Screenshots** | HOW it looks | Layout, colors, typography, visual structure |
+| **PRD** | WHAT it does | Text content, functional requirements, interactions, constraints |
 
-| 소스 | 역할 | 내용 |
-|------|------|------|
-| **Screenshots** | HOW it looks | 레이아웃, 색상, 타이포그래피, 시각적 구조 |
-| **PRD** | WHAT it does | 텍스트 콘텐츠, 기능 요구사항, 인터랙션, 제약사항 |
+### 2.4 Intent Extraction Principle
 
-**의도 추출 원칙:**
-PRD는 종종 구현 용어를 사용하지만, 시스템은 **의도(intent)**를 추출해야 합니다.
+PRD authors often use implementation-specific language. The system extracts **intent**, not literal instructions:
 
-**예시:**
 ```
-❌ PRD 문구 그대로: "Use browser storage"
-✅ 의도 추출: "Client-side persistence required"
+❌ Literal: "Use browser storage"
+✅ Intent: "Client-side persistence required"
 
-❌ PRD 문구 그대로: "Save bookmarks to LocalStorage"
-✅ 의도 추출: "Bookmarks must persist locally"
-
-❌ PRD 문구 그대로: "Exclude CryptoPanic due to CORS restrictions"
-✅ 의도 추출: [CryptoPanic을 설계에서 완전히 제외]
+❌ Literal: "Save bookmarks to LocalStorage"
+✅ Intent: "Bookmarks must persist locally"
 ```
 
 ---
 
-## 3. 평가 관점
+## 3. Evaluation Categories
 
-PRD는 다음 6가지 관점에서 평가됩니다:
+PRD is evaluated across **6 categories**, weighted by impact on downstream auto-generation quality.
 
-### 3.1 완전성 (Completeness)
-**"프로젝트를 설계/구현하기에 충분한 정보가 있는가?"**
+### 3.1 Specification Depth (35 points)
 
-**평가 기준:**
-- ✅ 프로젝트의 목적과 범위가 명확히 정의되어 있는가?
-- ✅ 모든 주요 기능(user-facing features)이 나열되어 있는가?
-- ✅ 필수 콘텐츠(텍스트, 데이터)가 명시되어 있는가?
-- ✅ 비기능 요구사항(성능, 보안, 접근성)이 기술되어 있는가?
-- ✅ 기술 스택 및 제약사항이 명시되어 있는가?
+**"Are functional requirements described at specification level, not just title level?"**
 
-**불완전한 PRD의 신호:**
-- "TODO", "TBD" 등의 미정 항목이 존재
-- 주요 섹션이 비어있거나 "추후 결정" 상태
-- 스크린샷에 보이는 요소가 PRD에 설명되지 않음
-- 외부 서비스/API 이름이 누락 (예: "뉴스 API 사용" → 구체적 서비스명 없음)
+This is the highest-weighted category because under-specified requirements are the primary cause of incorrect auto-generation. A title-only FR forces the Design Job to guess.
 
-### 3.2 명확성 (Clarity)
-**"요구사항이 해석의 여지 없이 명확한가?"**
+**The Implementability Test:**
+> Read this FR alone. Can the Design Job produce a correct system design component from it?
+> Specifically: Are **behavior** (what happens), **condition** (when/how it triggers), and **outcome** (expected result) stated?
 
-**평가 기준:**
-- ✅ 모호한 표현 없이 구체적인가? (예: "빠르게" ❌ → "3초 이내" ✅)
-- ✅ 기술적 용어가 일관되게 사용되는가?
-- ✅ 제약사항과 금지사항이 명시적인가? (예: "X는 사용 금지")
-- ✅ 우선순위가 구분되는가? (필수 vs 선택)
+**"Title" vs "Specification" distinction:**
 
-**불명확한 PRD의 신호:**
-- "적절히", "필요시", "가능하면" 등의 모호한 표현
-- 동일한 개념에 대해 여러 용어 사용 (예: "사용자" / "유저" / "고객" 혼용)
-- 조건부 요구사항의 조건이 불명확 (예: "상황에 따라 X 표시")
+| Level | Example | Verdict |
+|-------|---------|---------|
+| Title only | "Product management" | Unusable — what CRUD? what fields? what states? |
+| One-line summary | "Admin can create/edit/delete products" | Insufficient — fields, validation, state transitions unknown |
+| Specification | "Admin creates product: name (required, max 100 chars), price (required, >= 0), description (optional, max 1000 chars), images (max 5). Created in 'pending_review' state. Transitions to 'active' on admin approval." | Design Job can derive domain model, API, state machine |
 
-### 3.3 구조성 (Structure)
-**"정보가 체계적으로 조직되어 있는가?"**
+**Depth cap rule:**
+- If >= 80% of FRs are title-only → this category is capped at 7 points.
+- If >= 50% of FRs are title-only → this category is capped at 14 points.
 
-**평가 기준:**
-- ✅ 표준 섹션 구조를 따르는가? (목표, 요구사항, 기술스택 등)
-- ✅ 정보가 논리적으로 그룹화되어 있는가?
-- ✅ 참조 파일 경로가 정확한가? (예: `inputs/references/screens/desktop.png`)
-- ✅ 테이블/리스트 형식이 적절히 사용되는가?
+**Signals of shallow specification:**
+- FR has no sub-items, conditions, or field definitions.
+- FR uses only a verb + noun ("manage products", "handle payments").
+- Reading the FR raises more questions than it answers.
+- "TBD", "TODO", "to be determined" markers.
 
-**구조가 약한 PRD의 신호:**
-- 모든 내용이 평문으로 나열
-- 섹션 제목 없이 내용만 나열
-- 관련 정보가 여러 곳에 산재
-- 파일 경로/링크가 깨져있거나 부정확
+### 3.2 Clarity (20 points)
 
-### 3.4 콘텐츠 충실도 (Content Fidelity)
-**"실제 구현에 필요한 콘텐츠(텍스트/데이터)가 모두 포함되어 있는가?"**
+**"Are requirements free from ambiguity AND information gaps?"**
 
-**평가 기준:**
-- ✅ UI에 표시될 모든 텍스트가 명시되어 있는가?
-- ✅ 외부 링크/URL이 정확하게 기재되어 있는가?
-- ✅ 데이터 항목 및 필드가 구체적인가?
-- ✅ 콘텐츠의 톤/보이스 가이드가 있는가? (해당 시)
+This category covers TWO types of unclarity:
 
-**콘텐츠 누락의 신호:**
-- "적절한 문구 표시" (실제 문구 없음)
-- "소셜 링크" (URL 없음)
-- "에러 메시지 표시" (메시지 내용 없음)
+**Type 1 — Ambiguous language** (traditional):
+- Vague qualifiers: "fast", "appropriate", "if needed", "as necessary"
+- Unquantified metrics: "high performance", "good UX"
+- Conditional requirements with unclear conditions: "show X depending on the situation"
 
-### 3.5 제약사항 명시성 (Constraint Explicitness)
-**"기술적/비즈니스적 제약사항이 명확히 선언되어 있는가?"**
+**Type 2 — Under-specification** (often missed):
+- No ambiguous words present, but insufficient information for implementation.
+- Example: "Shopping cart feature" — no ambiguous word, but what does it do?
+- Example: "SKU, name, description, price" — clear words, but validation rules? required/optional? character limits?
 
-**평가 기준:**
-- ✅ 필수 기술 스택이 버전 포함하여 명시되어 있는가?
-- ✅ 금지 사항(exclusions)이 명시되어 있는가? (예: "Tailwind v4 사용 금지")
-- ✅ 외부 서비스 제약이 구체적인가? (예: "X API는 CORS 문제로 제외")
-- ✅ 플랫폼/환경 제약이 명시되어 있는가? (예: "모바일 우선", "정적 호스팅")
+**Terminology consistency:**
+- Same concept must use the same term throughout (e.g., "user" vs "customer" — pick one).
+- Technical terms must be used correctly.
 
-**제약사항 부재의 신호:**
-- 기술 스택 버전 미명시 (예: "React 사용" - 버전?)
-- "최신 버전 사용" (모호함)
-- 제외 항목이 있으나 이유 없음
+**Signals of unclarity:**
+- "appropriately", "properly", "if needed", "as necessary", "etc."
+- Quantifiable properties stated qualitatively ("fast loading" instead of "< 3s")
+- Same concept referred to by multiple terms
+- FR that is grammatically clear but leaves the reader with unanswered implementation questions
 
-### 3.6 추적성 (Traceability)
-**"생성된 산출물이 PRD의 어느 부분에서 유래했는지 추적 가능한가?"**
+### 3.3 Scope Definition (15 points)
 
-**평가 기준:**
-- ✅ 섹션 번호/ID가 명확한가? (예: `§3.2`)
-- ✅ 외부 서비스/API가 섹션 참조와 함께 나열되어 있는가?
-- ✅ 요구사항마다 고유 식별자가 있는가? (선택)
+**"Is the project boundary clearly drawn — what is in, what is out, and what quality bar applies?"**
 
-**추적성 부족의 신호:**
-- 섹션 제목 없음
-- 요구사항이 산문형으로만 기술
-- 시스템 디자인에서 "per PRD §X" 참조 불가
+**Required elements:**
+- **Goals**: What the project aims to achieve (measurable when possible).
+- **Non-goals**: What is explicitly excluded from this iteration. Absence of non-goals is a deficiency — it forces the Design Job to guess boundaries.
+- **User scenarios**: At least one primary user flow described end-to-end.
+- **Non-functional requirements (NFRs)**: Performance targets, security requirements, accessibility standards — stated quantitatively where possible.
+- **Business constraints**: Regulatory requirements, timeline constraints, budget limitations, partner/vendor restrictions.
 
----
+**Signals of weak scope:**
+- No non-goals section (everything could be in scope).
+- NFRs stated qualitatively ("should be fast") or absent entirely.
+- No user scenario — only a feature list with no flow connecting them.
+- Goals stated as activities ("build a dashboard") rather than outcomes ("enable managers to track KPIs in real-time").
 
-## 4. 평가 체크리스트
+### 3.4 Content Fidelity (20 points)
 
-### 4.1 필수 섹션 체크
+**"Is every piece of user-facing content explicitly provided?"**
 
-| 섹션 | 필수 여부 | 체크 항목 |
-|------|----------|----------|
-| **한 줄 요약** | ✅ 필수 | 프로젝트를 한 문장으로 요약 |
-| **목표/문제** | ✅ 필수 | 달성하려는 목표, 해결하려는 문제, **비목표** 명시 |
-| **사용자 시나리오** | ⚠️ 권장 | 주요 유저 플로우 설명 (복잡한 프로젝트에서 필수) |
-| **요구사항 (Functional)** | ✅ 필수 | 모든 기능 나열 (우선순위 구분 권장) |
-| **비기능 요구사항** | ✅ 필수 | 성능, 보안, 접근성 등 |
-| **콘텐츠 (텍스트/데이터)** | ✅ 필수 | UI에 표시될 모든 텍스트, 링크, 데이터 |
-| **기술 스택** | ✅ 필수 | 프레임워크, 라이브러리, 버전, 제약사항 |
-| **제약/리스크** | ⚠️ 권장 | 알려진 제약사항, 위험요소 |
-| **ASSET MAPPING** | ⚠️ 조건부 | 에셋이 있는 경우 소스→목적지 매핑 |
-| **UI SPECIFICATION** | ⚠️ 조건부 | 스크린샷으로 표현 불가능한 인터랙션 명세 |
+**Evaluation targets:**
+- All UI text: headings, button labels, placeholder text, empty states, error messages, success messages, tooltips.
+- All external URLs: social media links, documentation links, partner links — exact URLs, not placeholders.
+- Data definitions: field names, types, validation rules, display formats.
+- Tone/voice guidance (when applicable).
 
-### 4.2 콘텐츠 품질 체크
+**Signals of content gaps:**
+- "Display appropriate message" (actual message text missing)
+- "Social links" (URLs missing)
+- "Show error" (error message text missing)
+- "Contact information" (actual email/phone/address missing)
+- "Logo" (no file path or asset reference)
 
-**텍스트/카피:**
-- [ ] UI에 표시될 모든 헤딩/버튼 텍스트가 명시되어 있는가?
-- [ ] 에러 메시지, 알림, 툴팁 텍스트가 포함되어 있는가?
-- [ ] 텍스트가 번역 가능하도록 원문이 명확한가?
+### 3.5 Structure (7 points)
 
-**링크/URL:**
-- [ ] 모든 외부 링크가 정확한 URL로 명시되어 있는가?
-- [ ] 메일 주소가 `mailto:` 형식으로 명시되어 있는가?
-- [ ] 소셜 미디어 링크가 실제 계정 URL로 기재되어 있는가?
+**"Is information organized for efficient consumption by both humans and the pipeline?"**
 
-**데이터 구조:**
-- [ ] API 응답 구조가 명시되어 있는가? (해당 시)
-- [ ] 폼 필드 및 검증 규칙이 명시되어 있는가? (해당 시)
-- [ ] 데이터 소스(API 엔드포인트, 외부 서비스)가 명시되어 있는가?
+**Evaluation targets:**
+- Logical section hierarchy with clear headings.
+- Related information grouped together (not scattered across sections).
+- Numbered sections or IDs that enable cross-reference (e.g., "per §3.2", "see FR-05").
+- Appropriate use of tables, lists, and formatting.
+- File references (screenshots, assets) with correct paths.
 
-### 4.3 기술 제약사항 체크
+**Signals of poor structure:**
+- All content in flat prose with no section headings.
+- Related information scattered across unrelated sections.
+- Broken file paths or dead references.
+- No numbering system — impossible to reference specific requirements.
 
-**필수 기술 스택:**
-- [ ] 프레임워크/라이브러리가 버전과 함께 명시되어 있는가?
-- [ ] 버전 제약이 명확한가? (예: "v3.x 사용, v4 금지")
-- [ ] 플랫폼 요구사항이 명시되어 있는가? (브라우저, Node 버전 등)
+### 3.6 Constraints (3 points)
 
-**외부 서비스:**
-- [ ] 사용할 외부 API/서비스가 정확한 이름으로 나열되어 있는가?
-- [ ] API 엔드포인트/문서 링크가 제공되어 있는가?
-- [ ] 제외할 서비스가 명시되어 있는가? (예: "X는 CORS 문제로 제외")
+**"Are business and technical boundaries explicitly declared?"**
 
-**금지사항:**
-- [ ] 사용하지 말아야 할 기술/패턴이 명시되어 있는가?
-- [ ] 제외 이유가 설명되어 있는가?
+**Business constraints (primary — always evaluated):**
+- Platform/environment requirements (e.g., "mobile-first", "static hosting only")
+- External service restrictions (e.g., "X API excluded due to CORS")
+- Exclusion items with reasoning
+- Regulatory or compliance requirements
 
-### 4.4 명확성 체크
+**Tech stack (secondary — evaluated only when present):**
+- If tech stack is **absent**: No penalty. The Design Job auto-determines technology.
+- If tech stack is **present**: Verify accuracy:
+  - [ ] Named libraries/frameworks actually exist?
+  - [ ] Versions are mutually compatible? (e.g., React 18 + Next.js 14 ✅, React 16 + Next.js 14 ❌)
+  - [ ] No internal contradictions? (e.g., "Use Tailwind v3" + references to v4-only features)
+  - Inaccuracies found → deduct from this category AND flag in Clarity.
 
-**모호한 표현 탐지:**
-- [ ] "적절히", "필요시", "가능하면" 등 모호한 표현 없음
-- [ ] "빠르게", "많이" 등 정량화 가능한 표현이 수치로 대체됨
-- [ ] 조건부 요구사항의 조건이 명확함
-
-**용어 일관성:**
-- [ ] 동일 개념에 동일 용어 사용 (예: "사용자" vs "유저" 통일)
-- [ ] 기술 용어가 정확하게 사용됨 (예: "컴포넌트" vs "모듈")
-
-### 4.5 참조 파일 체크
-
-**스크린샷 참조:**
-- [ ] 모든 참조 스크린샷 경로가 정확한가? (`inputs/references/screens/`)
-- [ ] 파일명이 명확한가? (예: `desktop-2560.png`, `mobile-375.png`)
-- [ ] 각 스크린샷의 용도가 설명되어 있는가?
-
-**에셋 참조:**
-- [ ] 에셋 소스 경로가 명시되어 있는가? (`inputs/assets/`)
-- [ ] 에셋 목적지 경로가 명시되어 있는가? (예: `public/images/`)
-- [ ] 에셋 용도가 설명되어 있는가? (로고, 아이콘, 배경 등)
+**Signals of constraint gaps:**
+- No exclusions or non-goals for technology choices.
+- Tech stack present but versions missing or contradictory.
+- External service names mentioned without specifics (endpoint, documentation link).
 
 ---
 
-## 5. 등급 기준
+## 4. Evaluation Checklist
 
-### 5.1 종합 평가 등급
+### 4.1 Required Sections Check
 
-| 등급 | 기준 | 설명 |
-|------|------|------|
-| **S (Excellent)** | 95-100점 | 모든 필수 정보 완비, 구조 명확, 구현 가능 |
-| **A (Good)** | 85-94점 | 대부분 완비, 일부 보완 필요 (minor issues) |
-| **B (Acceptable)** | 70-84점 | 핵심 정보 있으나 상당한 보완 필요 |
-| **C (Insufficient)** | 50-69점 | 중요 정보 누락, 구현에 어려움 예상 |
-| **D (Poor)** | 0-49점 | 근본적 재작성 필요 |
+| Section | Required | Check |
+|---------|----------|-------|
+| **One-line summary** | Required | Project described in 1-2 sentences |
+| **Goals / Non-goals** | Required | Both goals AND non-goals explicitly stated |
+| **User scenarios** | Required | At least one primary user flow end-to-end |
+| **Requirements (Functional)** | Required | All features listed with behavior/condition/outcome |
+| **Non-functional requirements** | Required | Performance, security, accessibility with quantitative targets |
+| **Content (Text/Data)** | Required | All user-facing text, links, data |
+| **Tech stack** | Optional | No penalty if absent. If present, must be accurate |
+| **Constraints / Risks** | Recommended | Known constraints, risk factors |
+| **Asset mapping** | Conditional | Source→destination mapping when assets exist |
+| **UI specification** | Conditional | Interaction specs not expressible via screenshots |
 
-### 5.2 관점별 배점
+### 4.2 Specification Depth Check
 
-| 관점 | 배점 | 평가 기준 |
-|------|------|----------|
-| **완전성** | 30점 | 필수 섹션 존재, 요구사항 커버리지 |
-| **명확성** | 20점 | 모호성 없음, 용어 일관성 |
-| **구조성** | 15점 | 섹션 구조, 정보 조직화 |
-| **콘텐츠 충실도** | 20점 | 텍스트/링크/데이터 완전성 |
-| **제약사항 명시성** | 10점 | 기술/비즈니스 제약 명확성 |
-| **추적성** | 5점 | 섹션 참조, 요구사항 ID |
-| **합계** | 100점 | |
+**For each functional requirement, verify:**
+- [ ] Behavior is described (what the system does, not just a feature name)
+- [ ] Trigger conditions are stated (when/how the behavior activates)
+- [ ] Expected outcome is defined (what happens as a result)
+- [ ] Edge cases or error conditions are addressed (at least the obvious ones)
+- [ ] Percentage of title-only FRs is below 50%
 
-### 5.3 관점별 세부 채점 기준
+**Depth levels for classification:**
 
-#### 완전성 (30점)
-- **30점**: 모든 필수 섹션 존재, 요구사항 100% 커버
-- **25점**: 필수 섹션 존재, 요구사항 90% 커버
-- **20점**: 일부 필수 섹션 누락, 요구사항 80% 커버
-- **15점**: 다수 필수 섹션 누락, 요구사항 70% 커버
-- **10점 이하**: 근본적 섹션 부재
+| Depth | Criteria | Score impact |
+|-------|----------|-------------|
+| **Full spec** | Behavior + condition + outcome + edge cases | Full credit |
+| **Partial spec** | Behavior + outcome, but missing conditions or edge cases | Partial credit |
+| **One-liner** | Single sentence describing intent, no details | Minimal credit |
+| **Title only** | Feature name or verb+noun phrase only | Subject to depth cap |
 
-#### 명확성 (20점)
-- **20점**: 모호한 표현 0개, 용어 100% 일관
-- **17점**: 모호한 표현 1-2개, 용어 대부분 일관
-- **14점**: 모호한 표현 3-5개, 용어 일부 혼용
-- **10점 이하**: 다수 모호 표현, 용어 혼란
+### 4.3 Content Quality Check
 
-#### 구조성 (15점)
-- **15점**: 완벽한 구조, 논리적 그룹화
-- **12점**: 대체로 구조적, 일부 개선 필요
-- **9점**: 구조 있으나 혼란스러움
-- **6점 이하**: 구조 부재, 평문 나열
+**Text/Copy:**
+- [ ] All heading/button text explicitly provided (not "appropriate text")?
+- [ ] Error messages, notifications, tooltips included?
+- [ ] Empty state messages specified?
 
-#### 콘텐츠 충실도 (20점)
-- **20점**: 모든 텍스트/링크/데이터 완비
-- **17점**: 대부분 완비, 사소한 누락
-- **14점**: 주요 콘텐츠 일부 누락
-- **10점 이하**: 콘텐츠 대부분 미정
+**Links/URLs:**
+- [ ] All external links provided as exact URLs?
+- [ ] Email addresses in `mailto:` format?
+- [ ] Social media links as actual account URLs?
 
-#### 제약사항 명시성 (10점)
-- **10점**: 모든 제약/금지사항 명시
-- **8점**: 대부분 명시, 일부 누락
-- **6점**: 일부만 명시
-- **4점 이하**: 제약사항 대부분 미명시
+**Data:**
+- [ ] Form fields with validation rules specified?
+- [ ] Data sources (API endpoints, external services) named specifically?
+- [ ] Display formats defined (dates, numbers, currency)?
 
-#### 추적성 (5점)
-- **5점**: 섹션 번호 완비, 참조 용이
-- **4점**: 대부분 추적 가능
-- **3점**: 일부 추적 가능
-- **2점 이하**: 추적 어려움
+### 4.4 Clarity Check
+
+**Ambiguous language scan:**
+- [ ] No instances of: "appropriately", "properly", "if needed", "as necessary", "etc.", "and so on"
+- [ ] All quantifiable properties stated as numbers (e.g., "< 3 seconds", not "fast")
+- [ ] All conditional requirements have explicit conditions
+
+**Under-specification scan:**
+- [ ] Each FR answers "what happens?" not just "what exists?"
+- [ ] Field definitions include constraints (required/optional, length, format)
+- [ ] State transitions are explicit (not implied)
+
+**Terminology consistency:**
+- [ ] Same concept uses same term throughout
+- [ ] Technical terms used correctly
+
+### 4.5 Tech Stack Accuracy Check (only when tech stack is present)
+
+- [ ] All named libraries/frameworks exist and are current?
+- [ ] Version numbers are mutually compatible?
+- [ ] No contradictions between stated stack and described behavior?
+- [ ] Platform constraints consistent with chosen stack?
+
+### 4.6 Reference Files Check
+
+**Screenshots:**
+- [ ] All screenshot paths are valid? (`inputs/references/screens/`)
+- [ ] Filenames are descriptive? (e.g., `desktop-2560.png`, `mobile-375.png`)
+- [ ] Each screenshot's purpose is explained?
+
+**Assets:**
+- [ ] Asset source paths specified? (`inputs/assets/`)
+- [ ] Asset destination paths specified? (e.g., `public/images/`)
+- [ ] Asset purpose described? (logo, icon, background, etc.)
 
 ---
 
-## 6. 보고서 템플릿
+## 5. Scoring Guide
+
+### 5.1 Grade Scale
+
+| Grade | Range | Description |
+|-------|-------|-------------|
+| **S (Excellent)** | 95-100 | All requirements at spec level, complete content, clear scope. Design Job needs zero assumptions. |
+| **A (Good)** | 85-94 | Most requirements at spec level, minor content gaps. Design Job needs minimal assumptions. |
+| **B (Acceptable)** | 70-84 | Core requirements specified but gaps exist. Design Job needs some assumptions. |
+| **C (Insufficient)** | 50-69 | Significant specification gaps. Design Job must make many assumptions. |
+| **D (Poor)** | 0-49 | Fundamental rewrite required. Design Job cannot produce reliable output. |
+
+### 5.2 Category Weights
+
+| Category | Points | Core question |
+|----------|--------|--------------|
+| **Specification Depth** | 35 | Are FRs at "specification" level, not "title" level? |
+| **Clarity** | 20 | Free from ambiguity AND information gaps? |
+| **Content Fidelity** | 20 | All user-facing content explicitly provided? |
+| **Scope Definition** | 15 | Goals, non-goals, user scenarios, NFRs, business constraints? |
+| **Structure** | 7 | Organized for efficient human and pipeline consumption? |
+| **Constraints** | 3 | Business boundaries declared? Tech stack accurate if present? |
+| **Total** | 100 | |
+
+### 5.3 Category Scoring Anchors
+
+#### Specification Depth (35 points)
+
+| Score | Criteria |
+|-------|----------|
+| **35** | 100% of FRs include behavior, conditions, and outcomes. Zero TBD markers. |
+| **28** | >= 80% of FRs at spec level. Remaining FRs have partial specs (missing conditions or edge cases). |
+| **21** | 50-80% of FRs at spec level. Rest are one-liners or titles. |
+| **14** | 30-50% of FRs at spec level. Majority are titles or one-liners. **Depth cap applies if >= 50% title-only.** |
+| **7** | < 30% of FRs at spec level. Almost all are title-only. **Depth cap applies (>= 80% title-only).** |
+| **0-6** | No FRs have meaningful specification. Feature list is just a bullet list of names. |
+
+#### Clarity (20 points)
+
+| Score | Criteria |
+|-------|----------|
+| **20** | Zero ambiguous expressions. Zero under-specified requirements. 100% terminology consistency. |
+| **16** | 1-2 ambiguous expressions OR 1-3 under-specified items. Terminology consistent. |
+| **12** | 3-5 ambiguous expressions OR 4-7 under-specified items. Minor terminology inconsistencies. |
+| **8** | 6-10 ambiguous expressions OR 8-15 under-specified items. Multiple terminology issues. |
+| **4** | > 10 ambiguous expressions OR > 15 under-specified items. Pervasive unclarity. |
+| **0-3** | Document is fundamentally ambiguous or information-starved. |
+
+#### Scope Definition (15 points)
+
+| Score | Criteria |
+|-------|----------|
+| **15** | Goals measurable. Non-goals explicit. >= 1 user scenario end-to-end. NFRs quantitative. Business constraints stated. |
+| **12** | Goals clear. Non-goals present. User scenario exists but incomplete. NFRs present but some qualitative. |
+| **9** | Goals stated. Non-goals missing. NFRs partially present. No user scenario. |
+| **6** | Goals only. No non-goals, no NFRs, no user scenarios. |
+| **0-5** | Scope itself is unclear. Cannot determine what the project aims to achieve. |
+
+#### Content Fidelity (20 points)
+
+| Score | Criteria |
+|-------|----------|
+| **20** | 100% of UI text, links, and data provided as actual values. |
+| **16** | >= 90% provided. Missing items are minor (e.g., one tooltip text). |
+| **12** | 70-90% provided. Some important content missing (e.g., error messages). |
+| **8** | 50-70% provided. Significant content gaps. |
+| **4** | < 50% provided. Placeholder language dominant ("appropriate text", "relevant link"). |
+| **0-3** | Virtually no actual content — only feature descriptions with no text/data. |
+
+#### Structure (7 points)
+
+| Score | Criteria |
+|-------|----------|
+| **7** | Logical hierarchy. Numbered sections/IDs. Cross-references possible. Clean formatting. |
+| **5** | Section structure exists. Some numbering. Minor organizational issues. |
+| **3** | Structure present but confusing. Related info scattered. |
+| **1-2** | Minimal structure. Mostly flat prose. |
+| **0** | No structure. Stream-of-consciousness text. |
+
+#### Constraints (3 points)
+
+| Score | Criteria |
+|-------|----------|
+| **3** | Business constraints explicit. Tech stack absent OR present and fully accurate. |
+| **2** | Business constraints partially stated. Tech stack (if present) has minor issues (e.g., missing versions). |
+| **1** | Business constraints weak. OR tech stack present with clear errors (incompatible versions, non-existent libraries). |
+| **0** | No constraints stated. OR tech stack present with critical contradictions. |
+
+---
+
+## 6. Report Template
 
 ```markdown
-# PRD 평가 보고서
+# PRD Evaluation Report
 
-**평가 일시**: YYYY-MM-DD  
-**프로젝트**: {org}/{group}/{project}  
-**Feature**: {feature-name}  
-**평가자**: {이름}  
-
----
-
-## 1. 종합 평가
-
-| 관점 | 점수 | 등급 | 비고 |
-|------|------|------|------|
-| 완전성 | X / 30 | A/B/C | |
-| 명확성 | X / 20 | A/B/C | |
-| 구조성 | X / 15 | A/B/C | |
-| 콘텐츠 충실도 | X / 20 | A/B/C | |
-| 제약사항 명시성 | X / 10 | A/B/C | |
-| 추적성 | X / 5 | A/B/C | |
-| **총점** | **X / 100** | **S/A/B/C/D** | |
+**Date**: YYYY-MM-DD
+**Project**: {org}/{group}/{project}
+**Feature**: {feature-name}
 
 ---
 
-## 2. 필수 섹션 체크
+## 1. Summary Score
 
-| 섹션 | 존재 여부 | 품질 | 비고 |
-|------|----------|------|------|
-| 한 줄 요약 | ✅/❌ | 상/중/하 | |
-| 목표/비목표 | ✅/❌ | 상/중/하 | |
-| 요구사항 (Functional) | ✅/❌ | 상/중/하 | |
-| 비기능 요구사항 | ✅/❌ | 상/중/하 | |
-| 콘텐츠 | ✅/❌ | 상/중/하 | |
-| 기술 스택 | ✅/❌ | 상/중/하 | |
-
----
-
-## 3. 주요 발견사항
-
-### 3.1 강점 (Strengths)
-- [구체적 강점 1]
-- [구체적 강점 2]
-- ...
-
-### 3.2 약점 (Weaknesses)
-- [구체적 약점 1 - 예시 포함]
-- [구체적 약점 2 - 예시 포함]
-- ...
-
-### 3.3 치명적 이슈 (Critical Issues)
-> 구현을 막거나 심각한 품질 저하를 유발하는 이슈
-
-- [ ] **[이슈 유형]**: [구체적 설명]
-  - **위치**: PRD §X.X
-  - **영향**: [Design/Code Job에 미치는 영향]
-  - **권장 조치**: [수정 방안]
+| Category | Score | Notes |
+|----------|-------|-------|
+| Specification Depth | X / 35 | |
+| Clarity | X / 20 | |
+| Content Fidelity | X / 20 | |
+| Scope Definition | X / 15 | |
+| Structure | X / 7 | |
+| Constraints | X / 3 | |
+| **Total** | **X / 100** | **Grade: S/A/B/C/D** |
 
 ---
 
-## 4. 세부 평가
+## 2. Required Sections Check
 
-### 4.1 완전성 분석
-
-**누락된 필수 정보:**
-- [ ] [항목 1]
-- [ ] [항목 2]
-
-**불완전한 섹션:**
-- [ ] **[섹션명]**: [문제점]
-
-**"TBD" / "TODO" 항목:**
-- [ ] [위치]: [내용]
-
-### 4.2 명확성 분석
-
-**모호한 표현:**
-| 위치 | 표현 | 문제점 | 권장 수정 |
-|------|------|--------|----------|
-| §X.X | "적절히 처리" | 기준 불명확 | "3초 이내 응답" |
-
-**용어 불일치:**
-| 개념 | 사용된 용어들 | 권장 통일 용어 |
-|------|-------------|---------------|
-| 최종 사용자 | "사용자", "유저", "고객" | "사용자" |
-
-### 4.3 콘텐츠 누락 분석
-
-**텍스트 누락:**
-- [ ] [UI 요소]: [위치] - "적절한 텍스트 표시" (실제 텍스트 없음)
-
-**링크 누락:**
-- [ ] [버튼/링크]: [위치] - URL 미명시
-
-**데이터 누락:**
-- [ ] [데이터 항목]: [위치] - 구조/필드 미정의
-
-### 4.4 제약사항 분석
-
-**미명시 기술 제약:**
-- [ ] [기술 항목]: 버전 미명시
-
-**외부 서비스 명세 불충분:**
-- [ ] [서비스명]: 엔드포인트/문서 링크 없음
-
-**금지사항 부재:**
-- [ ] [사용 금지 항목]: 제외 이유 없음
+| Section | Present | Depth | Notes |
+|---------|---------|-------|-------|
+| One-line summary | Yes/No | — | |
+| Goals / Non-goals | Yes/No | High/Med/Low | |
+| User scenarios | Yes/No | High/Med/Low | |
+| Requirements (Functional) | Yes/No | High/Med/Low | |
+| Non-functional requirements | Yes/No | High/Med/Low | |
+| Content (Text/Data) | Yes/No | High/Med/Low | |
+| Tech stack | Yes/No/N/A | Accurate/Inaccurate | Optional — no penalty if absent |
 
 ---
 
-## 5. 권장 조치사항
+## 3. Key Findings
 
-### 5.1 즉시 수정 필요 (Critical)
-> 구현 전 반드시 수정해야 할 항목
+### 3.1 Strengths
+- [specific strength with evidence]
 
-1. **[조치 1]**
-   - **문제**: [설명]
-   - **위치**: PRD §X.X
-   - **수정안**: [구체적 수정 내용]
+### 3.2 Weaknesses
+- [specific weakness with example from PRD]
 
-### 5.2 수정 권장 (Recommended)
-> 품질 향상을 위해 수정이 권장되는 항목
+### 3.3 Critical Issues
+> Issues that block correct auto-generation or cause the Design Job to make wrong assumptions.
 
-1. **[조치 1]**
-   - **문제**: [설명]
-   - **위치**: PRD §X.X
-   - **수정안**: [구체적 수정 내용]
-
-### 5.3 장기 개선 (Long-term)
-> 다음 프로젝트에 반영할 개선점
-
-1. **[개선 1]**: [설명]
+- [ ] **[Issue type]**: [description]
+  - **Location**: PRD §X.X
+  - **Pipeline impact**: [which stage is affected and how]
+  - **Recommended fix**: [specific action]
 
 ---
 
-## 6. PRD-산출물 영향 분석
+## 4. Detailed Analysis
 
-### 6.1 Design Job 영향 예측
+### 4.1 Specification Depth Analysis
 
-**UI 설계 (ui-spec.json):**
-- ⚠️ **리스크**: [PRD 이슈로 인한 예상 문제]
-- ✅ **완화**: [완화 방안 또는 PRD 수정 권장사항]
+**FR depth distribution:**
+- Full spec: X / N (X%)
+- Partial spec: X / N (X%)
+- One-liner: X / N (X%)
+- Title only: X / N (X%)
 
-**시스템 설계 (system-design.md):**
-- ⚠️ **리스크**: [PRD 이슈로 인한 예상 문제]
-- ✅ **완화**: [완화 방안 또는 PRD 수정 권장사항]
+**Depth cap applied?** Yes/No (threshold: 50% or 80% title-only)
 
-### 6.2 Code Job 영향 예측
+**Title-only FRs that need expansion:**
+- [ ] FR-XX: "[title]" — missing: [what needs to be specified]
 
-**구현 범위:**
-- ⚠️ **리스크**: PRD 불명확으로 인한 과소/과잉 구현 가능성
-- ✅ **완화**: [완화 방안]
+### 4.2 Clarity Analysis
+
+**Ambiguous expressions found:**
+| Location | Expression | Issue | Recommended fix |
+|----------|-----------|-------|----------------|
+| §X.X | "handle appropriately" | No definition of "appropriate" | Define specific behavior |
+
+**Under-specified items:**
+| Location | Item | Missing information |
+|----------|------|-------------------|
+| §X.X | "cart feature" | Add/remove behavior, quantity limits, persistence |
+
+### 4.3 Content Gaps
+
+**Missing text:**
+- [ ] [UI element]: [location] — placeholder used instead of actual text
+
+**Missing links:**
+- [ ] [button/link]: [location] — URL not provided
+
+**Missing data definitions:**
+- [ ] [data item]: [location] — fields/validation not defined
+
+### 4.4 Constraint Analysis
+
+**Business constraints:**
+- [stated constraints summary]
+
+**Tech stack (if present):**
+- Accuracy: [accurate / issues found]
+- Issues: [list any version conflicts or contradictions]
 
 ---
 
-## 7. 부록: PRD 체크리스트 결과
+## 5. Recommended Actions
 
-### 완전성 체크
-- [X] 한 줄 요약 존재
-- [X] 목표/비목표 명시
-- [ ] 사용자 시나리오 존재
-- [X] 기능 요구사항 나열
-- ...
+### 5.1 Critical (must fix before Design Job)
+1. **[action]**
+   - **Problem**: [description]
+   - **Location**: PRD §X.X
+   - **Fix**: [specific content to add/change]
 
-### 명확성 체크
-- [ ] 모호한 표현 없음 (X개 발견)
-- [X] 용어 일관성
-- ...
+### 5.2 Recommended (quality improvement)
+1. **[action]**
 
-(이하 체크리스트 전체 결과)
+### 5.3 Long-term (for future PRDs)
+1. **[improvement]**
 
 ---
 
-## 8. 평가자 코멘트
+## 6. Pipeline Impact Prediction
 
-[전반적 인상, 특기사항, 기획자에게 전달할 피드백 등]
+### Design Job
+- **System Design risk**: [prediction based on PRD gaps]
+- **UI Design risk**: [prediction based on PRD gaps]
+
+### Code Job
+- **Implementation risk**: [over/under-implementation likelihood]
 
 ---
 
-**평가 도구**: Ant CLI PRD Evaluation Guide v1.0  
-**평가 완료**: YYYY-MM-DD HH:MM
+**Evaluation tool**: Ant CLI PRD Rubric v2.0
+**Completed**: YYYY-MM-DD HH:MM
 ```
 
 ---
 
-## 7. 사용 방법
+## 7. Usage
 
-### 7.1 평가 프로세스
+### 7.1 Evaluation Process
 
 ```
-1. PRD 파일 읽기
+1. Read PRD
    └─ inputs/sources/prd.md
 
-2. 필수 섹션 체크
-   └─ 체크리스트 4.1 사용
+2. Required sections check
+   └─ Checklist §4.1
 
-3. 관점별 세부 평가
-   ├─ 완전성 분석 (체크리스트 4.1, 4.2)
-   ├─ 명확성 분석 (체크리스트 4.4)
-   ├─ 구조성 평가
-   ├─ 콘텐츠 충실도 분석 (체크리스트 4.2)
-   ├─ 제약사항 분석 (체크리스트 4.3)
-   └─ 추적성 평가 (체크리스트 4.5)
+3. Specification depth assessment
+   └─ Classify each FR: full spec / partial / one-liner / title-only
+   └─ Calculate depth distribution and apply cap if needed
 
-4. 점수 산정
-   └─ 등급 기준 (5.3) 참조
+4. Category-by-category evaluation
+   ├─ Specification Depth (§4.2)
+   ├─ Clarity — ambiguity + under-specification (§4.4)
+   ├─ Scope Definition (§4.1 goals/non-goals/scenarios/NFRs)
+   ├─ Content Fidelity (§4.3)
+   ├─ Structure (§4.6 references + section organization)
+   └─ Constraints — business + tech stack accuracy if present (§4.5)
 
-5. 보고서 작성
-   └─ 템플릿 6 사용
+5. Score assignment
+   └─ Use scoring anchors (§5.3) — match evidence to the closest anchor
 
-6. 조치사항 도출
-   └─ 우선순위별 분류
+6. Report generation
+   └─ Template §6
 ```
 
-### 7.2 평가 시점
+### 7.2 Evaluation Timing
 
-**권장 평가 시점:**
-1. **PRD 작성 완료 직후** (Design Job 실행 전)
-   - 목적: 치명적 이슈 조기 발견 및 수정
-   - 결과: PRD 수정 후 재평가
+**Recommended checkpoints:**
+1. **After PRD authoring** (before Design Job): catch critical gaps early.
+2. **After Design Job**: assess how PRD gaps affected auto-generated output.
+3. **After Code Job**: trace quality through the full pipeline.
 
-2. **Design Job 완료 후**
-   - 목적: PRD 불완전성이 산출물에 미친 영향 분석
-   - 결과: PRD 개선점 및 프롬프트 개선점 도출
+### 7.3 Scoring Discipline
 
-3. **Code Job 완료 후**
-   - 목적: PRD → 설계 → 구현 체인의 품질 추적
-   - 결과: 전체 파이프라인 개선점 도출
+**When in doubt, score lower.** The purpose of this rubric is to surface PRD deficiencies before they propagate through the pipeline. An inflated score harms the author by concealing fixable gaps.
 
-### 7.3 평가 도구 활용
-
-**자동화 가능 항목:**
-- 필수 섹션 존재 여부 (정규식/구문 분석)
-- 파일 참조 유효성 (파일 존재 확인)
-- 모호한 표현 탐지 (키워드 매칭)
-- 용어 일관성 (NLP 기반)
-
-**수동 평가 필요 항목:**
-- 요구사항 커버리지 (도메인 지식 필요)
-- 콘텐츠 완전성 (스크린샷 대조 필요)
-- 제약사항 적절성 (기술적 판단 필요)
-
-### 7.4 평가 결과 활용
-
-**기획자 피드백:**
-- 평가 보고서 §5 (권장 조치사항) 전달
-- 구체적 예시 포함하여 설명
-- PRD 작성 가이드 개선에 반영
-
-**Ant 프로그램 개선:**
-- 반복적으로 발견되는 PRD 문제 → 프롬프트 강건성 개선
-- PRD 템플릿 개선 (`cli/init.ts`)
-- PRD 검증 도구 개발 (자동화)
-
-**설계/구현 품질 추적:**
-- PRD 점수와 산출물 품질 상관관계 분석
-- 낮은 PRD 점수 → 설계/구현 단계 주의 표시
+**Rules:**
+- Every score must cite specific evidence (or specific absence of evidence).
+- "Section exists" is not sufficient for credit — depth and accuracy matter.
+- Do not award partial credit for placeholder content ("TBD", "TODO", "appropriate text").
+- Count ambiguous expressions and under-specified items explicitly — do not estimate.
+- Apply the depth cap mechanically: count title-only FRs, calculate percentage, cap if threshold met.
 
 ---
 
-## 8. 예시: 우수 PRD vs 불량 PRD
+## 8. Examples
 
-### 8.1 우수 PRD 예시 (A등급)
+### 8.1 Good PRD (A grade)
 
 ```markdown
-# OGF 홈페이지 - PRD
+# OGF Homepage - PRD
 
-> 콘텐츠(텍스트/데이터) + 기능 요구사항 + 기술 스택
+> Content (text/data) + Functional requirements
 
-## 1) 한 줄 요약
-OpenGame Foundation(OGF) 랜딩 페이지(단일 페이지)를 레퍼런스 스크린샷 기반으로 구현
+## 1) One-line Summary
+Build the OpenGame Foundation (OGF) landing page (single page) based on reference screenshots.
 
-## 2) 목표/비목표
-- **목표**: OGF 브랜드 소개, 에코시스템 설명, 소셜 미디어 유입
-- **비목표**: CMS, 관리자, 다국어, 회원 기능 ❌
+## 2) Goals / Non-goals
+- **Goals**: Introduce OGF brand, explain ecosystem, drive social media traffic
+- **Non-goals**: CMS, admin panel, i18n, membership features ❌
 
-## 3) 콘텐츠
+## 3) Content
 
 ### Hero
-- Headline: `Open Ownership` / `Open World` (2줄)
+- Headline: `Open Ownership` / `Open World` (2 lines)
 - Sub: `Ownership is distributed. Worlds are built together.`
 
-### Technology (외부 링크 - 정확히 사용!)
-| 카드 | Learn more 링크 |
+### Technology (External links — use exactly!)
+| Card | Learn more link |
 |------|----------------|
 | CROSS Mainnet | **https://crossscan.io** |
 | CROSS Protocol | **https://docs.crosstoken.io/** |
 
-⚠️ Learn more 버튼 클릭 시 위 링크로 정확히 연결되어야 함!
+⚠️ "Learn more" buttons must navigate to the exact URLs above.
 
-## 4) 요구사항 (Functional)
-- 단일 페이지(SPA), 섹션 순서: Hero → About → Ecosystem → ...
-- GNB: 상단 고정, 메뉴 클릭 시 스무스 스크롤
-- Ecosystem: 3개 카드, hover 시 설명 표시
+## 4) Requirements (Functional)
+- Single page (SPA), section order: Hero → About → Ecosystem → ...
+- GNB: fixed top, smooth scroll on menu click
+- Ecosystem: 3 cards, hover reveals description overlay
 
-## 5) 비기능
-- 성능: 이미지 최적화, 초기 로딩 3초 이내
-- 접근성: WCAG 2.1 AA 준수, 키보드 네비게이션
+## 5) Non-functional
+- Performance: image optimization, initial load < 3 seconds
+- Accessibility: WCAG 2.1 AA, keyboard navigation
 
-## 6) 기술 스택 (필수)
+## 6) Tech Stack (optional — engineer preference)
 
-| 라이브러리 | 버전 | 비고 |
-|-----------|------|------|
-| Tailwind CSS | **v3.x** (v4 사용 금지) | v4는 설정 방식 상이 |
+| Library | Version | Notes |
+|---------|---------|-------|
+| Tailwind CSS | **v3.x** (v4 prohibited) | v4 has incompatible config |
 | React | 18.x | |
-| Next.js | 14.x | App Router 사용 |
+| Next.js | 14.x | App Router |
 ```
 
-**강점:**
-- ✅ 모든 필수 섹션 존재
-- ✅ 외부 링크 정확히 명시
-- ✅ 기술 스택 버전 및 제약사항 명확
-- ✅ 목표/비목표 구분
-- ✅ 정량적 비기능 요구사항 (3초)
+**Strengths:**
+- All required sections present
+- External links exact
+- Tech preferences accurate and internally consistent (optional, but correctly specified)
+- Goals/non-goals clearly separated
+- Quantitative NFR (3 seconds)
+
+**Weaknesses:**
+- FR section uses one-liners (behavior described, but conditions/outcomes sparse)
+- No user scenario / flow
 
 ---
 
-### 8.2 불량 PRD 예시 (C등급)
+### 8.2 Poor PRD (D grade)
 
 ```markdown
-# 프로젝트 - PRD
+# Project - PRD
 
-## 목표
-홈페이지 만들기
+## Goal
+Build a homepage
 
-## 기능
-- 메인 페이지
-- 소개 섹션
-- 연락처
+## Features
+- Main page
+- About section
+- Contact
 
-## 기술
+## Tech
 - React
-- 적절한 스타일링 라이브러리
+- Appropriate styling library
 ```
 
-**문제점:**
-- ❌ 한 줄 요약 없음
-- ❌ 비목표 없음
-- ❌ 콘텐츠(텍스트) 전혀 없음
-- ❌ 외부 링크 없음
-- ❌ 요구사항이 매우 추상적 ("메인 페이지"가 뭘 의미?)
-- ❌ 비기능 요구사항 없음
-- ❌ 기술 스택 버전 없음, "적절한" 등 모호한 표현
-- ❌ 참조 파일(스크린샷) 명시 없음
+**Problems:**
+- No one-line summary
+- No non-goals
+- No content (zero UI text)
+- No external links
+- Requirements are title-only ("Main page" means what exactly?)
+- No non-functional requirements
+- "Appropriate styling library" — ambiguous
+- No reference files
+- Design Job cannot produce any reliable output from this
 
 ---
 
-## 9. PRD 작성 가이드 (기획자용)
+## 9. PRD Writing Guide (for authors)
 
-> 이 섹션은 기획자에게 배포할 수 있는 간단한 가이드입니다.
+### 9.1 Writing Principles
 
-### 9.1 PRD 작성 원칙
+1. **Be specific**
+   - ❌ "Fast loading"
+   - ✅ "Initial load < 3 seconds"
 
-1. **구체적으로 작성하세요**
-   - ❌ "빠르게 로딩"
-   - ✅ "초기 로딩 3초 이내"
-
-2. **실제 콘텐츠를 포함하세요**
-   - ❌ "적절한 헤드라인 표시"
+2. **Include actual content**
+   - ❌ "Display appropriate headline"
    - ✅ "Headline: `Open Ownership`"
 
-3. **외부 링크는 정확히 명시하세요**
-   - ❌ "Learn more 버튼"
-   - ✅ "Learn more 버튼 클릭 시 `https://docs.example.com` 이동"
+3. **Specify external links exactly**
+   - ❌ "Learn more button"
+   - ✅ "Learn more button → `https://docs.example.com`"
 
-4. **기술 스택은 버전과 함께 명시하세요**
-   - ❌ "React 사용"
-   - ✅ "React 18.x, Tailwind CSS v3.x (v4 사용 금지)"
+4. **Describe features at specification level**
+   - ❌ "Product management"
+   - ✅ "Admin creates product: name (required, max 100 chars), price (required, >= 0). Created in 'pending' state."
 
-5. **하지 않을 것도 명시하세요**
-   - "비목표" 섹션에 이번 단계에서 제외할 기능 명시
+5. **State what you will NOT build**
+   - Add a "Non-goals" section listing features excluded from this iteration.
 
-### 9.2 PRD 필수 섹션 체크리스트
+6. **Tech stack is optional — but if you include it, be precise**
+   - ❌ "React" (which version?)
+   - ✅ "React 18.x, Tailwind CSS v3.x (v4 prohibited)"
+   - Omitting tech stack entirely is perfectly fine — the system auto-selects.
 
-작성 후 다음 항목을 자가 점검하세요:
+### 9.2 Self-check Checklist
 
-- [ ] **한 줄 요약**: 프로젝트를 1-2 문장으로 설명
-- [ ] **목표/비목표**: 달성할 것과 하지 않을 것 구분
-- [ ] **콘텐츠**: UI에 표시될 모든 텍스트, 링크, 데이터
-- [ ] **요구사항**: 모든 주요 기능 나열
-- [ ] **비기능 요구사항**: 성능, 보안, 접근성
-- [ ] **기술 스택**: 프레임워크, 라이브러리, 버전
-- [ ] **참조 파일**: 스크린샷 경로 명시
+After writing, verify:
 
-### 9.3 흔한 실수
+- [ ] **One-line summary**: project described in 1-2 sentences
+- [ ] **Goals / Non-goals**: both what you want AND what you exclude
+- [ ] **User scenario**: at least one end-to-end flow
+- [ ] **Content**: all UI text, links, data — actual values, not placeholders
+- [ ] **Requirements**: each feature has behavior, conditions, outcomes
+- [ ] **Non-functional**: performance, security, accessibility with numbers
+- [ ] **References**: screenshot paths specified (if applicable)
 
-| 실수 | 올바른 방법 |
-|------|-----------|
-| "TODO: 나중에 결정" | PRD 작성 시점에 결정하고 명시 |
-| "적절히 처리" | 구체적 기준 제시 (예: "3초 이내") |
-| "최신 버전 사용" | 정확한 버전 명시 (예: "18.x") |
-| "소셜 링크 추가" | 실제 URL 명시 (예: "https://x.com/...") |
-| 기술 용어 혼용 | 용어 통일 (예: "사용자" vs "유저" 중 선택) |
+### 9.3 Common Mistakes
+
+| Mistake | Correct approach |
+|---------|-----------------|
+| "TODO: decide later" | Decide and specify now |
+| "Handle appropriately" | Define specific criteria (e.g., "respond within 3 seconds") |
+| "Latest version" | Specify exact version (e.g., "18.x") or omit tech stack entirely |
+| "Social links" | Provide actual URLs (e.g., "https://x.com/...") |
+| Mixed terminology | Pick one term per concept and use consistently |
+| Feature titles without details | Add behavior, conditions, and outcomes for each feature |
 
 ---
 
-## 10. 부록
+## 10. Appendix
 
-### 10.1 PRD 템플릿 (기획자용)
+### 10.1 PRD Template (for authors)
 
 ```markdown
 <!-- ant:template -->
-<!-- 작성 후 이 줄(ant:template)을 삭제하세요. -->
+<!-- Delete the ant:template line after filling in. -->
 
-# {프로젝트명} - PRD
+# {Project Name} - PRD
 
-> 콘텐츠(텍스트/데이터) + 기능 요구사항 + 기술 스택
+> Content (text/data) + Functional requirements
 
-## 1) 한 줄 요약
-- [프로젝트를 1-2 문장으로 설명]
+## 1) One-line Summary
+- [Describe the project in 1-2 sentences]
 
-## 2) 목표/비목표
-- **목표**: [달성하려는 것]
-- **비목표**: [이번에 하지 않는 것] ❌
+## 2) Goals / Non-goals
+- **Goals**: [What to achieve]
+- **Non-goals**: [What to exclude] ❌
 
-## 3) 콘텐츠 (텍스트/카피)
+## 3) User Scenarios
+### Primary flow
+1. User [action] → System [response]
+2. User [action] → System [response]
+3. ...
 
-### [섹션명]
-- [실제 표시될 텍스트]
-- [링크]: [정확한 URL]
+## 4) Content (Text/Data)
 
-## 4) 요구사항 (Functional)
-- [기능 1]: [구체적 설명]
-- [기능 2]: [구체적 설명]
+### [Section name]
+- [Actual text to display]
+- [Link]: [exact URL]
 
-## 5) 비기능 요구사항 (Non-Functional)
-- **성능**: [정량적 목표]
-- **접근성**: [표준/요구사항]
-- **보안**: [요구사항]
+## 5) Requirements (Functional)
+- **[Feature 1]**: [behavior] when [condition] → [outcome]
+- **[Feature 2]**: [behavior] when [condition] → [outcome]
 
-## 6) 기술 스택 (필수)
+## 6) Non-functional Requirements
+- **Performance**: [quantitative target]
+- **Accessibility**: [standard/requirement]
+- **Security**: [requirement]
 
-| 라이브러리 | 버전 | 비고 |
-|-----------|------|------|
-| [라이브러리] | [X.x] | [제약사항] |
+## 7) Tech Stack (optional — only if you have a preference)
 
-## 7) 제약/리스크
-- [알려진 제약사항]
-- [위험 요소]
+| Library | Version | Notes |
+|---------|---------|-------|
+| [library] | [X.x] | [constraint] |
 
-## 8) 참조 파일
-- 스크린샷: `inputs/references/screens/[파일명].png`
-- 에셋: `inputs/assets/[경로]`
+## 8) Constraints / Risks
+- [Known constraints]
+- [Risk factors]
+
+## 9) References
+- Screenshots: `inputs/references/screens/[filename].png`
+- Assets: `inputs/assets/[path]`
 ```
 
-### 10.2 관련 문서
+### 10.2 Related Documents
 
-- **UI Design Evaluation Guide**: `docs/rubric/UI_DESIGN_EVALUATION_GUIDE.md`
-  - PRD → UI 문서 생성 품질 평가
-- **System Design Rubric**: `docs/rubric/system-design-rubric.md`
-  - PRD → 시스템 설계 품질 평가
-- **Code Job Evaluation Guide**: `docs/rubric/CODE_JOB_EVALUATION_GUIDE.md`
-  - PRD → 코드 생성 품질 평가
-
-### 10.3 자동화 도구 (향후 개발)
-
-**PRD Linter (향후 구현 예정):**
-```bash
-ant prd lint
-# 출력: 필수 섹션 체크, 모호한 표현 탐지, 파일 참조 검증
-```
-
-**PRD Validator:**
-```bash
-ant prd validate
-# 출력: 등급 및 점수, 개선 권장사항
-```
+- **System Design Rubric**: `docs/rubric/SYSTEM-DESIGN-RUBRIC.md`
+- **UI Design Rubric**: `docs/rubric/UI-DESIGN_RUBRIC.md`
+- **Code Rubric**: `docs/rubric/CODE-RUBRIC.md`
 
 ---
 
-**문서 버전**: 1.0  
-**최종 수정**: 2026-01-13  
-**작성자**: Ant CLI Team
+**Document version**: 2.0
+**Last updated**: 2026-04-06
+**Author**: Ant CLI Team
