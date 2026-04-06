@@ -144,6 +144,11 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set({ mainView: mode });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, mode);
 
+    // Agents -> Code IDE 전환 시 iframe 로딩 상태 리셋 (iframe이 리마운트되므로)
+    if (mode === 'codeIde' && prev !== 'codeIde') {
+      set({ ideFrameLoaded: false } as any);
+    }
+
     // IDE -> Agents 전환 시 stale 데이터 refresh
     if (prev === 'codeIde' && mode === 'agents') {
       const state = get();
@@ -185,7 +190,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   reloadIdeFrame: () => {
-    set({ ideReloadTimestamp: Date.now() } as any);
+    set({ ideReloadTimestamp: Date.now(), ideFrameLoaded: false } as any);
   },
 
   selectMainPanelTab: (tab) => {

@@ -4,6 +4,14 @@ import { WorkspaceResolver } from '../../../../../infrastructure/workspace/Works
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 
+const TREE_EXCLUDE = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  '__pycache__',
+  'codebase',
+]);
+
 /**
  * FileOperationService
  * 
@@ -58,7 +66,7 @@ export class FileOperationService {
 
       // ✅ Sort: directories first, then files; both by name
       const sorted = items
-        .filter(d => !d.name.startsWith('.'))
+        .filter(d => !d.name.startsWith('.') && !TREE_EXCLUDE.has(d.name))
         .sort((a, b) => {
           const ad = a.isDirectory();
           const bd = b.isDirectory();
