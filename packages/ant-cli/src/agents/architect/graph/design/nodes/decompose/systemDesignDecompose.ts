@@ -616,6 +616,7 @@ export async function decomposeSystemDesign(
     jobTiming: finalJobTiming,
     tokenUsage: (state as any).tokenUsage,
     estimatingTokenUsage,
+    userLanguage: state.context.userLanguage,
   });
 
   // Update Kanban (tasks in queue, no in-progress yet)

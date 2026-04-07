@@ -669,6 +669,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   uiDesignSource: state.uiDesignSource,
                   figmaConfig: state.figmaConfig,
                   detectionReport: state.detectionReport,
+                  userLanguage: state.context.userLanguage,
                   ...(checkpoint.interruption ? {
                     interruption: {
                       reason: checkpoint.interruption.reason,

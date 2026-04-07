@@ -206,6 +206,7 @@ export async function decomposeSpec(
     estimatingTokenUsage: (state as any).tokenUsage,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
+    userLanguage: state.context.userLanguage,
   });
 
   return {

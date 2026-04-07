@@ -137,6 +137,10 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.jobTiming = (session.state as any).jobTiming;
         }
         
+        if ((session.state as any).userLanguage) {
+          initial.context.userLanguage = (session.state as any).userLanguage;
+        }
+        
       } else if (session?.state && (session.state as any).awaitingDetectClarify) {
         // ✅ Detect clarify resume: user chose between spec and system-design
         console.log(`🔄 [DesignRunner] Restoring awaitingDetectClarify state from session`);
@@ -150,6 +154,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.chatSource = session.state.chatSource;
         if ((session.state as any).prd) {
           initial.prd = (session.state as any).prd;
+        }
+        if ((session.state as any).userLanguage) {
+          initial.context.userLanguage = (session.state as any).userLanguage;
         }
       } else if (session?.state && (session.state as any).awaitingClarify) {
         // ✅ Spec clarify resume: restore conversation and awaitingClarify flag
@@ -171,6 +178,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if ((session.state as any).prd) {
           initial.prd = (session.state as any).prd;
         }
+        if ((session.state as any).userLanguage) {
+          initial.context.userLanguage = (session.state as any).userLanguage;
+        }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
         // ✅ FIX: Restore directive from early-interrupted session (triage/detectEnv stage)
         // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
@@ -184,6 +194,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if ((session.state as any).detectionReport && !initial.detectionReport) {
           console.log(`🔄 [DesignRunner] Restoring detectionReport from session`);
           initial.detectionReport = (session.state as any).detectionReport;
+        }
+        if ((session.state as any).userLanguage) {
+          initial.context.userLanguage = (session.state as any).userLanguage;
         }
       }
     } catch (err) {
@@ -231,6 +244,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
               ...session.state,
               directive: initial.directive,
               overrideDirective: initial.overrideDirective,
+              userLanguage: initial.context.userLanguage,
             }
           }
         );
@@ -334,6 +348,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
                 detectionReport: state.detectionReport,
                 planText: state.planText,
                 conversationHistory: state.conversationHistory || [],
+                userLanguage: state.context.userLanguage,
               }
             }
           );
