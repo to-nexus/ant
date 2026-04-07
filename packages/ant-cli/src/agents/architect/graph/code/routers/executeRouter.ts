@@ -174,8 +174,17 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     // Verification tasks: route back to plan for final build/test/devServer check.
     // verify/base.md states: "The diagnostic phase will re-verify after your changes."
     if (currentTask?.type === 'verification') {
+      const hasPlan = !!state.planText?.trim();
+      const madeFileChanges = (state as any)._executeModifiedFiles === true;
+
+      if (hasPlan && !madeFileChanges) {
+        console.warn(`⚠️  [Router] Execute signaled done but made no file changes despite non-empty plan → checkTaskStatus`);
+        return 'checkTaskStatus';
+      }
+
       console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (final build/test/devServer verification)\n`);
       (state as any)._awaitingFinalVerify = true;
+      (state as any)._executeModifiedFiles = false;
       return 'plan';
     }
     console.log(`\n🎯 [Router] ✅ TASK DONE → checkTaskStatus\n`);

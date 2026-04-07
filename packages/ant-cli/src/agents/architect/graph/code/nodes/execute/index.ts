@@ -508,6 +508,7 @@ export async function execute(
         state._verificationTracker.testPassed = false;
         state._verificationTracker.devServerPassed = false;
       }
+      (state as any)._executeModifiedFiles = true;
     }
 
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
