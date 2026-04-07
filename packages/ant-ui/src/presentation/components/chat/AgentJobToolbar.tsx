@@ -69,9 +69,11 @@ export function AgentJobToolbar({
   }, [showJobMenu, showAgentMenu]);
 
   useEffect(() => {
-    if (isRunning && showJobMenu) setShowJobMenu(false);
-    if (isRunning && showAgentMenu) setShowAgentMenu(false);
-  }, [isRunning, showJobMenu, showAgentMenu]);
+    if (isRunning) {
+      setShowJobMenu(false);
+      setShowAgentMenu(false);
+    }
+  }, [isRunning]);
 
   const handleJobSelect = (jobValue: string) => {
     setSelectedJobType(jobValue as 'design' | 'code' | 'learn' | 'plan' | 'visual');
