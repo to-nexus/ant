@@ -372,6 +372,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     state._executeCallIndex = 0;
     state._finalTaskLoopCount = 0;
     state.conversationHistory = [];
+    (state as any)._executeModifiedFiles = false;
   } else {
     // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
     // Sequential context: pop next task from queue

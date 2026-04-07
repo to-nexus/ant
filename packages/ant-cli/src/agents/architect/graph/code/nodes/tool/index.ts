@@ -93,6 +93,7 @@ async function executeToolByName(
           state._verificationTracker.testPassed = false;
           state._verificationTracker.devServerPassed = false;
         }
+        if (!state._planExploring) (state as any)._executeModifiedFiles = true;
         break;
       case 'edit_file':
         result = await handleEditFile(state, args as any);
@@ -102,6 +103,7 @@ async function executeToolByName(
           state._verificationTracker.testPassed = false;
           state._verificationTracker.devServerPassed = false;
         }
+        if (!state._planExploring) (state as any)._executeModifiedFiles = true;
         break;
       case 'mkdir':
         result = await handleMkdir(state, args as any);
@@ -154,6 +156,7 @@ async function executeToolByName(
           state._verificationTracker.testPassed = false;
           state._verificationTracker.devServerPassed = false;
         }
+        if (!state._planExploring) (state as any)._executeModifiedFiles = true;
         break;
       case 'figma_get_design_context':
       case 'figma_get_screenshot':
