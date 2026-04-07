@@ -35,6 +35,11 @@ import { extractFilesFromViolations, formatViolations } from "../shared/violatio
 import { extractFilesFromPlanToolLoop, computeBudgetFromPlanText } from "./utils";
 import { detectTestFilesFromDisk } from "./testFileDetector";
 
+function isTypeScriptProject(state: ArchitectGraphState): boolean {
+  const lang = (state.profile?.language || (state as any).detectionReport?.profile?.language || '').toLowerCase();
+  return lang.includes('typescript');
+}
+
 /**
  * Strip markdown code fences from a string if present.
  * Handles: ```json\n...\n```, ```\n...\n```, etc.
@@ -305,6 +310,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         state._verificationTracker.buildAttempted = false;
         state._verificationTracker.testAttempted = false;
         state._verificationTracker.devServerAttempted = false;
+        state._verificationTracker.typecheckAttempted = false;
       }
       const _retryAttempt = (state.retries || 0) + 1;
       const _retryMax = state.maxRetries || 3;
@@ -357,6 +363,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       buildAttempted: false,
       testAttempted: false,
       devServerAttempted: false,
+      typecheckPassed: false,
+      typecheckAttempted: false,
+      typecheckRequired: isTypeScriptProject(state),
     };
 
     // Reset execute state for potential next fix cycle
@@ -395,6 +404,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // ✅ Initialize verification tracker for verification tasks only.
     // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
     if (nextTask.type === 'verification') {
+      const tsProject = isTypeScriptProject(state);
       state._verificationTracker = {
         buildPassed: false,
         testPassed: false,
@@ -404,8 +414,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         buildAttempted: false,
         testAttempted: false,
         devServerAttempted: false,
+        typecheckPassed: false,
+        typecheckAttempted: false,
+        typecheckRequired: tsProject,
       };
-      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, devServerRequired=${state._verificationTracker.devServerRequired}`);
+      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, devServerRequired=${state._verificationTracker.devServerRequired}, typecheckRequired=${tsProject}`);
     }
 
     // ✅ Log task_start event to debug/logs/

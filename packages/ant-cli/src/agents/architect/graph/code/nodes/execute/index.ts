@@ -503,8 +503,10 @@ export async function execute(
         : { source: 'execute' as const, filePaths: merged, files: [], stats: { filesLoaded: merged.length, estimatedTokens: 0 } };
 
       if (state._verificationTracker) {
+        state._verificationTracker.typecheckPassed = false;
         state._verificationTracker.buildPassed = false;
         state._verificationTracker.testPassed = false;
+        state._verificationTracker.devServerPassed = false;
       }
     }
 

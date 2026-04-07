@@ -35,6 +35,7 @@ import {
   isBuildCommand,
   isTestCommand,
   isDevServerCommand,
+  isTypecheckCommand,
 } from '../constants';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -294,26 +295,63 @@ Feature tasks produce source files only — build verification happens in the fi
 Continue writing code files and output <done>true</done> when complete.`);
   }
 
-  // Plan tool loop guard: block re-runs of failed verification commands.
-  // In the plan phase there are no code-editing tools, so re-running a failed
-  // build/test/dev-server without code changes produces identical failures.
+  // Plan tool loop guard: block re-runs of verification commands.
+  // Plan phase has no code-editing tools, so re-running ANY already-attempted
+  // command (passed or failed) produces identical results.
   const tracker = state._verificationTracker;
   if (state._planExploring && tracker) {
-    if (isBuildCommand(command) && tracker.buildAttempted && !tracker.buildPassed) {
-      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked repeated build command: ${command}`);
-      return makeRejectionOutput(command,
-        `BLOCKED: build command already executed and failed in this diagnostic cycle.`);
+    // Typecheck guard
+    if (isTypecheckCommand(command) && tracker.typecheckAttempted) {
+      const msg = tracker.typecheckPassed
+        ? 'ALREADY PASSED: tsc --noEmit already succeeded in this diagnostic cycle. Proceed to the next verification step.'
+        : 'BLOCKED: typecheck already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.';
+      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked typecheck: ${command} (passed=${tracker.typecheckPassed})`);
+      return makeRejectionOutput(command, msg);
     }
-    if (isTestCommand(command) && tracker.testAttempted && !tracker.testPassed) {
-      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked repeated test command: ${command}`);
+
+    // tsc-first order enforcement: TS projects must run tsc before build
+    if (isBuildCommand(command) && tracker.typecheckRequired && !tracker.typecheckAttempted) {
+      console.warn(`   ⛔ [RunCommand] Order guard: build blocked — tsc --noEmit must run first: ${command}`);
       return makeRejectionOutput(command,
-        `BLOCKED: test command already executed and failed in this diagnostic cycle.`);
+        'BLOCKED: Run tsc --noEmit first for comprehensive error discovery before the build command.');
     }
-    if (isDevServerCommand(command) && tracker.devServerAttempted && !tracker.devServerPassed) {
-      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked repeated dev server command: ${command}`);
+
+    // Cross-guard: tsc failed → build will fail with same type errors
+    if (isBuildCommand(command) && tracker.typecheckAttempted && !tracker.typecheckPassed) {
+      console.warn(`   ⛔ [RunCommand] Cross-guard: build blocked — typecheck failed: ${command}`);
       return makeRejectionOutput(command,
-        `BLOCKED: dev server command already executed and failed in this diagnostic cycle.`);
+        'BLOCKED: type check (tsc --noEmit) failed. Build embeds type checking internally and will fail with the same errors. Produce the remediation plan from tsc output.');
     }
+
+    // Build guard
+    if (isBuildCommand(command) && tracker.buildAttempted) {
+      const msg = tracker.buildPassed
+        ? 'ALREADY PASSED: build already succeeded in this diagnostic cycle. Proceed to the next verification step.'
+        : 'BLOCKED: build already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.';
+      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked build: ${command} (passed=${tracker.buildPassed})`);
+      return makeRejectionOutput(command, msg);
+    }
+
+    // Test guard
+    if (isTestCommand(command) && tracker.testAttempted) {
+      const msg = tracker.testPassed
+        ? 'ALREADY PASSED: test already succeeded in this diagnostic cycle. Proceed to the next verification step.'
+        : 'BLOCKED: test already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.';
+      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked test: ${command} (passed=${tracker.testPassed})`);
+      return makeRejectionOutput(command, msg);
+    }
+
+    // Dev server guard
+    if (isDevServerCommand(command) && tracker.devServerAttempted) {
+      const msg = tracker.devServerPassed
+        ? 'ALREADY PASSED: dev server already verified in this diagnostic cycle. Proceed to produce the remediation plan.'
+        : 'BLOCKED: dev server already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.';
+      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked dev server: ${command} (passed=${tracker.devServerPassed})`);
+      return makeRejectionOutput(command, msg);
+    }
+
+    // Mark as attempted
+    if (isTypecheckCommand(command)) tracker.typecheckAttempted = true;
     if (isBuildCommand(command)) tracker.buildAttempted = true;
     if (isTestCommand(command)) tracker.testAttempted = true;
     if (isDevServerCommand(command)) tracker.devServerAttempted = true;

@@ -47,7 +47,7 @@ import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient'
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
 import { cleanFileContentFromResponse } from '../../utils/responseCleaners';
-import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY, isBuildCommand, isTestCommand, isDevServerCommand } from './constants';
+import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY, isBuildCommand, isTestCommand, isDevServerCommand, isTypecheckCommand } from './constants';
 import { CommandExecutionResult } from './types';
 import {
   handleReadFile,
@@ -88,6 +88,7 @@ async function executeToolByName(
       case 'delete_file':
         result = await handleDeleteFile(state, args as any);
         if (state._verificationTracker) {
+          state._verificationTracker.typecheckPassed = false;
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
           state._verificationTracker.devServerPassed = false;
@@ -96,6 +97,7 @@ async function executeToolByName(
       case 'edit_file':
         result = await handleEditFile(state, args as any);
         if (state._verificationTracker) {
+          state._verificationTracker.typecheckPassed = false;
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
           state._verificationTracker.devServerPassed = false;
@@ -116,6 +118,9 @@ async function executeToolByName(
 
         const tracker = state._verificationTracker;
         if (tracker) {
+          if (isTypecheckCommand(commandResult.command)) {
+            tracker.typecheckPassed = commandResult.success;
+          }
           if (isBuildCommand(commandResult.command)) {
             tracker.buildPassed = commandResult.success;
           }
@@ -144,6 +149,7 @@ async function executeToolByName(
       case 'create_file':
         result = await handleCreateFile(state, args as any);
         if (state._verificationTracker) {
+          state._verificationTracker.typecheckPassed = false;
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
           state._verificationTracker.devServerPassed = false;
@@ -224,6 +230,7 @@ async function executeToolByName(
         exitCode: -1
       };
       if (state._verificationTracker) {
+        if (isTypecheckCommand(cmdArgs.command)) state._verificationTracker.typecheckPassed = false;
         if (isBuildCommand(cmdArgs.command)) state._verificationTracker.buildPassed = false;
         if (isTestCommand(cmdArgs.command)) state._verificationTracker.testPassed = false;
         if (isDevServerCommand(cmdArgs.command)) state._verificationTracker.devServerPassed = false;
