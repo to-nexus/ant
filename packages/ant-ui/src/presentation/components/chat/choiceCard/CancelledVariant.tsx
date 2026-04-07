@@ -101,6 +101,14 @@ export function CancelledVariant({ content, messageId }: VariantProps) {
     }
   };
 
+  const subtitle = (() => {
+    if (reason) {
+      const reasonSubtitle = t(`cancelled.subtitles.${reason}`, { defaultValue: '' });
+      if (reasonSubtitle) return reasonSubtitle;
+    }
+    return content.content || t('cancelled.defaultSubtitle');
+  })();
+
   const resolvedIcon: ResolvedIcon =
     state.selectedChoice === 'dismiss' ? 'dismiss' :
     state.selectedChoice === 'resume' ? 'resume' : null;
@@ -110,7 +118,7 @@ export function CancelledVariant({ content, messageId }: VariantProps) {
       theme="orange"
       icon={<XCircle className="w-4 h-4" />}
       title={title}
-      subtitle={content.content || t('cancelled.defaultSubtitle')}
+      subtitle={subtitle}
       isSelected={state.isSelected}
       resolvedLabel={state.resolvedLabel}
       resolvedIcon={resolvedIcon}

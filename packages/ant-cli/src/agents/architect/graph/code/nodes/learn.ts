@@ -273,18 +273,19 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
 
   // Clear stale orchestrator interruption when all remaining tasks completed
-  // after an earlier parallel failure. Without this, runner.ts propagates the
-  // old interruption → JobWorker reports hasInterruption=true → failed choice card.
+  // after an earlier parallel failure/interruption. Without this, runner.ts propagates
+  // the old interruption → JobWorker reports hasInterruption=true → failed choice card.
   // CRITICAL: Only clear when failedTasks is empty (genuinely stale). If failedTasks
   // exist, the interruption reflects a real failure and must be preserved so that
   // hasOrchestratorFailure=true → learn skips session write → orchestrator's saved
   // state (with correct interruption + no completedAt) is kept intact.
-  if (isLastTask && (state as any).interruption?.reason === 'tasks_failed') {
+  const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts'];
+  if (isLastTask && orchestratorReasons.includes((state as any).interruption?.reason)) {
     const failedTasks = (state as any).failedTasks;
     if (failedTasks && failedTasks.length > 0) {
-      console.log(`⚠️  [Learn] ${failedTasks.length} task(s) failed — preserving tasks_failed interruption`);
+      console.log(`⚠️  [Learn] ${failedTasks.length} task(s) failed — preserving ${(state as any).interruption.reason} interruption`);
     } else {
-      console.log(`✅ [Learn] All tasks completed despite earlier parallel failure — clearing stale interruption`);
+      console.log(`✅ [Learn] All tasks completed — clearing stale ${(state as any).interruption.reason} interruption`);
       (state as any).interruption = undefined;
     }
   }
@@ -294,7 +295,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // failed tasks, interruption details, and correct taskQueue. If the learn
   // node overwrites it, all that data is lost (session.state = full replace).
   const hasOrchestratorFailure = (state as any).interruption?.reason === 'tasks_failed'
-    || (state as any).interruption?.reason === 'recursion_limit';
+    || (state as any).interruption?.reason === 'recursion_limit'
+    || (state as any).interruption?.reason === 'consecutive_timeouts';
   
   let sessionId: string | undefined;
   let runId: number | undefined;

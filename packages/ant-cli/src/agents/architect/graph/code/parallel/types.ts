@@ -24,7 +24,7 @@ export interface OrchestratorResult<T extends BaseTask> {
   hasFailures: boolean;
   /** True if any task was paused due to recursion limit, user stop, etc. (queued for resume, not failed) */
   hasInterruptedTasks: boolean;
-  /** The reason for interruption (e.g. 'user_stopped', 'recursion_limit', 'consecutive_timeout') */
+  /** The reason for interruption (e.g. 'user_stopped', 'recursion_limit', 'consecutive_timeouts') */
   interruptReason: string | null;
 }
 
