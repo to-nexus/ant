@@ -6,7 +6,7 @@
  */
 
 import type { FigmaMCPTool, MCPToolResult } from '@ant/shared';
-import { BRIDGE_MCP_REQUEST_TIMEOUT_MS, FIGMA_MCP_ENDPOINT } from '@ant/shared';
+import { BRIDGE_MCP_REQUEST_TIMEOUT_MS, FIGMA_MCP_ENDPOINT, FIGMA_LOCAL_ASSET_ORIGINS, ASSET_PROXY_TOOL_NAME } from '@ant/shared';
 import { FigmaMCPAdapter } from './FigmaMCPAdapter';
 
 export interface MCPTransport {
@@ -400,4 +400,63 @@ export function createMCPAdapter(opts: { userId?: string; redis?: any }): FigmaM
   const adapter = new FigmaMCPAdapter(transport);
   _cachedAdapter = { key: cacheKey, adapter };
   return adapter;
+}
+
+/**
+ * Check if a URL points to the Figma Desktop MCP local asset server.
+ * Handles both 127.0.0.1 and localhost variants.
+ */
+export function isFigmaLocalAssetUrl(url: string): boolean {
+  return FIGMA_LOCAL_ASSET_ORIGINS.some(origin => url.startsWith(origin + '/'));
+}
+
+/**
+ * Download an asset via the Bridge proxy (cloud mode only).
+ * Uses the same Redis Pub/Sub channel as BridgeMCPTransport.callTool,
+ * but with a pseudo-tool name that Ant Desktop intercepts to fetch locally.
+ */
+export async function proxyAssetDownload(
+  userId: string,
+  redis: any,
+  url: string,
+): Promise<Buffer> {
+  const requestId = `asset-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const request = {
+    requestId,
+    userId,
+    tool: ASSET_PROXY_TOOL_NAME,
+    args: { url },
+  };
+
+  await redis.publish(`bridge:mcp:request:${userId}`, JSON.stringify(request));
+
+  const responseKey = `bridge:mcp:response:${requestId}`;
+  const timeoutMs = BRIDGE_MCP_REQUEST_TIMEOUT_MS;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const raw = await redis.get(responseKey);
+    if (raw) {
+      await redis.del(responseKey);
+      const parsed = JSON.parse(raw);
+      if (parsed.error) {
+        throw new Error(`Asset proxy failed: ${parsed.error}`);
+      }
+
+      const content = parsed.result?.content;
+      const b64 = Array.isArray(content)
+        ? content.find((c: any) => c.type === 'text')?.text
+        : typeof content === 'string' ? content : null;
+
+      if (!b64) {
+        throw new Error('Asset proxy returned empty content');
+      }
+
+      return Buffer.from(b64, 'base64');
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+
+  throw new Error(`Asset proxy timed out after ${timeoutMs}ms`);
 }
