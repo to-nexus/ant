@@ -128,9 +128,28 @@ export class SSEService {
   }
   
   /**
-   * Register SSE client for a project/feature
-   * Subscribes to user-specific channels on first registration
-   * 
+   * Check whether the user has room for another SSE connection.
+   * Read-only: does NOT modify the counter. Must be called BEFORE
+   * res.writeHead() so the caller can still send a proper 429 response.
+   */
+  async checkConnectionLimit(userContext: UserContext): Promise<boolean> {
+    if (!this.stateStore) return true;
+    try {
+      const connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}`;
+      const raw = await this.stateStore.getKey(connKey);
+      return (parseInt(raw || '0', 10) < MAX_SSE_CONNECTIONS_PER_USER);
+    } catch {
+      return true; // fail-open: allow connection when Redis is unavailable
+    }
+  }
+
+  /**
+   * Register SSE client for a project/feature.
+   * Subscribes to user-specific channels on first registration.
+   *
+   * IMPORTANT: Connection limit must already be checked via checkConnectionLimit()
+   * BEFORE calling res.writeHead(). This method only tracks the count (INCR/DECR).
+   *
    * CRITICAL: subscribeToUserChannels is awaited to ensure Redis subscription
    * is active BEFORE returning. This prevents a race condition where updates
    * published by Job Worker via Redis are lost because the subscription
@@ -142,17 +161,11 @@ export class SSEService {
       return;
     }
     
-    // Enforce per-user global SSE connection limit via Redis (multi-pod safe)
+    // Track connection count (INCR on register, DECR on close)
     const connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}`;
     if (this.stateStore) {
-      const count = await this.stateStore.incrementKey(connKey);
+      await this.stateStore.incrementKey(connKey);
       await this.stateStore.expireKey(connKey, SSE_CONNECTION_TTL_SECONDS);
-      if (count > MAX_SSE_CONNECTIONS_PER_USER) {
-        await this.stateStore.decrementKey(connKey);
-        logger.warn(`SSE connection limit exceeded for ${userContext.organizationId}:${userContext.userId}`, { component: 'SSEService' });
-        res.status(429).json({ error: 'Too many SSE connections' });
-        return;
-      }
     }
     
     const key = this.getSessionKey(projectId, featureName, userContext);
@@ -177,7 +190,6 @@ export class SSEService {
       if (this.clients.get(key)?.size === 0) {
         this.clients.delete(key);
       }
-      // Decrement Redis connection counter
       if (this.stateStore) {
         this.stateStore.decrementKey(connKey).catch((err) => {
           logger.error('Failed to decrement SSE connection count', { component: 'SSEService' }, err);
