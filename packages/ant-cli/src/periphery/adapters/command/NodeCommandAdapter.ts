@@ -251,6 +251,10 @@ export class NodeCommandAdapter implements CommandPort {
         // This avoids subtle quoting bugs and improves safety.
         shell: false,
         detached: process.platform !== 'win32', // create new process group (POSIX)
+        // stdin closed: prevents interactive prompts from hanging forever.
+        // Shell-internal pipes (cmd1 | cmd2) and heredocs are unaffected
+        // as the shell handles them via -c argument, not spawn's stdin.
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
 
       let stdout = '';
