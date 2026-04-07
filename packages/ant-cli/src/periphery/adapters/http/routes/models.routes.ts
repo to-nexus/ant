@@ -81,7 +81,7 @@ export function createModelsRoutes(): Router {
     try {
       res.json({
         models: AVAILABLE_MODELS,
-        default: 'claude-sonnet-4-6'  // ✅ Latest Claude Sonnet 4.6 as default
+        default: 'claude-opus-4-6'
       });
     } catch (error) {
       console.error('[Models API] Error:', error);
