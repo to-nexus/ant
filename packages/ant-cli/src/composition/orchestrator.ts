@@ -141,13 +141,19 @@ export async function orchestrator(params: {
           };
         }
 
+        const inlineAskLLM = createLLMClient(
+          'architect', undefined,
+          { jobType: interruptedJob as 'design' | 'code' | 'learn' },
+          configData
+        );
+
         const result = await runInlineAsk({
           message: overrideDirective || input,
           featurePath,
           currentJob: interruptedJob,
           currentAgent: interruptedAgent,
           projectId: project,
-          deps: { llm, memory },
+          deps: { llm: inlineAskLLM, memory },
           _httpJobId: jobId,
           existingTaskSummary,
         });
@@ -334,7 +340,7 @@ export async function orchestrator(params: {
       const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = createLLMClient('reviewer', undefined, undefined, configData);
+      const llm = createLLMClient('reviewer', undefined, { jobType: 'reviewer' }, configData);
       return await reviewerAgent(input, project || "default", { memory, llm });
     }
 
@@ -402,7 +408,7 @@ export async function orchestrator(params: {
       const memory = AdapterFactory.createMemoryAdapter();
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
-      const llm = createLLMClient('doc', undefined, undefined, configData);
+      const llm = createLLMClient('doc', undefined, { jobType: 'doc' }, configData);
       return await docAgent(input, project || "default", { memory, llm });
     }
 

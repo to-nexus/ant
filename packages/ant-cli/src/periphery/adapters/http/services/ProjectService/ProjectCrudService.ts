@@ -149,7 +149,13 @@ export class ProjectCrudService {
           sketch: 'gemini-3.1-flash-image-preview',
           render: 'gemini-3-pro-image-preview',
           engrave: 'gemini-3.1-pro-preview',
-        }
+        },
+        reviewer: {
+          default: modelOpus,
+        },
+        doc: {
+          default: modelOpus,
+        },
       }
     };
 
@@ -362,6 +368,18 @@ export class ProjectCrudService {
         if (!config.llmModels.visual.render) config.llmModels.visual.render = 'gemini-3-pro-image-preview';
         if (!config.llmModels.visual.engrave) config.llmModels.visual.engrave = 'gemini-3.1-pro-preview';
       }
+
+      if (!config.llmModels.reviewer) {
+        config.llmModels.reviewer = { default: fallbackOpus };
+      } else if (!config.llmModels.reviewer.default) {
+        config.llmModels.reviewer.default = fallbackOpus;
+      }
+
+      if (!config.llmModels.doc) {
+        config.llmModels.doc = { default: fallbackOpus };
+      } else if (!config.llmModels.doc.default) {
+        config.llmModels.doc.default = fallbackOpus;
+      }
       
       return config;
     } catch (error) {
@@ -390,7 +408,13 @@ export class ProjectCrudService {
             sketch: 'gemini-3.1-flash-image-preview',
             render: 'gemini-3-pro-image-preview',
             engrave: 'gemini-3.1-pro-preview',
-          }
+          },
+          reviewer: {
+            default: fallbackOpus,
+          },
+          doc: {
+            default: fallbackOpus,
+          },
         }
       };
     }

@@ -40,6 +40,8 @@ export interface LLMModels {
   learn?: JobLLMConfig;       // Learn job configuration
   plan?: JobLLMConfig;        // Plan job configuration (Planner agent)
   visual?: JobLLMConfig;      // Visual job configuration (Creator agent)
+  reviewer?: JobLLMConfig;    // Reviewer agent configuration
+  doc?: JobLLMConfig;         // Doc agent configuration
 }
 
 /**
@@ -163,7 +165,7 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         default: modelSonnet,
       },
       plan: {
-        default: modelSonnet,
+        default: modelOpus,
       },
       visual: {
         default: 'gemini-3-flash-preview',
@@ -172,6 +174,12 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         sketch: 'gemini-3.1-flash-image-preview',
         render: 'gemini-3-pro-image-preview',
         engrave: 'gemini-3.1-pro-preview',
+      },
+      reviewer: {
+        default: modelOpus,
+      },
+      doc: {
+        default: modelOpus,
       },
     },
     visualSettings: {
