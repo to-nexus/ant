@@ -222,6 +222,18 @@
     "openPreview": "열기",
     "suggestedFix": "해결: {{fix}}",
     "allChecksPassed": "모든 검사를 통과했습니다.",
-    "logsCount": "로그 ({{count}})"
+    "logsCount": "로그 ({{count}})",
+    "deploy": {
+      "title": "배포",
+      "description": "프로젝트의 프로덕션 빌드를 생성하고 정적 파일로 서빙합니다.",
+      "deploy": "배포",
+      "stop": "중지",
+      "open": "열기",
+      "running": "배포됨",
+      "building": "빌드 중...",
+      "deploying": "배포 중...",
+      "error": "배포 실패",
+      "idle": "배포되지 않음"
+    }
   }
 }

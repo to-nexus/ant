@@ -9,7 +9,7 @@
 
 import * as net from 'net';
 
-export type PortType = 'dev-server' | 'ide';
+export type PortType = 'dev-server' | 'ide' | 'deploy';
 
 export interface PortRangeConfig {
   min: number;
@@ -19,12 +19,13 @@ export interface PortRangeConfig {
 export const PORT_RANGES: Record<PortType, PortRangeConfig> = {
   'dev-server': { min: 30000, max: 39999 },  // 10,000 ports
   'ide': { min: 40000, max: 49999 },          // 10,000 ports
+  'deploy': { min: 50000, max: 54999 },       // 5,000 ports
 };
 
 export class PortManager {
   // Defaults
   private readonly MIN_PORT = PORT_RANGES['dev-server'].min;  // 30000
-  private readonly MAX_PORT = PORT_RANGES['ide'].max;         // 49999
+  private readonly MAX_PORT = PORT_RANGES['deploy'].max;      // 54999
   private usedPorts = new Set<number>();
   
   /**
@@ -101,6 +102,7 @@ export class PortManager {
     return {
       'dev-server': this.getStats('dev-server'),
       'ide': this.getStats('ide'),
+      'deploy': this.getStats('deploy'),
     };
   }
 }

@@ -33,6 +33,7 @@ import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
+import { DeployService } from '../deploy/DeployService';
 import { parsePreviewKey } from '../state/redisKeyUtils';
 import { toUrlKey, toUrlKeyWithService, fromUrlKey, isUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
@@ -59,6 +60,7 @@ export interface PreviewServerOptions {
 export class PreviewServer {
   private app: Express;
   private previewService!: PreviewService;
+  private deployService!: DeployService;
   private portManager!: PortManager;
   private stateStore!: StateStorePort & PortRegistryPort;
   private server: any;
@@ -100,6 +102,12 @@ export class PreviewServer {
       this.stateStore,  // Redis as StateStore for Pub/Sub
       workspaceRoot
     );
+
+    // Initialize deploy service
+    this.deployService = new DeployService({
+      portManager: this.portManager,
+      stateStore: this.stateStore,
+    });
 
     logger.info('[PreviewServer] Services initialized', {
       component: 'PreviewServer'
@@ -227,6 +235,10 @@ export class PreviewServer {
         return state?.backendPort || null;
       }
     }));
+
+    // 4b. Deploy proxy — serves deployed static builds via /deploy/:urlKey/*
+    // No authentication required: serves user's built static files
+    this.app.use('/deploy/', this.createDeployProxyMiddleware());
 
     // 5. Cookie parser (required for JWT cookie auth)
     this.app.use(cookieParser());
@@ -649,6 +661,93 @@ export class PreviewServer {
     });
 
     // ==========================================
+    // Deploy Management API (JWT-authenticated)
+    // ==========================================
+
+    /**
+     * POST /projects/:id/deploy
+     * Start build and deploy (non-blocking). Returns 202 immediately;
+     * build progress and final status are delivered via SSE 'deploy' events.
+     */
+    this.app.post('/projects/:id/deploy', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const userContext = this.extractUserContext(req);
+        const feature = req.body?.feature || 'main';
+
+        logger.warn(`[PreviewServer] POST /projects/${projectId}/deploy (user=${userContext.userId}, feature=${feature})`, {
+          component: 'PreviewServer'
+        });
+
+        const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+        const result = await this.deployService.startDeploy(
+          userContext.organizationId,
+          userContext.userId,
+          projectId,
+          feature,
+          workspacePath
+        );
+
+        if (result.success) {
+          res.status(202).json(result);
+        } else {
+          res.status(400).json(result);
+        }
+      } catch (error: any) {
+        logger.error('[PreviewServer] Deploy error', { component: 'PreviewServer' }, error);
+        sendErrorResponse(res, 500, error, 'PreviewServer');
+      }
+    });
+
+    /**
+     * POST /projects/:id/deploy/stop
+     * Stop a running deploy
+     */
+    this.app.post('/projects/:id/deploy/stop', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const userContext = this.extractUserContext(req);
+        const feature = req.body?.feature || 'main';
+
+        const result = await this.deployService.stopDeploy(
+          userContext.organizationId,
+          userContext.userId,
+          projectId,
+          feature
+        );
+
+        res.json(result);
+      } catch (error: any) {
+        logger.error('[PreviewServer] Deploy stop error', { component: 'PreviewServer' }, error);
+        sendErrorResponse(res, 500, error, 'PreviewServer');
+      }
+    });
+
+    /**
+     * GET /projects/:id/deploy/status
+     * Get deploy status
+     */
+    this.app.get('/projects/:id/deploy/status', async (req: Request, res: Response) => {
+      try {
+        const projectId = req.params.id;
+        const userContext = this.extractUserContext(req);
+        const feature = req.query.feature as string || 'main';
+
+        const status = await this.deployService.getStatus(
+          userContext.organizationId,
+          userContext.userId,
+          projectId,
+          feature
+        );
+
+        res.json(status);
+      } catch (error: any) {
+        logger.error('[PreviewServer] Deploy status error', { component: 'PreviewServer' }, error);
+        sendErrorResponse(res, 500, error, 'PreviewServer');
+      }
+    });
+
+    // ==========================================
     // Admin/Debug Endpoints
     // ==========================================
 
@@ -672,6 +771,70 @@ export class PreviewServer {
         message: 'Preview endpoint not found'
       });
     });
+  }
+
+  /**
+   * Create deploy proxy middleware.
+   * Routes /deploy/:urlKey/* to the local static server running on the deploy port.
+   */
+  private createDeployProxyMiddleware() {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      const pathAfterDeploy = req.path; // Already has /deploy/ stripped by app.use('/deploy/', ...)
+      const segments = pathAfterDeploy.split('/').filter(Boolean);
+      const urlKey = segments[0];
+
+      if (!urlKey || !isUrlKey(urlKey)) {
+        return next();
+      }
+
+      const parsed = parsePreviewKey(fromUrlKey(urlKey));
+      if (!parsed) {
+        res.status(400).json({ error: 'Invalid deploy key format' });
+        return;
+      }
+
+      const { tenantId, userId, projectId, feature } = parsed;
+      const deployState = await this.stateStore.getDeploy(tenantId, userId, projectId, feature);
+
+      if (!deployState || deployState.phase !== 'running') {
+        res.status(404).json({ error: 'Deploy not found or not running' });
+        return;
+      }
+
+      const targetHost = deployState.host || 'localhost';
+      const targetPort = deployState.port;
+      // Forward the full path including urlKey prefix (the static server uses basePath)
+      const targetPath = `/${urlKey}${req.url.replace(new RegExp(`^/${urlKey}`), '') || '/'}`;
+      const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
+
+      try {
+        const response = await fetch(targetUrl, {
+          method: req.method,
+          headers: {
+            'host': `${targetHost}:${targetPort}`,
+            'accept': req.headers.accept || '*/*',
+          },
+        });
+
+        res.status(response.status);
+        response.headers.forEach((value: string, key: string) => {
+          const lower = key.toLowerCase();
+          if (['content-encoding', 'transfer-encoding', 'connection', 'keep-alive'].includes(lower)) return;
+          res.setHeader(key, value);
+        });
+
+        if (response.body) {
+          const { Readable } = await import('stream');
+          const nodeStream = Readable.fromWeb(response.body as any);
+          nodeStream.pipe(res);
+        } else {
+          res.end();
+        }
+      } catch (error: any) {
+        logger.warn(`[Deploy] Proxy error: ${error.message}`, { component: 'PreviewServer' });
+        res.status(502).json({ error: 'Deploy server unreachable' });
+      }
+    };
   }
 
   /**
@@ -845,6 +1008,13 @@ export class PreviewServer {
       await this.previewService.cleanup();
     } catch (err) {
       logger.warn('[PreviewServer] Error during preview cleanup', { component: 'PreviewServer' }, err);
+    }
+
+    // Cleanup deploy service
+    try {
+      await this.deployService.cleanup();
+    } catch (err) {
+      logger.warn('[PreviewServer] Error during deploy cleanup', { component: 'PreviewServer' }, err);
     }
 
     // Close Redis connection (may already be closed if another service shut down first)

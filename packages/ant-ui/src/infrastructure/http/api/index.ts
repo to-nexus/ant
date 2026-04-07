@@ -7,6 +7,7 @@ export * from './projects';
 export * from './features';
 export * from './files';
 export * from './preview';
+export * from './deploy';
 export * from './config';
 export * from './kanban';
 export * from './agents';
