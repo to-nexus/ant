@@ -108,8 +108,8 @@ Break this specification into a prioritized list of implementation tasks.
 **Priority Assignment** (LOWER NUMBER = HIGHER PRIORITY):
 - 100–189: setup (project initialization)
 - 200–299: feature or design-system (shared foundation / design-system token infra + wiring)
-- 300–649: feature (300=critical, 350=important, 400=normal, 500=nice-to-have)
-- 600: feature, exclusive (integration — wire parallel outputs into shared entry points)
+- 300–599: feature (300=critical, 350=important, 400=normal, 500=nice-to-have)
+- 600–649: feature (integration — wire parallel outputs into shared entry points)
 - 650–699: ui (visual implementation pass)
 - 700: test-code (after all features)
 - 800: doc (after all features and tests)

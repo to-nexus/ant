@@ -57,7 +57,7 @@ Each task object MUST follow this schema:
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
 | `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, or `"verification"` |
-| `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra + wiring), 300–649: feature, 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra + wiring), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
@@ -485,6 +485,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "design-system"` (priority 200, token infra) -> `exclusive: false`, `parallelGroup: "design-system"`
 - `type: "design-system"` (priority 201+, wiring) -> `exclusive: false`, `parallelGroup: "design-system"` (shared group serializes token→wiring; foundation barrier ensures 300+ tasks wait)
 - `type: "feature"` (priority 200–299 shared foundation) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait; Schema sub-task is `exclusive`)
+- `type: "feature"` (priority 600–649 integration) -> `parallelGroup` (integration barrier ensures all feature tasks complete first)
 - `type: "ui"` (priority 650–699) -> `parallelGroup` (group with corresponding skeleton task)
 - `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
@@ -549,7 +550,8 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 | **Parallel conflict risk** | Are feature tasks in different `parallelGroup` IDs, meaning they run concurrently and cannot see each other's outputs? |
 
 **Constraint**: If multiple parallel feature tasks produce components for a shared entry point, create a dedicated integration task:
-- `type: "feature"`, `exclusive: true`, priority 600 (after all feature tasks, before test-code/doc/verification)
+- `type: "feature"`, priority 600 (after all feature tasks, before test-code/doc/verification)
+- Assign `parallelGroup` following the same scoping rules as other feature tasks
 - Description: wire all feature outputs into the application entry point
 - Feature tasks MUST NOT create or modify the entry point file themselves
 

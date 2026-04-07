@@ -8,13 +8,14 @@
  *
  * Key design decisions:
  * - Generic over T extends BaseTask (works for CodeTask, DesignTask)
- * - Does NOT reference task.type — uses exclusive + parallelGroup only
+ * - Uses exclusive + parallelGroup + barrier predicates (type + priority)
  * - Single-process async/await parallelism (no Worker Threads)
  * - AsyncMutex for shared state access
  */
 
 import type { BaseTask, TaskTokenUsage } from '@ant/shared';
 import { TaskQueue } from '../../../types/task';
+import { TASK_PRIORITIES } from '../state';
 import { AsyncMutex } from './AsyncMutex';
 import { TaskWorker } from './TaskWorker';
 import type {
@@ -95,6 +96,9 @@ function isFeatureOrSetupTask<T extends BaseTask>(t: T): boolean {
 }
 function isPreDocTask<T extends BaseTask>(t: T): boolean {
   return t.type === 'feature' || t.type === 'setup' || t.type === 'test-code';
+}
+function isNonIntegrationFeatureTask<T extends BaseTask>(t: T): boolean {
+  return t.type === 'feature' && t.priority >= TASK_PRIORITIES.FEATURE_CRITICAL && t.priority < TASK_PRIORITIES.INTEGRATION_MIN;
 }
 function isTokensTask<T extends BaseTask>(t: T): boolean {
   return t.priority >= 100 && t.priority <= 199;
@@ -567,6 +571,9 @@ export class TaskOrchestrator<T extends BaseTask> {
       hasPreFeatureWork: !!b?.feature && (
         running.some(isFoundationTask) || queued.some(isFoundationTask)
       ),
+      hasPreIntegrationWork: !!b?.integration && (
+        running.some(isNonIntegrationFeatureTask) || queued.some(isNonIntegrationFeatureTask)
+      ),
       hasPreUiWork: !!b?.ui && (
         running.some(isFeatureOrSetupTask) || queued.some(isFeatureOrSetupTask)
       ),
@@ -593,7 +600,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       }
     }
 
-    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
+    const { hasPreFeatureWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     for (const task of this.taskQueue.getAll()) {
@@ -602,6 +609,11 @@ export class TaskOrchestrator<T extends BaseTask> {
 
       // Feature barrier: don't assign feature/integration tasks while foundation work exists
       if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') {
+        break;
+      }
+
+      // Integration barrier: don't assign integration tasks while feature work exists
+      if (hasPreIntegrationWork && task.type === 'feature' && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) {
         break;
       }
 
@@ -674,13 +686,14 @@ export class TaskOrchestrator<T extends BaseTask> {
       if (task.parallelGroup) runningGroups.add(task.parallelGroup);
     }
 
-    const { hasPreFeatureWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
+    const { hasPreFeatureWork, hasPreIntegrationWork, hasPreTestgenWork, hasPreDocWork, hasPreUiWork, hasPreAssetsWork, hasPreSpecWork } =
       this.computeBarriers();
 
     let potentialTasks = 0;
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
       if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') break;
+      if (hasPreIntegrationWork && task.type === 'feature' && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) break;
       if (hasPreTestgenWork && task.type === 'test-code') break;
       if (hasPreDocWork && task.type === 'doc') break;
       if (hasPreUiWork && task.type === 'ui') break;

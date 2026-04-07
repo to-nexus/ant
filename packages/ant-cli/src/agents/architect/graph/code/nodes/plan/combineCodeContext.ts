@@ -18,7 +18,7 @@
 
 import path from "path";
 import { GitPort, FileSystemPort } from "../../../../../../core/ports";
-import { ArchitectGraphState } from "../../state";
+import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { loadErrorFiles, LoadedFile } from "./errorFilesLoader";
 import { loadSemanticFiles, LessonResult } from "./semanticSearch";
@@ -231,20 +231,21 @@ export async function combineCodeContext(
     return { context: projectCodeContext, lessons: [] };
   }
 
-  // Determine if this task needs an extended file quota (integration exclusive
-  // tasks and foundation tasks both need broader codebase visibility).
-  const isIntegrationExclusive = (state.currentTask?.exclusive === true
-      && state.currentTask?.type !== 'verification')
-    || (state.currentTask?.priority != null
-      && state.currentTask.priority >= 200
-      && state.currentTask.priority <= 299);
+  // Determine if this task needs an extended file quota (integration tasks
+  // and foundation tasks both need broader codebase visibility).
+  const isIntegrationOrFoundation = (state.currentTask?.priority != null && (
+      (state.currentTask.priority >= TASK_PRIORITIES.INTEGRATION_MIN
+        && state.currentTask.priority <= TASK_PRIORITIES.INTEGRATION_MAX)
+      || (state.currentTask.priority >= TASK_PRIORITIES.SHARED_FOUNDATION
+        && state.currentTask.priority <= TASK_PRIORITIES.FOUNDATION_MAX)
+    ));
 
   // Error tasks need fewer files — focus on error-related code only.
   // Mirrors analyzer.ts ContextStrategy.maxFilesToRead = 5 for error tasks.
   const isErrorTask = state.currentTask?.type === 'error';
   const effectiveTotalMax = isErrorTask
     ? Math.min(RETRIEVAL_CONFIG.TOTAL_MAX, 5)
-    : (isIntegrationExclusive ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX);
+    : (isIntegrationOrFoundation ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // NORMAL TASK PATH: Three-tier RAG search
@@ -259,8 +260,8 @@ export async function combineCodeContext(
     return null;
   }
   
-  if (isIntegrationExclusive) {
-    console.log(`🔍 [RAG] Integration exclusive task → 3-tier search with extended quota (${RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX} files)...`);
+  if (isIntegrationOrFoundation) {
+    console.log(`🔍 [RAG] Integration/foundation task → 3-tier search with extended quota (${RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX} files)...`);
   } else {
     console.log(`🔍 [RAG] Three-tier search (requiredFiles → errorFiles → semantic)...`);
   }
@@ -322,7 +323,7 @@ export async function combineCodeContext(
     git,
     extractFilesFromCode,
     excludePaths,
-    isIntegrationExclusive,
+    isIntegrationOrFoundation,
     effectiveTotalMax
   );
   
