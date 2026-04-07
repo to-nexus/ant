@@ -156,7 +156,7 @@ export class JobWorker {
       const stalledChild = this.runningProcesses.get(jobId);
       if (stalledChild && stalledChild.pid) {
         logger.warn(`Killing stalled child process: ${jobId} (PID: ${stalledChild.pid})`, { component: 'JobWorker', jobId });
-        await this.setKillReason(jobId, 'server_crash');
+        await this.setKillReason(jobId, 'worker_stalled');
         this.killChildGracefully(stalledChild, jobId, 2500).catch(() => {});
         this.runningProcesses.delete(jobId);
       }
@@ -207,8 +207,8 @@ export class JobWorker {
           featureName,
           userEmail,
           interruption: {
-            reason: 'server_crash',
-            message: 'Worker process crashed. You can resume this job.',
+            reason: 'worker_stalled',
+            message: 'Worker process became unresponsive. You can resume this job.',
             canResume: true,
             timestamp: new Date().toISOString(),
           },
@@ -497,7 +497,7 @@ export class JobWorker {
         cleanup();
         const childProcess = this.runningProcesses.get(jobId);
         if (childProcess?.pid) {
-          this.setKillReason(jobId, 'server_crash').then(() =>
+          this.setKillReason(jobId, 'system_sleep').then(() =>
             this.killChildGracefully(childProcess, jobId)
           ).catch(() => {});
         }
@@ -524,7 +524,7 @@ export class JobWorker {
           cleanup();
           const childProcess = this.runningProcesses.get(jobId);
           if (childProcess?.pid) {
-            this.setKillReason(jobId, 'server_crash').then(() =>
+            this.setKillReason(jobId, 'lock_expired').then(() =>
               this.killChildGracefully(childProcess, jobId)
             ).catch(() => {});
           }

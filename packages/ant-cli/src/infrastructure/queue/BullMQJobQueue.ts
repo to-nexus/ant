@@ -291,8 +291,8 @@ export class BullMQJobQueue implements JobQueuePort {
           featureName,
           userEmail,
           interruption: {
-            reason: 'server_crash',
-            message: 'Worker process crashed. You can resume this job.',
+            reason: 'worker_stalled',
+            message: 'Worker process became unresponsive. You can resume this job.',
             canResume: true,
             timestamp: new Date().toISOString(),
           },
