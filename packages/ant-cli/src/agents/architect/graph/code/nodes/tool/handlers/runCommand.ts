@@ -295,10 +295,25 @@ Feature tasks produce source files only — build verification happens in the fi
 Continue writing code files and output <done>true</done> when complete.`);
   }
 
+  // Execute-phase guard: block verification commands during execute of verification tasks.
+  // Execute must ONLY apply code fixes; all verification runs are plan's responsibility.
+  // Without this, LLMs ignore the prompt constraint ("No build/test execution") and
+  // run build/test in execute, wasting tokens and causing double-run on plan re-entry.
+  const tracker = state._verificationTracker;
+  const isVerificationExecute = taskType === 'verification' && !state._planExploring;
+  if (isVerificationExecute && tracker) {
+    if (isBuildCommand(command) || isTestCommand(command) || isTypecheckCommand(command) || isDevServerCommand(command)) {
+      console.warn(`   ⛔ [RunCommand] Execute guard: blocked verification command in execute phase: ${command}`);
+      return makeRejectionOutput(command,
+        'BLOCKED: Do not run build/test/typecheck commands during the execute phase. ' +
+        'Apply the code fixes from the remediation plan and output <done>true</done>. ' +
+        'The diagnostic phase will re-verify after your changes.');
+    }
+  }
+
   // Plan tool loop guard: block re-runs of verification commands.
   // Plan phase has no code-editing tools, so re-running ANY already-attempted
   // command (passed or failed) produces identical results.
-  const tracker = state._verificationTracker;
   if (state._planExploring && tracker) {
     // Typecheck guard
     if (isTypecheckCommand(command) && tracker.typecheckAttempted) {
