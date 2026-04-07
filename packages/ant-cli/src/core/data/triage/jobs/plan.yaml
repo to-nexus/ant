@@ -55,6 +55,29 @@ modes:
       - name: prd.md
         description: Updated PRD with improved quality and expanded sections
 
+  - id: explain
+    description: |
+      Analyzes and explains existing PRD content without modifying it.
+      Answers questions about PRD structure, requirements, and coverage.
+      Read-only exploration — no file writes.
+    detection:
+      all_of:
+        - path: inputs/sources/prd.md
+          type: file_exists
+        - type: has_directive
+    prerequisites:
+      required:
+        - id: existing_prd
+          type: file_exists
+          path: inputs/sources/prd.md
+          description: Existing PRD document to analyze
+      recommended: []
+    scope:
+      - PRD content analysis and explanation
+      - PRD structure and requirement queries
+      - PRD content-based improvement suggestions (non-rubric)
+    outputs: []
+
 redirect_signals:
   to_design: >
     Request target is a design artifact — user EXPLICITLY names a design artifact

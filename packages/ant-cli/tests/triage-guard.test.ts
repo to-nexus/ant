@@ -84,14 +84,24 @@ describe('hasTargetJobPrerequisites', () => {
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Target: plan (or unknown)
-  // Always returns true
+  // Target: plan
+  // Always passes — plan job handles both generate (no PRD) and explain/refine (with PRD)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  describe('target = plan / unknown', () => {
-    it('returns true for plan regardless of workspace state', () => {
-      expect(hasTargetJobPrerequisites('plan', makeWs())).toBe(true);
+  describe('target = plan', () => {
+    it('returns true when PRD exists', () => {
+      expect(hasTargetJobPrerequisites('plan', makeWs({ hasPrd: true }))).toBe(true);
     });
 
+    it('returns true even when no PRD exists (generate mode)', () => {
+      expect(hasTargetJobPrerequisites('plan', makeWs())).toBe(true);
+    });
+  });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Target: unknown
+  // Always returns true (safe default)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  describe('target = unknown', () => {
     it('returns true for unknown job type', () => {
       expect(hasTargetJobPrerequisites('something-else', makeWs())).toBe(true);
     });

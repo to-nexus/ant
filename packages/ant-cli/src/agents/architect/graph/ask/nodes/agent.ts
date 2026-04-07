@@ -87,17 +87,8 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     throw new Error('LLM is required for agent node');
   }
   
-  // Detect evaluation request on first call
   let isEvaluation = state.isEvaluation;
   let evalType = state.evalType;
-  if (state.conversationHistory.length === 0 && !isEvaluation) {
-    const evalDetection = detectEvaluationRequest(state.question);
-    if (evalDetection) {
-      isEvaluation = true;
-      evalType = evalDetection.type;
-      console.log(`📋 [Ask] Evaluation detected: type=${evalDetection.type}`);
-    }
-  }
   
   // Build system prompt
   const systemPrompt = buildSystemPrompt(state);
@@ -266,7 +257,22 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     });
   }
   
-  // Add assistant response
+  // Detect evaluation from LLM response before building history.
+  // The LLM outputs <eval type="..."/> when it produces a rubric-based evaluation report.
+  // Must strip the tag before pushing to conversationHistory to avoid
+  // leaking it into subsequent LLM calls in multi-turn sessions.
+  let cleanedResponseText = responseText;
+  if (!isEvaluation && responseText) {
+    const evalDetection = parseEvalTag(responseText);
+    if (evalDetection) {
+      isEvaluation = true;
+      evalType = evalDetection.type;
+      cleanedResponseText = responseText.replace(/<eval\s+type="[^"]*"\s*\/?>/gi, '').trimEnd();
+      console.log(`📋 [Ask] Evaluation detected from LLM response: type=${evalDetection.type}`);
+    }
+  }
+
+  // Add assistant response (use cleaned text so eval tag doesn't leak into history)
   if (toolCalls.length > 0) {
     newHistory.push({
       role: 'assistant',
@@ -277,21 +283,21 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
         input: tc.args,
       })),
     });
-  } else if (responseText) {
+  } else if (cleanedResponseText) {
     newHistory.push({
       role: 'assistant',
-      content: responseText,
+      content: cleanedResponseText,
     });
   }
-  
+
   return {
     conversationHistory: newHistory,
     pendingToolCalls: toolCalls.length > 0 ? toolCalls : [],
-    response: toolCalls.length > 0 ? undefined : responseText,
+    response: toolCalls.length > 0 ? undefined : cleanedResponseText,
     streamingCompleted,
-    chatMessageStarted: streamingStarted,  // ✅ Persist across tool calls
-    isEvaluation,   // ✅ Persist evaluation state across nodes
-    evalType,       // ✅ Persist eval type across nodes
+    chatMessageStarted: streamingStarted,
+    isEvaluation,
+    evalType,
     tokenUsage: state.tokenUsage,
   };
 }
@@ -306,26 +312,15 @@ export function routeAfterAgent(state: AskGraphState): 'tool' | 'respond' {
   return 'respond';
 }
 
-// ============================================
-// Evaluation Detection
-// ============================================
-
-const EVAL_PATTERNS: Array<{ pattern: RegExp; type: AskGraphState['evalType'] }> = [
-  { pattern: /\bprd\b.*평가|평가.*\bprd\b|evaluate.*\bprd\b|\bprd\b.*evaluate|\bprd\b.*review/i, type: 'prd' },
-  { pattern: /시스템\s*(?:기획|설계).*평가|평가.*시스템\s*(?:기획|설계)|system\s*design.*evaluat|evaluat.*system\s*design/i, type: 'system-design' },
-  { pattern: /ui\s*(?:기획|설계|디자인).*평가|평가.*ui\s*(?:기획|설계|디자인)|ui\s*design.*evaluat|evaluat.*ui\s*design/i, type: 'ui-design' },
-  { pattern: /코드.*평가|평가.*코드|code.*evaluat|evaluat.*code/i, type: 'code' },
-  { pattern: /기획.*평가|평가.*기획|(?:전체|모든).*평가|평가.*(?:전체|모든)|evaluat.*(?:all|plan)|(?:all|plan).*evaluat/i, type: 'all' },
-];
-
 /**
- * Detect if the question is an evaluation request
+ * Parse <eval type="..."/> tag from LLM response text.
+ * The LLM is instructed to output this tag when it produces
+ * a rubric-based evaluation report (see ask/rules.md).
  */
-function detectEvaluationRequest(question: string): { type: NonNullable<AskGraphState['evalType']> } | null {
-  for (const { pattern, type } of EVAL_PATTERNS) {
-    if (pattern.test(question) && type) {
-      return { type };
-    }
+export function parseEvalTag(text: string): { type: NonNullable<AskGraphState['evalType']> } | null {
+  const match = text.match(/<eval\s+type="(prd|system-design|ui-design|code|all)"\s*\/?>/i);
+  if (match) {
+    return { type: match[1].toLowerCase() as NonNullable<AskGraphState['evalType']> };
   }
   return null;
 }

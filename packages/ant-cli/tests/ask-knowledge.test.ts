@@ -45,11 +45,12 @@ describe('Ask Knowledge (YAML sync)', () => {
     }
   });
 
-  it('every job mode has outputs defined', () => {
+  it('every non-explain job mode has outputs defined', () => {
     const jobs = AgentRegistry.getAllJobs();
 
     for (const job of jobs) {
       for (const mode of job.modes) {
+        if (mode.id === 'explain') continue;
         expect(
           mode.outputs && mode.outputs.length > 0,
           `Job ${job.id} mode ${mode.id} is missing outputs`

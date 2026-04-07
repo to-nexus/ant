@@ -20,7 +20,7 @@ export interface PlanGraphState extends PhaseTrackingState {
   featurePath: string;
   
   // Mode
-  mode: 'generate' | 'refine';
+  mode: 'generate' | 'refine' | 'explain';
   isResume?: boolean;
   
   // Context (loaded by resolve node)
@@ -89,7 +89,7 @@ export function createInitialPlanState(params: {
   language: 'ko' | 'en';
   workspaceState: WorkspaceState;
   featurePath: string;
-  mode?: 'generate' | 'refine';
+  mode?: 'generate' | 'refine' | 'explain';
   isResume?: boolean;
   deps?: PlanGraphState['deps'];
   _httpJobId?: string;
