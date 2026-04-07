@@ -33,6 +33,10 @@ export interface VerificationTracker {
   buildAttempted?: boolean;
   testAttempted?: boolean;
   devServerAttempted?: boolean;
+  /** Static type check (tsc --noEmit) — separate from build to avoid tracker conflation. */
+  typecheckPassed?: boolean;
+  typecheckAttempted?: boolean;
+  typecheckRequired?: boolean;
 }
 
 /**

@@ -90,11 +90,15 @@ export const SERVER_OUTPUT_PATTERNS = /listening\s+on|started\s+.*(?:server|port
 export const ORCHESTRATOR_PORT = process.env.PORT || '8080';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// BUILD / TEST command classification (TS/JS + Go only)
+// TYPECHECK / BUILD / TEST command classification
 // Used by VerificationTracker to track objective completion.
 // Conservative: false-negative → extra build cycle (safe);
 //               false-positive → unverified code passes (dangerous).
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export const TYPECHECK_COMMAND_PATTERNS: RegExp[] = [
+  /\b(npx\s+)?tsc\b[^|;&]*--noEmit\b/,
+];
 
 export const BUILD_COMMAND_PATTERNS: RegExp[] = [
   /\b(npm|yarn)\s+(run\s+)?build\b/,
@@ -118,7 +122,12 @@ export const TEST_COMMAND_PATTERNS: RegExp[] = [
   /\bmake\s+test\b/,
 ];
 
+export function isTypecheckCommand(command: string): boolean {
+  return TYPECHECK_COMMAND_PATTERNS.some(p => p.test(command));
+}
+
 export function isBuildCommand(command: string): boolean {
+  if (isTypecheckCommand(command)) return false;
   return BUILD_COMMAND_PATTERNS.some(p => p.test(command));
 }
 
