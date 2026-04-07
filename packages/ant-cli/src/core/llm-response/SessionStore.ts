@@ -19,7 +19,7 @@ import { getWorkerScope } from '../parallel/workerScope';
  * Each parallel TaskWorker gets its own currentMessage and file-operation tracking,
  * preventing cross-worker interference on the shared SessionStore singleton.
  */
-interface WorkerMessageState {
+export interface WorkerMessageState {
   currentMessage: ChatMessage | undefined;
   activeFileOperations: Map<string, FileOperationTracker>;
   thinkingStartTime?: number;
@@ -191,6 +191,25 @@ export class SessionStore {
     }
 
     return ws.sessionProxy;
+  }
+
+  /**
+   * Expose all worker message states (for sync snapshot responses).
+   * Called outside AsyncLocalStorage context to collect all active worker messages.
+   */
+  getWorkerMessages(): ReadonlyMap<number, WorkerMessageState> {
+    return this.workerMessages;
+  }
+
+  /**
+   * Check if any message is active (main graph OR any worker), regardless of AsyncLocalStorage scope.
+   */
+  hasAnyActiveMessage(): boolean {
+    if (this.localSession?.currentMessage) return true;
+    for (const [, ws] of this.workerMessages) {
+      if (ws.currentMessage) return true;
+    }
+    return false;
   }
 
   private getOrCreateWorkerState(workerId: number): WorkerMessageState {

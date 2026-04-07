@@ -312,8 +312,8 @@ export class KanbanService {
           estimatingLabel: liveSnapshot.estimatingLabel,
           estimatingStartedAt: liveSnapshot.estimatingStartedAt,
           estimatingNodeId: liveSnapshot.estimatingNodeId,
-          jobType: job,
-          agent: getAgentForJobSafe(job),
+          jobType,
+          agent: getAgentForJobSafe(jobType),
         };
       }
       
@@ -337,8 +337,8 @@ export class KanbanService {
         jobTiming: sessionState.jobTiming,
         tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
         estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage,
-        jobType: job,
-        agent: getAgentForJobSafe(job),
+        jobType,
+        agent: getAgentForJobSafe(jobType),
       };
     }
     
@@ -365,8 +365,8 @@ export class KanbanService {
         estimatingLabel: (sessionState as any).estimatingLabel,
         estimatingStartedAt: (sessionState as any).estimatingStartedAt,
         estimatingNodeId: (sessionState as any).estimatingNodeId,
-        jobType: job,
-        agent: getAgentForJobSafe(job),
+        jobType,
+        agent: getAgentForJobSafe(jobType),
       };
     }
     
@@ -393,8 +393,8 @@ export class KanbanService {
       jobTiming: sessionState.jobTiming,
       tokenUsage: sessionState.tokenUsage,
       estimatingTokenUsage: (sessionState as any).estimatingTokenUsage,
-      jobType: job,
-      agent: getAgentForJobSafe(job),
+      jobType,
+      agent: getAgentForJobSafe(jobType),
     };
   }
 }

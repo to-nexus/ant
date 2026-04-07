@@ -102,11 +102,36 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
         break;
       }
 
+      case 'message_snapshot': {
+        const existing = get().chatMessages.find(
+          (m: ChatMessage) => m.id === event.messageId
+        );
+        if (existing) {
+          if (event.contentsCount >= existing.contents.length) {
+            get().updateChatMessage(event.messageId, {
+              contents: event.contents,
+              isStreaming: true,
+            });
+            console.debug(`[Store] 💬 message_snapshot applied: ${event.contentsCount} contents (was ${existing.contents.length})`);
+          }
+        } else {
+          get().addChatMessage({
+            id: event.messageId,
+            role: 'assistant',
+            contents: event.contents,
+            timestamp: new Date().toISOString(),
+            isStreaming: true,
+          } as ChatMessage);
+          console.debug(`[Store] 💬 message_snapshot: created new message ${event.messageId}`);
+        }
+        break;
+      }
+
       case 'content_update': {
         const message = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
         if (message) {
           if (event.contentIndex >= message.contents.length) {
-            console.warn(`[Store] 💬 content_update: index ${event.contentIndex} out of bounds (length ${message.contents.length}), skipping`);
+            console.debug(`[Store] 💬 content_update: index ${event.contentIndex} out of bounds (length ${message.contents.length}), awaiting snapshot`);
             break;
           }
           const updatedContents = [...message.contents];
