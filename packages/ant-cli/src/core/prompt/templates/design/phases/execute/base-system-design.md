@@ -152,6 +152,12 @@ System Design: "Frontend-only architecture with stateless deployment"
 PRD says: "Exclude CryptoPanic due to CORS restrictions"
 Intent: CryptoPanic service unavailable due to access restrictions
 System Design: [Omit CryptoPanic entirely from design]
+
+PRD says: "Register @scope:registry=https://registry.example.com/repo in config"
+Context: A specific technology was chosen; this URL is required to use it
+System Design: "Package registry requires `@scope:registry=https://registry.example.com/repo`"
+-- Technology-specific values in the spec mean that technology was CHOSEN.
+-- Abstracting the URL away makes the constraint unactionable for the coding phase.
 ```
 
 **Golden Rule:**
@@ -159,6 +165,7 @@ System Design: [Omit CryptoPanic entirely from design]
 - Your design = HOW architecture achieves it (abstractly)
 - PRD: "Use X technology" → You: Document "X" as architectural constraint (Tier 1)
 - PRD: "browser storage" → You: Extract intent — "Client-side persistence required"
+- PRD provides technology-specific values (URLs, registry paths, config entries) → The specificity IS the decision. Preserve verbatim.
 
 **Skip sections not applicable:**
 - No backend → Skip API/Database sections
@@ -176,6 +183,8 @@ System Design: [Omit CryptoPanic entirely from design]
 ❓ "Could this be implemented in 10+ different ways?"
    ✅ YES → Good (architectural concern - keep it)
    ❌ NO  → Too specific (implementation choice - abstract or omit)
+   ⚠️ EXCEPTION: Spec-provided exact values tied to a technology decision
+      have only ONE correct form — they ARE the decision, not "too specific".
 
 ❓ "Am I describing WHAT component does, or HOW it's coded?"
    ✅ WHAT → Architecture (keep it)
@@ -243,6 +252,7 @@ System Design: [Omit CryptoPanic entirely from design]
 - Platform constraint INTENT: "Frontend-only" (not "browser-based")
 - Architectural constraints from PRD: "event-driven communication required", "no microservices"
 - Technology prohibitions: "No MongoDB", "No GraphQL"
+- **Technology decisions AND their operational requirements**: Spec-provided values (registry URLs, package scopes, SDK endpoints, required config entries) tied to a technology choice
 
 **Tier 2: Abstract to Role (Technology Choices)**
 - Any library/framework/tool name → Its architectural role
@@ -254,7 +264,7 @@ System Design: [Omit CryptoPanic entirely from design]
 - **Applies only to technologies YOU choose** — PRD-specified technologies are Tier 1
 
 **Tier 3: Omit Entirely (Implementation Details)**
-- Config values: timeouts, retry counts, buffer sizes
+- Config values YOU chose: timeouts, retry counts, buffer sizes (spec-provided values are Tier 1)
 - Code constructs: variable names, function signatures, type definitions
 - UI specifics: component props, CSS properties, animation timings
 - Algorithms: sorting methods, hashing algorithms, compression schemes

@@ -421,6 +421,7 @@ Before generating output, verify:
 - ✅ **External services**: Exact service names from PRD (not LLM examples)
 - ✅ **Architecture patterns**: Exact patterns from PRD
 - ✅ **Technology prohibitions**: What PRD forbids
+- ✅ **Technology-specific configuration from spec**: When the spec includes concrete values tied to a technology choice (registry URLs, SDK endpoints, package scopes, required config file entries), these are part of the technology decision — preserve verbatim as architectural constraints
 
 ### ABSTRACT these (when YOU chose them — PRD-specified tech stays as Tier 1):
 - 🔄 **Storage**: "LocalStorage", "Redis", "IndexedDB" → "Persistence adapter", "Cache layer"
