@@ -72,6 +72,7 @@ export interface CheckpointData {
   estimatingTokenUsage?: any;
   overrideDirective?: string;
   chatSource?: any;
+  userLanguage?: string;
 }
 
 /**
@@ -100,6 +101,7 @@ export async function saveCheckpoint(
           estimatingTokenUsage: data.estimatingTokenUsage,
           overrideDirective: data.overrideDirective,
           chatSource: data.chatSource,
+          userLanguage: data.userLanguage,
         }
       }
     );

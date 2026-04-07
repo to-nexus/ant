@@ -245,6 +245,7 @@ export async function decomposeUiDesign(
       tokenUsage: (state as any).tokenUsage,
       overrideDirective: state.overrideDirective,
       chatSource: state.chatSource,
+      userLanguage: state.context.userLanguage,
     });
 
     // Update Kanban

@@ -124,6 +124,10 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.prd = (session.state as any).prd;
         }
         
+        if ((session.state as any).userLanguage) {
+          initial.context.userLanguage = (session.state as any).userLanguage;
+        }
+        
         if ((session.state as any).jobId) {
           (initial as any).jobId = (session.state as any).jobId;
         }
@@ -142,6 +146,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         if ((session.state as any).detectionReport && !initial.detectionReport) {
           console.log(`🔄 [CodeRunner] Restoring detectionReport from session`);
           initial.detectionReport = (session.state as any).detectionReport;
+        }
+        if ((session.state as any).userLanguage) {
+          initial.context.userLanguage = (session.state as any).userLanguage;
         }
       }
     } catch (err) {
@@ -191,6 +198,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
               ...session.state,
               directive: initial.directive,
               overrideDirective: initial.overrideDirective,
+              userLanguage: initial.context.userLanguage,
             }
           }
         );
@@ -251,6 +259,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             ...(session.state as any).designDocUnknownPackages && { designDocUnknownPackages: (session.state as any).designDocUnknownPackages },
             ...(session.state as any).projectCodeContext && { projectCodeContext: (session.state as any).projectCodeContext },
           } as any;
+          if ((session.state as any).userLanguage) {
+            state.context.userLanguage = (session.state as any).userLanguage;
+          }
         }
       } catch (restoreError) {
         console.warn('⚠️  Failed to restore from checkpoint:', restoreError);

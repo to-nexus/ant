@@ -104,7 +104,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
               completedTasks: [],
               completedTasksDetails: [],
               overrideDirective: state.overrideDirective || state.directive || undefined,
-              chatSource: state.chatSource
+              chatSource: state.chatSource,
+              userLanguage: state.context.userLanguage,
             }
           }
         );

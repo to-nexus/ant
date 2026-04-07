@@ -293,7 +293,8 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
             completedTasks: [],
             completedTasksDetails: [],
             overrideDirective: effectiveDirective,
-            chatSource: state.chatSource
+            chatSource: state.chatSource,
+            userLanguage: state.context.userLanguage,
           }
         }
       );
