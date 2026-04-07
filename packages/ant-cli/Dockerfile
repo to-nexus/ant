@@ -127,7 +127,8 @@ ENV PATH="${PATH}:/root/.local/share/mise/shims"
 ENV MISE_AUTO_INSTALL=true
 
 # -------- Node.js tooling --------
-RUN npm install -g pnpm tsx
+RUN npm install -g pnpm
+RUN npm install -g tsx
 
 # Create non-root user
 RUN addgroup -S ant && adduser -S -G ant ant
@@ -216,7 +217,8 @@ ENV GOPATH="/home/ant/go"
 ENV GOTOOLCHAIN=auto
 
 # Install pnpm and tsx for production
-RUN npm install -g pnpm tsx
+RUN npm install -g pnpm
+RUN npm install -g tsx
 
 # Create non-root user for security (Alpine uses addgroup/adduser)
 RUN addgroup -S ant && adduser -S -G ant ant
