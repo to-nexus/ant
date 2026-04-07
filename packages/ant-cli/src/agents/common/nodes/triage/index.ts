@@ -55,6 +55,8 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
  */
 export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState): boolean {
   switch (targetJob) {
+    case 'plan':
+      return true;
     case 'design':
       return ws.hasPrd || ws.hasScreens || ws.hasComponents || ws.hasAssets || ws.hasFigmaConfig;
     case 'code':
@@ -201,17 +203,17 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 4.5: Programmatic guard — plan outbound redirect prerequisite check
+  // Step 4.5: Programmatic guard — redirect prerequisite check
   // Redirect is only valid when the target job's input materials exist.
   // Directive is excluded (always present when user types anything).
+  // Applies to ALL redirects (inbound and outbound).
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (triageResult.workStatus === 'redirect'
-      && currentJob === 'plan'
       && triageResult.suggestedJob) {
     const targetJob = triageResult.suggestedJob;
 
     if (!hasTargetJobPrerequisites(targetJob, workspaceState)) {
-      console.log(`🛡️ [Triage] Guard: plan→${targetJob} redirect blocked — no target job prerequisites in workspace`);
+      console.log(`🛡️ [Triage] Guard: ${currentJob}→${targetJob} redirect blocked — no target job prerequisites in workspace`);
       triageResult.workStatus = 'proceed';
       triageResult.suggestedJob = undefined;
       triageResult.suggestedAgent = undefined;
@@ -219,9 +221,13 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
       triageResult.choiceOptions = undefined;
       triageResult.redirectReason = undefined;
       triageResult.displayMessage = undefined;
-      triageResult._guardMessage = targetJob === 'code'
-        ? '코드 작업을 시작하려면 디자인 문서가 필요합니다. 먼저 디자인 작업을 진행해주세요.'
-        : `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다.`;
+
+      const guardMessages: Record<string, string> = {
+        code: '코드 작업을 시작하려면 디자인 문서가 필요합니다. 먼저 디자인 작업을 진행해주세요.',
+        plan: 'PRD가 워크스페이스에 없습니다. PRD를 먼저 작성해주세요.',
+      };
+      triageResult._guardMessage = guardMessages[targetJob]
+        || `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다.`;
     }
   }
 
@@ -261,7 +267,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Step 5.5: Send guard message if plan outbound redirect was blocked
+  // Step 5.5: Send guard message if redirect was blocked by prerequisite check
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (triageResult._guardMessage) {
     try {
