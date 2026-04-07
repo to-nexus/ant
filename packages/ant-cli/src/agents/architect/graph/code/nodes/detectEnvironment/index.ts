@@ -15,6 +15,7 @@ import { LLMClient } from '../../../../../../core/ports';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
+import { buildAllSourceDocs } from '../../../../../../core/utils/sourceDocuments';
 import { 
   createCodeDetectionReport, 
   formatDetectionReportForChat,
@@ -110,15 +111,16 @@ export async function detectEnvironment(
   console.log('🔍 DETECT ENVIRONMENT: Analyzing development context');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  // 1. Build Prompt (lightweight: directive + PRD only)
+  // 1. Build Prompt (directive + combined source documents)
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
     throw new Error('[DetectEnvironment] PromptEngine not available');
   }
   
+  const combinedPrd = buildAllSourceDocs(state.sourceDocuments) || state.prd;
   const prompt = await promptEngine.buildDetectEnvironmentPrompt(
     state.directive || '',
-    state.prd
+    combinedPrd
   );
   
   // ✅ Log prompt structure (not content)
@@ -136,7 +138,7 @@ export async function detectEnvironment(
           usedTemplates: ['code/phases/detect/rules'],
           injectedVariables: {
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+            prd: combinedPrd ? `[${combinedPrd.length} chars]` : undefined,
           },
         }
       );

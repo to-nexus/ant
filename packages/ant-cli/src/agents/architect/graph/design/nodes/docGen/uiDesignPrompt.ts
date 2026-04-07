@@ -198,7 +198,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
-            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+            sourceDocs: sourceDocsForTask ? `[${sourceDocsForTask.length} chars]` : undefined,
             previousDocs: previousDocs ? `[${previousDocs.length} chars]` : undefined,
             uiReferences: state.uiReferences ? {
               count: state.uiReferences.length,
@@ -318,7 +318,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
-            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+            sourceDocs: freshSourceDocs ? `[${freshSourceDocs.length} chars]` : undefined,
             previousDocs: previousDocs ? `[${previousDocs.length} chars]` : undefined,
             isUiTokensTask,
             isUiSpecTask,
