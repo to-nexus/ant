@@ -1,6 +1,39 @@
 import { DesignGraphState } from "../state";
-import { SessionRun } from "../../../../../core/types";
+import { SessionRun, ConversationEntry } from "../../../../../core/types";
 import { saveFigmaMCPDebugLog } from '../../../tools/figmaMCPHandler';
+
+/**
+ * Inter-Job Context Bridge: Build raw job completion record.
+ * Always saves raw content without LLM summarization.
+ * Compression is deferred to next job's resolve node.
+ */
+function buildDesignJobRecord(state: DesignGraphState): { user: ConversationEntry; assistant: ConversationEntry } {
+  const tasks = state.completedTasksDetails || [];
+  const files = state.files || [];
+  const taskNames = tasks.map((t: any) => t.name).join(', ');
+  const timestamp = new Date().toISOString();
+  const boundary = state.boundary || 'lightweight';
+
+  const user: ConversationEntry = {
+    role: 'user',
+    content: state.directive || state.overrideDirective || '',
+    timestamp,
+    metadata: { jobId: state.jobId || (state as any)._httpJobId, boundary },
+  };
+
+  const assistant: ConversationEntry = {
+    role: 'assistant',
+    content: [
+      taskNames && `Tasks: ${taskNames}`,
+      files.length > 0 && `Files: ${files.slice(0, 20).map(f => f.path).join(', ')}${files.length > 20 ? '...' : ''}`,
+      state.planText && `Plan: ${state.planText.substring(0, 500)}`,
+    ].filter(Boolean).join('\n'),
+    timestamp,
+    metadata: { jobId: state.jobId || (state as any)._httpJobId, boundary, taskCount: tasks.length, filesWritten: files.length },
+  };
+
+  return { user, assistant };
+}
 
 /**
  * Learn Node - Finalize workflow and store lessons
@@ -384,6 +417,16 @@ async function saveSessionRun(state: DesignGraphState): Promise<void> {
     }
   }
 
+  // Inter-Job Context Bridge: append raw job record
+  const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
+  let updatedJobConversation = existingSession.state?.jobConversation;
+  if (isLastTask) {
+    const { user: jobUser, assistant: jobAssistant } = buildDesignJobRecord(state);
+    const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
+    updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
+    console.log(`📋 [Design Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || 'lightweight'})`);
+  }
+
   // Update artifacts with latest design and state
   await state.deps.session.updateArtifacts(
     state.context.project,
@@ -406,6 +449,7 @@ async function saveSessionRun(state: DesignGraphState): Promise<void> {
         overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
         chatSource: state.chatSource,  // ✅ Save chat source flag
         detectionReport: state.detectionReport,  // ✅ Save for resume routing
+        jobConversation: updatedJobConversation,
       }
     }
   );

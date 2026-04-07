@@ -49,6 +49,36 @@ Session (feature: "my-sns-app")
 - Job artifacts (code, docs) serve as state — no inter-Job conversation history
 - Enables: parallel execution, independent retry, context freshness
 
+#### Inter-Job Context Bridge
+
+Code/Design의 Context Isolation을 유지하면서 Job 간 맥락을 전달하는 메커니즘.
+
+**핵심 개념:**
+- `session.state.jobConversation: ConversationEntry[]` — Job 완료 기록의 누적 배열
+- 각 Job 완료 시 2개 entry 추가 (user: directive, assistant: result)
+- 기존 `conversationHistory` 폐기 정책은 불변 — jobConversation은 별도 채널
+
+**Boundary Classification:**
+
+| 분류 | 의미 | 결정 시점 |
+|---|---|---|
+| **Heavyweight** | 복잡한 작업, inter-task isolation 적용. raw context 보존 가치 낮음 | decompose (pre-determined 또는 LLM 판정) |
+| **Lightweight** | 응집적 작업, raw context가 그 자체로 가치 있음 | decompose (pre-determined 또는 LLM 판정) |
+
+**Dual-Trigger Compaction (모든 압축은 다음 Job의 resolve에서 수행):**
+- **Trigger 2 (Heavyweight)**: 미압축 heavyweight entries를 LLM 요약으로 교체 (`compressHeavyweightEntries`)
+- **Trigger 1 (Threshold)**: 전체 `jobConversation` 토큰이 threshold 초과 시 `compactJob`으로 MECE 압축
+
+**데이터 흐름:**
+1. learn: raw record만 append (LLM 호출 없음)
+2. 다음 Job resolve: jobConversation 로드 → Trigger 2 → Trigger 1 → persist
+3. decompose: 압축된 jobConversation을 `job-history` partial로 프롬프트에 주입
+
+**프롬프트:**
+- `common/compaction/job-summary.md` — Trigger 2 heavyweight 요약용
+- `code/base/injections/job-history.md` — Code decompose에 주입
+- `design/base/injections/job-history.md` — Design decompose에 주입
+
 ### Context Continuity (Plan, Visual)
 
 Free-form conversation. The entire session file is one continuous dialogue.
@@ -149,12 +179,12 @@ Context Isolation 전용. Task 전환 시 대화 이력 보존/압축/폐기 결
 
 ### 현재 상태
 
-|  | compactRun | compactJob (prompt) | applyCompactionToConversation (persist) | retentionPolicy |
-|---|---|---|---|---|
-| Code (Isolation) | O | - | - | O |
-| Design (Isolation) | O | - | - | O (spec 명시적 discard) |
-| Plan (Continuation) | O (50K budget) | O (LLM-based, 12K threshold) | O | - |
-| Visual (Continuation) | X (tool loop ephemeral) | O (LLM-based, 6.4K threshold) | O | - |
+|  | compactRun | compactJob (prompt) | applyCompactionToConversation (persist) | retentionPolicy | Inter-Job Context Bridge |
+|---|---|---|---|---|---|
+| Code (Isolation) | O | O (jobConversation, 8K threshold) | O (jobConversation) | O | O (resolve: Trigger 2 + Trigger 1) |
+| Design (Isolation) | O | O (jobConversation, 8K threshold) | O (jobConversation) | O (spec 명시적 discard) | O (resolve: Trigger 2 + Trigger 1) |
+| Plan (Continuation) | O (50K budget) | O (LLM-based, 12K threshold) | O | - | - |
+| Visual (Continuation) | X (tool loop ephemeral) | O (LLM-based, 6.4K threshold) | O | - | - |
 
 Visual에 compactRun이 불필요한 이유: `streamWithToolLoop`의 `currentMessages`는 함수 로컬 변수로 최대 5라운드 후 소멸. graph state/세션에 저장되지 않으므로 cross-invocation 성장 없음.
 
@@ -162,7 +192,8 @@ Visual에 compactRun이 불필요한 이유: `streamWithToolLoop`의 `currentMes
 
 | 항목 | 현재 | 목표 | 비고 |
 |---|---|---|---|
-| Code compactJob | 미적용 | 반복적 수정 job에 적용 | compactJob + applyCompaction 확장 |
+| Job Type별 압축 잔여량 UI | 미적용 | 채팅창에 circular progress 게이지 표시 | estimateTokens(jobConversation) / threshold |
+| 수동 압축 (Manual Trigger 1) | 미적용 | UI에서 "압축하기" 버튼 | API endpoint 추가 필요 |
 
 ---
 
@@ -280,6 +311,10 @@ retentionPolicy → compactRun, types, tokenBudget
 | `VISUAL_COMPACTION_THRESHOLD` | 6,400 | Visual compactJob 트리거 |
 | `VISUAL_COMPACTION_WINDOW` | 3 | Visual compactJob 최근 window |
 | `COMPACTION_MAX_OUTPUT_TOKENS` | 16,384 | compactJob LLM 최대 출력 |
+| `CODE_JOB_COMPACTION_THRESHOLD` | 8,000 | Code Inter-Job Context compactJob 트리거 |
+| `CODE_JOB_COMPACTION_WINDOW` | 3 | Code Inter-Job Context 최근 window |
+| `DESIGN_JOB_COMPACTION_THRESHOLD` | 8,000 | Design Inter-Job Context compactJob 트리거 |
+| `DESIGN_JOB_COMPACTION_WINDOW` | 3 | Design Inter-Job Context 최근 window |
 
 ---
 
@@ -295,6 +330,9 @@ retentionPolicy → compactRun, types, tokenBudget
 | `core/context/compactRun.ts` | Run-level 3단계 오케스트레이터 |
 | `core/context/compactJob.ts` | Job-level LLM compaction + applyCompactionToConversation + ConversationCompaction |
 | `core/prompt/templates/common/compaction/system.md` | compactJob 프롬프트 (MECE 보존 전략) |
+| `core/prompt/templates/common/compaction/job-summary.md` | Trigger 2 heavyweight job 요약 프롬프트 |
+| `core/prompt/templates/code/base/injections/job-history.md` | Code decompose에 주입되는 job history partial |
+| `core/prompt/templates/design/base/injections/job-history.md` | Design decompose에 주입되는 job history partial |
 | `core/context/retentionPolicy.ts` | Task-boundary retention (Isolation) |
 | `core/utils/tokenBudget.ts` | TokenBudgetManager (200K area budgets) |
 | `core/types/session.ts` | Session, SessionRun, ConversationEntry types |

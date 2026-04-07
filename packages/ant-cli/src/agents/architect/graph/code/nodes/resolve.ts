@@ -4,6 +4,55 @@ import { CodebaseRetriever } from "../../../../../core/codebase/CodebaseRetrieve
 import { ReferenceContext } from "../../../../../core/codebase/types";
 import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
+import type { ConversationEntry } from "../../../../../core/types/session";
+import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
+
+/**
+ * Compress uncompressed heavyweight entries in jobConversation via LLM summarization.
+ * Called during resolve (Trigger 2: heavyweight compression).
+ */
+async function compressHeavyweightEntries(
+  entries: ConversationEntry[],
+  llm: import('../../../../../core/ports/llm').LLMClient,
+  promptPort: import('../../../../../core/ports/prompt').PromptPort,
+): Promise<{ entries: ConversationEntry[]; changed: boolean }> {
+  let changed = false;
+  const result: ConversationEntry[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (
+      entry.role === 'assistant' &&
+      entry.metadata?.boundary === 'heavyweight' &&
+      !entry.metadata?.chapterSummary
+    ) {
+      const userEntry = result[result.length - 1];
+      const jobData = [
+        `Directive: ${userEntry?.content || ''}`,
+        `Result: ${entry.content}`,
+      ].join('\n');
+
+      try {
+        const systemPrompt = await promptPort.render('common/compaction/job-summary', { jobData });
+        const summaryContent = await llm.invoke(
+          [{ role: 'user', content: 'Summarize this job.' }],
+          { system: systemPrompt, maxTokens: 2048 }
+        );
+        result.push({
+          ...entry,
+          content: summaryContent,
+          metadata: { ...entry.metadata, chapterSummary: 'Heavyweight job summary' },
+        });
+        changed = true;
+      } catch (err) {
+        console.warn(`⚠️  [Resolve] Heavyweight compression failed, keeping raw entry:`, err);
+        result.push(entry);
+      }
+    } else {
+      result.push(entry);
+    }
+  }
+  return { entries: changed ? result : entries, changed };
+}
 
 /**
  * Code Resolve Node
@@ -459,6 +508,73 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
         directive || design || ''
       )
     : undefined;
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Inter-Job Context Bridge: Load & compact jobConversation
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const rawJobConversation: ConversationEntry[] = session?.state?.jobConversation || [];
+  let processedJobConversation = rawJobConversation;
+
+  if (rawJobConversation.length > 0 && state.deps?.llm && state.deps?.promptEngine?.deps?.promptPort) {
+    const promptPort = state.deps.promptEngine.deps.promptPort;
+
+    if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+      state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
+    }
+
+    // Trigger 2: Compress uncompressed heavyweight entries
+    let compactionChanged = false;
+    const trigger2Result = await compressHeavyweightEntries(
+      processedJobConversation, state.deps.llm, promptPort
+    );
+    processedJobConversation = trigger2Result.entries;
+    compactionChanged = trigger2Result.changed;
+
+    // Trigger 1: Threshold compaction on entire array
+    const { compactJob, applyCompactionToConversation } = await import('../../../../../core/context/compactJob');
+    try {
+      const compactResult = await compactJob(
+        processedJobConversation,
+        state.deps.llm,
+        promptPort,
+        {
+          threshold: CODE_JOB_COMPACTION_THRESHOLD,
+          recentWindowSize: CODE_JOB_COMPACTION_WINDOW,
+          maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
+        }
+      );
+      if (compactResult.wasCompacted) {
+        processedJobConversation = applyCompactionToConversation(
+          processedJobConversation,
+          { summary: compactResult.summary!, summarizedCount: processedJobConversation.length - CODE_JOB_COMPACTION_WINDOW },
+          (summary) => ({
+            role: 'system' as const,
+            content: summary,
+            timestamp: new Date().toISOString(),
+            metadata: { chapterSummary: 'Previous jobs summary' },
+          })
+        );
+        compactionChanged = true;
+      }
+    } catch (err) {
+      console.warn(`⚠️  [Resolve] Trigger 1 compaction failed, using uncompacted entries:`, err);
+    }
+
+    // Persist only if compaction actually modified entries
+    if (compactionChanged && state.deps?.session) {
+      try {
+        const existingSessionForUpdate = await state.deps.session.load(context.project, context.featureFolder, 'code');
+        await state.deps.session.updateArtifacts(context.project, context.featureFolder, 'code', {
+          state: { ...existingSessionForUpdate.state, jobConversation: processedJobConversation }
+        });
+        console.log(`💾 [Resolve] Persisted compacted jobConversation (${rawJobConversation.length} → ${processedJobConversation.length} entries)`);
+      } catch (err) {
+        console.warn(`⚠️  [Resolve] Failed to persist compacted jobConversation:`, err);
+      }
+    }
+
+    console.log(`📋 [Resolve] Inter-Job Context: ${processedJobConversation.length} entries loaded`);
+  }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 4. Profile Analysis (MINIMAL - only for language/framework detection)
@@ -493,6 +609,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     figmaAvailable,
     figmaFileKey,
     figmaStartNodeId,
+    jobConversation: processedJobConversation,
   };
   
   // ✅ Record phase timing

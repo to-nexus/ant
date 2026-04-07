@@ -32,6 +32,9 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     const state = get();
     set({ selectedJobType: jobType });
     saveToStorage(STORAGE_KEYS.SELECTED_JOB_TYPE, jobType);
+
+    // Sync isRunning/currentJobId/workflow SSE from activeJobs
+    state.syncViewToJobType(jobType);
     
     // Reload session for new job type
     if (state.selectedProject && state.selectedFeature) {
@@ -49,7 +52,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
         }
       })();
       
-      // Reconnect SSE to fetch new job type's data
+      // Reconnect SSE to fetch new job type's kanban data
       if (state.reconnectSSE) {
         state.reconnectSSE('kanban');
       }

@@ -1,3 +1,7 @@
+{{#if hasJobHistory}}
+{{> design/base/injections/job-history}}
+{{/if}}
+
 # System Design Task Decomposition
 
 You are analyzing requirements to break them into design tasks.

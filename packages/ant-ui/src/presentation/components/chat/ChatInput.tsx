@@ -29,6 +29,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const isRunning = useStore((state) => state.isRunning);
   const isStopping = useStore((state) => state.isStopping);  // ✅ Use global state
   const backendMode = useStore((state) => state.backendMode);
+  const activeJobs = useStore((state) => state.activeJobs);
   const hasPendingClarify = useStore((state) => Object.keys(state.pendingClarifyAnswers).length > 0);
   const userEmail = useStore((state) => state.userEmail);
   const pendingChatInput = useStore((state) => state.pendingChatInput);  // ✅ Subscribe to Chat service
@@ -655,7 +656,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             <div className="relative" ref={agentMenuRef}>
               <button
                 onClick={() => setShowAgentMenu(!showAgentMenu)}
-                disabled={!chatPolicy.canChangeJob || isRunning}
+                disabled={!chatPolicy.canChangeJob}
                 className="flex items-center gap-1 px-2 py-1 text-xs
                            bg-white dark:bg-gray-700 
                            border border-gray-300 dark:border-gray-600
@@ -738,7 +739,12 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                         : ''
                     }`}
                   >
-                    <span className="font-medium">{job.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium">{job.label}</span>
+                      {activeJobs[job.value] && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                      )}
+                    </div>
                     <span className="text-[10px] text-gray-500 dark:text-gray-400">{job.description}</span>
                   </button>
                 ))}

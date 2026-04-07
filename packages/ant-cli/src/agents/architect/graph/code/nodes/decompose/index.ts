@@ -103,7 +103,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       totalSubtasks: 1,
       subtaskIndex: 0,
       completedTasks: [],
-      completedTasksDetails: []
+      completedTasksDetails: [],
+      boundary: 'lightweight' as const,
     };
   }
   
@@ -162,6 +163,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // STEP 3: Prepare design documents (environment-aware)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { designDoc, hasDesignDoc, useToolMode } = prepareDesignDocument(state);
+
+  // Inter-Job Context Bridge: pre-determine boundary classification
+  const suggestedBoundary: 'heavyweight' | 'lightweight' | 'pending' =
+    state.detectionReport?.jobMode === 'explain' ? 'lightweight'
+    : hasDesignDoc ? 'heavyweight'
+    : (state.specDocs && Object.keys(state.specDocs).length > 0) ? 'pending'
+    : 'lightweight';
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Build prompt and call LLM
@@ -321,7 +329,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     codebaseFilePaths,           // ✅ File paths from keyword search (for task planning)
     hasProjectCode,              // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
     uiSectionsSummary,           // ✅ UI sections summary with token estimates (for split injection)
-    runtimeAssetsIndex: state.runtimeAssetsIndex
+    runtimeAssetsIndex: state.runtimeAssetsIndex,
+    // Inter-Job Context Bridge
+    jobConversation: state.jobConversation,
+    hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
+    needsBoundaryClassification: suggestedBoundary === 'pending',
   };
   
   const prompts = await state.deps.promptEngine.buildDecomposePrompt(decomposeVars);
@@ -423,7 +435,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw error;
   }
   
-  const { tasks, referenceRequests, profile: parsedProfile, selectedSpec, unknownPackages } = parsed;
+  const { tasks, referenceRequests, profile: parsedProfile, selectedSpec, unknownPackages, boundary: parsedBoundary } = parsed;
+
+  // Inter-Job Context Bridge: finalize boundary
+  const finalBoundary: 'heavyweight' | 'lightweight' = suggestedBoundary === 'pending'
+    ? (parsedBoundary || 'lightweight')
+    : suggestedBoundary;
   
   // ✅ Store selectedSpec in state (used by plan node for spec injection)
   // LLM response can override auto-selected spec if it picks a different valid one
@@ -628,6 +645,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     jobTiming,
     _estimatingTokenUsage: estimatingTokenUsage,
     _phaseTimings: finalPhaseTimings,
+    boundary: finalBoundary,
   };
   
   // ✅ Update broadcaster with finalized jobTiming (includes estimatingDuration + phaseBreakdown)

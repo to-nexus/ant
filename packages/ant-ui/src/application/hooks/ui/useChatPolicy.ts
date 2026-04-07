@@ -154,7 +154,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType,
-      canChangeJob: false,  // ❌ Job 실행 중엔 변경 불가
+      canChangeJob: true,  // ✅ N concurrent jobs: 실행 중에도 다른 job type으로 전환 가능
       reason: 'job-running'
     };
   }

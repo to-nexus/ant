@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { JobState, QueuePosition, InlineAskContext } from '../types';
+import { JobState, QueuePosition, InlineAskContext, ActiveJobEntry } from '../types';
 import { Session } from '@/domain/models/session';
 import { JobExecution } from '@/infrastructure/http/cli';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
@@ -14,6 +14,9 @@ export interface JobActions {
   setCurrentJob: (job: JobExecution | null) => void;
   setQueuePosition: (position: QueuePosition | null) => void;
   setInlineAskContext: (context: InlineAskContext | null) => void;
+  setActiveJob: (jobType: string, entry: ActiveJobEntry) => void;
+  clearActiveJob: (jobType: string) => void;
+  syncViewToJobType: (jobType: string) => void;
 }
 
 export type JobSlice = JobState & JobActions;
@@ -42,6 +45,10 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
   sseReconnectGrace: false,
   // ✅ Inline Ask: Context for handling ask during interrupted jobs
   inlineAskContext: null,
+  // N concurrent jobs: per-jobType tracking within current feature
+  activeJobs: {},
+  // Feature entry vs manual job-type switch: only auto-select on feature entry
+  pendingAutoSelect: false,
 
   // ==================
   // Actions
@@ -160,6 +167,45 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
 
   setInlineAskContext: (context) => {
     set({ inlineAskContext: context });
+  },
+
+  setActiveJob: (jobType, entry) => {
+    const activeJobs = { ...get().activeJobs };
+    activeJobs[jobType] = entry;
+    set({ activeJobs });
+  },
+
+  clearActiveJob: (jobType) => {
+    const activeJobs = { ...get().activeJobs };
+    delete activeJobs[jobType];
+    set({ activeJobs });
+  },
+
+  syncViewToJobType: (jobType) => {
+    const { activeJobs, currentJobId: prevJobId } = get();
+    const activeJob = activeJobs[jobType];
+
+    if (prevJobId) {
+      sseManager.disconnectWorkflow(prevJobId);
+    }
+
+    const isActiveJob = activeJob && (activeJob.status === 'running' || activeJob.status === 'queued');
+
+    set({
+      jobStartPending: false,
+      // When switching TO a running job, protect isRunning from the stale
+      // session kanban that arrives immediately after reconnectSSE.
+      sseReconnectGrace: !!isActiveJob,
+      isStopping: false,
+      isQueued: false,
+      queuePosition: null,
+      isRunning: !!isActiveJob,
+      currentJobId: isActiveJob ? activeJob.jobId : activeJob?.jobId,
+    });
+
+    if (isActiveJob) {
+      sseManager.connectWorkflow(activeJob.jobId);
+    }
   },
 });
 

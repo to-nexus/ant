@@ -3,7 +3,7 @@ import { sseManager } from '@/infrastructure/sse/SSEManager';
 import type { HandlerId } from '@/infrastructure/sse/SSEManager';
 import type { ChatMessage, MessageContent } from '@/domain/models/chat';
 import type { KanbanData, FileNode } from '@/infrastructure/http/api';
-import { removeFromStorage, saveToStorage, STORAGE_KEYS } from '../storage';
+import { removeFromStorage, STORAGE_KEYS } from '../storage';
 import { resolveAgentForJobType } from '@/shared/utils/constants';
 
 function findFigmaJsonNode(tree: FileNode[]): FileNode | undefined {
@@ -30,6 +30,7 @@ export interface SSEActions {
   initializeSSE: () => void;
   reconnectSSE: (key: string) => void;
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
+  handleInitialActiveJobs: (jobs: Array<{ jobType: string; jobId: string; status: string; agent?: string }>) => void;
 }
 
 export type SSESlice = SSEState & SSEActions;
@@ -96,19 +97,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     const currentFeatureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
     
     const isJobRunning = data.dataSource === 'live' || data.dataSource === 'estimating';
-    
-    // Sync selectedAgent/selectedJobType from server SSOT (KanbanData).
-    // Prevents cross-tab contamination and stale state after reconnection.
-    if (data.jobType) {
-      const serverAgent = data.agent || resolveAgentForJobType(data.jobType);
-      const needsSync = state.selectedJobType !== data.jobType || state.selectedAgent !== serverAgent;
-      if (needsSync) {
-        console.log(`[Store] 🔄 Syncing agent/jobType from server: ${state.selectedAgent}/${state.selectedJobType} → ${serverAgent}/${data.jobType}`);
-        set({ selectedAgent: serverAgent, selectedJobType: data.jobType });
-        saveToStorage(STORAGE_KEYS.SELECTED_AGENT, serverAgent);
-        saveToStorage(STORAGE_KEYS.SELECTED_JOB_TYPE, data.jobType);
-      }
-    }
     
     // ✅ Cloud multi-pod: Clear jobStartPending when actual job starts running
     // This signals that the job has actually started on the worker pod
@@ -330,7 +318,27 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       const currentState = get();
       if (currentState.selectedProject !== connectedProject ||
           currentState.selectedFeature !== connectedFeature) return;
-      get().updateKanban(data);
+
+      // (1) Initial SSE: activeJobs present → store + auto-select if needed
+      if (data.activeJobs) {
+        get().handleInitialActiveJobs(data.activeJobs);
+      }
+
+      // (2) Track per-jobType active state from live kanban events only.
+      // Skip initial state (has activeJobs) — server-provided activeJobs is authoritative.
+      if (data.jobType && data.jobId && !data.activeJobs) {
+        const isActive = data.dataSource === 'live' || data.dataSource === 'estimating';
+        if (isActive) {
+          get().setActiveJob(data.jobType, { jobId: data.jobId, status: 'running' });
+        } else {
+          get().clearActiveJob(data.jobType);
+        }
+      }
+
+      // (3) Only apply kanban data matching the currently viewed job type
+      if (!data.jobType || data.jobType === currentState.selectedJobType) {
+        get().updateKanban(data);
+      }
     }));
     
     sliceHandlerIds.push(sseManager.registerHandlerWithId('chat', (event: any) => {
@@ -858,6 +866,35 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
 
   setConnectionStatus: (status) => {
     set({ connectionStatus: status });
+  },
+
+  handleInitialActiveJobs: (jobs) => {
+    const map: Record<string, { jobId: string; status: string; agent?: string }> = {};
+    for (const j of jobs) {
+      map[j.jobType] = { jobId: j.jobId, status: j.status, agent: j.agent };
+    }
+    set({ activeJobs: map });
+
+    const currentType = get().selectedJobType;
+    const shouldAutoSelect = (get() as any).pendingAutoSelect;
+
+    if (shouldAutoSelect && !map[currentType] && jobs.length > 0) {
+      set({ pendingAutoSelect: false } as any);
+      const runningJob = jobs.find(j => j.status === 'running') || jobs[0];
+      const agent = runningJob.agent || resolveAgentForJobType(runningJob.jobType);
+      console.log(`[Store] 🔄 Auto-selecting active job: ${runningJob.jobType} (was ${currentType})`);
+      // Defer to next tick: current SSE event delivery must complete before reconnect
+      setTimeout(() => {
+        get().setSelectedAgent(agent);
+        get().setSelectedJobType(runningJob.jobType as any);
+      }, 0);
+    } else {
+      set({ pendingAutoSelect: false } as any);
+      // Sync view for current type: sets isRunning/sseReconnectGrace from activeJobs.
+      // Covers both "current type is active" and "no active jobs at all" —
+      // the latter clears stale isRunning/grace that may linger from a previous connection.
+      get().syncViewToJobType(currentType);
+    }
   },
 });
 

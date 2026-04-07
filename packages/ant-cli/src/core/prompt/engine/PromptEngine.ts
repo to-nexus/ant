@@ -386,6 +386,10 @@ export class PromptEngine {
       count: number;
       files: string[];
     };
+    // Inter-Job Context Bridge
+    jobConversation?: import('../../types/session').ConversationEntry[];
+    hasJobHistory?: boolean;
+    needsBoundaryClassification?: boolean;
   }): Promise<{ system: string; user: string }> {
     const hasExistingCode = context.hasProjectCode ?? 
                            (context.codebaseFilePaths && context.codebaseFilePaths.length > 0);
@@ -424,6 +428,9 @@ export class PromptEngine {
       hasSpecDocs: Boolean(context.specDocsMeta),
       uiHint,
       assetsHint,
+      jobConversation: context.jobConversation,
+      hasJobHistory: context.hasJobHistory,
+      needsBoundaryClassification: context.needsBoundaryClassification,
     };
     
     const system = await this.deps.promptPort.render('code/phases/decompose/rules', enrichedContext);

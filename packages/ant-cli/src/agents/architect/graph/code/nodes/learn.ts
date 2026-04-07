@@ -1,8 +1,41 @@
 import * as path from "path";
 import { ArchitectGraphState } from "../state";
-import { SessionRun } from "../../../../../core/types";
+import { SessionRun, ConversationEntry } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 import { getChatAPIClient } from "../../../../../core/adapters/ChatAPIClient";
+
+/**
+ * Inter-Job Context Bridge: Build raw job completion record.
+ * Always saves raw content without LLM summarization.
+ * Compression is deferred to next job's resolve node.
+ */
+function buildJobRecord(state: ArchitectGraphState): { user: ConversationEntry; assistant: ConversationEntry } {
+  const tasks = state.completedTasksDetails || [];
+  const filePaths = state.projectCodeContext?.filePaths || [];
+  const taskNames = tasks.map((t: any) => t.name).join(', ');
+  const timestamp = new Date().toISOString();
+  const boundary = state.boundary || 'lightweight';
+
+  const user: ConversationEntry = {
+    role: 'user',
+    content: state.directive || state.overrideDirective || '',
+    timestamp,
+    metadata: { jobId: (state as any).jobId, boundary },
+  };
+
+  const assistant: ConversationEntry = {
+    role: 'assistant',
+    content: [
+      taskNames && `Tasks: ${taskNames}`,
+      filePaths.length > 0 && `Files: ${filePaths.slice(0, 20).join(', ')}${filePaths.length > 20 ? '...' : ''}`,
+      state.planText && `Plan: ${state.planText.substring(0, 500)}`,
+    ].filter(Boolean).join('\n'),
+    timestamp,
+    metadata: { jobId: (state as any).jobId, boundary, taskCount: tasks.length, filesWritten: filePaths.length },
+  };
+
+  return { user, assistant };
+}
 
 /**
  * ✅ Global queue for async lesson storage tasks to prevent memory explosion
@@ -390,6 +423,15 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     }
     
+    // Inter-Job Context Bridge: append raw job record on final task
+    let updatedJobConversation = existingSession.state?.jobConversation;
+    if (isLastTask && !taskFailed) {
+      const { user: jobUser, assistant: jobAssistant } = buildJobRecord(state);
+      const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
+      updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
+      console.log(`📋 [Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || 'lightweight'})`);
+    }
+
     // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
@@ -429,6 +471,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           detectionReport: state.detectionReport,
           // ✅ projectCodeContext is NOT saved to checkpoint
           // Plan node always regenerates it via RAG - no need to persist
+          jobConversation: updatedJobConversation,
         }
       }
     );

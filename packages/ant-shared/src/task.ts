@@ -100,6 +100,19 @@ export interface BaseTask {
 }
 
 // ============================================
+// Active Job Info (SSE initial state)
+// ============================================
+
+/** Per-feature active job entry sent via SSE initial kanban response.
+ *  Allows the frontend to track N concurrent jobs and show running indicators. */
+export interface ActiveJobInfo {
+  jobType: string;
+  jobId: string;
+  status: 'running' | 'paused' | 'queued';
+  agent?: string;
+}
+
+// ============================================
 // Kanban Data (SSE → Frontend)
 // ============================================
 
@@ -150,4 +163,8 @@ export interface KanbanData {
   estimatingLabel?: string;       // Current node activity label (e.g., "환경 분석 중")
   estimatingStartedAt?: string;   // ISO timestamp when current phase started (for timer)
   estimatingNodeId?: string;      // Node ID (e.g., "decompose") for UI-specific rendering
+
+  /** All active (running/paused/queued) jobs for this feature.
+   *  Only present in SSE initial kanban response, not in live broadcasts. */
+  activeJobs?: ActiveJobInfo[];
 }

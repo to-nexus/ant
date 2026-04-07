@@ -137,6 +137,7 @@ function handleExplainMode(
     completedTasksDetails: [],
     jobId: timing.newJobId,
     jobTiming: timing.newJobTiming,
+    boundary: 'lightweight' as const,
   };
 }
 
@@ -161,6 +162,7 @@ async function handleDefaultTask(
     _httpJobId: state._httpJobId,
     jobId: timing.newJobId,
     jobTiming: timing.newJobTiming,
+    boundary: 'lightweight' as const,
   } as any;
 }
 
