@@ -333,7 +333,7 @@ Continue writing code files and output <done>true</done> when complete.`);
     !/\s--only=prod\b/.test(command);
 
   const normalizedCommand = shouldForceIncludeDev
-    ? `${command} --include=dev`
+    ? command.replace(/\b(npm\s+(ci|install))\b/, '$1 --include=dev')
     : command;
 
   const mergeIndex = await chatAPI.commandStart(normalizedCommand);
