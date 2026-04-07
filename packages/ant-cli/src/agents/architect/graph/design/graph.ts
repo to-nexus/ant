@@ -924,6 +924,10 @@ export function buildDesignGraph() {
       // ✅ Figma MCP connection health (tool → docGenRouter → checkTaskStatus)
       _figmaConsecutiveErrors: null as any,
       _figmaConnectionLost: null as any,
+
+      // Inter-Job Context Bridge
+      boundary: null as any,
+      jobConversation: null as any,
     } as any,
   } as any);
 

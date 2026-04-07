@@ -95,6 +95,10 @@ export interface ConversationEntry {
     mode?: string;           // generate, refine, etc.
     savedAsset?: string;     // Visual: deliver node saved asset path
     chapterSummary?: string; // Visual: chapter marker summary / persist pruning summary
+    boundary?: 'heavyweight' | 'lightweight';  // Inter-Job Context Bridge: job complexity classification
+    jobId?: string;          // Inter-Job Context Bridge: originating job ID
+    taskCount?: number;      // Inter-Job Context Bridge: number of tasks completed
+    filesWritten?: number;   // Inter-Job Context Bridge: number of files written
   };
 }
 
@@ -172,6 +176,9 @@ export interface SessionState {
   
   // Multi-Turn Conversation (cross-run semantic history)
   conversation?: ConversationEntry[];
+
+  // Inter-Job Context Bridge (cross-job directive+result history)
+  jobConversation?: ConversationEntry[];
 }
 
 // ============================================

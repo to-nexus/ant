@@ -11,6 +11,7 @@ import { extractUserContext } from './helpers/userContext';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
+import type { ActiveJobInfo } from '@ant/shared';
 
 /**
  * Unified SSE Routes
@@ -57,19 +58,28 @@ export function createSSERoutes(deps: {
     await deps.sseService.registerClient(projectId, featureName, res, userContext);
     logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
 
-    // Resolve effective jobType: if a job is currently running for this feature,
-    // use its type instead of the client-requested one (server as SSOT).
-    let effectiveJob = job;
+    // Collect active jobs for this feature (N concurrent job support).
+    // Sent to frontend as part of initial kanban so it can track all running/paused/queued jobs.
+    let activeJobs: ActiveJobInfo[] = [];
     if (deps.stateStore) {
       try {
         const featureJobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
-        const runningJob = featureJobs.find(j => j.status === 'running');
-        if (runningJob) {
-          effectiveJob = runningJob.type;
-          logger.debug(`Running job detected, overriding job param: ${job} → ${effectiveJob}`, { component: 'SSE', projectId, featureName, jobId: runningJob.jobId });
+        activeJobs = featureJobs
+          .filter(j =>
+            (j.status === 'running' || j.status === 'paused' || j.status === 'queued') &&
+            j.type !== 'inline-ask' && j.type !== 'ask'
+          )
+          .map(j => ({
+            jobType: j.type,
+            jobId: j.jobId,
+            status: j.status as ActiveJobInfo['status'],
+            agent: getAgentForJobSafe(j.type),
+          }));
+        if (activeJobs.length > 0) {
+          logger.debug(`Active jobs for feature: ${activeJobs.map(j => `${j.jobType}(${j.status})`).join(', ')}`, { component: 'SSE', projectId, featureName });
         }
       } catch (err) {
-        logger.warn(`Failed to check running jobs, using client-requested job: ${job}`, { component: 'SSE', projectId, featureName }, err);
+        logger.warn(`Failed to list active jobs`, { component: 'SSE', projectId, featureName }, err);
       }
     }
 
@@ -83,13 +93,13 @@ export function createSSERoutes(deps: {
         deps.kanbanService.getKanbanData(
           projectId,
           featureName,
-          effectiveJob,
+          job,
           deps.jobToProject,
           deps.jobs,
           deps.taskQueueSnapshots,
           userContext
         ).then(kanbanData => {
-          deps.sseService.sendInitialState(res, 'kanban', kanbanData);
+          deps.sseService.sendInitialState(res, 'kanban', { ...kanbanData, activeJobs });
         }).catch(err => {
           logger.warn(`Failed to send initial kanban`, { component: 'SSE', projectId, featureName }, err);
         }),

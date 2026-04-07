@@ -559,11 +559,32 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ---
 
+{{#if needsBoundaryClassification}}
+## Boundary Classification
+
+Observe the scope and complexity of the specification.
+Classify this job's execution boundary:
+
+- **heavyweight**: Multiple independent concerns where isolated task execution benefits quality
+- **lightweight**: Cohesive work where preserving full context aids subsequent iterations
+
+Output in `<boundary>` tags before `<tasks>`:
+`<boundary>heavyweight</boundary>` or `<boundary>lightweight</boundary>`
+
+Constraint: If uncertain, default to lightweight.
+{{/if}}
+
 ## Output Sequence
 
 Output in this exact order:
 
+{{#if needsBoundaryClassification}}
+**0. `<boundary>` tag** (see Boundary Classification above)
+
+**1. `<profile>` tag** (project profile -- see Step 1 above):
+{{else}}
 **0. `<profile>` tag** (project profile -- see Step 1 above):
+{{/if}}
 
 <profile>
 {
@@ -574,9 +595,9 @@ Output in this exact order:
 }
 </profile>
 
-**1. `<tasks>` tag** (task array -- see Task Schema above)
+**{{#if needsBoundaryClassification}}2{{else}}1{{/if}}. `<tasks>` tag** (task array -- see Task Schema above)
 
-**2. `<references>` tag** (REQUIRED, even if empty):
+**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<references>` tag** (REQUIRED, even if empty):
 
 <references>
 []
@@ -586,7 +607,7 @@ Output in this exact order:
 
 **Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
 
-**3. `<prescribedDependencies>` tag** (REQUIRED, even if empty):
+**{{#if needsBoundaryClassification}}4{{else}}3{{/if}}. `<prescribedDependencies>` tag** (REQUIRED, even if empty):
 
 <prescribedDependencies>
 ["github.com/org/repo/sub/pkg-a", "github.com/org/repo/sub/pkg-b"]

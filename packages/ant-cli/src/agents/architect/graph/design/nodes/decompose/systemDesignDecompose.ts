@@ -398,6 +398,8 @@ export async function decomposeSystemDesign(
     environment: detectedEnv,
     resolvedTargetFiles,
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
+    jobConversation: state.jobConversation,
+    hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
   });
 
   await safeLogPrompt(
@@ -628,5 +630,6 @@ export async function decomposeSystemDesign(
     jobId: ctx.newJobId,
     jobTiming: finalJobTiming,
     _estimatingTokenUsage: estimatingTokenUsage,
+    boundary: 'heavyweight' as const,
   } as any;
 }

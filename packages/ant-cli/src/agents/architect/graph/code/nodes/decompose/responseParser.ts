@@ -39,6 +39,7 @@ export interface ParsedDecomposeResponse {
   profile?: ParsedProfile;
   selectedSpec?: string | null;
   unknownPackages?: string[];
+  boundary?: 'heavyweight' | 'lightweight';
 }
 
 /**
@@ -148,12 +149,21 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
 
+    // Extract boundary classification from <boundary> tag (OPTIONAL, only when LLM is asked)
+    let boundary: 'heavyweight' | 'lightweight' | undefined;
+    const boundaryMatch = rawResponse.match(/<boundary>\s*(heavyweight|lightweight)\s*<\/boundary>/i);
+    if (boundaryMatch) {
+      boundary = boundaryMatch[1].toLowerCase() as 'heavyweight' | 'lightweight';
+      console.log(`📋 [Decompose] Boundary classification: ${boundary}`);
+    }
+
     return {
       tasks,
       referenceRequests,
       profile,
       selectedSpec,
       unknownPackages,
+      boundary,
     };
     
   } catch (error) {

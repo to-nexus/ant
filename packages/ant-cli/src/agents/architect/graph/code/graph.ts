@@ -1140,6 +1140,10 @@ export function buildCodeGraph() {
       figmaAvailable: null as any,
       figmaFileKey: null as any,
       figmaStartNodeId: null as any,
+
+      // Inter-Job Context Bridge
+      boundary: null as any,
+      jobConversation: null as any,
     } as any,
   } as any);
   
