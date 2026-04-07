@@ -145,6 +145,12 @@ export interface PreviewSliceState {
   isPreviewLoading: boolean;
 }
 
+export interface DeploySliceState {
+  deployStatus: import('@/infrastructure/http/api').DeployStatus | undefined;
+  deployLogs: import('@/infrastructure/http/api').DeployLogEntry[];
+  isDeployLoading: boolean;
+}
+
 export interface AuthState {
   userEmail: string | undefined;
   userOrganization: string | undefined;
@@ -169,6 +175,7 @@ export type StoreState = ProjectState &
   UIState & 
   GitState & 
   PreviewSliceState & 
+  DeploySliceState &
   AuthState & 
   ConfigState;
 

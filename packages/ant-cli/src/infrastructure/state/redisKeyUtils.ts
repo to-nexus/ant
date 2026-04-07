@@ -110,3 +110,27 @@ export function parsePreviewKey(key: string): PreviewKeyComponents | null {
   return { tenantId, userId, projectId, feature };
 }
 
+// ============================================
+// Deploy Keys (same format as Preview: org:user:project:feature)
+// ============================================
+
+export type DeployKeyComponents = PreviewKeyComponents;
+
+/**
+ * Create Deploy key (4 parts)
+ * Used for Redis key: ant:infra:deploy:{org}:{user}:{project}:{feature}
+ */
+export function createDeployKey(
+  tenantId: string,
+  userId: string,
+  projectId: string,
+  feature: string
+): string {
+  return `${tenantId}:${userId}:${projectId}:${feature}`;
+}
+
+/**
+ * Parse Deploy key into components (identical format to Preview key)
+ */
+export const parseDeployKey = parsePreviewKey;
+

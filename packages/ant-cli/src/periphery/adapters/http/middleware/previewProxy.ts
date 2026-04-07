@@ -53,7 +53,7 @@ function rewriteNextImagePath(path: string, urlKey: string): string {
 }
 
 /** Known API/system paths that should NOT be treated as urlKey */
-const RESERVED_PATHS = ['/projects/', '/admin/', '/health'];
+const RESERVED_PATHS = ['/projects/', '/admin/', '/health', '/deploy/'];
 
 export interface PreviewProxyConfig {
   portRegistry: PortRegistryPort;
