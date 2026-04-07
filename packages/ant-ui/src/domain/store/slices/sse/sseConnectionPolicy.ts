@@ -32,10 +32,13 @@ export function setupConnectionPolicy(manager: any, set: any, get: any): void {
         console.log('[Store] SSE reconnect grace expired (timeout)');
         set({ sseReconnectGrace: false });
 
-        const { kanban, isRunning } = get();
-        if (kanban && isRunning) {
+        const { kanban, isRunning, activeJobs, jobStartPending, selectedJobType } = get();
+        if (kanban && isRunning && !jobStartPending) {
           const stillRunning = kanban.dataSource === 'live' || kanban.dataSource === 'estimating';
-          if (!stillRunning) {
+          const activeJobEntry = activeJobs?.[selectedJobType];
+          const hasActiveJob = activeJobEntry &&
+              (activeJobEntry.status === 'running' || activeJobEntry.status === 'queued');
+          if (!stillRunning && !hasActiveJob) {
             console.log('[Store] SSE grace expired: no live data received — job completed during grace');
             set({
               isRunning: false,
@@ -45,6 +48,8 @@ export function setupConnectionPolicy(manager: any, set: any, get: any): void {
             removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
             removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
             removeFromStorage(STORAGE_KEYS.TASK_MODE);
+          } else if (!stillRunning) {
+            console.log('[Store] SSE grace expired: no live kanban but activeJob present — keeping isRunning');
           }
         }
       }

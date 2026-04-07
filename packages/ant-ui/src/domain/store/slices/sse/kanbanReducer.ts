@@ -61,6 +61,14 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
   // Cloud multi-pod: Clear SSE reconnect grace when live data arrives
   if (isJobRunning && state.sseReconnectGrace) {
     set({ sseReconnectGrace: false });
+    if (state.kanban?.inProgress?.length > 0) {
+      console.log(
+        `[Store] SSE reconnect grace: keeping existing kanban ` +
+        `(existing_ip=${state.kanban.inProgress.length}, ` +
+        `incoming_ip=${data.inProgress?.length ?? 0}, ds=${data.dataSource})`
+      );
+      return;
+    }
   }
 
   // Clear queue position when job actually starts running (has inProgress tasks)
