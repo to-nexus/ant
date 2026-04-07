@@ -356,9 +356,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // Clear the trigger flag
     (state as any)._awaitingFinalVerify = false;
 
-    // Save what was tried so the next plan cycle knows to try a different approach
+    // Accumulate applied plans so plan LLM can see ALL previous attempts
     if (state.planText) {
-      (state as any)._previousAppliedPlan = state.planText;
+      const history = ((state as any)._appliedPlanHistory || []) as string[];
+      history.push(state.planText);
+      (state as any)._appliedPlanHistory = history;
     }
 
     // Reset tracker for fresh verification pass
@@ -427,6 +429,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         typecheckAttempted: false,
         typecheckRequired: tsProject,
       };
+      (state as any)._appliedPlanHistory = [];
       console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, devServerRequired=${state._verificationTracker.devServerRequired}, typecheckRequired=${tsProject}`);
     }
 
@@ -978,18 +981,30 @@ const hasPrePlanText =
     }
   }
 
-  // Inject previous applied plan context so plan LLM knows what was already tried
-  const previousAppliedPlan = (state as any)._previousAppliedPlan as string | undefined;
-  if (previousAppliedPlan && nextTask.type === 'verification') {
-    const prevPlanContext =
-      `\n\n### PREVIOUS FIX APPLIED BUT ERROR PERSISTS\n` +
-      `The following remediation plan was applied by the execute phase, but the error was NOT resolved:\n\n` +
-      '```json\n' + previousAppliedPlan + '\n```\n\n' +
-      `You MUST analyze WHY the previous fix did not work and try a FUNDAMENTALLY DIFFERENT approach.\n` +
-      `Do NOT repeat the same fix.`;
-    diagnosticRetryContext = (diagnosticRetryContext || '') + prevPlanContext;
-    (state as any)._previousAppliedPlan = undefined;
-    console.log(`📋 [Plan] Injected previous applied plan context (${previousAppliedPlan.length} chars) — LLM will try a different approach`);
+  // Inject accumulated plan history so plan LLM can see ALL previous attempts
+  const planHistory = ((state as any)._appliedPlanHistory || []) as string[];
+  if (planHistory.length > 0 && nextTask.type === 'verification') {
+    const recentHistory = planHistory.slice(-3);
+    let historyContext = `\n\n### PREVIOUS FIXES APPLIED BUT ERROR PERSISTS\n` +
+      `${planHistory.length} remediation plan(s) were applied but the error was NOT resolved:\n\n`;
+    recentHistory.forEach((plan, i) => {
+      const attemptNum = planHistory.length - recentHistory.length + i + 1;
+      historyContext += `#### Attempt ${attemptNum}\n\`\`\`json\n${plan}\n\`\`\`\n\n`;
+    });
+    if (planHistory.length >= 2) {
+      historyContext +=
+        `**ESCALATION**: ${planHistory.length} different fixes have failed. ` +
+        `The error message is likely a SYMPTOM, not the root cause. ` +
+        `Broaden your analysis:\n` +
+        `- Observe **warnings and non-error output** from failed commands — they may identify the true cause\n` +
+        `- Observe **mode-specific behavior** — success in one mode but failure in another points to environment, not code\n` +
+        `- Consider environment-level fixes (scripts, config files, runtime settings) rather than source code changes\n` +
+        `- Do NOT try another variation of the same category of fix\n`;
+    } else {
+      historyContext += `You MUST try a FUNDAMENTALLY DIFFERENT approach. Do NOT repeat the same fix.\n`;
+    }
+    diagnosticRetryContext = (diagnosticRetryContext || '') + historyContext;
+    console.log(`📋 [Plan] Injected ${planHistory.length} previous plan(s) as context — ${planHistory.length >= 2 ? 'ESCALATION triggered' : 'different approach requested'}`);
   }
 
   if (tryToolsFirst) {

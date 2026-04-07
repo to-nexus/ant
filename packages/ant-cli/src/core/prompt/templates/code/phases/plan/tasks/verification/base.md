@@ -50,12 +50,14 @@ If build (and tests) succeeded, start the dev server to verify runtime startup:
 
 ### Step {{#if runDevServer}}{{#if runTests}}4{{else}}3{{/if}}{{else}}{{#if runTests}}3{{else}}2{{/if}}{{/if}}: Analyze Errors
 
-If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE error output:
+If build{{#if runTests}}/test{{/if}}{{#if runDevServer}}/dev server{{/if}} failed, analyze the COMPLETE command output — not just error lines:
 
-1. **List every distinct error** — file, line number, error message
-2. **Group related errors by root cause** — a single root cause (e.g., duplicate symbol, missing import) often produces multiple compiler errors
-3. **Determine fix priority** — fix root causes first, cascading errors resolve automatically
-4. **Identify which files need reading** — use `read_file` on files referenced in errors to understand context
+1. **Observe warnings and environment signals FIRST** — non-error output (warnings, notices, environment variable messages) often reveals the true root cause that error messages alone cannot explain
+2. **Observe mode-specific behavior** — if the same project succeeds in one mode but fails in another, the root cause is likely environmental or configuration-level, not a code defect
+3. **List every distinct error** — file, line number, error message
+4. **Group related errors by root cause** — a single root cause (e.g., duplicate symbol, missing import) often produces multiple compiler errors
+5. **Determine fix priority** — fix root causes first, cascading errors resolve automatically
+6. **Identify which files need reading** — use `read_file` on files referenced in errors to understand context
 
 ### Step {{#if runDevServer}}{{#if runTests}}5{{else}}4{{/if}}{{else}}{{#if runTests}}4{{else}}3{{/if}}{{/if}}: Produce Remediation Plan
 
