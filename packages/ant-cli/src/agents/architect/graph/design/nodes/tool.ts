@@ -14,6 +14,7 @@ import { FigmaRateLimitError, classifyFigmaError } from '../../../../../peripher
 import { callFigmaMCPTool, isFigmaImageResult, isFigmaCompositeResult, saveFigmaScreenshot } from '../../../tools/figmaMCPHandler';
 import type { FigmaMCPResult } from '../../../tools/figmaMCPHandler';
 import { parseFigmaUrl } from '../../../../../core/ports/figma';
+import { isFigmaLocalAssetUrl, proxyAssetDownload } from '../../../../../periphery/adapters/figma/MCPTransport';
 
 const tokenManager = new TokenBudgetManager();
 const toolResultManager = new ToolResultManager(tokenManager, {
@@ -1195,17 +1196,28 @@ async function handleDownloadAsset(
   const relativePath = `inputs/assets/${category}/${sanitized}`;
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
+    const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
+    const userId = state.context?.userId;
+    const redis = state.deps?.redis;
+    let buffer: Buffer;
 
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
+    if (isCloudMode && isFigmaLocalAssetUrl(url) && userId && redis) {
+      console.log(`📥 [Tool] download_asset: proxying via bridge for ${sanitized}`);
+      buffer = await proxyAssetDownload(userId, redis, url);
+    } else {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      buffer = Buffer.from(await response.arrayBuffer());
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
     await fsMod.writeFile(destPath, buffer);
 
     const sizeKB = (buffer.length / 1024).toFixed(1);

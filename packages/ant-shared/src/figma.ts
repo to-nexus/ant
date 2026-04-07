@@ -13,6 +13,11 @@
 
 export const FIGMA_FILENAME = 'figma.json';
 export const FIGMA_MCP_ENDPOINT = 'http://127.0.0.1:3845/mcp';
+export const FIGMA_LOCAL_ASSET_ORIGINS = [
+  'http://127.0.0.1:3845',
+  'http://localhost:3845',
+];
+export const ASSET_PROXY_TOOL_NAME = '_ant_asset_download';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Figma Data Configuration (inputs/figma.json schema)
