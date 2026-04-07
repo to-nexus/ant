@@ -317,6 +317,12 @@ Continue writing code files and output <done>true</done> when complete.`);
   const isInstallCommand = /\b(npm|pnpm|yarn)\s+(ci|install)\b/.test(normalizedCommand) ||
                            /\bgo\s+mod\s+(tidy|download)\b/.test(normalizedCommand);
   const effectiveTimeout = isInstallCommand ? 20 * 60 * 1000 : COMMAND_TIMEOUT;
+
+  // Suppress interactive prompts for pure install commands (no compound operators).
+  // Excludes "npm install && npm run build" to avoid CI=true leaking to build/test
+  // which breaks tools like CRA (treats warnings as errors) or Yarn Berry (immutable installs).
+  const hasShellOperators = /(\|\||&&|;)/.test(normalizedCommand);
+  const installEnv = (isInstallCommand && !hasShellOperators) ? { CI: 'true' } : undefined;
   
   const projectPath = fileSystem.getRootPath();
 
@@ -426,6 +432,7 @@ Continue writing code files and output <done>true</done> when complete.`);
     const commandPromise = commandPort.execute(normalizedCommand, {
       cwd: workingDir,
       timeout: effectiveTimeout,
+      env: installEnv,
       onStdout: (chunk: string) => {
         streamedStdout += chunk;
         console.log(chunk);
