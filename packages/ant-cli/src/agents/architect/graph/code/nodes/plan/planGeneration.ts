@@ -602,6 +602,36 @@ export async function runPlanLLMWithTools(
     }
   }
 
+  // Extract <plan> BEFORE checking tool calls.
+  // LLMs may produce both a structured plan and tool calls in the same response.
+  // Once a valid plan exists, additional tool calls (install, re-verify) are redundant —
+  // execute applies fixes, then a fresh diagnostic cycle re-verifies.
+  const planMatch = textResponse.match(/<plan>([\s\S]*?)<\/plan>/);
+  if (planMatch) {
+    const planText = planMatch[1].trim();
+    if (planText.length >= 50) {
+      await orchestrator.finalize();
+      if (toolCalls.length > 0) {
+        console.log(`📋 [Plan] <plan> extracted (${planText.length} chars) — ignoring ${toolCalls.length} concurrent tool call(s)`);
+      }
+      // Verification shortcut: if plan indicates no errors, return empty planText
+      // so execute can immediately mark done without LLM interpretation
+      if (isVerification) {
+        try {
+          const parsed = JSON.parse(planText);
+          if (parsed.diagnostics?.totalErrors === 0 ||
+              (parsed.implementation?.modify?.length === 0 &&
+               parsed.implementation?.create?.length === 0 &&
+               (parsed.implementation?.delete?.length ?? 0) === 0)) {
+            console.log(`✅ [Plan] Verification plan shows no errors — returning empty planText for immediate done`);
+            return { planText: '' };
+          }
+        } catch { /* non-blocking parse error, use plan as-is */ }
+      }
+      return { planText };
+    }
+  }
+
   if (toolCalls.length > 0) {
     await orchestrator.finalize(true);
     return {
@@ -612,26 +642,6 @@ export async function runPlanLLMWithTools(
   }
 
   await orchestrator.finalize();
-
-  const planMatch = textResponse.match(/<plan>([\s\S]*?)<\/plan>/);
-  if (planMatch) {
-    const planText = planMatch[1].trim();
-    if (planText.length >= 50) {
-      // Verification shortcut: if plan indicates no errors, return empty planText
-      // so execute can immediately mark done without LLM interpretation
-      if (isVerification) {
-        try {
-          const parsed = JSON.parse(planText);
-          if (parsed.diagnostics?.totalErrors === 0 ||
-              (parsed.implementation?.modify?.length === 0 && parsed.implementation?.create?.length === 0)) {
-            console.log(`✅ [Plan] Verification plan shows no errors — returning empty planText for immediate done`);
-            return { planText: '' };
-          }
-        } catch { /* non-blocking parse error, use plan as-is */ }
-      }
-      return { planText };
-    }
-  }
   return null;
 }
 
@@ -789,7 +799,9 @@ export async function finalizePlanFromExploration(
         const isVerification = task.type === 'verification' || task.type === 'error';
         if (isVerification &&
             (parsed.diagnostics?.totalErrors === 0 ||
-             (parsed.implementation?.modify?.length === 0 && parsed.implementation?.create?.length === 0))) {
+             (parsed.implementation?.modify?.length === 0 &&
+              parsed.implementation?.create?.length === 0 &&
+              (parsed.implementation?.delete?.length ?? 0) === 0))) {
           console.log(`✅ [Plan] Verification plan shows no errors — returning empty planText for immediate done`);
           await savePlanTextForDebug(state, task, planText);
           return '';
