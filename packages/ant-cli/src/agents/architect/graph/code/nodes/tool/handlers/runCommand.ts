@@ -31,7 +31,10 @@ import {
   COMPILE_RUN_PATTERNS,
   SERVER_DETECTION_TIMEOUT,
   SERVER_OUTPUT_PATTERNS,
-  ORCHESTRATOR_PORT 
+  ORCHESTRATOR_PORT,
+  isBuildCommand,
+  isTestCommand,
+  isDevServerCommand,
 } from '../constants';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -290,7 +293,32 @@ Go build/test/run/vet commands are only allowed in verification and error tasks.
 Feature tasks produce source files only — build verification happens in the final verification task.
 Continue writing code files and output <done>true</done> when complete.`);
   }
-  
+
+  // Plan tool loop guard: block re-runs of failed verification commands.
+  // In the plan phase there are no code-editing tools, so re-running a failed
+  // build/test/dev-server without code changes produces identical failures.
+  const tracker = state._verificationTracker;
+  if (state._planExploring && tracker) {
+    if (isBuildCommand(command) && tracker.buildAttempted && !tracker.buildPassed) {
+      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked repeated build command: ${command}`);
+      return makeRejectionOutput(command,
+        `BLOCKED: build command already executed and failed in this diagnostic cycle.`);
+    }
+    if (isTestCommand(command) && tracker.testAttempted && !tracker.testPassed) {
+      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked repeated test command: ${command}`);
+      return makeRejectionOutput(command,
+        `BLOCKED: test command already executed and failed in this diagnostic cycle.`);
+    }
+    if (isDevServerCommand(command) && tracker.devServerAttempted && !tracker.devServerPassed) {
+      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked repeated dev server command: ${command}`);
+      return makeRejectionOutput(command,
+        `BLOCKED: dev server command already executed and failed in this diagnostic cycle.`);
+    }
+    if (isBuildCommand(command)) tracker.buildAttempted = true;
+    if (isTestCommand(command)) tracker.testAttempted = true;
+    if (isDevServerCommand(command)) tracker.devServerAttempted = true;
+  }
+
   const chatAPI = getChatAPIClient();
   
   // ✅ UI: Show command_running status (loading card)

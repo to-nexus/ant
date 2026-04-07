@@ -29,6 +29,10 @@ export interface VerificationTracker {
   devServerPassed: boolean;
   devServerRequired: boolean;
   devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused';
+  /** Plan tool loop guard: tracks whether each verification command type has been attempted. */
+  buildAttempted?: boolean;
+  testAttempted?: boolean;
+  devServerAttempted?: boolean;
 }
 
 /**
