@@ -49,10 +49,11 @@ export interface OrchestratorConfig {
    * Stage-gate barriers controlling task dispatch order.
    *
    * Code barrier chain:
-   *   foundation (200–299) ──[feature]   ──▶ feature   (300–649)
-   *   feature    (300–649) ──[ui]        ──▶ ui        (650–699)
-   *   feature    (300–649) ──[test-code] ──▶ test-code (700)
-   *   test-code  (700)     ──[doc]       ──▶ doc       (800)
+   *   foundation (200–299)    ──[feature]     ──▶ feature     (300–599)
+   *   feature    (300–599)    ──[integration] ──▶ integration (600–649)
+   *   feature+integ (300–649) ──[ui]          ──▶ ui          (650–699)
+   *   feature+integ (300–649) ──[test-code]   ──▶ test-code   (700)
+   *   test-code  (700)        ──[doc]         ──▶ doc         (800)
    *
    * Design barrier chain:
    *   tokens     (100–199) ──[assets]    ──▶ assets    (200–299)
@@ -64,6 +65,8 @@ export interface OrchestratorConfig {
   barriers?: {
     /** Blocks feature (300+) until all foundation (200–299) tasks complete. */
     feature?: boolean;
+    /** Blocks integration (600–649) until all feature (<600) tasks complete. */
+    integration?: boolean;
     /** Blocks ui tasks until all feature/setup tasks complete. */
     ui?: boolean;
     /** Blocks test-code tasks until all feature/setup tasks complete. */
