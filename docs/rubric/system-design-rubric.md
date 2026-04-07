@@ -653,7 +653,14 @@ This category evaluates the practical implementability of the design — the pri
 
 ### 8.3 Scoring Discipline
 
-**When in doubt, score lower.** The purpose of this rubric is to surface design deficiencies before they propagate to code.
+**Evaluate strictly and without leniency.** The purpose of this rubric is to surface design deficiencies before they propagate to code. An inflated score conceals gaps that will cause the Code Job to produce incorrect implementations.
+
+**Anti-leniency principle:**
+LLM evaluators have a systematic tendency to score generously — awarding partial credit for "effort", rounding up when in doubt, and treating structural presence as evidence of quality. This tendency must be actively countered:
+- **When in doubt, score lower.** Uncertainty about quality is itself a signal of insufficient specification.
+- **Do not give credit for intent.** "The design probably means X" is not evidence. Only what is explicitly written counts.
+- **Do not award points for section existence.** A section titled "Architecture Boundaries" that vaguely says "follows clean architecture" without naming boundaries or responsibilities deserves zero credit, not partial credit for being present.
+- **Treat every gap as a Code Job failure.** Each underspecified boundary, missing endpoint, or vague policy forces the Code Job to guess. Score as if the guess will be wrong — because it often is.
 
 **Rules:**
 - Every score must cite specific evidence (or specific absence of evidence).

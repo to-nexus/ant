@@ -17,16 +17,19 @@
 ## 1. Overview
 
 ### Purpose
+
 - Evaluate Design Job output quality
 - Identify issues in screenshot analysis → UI document generation process
 - Derive improvement points for Ant program (prompts/system)
 
 ### Scope
+
 - **Input**: Reference screenshots, PRD
 - **Process**: chat.json, design.json
 - **Output**: ui-spec.json, ui-tokens.json, ui-assets.json, system-design.md
 
 ### Core Principle
+
 > **"Was the screenshot accurately documented as observed?"**
 
 ---
@@ -69,7 +72,7 @@ ant-workspaces/{org}/{group}/{project}/
 ### 🚨 CRITICAL: Evidence-Based Evaluation Principle
 
 > **"NO SCORE WITHOUT EVIDENCE"**
-> 
+>
 > You MUST complete detailed screenshot analysis BEFORE assigning any scores.
 > Scores without documented evidence are INVALID.
 
@@ -90,6 +93,7 @@ ant-workspaces/{org}/{group}/{project}/
 ```
 
 **Rules:**
+
 1. Read the screenshot image file FIRST
 2. Document what you SEE, not what you assume
 3. For each container with multiple children, explicitly note: Are they side-by-side (row) or stacked (column)?
@@ -144,11 +148,20 @@ Read the following files:
 ```
 
 **Scoring Criteria:**
+
 - ⭐⭐⭐⭐⭐: 100% match, all comparisons passed
 - ⭐⭐⭐⭐☆: 90%+ match, minor issues only
 - ⭐⭐⭐☆☆: 70-89% match, some significant issues
 - ⭐⭐☆☆☆: 50-69% match, multiple critical issues
 - ⭐☆☆☆☆: <50% match, fundamental problems
+
+**Scoring Discipline — evaluate strictly and without leniency:**
+
+LLM evaluators have a systematic tendency to score generously — awarding partial credit for "effort", rounding up when in doubt, and treating structural presence as evidence of quality. This tendency must be actively countered:
+- **When in doubt, score lower.** Uncertainty about whether a value matches is itself a mismatch signal.
+- **Do not give credit for intent.** "The value is close enough" is not a match. Only exact matches or explicitly acceptable tolerances count.
+- **Do not award points for section existence.** A ui-spec.json section that exists but contains incorrect layout direction or missing elements deserves zero credit for that area, not partial credit for being present.
+- **Treat every mismatch as a Code Job failure.** Each incorrect token, wrong layout direction, or missing element propagates directly into generated code. Score as if every discrepancy will appear in the final product — because it will.
 
 ---
 
@@ -156,36 +169,44 @@ Read the following files:
 
 ### 4.1 Screenshot Accuracy (Highest Priority)
 
-| Item | Check Point |
-|------|-------------|
-| **Layout direction** | Header, section element arrangement (row vs column) |
-| **Element alignment** | Left/right/center alignment accurately reflected |
-| **Grid structure** | Card count, column count matches |
+
+| Item                   | Check Point                                               |
+| ---------------------- | --------------------------------------------------------- |
+| **Layout direction**   | Header, section element arrangement (row vs column)       |
+| **Element alignment**  | Left/right/center alignment accurately reflected          |
+| **Grid structure**     | Card count, column count matches                          |
 | **Repeating patterns** | Sections with identical structure documented consistently |
+
 
 ### 4.2 Token Accuracy
 
-| Item | Check Point |
-|------|-------------|
-| Colors | Colors from screenshot extracted accurately |
-| Typography | Font size, weight, line-height observable |
-| Spacing | Margins, gaps defined with consistent scale |
+
+| Item       | Check Point                                 |
+| ---------- | ------------------------------------------- |
+| Colors     | Colors from screenshot extracted accurately |
+| Typography | Font size, weight, line-height observable   |
+| Spacing    | Margins, gaps defined with consistent scale |
+
 
 ### 4.3 Asset Mapping Accuracy
 
-| Item | Check Point |
-|------|-------------|
-| src path | Matches actual asset file |
+
+| Item      | Check Point                           |
+| --------- | ------------------------------------- |
+| src path  | Matches actual asset file             |
 | dest path | Destination path clear and consistent |
-| usage | Usage description accurate |
+| usage     | Usage description accurate            |
+
 
 ### 4.4 UI Spec Completeness
 
-| Item | Check Point |
-|------|-------------|
-| Section coverage | All sections from screenshot documented |
-| Property coverage | Layout, responsive, interaction, etc. |
-| Content accuracy | PRD text used verbatim |
+
+| Item              | Check Point                             |
+| ----------------- | --------------------------------------- |
+| Section coverage  | All sections from screenshot documented |
+| Property coverage | Layout, responsive, interaction, etc.   |
+| Content accuracy  | PRD text used verbatim                  |
+
 
 ---
 
@@ -193,55 +214,44 @@ Read the following files:
 
 ### 5.1 Screenshot Observation Accuracy
 
-- [ ] **Is section header layout accurate?**
+- **Is section header layout accurate?**
   - Is title and description horizontal (row) or vertical (column)?
   - Documented exactly as observed in screenshot?
-
-- [ ] **Are sections with identical patterns documented consistently?**
+- **Are sections with identical patterns documented consistently?**
   - If multiple sections share same layout, all should be documented identically
-
-- [ ] **Is grid/card structure accurate?**
+- **Is grid/card structure accurate?**
   - Card count, column arrangement, spacing
-
-- [ ] **Is alignment accurate?**
+- **Is alignment accurate?**
   - left, center, right, space-between, etc.
 
 ### 5.2 Token Quality
 
-- [ ] **Are color tokens complete?**
+- **Are color tokens complete?**
   - Background, text, accent, border colors
-
-- [ ] **Are typography tokens complete?**
+- **Are typography tokens complete?**
   - Heading, body, label definitions per hierarchy
-
-- [ ] **Are spacing tokens consistent?**
+- **Are spacing tokens consistent?**
   - Section gaps, component gaps, internal padding
-
-- [ ] **Is token naming semantic?**
+- **Is token naming semantic?**
   - `colors.primary.green` (O) vs `colors.00D9A3` (X)
 
 ### 5.3 Asset Mapping Quality
 
-- [ ] **Are all assets mapped?**
+- **Are all assets mapped?**
   - Logos, icons, background images
-
-- [ ] **Are paths accurate?**
+- **Are paths accurate?**
   - src: Actual source file path
   - dest: Intended destination path
-
-- [ ] **Is usage description clear?**
+- **Is usage description clear?**
 
 ### 5.4 UI Spec Quality
 
-- [ ] **Are all sections included?**
-
-- [ ] **Are layout properties specified?**
+- **Are all sections included?**
+- **Are layout properties specified?**
   - container, display, flexDirection, alignItems, justifyContent
-
-- [ ] **Are responsive breakpoints defined?**
+- **Are responsive breakpoints defined?**
   - mobile, tablet, desktop
-
-- [ ] **Are interactions defined?**
+- **Are interactions defined?**
   - hover, animation, scroll behavior
 
 ---
@@ -404,6 +414,7 @@ Read the following files:
 ```
 
 **Should be:**
+
 ```json
 {
   "container": {
@@ -413,6 +424,7 @@ Read the following files:
 ```
 
 **Root Cause:** [Why LLM made this mistake - e.g., "Misinterpreted internal layout as container layout"]
+
 ```
 
 ### 7.2 Prompt File Changes (Actionable)
@@ -436,6 +448,7 @@ Read the following files:
 ```
 
 **Verification**: After adding, search for "[key phrase]" to confirm placement.
+
 ```
 
 ### 7.4 General Principle (if applicable)
@@ -487,39 +500,35 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 **🚨 MANDATORY EVALUATION ORDER:**
 
 1. **READ SCREENSHOT FIRST** (before ANY ui-spec.json)
-   - Open the image file
-   - Document what you SEE in Screenshot Observation Log
-   - Do NOT skip this step
-
+  - Open the image file
+  - Document what you SEE in Screenshot Observation Log
+  - Do NOT skip this step
 2. **RECORD OBSERVATIONS** (before comparison)
-   - For each section: layout, arrangement, positions
-   - For patterns: identify repeating structures
-   - Write evidence ("title appears LEFT of description")
-
+  - For each section: layout, arrangement, positions
+  - For patterns: identify repeating structures
+  - Write evidence ("title appears LEFT of description")
 3. **THEN READ UI DOCUMENTS**
-   - ui-spec.json, ui-tokens.json, ui-assets.json
-   - Find corresponding values for each observation
-
+  - ui-spec.json, ui-tokens.json, ui-assets.json
+  - Find corresponding values for each observation
 4. **CREATE COMPARISON TABLE**
-   - Column 1: Your observation (from step 2)
-   - Column 2: ui-spec.json value (quote exact property) — **verify field EXISTS first**
-   - Column 3: Match, mismatch, or **MISSING**
-
+  - Column 1: Your observation (from step 2)
+  - Column 2: ui-spec.json value (quote exact property) — **verify field EXISTS first**
+  - Column 3: Match, mismatch, or **MISSING**
 5. **ONLY THEN ASSIGN SCORES**
-   - Scores must reference evidence from comparison table
-   - No evidence = no score
+  - Scores must reference evidence from comparison table
+  - No evidence = no score
 
 **🎯 CRITICAL: Self-Contained Improvement Plan**
 
-6. **WRITE EXECUTABLE IMPROVEMENT PLAN** (if issues found)
-   - Another agent reading ONLY your report must be able to implement the fix
-   - Include: ASCII diagram of what screenshot shows vs what ui-spec says
-   - Include: Exact file path, insertion point, copy-paste ready content
-   - Include: Root cause analysis (why LLM made this mistake)
-   
+1. **WRITE EXECUTABLE IMPROVEMENT PLAN** (if issues found)
+  - Another agent reading ONLY your report must be able to implement the fix
+  - Include: ASCII diagram of what screenshot shows vs what ui-spec says
+  - Include: Exact file path, insertion point, copy-paste ready content
+  - Include: Root cause analysis (why LLM made this mistake)
    **Self-Containment Test**: If you remove all context except §7 (Improvement Plan), can someone still implement the fix? If no, add more detail.
 
 **Anti-Patterns to AVOID:**
+
 - ❌ Giving scores first, evidence later
 - ❌ Saying "matches" without showing what was compared
 - ❌ Skipping Screenshot Observation Log
@@ -541,6 +550,7 @@ features/{feature}/outputs/evals/ui-design/evaluidesign-{jobId}.md
 ```
 
 ### Naming Convention
+
 - **evaluidesign-**: UI design evaluation report prefix
 - **{jobId}**: `state.jobId` value from design.json
 
@@ -556,14 +566,17 @@ sessions/debug/prompts/prompt-design-{jobId}.md
 
 **필수 확인 항목:**
 
-| 노드 | 검증 포인트 |
-|------|-------------|
-| detectEnvironment | directive, prdSpec 주입됨? |
-| decompose-uiDesign | uiContext, screenCount 주입됨? |
-| docGen (ch1) | taskDescription, documentType 주입됨? |
-| docGen (ch2+) | previousChaptersSummary, existingDocContent 주입됨? |
+
+| 노드                 | 검증 포인트                                           |
+| ------------------ | ------------------------------------------------ |
+| detectEnvironment  | directive, prdSpec 주입됨?                          |
+| decompose-uiDesign | uiContext, screenCount 주입됨?                      |
+| docGen (ch1)       | taskDescription, documentType 주입됨?               |
+| docGen (ch2+)      | previousChaptersSummary, existingDocContent 주입됨? |
+
 
 **판정:**
+
 - ✅ 정상: 모든 변수가 상황에 맞게 주입됨
 - ⚠️ 의심: 주입되었으나 값이 비정상 (예: 빈 문자열)
 - ❌ 실패: 필수 변수 누락
@@ -581,11 +594,13 @@ sessions/debug/prompts/prompt-design-{jobId}.md
 **Symptom**: Title is on left, description on right (Row) in screenshot, but documented as Column
 
 **Causes**:
+
 1. LLM did not sufficiently observe the screenshot
 2. Used `textAlign: center` as default
 3. Lack of explicit observation instructions for layout direction
 
 **Solutions**:
+
 - Strengthen "explicit observation of element arrangement direction (row/column)" rule in prompts
 - Emphasize "describe exactly what you see in screenshot" principle
 
@@ -594,10 +609,12 @@ sessions/debug/prompts/prompt-design-{jobId}.md
 **Symptom**: Multiple sections with identical layout documented differently
 
 **Causes**:
+
 1. Per-section individual analysis lacking overall pattern recognition
 2. Not referencing previous section analysis results
 
 **Solutions**:
+
 - Identify repeating patterns first after analyzing entire screenshot
 - Document sections with identical patterns using consistent structure
 
@@ -606,9 +623,12 @@ sessions/debug/prompts/prompt-design-{jobId}.md
 **Symptom**: dest path in ui-assets.json doesn't match actual copied file path
 
 **Causes**:
+
 1. src filename and dest filename specified differently
 2. Code Job ignores dest and uses original filename
 
 **Solutions**:
+
 - Clarify that dest in ui-assets.json is the source of truth
 - Strengthen prompt to follow dest path exactly in Code Job
+
