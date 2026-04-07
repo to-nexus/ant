@@ -11,6 +11,8 @@ import { extractUserContext } from './helpers/userContext';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
+import { getSessionKey } from '../../../../core/chat/schema';
+import { getChatSyncChannel } from '../../../../infrastructure/state/redisConstants';
 import type { ActiveJobInfo } from '@ant/shared';
 
 /**
@@ -154,6 +156,12 @@ export function createSSERoutes(deps: {
       ]);
     } catch (error) {
       logger.warn(`Failed to send initial states`, { component: 'SSE', projectId, featureName }, error);
+    }
+
+    // Request fresh snapshot from Worker Pod (if streaming) to recover stale initial_state
+    if (deps.stateStore) {
+      const syncChannel = getChatSyncChannel(getSessionKey(projectId, featureName, userContext));
+      deps.stateStore.publish(syncChannel, { type: 'sync_request' }).catch(() => {});
     }
     
     // ✅ Start watching Git changes

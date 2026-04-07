@@ -13,6 +13,9 @@ import type { MessageContent } from '../chat/types';
 import { logger } from '../../utils/logger';
 
 export class LLMEventHandler {
+  private lastRedisWrite = 0;
+  private writeInFlight = false;
+
   constructor(
     private sessionStore: SessionStore,
     private contentMerger: ContentMerger,
@@ -299,11 +302,31 @@ export class LLMEventHandler {
     
     if (!session) return -1;
     
-    return this.contentMerger.addContent(
+    const result = this.contentMerger.addContent(
       ctx.projectId,
       ctx.featureName,
       session,
       content
     );
+
+    this.scheduleRedisWrite();
+    return result;
+  }
+
+  /**
+   * Throttled Redis write for crash resilience.
+   * No-op for worker-scoped messages (updateCurrentMessage skips them).
+   */
+  private scheduleRedisWrite(): void {
+    const now = Date.now();
+    if (this.writeInFlight || now - this.lastRedisWrite < 2000) return;
+
+    this.writeInFlight = true;
+    this.lastRedisWrite = now;
+    this.sessionStore.updateCurrentMessage()
+      .catch((err) => {
+        logger.warn('Throttled Redis write failed', { component: 'LLMEventHandler' }, err);
+      })
+      .finally(() => { this.writeInFlight = false; });
   }
 }
