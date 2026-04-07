@@ -20,3 +20,4 @@ export * from './workflow';
 export * from './figma';
 export * from './bridge';
 export * from './canonical';
+export * from './deploy';

@@ -35,11 +35,12 @@ import {
   PreviewState, 
   ServiceConnection,
   IDEState,
+  DeployState,
   PreviewPackage,
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
 import type { PreviewStructureType } from '../../core/ports/preview';
-import { createIDEKey, createPreviewKey } from './redisKeyUtils';
+import { createIDEKey, createPreviewKey, createDeployKey } from './redisKeyUtils';
 import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
 import { APP_PREFIX, REDIS_KEYS, REDIS_TTL, getRealtimeWorkflowChannel } from './redisConstants';
 import { logger } from '../../utils/logger';
@@ -667,6 +668,84 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       const lastAccess = new Date(preview.lastAccessedAt).getTime();
       return (now - lastAccess) > idleThresholdMs;
     });
+  }
+
+  // ============================================
+  // Port Registry - Deploy (Static Build Serving)
+  // ============================================
+
+  async registerDeploy(state: Omit<DeployState, 'lastAccessedAt'>): Promise<void> {
+    const { tenantId, userId, projectId, feature } = state;
+    const deployKey = createDeployKey(tenantId, userId, projectId, feature);
+    const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);
+
+    const fullState: DeployState = { ...state, lastAccessedAt: new Date() };
+
+    const pipeline = this.redis.pipeline();
+    pipeline.set(key, JSON.stringify(fullState), 'EX', REDIS_TTL.INFRA.DEPLOY);
+    pipeline.sadd(REDIS_KEYS.INFRA.DEPLOY_LIST, deployKey);
+    await pipeline.exec();
+    logger.info(`[Deploy] Registered: ${deployKey} -> ${state.host}:${state.port}`, { component: 'RedisStateStore' });
+  }
+
+  async getDeploy(
+    tenantId: string, userId: string, projectId: string, feature: string
+  ): Promise<DeployState | null> {
+    const deployKey = createDeployKey(tenantId, userId, projectId, feature);
+    const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);
+    const data = await this.redis.get(key);
+    if (!data) return null;
+    const state: DeployState = JSON.parse(data);
+    state.startedAt = new Date(state.startedAt);
+    state.lastAccessedAt = new Date(state.lastAccessedAt);
+    return state;
+  }
+
+  async updateDeploy(
+    tenantId: string, userId: string, projectId: string, feature: string,
+    update: Partial<Pick<DeployState, 'phase' | 'port' | 'error' | 'buildLog' | 'url'>>
+  ): Promise<void> {
+    const deployKey = createDeployKey(tenantId, userId, projectId, feature);
+    const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);
+    const data = await this.redis.get(key);
+    if (!data) return;
+    const state: DeployState = JSON.parse(data);
+    Object.assign(state, update);
+    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.DEPLOY);
+  }
+
+  async unregisterDeploy(
+    tenantId: string, userId: string, projectId: string, feature: string
+  ): Promise<void> {
+    const deployKey = createDeployKey(tenantId, userId, projectId, feature);
+    const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);
+    const pipeline = this.redis.pipeline();
+    pipeline.del(key);
+    pipeline.srem(REDIS_KEYS.INFRA.DEPLOY_LIST, deployKey);
+    await pipeline.exec();
+    logger.info(`[Deploy] Unregistered: ${deployKey}`, { component: 'RedisStateStore' });
+  }
+
+  async listDeploys(): Promise<DeployState[]> {
+    const deployKeys = await this.redis.smembers(REDIS_KEYS.INFRA.DEPLOY_LIST);
+    if (deployKeys.length === 0) return [];
+    const keys = deployKeys.map(dk => this.key(REDIS_KEYS.INFRA.DEPLOY, dk));
+    const values = await this.redis.mget(...keys);
+
+    // Clean up stale SET members whose Redis keys have expired (TTL)
+    const staleMembers = deployKeys.filter((_, i) => values[i] === null);
+    if (staleMembers.length > 0) {
+      this.redis.srem(REDIS_KEYS.INFRA.DEPLOY_LIST, ...staleMembers).catch(() => {});
+    }
+
+    return values
+      .filter((v): v is string => v !== null)
+      .map(v => {
+        const state: DeployState = JSON.parse(v);
+        state.startedAt = new Date(state.startedAt);
+        state.lastAccessedAt = new Date(state.lastAccessedAt);
+        return state;
+      });
   }
 
   // ============================================

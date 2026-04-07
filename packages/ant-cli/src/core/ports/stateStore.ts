@@ -143,8 +143,8 @@ export interface PendingChoiceData {
 // ============================================
 
 // Re-export from portRegistry
-export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, ServiceCategory, ConnectionResolution, ServiceConnection } from './portRegistry';
-import { PreviewState, IDEState, PortMapping, ServiceConnection } from './portRegistry';
+export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, ServiceCategory, ConnectionResolution, ServiceConnection, DeployState, DeployPhase, DeployFramework } from './portRegistry';
+import { PreviewState, IDEState, PortMapping, ServiceConnection, DeployState } from './portRegistry';
 import type { PreviewStructureType } from './preview';
 
 // ============================================
@@ -376,6 +376,51 @@ export interface StateStorePort {
    */
   getIdlePreviews(idleThresholdMs: number): Promise<PreviewState[]>;
   
+  // ============================================
+  // Port Registry - Deploy (Static Build Serving)
+  // ============================================
+
+  /**
+   * Register deploy state
+   */
+  registerDeploy(state: Omit<DeployState, 'lastAccessedAt'>): Promise<void>;
+
+  /**
+   * Get deploy state
+   */
+  getDeploy(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<DeployState | null>;
+
+  /**
+   * Update deploy state (partial)
+   */
+  updateDeploy(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    update: Partial<Pick<DeployState, 'phase' | 'port' | 'error' | 'buildLog' | 'url'>>
+  ): Promise<void>;
+
+  /**
+   * Unregister deploy
+   */
+  unregisterDeploy(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
+  ): Promise<void>;
+
+  /**
+   * List all active deploys
+   */
+  listDeploys(): Promise<DeployState[]>;
+
   // ============================================
   // Port Registry - IDE (Full State Management)
   // ============================================

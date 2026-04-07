@@ -222,6 +222,18 @@
     "openPreview": "Open",
     "suggestedFix": "Fix: {{fix}}",
     "allChecksPassed": "All checks passed.",
-    "logsCount": "Logs ({{count}})"
+    "logsCount": "Logs ({{count}})",
+    "deploy": {
+      "title": "Deploy",
+      "description": "Build and serve a production-optimized static version of your project.",
+      "deploy": "Deploy",
+      "stop": "Stop",
+      "open": "Open",
+      "running": "Deployed",
+      "building": "Building...",
+      "deploying": "Deploying...",
+      "error": "Deploy Failed",
+      "idle": "Not deployed"
+    }
   }
 }

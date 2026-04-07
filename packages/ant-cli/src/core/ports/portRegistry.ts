@@ -119,6 +119,37 @@ export interface PreviewState {
 }
 
 // ============================================
+// Deploy Types
+// ============================================
+
+export type DeployPhase = 'idle' | 'building' | 'deploying' | 'running' | 'error' | 'stopped';
+
+export type DeployFramework = 'vite' | 'cra' | 'nextjs' | 'static' | 'unknown';
+
+export interface DeployState {
+  tenantId: string;
+  userId: string;
+  projectId: string;
+  feature: string;
+
+  phase: DeployPhase;
+  port: number;
+  host: string;
+  podId: string;
+
+  framework: DeployFramework;
+  buildOutputDir: string;
+  basePath: string;
+  url?: string;
+
+  error?: string;
+  buildLog?: string[];
+
+  startedAt: Date;
+  lastAccessedAt: Date;
+}
+
+// ============================================
 // IDE Types
 // ============================================
 
