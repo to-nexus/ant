@@ -849,8 +849,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             jobTiming: (state as any).jobTiming,
             parallelMode: true,
             interruption: {
-              reason: 'recursion_limit',
-              message: `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
+              reason: result.interruptReason || 'recursion_limit',
+              message: `Job interrupted: ${result.interruptReason || 'recursion_limit'} (${result.remainingQueue.length} task(s) remaining)`,
               timestamp: new Date().toISOString(),
               canResume: true,
             },
@@ -949,7 +949,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
       reason: result.interruptReason || 'recursion_limit',
       message: result.interruptReason === 'user_stopped'
         ? `Task stopped by user (${result.remainingQueue.length} task(s) remaining)`
-        : `Task(s) paused: recursion limit reached during parallel execution (${result.remainingQueue.length} task(s) remaining)`,
+        : `Job interrupted: ${result.interruptReason || 'recursion_limit'} (${result.remainingQueue.length} task(s) remaining)`,
       timestamp: new Date().toISOString(),
       canResume: result.remainingQueue.length > 0,
       metadata: {

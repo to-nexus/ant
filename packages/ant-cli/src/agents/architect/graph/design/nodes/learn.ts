@@ -43,11 +43,28 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   const _workerId = (state as any).workerId;
   const _isWorkerContext = _workerId !== undefined && _workerId !== null;
   
+  // Clear stale orchestrator interruption when all tasks completed on resume.
+  // Without this, hasOrchestratorFailure stays true → learn skips session write
+  // even though the job succeeded.
+  const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
+  const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts', 'call_limit', 'figma_rate_limited', 'figma_connection_lost'];
+  if (isLastTask && orchestratorReasons.includes((state as any).interruption?.reason)) {
+    const failedTasks = (state as any).failedTasks;
+    if (failedTasks && failedTasks.length > 0) {
+      console.log(`⚠️  [Design Learn] ${failedTasks.length} task(s) failed — preserving ${(state as any).interruption.reason} interruption`);
+    } else {
+      console.log(`✅ [Design Learn] All tasks completed — clearing stale ${(state as any).interruption.reason} interruption`);
+      (state as any).interruption = undefined;
+    }
+  }
+
   // ✅ Skip session write / Kanban / spec_complete card when parallelOrchestrator
   // already saved failure/interruption state. If learn overwrites it, failedTasks
   // and interruption details are lost (session.state = full replace).
   const hasOrchestratorFailure = (state as any).interruption?.reason === 'tasks_failed'
     || (state as any).interruption?.reason === 'recursion_limit'
+    || (state as any).interruption?.reason === 'consecutive_timeouts'
+    || (state as any).interruption?.reason === 'call_limit'
     || (state as any).interruption?.reason === 'figma_rate_limited'
     || (state as any).interruption?.reason === 'figma_connection_lost';
   const hasDesignError = Boolean(state.designError);
