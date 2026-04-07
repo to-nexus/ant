@@ -301,11 +301,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const isVerificationRetry = nextTask.type === 'verification';
 
     if (isVerificationRetry) {
-      // Verification retry: preserve conversationHistory and callIndex.
-      // Clearing these causes enableThinking=true on every retry (because
-      // isAfterToolCall checks history length), which triggers a thinking-only
-      // loop where the LLM produces only a thinking block with no tool calls.
+      // Verification retry: clear execute state so LLM starts fresh each cycle.
+      // Previously preserved conversationHistory to avoid enableThinking=true loop,
+      // but isVerificationWithPlan guard in execute/index.ts now ensures
+      // enableThinking=false regardless of history length, making this safe.
+      state._executeCallIndex = 0;
       state._finalTaskLoopCount = 0;
+      state.conversationHistory = [];
+      (state as any)._executeModifiedFiles = false;
       if (state._verificationTracker) {
         state._verificationTracker.buildAttempted = false;
         state._verificationTracker.testAttempted = false;
@@ -315,7 +318,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const _retryAttempt = (state.retries || 0) + 1;
       const _retryMax = state.maxRetries || 3;
       console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
-      console.log(`   ♻️  Preserved: conversationHistory (${state.conversationHistory?.length ?? 0}), _executeCallIndex (${prevCallIndex})`);
+      console.log(`   ♻️  Reset: conversationHistory cleared, _executeCallIndex ${prevCallIndex}→0`);
       console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
       if (nextTask && state.context?.featurePath && state._httpJobId) {
         const _taskRef = nextTask;
@@ -328,8 +331,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
             taskName: _taskRef.name,
             attempt: _retryAttempt,
             maxAttempts: _retryMax,
-            preservedHistoryLength: state.conversationHistory?.length ?? 0,
-            preservedCallIndex: prevCallIndex,
+            preservedHistoryLength: 0,
+            preservedCallIndex: 0,
             violationsFromPrevAttempt: state.violations?.length ?? 0,
           }).catch(() => {});
         }).catch(() => {});
@@ -352,6 +355,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
     // Clear the trigger flag
     (state as any)._awaitingFinalVerify = false;
+
+    // Save what was tried so the next plan cycle knows to try a different approach
+    if (state.planText) {
+      (state as any)._previousAppliedPlan = state.planText;
+    }
 
     // Reset tracker for fresh verification pass
     state._verificationTracker = {
@@ -968,6 +976,20 @@ const hasPrePlanText =
 
       diagnosticRetryContext = (diagnosticRetryContext || '') + previousAttemptsContext;
     }
+  }
+
+  // Inject previous applied plan context so plan LLM knows what was already tried
+  const previousAppliedPlan = (state as any)._previousAppliedPlan as string | undefined;
+  if (previousAppliedPlan && nextTask.type === 'verification') {
+    const prevPlanContext =
+      `\n\n### PREVIOUS FIX APPLIED BUT ERROR PERSISTS\n` +
+      `The following remediation plan was applied by the execute phase, but the error was NOT resolved:\n\n` +
+      '```json\n' + previousAppliedPlan + '\n```\n\n' +
+      `You MUST analyze WHY the previous fix did not work and try a FUNDAMENTALLY DIFFERENT approach.\n` +
+      `Do NOT repeat the same fix.`;
+    diagnosticRetryContext = (diagnosticRetryContext || '') + prevPlanContext;
+    (state as any)._previousAppliedPlan = undefined;
+    console.log(`📋 [Plan] Injected previous applied plan context (${previousAppliedPlan.length} chars) — LLM will try a different approach`);
   }
 
   if (tryToolsFirst) {
