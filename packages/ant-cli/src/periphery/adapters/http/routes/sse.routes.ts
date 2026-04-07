@@ -48,7 +48,20 @@ export function createSSERoutes(deps: {
     const userContext: UserContext = extractUserContext(req);
     logger.debug(`User context resolved`, { component: 'SSE', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
     
-    // Set SSE headers
+    // Check connection limit BEFORE sending headers.
+    // Previously the limit check lived inside registerClient() which ran AFTER
+    // res.writeHead(200). When the limit was exceeded, registerClient tried to
+    // send res.status(429).json() on an already-committed 200 response, which
+    // wrote JSON into the SSE stream and called res.end(). The browser's
+    // EventSource saw a 200 OK and auto-reconnected, creating an infinite loop.
+    const allowed = await deps.sseService.checkConnectionLimit(userContext);
+    if (!allowed) {
+      logger.warn(`SSE connection limit exceeded`, { component: 'SSE', projectId, featureName });
+      res.status(429).json({ error: 'Too many SSE connections' });
+      return;
+    }
+
+    // SSE headers — safe to send now that the limit check passed
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -56,8 +69,16 @@ export function createSSERoutes(deps: {
       'X-Accel-Buffering': 'no'
     });
     
-    // Register client (await ensures Redis Pub/Sub subscription is active before initial state)
-    await deps.sseService.registerClient(projectId, featureName, res, userContext);
+    // Register client (await ensures Redis Pub/Sub subscription is active before initial state).
+    // If registration fails after writeHead, we must NOT throw (Express would
+    // attempt a 500 response on the already-committed stream). End the response instead.
+    try {
+      await deps.sseService.registerClient(projectId, featureName, res, userContext);
+    } catch (err) {
+      logger.error(`Failed to register SSE client`, { component: 'SSE', projectId, featureName }, err);
+      try { res.end(); } catch {}
+      return;
+    }
     logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
 
     // Collect active jobs for this feature (N concurrent job support).
