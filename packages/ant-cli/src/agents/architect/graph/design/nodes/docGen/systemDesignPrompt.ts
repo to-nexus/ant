@@ -27,6 +27,7 @@ export interface BuildMessagesResult {
 export async function buildMessages(state: DesignGraphState): Promise<BuildMessagesResult> {
   const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
   let useSourceFileTool = false;
+  let prdSpecForLog = '';
   
   // NOTE: UI Design mode is handled separately in docGen() entry point
   // This function handles system-design messages only
@@ -139,6 +140,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       useSourceFileTool = true;
       console.log(`📄 [DocGen] Source docs (${sourceDocsForTask.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
     }
+    prdSpecForLog = prdSpec;
 
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',
@@ -238,7 +240,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
               directive: state.directive ? `[${state.directive.length} chars]` : undefined,
               lastSectionNumber,
               sectionPattern,
-              prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
+              prdSpec: prdSpec ? `[${prdSpec.length} chars]` : undefined,
               planText: state.planText ? `[${state.planText.length} chars]` : undefined,
               designDomain: state.detectionReport?.domain,
               currentTask: state.currentTask?.id,
@@ -362,7 +364,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
             messageCount: messages.length,
             hasConversationHistory: !!(state.conversationHistory?.length),
             conversationHistoryLength: state.conversationHistory?.length || 0,
-            prd: state.prd ? `[${state.prd.length} chars]` : undefined,
+            prdSpec: prdSpecForLog ? `[${prdSpecForLog.length} chars]` : undefined,
             design: state.design ? `[${state.design.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             jobMode: state.detectionReport?.jobMode,

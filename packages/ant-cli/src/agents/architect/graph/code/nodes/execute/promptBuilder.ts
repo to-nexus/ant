@@ -21,6 +21,7 @@ import { resolveDesignDocForTask, resolveUiDocForTask } from "../documentResolve
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
 import { condenseContent } from "../../../../../../core/utils/contentCondenser";
+import { buildAllSourceDocs } from "../../../../../../core/utils/sourceDocuments";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -155,7 +156,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     {
       directive: isVerificationTask ? undefined : state.directive,
       designDoc: designDocForTask,
-      prdSpec: (isVerificationTask || isErrorTask) ? undefined : state.prd,
+      prdSpec: (isVerificationTask || isErrorTask) ? undefined : (buildAllSourceDocs(state.sourceDocuments) || state.prd),
       uiDoc: (isVerificationTask || isErrorTask) ? undefined : uiDocForTask,
       projectCodeContext: executeProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
@@ -612,7 +613,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             designDoc: designDocForTask ? `[${designDocForTask.length} chars]` : undefined,
             designDocFiles: designDocFiles.length > 0 ? designDocFiles : undefined,
             packages: state.currentTask?.packages || undefined,
-            prdSpec: state.prd ? `[${state.prd.length} chars]` : undefined,
+            prdSpec: (state.sourceDocuments || state.prd) ? `[${(buildAllSourceDocs(state.sourceDocuments) || state.prd || '').length} chars]` : undefined,
             uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
             uiDocSections: uiDocForTask ? (state.currentTask?.uiSections ?? ['all']) : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
