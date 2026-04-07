@@ -782,19 +782,9 @@ export async function execute(
             ...streamedFilePaths.map(fp => `  - ${fp}`),
           );
         }
-        // Verification/error tasks: force immediate tool call instead of more thinking
         const isDiagnosticType = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
-        if (isDiagnosticType) {
-          reentryParts.push(
-            '',
-            'You MUST call run_command NOW to execute the build command.',
-            'Do NOT describe what you plan to do — call the tool immediately.',
-          );
-        }
-        const doneHint = state.currentTask?.type === 'verification'
-          ? 'If build (and tests if any) have passed with exit code 0, output <done>true</done> now.'
-          : state.currentTask?.type === 'error'
-          ? 'If the build command passed (exit code 0), output <done>true</done> now.'
+        const doneHint = isDiagnosticType
+          ? 'If you have applied all fixes from the remediation plan, output <done>true</done> now. Do NOT run build/test — a separate diagnostic phase re-verifies automatically.'
           : 'If you have completed all work for this task, output <done>true</done> now.';
         reentryParts.push(
           '',
