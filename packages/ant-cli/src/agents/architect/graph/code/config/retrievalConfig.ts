@@ -17,7 +17,7 @@ export const RETRIEVAL_CONFIG = {
   TOTAL_MAX: 20,
 
   /**
-   * Higher file limit for integration exclusive tasks.
+   * Higher file limit for integration/foundation tasks.
    * Integration tasks wire together outputs from ALL parallel feature tasks,
    * so they typically need more files than a single-feature task.
    * Uses the same 3-tier RAG pipeline (keyword → error → semantic) — files
@@ -43,7 +43,7 @@ export const RETRIEVAL_CONFIG = {
    * Calculate semantic quota based on already-loaded file count.
    * 
    * @param preloadedCount - Files already loaded (required + error)
-   * @param isIntegration - True for integration exclusive tasks (higher limit)
+   * @param isIntegration - True for integration/foundation tasks (higher limit)
    */
   getSemanticQuota(preloadedCount: number, isIntegration?: boolean): number {
     const max = isIntegration ? this.INTEGRATION_TOTAL_MAX : this.TOTAL_MAX;

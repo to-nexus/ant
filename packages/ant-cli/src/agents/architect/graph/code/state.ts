@@ -93,12 +93,16 @@ export const TASK_PRIORITIES = {
   SHARED_FOUNDATION: 200,
   FOUNDATION_MAX: 299,
 
-  // Feature (300-649) — headless skeleton implementation
+  // Feature (300-599) — headless skeleton implementation
   FEATURE_CRITICAL: 300,
   FEATURE_IMPORTANT: 350,
   FEATURE_NORMAL: 400,
   FEATURE_NICE_TO_HAVE: 500,
-  FEATURE_MAX: 649,
+  FEATURE_MAX: 599,
+
+  // Integration (600-649) — wires feature outputs into shared entry points
+  INTEGRATION_MIN: 600,
+  INTEGRATION_MAX: 649,
 
   // Visual Pass (650-699) — apply styles to skeleton
   VISUAL_PASS: 650,
