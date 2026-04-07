@@ -18,6 +18,8 @@
 
 **Constraint**: After running build/test and reading error-related files, produce `<analysis>` and `<plan>` promptly. Do NOT continue calling tools after sufficient diagnostic information is gathered.
 
+**Constraint**: Each verification command type (build, test, dev server) must be executed at most once per diagnostic cycle. Re-running a failed command without code changes produces identical results. A separate execution phase applies code fixes, after which a fresh diagnostic cycle re-verifies automatically.
+
 {{/if}}
 
 ## Diagnostic Protocol Rules

@@ -301,6 +301,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       // isAfterToolCall checks history length), which triggers a thinking-only
       // loop where the LLM produces only a thinking block with no tool calls.
       state._finalTaskLoopCount = 0;
+      if (state._verificationTracker) {
+        state._verificationTracker.buildAttempted = false;
+        state._verificationTracker.testAttempted = false;
+        state._verificationTracker.devServerAttempted = false;
+      }
       const _retryAttempt = (state.retries || 0) + 1;
       const _retryMax = state.maxRetries || 3;
       console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
@@ -349,6 +354,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
       devServerPassed: false,
       devServerRequired: true,
+      buildAttempted: false,
+      testAttempted: false,
+      devServerAttempted: false,
     };
 
     // Reset execute state for potential next fix cycle
@@ -393,6 +401,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
         devServerPassed: false,
         devServerRequired: true,
+        buildAttempted: false,
+        testAttempted: false,
+        devServerAttempted: false,
       };
       console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, devServerRequired=${state._verificationTracker.devServerRequired}`);
     }
