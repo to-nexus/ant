@@ -47,10 +47,12 @@ export function resolveDesignDocForTask(task: CodeTask, state: ArchitectGraphSta
 
   // feature / setup / test-code / doc: system design via packages
   if (task.packages?.length && state.designDocs) {
-    return buildDesignDocForTask(task.packages, state.designDocs);
+    const result = buildDesignDocForTask(task.packages, state.designDocs);
+    if (result) return result;
+    // 'shared' packages have no fe-/be- design doc — fall through to full design
   }
 
-  // fallback: packages or designDocs missing (indicates decompose bug)
+  // fallback: packages yield no content, or packages/designDocs missing
   return state.design || '';
 }
 
