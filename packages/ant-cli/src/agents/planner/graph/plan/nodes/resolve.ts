@@ -13,6 +13,7 @@ import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { detectUILocale, getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
+import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers';
 
 export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
   console.log('\n📋 [Planner:Resolve] Loading context...');
@@ -52,10 +53,15 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   }
   
   // 2. Determine mode
-  const mode = existingDocument ? 'refine' : 'generate';
+  let mode: 'generate' | 'refine' | 'explain';
+  if (!existingDocument) {
+    mode = 'generate';
+  } else {
+    mode = await detectPlanMode(state);
+  }
   console.log(`   Mode: ${mode}`);
   
-  // 2b. In refine mode, create staging copy for edit_prd tool
+  // 2b. In refine mode, create staging copy for edit_prd tool (skip for explain)
   if (mode === 'refine' && existingDocument) {
     const stagingDir = path.join(featurePath, 'outputs/plan');
     const stagingPath = path.join(stagingDir, 'prd-refine.md');
@@ -230,4 +236,70 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     mode,
     _uiLocale: uiLocale,
   };
+}
+
+/**
+ * Detect plan mode when PRD exists: refine (modify PRD) vs explain (read-only Q&A).
+ * Uses a lightweight LLM call with directive only (no PRD content needed).
+ * Falls back to 'refine' on error (safe default — avoids accidental read-only).
+ */
+async function detectPlanMode(
+  state: PlanGraphState,
+): Promise<'refine' | 'explain'> {
+  const directive = state.overrideDirective || state.directive || '';
+  if (!directive) return 'refine';
+
+  const llm = state.deps?.llm;
+  if (!llm) return 'refine';
+
+  const prompt = `Classify the following user directive about an existing PRD document.
+
+Directive: "${directive}"
+
+Is the user asking to:
+A) UNDERSTAND/ANALYZE the PRD content (explain, describe, query, check what's in it) — no modification expected
+B) MODIFY/IMPROVE the PRD (refine, add, fix, update, expand, improve) — changes expected
+
+Respond with ONLY a JSON object:
+<detect>
+{ "mode": "explain" | "refine", "reasoning": "one sentence" }
+</detect>`;
+
+  try {
+    let response = '';
+    for await (const event of llm.stream(
+      [{ role: 'user', content: prompt }],
+      { temperature: 0, maxTokens: 150, enableThinking: false }
+    )) {
+      if (event.type === 'retry') { response = ''; continue; }
+      if (event.text) response += event.text;
+      if (event.type === 'done') {
+        const capturedUsage = extractTokenUsageFromStreamEvent(event);
+        if (capturedUsage) {
+          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
+          upsertPhaseTokenUsage(state, 'resolve', capturedUsage);
+        }
+      }
+    }
+
+    const match = response.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
+    if (match) {
+      const parsed = JSON.parse(match[1]);
+      const mode = parsed.mode === 'explain' ? 'explain' : 'refine';
+      console.log(`   DetectPlanMode: ${mode} (${parsed.reasoning || 'no reasoning'})`);
+      return mode;
+    }
+
+    // Fallback: try raw JSON
+    const jsonMatch = response.match(/\{[\s\S]*?"mode"\s*:\s*"(explain|refine)"[\s\S]*?\}/);
+    if (jsonMatch) {
+      const mode = jsonMatch[1] as 'explain' | 'refine';
+      console.log(`   DetectPlanMode: ${mode} (fallback parse)`);
+      return mode;
+    }
+  } catch (err) {
+    console.warn(`   ⚠️ DetectPlanMode failed, defaulting to refine:`, err);
+  }
+
+  return 'refine';
 }

@@ -300,6 +300,13 @@ export const PLANNER_TOOLS: ToolDefinition[] = [
   editFile,
 ];
 
+/** Read-only tools for explain mode (no write/edit capabilities) */
+export const PLANNER_EXPLAIN_TOOLS: ToolDefinition[] = [
+  readWorkspaceFile,
+  listWorkspaceFiles,
+  searchWeb,
+];
+
 /** All tools including shadow tools for hallucination recovery (used in tool node execution) */
 export const ALL_PLANNER_TOOLS: ToolDefinition[] = [
   ...PLANNER_TOOLS,

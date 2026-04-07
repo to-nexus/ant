@@ -122,4 +122,7 @@ modes:
 redirect_signals:
   to_code: Design documents already exist AND the directive requests implementation as the output. Design job handles explanation, analysis, and investigation directly (has code reading tools).
   to_learn: Request target is codebase analysis or indexing output
-  to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
+  to_plan: >
+    Request target is a PRD artifact — either:
+    (1) user EXPLICITLY names "PRD" as the output to produce, OR
+    (2) user asks to analyze, explain, or query PRD content (explain intent targeting PRD)

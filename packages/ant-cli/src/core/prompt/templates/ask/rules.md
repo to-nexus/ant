@@ -199,6 +199,20 @@ No elaboration. Move on.
 
 **Constraint**: Only evaluate documents that actually exist in the workspace. Do NOT report on missing documents as failures — simply note they were not available for evaluation.
 
+### Evaluation Tag (for save card integration)
+
+When you produce an evaluation report following this protocol, append an `<eval>` tag at the very end of your response to signal the evaluation type:
+
+```
+<eval type="prd" />
+<eval type="system-design" />
+<eval type="ui-design" />
+<eval type="code" />
+<eval type="all" />
+```
+
+**Constraint**: Output this tag ONLY when you have actually produced an evaluation report with rubric-based scoring. Do NOT output it for general questions about evaluation, questions referencing prior evaluations, or non-scoring analysis.
+
 ---
 
 ## Security Constraints

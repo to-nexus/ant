@@ -33,7 +33,7 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 |-----------------|--------|
 | New or modified artifacts (documents, code, specs) | \`work\` |
 | Explanation or analysis of project codebase, architecture, or artifacts | \`work\` |
-| Quality score or assessment against criteria (rubric-based) | \`ask\` |
+| Quality score, assessment, or questions referencing rubric/eval criteria | \`ask\` |
 | Questions about Ant system, workflow, or usage | \`ask\` |
 
 **Constraint**: Do NOT classify by verb alone. The same verb can imply different intents depending on context.
@@ -45,12 +45,35 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 - Questions about user's project code, architecture, or implementation → \`work\`
 - Questions about Ant system, workflow, or capabilities → \`ask\`
 
-⚠️ **Blind Spot — quality judgment vs. explanation**: Observe whether the user wants **a quality judgment** or **an explanation/modification**:
-- Score, grade, or assess quality against a rubric → \`ask\`
+⚠️ **Blind Spot — rubric reference vs. content analysis**: Observe whether the user references **rubric/eval criteria** or asks about **artifact content directly**:
+- Score, grade, assess quality, or ask questions referencing rubric/eval criteria → \`ask\`
 - Correctness validation (does X work? why doesn't Y appear?) → \`work\` (broken behavior, not rubric scoring)
-- Explain or describe project code/artifacts → \`work\`
-- Modify or create artifacts → \`work\`
+- Analyze, explain, describe artifact content directly (no rubric reference) → \`work\` (explain intent — see Step 2.5)
+- Modify or create artifacts → \`work\` (modification intent)
 - Prior evaluation mentioned as context does NOT change the expected output type
+
+### Step 2.5: Explain Intent Detection (for work intent)
+
+**Applies to**: work intent only. Detects explain-only requests and routes them to the artifact-owning job.
+
+**Observation target**: Does the directive ask to UNDERSTAND, ANALYZE, or EXPLAIN existing artifact content WITHOUT producing a new or modified artifact?
+
+| Observation | Classification |
+|-------------|---------------|
+| Analyze, explain, describe, query artifact content (no new output) | Explain intent |
+| Modify, improve, create, generate, fix (produces output) | Modification intent — skip to Step 3 |
+
+**When explain intent is detected**:
+
+1. Identify which artifact the directive targets
+2. Determine which job OWNS that artifact — the job whose \`outputs\` include that artifact type (see AVAILABLE JOBS)
+3. Compare owning job with current job:
+   - Same → \`proceed\` (owning job handles explain internally). **STOP — skip Steps 3–8.**
+   - Different → \`redirect\` to owning job with \`suggestedJob\` and \`suggestedAgent\`. **STOP — skip Steps 3–8.**
+
+**Constraint**: Directives that request modification, improvement, or creation of artifacts are modification intent, NOT explain intent. Observe whether the expected outcome is a changed artifact or an answer.
+
+**Constraint**: If modification intent is detected, skip this step entirely and proceed to Step 3.
 
 ### Step 3: Route by Requested Output (for work intent)
 
@@ -176,8 +199,9 @@ Compare target vs current job:
 - Ant system prerequisite requirements
 - Current job capabilities explanation
 - Quality assessment requests (scoring documents against criteria)
+- Questions referencing rubric or evaluation criteria (e.g., "what rubric items need improvement?")
 
-**Constraint**: Quality assessment requests are ALWAYS \`inScope: true\`, regardless of workspace state. The ask system has its own tools to verify document availability.
+**Constraint**: Quality assessment and rubric-referenced requests are ALWAYS \`inScope: true\`, regardless of workspace state. The ask system has its own tools to verify document availability.
 
 ⚠️ **CRITICAL**: Questions about the user's project codebase are NOT \`ask\` intent. They belong to \`work\` intent. Only questions about the **Ant tool itself** are \`ask\`.
 
@@ -209,9 +233,9 @@ When user input appears to be:
 ⚠️ **Route by output, not topic**: The current job type is the default context. Mentioning technologies or design concepts is INPUT to the current job, not a request for another job's artifact. (Step 3)
 ⚠️ **Implementation requires design artifacts**: Code redirect is valid only when design documents exist. No design docs + implementation request → redirect to design, not code. (Step 5)
 ⚠️ **Artifact output = WORK**: Producing or modifying artifacts → \`work\`
-⚠️ **Artifact/codebase explanation = WORK**: Explaining project codebase, architecture, or any artifacts → \`work\`. This includes questions about existing code that Ant did NOT generate.
-⚠️ **Ask = Ant system ONLY**: \`ask\` is EXCLUSIVELY for questions about the Ant tool itself. Project code questions → ALWAYS \`work\`.
-⚠️ **Quality scoring = ASK**: Scoring/grading quality against criteria → \`ask\`
+⚠️ **Artifact/codebase explanation = WORK (explain intent)**: Explaining project codebase, architecture, or any artifacts → \`work\`. Explain intent routes to the artifact-owning job: PRD→plan, design docs→design, codebase→code. (Step 2.5)
+⚠️ **Ask = Ant system + rubric-referenced**: \`ask\` covers Ant tool questions AND any request referencing rubric/eval criteria. Project code/artifact content questions without rubric reference → \`work\`.
+⚠️ **Rubric-referenced = ASK**: Scoring/grading quality against criteria, or asking questions that reference rubric/eval reports → \`ask\`
 ⚠️ **Reference source ≠ Requested output**: When evaluation is mentioned as a BASIS for the request (not the requested output), intent is determined by the actual expected output.
 ⚠️ **Invalid input = ASK**: Unclear/accidental input → \`ask\` + \`inScope: false\`
 ⚠️ **Redirect prerequisite principle**: Redirect validity depends on whether the target job's PREREQUISITES exist — not on whether its OUTPUT documents already exist.
@@ -317,7 +341,8 @@ Has full codebase analysis capability — equivalent to code job's analysis powe
 **Redirect signals:**
 - → to_code: Design documents already exist AND the directive requests implementation as the output. Design job handles explanation, analysis, and investigation directly (has code reading tools).
 - → to_learn: Request target is codebase analysis or indexing output
-- → to_plan: Request target is a PRD artifact — user EXPLICITLY names "PRD" or "product requirements document" as the output to produce
+- → to_plan: Request target is a PRD artifact — either: (1) user EXPLICITLY names "PRD" as the output to produce, OR (2) user asks to analyze, explain, or query PRD content (explain intent targeting PRD)
+
 
 ### code job (agent: architect)
 Generates, modifies, and explains code for any project type.
@@ -419,6 +444,21 @@ Improves quality, adds missing sections, clarifies requirements.
 - PRD improvement and refinement
 - Requirement clarification
 - Section expansion and detail addition
+
+#### Mode: explain
+Analyzes and explains existing PRD content without modifying it.
+Answers questions about PRD structure, requirements, and coverage.
+Read-only exploration — no file writes.
+
+
+**Prerequisites:**
+- Required:
+  - Existing PRD document to analyze
+
+**Scope:**
+- PRD content analysis and explanation
+- PRD structure and requirement queries
+- PRD content-based improvement suggestions (non-rubric)
 
 **Redirect signals:**
 - → to_design: Request target is a design artifact — user EXPLICITLY names a design artifact (UI spec, system design doc) as the output to produce. Redirect is only valid when workspace has input materials for the target job.

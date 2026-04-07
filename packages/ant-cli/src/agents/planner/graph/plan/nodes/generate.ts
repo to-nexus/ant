@@ -24,7 +24,7 @@ import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseToke
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
-import { PLANNER_TOOLS } from '../../tools';
+import { PLANNER_TOOLS, PLANNER_EXPLAIN_TOOLS } from '../../tools';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
 import { StreamOrchestrator } from '../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../core/streaming/parsers/XMLStreamParser';
@@ -186,7 +186,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // Increment recursion count each time generate is entered (ReAct loop)
   const recursionCount = (state.recursionCount || 0) + 1;
   
-  console.log(`\n🤖 [Planner:Generate] ${state.mode === 'generate' ? 'Creating' : 'Refining'} PRD... (iteration ${recursionCount}/${state.recursionLimit})`);
+  const modeLabel = state.mode === 'generate' ? 'Creating' : state.mode === 'explain' ? 'Analyzing' : 'Refining';
+  console.log(`\n🤖 [Planner:Generate] ${modeLabel} PRD... (iteration ${recursionCount}/${state.recursionLimit})`);
   
   // Kanban activity banner
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
@@ -285,8 +286,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }
   }
   
-  // Setup tools
-  const toolDefinitions = PLANNER_TOOLS.map(t => ({
+  // Setup tools (explain mode uses read-only subset)
+  const activeTools = state.mode === 'explain' ? PLANNER_EXPLAIN_TOOLS : PLANNER_TOOLS;
+  const toolDefinitions = activeTools.map(t => ({
     name: t.name,
     description: t.description,
     input_schema: t.parameters,
@@ -487,126 +489,133 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     };
   }
   
-  // Extract file content from registry (populated by StreamOrchestrator via <file> tags)
-  const files = orchestrator.getRegistry().getAllFiles();
-  const prdFile = files.find(f => f.path.includes('prd-refine'));
-  let generatedDocument = prdFile?.content || undefined;
+  // === Explain mode: read-only Q&A — skip PRD extraction, disk write, choice card ===
+  let generatedDocument: string | undefined;
   
-  // Edit-based refine: if no <file> output, read the staging file (modified by edit_file tool calls)
-  if (!generatedDocument && state.mode === 'refine') {
-    const editStagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
-    try {
-      generatedDocument = await fsPromises.readFile(editStagingPath, 'utf-8');
-      console.log(`📝 [Planner:Generate] Read edited PRD from staging (${generatedDocument.length} chars)`);
-    } catch {
-      // No staging file — no edits were made
-      console.log(`📝 [Planner:Generate] No staging file found (no edits made)`);
-    }
-  }
-  
-  // === Post-stream: disk write + choice card + session (same role as design job's docGen) ===
-  if (generatedDocument) {
-    const stagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
+  if (state.mode === 'explain') {
+    // Explain mode: stream answer only, save conversation for context continuity
+    const explainHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
+    await saveConversationToSession(state, responseText, undefined, explainHistory, compactionMeta);
+  } else {
+    // Extract file content from registry (populated by StreamOrchestrator via <file> tags)
+    const files = orchestrator.getRegistry().getAllFiles();
+    const prdFile = files.find(f => f.path.includes('prd-refine'));
+    generatedDocument = prdFile?.content || undefined;
     
-    // Kanban: show "saving" activity
-    if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-      state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
-    }
-    
-    // Write to disk (for <file> tag mode; for edit mode this is a harmless overwrite of same content)
-    try {
-      await fsPromises.mkdir(path.dirname(stagingPath), { recursive: true });
-      await fsPromises.writeFile(stagingPath, generatedDocument, 'utf-8');
-      console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to outputs/plan/prd-refine.md`);
-    } catch (error: any) {
-      console.error(`❌ [Planner:Generate] Failed to write PRD: ${error.message}`);
-      throw error;
+    // Edit-based refine: if no <file> output, read the staging file (modified by edit_file tool calls)
+    if (!generatedDocument && state.mode === 'refine') {
+      const editStagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
+      try {
+        generatedDocument = await fsPromises.readFile(editStagingPath, 'utf-8');
+        console.log(`📝 [Planner:Generate] Read edited PRD from staging (${generatedDocument.length} chars)`);
+      } catch {
+        console.log(`📝 [Planner:Generate] No staging file found (no edits made)`);
+      }
     }
     
-    // ✅ Notify file tree update (Redis Pub/Sub → Realtime Server → SSE)
-    if (state.deps?.fileTreeUpdate) {
-      const projectId = process.env.ANT_PROJECT_ID;
-      const featureName = process.env.ANT_FEATURE_NAME;
-      if (!projectId || !featureName) {
-        console.warn(`⚠️ [Planner:Generate] Cannot notify file tree: missing ANT_PROJECT_ID or ANT_FEATURE_NAME`);
-      } else {
-        try {
-          state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
-          console.log(`📂 [Planner:Generate] File tree update notified`);
-          
-          // ✅ Add unseen artifact notification for PRD file
-          if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
-            (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
-              projectId, featureName, ['outputs/plan/prd-refine.md']
-            );
+    // === Post-stream: disk write + choice card + session (same role as design job's docGen) ===
+    if (generatedDocument) {
+      const stagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
+      
+      // Kanban: show "saving" activity
+      if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+        state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
+      }
+      
+      // Write to disk (for <file> tag mode; for edit mode this is a harmless overwrite of same content)
+      try {
+        await fsPromises.mkdir(path.dirname(stagingPath), { recursive: true });
+        await fsPromises.writeFile(stagingPath, generatedDocument, 'utf-8');
+        console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to outputs/plan/prd-refine.md`);
+      } catch (error: any) {
+        console.error(`❌ [Planner:Generate] Failed to write PRD: ${error.message}`);
+        throw error;
+      }
+      
+      // ✅ Notify file tree update (Redis Pub/Sub → Realtime Server → SSE)
+      if (state.deps?.fileTreeUpdate) {
+        const projectId = process.env.ANT_PROJECT_ID;
+        const featureName = process.env.ANT_FEATURE_NAME;
+        if (!projectId || !featureName) {
+          console.warn(`⚠️ [Planner:Generate] Cannot notify file tree: missing ANT_PROJECT_ID or ANT_FEATURE_NAME`);
+        } else {
+          try {
+            state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
+            console.log(`📂 [Planner:Generate] File tree update notified`);
+            
+            // ✅ Add unseen artifact notification for PRD file
+            if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
+              (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
+                projectId, featureName, ['outputs/plan/prd-refine.md']
+              );
+            }
+          } catch (error: any) {
+            console.warn(`⚠️ [Planner:Generate] Failed to notify file tree update: ${error.message}`);
           }
-        } catch (error: any) {
-          console.warn(`⚠️ [Planner:Generate] Failed to notify file tree update: ${error.message}`);
         }
       }
-    }
-    
-    // Record session run
-    try {
-      const session = state.deps?.session;
-      if (session) {
-        const projectId = session.projectId || process.env.ANT_PROJECT_ID || 'default';
-        const featureName = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
-        
-        const directiveSummary = (state.directive || '').substring(0, 200);
-        
-        await session.addRun(projectId, featureName, 'plan', {
-          runId: 0, // Will be set by adapter
-          job: 'plan',
-          timestamp: new Date().toISOString(),
-          input: {
-            type: 'directive',
-            source: state.mode === 'refine' ? 'inputs/sources/prd.md' : undefined,
-            summary: directiveSummary,
-          },
-          output: {
-            planSummary: `PRD ${state.mode} completed (${generatedDocument.length} chars)`,
-          },
-        });
+      
+      // Record session run
+      try {
+        const session = state.deps?.session;
+        if (session) {
+          const projectId = session.projectId || process.env.ANT_PROJECT_ID || 'default';
+          const featureName = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
+          
+          const directiveSummary = (state.directive || '').substring(0, 200);
+          
+          await session.addRun(projectId, featureName, 'plan', {
+            runId: 0, // Will be set by adapter
+            job: 'plan',
+            timestamp: new Date().toISOString(),
+            input: {
+              type: 'directive',
+              source: state.mode === 'refine' ? 'inputs/sources/prd.md' : undefined,
+              summary: directiveSummary,
+            },
+            output: {
+              planSummary: `PRD ${state.mode} completed (${generatedDocument.length} chars)`,
+            },
+          });
+        }
+      } catch (error: any) {
+        console.warn(`⚠️ [Planner:Generate] Failed to record session: ${error.message}`);
       }
-    } catch (error: any) {
-      console.warn(`⚠️ [Planner:Generate] Failed to record session: ${error.message}`);
+      
+      // Save conversation to session (multi-turn persistence)
+      const prdHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
+      await saveConversationToSession(state, responseText, generatedDocument, prdHistory, compactionMeta);
+      
+      // Send PRD apply choice card
+      try {
+        await chatAPI.sendChoiceCard({
+          type: 'prd_apply',
+          title: state.language === 'ko' 
+            ? '📋 PRD를 inputs/sources/prd.md에 적용하시겠습니까?'
+            : '📋 Apply this PRD to inputs/sources/prd.md?',
+          choices: [
+            {
+              id: 'apply',
+              label: state.language === 'ko' ? '적용' : 'Apply',
+              action: 'prd_apply',
+            },
+            {
+              id: 'keep_draft',
+              label: state.language === 'ko' ? '초안 유지' : 'Keep as draft',
+              action: 'dismiss',
+            },
+          ],
+        });
+      } catch (error) {
+        console.warn('⚠️ [Planner:Generate] Failed to send choice card:', error);
+      }
     }
     
-    // Save conversation to session (multi-turn persistence)
-    // Pass updatedHistory for conversationHistory persistence
-    const prdHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
-    await saveConversationToSession(state, responseText, generatedDocument, prdHistory, compactionMeta);
-    
-    // Send PRD apply choice card
-    try {
-      await chatAPI.sendChoiceCard({
-        type: 'prd_apply',
-        title: state.language === 'ko' 
-          ? '📋 PRD를 inputs/sources/prd.md에 적용하시겠습니까?'
-          : '📋 Apply this PRD to inputs/sources/prd.md?',
-        choices: [
-          {
-            id: 'apply',
-            label: state.language === 'ko' ? '적용' : 'Apply',
-            action: 'prd_apply',
-          },
-          {
-            id: 'keep_draft',
-            label: state.language === 'ko' ? '초안 유지' : 'Keep as draft',
-            action: 'dismiss',
-          },
-        ],
-      });
-    } catch (error) {
-      console.warn('⚠️ [Planner:Generate] Failed to send choice card:', error);
+    // Save conversation even when no PRD was generated (e.g. clarifying response)
+    if (!generatedDocument) {
+      const textOnlyHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
+      await saveConversationToSession(state, responseText, undefined, textOnlyHistory, compactionMeta);
     }
-  }
-  
-  // Save conversation even when no PRD was generated (e.g. clarifying response)
-  if (!generatedDocument) {
-    const textOnlyHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
-    await saveConversationToSession(state, responseText, undefined, textOnlyHistory, compactionMeta);
   }
   
   // Finalize message (after choice card)
