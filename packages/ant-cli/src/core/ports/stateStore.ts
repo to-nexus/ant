@@ -12,7 +12,8 @@
  */
 
 import { UserContext } from '../types/user';
-import { DecomposableJobType, TaskQueueSnapshot, JobProjectMapping } from '../types/task';
+import { TaskQueueSnapshot, JobProjectMapping } from '../types/task';
+import type { JobType } from '@ant/shared';
 
 // Re-export for consumers
 export type { TaskQueueSnapshot, JobProjectMapping };
@@ -32,7 +33,7 @@ export interface JobStatusData {
   status: JobStatusValue;
   projectId: string;
   featureName: string;
-  type: DecomposableJobType | 'inline-ask' | 'visual';
+  type: JobType;
   mode?: 'generate' | 'refactor' | 'explain';
   timestamp?: string;
   userContext?: UserContext;

@@ -25,12 +25,14 @@ import { CommandExecutionHandler } from './CommandExecutionHandler';
 import { ChatStatusHandler } from './ChatStatusHandler';
 import { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import { ContentMerger } from '../chat/ContentMerger';
+import { getChatSyncChannel } from '../../infrastructure/state/redisConstants';
 import { logger } from '../../utils/logger';
 
 export class LLMResponseService {
   private enabled: boolean;
   
   // Core components
+  private stateStore: StateStorePort;
   private sessionStore: SessionStore;
   private broadcaster: MessageBroadcaster;
   private contentMerger: ContentMerger;
@@ -41,7 +43,11 @@ export class LLMResponseService {
   private commandExecutionHandler: CommandExecutionHandler;
   private chatStatusHandler: ChatStatusHandler;
 
+  // Sync channel subscription (for reconnect snapshot)
+  private syncUnsubscribe: (() => Promise<void>) | null = null;
+
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
+    this.stateStore = stateStore;
     // Initialize core components
     this.sessionStore = new SessionStore(stateStore, env);
     this.broadcaster = new MessageBroadcaster(stateStore);
@@ -123,14 +129,10 @@ export class LLMResponseService {
       }
       
       // ✅ Auto-inject placeholder on message creation (Universal Placeholder System)
-      // Every new message automatically starts with a placeholder shimmer animation.
-      // ContentMerger handles placeholder → any content transition automatically:
-      //   - placeholder → placeholder: in-place replacement (node transitions)
-      //   - placeholder → thinking/text/file: merge (placeholder disappears)
-      //   - placeholder → informational (context_loaded): add alongside (placeholder stays)
-      // Individual nodes no longer need to manually call showChatStatus('placeholder')
-      // as the first action — it's guaranteed from message creation.
       this.chatStatusHandler.showChatStatus('placeholder');
+      
+      // Subscribe to sync channel so SSE API Pod can request a fresh snapshot on reconnect
+      await this.subscribeSyncChannel();
       
       logger.debug(`Started message: ${messageId}`, { component: 'LLMResponseService' });
       return messageId;
@@ -151,7 +153,6 @@ export class LLMResponseService {
       const ctx = this.sessionStore.getContext();
       
       if (session) {
-        // Finalize content (clean up thinking blocks, etc.)
         this.contentMerger.finalizeContent(
           ctx.projectId,
           ctx.featureName,
@@ -159,7 +160,6 @@ export class LLMResponseService {
           cancelled
         );
         
-        // Broadcast finalization
         if (session.currentMessage) {
           this.broadcaster.broadcastMessageFinalized(
             ctx.projectId,
@@ -171,6 +171,11 @@ export class LLMResponseService {
       }
       
       await this.sessionStore.finalizeMessage(cancelled);
+      
+      // Only unsubscribe when no active messages remain (main + all workers)
+      if (!this.sessionStore.hasAnyActiveMessage()) {
+        await this.unsubscribeSyncChannel();
+      }
       
       logger.debug(`Finalized message (cancelled=${cancelled})`, { component: 'LLMResponseService' });
     } catch (error) {
@@ -457,17 +462,80 @@ export class LLMResponseService {
    * Ensure there's an active message, starting one if needed
    */
   private async ensureActiveMessage(): Promise<boolean> {
-    // ✅ Ensure local session is loaded first (critical for resume)
     let session = this.sessionStore.getSession();
     if (!session) {
       session = await this.sessionStore.getOrCreateSession();
     }
     
-    // Check local state (more reliable than Redis for stale message detection)
     if (session?.currentMessage) return true;
 
     logger.warn(`No active message, attempting to start`, { component: 'LLMResponseService' });
     const messageId = await this.startMessage();
     return messageId !== null;
+  }
+
+  // ============================================================================
+  // Chat Sync (reconnect snapshot)
+  // ============================================================================
+
+  private async subscribeSyncChannel(): Promise<void> {
+    if (this.syncUnsubscribe) return;
+    try {
+      const channel = getChatSyncChannel(this.sessionStore.getContext().sessionKey);
+      this.syncUnsubscribe = await this.stateStore.subscribe(channel, () => {
+        this.handleSyncRequest();
+      }) as () => Promise<void>;
+      logger.debug(`Subscribed to sync channel: ${channel}`, { component: 'LLMResponseService' });
+    } catch (error) {
+      logger.warn(`Failed to subscribe to sync channel`, { component: 'LLMResponseService' }, error);
+    }
+  }
+
+  private async unsubscribeSyncChannel(): Promise<void> {
+    if (!this.syncUnsubscribe) return;
+    try {
+      await this.syncUnsubscribe();
+    } catch (error) {
+      logger.warn(`Failed to unsubscribe sync channel`, { component: 'LLMResponseService' }, error);
+    } finally {
+      this.syncUnsubscribe = null;
+    }
+  }
+
+  /**
+   * Respond to a sync_request from SSE API Pod by broadcasting
+   * a full snapshot of all active messages (main + workers).
+   */
+  private handleSyncRequest(): void {
+    try {
+      const ctx = this.sessionStore.getContext();
+
+      // Main graph currentMessage
+      const mainMessage = this.sessionStore.getCurrentMessage();
+      if (mainMessage) {
+        this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
+          type: 'message_snapshot',
+          messageId: mainMessage.id,
+          contents: mainMessage.contents,
+          contentsCount: mainMessage.contents.length,
+        }, ctx.userContext);
+      }
+
+      // All parallel workers' currentMessages
+      for (const [, ws] of this.sessionStore.getWorkerMessages()) {
+        if (ws.currentMessage) {
+          this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
+            type: 'message_snapshot',
+            messageId: ws.currentMessage.id,
+            contents: ws.currentMessage.contents,
+            contentsCount: ws.currentMessage.contents.length,
+          }, ctx.userContext);
+        }
+      }
+
+      logger.debug(`Handled sync request: sent snapshot`, { component: 'LLMResponseService' });
+    } catch (error) {
+      logger.error(`Failed to handle sync request`, { component: 'LLMResponseService' }, error);
+    }
   }
 }

@@ -189,6 +189,11 @@ export const REDIS_CHANNELS = {
   API_SERVER: {
     JOB_STATUS_UPDATES: `${CHANNEL_DOMAINS.JOB}:status:updates`,
   },
+  
+  /** Chat sync: SSE API Pod → Worker Pod snapshot request */
+  CHAT: {
+    SYNC_PREFIX: `${REDIS_DOMAINS.CHAT}:sync:`,
+  },
 } as const;
 
 // ============================================
@@ -225,4 +230,12 @@ export function parseChannelUserContext(channel: string): { orgId: string; userI
   const match = channel.match(/^realtime:(broadcast|workflow):([^:]+):([^:]+)$/);
   if (!match) return null;
   return { orgId: match[2], userId: match[3] };
+}
+
+/**
+ * Generate chat sync channel for a session.
+ * Worker Pod subscribes; SSE API Pod publishes sync_request on client reconnect.
+ */
+export function getChatSyncChannel(sessionKey: string): string {
+  return `${REDIS_CHANNELS.CHAT.SYNC_PREFIX}${sessionKey}`;
 }
