@@ -650,6 +650,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   profile: state.profile,
                   detectionReport: (state as any).detectionReport,
                   referenceRequests: state.referenceRequests,
+                  userLanguage: state.context.userLanguage,
                   // ✅ FIX: Preserve interruption details in checkpoint.
                   // onCheckpoint does a full replace of session.state. Without this,
                   // interruption info set by cleanupJobState would be lost when the

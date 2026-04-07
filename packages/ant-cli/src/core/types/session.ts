@@ -157,6 +157,9 @@ export interface SessionState {
   // Job-level Timing
   jobTiming?: JobTiming;
   
+  // User Language (for LLM response localization on resume)
+  userLanguage?: 'en' | 'ko' | 'ja' | 'zh';
+  
   // Token usage
   tokenUsage?: TaskTokenUsage;
   
