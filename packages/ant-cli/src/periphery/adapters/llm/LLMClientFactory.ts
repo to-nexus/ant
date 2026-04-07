@@ -24,8 +24,8 @@ interface LLMConfig {
  * Job/Node context for model selection
  */
 export interface LLMContext {
-  jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
-  nodeType?: 'decompose' | 'plan' | 'docGen' | 'execute' | 'tool' | 'validate' | 'learn' | 'detectEnvironment' | 'direct' | 'sketch' | 'render' | 'engrave';
+  jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'reviewer' | 'doc';
+  nodeType?: 'decompose' | 'plan' | 'docGen' | 'execute' | 'tool' | 'validate' | 'learn' | 'detectEnvironment' | 'direct' | 'sketch' | 'render' | 'engrave' | 'explain';
 }
 
 /**
@@ -65,7 +65,7 @@ function resolveModelForContext(
   context: LLMContext | undefined,
   workspaceConfig: any
 ): string {
-  const defaultModel = process.env.AI_MODEL_NAME || 'claude-sonnet-4-6';
+  const defaultModel = process.env.AI_MODEL_NAME || 'claude-opus-4-6';
   
   // If no context provided, use default
   if (!context) {
