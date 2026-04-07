@@ -32,6 +32,6 @@ export const COMPACTION_MAX_OUTPUT_TOKENS = 16_384;
 
 // === Job: Inter-Job Context — Code/Design ===
 export const CODE_JOB_COMPACTION_THRESHOLD = 8_000;
-export const CODE_JOB_COMPACTION_WINDOW = 3;
+export const CODE_JOB_COMPACTION_WINDOW = 4;    // Must be even: entries are user+assistant pairs
 export const DESIGN_JOB_COMPACTION_THRESHOLD = 8_000;
-export const DESIGN_JOB_COMPACTION_WINDOW = 3;
+export const DESIGN_JOB_COMPACTION_WINDOW = 4;  // Must be even: entries are user+assistant pairs
