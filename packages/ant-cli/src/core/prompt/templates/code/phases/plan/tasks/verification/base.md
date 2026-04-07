@@ -9,12 +9,14 @@ You do NOT fix code — a separate execution phase handles that based on your pl
 
 ## Protocol
 
-### Step 1: Run Build Command
+### Step 1: Verify Build
 
+{{#if hasLanguageHints}}
+Language-specific verification hints are provided below. They define the required verification commands and their execution order for this project.
+{{else}}
 Observe the project's build system from the pre-loaded context (config files, directory tree).
 Execute the project's primary build command using `run_command`.
-
-**For TypeScript projects**: Follow the language-specific hints below — run `tsc --noEmit` first for complete error discovery, then run the project's build command (e.g., `next build`, `vite build`). Both must pass. Tests run only after both pass.
+{{/if}}
 
 {{#if isErrorTask}}
 ### Step 1.5: Cross-reference User Report

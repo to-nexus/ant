@@ -48,11 +48,9 @@ Priority ordering:
 
 ### Complete Error Discovery
 
-**Principle**: Some build tools abort after the first error or first few errors. If the build output shows only 1-3 errors, a dedicated type checker or linter may reveal more.
+**Principle**: Some build tools abort after the first error or first few errors. A dedicated type checker or linter may reveal the full scope of errors in one pass.
 
-**Constraint**: When language-specific hints are provided (below), follow their guidance on running a comprehensive error check BEFORE the project's build command. This prevents a fix-one-discover-next loop.
-
-**Constraint**: If the first build run shows errors and a comprehensive type check command is available, run it to surface ALL errors before producing the remediation plan.
+**Constraint**: When language-specific hints are provided, follow their defined verification order. The order is designed to surface all errors comprehensively before producing the remediation plan.
 
 ### Plan Completeness
 

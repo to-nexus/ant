@@ -130,6 +130,20 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
           suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
         });
       }
+    } else if (tracker.typecheckRequired && tracker.typecheckAttempted && !tracker.typecheckPassed) {
+      console.warn(`⚠️  [checkTaskStatus] Verification: typecheck objective not met`);
+      const history = state.commandHistory || [];
+      const lastFailed = [...history].reverse().find(h => !h.success);
+      const typecheckErrorDetail = lastFailed?.errorSnippet
+        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
+        : '';
+      violations.push({
+        type: 'verification_incomplete' as ViolationType,
+        severity: 'critical',
+        message: 'Type check (tsc --noEmit) has not succeeded. Resolve type errors before proceeding to build.' + typecheckErrorDetail,
+        isRetryable: true,
+        suggestedFix: 'Fix type errors found by tsc --noEmit, then re-run type check.',
+      });
     } else if (!tracker.buildPassed) {
       console.warn(`⚠️  [checkTaskStatus] Verification: build objective not met`);
       const history = state.commandHistory || [];

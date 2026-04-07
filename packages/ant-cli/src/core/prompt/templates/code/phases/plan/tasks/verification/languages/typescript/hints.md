@@ -44,18 +44,18 @@
 
 ---
 
-### Verification Order for TypeScript Projects
+### Verification Order
 
-**Principle**: Static type checking and dynamic build are two distinct steps. Tests run only after both pass. Dev server verification is the final step.
+**Principle**: Static type checking and dynamic build are two distinct verification steps that must both pass independently.
 
-**Required order**:
-1. `tsc --noEmit` — static type check (collects ALL type errors in one pass)
-2. Project build command (e.g., `next build`, `vite build`) — dynamic build
-3. Test command (e.g., `vitest run`, `jest`) — only if build passes
-4. Dev server — only if build and tests pass
+**Required execution order** (each step only runs if the previous step passed):
+1. `tsc --noEmit` — static type check (surfaces ALL type errors in one pass)
+2. Project build command — dynamic build (catches bundler-specific issues beyond type errors)
+3. Test command — only if build passes
+4. Dev server startup — only if tests pass
 
-**Constraint**: `tsc --noEmit` is a pre-check BEFORE Step 1 (Build). It does NOT replace the build command. After tsc passes, you MUST still run the project's build command as Step 1.
+**Constraint**: If `tsc --noEmit` fails, do NOT run the project build command. Framework build CLIs embed type checking internally and will fail with the same type errors. Produce the remediation plan from the tsc error output.
 
-**Constraint**: Do NOT run tests (Step 2) before the dynamic build (Step 1) completes successfully. Test results are meaningless if the production build is broken.
+**Constraint**: Do NOT skip any step. Even if `tsc --noEmit` passes, the project build command must still run — it catches bundler-specific issues that static type checking cannot detect.
 
-⚠️ **Blind spot**: `next build`, `react-scripts build`, and similar framework CLIs embed type checking but often abort on the first error. Running `tsc --noEmit` first surfaces ALL type errors at once — but the dynamic build must still be confirmed separately afterward.
+⚠️ **Blind spot**: Framework CLIs often abort after the first few errors. Running `tsc --noEmit` first ensures ALL type errors are collected at once for comprehensive batch remediation.
