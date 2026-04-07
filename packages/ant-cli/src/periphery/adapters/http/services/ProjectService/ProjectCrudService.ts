@@ -283,10 +283,57 @@ export class ProjectCrudService {
 
     await fs.promises.rename(oldPath, newPath);
 
+    try {
+      await this.repairGitWorktrees(newPath);
+    } catch (error: any) {
+      logger.warn(`Git worktree repair after rename failed (non-critical): ${error.message}`, {
+        component: 'ProjectCrudService',
+      });
+    }
+
     logger.info(`Project renamed: ${oldId} → ${newId}`, {
       component: 'ProjectCrudService',
       organizationId: userContext.organizationId,
       userId: userContext.userId,
+    });
+  }
+
+  /**
+   * Repair git worktree absolute paths after a project directory rename.
+   * Git worktrees store absolute paths bidirectionally; a directory rename
+   * breaks these references. `git worktree repair` (Git 2.30+) fixes them.
+   */
+  private async repairGitWorktrees(projectPath: string): Promise<void> {
+    const mainCodebasePath = path.join(projectPath, 'codebase');
+    const gitDir = path.join(mainCodebasePath, '.git');
+
+    if (!fs.existsSync(gitDir)) return;
+
+    const stat = await fs.promises.stat(gitDir);
+    if (!stat.isDirectory()) return;
+
+    const featuresDir = path.join(projectPath, 'features');
+    const worktreePaths: string[] = [];
+
+    if (fs.existsSync(featuresDir)) {
+      const features = await fs.promises.readdir(featuresDir);
+      for (const feat of features) {
+        const featureCodebase = path.join(featuresDir, feat, 'codebase');
+        const featureGitFile = path.join(featureCodebase, '.git');
+        if (fs.existsSync(featureGitFile)) {
+          worktreePaths.push(featureCodebase);
+        }
+      }
+    }
+
+    if (worktreePaths.length === 0) return;
+
+    await GitHelper.ensureSafeDirectory(mainCodebasePath);
+    const git = simpleGit(mainCodebasePath);
+    await git.raw(['worktree', 'repair', ...worktreePaths]);
+
+    logger.info(`Repaired ${worktreePaths.length} git worktree(s) after rename`, {
+      component: 'ProjectCrudService',
     });
   }
 
