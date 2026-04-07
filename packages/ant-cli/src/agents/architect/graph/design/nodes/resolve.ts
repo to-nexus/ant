@@ -5,6 +5,55 @@ import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
 import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData } from "@ant/shared";
+import type { ConversationEntry } from "../../../../../core/types/session";
+import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
+
+/**
+ * Compress uncompressed heavyweight entries in jobConversation via LLM summarization.
+ * Called during resolve (Trigger 2: heavyweight compression).
+ */
+async function compressHeavyweightEntries(
+  entries: ConversationEntry[],
+  llm: import('../../../../../core/ports/llm').LLMClient,
+  promptPort: import('../../../../../core/ports/prompt').PromptPort,
+): Promise<{ entries: ConversationEntry[]; changed: boolean }> {
+  let changed = false;
+  const result: ConversationEntry[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (
+      entry.role === 'assistant' &&
+      entry.metadata?.boundary === 'heavyweight' &&
+      !entry.metadata?.chapterSummary
+    ) {
+      const userEntry = result[result.length - 1];
+      const jobData = [
+        `Directive: ${userEntry?.content || ''}`,
+        `Result: ${entry.content}`,
+      ].join('\n');
+
+      try {
+        const systemPrompt = await promptPort.render('common/compaction/job-summary', { jobData });
+        const summaryContent = await llm.invoke(
+          [{ role: 'user', content: 'Summarize this job.' }],
+          { system: systemPrompt, maxTokens: 2048 }
+        );
+        result.push({
+          ...entry,
+          content: summaryContent,
+          metadata: { ...entry.metadata, chapterSummary: 'Heavyweight job summary' },
+        });
+        changed = true;
+      } catch (err) {
+        console.warn(`⚠️  [Design Resolve] Heavyweight compression failed, keeping raw entry:`, err);
+        result.push(entry);
+      }
+    } else {
+      result.push(entry);
+    }
+  }
+  return { entries: changed ? result : entries, changed };
+}
 
 /**
  * Design Resolve Node
@@ -319,6 +368,76 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     // Non-critical: figma.json may not exist or be invalid
   }
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Inter-Job Context Bridge: Load & compact jobConversation
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let processedJobConversation: ConversationEntry[] = [];
+  if (state.deps?.session) {
+    const designSession = await state.deps.session.load(context.project, context.featureFolder || 'default', 'design');
+    const rawJobConversation: ConversationEntry[] = designSession?.state?.jobConversation || [];
+    processedJobConversation = rawJobConversation;
+
+    if (rawJobConversation.length > 0 && state.deps?.llm && state.deps?.promptEngine?.deps?.promptPort) {
+      const promptPort = state.deps.promptEngine.deps.promptPort;
+
+      if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+        state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
+      }
+
+      // Trigger 2: Compress uncompressed heavyweight entries
+      let compactionChanged = false;
+      const trigger2Result = await compressHeavyweightEntries(
+        processedJobConversation, state.deps.llm, promptPort
+      );
+      processedJobConversation = trigger2Result.entries;
+      compactionChanged = trigger2Result.changed;
+
+      // Trigger 1: Threshold compaction
+      const { compactJob, applyCompactionToConversation } = await import('../../../../../core/context/compactJob');
+      try {
+        const compactResult = await compactJob(
+          processedJobConversation,
+          state.deps.llm,
+          promptPort,
+          {
+            threshold: DESIGN_JOB_COMPACTION_THRESHOLD,
+            recentWindowSize: DESIGN_JOB_COMPACTION_WINDOW,
+            maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
+          }
+        );
+        if (compactResult.wasCompacted) {
+          processedJobConversation = applyCompactionToConversation(
+            processedJobConversation,
+            { summary: compactResult.summary!, summarizedCount: processedJobConversation.length - DESIGN_JOB_COMPACTION_WINDOW },
+            (summary) => ({
+              role: 'system' as const,
+              content: summary,
+              timestamp: new Date().toISOString(),
+              metadata: { chapterSummary: 'Previous jobs summary' },
+            })
+          );
+          compactionChanged = true;
+        }
+      } catch (err) {
+        console.warn(`⚠️  [Design Resolve] Trigger 1 compaction failed, using uncompacted entries:`, err);
+      }
+
+      // Persist only if compaction actually modified entries
+      if (compactionChanged) {
+        try {
+          await state.deps.session.updateArtifacts(context.project, context.featureFolder || 'default', 'design', {
+            state: { ...designSession.state, jobConversation: processedJobConversation }
+          });
+          console.log(`💾 [Design Resolve] Persisted compacted jobConversation (${rawJobConversation.length} → ${processedJobConversation.length} entries)`);
+        } catch (err) {
+          console.warn(`⚠️  [Design Resolve] Failed to persist compacted jobConversation:`, err);
+        }
+      }
+
+      console.log(`📋 [Design Resolve] Inter-Job Context: ${processedJobConversation.length} entries loaded`);
+    }
+  }
+
   // Validation based on mode
   const hasAnySource = sourceDocuments && Object.keys(sourceDocuments).length > 0;
   if (jobMode === 'generate' && !prd && !hasAnySource) {
@@ -339,5 +458,6 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     _phaseTimings: { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart },
     jobId: (state as any).jobId,
     jobTiming: (state as any).jobTiming,
+    jobConversation: processedJobConversation,
   };
 }

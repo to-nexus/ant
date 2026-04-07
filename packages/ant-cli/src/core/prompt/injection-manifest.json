@@ -24,7 +24,8 @@
     "preview-env-contract": [],
     "behavioral-debugging": [],
     "secure-coding": [],
-    "mock-adapter-contract": []
+    "mock-adapter-contract": [],
+    "job-history": ["jobConversation"]
   },
   "code/phases/execute/injections": {
     "lessons": ["lessons"],
@@ -39,7 +40,8 @@
     "document-language": ["userLanguage"],
     "api-contract-guide": [],
     "backend-guide": [],
-    "frontend-guide": []
+    "frontend-guide": [],
+    "job-history": ["jobConversation"]
   },
   "design/phases/execute/injections": {
     "ui-tokens-guide-by-ref": [],

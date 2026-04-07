@@ -1,3 +1,7 @@
+{{#if hasJobHistory}}
+{{> design/base/injections/job-history}}
+{{/if}}
+
 # UI Design Task Decomposition
 
 You are analyzing UI complexity to break it into tasks.

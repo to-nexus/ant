@@ -100,6 +100,8 @@ export async function decomposeUiDesign(
           })
           .join('\n')
       : undefined,
+    jobConversation: state.jobConversation,
+    hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
   });
 
   await safeLogPrompt(
@@ -256,6 +258,7 @@ export async function decomposeUiDesign(
       _httpJobId: state._httpJobId,
       jobId: ctx.newJobId,
       jobTiming: finalJobTiming,
+      boundary: 'heavyweight' as const,
     };
   } catch (error: any) {
     logErrorHeader('decompose');

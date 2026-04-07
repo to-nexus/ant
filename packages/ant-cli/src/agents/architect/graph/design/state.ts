@@ -1,4 +1,5 @@
 import { CodebaseProfile, TaskArtifacts, DetectionReport } from "../../../../core/types";
+import type { ConversationEntry } from "../../../../core/types/session";
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
@@ -176,4 +177,8 @@ export interface DesignGraphState extends TaskArtifacts {
   figmaConfig?: FigmaDataConfig;        // Loaded from inputs/figma.json at resolve
   uiDesignSource?: UIDesignSource;       // 'figma' | 'references' | 'none' — set by detectEnvironment
   figmaExplorationResult?: FigmaExplorationResult;  // Output of figmaExplore node
+
+  // Inter-Job Context Bridge
+  boundary?: 'heavyweight' | 'lightweight';
+  jobConversation?: ConversationEntry[];
 }

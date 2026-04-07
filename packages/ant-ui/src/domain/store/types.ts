@@ -43,6 +43,12 @@ export interface InlineAskContext {
   message: string;
 }
 
+export interface ActiveJobEntry {
+  jobId: string;
+  status: string;
+  agent?: string;
+}
+
 export interface JobState {
   session: Session | undefined;
   isRunning: boolean;
@@ -64,6 +70,8 @@ export interface JobState {
   sseReconnectGrace: boolean;
   // ✅ Inline Ask: Context for handling ask during interrupted jobs
   inlineAskContext: InlineAskContext | null;
+  // N concurrent jobs: per-jobType tracking within current feature
+  activeJobs: Record<string, ActiveJobEntry>;
 }
 
 export interface SSEState {

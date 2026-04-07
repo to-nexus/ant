@@ -1,4 +1,5 @@
 import { CodebaseProfile, TaskArtifacts, DetectionReport } from "../../../../core/types";
+import type { ConversationEntry } from "../../../../core/types/session";
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import { PromptEngine } from "../../../../core/prompt/engine";
 import { ProjectContext } from "../../types";
@@ -440,6 +441,10 @@ export interface ArchitectGraphState extends TaskArtifacts {
     workingDir: string;
     startedAt: number;
   }>;
+
+  // Inter-Job Context Bridge
+  boundary?: 'heavyweight' | 'lightweight';
+  jobConversation?: ConversationEntry[];
 }
 
 /**
