@@ -314,6 +314,13 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     try {
       const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
       const chatAPI = getChatAPIClient();
+
+      // Finalize any active main-graph message (e.g. a placeholder-only message
+      // started before parallel workers) so the choice card is created as a NEW
+      // message that appears at the bottom of the chat history.
+      // Without this, the card is silently inserted into an earlier message
+      // and the auto-scroll never brings it into view.
+      await chatAPI.finalizeMessage();
       
       const specFile = state.completedTasksDetails?.[0]?.targetFile 
         || state.files?.[0]?.path?.replace('outputs/design/', '')
