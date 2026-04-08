@@ -148,6 +148,15 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
             contents: updatedContents,
             isStreaming: true
           });
+        } else if (event.content) {
+          console.warn('[Store] 💬 content_update: message not found, creating placeholder:', event.messageId);
+          get().addChatMessage({
+            id: event.messageId,
+            role: 'assistant',
+            contents: [event.content],
+            timestamp: new Date().toISOString(),
+            isStreaming: true
+          } as ChatMessage);
         }
         break;
       }
