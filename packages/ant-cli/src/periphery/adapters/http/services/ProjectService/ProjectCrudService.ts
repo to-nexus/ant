@@ -427,6 +427,18 @@ export class ProjectCrudService {
       } else if (!config.llmModels.doc.default) {
         config.llmModels.doc.default = fallbackOpus;
       }
+
+      // Sync branchBase from actual git repo (catches external default branch changes)
+      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, id);
+      if (fs.existsSync(path.join(codebasePath, '.git'))) {
+        try {
+          const detected = await detectGitDefaultBranch(codebasePath);
+          if (detected && config.branchBase !== detected) {
+            config.branchBase = detected;
+            await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+          }
+        } catch { /* best-effort */ }
+      }
       
       return config;
     } catch (error) {
