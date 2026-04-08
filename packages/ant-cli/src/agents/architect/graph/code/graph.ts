@@ -320,13 +320,10 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       }
     }
     
-    // If error task completed, guarantee Final Verification exists
+    // If error task completed, guarantee Final Verification exists as safety net.
+    // Decompose may omit verification for error-only jobs; this ensures a final
+    // build/test check after all error fixes are applied.
     if (state.currentTask.type === 'error' && state.taskQueue) {
-      const remaining = state.taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
-      if (remaining > 0) {
-        console.log(`📋 [checkTaskStatus] ${remaining} error task(s) still in queue — will run independently`);
-      }
-      
       const hasFinalTask = state.taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
       
       if (!hasFinalTask) {
@@ -339,8 +336,6 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         };
         state.taskQueue.push(finalTask);
         console.log(`📋 Added Final Verification to confirm all errors resolved\n`);
-      } else {
-        console.log(`📋 Final Verification already in queue\n`);
       }
     }
     

@@ -704,11 +704,17 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
       lines.push(``);
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(``);
-    } else if (isDiagnosticTask) {
-      // Diagnostic task with empty planText = build/test passed, no fixes needed
+    } else if (state.currentTask.type === 'verification') {
+      // Verification task with empty planText = build/test passed, no fixes needed
       lines.push(state.currentTask.description);
       lines.push(``);
       lines.push(`**Build/test passed successfully. No code changes needed. Output \`<done>true</done>\` immediately.**`);
+      lines.push(``);
+    } else if (state.currentTask.type === 'error' && !state.planText) {
+      // Error task with empty planText = investigation found no issues
+      lines.push(state.currentTask.description);
+      lines.push(``);
+      lines.push(`**Error investigation found no code changes needed. Output \`<done>true</done>\` immediately.**`);
       lines.push(``);
     } else {
       // No plan available (explain tasks OR state propagation failure)

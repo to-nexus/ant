@@ -179,8 +179,9 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
  * ⚠️ CRITICAL: Final Verification task rules
  * - Required if there are feature tasks (features don't get individual validation)
  * - Optional if ALL tasks are error tasks:
- *   graph.ts checkTaskStatus() auto-adds final verification after the first error task completes.
- *   (Error tasks no longer run build verification themselves — deferred to final verification.)
+ *   Decompose may omit verification for error-only jobs.
+ *   graph.ts checkTaskStatus() auto-adds final verification after the first error task completes
+ *   as a safety net. Error tasks always delegate build verification to verification.
  */
 export function createTaskQueue(tasks: CodeTask[]): {
   taskQueue: TaskQueue<CodeTask>;
