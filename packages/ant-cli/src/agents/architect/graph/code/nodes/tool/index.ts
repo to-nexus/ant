@@ -47,7 +47,7 @@ import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient'
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
 import { cleanFileContentFromResponse } from '../../utils/responseCleaners';
-import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY, isBuildCommand, isTestCommand, isDevServerCommand, isTypecheckCommand } from './constants';
+import { TOOL_DISPLAY_NAMES, UI_CARD_ANIMATION_DELAY, isBuildCommand, isTestCommand, isTypecheckCommand } from './constants';
 import { CommandExecutionResult } from './types';
 import {
   handleReadFile,
@@ -91,7 +91,6 @@ async function executeToolByName(
           state._verificationTracker.typecheckPassed = false;
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
-          state._verificationTracker.devServerPassed = false;
         }
         if (!state._planExploring) (state as any)._executeModifiedFiles = true;
         break;
@@ -101,7 +100,6 @@ async function executeToolByName(
           state._verificationTracker.typecheckPassed = false;
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
-          state._verificationTracker.devServerPassed = false;
         }
         if (!state._planExploring) (state as any)._executeModifiedFiles = true;
         break;
@@ -129,14 +127,6 @@ async function executeToolByName(
           if (isTestCommand(commandResult.command)) {
             tracker.testPassed = commandResult.success;
           }
-          if (isDevServerCommand(commandResult.command)) {
-            tracker.devServerPassed = commandResult.success;
-            if (!commandResult.success && commandResult.devServerFailureReason) {
-              tracker.devServerFailureReason = commandResult.devServerFailureReason;
-            } else if (commandResult.success) {
-              tracker.devServerFailureReason = undefined;
-            }
-          }
         }
         break;
       }
@@ -154,7 +144,6 @@ async function executeToolByName(
           state._verificationTracker.typecheckPassed = false;
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
-          state._verificationTracker.devServerPassed = false;
         }
         if (!state._planExploring) (state as any)._executeModifiedFiles = true;
         break;
@@ -236,7 +225,6 @@ async function executeToolByName(
         if (isTypecheckCommand(cmdArgs.command)) state._verificationTracker.typecheckPassed = false;
         if (isBuildCommand(cmdArgs.command)) state._verificationTracker.buildPassed = false;
         if (isTestCommand(cmdArgs.command)) state._verificationTracker.testPassed = false;
-        if (isDevServerCommand(cmdArgs.command)) state._verificationTracker.devServerPassed = false;
       }
     }
   }

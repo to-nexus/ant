@@ -52,7 +52,6 @@
 1. `tsc --noEmit` — static type check (surfaces ALL type errors in one pass)
 2. Project build command — dynamic build (catches bundler-specific issues beyond type errors)
 3. Test command — only if build passes
-4. Dev server startup — only if tests pass
 
 **Constraint**: If `tsc --noEmit` fails, do NOT run the project build command. Framework build CLIs embed type checking internally and will fail with the same type errors. Produce the remediation plan from the tsc error output.
 

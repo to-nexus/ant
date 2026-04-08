@@ -172,23 +172,6 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         isRetryable: true,
         suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
       });
-    } else if (tracker.devServerRequired && !tracker.devServerPassed) {
-      console.warn(`⚠️  [checkTaskStatus] Verification: dev server objective not met (reason: ${tracker.devServerFailureReason ?? 'unknown'})`);
-      const reasonMessages: Record<string, string> = {
-        timeout: 'The dev server did not respond within 30 seconds. The server may be slow to start or blocked on compilation.',
-        http_error: 'The dev server started but returned an HTTP error. There is likely a runtime error in the application.',
-        startup_failure: 'The dev server process failed to start. Check the startup logs for errors.',
-        connection_refused: 'The dev server process started but did not bind to the expected port. Verify the server configuration.',
-      };
-      const reason = tracker.devServerFailureReason;
-      const reasonDetail = reason ? reasonMessages[reason] : 'The dev server did not pass verification.';
-      violations.push({
-        type: 'verification_incomplete' as ViolationType,
-        severity: 'critical',
-        message: `Dev server verification failed: ${reasonDetail}`,
-        isRetryable: true,
-        suggestedFix: 'Run the dev server and confirm the root page is served successfully (HTTP 200). If the server started but the page failed to load, fix the runtime error first.',
-      });
     }
   }
 

@@ -96,7 +96,6 @@ function isVerificationPassWithoutCodeGen(
   const tracker = state._verificationTracker;
   if (!tracker || !tracker.buildPassed) return false;
   if (tracker.testsRequired && !tracker.testPassed) return false;
-  if (tracker.devServerRequired && !tracker.devServerPassed) return false;
   return true;
 }
 
@@ -315,7 +314,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       if (state._verificationTracker) {
         state._verificationTracker.buildAttempted = false;
         state._verificationTracker.testAttempted = false;
-        state._verificationTracker.devServerAttempted = false;
         state._verificationTracker.typecheckAttempted = false;
       }
       const _retryAttempt = (state.retries || 0) + 1;
@@ -354,7 +352,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
     nextTask = state.currentTask;
     console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
-    console.log(`   Re-initializing VerificationTracker for fresh build/test/devServer check\n`);
+    console.log(`   Re-initializing VerificationTracker for fresh build/test check\n`);
 
     // Clear the trigger flag
     (state as any)._awaitingFinalVerify = false;
@@ -371,11 +369,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       buildPassed: false,
       testPassed: false,
       testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
-      devServerPassed: false,
-      devServerRequired: true,
       buildAttempted: false,
       testAttempted: false,
-      devServerAttempted: false,
       typecheckPassed: false,
       typecheckAttempted: false,
       typecheckRequired: isTypeScriptProject(state),
@@ -439,17 +434,14 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         buildPassed: false,
         testPassed: false,
         testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
-        devServerPassed: false,
-        devServerRequired: true,
         buildAttempted: false,
         testAttempted: false,
-        devServerAttempted: false,
         typecheckPassed: false,
         typecheckAttempted: false,
         typecheckRequired: tsProject,
       };
       (state as any)._appliedPlanHistory = [];
-      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, devServerRequired=${state._verificationTracker.devServerRequired}, typecheckRequired=${tsProject}`);
+      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, typecheckRequired=${tsProject}`);
 
       // Compute installNeeded for dependency status prompt signal
       const featureRoot = state.deps?.fileSystem?.getRootPath();
