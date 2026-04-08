@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Response } from 'express';
 import { logger } from '../../../../utils/logger';
 import type { UserContext } from '../../../../core/types/user';
@@ -29,8 +30,8 @@ export type { SSEMessageType, SSEMessage, SSEBroadcastMessage, SSEWorkflowMessag
  * - realtime:workflow:{orgId}:{userId}   - Workflow state updates
  */
 const MAX_SSE_CONNECTIONS_PER_USER = 10;
-const SSE_CONNECTION_KEY_PREFIX = 'ant:sse:connections:';
-const SSE_CONNECTION_TTL_SECONDS = 24 * 60 * 60; // 24h safety TTL
+const SSE_CONNECTION_KEY_PREFIX = 'ant:sse:conn:';
+const SSE_CONNECTION_TTL_SECONDS = 30; // Per-connection key TTL; refreshed by heartbeat
 
 export class SSEService {
   /**
@@ -129,17 +130,17 @@ export class SSEService {
   
   /**
    * Check whether the user has room for another SSE connection.
-   * Read-only: does NOT modify the counter. Must be called BEFORE
-   * res.writeHead() so the caller can still send a proper 429 response.
+   * Counts per-connection keys (each with a short TTL) instead of a single counter.
+   * Must be called BEFORE res.writeHead() so the caller can still send a 429.
    */
   async checkConnectionLimit(userContext: UserContext): Promise<boolean> {
     if (!this.stateStore) return true;
     try {
-      const connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}`;
-      const raw = await this.stateStore.getKey(connKey);
-      return (parseInt(raw || '0', 10) < MAX_SSE_CONNECTIONS_PER_USER);
+      const prefix = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:`;
+      const count = await this.stateStore.countKeysByPrefix(prefix);
+      return (count < MAX_SSE_CONNECTIONS_PER_USER);
     } catch {
-      return true; // fail-open: allow connection when Redis is unavailable
+      return true;
     }
   }
 
@@ -148,7 +149,7 @@ export class SSEService {
    * Subscribes to user-specific channels on first registration.
    *
    * IMPORTANT: Connection limit must already be checked via checkConnectionLimit()
-   * BEFORE calling res.writeHead(). This method only tracks the count (INCR/DECR).
+   * BEFORE calling res.writeHead(). This method creates a per-connection Redis key.
    *
    * CRITICAL: subscribeToUserChannels is awaited to ensure Redis subscription
    * is active BEFORE returning. This prevents a race condition where updates
@@ -161,11 +162,10 @@ export class SSEService {
       return;
     }
     
-    // Track connection count (INCR on register, DECR on close)
-    const connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}`;
+    const connId = randomUUID();
+    const connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:${connId}`;
     if (this.stateStore) {
-      await this.stateStore.incrementKey(connKey);
-      await this.stateStore.expireKey(connKey, SSE_CONNECTION_TTL_SECONDS);
+      await this.stateStore.setKeyWithTTL(connKey, '1', SSE_CONNECTION_TTL_SECONDS);
     }
     
     const key = this.getSessionKey(projectId, featureName, userContext);
@@ -184,19 +184,23 @@ export class SSEService {
       logger.error('Failed to subscribe to user channels', { component: 'SSEService' }, error);
     }
     
-    // Handle client disconnect
-    res.on('close', () => {
+    // Store connKey on response for heartbeat TTL refresh (see sse.routes.ts)
+    (res as any).__sseConnKey = connKey;
+
+    const closeHandler = () => {
       this.clients.get(key)?.delete(res);
       if (this.clients.get(key)?.size === 0) {
         this.clients.delete(key);
       }
       if (this.stateStore) {
-        this.stateStore.decrementKey(connKey).catch((err) => {
-          logger.error('Failed to decrement SSE connection count', { component: 'SSEService' }, err);
+        this.stateStore.deleteKey(connKey).catch((err) => {
+          logger.error('Failed to delete SSE connection key', { component: 'SSEService' }, err);
         });
       }
       logger.debug(`Client disconnected: ${key}`, { component: 'SSEService', projectId, featureName });
-    });
+    };
+    res.on('close', closeHandler);
+    (res as any).__sseCloseHandler = closeHandler;
   }
   
   /**
@@ -567,26 +571,38 @@ export class SSEService {
 
   /**
    * Close ALL SSE connections (used during server shutdown).
-   * Ends every Response in both clients and workflowClients maps
-   * so that http.Server.close() can complete without waiting.
+   * Removes close listeners BEFORE ending responses to prevent double-decrement,
+   * then bulk-adjusts Redis connection counters for this pod's contribution.
    */
-  closeAll(): void {
+  async closeAll(): Promise<void> {
     let closed = 0;
 
-    for (const [key, clients] of this.clients.entries()) {
-      clients.forEach(res => {
-        try { res.end(); } catch { /* ignore */ }
-        closed++;
-      });
-      this.clients.delete(key);
-    }
+    const deleteOps: Promise<void>[] = [];
 
-    for (const [jobId, clients] of this.workflowClients.entries()) {
+    for (const [, clients] of this.clients.entries()) {
+      clients.forEach(res => {
+        const handler = (res as any).__sseCloseHandler;
+        if (handler) res.removeListener('close', handler);
+        const connKey = (res as any).__sseConnKey as string | undefined;
+        if (connKey && this.stateStore) {
+          deleteOps.push(this.stateStore.deleteKey(connKey).catch(() => {}));
+        }
+        try { res.end(); } catch { /* ignore */ }
+        closed++;
+      });
+    }
+    this.clients.clear();
+
+    for (const [, clients] of this.workflowClients.entries()) {
       clients.forEach(res => {
         try { res.end(); } catch { /* ignore */ }
         closed++;
       });
-      this.workflowClients.delete(jobId);
+    }
+    this.workflowClients.clear();
+
+    if (deleteOps.length > 0) {
+      await Promise.allSettled(deleteOps);
     }
 
     logger.info(`Closed all SSE connections (${closed} total)`, { component: 'SSEService' });

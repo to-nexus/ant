@@ -148,6 +148,8 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     console.log('[Store] ✅ Unified SSE connection initializing (waiting for onopen...)');
   },
 
+  // Currently unused: job switching uses REST fetchKanbanData instead of SSE reconnect.
+  // Kept for potential future use (e.g. chat/fileTree full resync).
   reconnectSSE: (key) => {
     const state = get();
     console.log(`[Store] 🔄 Reconnecting unified SSE (key: ${key})`);

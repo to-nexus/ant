@@ -261,8 +261,8 @@ export class RealtimeServer {
       await this.bridgeHandler.close();
     }
 
-    // End all SSE connections first so server.close() doesn't block
-    this.sseService.closeAll();
+    // End all SSE connections and flush Redis counter adjustments before server.close()
+    await this.sseService.closeAll();
 
     if (this.server) {
       await new Promise<void>((resolve) => {

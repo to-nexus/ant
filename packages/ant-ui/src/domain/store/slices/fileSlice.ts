@@ -18,6 +18,8 @@ export interface FileActions {
 
 export type FileSlice = FileState & FileActions;
 
+let fileTreeInFlight: Promise<void> | null = null;
+
 export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) => ({
   // ==================
   // State
@@ -70,6 +72,8 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
   },
 
   refreshFileTree: async (options?: { force?: boolean }) => {
+    if (fileTreeInFlight) return fileTreeInFlight;
+
     const forceRefresh = options?.force ?? true;
     const state = get();
     const { selectedProject, selectedFeature, backendMode, userEmail, connectionStatus } = state;
@@ -83,16 +87,21 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
       return;
     }
     
-    try {
-      const tFetch = performance.now();
-      console.log(`[Timing] refreshFileTree REST start (force=${forceRefresh}) @${Math.round(tFetch)}ms`);
-      const { fetchFileTree } = await import('@/infrastructure/http/api');
-      const tree = await fetchFileTree(selectedProject, selectedFeature, { force: forceRefresh });
-      console.log(`[Timing] refreshFileTree REST done (nodes=${tree?.length ?? 0}) +${Math.round(performance.now() - tFetch)}ms @${Math.round(performance.now())}ms`);
-      set({ fileTree: tree });
-    } catch (error) {
-      console.error('Failed to refresh file tree:', error);
-    }
+    fileTreeInFlight = (async () => {
+      try {
+        const tFetch = performance.now();
+        console.log(`[Timing] refreshFileTree REST start (force=${forceRefresh}) @${Math.round(tFetch)}ms`);
+        const { fetchFileTree } = await import('@/infrastructure/http/api');
+        const tree = await fetchFileTree(selectedProject, selectedFeature, { force: forceRefresh });
+        console.log(`[Timing] refreshFileTree REST done (nodes=${tree?.length ?? 0}) +${Math.round(performance.now() - tFetch)}ms @${Math.round(performance.now())}ms`);
+        set({ fileTree: tree });
+      } catch (error) {
+        console.error('Failed to refresh file tree:', error);
+      }
+    })();
+
+    try { await fileTreeInFlight; }
+    finally { fileTreeInFlight = null; }
   },
 
   setFileContent: (content) => {
