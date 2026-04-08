@@ -20,10 +20,13 @@ import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClie
 import { RunCommandArgs, ServerProcess, RunCommandOutput } from '../types';
 import { checkOrchestratorPortSafeguard } from '../utils/helpers';
 import { terminateProcessTree } from '../../../../../../../periphery/adapters/command/processTree';
+import { cleanCommandEnv } from '../../../../../../../periphery/adapters/command/NodeCommandAdapter';
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../../../../core/utils/pathNormalizer';
 import { 
   LONG_RUNNING_PATTERNS, 
-  ERROR_PATTERNS, 
+  ERROR_PATTERNS,
+  CRITICAL_RUNTIME_PATTERNS,
+  POST_HTTP_GRACE_MS,
   COMMAND_TIMEOUT,
   EARLY_ERROR_TIMEOUT,
   STARTUP_VERIFICATION_TIMEOUT,
@@ -841,7 +844,7 @@ async function handleLongRunningCommand(
     const child = spawn(shell, shellArgs, {
       cwd: workingDir,
       stdio: ['ignore', 'pipe', 'pipe'],
-      // ✅ Important: create a new process group so we can terminate the whole tree later
+      env: cleanCommandEnv(),
       detached: process.platform !== 'win32'
     });
     
@@ -1040,6 +1043,35 @@ Startup output:
 ${stdout.slice(0, 1500)}
 
 Fix the runtime error shown above before marking this task as done.`), httpTestResult.failureReason);
+          return;
+        }
+        
+        // Post-HTTP sweep: wait for lazy compilation, then scan stderr
+        // for critical runtime errors that appeared during the HTTP request.
+        if (child.exitCode === null) {
+          await new Promise(r => setTimeout(r, POST_HTTP_GRACE_MS));
+        }
+        const combinedOutput = stdout + stderr;
+        if (CRITICAL_RUNTIME_PATTERNS.test(combinedOutput)) {
+          const snippet = combinedOutput.split('\n')
+            .filter(line => CRITICAL_RUNTIME_PATTERNS.test(line))
+            .slice(0, 10)
+            .join('\n');
+          console.error(`\n   ❌ Critical runtime error detected after HTTP success:\n${snippet}\n`);
+          await chatAPI.commandComplete(command, false, 1,
+            `Server responded HTTP 200 but critical runtime errors detected:\n\n${snippet}\n\nFull output:\n${combinedOutput.slice(0, 2000)}`,
+            mergeIndex
+          );
+          safeReject(new Error(`❌ SERVER STARTED BUT RUNTIME ERRORS DETECTED: ${command}
+
+Server responded to HTTP request, but critical errors appeared in output:
+
+${snippet}
+
+Full startup output:
+${combinedOutput.slice(0, 2000)}
+
+Fix the runtime error shown above before marking this task as done.`), 'startup_failure');
           return;
         }
         
