@@ -316,6 +316,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
 
+  // Detect error indicators in directive for error-or-general template activation
+  const hasErrorInDirective = (() => {
+    const d = (state.directive || '').toLowerCase();
+    return /\b(error|exception|crash|fail(ed|ure|s)?|stack\s*trace|cannot\s+read|is\s+not\s+(a\s+function|defined)|unexpected\s+token|module\s+not\s+found|typeerror|referenceerror|syntaxerror)\b/.test(d);
+  })();
+
   const decomposeVars = {
     directive: state.directive || '',
     designDoc,
@@ -324,12 +330,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     specApiContract,
     mode: state.detectionReport?.jobMode || 'unknown',
     profile: state.profile,
-    designDocsMeta,              // ✅ Design document availability for profile detection
-    specDocsMeta,                // ✅ Spec document list (kept for multi-spec fallback)
-    codebaseFilePaths,           // ✅ File paths from keyword search (for task planning)
-    hasProjectCode,              // ✅ CRITICAL: Actual codebase existence (git-based, not Vector DB)
-    uiSectionsSummary,           // ✅ UI sections summary with token estimates (for split injection)
+    designDocsMeta,
+    specDocsMeta,
+    codebaseFilePaths,
+    hasProjectCode,
+    uiSectionsSummary,
     runtimeAssetsIndex: state.runtimeAssetsIndex,
+    hasErrorInDirective,
     // Inter-Job Context Bridge
     jobConversation: state.jobConversation,
     hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
