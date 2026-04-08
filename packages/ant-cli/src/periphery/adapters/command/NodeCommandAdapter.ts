@@ -231,11 +231,13 @@ export class NodeCommandAdapter implements CommandPort {
       const [cmd, ...args] = needsShell ? [shell, ...shellArgs] : trimmed.split(/\s+/);
       
       // ✅ CRITICAL: Filter out ant-cli environment variables to prevent pollution
-      // Do NOT pass ant-cli's PORT (4100) to user's commands!
+      // Do NOT pass ant-cli's PORT (4100) or NODE_ENV (production) to user's commands!
       const cleanEnv = Object.entries(process.env).reduce((acc, [key, value]) => {
-        // Exclude ant-cli specific env vars (except ANT_* which are intentional)
         if (key === 'PORT') {
           return acc;  // Don't pass ant-cli's PORT to user commands
+        }
+        if (key === 'NODE_ENV') {
+          return acc;  // Don't leak ant-cli's NODE_ENV=production — each tool sets its own
         }
         if (value !== undefined) {
           acc[key] = value;
