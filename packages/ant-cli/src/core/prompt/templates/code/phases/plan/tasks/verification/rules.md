@@ -6,7 +6,7 @@
 **`run_command` is permitted for**:
 - **Build/test execution**: Run the project's build command, test command, or related verification commands
 - **Observation**: Read-only commands that inspect configuration, dependencies, or project state
-- **Dependency recovery**: Install a missing package when the project configuration requires it
+- **Dependency recovery**: Install dependencies ONLY when the Dependency Status section (above) indicates that dependency declaration files have changed. If no status is provided, install ONLY after observing a build failure caused by missing modules — not as a precautionary step
 
 **`run_command` is NOT permitted for**:
 - Modifying source files (use the code execution phase for that)

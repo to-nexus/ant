@@ -39,9 +39,106 @@ import {
 } from '../constants';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { AsyncMutex } from '../../../parallel/AsyncMutex';
 import { WorkerFileSystem } from '../../../parallel/WorkerFileSystem';
 import { splitOnShellOperators, hasActualPipe } from '../../../../../../../core/utils/shellParser';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Dependency hash utilities — language-neutral install skip guard
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const DEP_DECLARATION_FILES = [
+  'package.json',
+  'go.mod',
+  'Cargo.toml',
+  'pyproject.toml',
+  'requirements.txt',
+  'Gemfile',
+  'build.gradle',
+  'pom.xml',
+];
+
+const DEP_INSTALL_DIRS = [
+  'node_modules',
+  'vendor',
+  '.venv',
+  'venv',
+  'target',          // Rust/Cargo
+  'bundle',          // Ruby Bundler
+];
+
+/**
+ * Compute a SHA-256 hash of all dependency declaration files found under
+ * `{featureRootPath}/codebase/`. Returns null if no declaration files exist.
+ */
+export async function computeDepFileHash(featureRootPath: string): Promise<string | null> {
+  const codebasePath = path.join(featureRootPath, 'codebase');
+  const parts: string[] = [];
+
+  for (const file of DEP_DECLARATION_FILES) {
+    const filePath = path.join(codebasePath, file);
+    try {
+      const content = await fs.promises.readFile(filePath, 'utf-8');
+      parts.push(`${file}:${content}`);
+    } catch {
+      // File doesn't exist — skip
+    }
+  }
+
+  if (parts.length === 0) return null;
+  return crypto.createHash('sha256').update(parts.join('\n---\n')).digest('hex');
+}
+
+/**
+ * Check whether any language-specific installed dependency directory exists
+ * under `{featureRootPath}/codebase/`.
+ */
+export async function hasInstalledDeps(featureRootPath: string): Promise<boolean> {
+  const codebasePath = path.join(featureRootPath, 'codebase');
+  for (const dir of DEP_INSTALL_DIRS) {
+    try {
+      const stat = await fs.promises.stat(path.join(codebasePath, dir));
+      if (stat.isDirectory()) return true;
+    } catch {
+      // doesn't exist
+    }
+  }
+  return false;
+}
+
+/**
+ * Detect "bare" install commands — full dependency resolution from declaration files
+ * with NO specific package argument. These are the only commands subject to the
+ * dep-hash skip guard.
+ *
+ * Excluded (always allowed):
+ *   - Specific package add: `npm install lodash`, `pnpm add react`, `go get pkg@v1`
+ *   - Go source-sync: `go mod tidy`, `go mod download` (resolve from source imports)
+ *   - `cargo build` (build command, not install)
+ */
+function isBareInstallCommand(command: string): boolean {
+  // Go mod tidy/download — source-based sync, NOT manifest-only install
+  if (/\bgo\s+mod\s+(tidy|download)\b/i.test(command)) return false;
+  // go get always has a package argument
+  if (/\bgo\s+get\b/i.test(command)) return false;
+  // cargo build is a build command
+  if (/\bcargo\s+build\b/i.test(command)) return false;
+
+  // Node.js bare install: npm install / npm ci / pnpm install / yarn (no package args)
+  if (/\b(npm|pnpm)\s+(install|i|ci)\s*($|--|-\s)/.test(command)) return true;
+  if (/\byarn\s+(install\s*($|--|-\s))/.test(command)) return true;
+  if (/\byarn\s*$/.test(command)) return true;
+
+  // Python bare install
+  if (/\bpip\s+install\s+-r\b/.test(command)) return true;
+  if (/\bpoetry\s+install\s*($|--|-\s)/.test(command)) return true;
+
+  // Ruby bare install
+  if (/\bbundle\s+install\s*($|--|-\s)/.test(command)) return true;
+
+  return false;
+}
 
 const GO_DEPENDENCY_PATTERN = /\bgo\s+(get|mod\s+tidy|mod\s+download)\b/;
 
@@ -372,9 +469,27 @@ Continue writing code files and output <done>true</done> when complete.`);
     if (isDevServerCommand(command)) tracker.devServerAttempted = true;
   }
 
+  const featureRootPath = fileSystem.getRootPath();
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Dep-hash skip guard: skip bare install when declaration files are unchanged
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const isRetrying = !!(state as any).retries && (state as any).retries > 0;
+  if (isBareInstallCommand(command) && !isRetrying) {
+    const currentHash = await computeDepFileHash(featureRootPath);
+    const savedHash = (state as any)._depFileHash as string | undefined;
+    const depsExist = await hasInstalledDeps(featureRootPath);
+
+    if (savedHash && currentHash === savedHash && depsExist) {
+      console.log(`📦 [RunCommand] Bare install skipped — dependency declaration files unchanged (hash: ${savedHash.substring(0, 8)}…)`);
+      return makeRejectionOutput(command,
+        `SKIPPED: Dependencies are up to date. Dependency declaration files have not changed since the last successful install. ` +
+        `Proceed directly to build/test verification commands.`);
+    }
+  }
+
   const chatAPI = getChatAPIClient();
   
-  // ✅ UI: Show command_running status (loading card)
   // Normalize install commands to avoid "vite missing" when npm is configured with omit=dev.
   // Many environments set: npm config set omit dev
   // If user did not explicitly request production-only, force dev deps for install/ci.
@@ -405,7 +520,7 @@ Continue writing code files and output <done>true</done> when complete.`);
   const hasShellOperators = /(\|\||&&|;)/.test(normalizedCommand);
   const installEnv = (isInstallCommand && !hasShellOperators) ? { CI: 'true' } : undefined;
   
-  const projectPath = fileSystem.getRootPath();
+  const projectPath = featureRootPath;
 
   refreshGoPrivateEnv(normalizedCommand, projectPath);
 
@@ -598,6 +713,17 @@ For verification: build success + server startup = task complete.`;
     }
 
     invalidateBufferedFiles();
+
+    // Update dep-file hash after successful install
+    if (success && PACKAGE_MANAGER_INSTALL_PATTERNS.some(p => p.test(normalizedCommand))) {
+      try {
+        const newHash = await computeDepFileHash(featureRootPath);
+        if (newHash) {
+          (state as any)._depFileHash = newHash;
+          console.log(`   📦 [RunCommand] Updated dependency hash after successful install (${newHash.substring(0, 8)}…)`);
+        }
+      } catch { /* non-blocking */ }
+    }
     
     if (success) {
       console.log(`\n   ✅ Command succeeded (exit code: ${exitCode})\n`);

@@ -421,6 +421,10 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Verification objective tracker (build/test pass status, reset on file modification)
   _verificationTracker?: VerificationTracker;
 
+  /** Hash of dependency declaration files at last successful install.
+   *  Compared at verification plan entry to determine if install is needed. */
+  _depFileHash?: string;
+
   // ✅ Command history tracking (for loop detection)
   commandHistory?: Array<{
     command: string;

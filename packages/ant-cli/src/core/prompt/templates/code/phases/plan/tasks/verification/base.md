@@ -7,6 +7,12 @@ You are diagnosing build and test failures and creating a structured remediation
 Your responsibility is to **run build/test commands, analyze all errors, and produce a structured fix plan**.
 You do NOT fix code — a separate execution phase handles that based on your plan.
 
+{{#if dependencyStatus}}
+## Dependency Status
+
+{{{dependencyStatus}}}
+{{/if}}
+
 ## Protocol
 
 ### Step 1: Verify Build
