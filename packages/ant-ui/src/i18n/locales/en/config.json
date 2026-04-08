@@ -178,7 +178,7 @@
     "setupStep1Desc": "Profile menu (top-right) → Account Configuration → GitHub Integration",
     "setupStep2": "Set Repository URL:",
     "setupStep2Desc": "Click ⚙️ icon next to project name → GitHub Repository field",
-    "setupComplete": "Once both are configured, Clone/Initialize will be enabled.",
+    "setupComplete": "Once both are configured, Publish will be enabled.",
     "management": "Git management",
     "notInitialized": "Git not initialized",
     "configureFirst": "Configure GitHub repo first",
@@ -194,9 +194,11 @@
     "fetchDesc": "Update remote refs",
     "publish": "Publish",
     "publishDesc": "Publish this branch to remote",
+    "publishToGitHubDesc": "Create repository and push to GitHub",
     
     "confirmClone": "Clone this repository to your local workspace? This will download the remote codebase.",
     "confirmInit": "Create a new GitHub repository? An empty repository will be created.",
+    "confirmPublish": "Create a new GitHub repository and push your code?",
     
     "currentBranch": "Current branch:",
     "configRequired": "Configuration required. Click the settings icon above to create one.",
