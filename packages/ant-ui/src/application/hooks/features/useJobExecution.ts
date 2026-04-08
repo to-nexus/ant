@@ -14,7 +14,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition } from '@/infrastructure/http/api';
+import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition, dismissInterruptedJob } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 
@@ -70,8 +70,21 @@ export function useJobExecution() {
     const interruptionWasDismissed = kanbanData?.interruption?.timestamp === dismissedTimestamp;
     const hasInterruption = kanbanData?.interruption?.canResume === true && !interruptionWasDismissed;
     
-    // ✅ Resume existing job (jobId exists + interruption that wasn't dismissed)
-    if (currentJobId && hasInterruption) {
+    // ✅ Redirect bypasses resume: dismiss interrupted job and start fresh
+    if (isRedirect && currentJobId && hasInterruption) {
+      console.log(`[useJobExecution] 🔄 Redirect: auto-dismissing interrupted job ${currentJobId} to start new ${jobType} job`);
+      if (kanbanData?.interruption?.timestamp) {
+        useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+      }
+      try {
+        await dismissInterruptedJob(selectedProject, selectedFeature!, currentJobId);
+      } catch (err) {
+        console.warn('[useJobExecution] Failed to dismiss interrupted job (proceeding anyway):', err);
+      }
+      // Fall through to "Start new job" below
+    }
+    // ✅ Resume existing job (jobId exists + interruption that wasn't dismissed + not a redirect)
+    else if (currentJobId && hasInterruption) {
       try {
         // ✅ CRITICAL: Dismiss interruption FIRST before setting running state
         // This prevents SSE initial state from auto-stopping the job
