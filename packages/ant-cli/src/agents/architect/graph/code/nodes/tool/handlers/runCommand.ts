@@ -25,8 +25,6 @@ import { normalizeToCodebasePath, normalizeRelPath } from '../../../../../../../
 import { 
   LONG_RUNNING_PATTERNS, 
   ERROR_PATTERNS,
-  CRITICAL_RUNTIME_PATTERNS,
-  POST_HTTP_GRACE_MS,
   COMMAND_TIMEOUT,
   EARLY_ERROR_TIMEOUT,
   STARTUP_VERIFICATION_TIMEOUT,
@@ -482,19 +480,7 @@ Continue writing code files and output <done>true</done> when complete.`);
 
   const chatAPI = getChatAPIClient();
   
-  // Normalize install commands to avoid "vite missing" when npm is configured with omit=dev.
-  // Many environments set: npm config set omit dev
-  // If user did not explicitly request production-only, force dev deps for install/ci.
-  const shouldForceIncludeDev =
-    /\bnpm\s+(ci|install)\b/.test(command) &&
-    !/\s--include=dev\b/.test(command) &&
-    !/\s--omit=/.test(command) &&
-    !/\s--production\b/.test(command) &&
-    !/\s--only=prod\b/.test(command);
-
-  const normalizedCommand = shouldForceIncludeDev
-    ? command.replace(/\b(npm\s+(ci|install))\b/, '$1 --include=dev')
-    : command;
+  const normalizedCommand = command;
 
   const mergeIndex = await chatAPI.commandStart(normalizedCommand);
   
@@ -912,7 +898,7 @@ This usually means:
 - Permission denied
 - Invalid working directory
 
-Working directory: ${workingDir}`);
+Working directory: ${workingDir}`));
     });
     
     // ✅ Early error detection: if error detected within 3 seconds, likely startup failure
@@ -928,7 +914,7 @@ Error output:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`);
+${stdout.slice(0, 1000)}`));
       }
     }, EARLY_ERROR_TIMEOUT);
     
@@ -1026,36 +1012,7 @@ HTTP Test Error: ${httpTestResult.error}
 Startup output:
 ${stdout.slice(0, 1500)}
 
-Fix the runtime error shown above before marking this task as done.`);
-          return;
-        }
-        
-        // Post-HTTP sweep: wait for lazy compilation, then scan stderr
-        // for critical runtime errors that appeared during the HTTP request.
-        if (child.exitCode === null) {
-          await new Promise(r => setTimeout(r, POST_HTTP_GRACE_MS));
-        }
-        const combinedOutput = stdout + stderr;
-        if (CRITICAL_RUNTIME_PATTERNS.test(combinedOutput)) {
-          const snippet = combinedOutput.split('\n')
-            .filter(line => CRITICAL_RUNTIME_PATTERNS.test(line))
-            .slice(0, 10)
-            .join('\n');
-          console.error(`\n   ❌ Critical runtime error detected after HTTP success:\n${snippet}\n`);
-          await chatAPI.commandComplete(command, false, 1,
-            `Server responded HTTP 200 but critical runtime errors detected:\n\n${snippet}\n\nFull output:\n${combinedOutput.slice(0, 2000)}`,
-            mergeIndex
-          );
-          safeReject(new Error(`❌ SERVER STARTED BUT RUNTIME ERRORS DETECTED: ${command}
-
-Server responded to HTTP request, but critical errors appeared in output:
-
-${snippet}
-
-Full startup output:
-${combinedOutput.slice(0, 2000)}
-
-Fix the runtime error shown above before marking this task as done.`);
+Fix the runtime error shown above before marking this task as done.`));
           return;
         }
         
@@ -1128,7 +1085,7 @@ Error detected during startup:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`);
+${stdout.slice(0, 1000)}`));
       }
     }, effectiveStartupTimeout);
     
@@ -1151,7 +1108,7 @@ Error output:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`);
+${stdout.slice(0, 1000)}`));
       }
     });
   });
