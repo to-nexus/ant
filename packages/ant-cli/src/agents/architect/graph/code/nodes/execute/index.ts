@@ -506,7 +506,6 @@ export async function execute(
         state._verificationTracker.typecheckPassed = false;
         state._verificationTracker.buildPassed = false;
         state._verificationTracker.testPassed = false;
-        state._verificationTracker.devServerPassed = false;
       }
       (state as any)._executeModifiedFiles = true;
     }

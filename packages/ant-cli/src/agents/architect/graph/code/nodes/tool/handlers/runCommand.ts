@@ -37,7 +37,6 @@ import {
   ORCHESTRATOR_PORT,
   isBuildCommand,
   isTestCommand,
-  isDevServerCommand,
   isTypecheckCommand,
 } from '../constants';
 import * as path from 'path';
@@ -402,7 +401,7 @@ Continue writing code files and output <done>true</done> when complete.`);
   const tracker = state._verificationTracker;
   const isVerificationExecute = taskType === 'verification' && !state._planExploring;
   if (isVerificationExecute && tracker) {
-    if (isBuildCommand(command) || isTestCommand(command) || isTypecheckCommand(command) || isDevServerCommand(command)) {
+    if (isBuildCommand(command) || isTestCommand(command) || isTypecheckCommand(command)) {
       console.warn(`   ⛔ [RunCommand] Execute guard: blocked verification command in execute phase: ${command}`);
       return makeRejectionOutput(command,
         'BLOCKED: Do not run build/test/typecheck commands during the execute phase. ' +
@@ -456,20 +455,10 @@ Continue writing code files and output <done>true</done> when complete.`);
       return makeRejectionOutput(command, msg);
     }
 
-    // Dev server guard
-    if (isDevServerCommand(command) && tracker.devServerAttempted) {
-      const msg = tracker.devServerPassed
-        ? 'ALREADY PASSED: dev server already verified in this diagnostic cycle. Proceed to produce the remediation plan.'
-        : 'BLOCKED: dev server already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.';
-      console.warn(`   ⛔ [RunCommand] Plan loop guard: blocked dev server: ${command} (passed=${tracker.devServerPassed})`);
-      return makeRejectionOutput(command, msg);
-    }
-
     // Mark as attempted
     if (isTypecheckCommand(command)) tracker.typecheckAttempted = true;
     if (isBuildCommand(command)) tracker.buildAttempted = true;
     if (isTestCommand(command)) tracker.testAttempted = true;
-    if (isDevServerCommand(command)) tracker.devServerAttempted = true;
   }
 
   const featureRootPath = fileSystem.getRootPath();
@@ -599,12 +588,10 @@ Continue writing code files and output <done>true</done> when complete.`);
             exitCode: longRunSuccess ? 0 : 1,
             command: normalizedCommand,
             hasWarnings: false,
-            devServerFailureReason: longRunResult.devServerFailureReason,
           },
         };
       } catch (longRunError) {
         const err = longRunError as Error;
-        const devServerFailureReason = (err as any).devServerFailureReason as 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused' | undefined;
         return {
           displayText: err.message,
           commandResult: {
@@ -612,7 +599,6 @@ Continue writing code files and output <done>true</done> when complete.`);
             exitCode: 1,
             command: normalizedCommand,
             hasWarnings: false,
-            devServerFailureReason,
           },
         };
       }
@@ -830,7 +816,7 @@ async function handleLongRunningCommand(
   mergeIndex: number,
   chatAPI: any,
   keepRunning: boolean
-): Promise<{ displayText: string; devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused' }> {
+): Promise<{ displayText: string }> {
   const { spawn } = await import('child_process');
 
   return new Promise((resolve, reject) => {
@@ -856,7 +842,7 @@ async function handleLongRunningCommand(
     let resolved = false;  // ✅ Prevent double resolve/reject
 
     // ✅ Helper to safely resolve/reject once
-    const safeResolve = async (message: string, shouldKill = false, devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused') => {
+    const safeResolve = async (message: string, shouldKill = false) => {
       if (resolved) return;
       resolved = true;
       clearTimeout(startupTimeout);
@@ -872,10 +858,10 @@ async function handleLongRunningCommand(
       }
       // Otherwise, leave it running (will be cleaned up in learn node)
 
-      resolve({ displayText: message, devServerFailureReason });
+      resolve({ displayText: message });
     };
 
-    const safeReject = async (error: Error, devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused') => {
+    const safeReject = async (error: Error) => {
       if (resolved) return;
       resolved = true;
       clearTimeout(startupTimeout);
@@ -886,8 +872,6 @@ async function handleLongRunningCommand(
       } else {
         child.kill('SIGTERM');
       }
-      // Attach failureReason to error so caller can propagate it
-      (error as any).devServerFailureReason = devServerFailureReason;
       reject(error);
     };
     
@@ -928,7 +912,7 @@ This usually means:
 - Permission denied
 - Invalid working directory
 
-Working directory: ${workingDir}`), 'startup_failure');
+Working directory: ${workingDir}`);
     });
     
     // ✅ Early error detection: if error detected within 3 seconds, likely startup failure
@@ -944,7 +928,7 @@ Error output:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`), 'startup_failure');
+${stdout.slice(0, 1000)}`);
       }
     }, EARLY_ERROR_TIMEOUT);
     
@@ -1042,7 +1026,7 @@ HTTP Test Error: ${httpTestResult.error}
 Startup output:
 ${stdout.slice(0, 1500)}
 
-Fix the runtime error shown above before marking this task as done.`), httpTestResult.failureReason);
+Fix the runtime error shown above before marking this task as done.`);
           return;
         }
         
@@ -1071,7 +1055,7 @@ ${snippet}
 Full startup output:
 ${combinedOutput.slice(0, 2000)}
 
-Fix the runtime error shown above before marking this task as done.`), 'startup_failure');
+Fix the runtime error shown above before marking this task as done.`);
           return;
         }
         
@@ -1144,7 +1128,7 @@ Error detected during startup:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`), 'startup_failure');
+${stdout.slice(0, 1000)}`);
       }
     }, effectiveStartupTimeout);
     
@@ -1167,7 +1151,7 @@ Error output:
 ${stderr.slice(0, 2000)}
 
 Stdout:
-${stdout.slice(0, 1000)}`), 'startup_failure');
+${stdout.slice(0, 1000)}`);
       }
     });
   });
