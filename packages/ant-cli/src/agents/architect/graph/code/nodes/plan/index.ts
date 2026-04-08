@@ -309,6 +309,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       state._finalTaskLoopCount = 0;
       state.conversationHistory = [];
       (state as any)._executeModifiedFiles = false;
+      // On retry, force installNeeded=true to bypass dep-hash guard
+      // (previous failure may be caused by corrupted/incomplete deps)
+      (state as any)._installNeeded = true;
       if (state._verificationTracker) {
         state._verificationTracker.buildAttempted = false;
         state._verificationTracker.testAttempted = false;
@@ -383,6 +386,22 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     state._finalTaskLoopCount = 0;
     state.conversationHistory = [];
     (state as any)._executeModifiedFiles = false;
+
+    // Recompute installNeeded — execute may have modified dependency declaration files
+    const featureRoot = state.deps?.fileSystem?.getRootPath();
+    if (featureRoot) {
+      try {
+        const { computeDepFileHash, hasInstalledDeps } = await import('../tool/handlers/runCommand');
+        const currentHash = await computeDepFileHash(featureRoot);
+        const savedHash = (state as any)._depFileHash as string | undefined;
+        const depsExist = await hasInstalledDeps(featureRoot);
+        const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
+        (state as any)._installNeeded = installNeeded;
+        console.log(`📦 [Plan] Post-execute installNeeded: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
+      } catch {
+        (state as any)._installNeeded = true;
+      }
+    }
   } else {
     // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
     // Sequential context: pop next task from queue
@@ -431,6 +450,23 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       };
       (state as any)._appliedPlanHistory = [];
       console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, devServerRequired=${state._verificationTracker.devServerRequired}, typecheckRequired=${tsProject}`);
+
+      // Compute installNeeded for dependency status prompt signal
+      const featureRoot = state.deps?.fileSystem?.getRootPath();
+      if (featureRoot) {
+        try {
+          const { computeDepFileHash, hasInstalledDeps } = await import('../tool/handlers/runCommand');
+          const currentHash = await computeDepFileHash(featureRoot);
+          const savedHash = (state as any)._depFileHash as string | undefined;
+          const depsExist = await hasInstalledDeps(featureRoot);
+          const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
+          (state as any)._installNeeded = installNeeded;
+          console.log(`📦 [Plan] Dependency install needed: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
+        } catch (err) {
+          (state as any)._installNeeded = true; // fail-open: allow install if check fails
+          console.warn(`⚠️ [Plan] Dependency hash check failed, defaulting to installNeeded=true: ${err}`);
+        }
+      }
     }
 
     // ✅ Log task_start event to debug/logs/

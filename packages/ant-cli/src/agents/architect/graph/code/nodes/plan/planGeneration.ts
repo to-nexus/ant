@@ -75,6 +75,15 @@ export async function buildPlanPrompt(
     } else {
       console.log(`🔧 [Plan] Verification profile: language=${profile.language}, framework=${profile.framework || 'none'}`);
     }
+    // Build dependency status signal from plan node's installNeeded computation
+    const installNeeded = (state as any)._installNeeded as boolean | undefined;
+    let dependencyStatus: string | undefined;
+    if (installNeeded === false) {
+      dependencyStatus = 'Dependencies are current. Dependency declaration files are unchanged since last install. Skip dependency installation and proceed directly to build verification.';
+    } else if (installNeeded === true) {
+      dependencyStatus = 'Dependency declaration files have changed since last successful install. Run the project\'s install command before build verification.';
+    }
+
     return await promptEngine.buildVerificationPlanPrompt(
       task,
       state.directive || '',
@@ -82,6 +91,7 @@ export async function buildPlanPrompt(
       violationsText,
       { hasTools: options?.hasTools ?? false },
       profile,
+      dependencyStatus,
     );
   }
 

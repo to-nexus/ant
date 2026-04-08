@@ -586,6 +586,7 @@ export class PromptEngine {
     violationsText?: string,
     options?: { hasTools?: boolean },
     profile?: { language: string; [key: string]: any },
+    dependencyStatus?: string,
   ): Promise<string> {
     let formattedCodeContext = '';
     if (projectCodeContext?.files && Array.isArray(projectCodeContext.files) && projectCodeContext.files.length > 0) {
@@ -625,6 +626,7 @@ export class PromptEngine {
       hasTools: options?.hasTools ?? false,
       languageHints: languageHints,
       hasLanguageHints: !!languageHints,
+      dependencyStatus: dependencyStatus,
     });
   }
 
