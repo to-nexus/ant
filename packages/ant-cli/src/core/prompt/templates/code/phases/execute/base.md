@@ -96,11 +96,17 @@ When error occurs:
 - ❌ "While I'm here, let me refactor this too"
 - ✅ Apply the CORRECT solution → Done
 
-### 4. ASSET-FIRST FOR UI (When UI spec exists)
-**Before implementing UI elements, check the asset mapping table.**
+### 4. ASSET-FIRST FOR UI
+**Before implementing UI elements, check for asset references.**
+{{#if isSpecDriven}}
+- The feature specification contains asset inventory and UI details (self-contained)
+- Check the spec document for `inputs/assets/` path references
+- Copy referenced assets from `inputs/assets/` to the appropriate codebase location BEFORE using them in code
+{{else}}
 - If asset mapping exists for this element → MUST use the asset file
 - Asset specified in mapping → NOT a text substitute
 - Copy asset BEFORE referencing in code
+{{/if}}
 
 ### 5. ENV FILE SYNC CONTRACT
 **`.env.example` and `.env` MUST contain identical variable keys.**
@@ -150,6 +156,13 @@ Output `<done>true</done>` when complete.
 ════════════════════════════════════════════════════════════════════════════════
 {{else}}
 ## 📋 {{#if isSpecDriven}}FEATURE SPECIFICATION{{else}}DESIGN SPECIFICATION{{/if}}
+
+{{#if isSpecDriven}}
+**Principle**: This feature specification is SELF-CONTAINED for UI implementation.
+- UI layout, design tokens, component states, and asset references are all documented within this spec
+- `inputs/assets/` contains pre-downloaded assets referenced in the spec
+- Do NOT look for separate `ui-assets.json` or `ui-spec.json` — the spec document IS the single source of truth
+{{/if}}
 
 {{designDoc}}
 

@@ -10,6 +10,25 @@ Write clearly and precisely so an LLM or developer can implement the feature wit
 
 {{> design/phases/execute/rules-spec}}
 
+{{#if figmaAvailable}}
+
+════════════════════════════════════════════════════════════════════════════════
+
+## Figma Design Reference
+
+Figma design file is connected. File key: `{{figmaFileKey}}`{{#if figmaStartNodeId}}, target node: `{{figmaStartNodeId}}`{{/if}}.
+
+Available tools:
+- `figma_get_metadata` — discover file structure (use fileKey `{{figmaFileKey}}`)
+- `figma_get_design_context` — inspect node layout and properties (includes screenshot)
+- `figma_get_screenshot` — capture visual reference for a specific node
+- `figma_get_variable_defs` — extract design tokens and variables
+- `download_asset` — save asset files to `inputs/assets/`
+
+**Include all Figma-derived information directly in this spec document.**
+
+{{/if}}
+
 ---
 
 ════════════════════════════════════════════════════════════════════════════════
