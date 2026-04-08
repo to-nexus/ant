@@ -162,6 +162,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               detectionReport: state.detectionReport,
               uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
+              figmaAvailable: state.figmaAvailable,
+              figmaFileKey: state.figmaFileKey,
+              figmaStartNodeId: state.figmaStartNodeId,
               interruption,
             }
           }
@@ -259,6 +262,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               detectionReport: state.detectionReport,
               uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
+              figmaAvailable: state.figmaAvailable,
+              figmaFileKey: state.figmaFileKey,
+              figmaStartNodeId: state.figmaStartNodeId,
               interruption,
             }
           }
@@ -430,6 +436,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               detectionReport: state.detectionReport,  // ✅ Save for resume routing
               uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
+              figmaAvailable: state.figmaAvailable,
+              figmaFileKey: state.figmaFileKey,
+              figmaStartNodeId: state.figmaStartNodeId,
             }
           }
         );
@@ -551,6 +560,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     figmaConfig: state.figmaConfig,
     uiDesignSource: state.uiDesignSource,
     figmaExplorationResult: state.figmaExplorationResult,
+    figmaAvailable: state.figmaAvailable,
+    figmaFileKey: state.figmaFileKey,
+    figmaStartNodeId: state.figmaStartNodeId,
     _httpJobId: state._httpJobId,
     _uiLocale: (state as any)._uiLocale,
     jobId: (state as any).jobId,
@@ -668,6 +680,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   parallelMode: true,
                   uiDesignSource: state.uiDesignSource,
                   figmaConfig: state.figmaConfig,
+                  figmaAvailable: state.figmaAvailable,
+                  figmaFileKey: state.figmaFileKey,
+                  figmaStartNodeId: state.figmaStartNodeId,
                   detectionReport: state.detectionReport,
                   userLanguage: state.context.userLanguage,
                   ...(checkpoint.interruption ? {
@@ -775,6 +790,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
             parallelMode: true,
             uiDesignSource: state.uiDesignSource,
             figmaConfig: state.figmaConfig,
+            figmaAvailable: state.figmaAvailable,
+            figmaFileKey: state.figmaFileKey,
+            figmaStartNodeId: state.figmaStartNodeId,
             detectionReport: state.detectionReport,
             interruption: {
               reason: 'tasks_failed',
@@ -900,6 +918,9 @@ export function buildDesignGraph() {
       figmaConfig: null as any,
       uiDesignSource: null as any,
       figmaExplorationResult: null as any,
+      figmaAvailable: null as any,
+      figmaFileKey: null as any,
+      figmaStartNodeId: null as any,
       
       // ✅ Resume flag (set by runner before graph invoke)
       isResume: null as any,

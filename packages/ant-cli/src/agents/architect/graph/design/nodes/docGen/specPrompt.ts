@@ -97,6 +97,9 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       sectionScope,
       previousSections,
       userLanguage: state.context.userLanguage || 'en',
+      figmaAvailable: state.figmaAvailable === true,
+      figmaFileKey: state.figmaFileKey,
+      figmaStartNodeId: state.figmaStartNodeId,
     });
 
     const systemBlock: CacheableContent = {
