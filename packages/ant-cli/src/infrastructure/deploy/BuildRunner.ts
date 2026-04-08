@@ -83,6 +83,94 @@ function buildEnvWithBasePath(basePath: string, framework: DeployFramework): Rec
   return env;
 }
 
+const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
+
+/**
+ * Detect package manager by lockfile presence.
+ */
+function detectPackageManager(workspacePath: string): 'pnpm' | 'yarn' | 'npm' {
+  if (fs.existsSync(path.join(workspacePath, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (fs.existsSync(path.join(workspacePath, 'yarn.lock'))) return 'yarn';
+  return 'npm';
+}
+
+/**
+ * Ensure dependencies (including devDependencies) are installed before building.
+ * Uses --include=dev for npm to guarantee devDependencies are present even when
+ * NODE_ENV=production is set in the server environment.
+ */
+async function ensureDependencies(
+  workspacePath: string,
+  onLog?: (line: string) => void
+): Promise<void> {
+  const pm = detectPackageManager(workspacePath);
+  let command: string;
+  let args: string[];
+
+  if (pm === 'pnpm') {
+    command = 'pnpm';
+    args = ['install'];
+  } else if (pm === 'yarn') {
+    command = 'yarn';
+    args = ['install'];
+  } else {
+    command = 'npm';
+    args = ['install', '--include=dev'];
+  }
+
+  onLog?.(`📦 Installing dependencies (${pm})...`);
+
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+
+    const child = spawn(command, args, {
+      cwd: workspacePath,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true,
+    });
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        onLog?.(`❌ ${pm} install timed out (3 minutes)`);
+        try { child.kill('SIGTERM'); } catch { /* ignore */ }
+        setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 5000);
+        reject(new Error(`${pm} install timed out`));
+      }
+    }, INSTALL_TIMEOUT_MS);
+
+    child.stdout?.on('data', (data) => {
+      data.toString().split('\n').filter(Boolean).forEach((line: string) => onLog?.(line));
+    });
+
+    child.stderr?.on('data', (data) => {
+      data.toString().split('\n').filter(Boolean).forEach((line: string) => onLog?.(line));
+    });
+
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code === 0) {
+        onLog?.(`✅ Dependencies installed`);
+        resolve();
+      } else {
+        const err = `${pm} install failed with exit code ${code}`;
+        onLog?.(`❌ ${err}`);
+        reject(new Error(err));
+      }
+    });
+
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      onLog?.(`❌ Install error: ${err.message}`);
+      reject(err);
+    });
+  });
+}
+
 /**
  * Build CLI args for base path injection.
  */
@@ -123,6 +211,13 @@ export async function runBuild(
       return { success: true, framework, outputDir, logs };
     }
     return { success: false, framework, outputDir, error: 'No static build output found', logs };
+  }
+
+  // Ensure dependencies are installed before building
+  try {
+    await ensureDependencies(workspacePath, log);
+  } catch (err: any) {
+    return { success: false, framework, outputDir, error: `Dependency install failed: ${err.message}`, logs };
   }
 
   // Check for package.json build script
