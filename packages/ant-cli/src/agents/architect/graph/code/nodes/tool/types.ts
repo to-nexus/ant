@@ -22,7 +22,6 @@ export interface RunCommandOutput {
     exitCode: number;
     command: string;
     hasWarnings: boolean;
-    devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused';
   };
 }
 

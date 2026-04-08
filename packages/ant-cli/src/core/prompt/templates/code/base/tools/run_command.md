@@ -1,4 +1,4 @@
-Execute a shell command. Dev servers are auto-verified (10s) then cleaned up.
+Execute a shell command. Long-running server commands are tested for startup then cleaned up.
 
 📁 WORKING DIRECTORY:
 - Default cwd = **feature root** (the directory containing `codebase/`, `inputs/`, `outputs/`)
@@ -6,17 +6,17 @@ Execute a shell command. Dev servers are auto-verified (10s) then cleaned up.
 - Do NOT use `cd codebase &&` inside the command — use the `working_directory` parameter instead
 - Do NOT run `pwd` to discover the path — the working directory is always deterministic
 
-⛔ BUILD/DEV SERVER RESTRICTION:
-- build, dev server, start → ONLY allowed in:
+⛔ BUILD RESTRICTION:
+- build, start → ONLY allowed in:
   • Final Verification task (priority 1000)
   • Error tasks (behavioral bug verification)
 - docker compose up/down → ONLY allowed in:
-  • Final Verification task (infrastructure startup before dev server)
+  • Final Verification task (infrastructure startup before build/test)
   • Error tasks (infrastructure needed for verification)
 - Setup tasks: ONLY dependency install allowed
-- Feature tasks: NO build, NO dev server, NO docker (code only)
+- Feature tasks: NO build, NO docker (code only)
 
-If build/dev accidentally run in wrong task and fails: DO NOT retry, just complete the task.
+If build accidentally run in wrong task and fails: DO NOT retry, just complete the task.
 
 ⚠️ INFRASTRUCTURE BLIND SPOT (Final Verification / Error tasks):
 When running `docker compose up`, the infrastructure services are running but the APPLICATION does not automatically know how to connect. You MUST:

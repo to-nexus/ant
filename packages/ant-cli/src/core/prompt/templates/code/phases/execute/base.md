@@ -233,7 +233,7 @@ Follow the framework/language-specific setup instructions from:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ ⛔ FORBIDDEN: NO BUILD, NO DEV SERVER, NO RUNTIME VERIFICATION             │
 │                                                                             │
-│ Feature tasks = CODE ONLY. Verification happens in final-verification.     │
+│ Feature tasks = CODE ONLY. Build/test verification happens separately.     │
 │ Running any build/dev/start command = PROTOCOL VIOLATION                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 

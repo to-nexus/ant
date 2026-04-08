@@ -98,7 +98,7 @@ CRITICAL:
 
 ## Verification Task
 
-**Principle**: A verification task (`type: "verification"`, priority 1000) validates the entire project by running build and startup commands. It verifies ONLY that the integrated result builds and runs without errors.
+**Principle**: A verification task (`type: "verification"`, priority 1000) validates the entire project by running build and test commands. It verifies ONLY that the integrated result builds and tests pass without errors.
 
 **Constraint**: The verification task fixes build and runtime errors ONLY. It MUST NOT review, add, complete, or improve feature implementations. Feature completeness is the responsibility of individual feature tasks.
 

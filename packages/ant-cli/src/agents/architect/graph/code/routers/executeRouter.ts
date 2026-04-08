@@ -171,7 +171,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   
   // 2. Done이면 → verification은 plan 재검증, 그 외는 checkTaskStatus
   if (response.done) {
-    // Verification tasks: route back to plan for final build/test/devServer check.
+    // Verification tasks: route back to plan for final build/test check.
     // verify/base.md states: "The diagnostic phase will re-verify after your changes."
     if (currentTask?.type === 'verification') {
       const hasPlan = !!state.planText?.trim();
@@ -182,7 +182,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
         return 'checkTaskStatus';
       }
 
-      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (final build/test/devServer verification)\n`);
+      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (final build/test verification)\n`);
       (state as any)._awaitingFinalVerify = true;
       (state as any)._executeModifiedFiles = false;
       return 'plan';

@@ -10,15 +10,13 @@
 
 **`run_command` is NOT permitted for**:
 - Modifying source files (use the code execution phase for that)
-- Persistent background processes unrelated to the verification steps above
-  (e.g., database servers, message queues — the dev server in Step 3
-   is permitted and is auto-terminated by the platform after startup verification)
+- Persistent background processes (e.g., database servers, message queues, dev servers)
 
 **Constraint**: When you need to read multiple files referenced in build errors, issue ALL reads in ONE response. Do NOT read files one at a time.
 
 **Constraint**: After running build/test and reading error-related files, produce `<analysis>` and `<plan>` promptly. Do NOT continue calling tools after sufficient diagnostic information is gathered.
 
-**Constraint**: Each verification command type (build, test, dev server) must be executed at most once per diagnostic cycle. Re-running a failed command without code changes produces identical results. A separate execution phase applies code fixes, after which a fresh diagnostic cycle re-verifies automatically.
+**Constraint**: Each verification command type (build, test) must be executed at most once per diagnostic cycle. Re-running a failed command without code changes produces identical results. A separate execution phase applies code fixes, after which a fresh diagnostic cycle re-verifies automatically.
 
 {{/if}}
 

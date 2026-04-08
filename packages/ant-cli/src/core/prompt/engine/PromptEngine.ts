@@ -597,7 +597,6 @@ export class PromptEngine {
     const directoryTree = projectCodeContext?.directoryTree || '';
     const isErrorTask = task.type === 'error';
     const runTests = task.type === 'verification';
-    const runDevServer = task.type === 'verification';
     
     // Load language-specific hints for build/test execution guidance
     let languageHints = '';
@@ -618,7 +617,6 @@ export class PromptEngine {
       directive: directive,
       isErrorTask,
       runTests,
-      runDevServer,
       projectCodeContext: formattedCodeContext,
       directoryTree: directoryTree,
       violationsText: violationsText,

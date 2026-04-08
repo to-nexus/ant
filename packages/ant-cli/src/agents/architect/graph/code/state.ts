@@ -19,20 +19,16 @@ export interface IntegrationRequirement {
 
 /**
  * Verification objective tracker.
- * Tracks whether build, test, and dev server commands have succeeded,
+ * Tracks whether build and test commands have succeeded,
  * reset when files are modified to force re-verification.
  */
 export interface VerificationTracker {
   buildPassed: boolean;
   testPassed: boolean;
   testsRequired: boolean;
-  devServerPassed: boolean;
-  devServerRequired: boolean;
-  devServerFailureReason?: 'timeout' | 'http_error' | 'startup_failure' | 'connection_refused';
   /** Plan tool loop guard: tracks whether each verification command type has been attempted. */
   buildAttempted?: boolean;
   testAttempted?: boolean;
-  devServerAttempted?: boolean;
   /** Static type check (tsc --noEmit) — separate from build to avoid tracker conflation. */
   typecheckPassed?: boolean;
   typecheckAttempted?: boolean;
