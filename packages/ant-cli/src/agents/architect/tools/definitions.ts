@@ -460,6 +460,23 @@ export const TOOL_SETS = {
     'figma_get_variable_defs',
   ] as ToolName[],
 
+  // Spec design + Figma: design tools + Figma MCP + asset download
+  specFigma: [
+    'read_file',
+    'edit_file',
+    'list_files',
+    'search_code',
+    'delete_file',
+    'mkdir',
+    'search_web',
+    'list_assets',
+    'download_asset',
+    'figma_get_metadata',
+    'figma_get_design_context',
+    'figma_get_screenshot',
+    'figma_get_variable_defs',
+  ] as ToolName[],
+
   // figmaExplore node: Figma MCP tools + file write for exploration output
   figmaExplore: [
     'read_file',

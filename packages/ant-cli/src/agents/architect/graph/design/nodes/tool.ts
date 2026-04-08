@@ -162,7 +162,7 @@ async function executeDesignTool(
           const errCategory = classifyFigmaError(err);
           if (errCategory === 'connection' || errCategory === 'environment') {
             state._figmaConsecutiveErrors = (state._figmaConsecutiveErrors || 0) + 1;
-            if (state.uiDesignSource === 'figma' && state._figmaConsecutiveErrors >= 3) {
+            if ((state.uiDesignSource === 'figma' || state.figmaAvailable) && state._figmaConsecutiveErrors >= 3) {
               console.error(`❌ [Tool] Figma MCP unavailable (${errCategory}): ${state._figmaConsecutiveErrors} consecutive failures — flagging connection lost`);
               state._figmaConnectionLost = true;
             }

@@ -177,6 +177,9 @@ export interface DesignGraphState extends TaskArtifacts {
   figmaConfig?: FigmaDataConfig;        // Loaded from inputs/figma.json at resolve
   uiDesignSource?: UIDesignSource;       // 'figma' | 'references' | 'none' — set by detectEnvironment
   figmaExplorationResult?: FigmaExplorationResult;  // Output of figmaExplore node
+  figmaAvailable?: boolean;              // MCP reachable — set by detectEnvironment (spec: tools only, ui-design: full pipeline)
+  figmaFileKey?: string;                 // Parsed from figmaConfig.file URL
+  figmaStartNodeId?: string;             // Parsed nodeId from URL (optional)
 
   // Inter-Job Context Bridge
   boundary?: 'heavyweight' | 'lightweight';

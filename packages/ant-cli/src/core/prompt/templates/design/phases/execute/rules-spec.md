@@ -27,6 +27,37 @@
 
 ════════════════════════════════════════════════════════════════════════════════
 
+## Figma Design Reference Protocol
+
+**Observation target**: Does the directive describe UI features that benefit from visual design reference?
+
+**Constraint**: If Figma tools are available, use them to observe actual design before writing UI specifications. Do NOT assume visual details from the directive alone.
+
+**Constraint**: When Figma provides downloadable asset URLs, download them to `inputs/assets/` using `download_asset`. Record every downloaded asset in the spec document with its path and intended usage.
+
+════════════════════════════════════════════════════════════════════════════════
+
+## Self-Contained Spec Principle
+
+**Principle**: The spec document is the single source of truth for the Code Job. Everything the Code Job needs to implement the feature MUST be in this document — no separate UI document files are generated.
+
+**Observation targets** for self-contained spec:
+
+| Target | What to include |
+|--------|----------------|
+| **Asset inventory** | Every asset file in `inputs/assets/` with path, description, and intended usage location |
+| **UI layout** | Component hierarchy and visual properties observed from design source |
+| **Design tokens** | Token values extracted from design variables (if available) |
+| **Component states** | Interactive states observed in the design |
+
+**Constraint**: Do NOT assume the Code Job has access to the design source. Record ALL observed visual details in the spec document itself.
+
+**Constraint**: Asset references MUST use the format `inputs/assets/{category}/{filename}` — the exact path where the file was downloaded.
+
+⚠️ **Blind spot**: LLMs tend to reference Figma URLs or tool names in spec documents instead of recording the actual observed values. The Code Job cannot call Figma — only the values you write down will be available.
+
+════════════════════════════════════════════════════════════════════════════════
+
 ## Section Scope Constraint
 
 **Principle**: Each task covers exactly the scope assigned to it. Overlap between sections produces duplicate, contradictory, or incomplete specs.

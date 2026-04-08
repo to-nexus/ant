@@ -93,8 +93,9 @@ export async function docGen(
 
   // Progressive call counter + budget warning injection
   // Figma tasks get higher thresholds to accommodate drill-down queries
-  const softWarnAt = isFigmaUiDesign ? 8 : 5;
-  const hardWarnAt = isFigmaUiDesign ? 12 : 8;
+  const hasFigmaTools = isFigmaUiDesign || (workType === 'spec' && state.figmaAvailable === true);
+  const softWarnAt = hasFigmaTools ? 8 : 5;
+  const hardWarnAt = hasFigmaTools ? 12 : 8;
   const noOutputCount = state._noOutputCallCount || 0;
   if (noOutputCount >= 1) {
     const remaining = MAX_NO_OUTPUT_CALLS - noOutputCount;
@@ -127,15 +128,19 @@ export async function docGen(
   }
 
   // Tool activation: Select appropriate tool set based on work type
+  const isSpecFigma = workType === 'spec' && state.figmaAvailable === true;
+
   const tools = isExplainMode
     ? getToolsByNames(TOOL_SETS.designExplain)
     : isFigmaUiDesign
       ? getToolsByNames(TOOL_SETS.uiDesignFigma)
       : workType === 'ui-design'
         ? getToolsByNames(TOOL_SETS.uiDesign)
-        : useSourceFileTool
-          ? [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL]
-          : getToolsByNames(TOOL_SETS.design);
+        : isSpecFigma
+          ? getToolsByNames(TOOL_SETS.specFigma)
+          : useSourceFileTool
+            ? [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL]
+            : getToolsByNames(TOOL_SETS.design);
   
   // Tool configuration complete
   

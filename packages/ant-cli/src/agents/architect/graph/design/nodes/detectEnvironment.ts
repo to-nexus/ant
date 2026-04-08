@@ -778,11 +778,54 @@ export async function detectEnvironment(
       }
     }
 
+    // Spec workType: Figma MCP availability (tools enabled, no figmaExplore)
+    // Graceful: MCP unavailable → no designError, just proceed without Figma tools
+    let specFigmaAvailable: boolean | undefined;
+    let specFigmaFileKey: string | undefined;
+    let specFigmaStartNodeId: string | undefined;
+
+    if (detectionReport.workType === 'spec' && isFigmaDataPopulated(state.figmaConfig)) {
+      const serverMode = process.env.ANT_SERVER_MODE || 'local';
+      let mcpReachable = false;
+      try {
+        if (serverMode === 'local') {
+          mcpReachable = await checkLocalMCPAvailability();
+        } else {
+          const userId = state.context?.userId;
+          const redis = state.deps?.redis;
+          if (userId && redis) {
+            const { createMCPTransport } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+            const transport = createMCPTransport({ serverMode: 'cloud', userId, redis });
+            mcpReachable = await transport.isAvailable();
+          }
+        }
+      } catch {
+        // Non-critical: spec proceeds without Figma
+      }
+
+      if (mcpReachable && state.figmaConfig!.file) {
+        const { extractFigmaUrlParts } = await import('@ant/shared');
+        const parts = extractFigmaUrlParts(state.figmaConfig!.file);
+        if (parts.fileKey) {
+          specFigmaAvailable = true;
+          specFigmaFileKey = parts.fileKey;
+          specFigmaStartNodeId = parts.nodeId;
+          console.log(`✅ [detectEnvironment] Spec Figma MCP available (fileKey=${parts.fileKey})`);
+        }
+      }
+      if (!mcpReachable) {
+        console.log(`ℹ️  [detectEnvironment] Spec has figma.json but MCP unavailable — proceeding without Figma tools`);
+      }
+    }
+
     return {
       detectionReport,
       uiDesignSource,
       uiReferences: detectionReport.workType === 'ui-design' ? uiReferences : undefined,
       uiAssetsList: detectionReport.workType === 'ui-design' ? uiAssetsList : undefined,
+      figmaAvailable: specFigmaAvailable,
+      figmaFileKey: specFigmaFileKey,
+      figmaStartNodeId: specFigmaStartNodeId,
       tokenUsage: (state as any).tokenUsage,
       _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
