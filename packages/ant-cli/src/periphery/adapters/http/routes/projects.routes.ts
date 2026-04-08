@@ -190,9 +190,9 @@ export function createProjectsRoutes(deps: {
     const heartbeat = setInterval(() => res.write(' '), 15000);
     try {
       const result = await deps.projectService.cloneGitHubRepo(projectId, userContext);
-      deps.gitWatcherService?.retryDeferredWatchers(projectId);
       clearInterval(heartbeat);
       res.end(JSON.stringify({ success: true, message: 'Repository cloned successfully', warnings: result.warnings }));
+      try { deps.gitWatcherService?.retryDeferredWatchers(projectId); } catch { /* best-effort */ }
     } catch (error: any) {
       clearInterval(heartbeat);
       const message = error instanceof Error ? error.message : String(error);
@@ -232,9 +232,9 @@ export function createProjectsRoutes(deps: {
     try {
       const { activeFeature } = req.body || {};
       const result = await deps.projectService.initializeGitHubRepo(projectId, userContext, activeFeature);
-      deps.gitWatcherService?.retryDeferredWatchers(projectId);
       clearInterval(heartbeat);
       res.end(JSON.stringify({ success: true, message: 'Repository initialized and pushed successfully', warnings: result.warnings }));
+      try { deps.gitWatcherService?.retryDeferredWatchers(projectId); } catch { /* best-effort */ }
     } catch (error: any) {
       clearInterval(heartbeat);
       const message = error instanceof Error ? error.message : String(error);

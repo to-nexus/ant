@@ -178,7 +178,7 @@
     "setupStep1Desc": "우측 상단 프로필 메뉴 → 계정 설정 → GitHub Integration",
     "setupStep2": "Repository URL 설정:",
     "setupStep2Desc": "프로젝트명 옆 ⚙️ 아이콘 클릭 → GitHub Repository 필드 입력",
-    "setupComplete": "두 항목을 모두 설정하면 Clone/Initialize가 활성화됩니다.",
+    "setupComplete": "두 항목을 모두 설정하면 Publish가 활성화됩니다.",
     "management": "Git 관리",
     "notInitialized": "Git 초기화되지 않음",
     "configureFirst": "GitHub 리포지토리를 먼저 설정하세요",
@@ -194,9 +194,11 @@
     "fetchDesc": "원격 참조 업데이트",
     "publish": "Publish",
     "publishDesc": "이 브랜치를 원격에 게시",
+    "publishToGitHubDesc": "리포지토리 생성 및 GitHub에 push",
     
     "confirmClone": "원격 리포지토리를 로컬 워크스페이스에 Clone하시겠습니까? 원격 코드베이스가 다운로드됩니다.",
     "confirmInit": "새 GitHub 리포지토리를 생성하시겠습니까? 빈 리포지토리가 생성됩니다.",
+    "confirmPublish": "새 GitHub 리포지토리를 생성하고 코드를 push하시겠습니까?",
     
     "currentBranch": "현재 브랜치:",
     "configRequired": "설정이 필요합니다. 위의 ⚙️ 아이콘을 클릭하여 설정을 생성하세요.",
