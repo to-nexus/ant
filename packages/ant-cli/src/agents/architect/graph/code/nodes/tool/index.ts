@@ -116,8 +116,10 @@ async function executeToolByName(
           exitCode: commandResult.exitCode,
         };
 
+        // Only update tracker for actually-executed commands.
+        // Rejected commands (exitCode -1) must not overwrite previous success state.
         const tracker = state._verificationTracker;
-        if (tracker) {
+        if (tracker && commandResult.exitCode !== -1) {
           if (isTypecheckCommand(commandResult.command)) {
             tracker.typecheckPassed = commandResult.success;
           }
