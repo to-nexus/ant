@@ -62,6 +62,16 @@ export const LONG_RUNNING_PATTERNS = [
 
 export const ERROR_PATTERNS = /error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Transform failed|Unexpected|Exception/i;
 
+// Precision-oriented patterns for post-HTTP-success stderr sweep.
+// ERROR_PATTERNS is broad (recall-first) for early failure detection.
+// CRITICAL_RUNTIME_PATTERNS is narrow (precision-first): only matches
+// errors that NEVER appear in normal dev server output.
+export const CRITICAL_RUNTIME_PATTERNS = /SyntaxError|ReferenceError|TypeError:|Module not found|Cannot find module|Failed to compile|EADDRINUSE|Segmentation fault|FATAL ERROR|heap out of memory/i;
+
+// After HTTP test succeeds, wait this long for lazy compilation (Vite/Next.js)
+// to finish before scanning stderr for critical errors.
+export const POST_HTTP_GRACE_MS = 3000;
+
 // Many real-world commands (npm install, pnpm install, building large bundles)
 // frequently exceed 3 minutes. Keep a more forgiving default to avoid partial installs.
 export const COMMAND_TIMEOUT = 10 * 60 * 1000; // 10 minutes
