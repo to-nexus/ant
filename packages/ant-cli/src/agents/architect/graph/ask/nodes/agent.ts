@@ -107,6 +107,13 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     // Use existing conversation history
     messages.push(...state.conversationHistory);
   }
+
+  // Anthropic API requires conversation to end with a user message.
+  // After resume from interrupt, history may end with assistant turn.
+  if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+    console.warn(`⚠️ [Ask:Agent] Messages end with assistant role — appending user continuation`);
+    messages.push({ role: 'user', content: 'Continue.' });
+  }
   
   // Setup streaming to chat UI (use singleton to maintain message state across tool calls)
   const chatAPI = getChatAPIClient();

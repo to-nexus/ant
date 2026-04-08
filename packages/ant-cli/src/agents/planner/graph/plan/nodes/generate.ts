@@ -285,6 +285,13 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       messages.push(...state.conversationHistory);
     }
   }
+
+  // Anthropic API requires conversation to end with a user message.
+  // After resume from crash/interrupt, history may end with assistant (e.g. clarify response).
+  if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+    console.warn(`⚠️ [Planner:Generate] Messages end with assistant role — appending user continuation`);
+    messages.push({ role: 'user', content: 'Continue.' });
+  }
   
   // Setup tools (explain mode uses read-only subset)
   const activeTools = state.mode === 'explain' ? PLANNER_EXPLAIN_TOOLS : PLANNER_TOOLS;
