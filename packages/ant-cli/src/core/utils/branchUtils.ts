@@ -76,12 +76,16 @@ export async function detectGitDefaultBranch(codebasePath: string): Promise<stri
     const simpleGit = (await import('simple-git')).default;
     const git = simpleGit({ baseDir: codebasePath });
 
-    // 1) Remote HEAD -- set automatically after clone
+    // 1) Remote HEAD — always sync from remote first to catch default branch changes.
     try {
-      const ref = await git.raw(['symbolic-ref', 'refs/remotes/origin/HEAD']);
-      const branch = ref.trim().replace('refs/remotes/origin/', '');
-      if (branch) return branch;
-    } catch { /* no remote or HEAD not set */ }
+      const remotes = await git.getRemotes();
+      if (remotes.some(r => r.name === 'origin')) {
+        await git.remote(['set-head', 'origin', '--auto']);
+        const ref = await git.raw(['symbolic-ref', 'refs/remotes/origin/HEAD']);
+        const branch = ref.trim().replace('refs/remotes/origin/', '');
+        if (branch) return branch;
+      }
+    } catch { /* network unavailable or auth failed — fall through to local detection */ }
 
     // 2) Well-known default branch names
     for (const candidate of ['main', 'master']) {
