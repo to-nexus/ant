@@ -135,7 +135,7 @@ export class DeployService {
     const framework = detectFramework(workspacePath);
     const serverKey = `${tenantId}:${userId}:${projectId}:${feature}`;
     const urlKey = toUrlKey(serverKey);
-    const basePath = `/${urlKey}`;
+    const basePath = `/deploy/${urlKey}`;
 
     // Allocate port
     let port: number;
