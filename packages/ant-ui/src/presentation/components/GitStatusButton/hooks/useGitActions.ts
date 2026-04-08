@@ -5,7 +5,8 @@ import {
   pushToGitHub, 
   pullFromGitHub, 
   syncWithRemote,
-  discardGitChanges
+  discardGitChanges,
+  initializeGitHubRepo
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -48,8 +49,39 @@ export function useGitActions(
     }
   };
 
+  const doInitializeAndPush = async () => {
+    setIsPushing(true);
+    setGitStatusPhase('initializing');
+    try {
+      const result = await initializeGitHubRepo(selectedProject!, selectedFeature);
+      if (result.success) {
+        toast.success(t('git.repoInitialized'));
+        useStore.getState().refreshGitStatus();
+      } else {
+        showError(result.error || t('git.pushFailed'));
+      }
+    } catch (error: any) {
+      showError(error.message || t('git.pushFailed'));
+    } finally {
+      setIsPushing(false);
+      setGitStatusPhase(null);
+    }
+  };
+
   const handlePush = async () => {
     if (!selectedProject) return;
+
+    const hasRemote = !!useStore.getState().gitStatus?.remoteUrl;
+
+    if (!hasRemote) {
+      showConfirm(t('config:git.confirmPublish'), {
+        title: t('config:git.publish'),
+        type: 'info',
+        confirmText: t('config:git.publish'),
+        onConfirm: doInitializeAndPush,
+      });
+      return;
+    }
 
     setIsPushing(true);
     setGitStatusPhase('pushing');

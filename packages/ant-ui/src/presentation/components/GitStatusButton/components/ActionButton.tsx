@@ -81,8 +81,8 @@ export function ActionButton({
     );
   }
 
-  // Priority 2: Publish Branch (remote exists but branch not pushed yet)
-  if (gitChanges.hasUpstream === false && hasRemote) {
+  // Priority 2: Publish (no remote → create repo + push) or Publish Branch (remote exists, no upstream)
+  if (!hasRemote || (gitChanges.hasUpstream === false && hasRemote)) {
     return (
       <div className="flex items-center flex-1 min-w-0" style={{ containerType: 'inline-size', containerName: 'action-btn' }}>
         <style>{CONTAINER_QUERY_STYLE}</style>
@@ -92,11 +92,15 @@ export function ActionButton({
           size="sm"
           className={actionButtonClass}
           disabled={isPushing || isGitStatusLoading}
-          title={t('git.publishBranchDesc')}
+          title={!hasRemote ? t('config:git.publishToGitHubDesc') : t('git.publishBranchDesc')}
         >
           <Globe className="w-3.5 h-3.5 flex-shrink-0" />
           <span className="action-label truncate">
-            {isPushing ? t('git.publishing') : t('git.publishBranch')}
+            {isPushing
+              ? t('git.publishing')
+              : !hasRemote
+                ? t('config:git.publish')
+                : t('git.publishBranch')}
           </span>
         </Button>
       </div>
