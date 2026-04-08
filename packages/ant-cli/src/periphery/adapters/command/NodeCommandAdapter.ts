@@ -20,6 +20,21 @@ import * as path from "path";
 import { isProcessGroupAlive } from "./processTree";
 import { splitOnShellOperators, tokenizeShellSegment } from "../../../core/utils/shellParser";
 
+/**
+ * Build a sanitized copy of process.env for user command execution.
+ * Strips ant-cli internal variables (PORT, NODE_ENV) that would pollute
+ * user projects.  Shared by NodeCommandAdapter.execute() and
+ * handleLongRunningCommand() in runCommand.ts.
+ */
+export function cleanCommandEnv(extra?: Record<string, string>): Record<string, string> {
+  const base = Object.entries(process.env).reduce((acc, [key, value]) => {
+    if (key === 'PORT' || key === 'NODE_ENV') return acc;
+    if (value !== undefined) acc[key] = value;
+    return acc;
+  }, {} as Record<string, string>);
+  return extra ? { ...base, ...extra } : base;
+}
+
 export class NodeCommandAdapter implements CommandPort {
   /**
    * Emergency escape hatch.
@@ -230,25 +245,12 @@ export class NodeCommandAdapter implements CommandPort {
 
       const [cmd, ...args] = needsShell ? [shell, ...shellArgs] : trimmed.split(/\s+/);
       
-      // ✅ CRITICAL: Filter out ant-cli environment variables to prevent pollution
-      // Do NOT pass ant-cli's PORT (4100) or NODE_ENV (production) to user's commands!
-      const cleanEnv = Object.entries(process.env).reduce((acc, [key, value]) => {
-        if (key === 'PORT') {
-          return acc;  // Don't pass ant-cli's PORT to user commands
-        }
-        if (key === 'NODE_ENV') {
-          return acc;  // Don't leak ant-cli's NODE_ENV=production — each tool sets its own
-        }
-        if (value !== undefined) {
-          acc[key] = value;
-        }
-        return acc;
-      }, {} as Record<string, string>);
+      const envForChild = cleanCommandEnv(options.env);
       
       // ✅ Spawn with a dedicated process group for proper cleanup
       const child = spawn(cmd, args, {
         cwd,
-        env: { ...cleanEnv, ...options.env },
+        env: envForChild,
         // We only use an explicit shell process when needed; otherwise spawn directly.
         // This avoids subtle quoting bugs and improves safety.
         shell: false,
