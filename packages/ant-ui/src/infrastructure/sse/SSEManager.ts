@@ -259,6 +259,17 @@ class SSEManager {
   }
   
   /**
+   * Update the job query parameter on the stored URL without reconnecting.
+   * Ensures forceReconnect (tab visibility) and onerror recovery use the correct job type.
+   */
+  updateJobParam(job: string): void {
+    if (!this.unifiedConnection) return;
+    const url = new URL(this.unifiedConnection.url);
+    url.searchParams.set('job', job);
+    this.unifiedConnection.url = url.toString();
+  }
+
+  /**
    * Force-reconnect unified SSE without triggering statusCallback('disconnected').
    * Used by visibility change handler to sync state when tab becomes active.
    * Debounced to 3 seconds to prevent rapid tab-switching floods.

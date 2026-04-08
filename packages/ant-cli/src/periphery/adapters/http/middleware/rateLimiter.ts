@@ -77,11 +77,11 @@ export const chatRateLimiter = rateLimit({
 });
 
 /**
- * Preview management rate limit (10 req/min per user)
+ * Preview management rate limit (30 req/min per user)
  */
 export const previewRateLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: perUserKeyGenerator,

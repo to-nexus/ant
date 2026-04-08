@@ -631,19 +631,16 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     refreshFigmaPopulated();
   }, [selectedProject, selectedFeature]);
 
-  // Refresh file tree when project or feature changes
+  // Refresh file tree after session restore completes.
+  // connectionStatus-based refresh is handled by useFileTree hook (FeatureDetails);
+  // this effect only covers post-session-restore refresh (e.g. after Git branch switch).
   useEffect(() => {
     if (!selectedProject || !selectedFeature) return;
-
-    // ✅ Refresh-safe: wait for backend connection and (if applicable) session restore completion.
-    // On hard refresh, project/feature can be restored before connection is ready, and the first
-    // refresh attempt can be skipped. Also, during session restore, Git branch switching may be
-    // in-flight; we refresh after it completes.
     if (connectionStatus !== 'connected') return;
     if (isSessionRestoring) return;
 
     refreshFileTree();
-  }, [selectedProject, selectedFeature, connectionStatus, isSessionRestoring, refreshFileTree]);
+  }, [selectedProject, selectedFeature, isSessionRestoring, refreshFileTree]);
 
   // Fetch pending transfer count when connection is ready and session restore is complete
   useEffect(() => {

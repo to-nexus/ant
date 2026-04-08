@@ -630,6 +630,12 @@ export interface StateStorePort {
    * Set TTL on an existing key.
    */
   expireKey(key: string, ttlSeconds: number): Promise<void>;
+
+  /**
+   * Count keys matching a prefix using SCAN (non-blocking).
+   * Used for SSE per-connection key counting.
+   */
+  countKeysByPrefix(prefix: string): Promise<number>;
   
   // ============================================
   // Distributed Locking

@@ -192,10 +192,15 @@ export function createSSERoutes(deps: {
     
     // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic.
     // 10s interval is well within typical ALB idle-timeout defaults.
+    // Also refreshes per-connection Redis key TTL (30s) so stale connections auto-expire.
+    const sseConnKey = (res as any).__sseConnKey as string | undefined;
     const keepAliveInterval = setInterval(() => {
       try {
         res.write(`data: ${JSON.stringify({ type: 'heartbeat', ts: Date.now() })}\n\n`);
         if (typeof (res as any).flush === 'function') (res as any).flush();
+        if (sseConnKey && deps.stateStore) {
+          deps.stateStore.expireKey(sseConnKey, 30).catch(() => {});
+        }
       } catch (error) {
         clearInterval(keepAliveInterval);
       }
