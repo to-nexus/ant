@@ -803,8 +803,8 @@ export class PreviewServer {
 
       const targetHost = deployState.host || 'localhost';
       const targetPort = deployState.port;
-      // Forward the full path including urlKey prefix (the static server uses basePath)
-      const targetPath = `/${urlKey}${req.url.replace(new RegExp(`^/${urlKey}`), '') || '/'}`;
+      // Forward the full path including /deploy/ + urlKey prefix (the static server uses basePath = /deploy/{urlKey})
+      const targetPath = `/deploy/${urlKey}${req.url.replace(new RegExp(`^/${urlKey}`), '') || '/'}`;
       const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
 
       try {
