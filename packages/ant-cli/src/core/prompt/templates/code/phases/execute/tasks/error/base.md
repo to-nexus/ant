@@ -1,6 +1,6 @@
 # Error Fix: Apply Remediation Plan
 
-You are fixing errors based on a diagnostic remediation plan that analyzed build output and/or user-reported error information.
+You are fixing errors based on a remediation plan that analyzed user-reported error information and investigated the codebase.
 
 ## PATH CONVENTION (feature root)
 
@@ -30,31 +30,25 @@ Configuration files, entry points, and the directory tree are already in your co
 ### If Remediation Plan is Present
 
 The plan node has already:
-1. Run build commands to reproduce errors
-2. Cross-referenced with user-reported error information
-3. Analyzed all errors and grouped by root cause
-4. Produced a structured remediation plan
+1. Investigated the user-reported error
+2. Read relevant source files and analyzed root causes
+3. Produced a structured remediation plan
 
-**Phase 1 — Apply Fixes**: Execute ALL code modifications specified in the plan.
+**Apply Fixes**: Execute ALL code modifications specified in the plan.
 
 1. Read the remediation plan carefully — understand each root cause
 2. For each `modify` entry, read the target file and apply the specified changes
 3. For each `create` entry, create the specified file
 4. Fix root causes first — cascading errors resolve automatically
+5. After applying ALL fixes, output `<done>true</done>`
 
-**Phase 2 — Build Verification**: After applying ALL fixes, verify your changes.
+A separate verification task runs after this task to validate the build. Do NOT run build/test commands yourself.
 
-1. Run the build command from `diagnostics.command` using `run_command`
-2. If build succeeds with no errors → output `<done>true</done>`
-3. If NEW errors appear (not in the original `diagnostics.rootCauses`) → fix them, then re-run build once more
-4. If build still fails after one fix attempt → output `<done>true</done>` (the diagnostic cycle handles remaining errors)
-
-**Constraint**: Phase 1 fixes must be applied in one batch. Phase 2 allows at most one additional fix cycle.
-**Constraint**: In Phase 2, only fix errors in files listed in YOUR `implementation.modify` or `implementation.create`. Errors in other files belong to other error tasks or will be caught by the diagnostic cycle.
+**Constraint**: Fixes must be applied in one batch.
 
 ### If No Remediation Plan (Empty Plan)
 
-The plan node has verified that the error is already resolved. No code changes needed.
+The plan node has investigated and found the error is already resolved. No code changes needed.
 
 Output `<done>true</done>` immediately.
 

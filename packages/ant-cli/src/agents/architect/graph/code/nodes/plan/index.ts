@@ -612,7 +612,7 @@ const hasPrePlanText =
       conversationHistory: [],
       _planExploring: false,
       planConversationHistory: undefined,
-      // Error tasks don't verify builds — build verification is deferred to the re-enqueued verification task.
+      // Error tasks: no VerificationTracker — plan uses error-specific template, not verification diagnostic.
       _verificationTracker: undefined,
     };
   }
@@ -956,8 +956,9 @@ const hasPrePlanText =
 
   let planText: string | undefined;
   const requiresPlan = taskRequiresPlan(nextTask);
-  const isVerificationTask = nextTask.type === 'verification' || nextTask.type === 'error';
+  const isVerificationTask = nextTask.type === 'verification';
   const planToolRounds = (state.planConversationHistory?.length ?? 0) / 2;
+  // error tasks use tool loop via requiresPlan (true), verification via isVerificationTask
   const tryToolsFirst = llm && (requiresPlan || isVerificationTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
   // ── Inject previous batch split context for re-enqueued verification tasks ──
@@ -1065,7 +1066,7 @@ const hasPrePlanText =
 
   if (planText === undefined) {
     if (isVerificationTask) {
-      // Verification/error tasks: tool loop didn't produce a plan,
+      // Verification tasks: tool loop didn't produce a plan,
       // meaning build/test wasn't run in exploration. Generate empty plan —
       // execute will handle via its verification template.
       planText = '';
