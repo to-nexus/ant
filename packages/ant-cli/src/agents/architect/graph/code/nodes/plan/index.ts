@@ -278,7 +278,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0: Pop next task (or retry current)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (isRetry && state.currentTask) {
+  if (state._planExploring === true && state.currentTask) {
+    // Plan-tool loop re-entry: must be checked BEFORE isRetry.
+    // Stale violations from a previous checkTaskStatus persist in state during
+    // the plan-tool loop, making isRetry=true on every re-entry. If the retry
+    // path runs mid-loop it resets typecheckAttempted/buildAttempted, causing
+    // the tsc-first guard to permanently block build commands.
+    nextTask = state.currentTask;
+    console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
+  } else if (isRetry && state.currentTask) {
     nextTask = state.currentTask;
     
     // 🚨 CRITICAL: Check if maxRetries exceeded
@@ -345,9 +353,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
       console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
     }
-  } else if (state._planExploring === true && state.currentTask) {
-    nextTask = state.currentTask;
-    console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
   } else if ((state as any)._awaitingFinalVerify === true && state.currentTask) {
     // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
     nextTask = state.currentTask;
@@ -356,6 +361,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
     // Clear the trigger flag
     (state as any)._awaitingFinalVerify = false;
+
+    // Clear stale violations from previous cycle so isRetry doesn't
+    // interfere with the fresh plan-tool loop that follows.
+    state.violations = [];
 
     // Accumulate applied plans so plan LLM can see ALL previous attempts
     if (state.planText) {
