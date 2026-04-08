@@ -151,6 +151,11 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
 
   setDismissedInterruptTimestamp: (timestamp) => {
     set({ dismissedInterruptTimestamp: timestamp });
+    if (timestamp) {
+      saveToStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP, timestamp);
+    } else {
+      removeFromStorage(STORAGE_KEYS.DISMISSED_INTERRUPT_TIMESTAMP);
+    }
   },
 
   setCurrentJob: (job) => {

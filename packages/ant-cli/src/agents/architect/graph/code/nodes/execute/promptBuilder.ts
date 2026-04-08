@@ -641,6 +641,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     }
   }
   
+  // Anthropic API requires conversation to end with a user message.
+  // After resume from interrupt, history may end with assistant turn.
+  if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+    console.warn(`⚠️ [Execute] Messages end with assistant role — appending user continuation`);
+    messages.push({ role: 'user', content: [{ type: 'text', text: 'Continue.' }] });
+  }
+
   return messages;
 }
 

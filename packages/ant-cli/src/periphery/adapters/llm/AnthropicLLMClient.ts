@@ -484,12 +484,22 @@ export class AnthropicLLMClient implements LLMClient {
   private convertMessages(
     messages: Array<{ role: string; content: string | MessageContentBlock[] | CacheableContent[] }>
   ): Array<{ role: 'user' | 'assistant'; content: string | AnthropicBlock[] }> {
-    return messages.map(m => ({
+    const converted = messages.map(m => ({
       role: m.role as 'user' | 'assistant',
       content: typeof m.content === 'string'
         ? m.content
         : m.content.map(block => this.convertBlock(block)),
     }));
+
+    // Anthropic API requires the conversation to end with a user message.
+    // When resuming from an interrupted session, conversationHistory may end
+    // with an assistant turn (e.g. clarify response saved before crash).
+    if (converted.length > 0 && converted[converted.length - 1].role === 'assistant') {
+      console.warn('⚠️ [AnthropicLLMClient] Messages end with assistant role — appending user continuation to satisfy API contract');
+      converted.push({ role: 'user', content: 'Continue.' });
+    }
+
+    return converted;
   }
 
   private convertBlock(block: MessageContentBlock | CacheableContent): AnthropicBlock {

@@ -408,9 +408,9 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   if (finalState.phaseTokenUsages && kanbanUpdate?.updatePhaseTokenUsages) {
     kanbanUpdate.updatePhaseTokenUsages(finalState.phaseTokenUsages);
   }
-  if (_httpJobId && kanbanUpdate?.updateTaskQueue) {
+  if (params._httpJobId && kanbanUpdate?.updateTaskQueue) {
     kanbanUpdate.updateTaskQueue(
-      _httpJobId,
+      params._httpJobId,
       null,
       [],
       [],
