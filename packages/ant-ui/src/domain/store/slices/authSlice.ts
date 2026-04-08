@@ -1,4 +1,5 @@
 import { StateCreator } from 'zustand';
+import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { AuthState } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 
@@ -33,29 +34,39 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     set({ selectedJobType: jobType });
     saveToStorage(STORAGE_KEYS.SELECTED_JOB_TYPE, jobType);
 
-    // Sync isRunning/currentJobId/workflow SSE from activeJobs
     state.syncViewToJobType(jobType);
-    
-    // Reload session for new job type
+
     if (state.selectedProject && state.selectedFeature) {
-      console.log(`[Store] 🔄 Job type changed to '${jobType}', reloading session...`);
-      
+      console.log(`[Store] 🔄 Job type changed to '${jobType}', loading session + kanban...`);
+
       (async () => {
         try {
-          const { fetchFeatureSession } = await import('@/infrastructure/http/api');
-          const session = await fetchFeatureSession(state.selectedProject!, state.selectedFeature!, jobType);
+          const [{ fetchFeatureSession }, { fetchKanbanData }] = await Promise.all([
+            import('@/infrastructure/http/api'),
+            import('@/infrastructure/http/api/kanban'),
+          ]);
+          const [session, kanbanData] = await Promise.all([
+            fetchFeatureSession(state.selectedProject!, state.selectedFeature!, jobType),
+            fetchKanbanData(state.selectedProject!, state.selectedFeature!, jobType),
+          ]);
+
+          if (get().selectedJobType !== jobType) {
+            console.log(`[Store] Discarding stale response for ${jobType} (current: ${get().selectedJobType})`);
+            return;
+          }
+
           set({ session: session || undefined });
-          console.log(`[Store] ✅ Session loaded for ${jobType}`);
+          get().updateKanban(kanbanData);
+          console.log(`[Store] ✅ Session + kanban loaded for ${jobType}`);
         } catch (error) {
-          console.error('[Store] Failed to reload session:', error);
-          set({ session: undefined });
+          console.error('[Store] Failed to switch job type:', error);
+          if (get().selectedJobType === jobType) {
+            set({ session: undefined });
+          }
         }
       })();
-      
-      // Reconnect SSE to fetch new job type's kanban data
-      if (state.reconnectSSE) {
-        state.reconnectSSE('kanban');
-      }
+
+      sseManager.updateJobParam(jobType);
     }
   },
 

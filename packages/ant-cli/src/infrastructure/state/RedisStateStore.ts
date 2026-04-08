@@ -925,6 +925,17 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     await this.redis.expire(key, ttlSeconds);
   }
 
+  async countKeysByPrefix(prefix: string): Promise<number> {
+    let count = 0;
+    let cursor = '0';
+    do {
+      const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', `${prefix}*`, 'COUNT', 100);
+      cursor = nextCursor;
+      count += keys.length;
+    } while (cursor !== '0');
+    return count;
+  }
+
   // ============================================
   // Distributed Locking
   // ============================================
