@@ -212,6 +212,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   specDocs?: Record<string, string>;   // All spec-*.md files (filename → content)
   selectedSpec?: string | null;        // Spec filename chosen by decompose LLM (e.g., "spec-social-login.md")
 
+  // Decompose clarify: LLM needs user clarification before completing decomposition
+  awaitingDecomposeClarify?: boolean;
+
   // ✅ Reference Requests (registered in decompose, loaded per-task in plan)
   referenceRequests?: Array<{project: string; branch?: string}>;
   

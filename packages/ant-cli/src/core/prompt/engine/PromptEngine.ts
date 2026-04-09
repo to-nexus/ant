@@ -308,12 +308,13 @@ export class PromptEngine {
    */
   async buildDetectEnvironmentPrompt(
     directive: string,
-    prdSpec?: string
+    prdSpec?: string,
+    artifactAvailability?: string
   ): Promise<string> {
-    // ✅ Uses phases/detect/base.md which includes {{> code/phases/detect/rules}}
     return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
-      prdSpec: prdSpec || ''
+      prdSpec: prdSpec || '',
+      artifactAvailability: artifactAvailability || '',
     });
   }
 
@@ -372,7 +373,7 @@ export class PromptEngine {
     directive: string;
     designDoc: string;
     hasDesignDoc: boolean;
-    specDoc?: string;              // Full content of auto-selected spec document
+    specDoc?: string;              // Full content of LLM-selected spec document
     specApiContract?: string;      // API contract content (reference for spec-driven mode)
     mode: string;
     profile: any;

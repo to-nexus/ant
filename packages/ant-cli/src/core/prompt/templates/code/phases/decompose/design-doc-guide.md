@@ -13,14 +13,9 @@
 
 {{else}}
 **For New Features:**
-- Design document = PRIMARY source of requirements
-- Directive = High-level goal
-- **Break tasks based on design document structure**
-
-**Task Alignment:**
-- Tasks should map to design document sections
-- Each feature in spec → One or more tasks
-- Don't invent features not in spec
+- Follow the Development Source Rule (see Scope Determination above)
+- When design docs ARE the development source: break tasks based on design document structure
+- When a spec is active: design docs provide architectural context for the spec's requirements
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🏗️ REPOSITORY STRUCTURE DECISION
@@ -71,10 +66,10 @@
 ════════════════════════════════════════════════════════════════════════════════
 
 **Critical Rules:**
-- ✅ Every task must reference design doc
-- ✅ Follow spec's architecture decisions
-- ❌ Don't add tasks for features not in spec
-- ❌ Don't change/improve spec's architecture
+- ✅ Every task must reference design doc via `packages` field
+- ✅ Follow architecture decisions from the design documents
+- ❌ Don't invent architecture not described in design documents
+- ❌ Task scope is bounded by the Development Source (see Scope Determination)
 
 {{/if}}
 

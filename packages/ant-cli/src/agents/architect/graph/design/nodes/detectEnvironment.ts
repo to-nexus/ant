@@ -29,7 +29,7 @@ import {
   JobEnvironment,
   DesignDomain,
 } from "../../../../../core/types/detection";
-import { isFigmaDataPopulated, UIDesignSource } from "@ant/shared";
+import { isFigmaDataPopulated, UIDesignSource, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
 import { extractLLMInfo } from "../../../../../core/ports/workflow";
 
 interface ParsedDesignResponse {
@@ -226,17 +226,15 @@ function parseDetectClarifyChoice(
 /**
  * Send a clarify card asking the user to choose between spec and system-design.
  */
-async function sendDetectClarifyCard(state: DesignGraphState): Promise<void> {
-  const { getChatAPIClient } = await import("../../../../../core/adapters/ChatAPIClient");
-  const chatAPI = getChatAPIClient();
-  await chatAPI.sendClarifyCards([{
+async function sendDetectClarifyCard(): Promise<void> {
+  const { sendClarify } = await import("../../../../common/clarifyTool");
+  await sendClarify([{
     question: '어떤 작업을 수행할까요?',
     options: [
       '새로운 스펙 문서 생성 (spec-*.md)',
       '기존 시스템 기획서 수정',
     ],
   }]);
-  await chatAPI.finalizeMessage();
 }
 
 /**
@@ -494,12 +492,19 @@ export async function detectEnvironment(
       console.log(`📦 Found assets: ${allAssets.length} files`);
     }
     
-    // Check existing design documents
-    const outputsDir = path.join(featurePath, 'outputs/design');
+    // Check existing design documents (subdirectory-first, then flat fallback)
+    const outputsDir = path.join(featurePath, DESIGN_DIR);
+    const uiDir = path.join(outputsDir, DESIGN_SUBDIR.UI);
     
-    const hasUiTokens = await fs.access(path.join(outputsDir, 'ui-tokens.json')).then(() => true).catch(() => false);
-    const hasUiAssets = await fs.access(path.join(outputsDir, 'ui-assets.json')).then(() => true).catch(() => false);
-    const hasUiSpec = await fs.access(path.join(outputsDir, 'ui-spec.json')).then(() => true).catch(() => false);
+    const existsIn = async (file: string, ...dirs: string[]) => {
+      for (const d of dirs) {
+        if (await fs.access(path.join(d, file)).then(() => true).catch(() => false)) return true;
+      }
+      return false;
+    };
+    const hasUiTokens = await existsIn('ui-tokens.json', uiDir, outputsDir);
+    const hasUiAssets = await existsIn('ui-assets.json', uiDir, outputsDir);
+    const hasUiSpec = await existsIn('ui-spec.json', uiDir, outputsDir);
     const hasUiDocs = hasUiTokens && hasUiAssets && hasUiSpec;
     
     // Derive from state.existingDesignDocs (populated by resolve node with pattern scan)
@@ -646,7 +651,7 @@ export async function detectEnvironment(
     if (parsed.workType === 'clarify') {
       console.log(`\n💬 Clarify needed: ${parsed.workTypeReasoning}`);
       
-      await sendDetectClarifyCard(state);
+      await sendDetectClarifyCard();
       await saveDetectClarifyToSession(state);
       
       if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {

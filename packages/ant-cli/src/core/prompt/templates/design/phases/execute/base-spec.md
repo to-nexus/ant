@@ -39,7 +39,7 @@ Available tools:
 This is the **first section** of the spec document. Create the document using a `<file>` tag:
 
 ```xml
-<file path="outputs/design/{{targetFile}}">
+<file path="outputs/design/spec/{{targetFile}}">
 # Spec: {{title}}
 
 [Write content for this section only — see CURRENT SECTION SCOPE below]
@@ -50,7 +50,7 @@ This is the **first section** of the spec document. Create the document using a 
 This is a **continuation section**. The document already exists. Use `<append>` tag to add this section:
 
 ```xml
-<append path="outputs/design/{{targetFile}}">
+<append path="outputs/design/spec/{{targetFile}}">
 
 [Write content for this section only — see CURRENT SECTION SCOPE below]
 </append>

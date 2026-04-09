@@ -440,20 +440,17 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     // Strip <clarify> tags from response text for clean chat display
     const cleanedResponseText = stripClarifyBlocks(responseText);
     
-    // Send all clarify blocks as a single compound card
+    // Send all clarify blocks as a single compound card via shared module
     try {
-      await chatAPI.sendClarifyCards(clarifyBlocks);
+      const { sendClarify } = await import('../../../../common/clarifyTool');
+      await sendClarify(clarifyBlocks);
     } catch (error) {
       console.warn('⚠️ [Planner:Generate] Failed to send clarify card:', error);
     }
     
     // Save conversation with clarifying response (no PRD yet)
-    // Pass updatedHistory for conversationHistory persistence
     const clarifyHistory = [...updatedHistory, { role: 'assistant', content: cleanedResponseText }];
     await saveConversationToSession(state, cleanedResponseText, undefined, clarifyHistory, compactionMeta);
-    
-    // Finalize message
-    await chatAPI.finalizeMessage();
     
     // ✅ Clear estimating activity when clarify ends the graph (no tasks will be created)
     if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {

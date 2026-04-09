@@ -559,7 +559,7 @@ export const WORKSPACE_TOOLS = [
       properties: {
         path: {
           type: 'string',
-          description: 'Relative path within the feature directory (e.g., "inputs/sources/prd.md", "outputs/design/be-system-main.md")',
+          description: 'Relative path within the feature directory (e.g., "inputs/sources/prd.md", "outputs/design/system/be-system-main.md")',
         },
       },
       required: ['path'],
@@ -573,7 +573,7 @@ export const WORKSPACE_TOOLS = [
       properties: {
         path: {
           type: 'string',
-          description: 'Relative path to the directory (e.g., "inputs/sources", "outputs/design")',
+          description: 'Relative path to the directory (e.g., "inputs/sources", "outputs/design/system")',
         },
       },
       required: ['path'],

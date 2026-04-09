@@ -445,39 +445,29 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
   
   if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
-    
-    // Determine target directory based on work type
-    const targetDir = 'outputs/design';
-    const designDirAbs = path.join(state.context.featurePath, targetDir);
-    
-    // ✅ Convert to workspace-relative path for fileSystem port
     const rootPath = state.deps.fileSystem.getRootPath?.() || '';
+
+    const scanDir = async (dirRel: string, prefix: string) => {
+      try {
+        if (!(await state.deps!.fileSystem!.fileExists(dirRel))) return;
+        const entries = await state.deps!.fileSystem!.readDirectory(dirRel);
+        for (const entry of entries) {
+          if (!entry.isDirectory && (entry.name.endsWith('.md') || entry.name.endsWith('.json'))) {
+            existingFiles.add(`${prefix}/${entry.name}`);
+          }
+        }
+      } catch { /* continue */ }
+    };
+
+    const designDirAbs = path.join(state.context.featurePath, 'outputs/design');
     const designDirRel = rootPath
       ? path.relative(rootPath, designDirAbs)
       : designDirAbs.replace(/^\//, '');
-    
-    try {
-      // Check if directory exists using workspace-relative path
-      const dirExists = await state.deps.fileSystem.fileExists(designDirRel);
-      if (dirExists) {
-        // Read directory contents using workspace-relative path
-        const entries = await state.deps.fileSystem.readDirectory(designDirRel);
-        
-        // Add all design files to existingFiles (relative to feature path)
-        // Support: .json (ui-tokens, ui-assets, ui-spec)
-        for (const entry of entries) {
-          if (!entry.isDirectory && 
-              (entry.name.endsWith('.md') || 
-               entry.name.endsWith('.json'))) {
-            const relativePath = `${targetDir}/${entry.name}`;
-            existingFiles.add(relativePath);
-          }
-        }
-        
-      }
-    } catch (error) {
-      // Continue with empty existingFiles set
-    }
+
+    await scanDir(path.join(designDirRel, 'ui'), 'outputs/design/ui');
+    await scanDir(path.join(designDirRel, 'system'), 'outputs/design/system');
+    await scanDir(path.join(designDirRel, 'spec'), 'outputs/design/spec');
+    await scanDir(designDirRel, 'outputs/design');
   }
   
   return existingFiles;

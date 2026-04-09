@@ -231,8 +231,8 @@ async function deliverSketchImages(
   const variations = state.sketchVariations;
 
   try {
-    const chatAPI = getChatAPIClient();
-    await chatAPI.sendClarifyCards([{
+    const { sendClarify } = await import('../../../../common/clarifyTool');
+    await sendClarify([{
       question: `${sketchEntries.length} sketch candidates`,
       options: sketchEntries.map(d => ({
         label: variations?.[d.index]?.label || 'Sketch',
@@ -243,7 +243,6 @@ async function deliverSketchImages(
       allowFreeText: true,
       allowRegenerate: true,
     }]);
-    await chatAPI.finalizeMessage();
   } catch (err: any) {
     console.warn('⚠️ [Visual:Deliver] Chat notification failed:', err.message);
   }
@@ -381,8 +380,8 @@ async function deliverSvgSketches(
   const svgVariations = state.sketchVariations;
 
   try {
-    const chatAPI = getChatAPIClient();
-    await chatAPI.sendClarifyCards([{
+    const { sendClarify } = await import('../../../../common/clarifyTool');
+    await sendClarify([{
       question: `${sketchEntries.length} sketch candidates`,
       options: sketchEntries.map(d => ({
         label: svgVariations?.[d.index]?.label || 'Sketch',
@@ -393,7 +392,6 @@ async function deliverSvgSketches(
       allowFreeText: true,
       allowRegenerate: true,
     }]);
-    await chatAPI.finalizeMessage();
   } catch (err: any) {
     console.warn('⚠️ [Visual:Deliver] Chat notification failed:', err.message);
   }

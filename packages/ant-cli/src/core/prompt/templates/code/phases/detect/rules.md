@@ -22,7 +22,23 @@
 
 ---
 
-### 2. RAG Requirement
+### 2. Primary Sources
+
+**Observation target**: What does the directive reference as its development basis?
+
+| Checkpoint | What to observe | primarySources |
+|-----------|----------------|----------------|
+| **Directive names a spec file** | e.g., "implement spec-auth.md" | `["outputs/design/spec/spec-auth.md"]` |
+| **Directive references design docs** | e.g., "implement based on system design" or "develop ui changes" | Relevant directories/files from Available Artifacts |
+| **Directive alone** | No document reference, pure instruction | `[]` (empty — directive itself is the source) |
+
+**Constraint**: `primarySources` contains file paths or directory paths from the Available Artifacts section. If no artifacts are referenced by the directive, return an empty array.
+
+**Constraint**: Do NOT list all available artifacts. Only list those the directive explicitly or implicitly references.
+
+---
+
+### 3. RAG Requirement
 
 Does the `decompose` node need codebase context?
 
@@ -39,7 +55,7 @@ Does the `decompose` node need codebase context?
 
 ---
 
-### 3. Keyword Generation (if RAG required)
+### 4. Keyword Generation (if RAG required)
 
 **🎯 PURPOSE:**
 

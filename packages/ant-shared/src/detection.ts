@@ -44,6 +44,9 @@ export interface DetectionReport {
   // Code Job only
   profile?: ProjectProfile;
   requireRag?: boolean;
+  /** Primary document sources identified by detectEnvironment LLM analysis */
+  primarySources?: string[];
+  primarySourcesReasoning?: string;
 
   // Meta
   sourceJob: JobSource;

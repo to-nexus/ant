@@ -18,7 +18,7 @@ read_reference_image("inputs/references/homepage-desktop.png")
 ### Option B: If you already have the screenshot loaded
 Generate the document using `<file>` XML tag:
 ```xml
-<file path="outputs/design/{{targetDoc}}">
+<file path="outputs/design/ui/{{targetDoc}}">
 <!-- START_SECTION: 1 -->
 # Document Title
 ...content...

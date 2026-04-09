@@ -1143,6 +1143,9 @@ export function buildCodeGraph() {
       // Inter-Job Context Bridge
       boundary: null as any,
       jobConversation: null as any,
+
+      // Decompose clarify
+      awaitingDecomposeClarify: null as any,
     } as any,
   } as any);
   
@@ -1205,6 +1208,11 @@ export function buildCodeGraph() {
         return 'plan';
       }
       
+      if (state.awaitingDecomposeClarify && state.overrideDirective) {
+        console.log(`[RouteAfterResolve] Decompose clarify resume → decompose`);
+        return 'decompose';
+      }
+
       if (hasDetectionReport) {
         // Interrupted after detectEnvironment but before decompose
         // Route through detectEnvironment again (LLM skip, pass-through only)
@@ -1242,10 +1250,14 @@ export function buildCodeGraph() {
   
   graph.addEdge("detectEnvironment" as any, "decompose" as any);
   
-  // ✅ Decompose → conditional: parallel or sequential
+  // ✅ Decompose → conditional: clarify pause, parallel, or sequential
   graph.addConditionalEdges(
     "decompose" as any,
     ((s: ArchitectGraphState) => {
+      if (s.awaitingDecomposeClarify) {
+        console.log(`⏸️  [Decompose→Router] awaitingDecomposeClarify → __end__`);
+        return "__end__";
+      }
       const concurrency = getTaskConcurrency();
       if (concurrency > 1) {
         console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
@@ -1254,7 +1266,7 @@ export function buildCodeGraph() {
       console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=1 → sequential plan`);
       return "plan";
     }) as any,
-    { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
+    { __end__: "__end__", parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   
   // ✅ ParallelOrchestrator → learn (after all tasks are done)

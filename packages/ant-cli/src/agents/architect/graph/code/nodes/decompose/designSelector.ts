@@ -133,21 +133,15 @@ export function selectDesignDocuments(state: ArchitectGraphState): string {
  *   - Small (< DECOMPOSE_SOURCE_THRESHOLD): return full designDoc inline
  *   - Large: return index only + set useToolMode flag
  *
- * When spec documents exist, designDoc is suppressed so that
- * design-doc-guide.md (which triggers full-project task generation)
- * does not render. The spec content is injected separately via specDoc.
+ * Design docs are always provided as reference context regardless of
+ * whether spec documents exist. The decompose prompt's scope-rules
+ * (source vs reference) guide the LLM on how to interpret them.
  */
 export function prepareDesignDocument(state: ArchitectGraphState): {
   designDoc: string;
   hasDesignDoc: boolean;
   useToolMode: boolean;
 } {
-  const hasSpec = state.specDocs && Object.keys(state.specDocs).length > 0;
-  if (hasSpec) {
-    console.log(`   📋 [DesignSelector] Spec docs detected — suppressing designDoc (spec-driven mode)`);
-    return { designDoc: '', hasDesignDoc: false, useToolMode: false };
-  }
-
   const totalSize = getDesignDocsSize(state);
   const useToolMode = totalSize > DECOMPOSE_SOURCE_THRESHOLD;
 
