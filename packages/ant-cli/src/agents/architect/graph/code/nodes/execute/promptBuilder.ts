@@ -750,7 +750,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   // ✅ Session File Manifest: Show files created by OTHER parallel workers
   // This gives the LLM awareness of cross-worker files without requiring read_file.
   // Own files are already visible via generateFileTree() (projectCodeContext.filePaths accumulation).
-  const otherWorkerFiles: Array<{ path: string; taskName?: string }> | undefined = (state as any)._otherWorkerFiles;
+  const otherWorkerFiles = state._otherWorkerFiles;
   if (otherWorkerFiles && otherWorkerFiles.length > 0) {
     const MAX_MANIFEST_ENTRIES = 40;
     const filesToShow = otherWorkerFiles.slice(0, MAX_MANIFEST_ENTRIES);
@@ -889,8 +889,7 @@ function appendTree(lines: string[], paths: string[]): void {
  * Active only in parallel mode (SharedFileBuffer provides cross-worker file info).
  */
 async function buildFoundationContract(state: ArchitectGraphState): Promise<string | null> {
-  const otherWorkerFiles: Array<{ path: string; taskName?: string }> | undefined =
-    (state as any)._otherWorkerFiles;
+  const otherWorkerFiles = state._otherWorkerFiles;
   if (!otherWorkerFiles || otherWorkerFiles.length === 0) return null;
 
   const completedTasks = state.completedTasksDetails || [];
@@ -1106,8 +1105,7 @@ function extractExportedSymbols(content: string, language?: string): string[] {
  * Works in both parallel mode (otherWorkerFiles) and sequential mode (projectCodeContext).
  */
 async function buildSchemaAnchor(state: ArchitectGraphState): Promise<string | null> {
-  const otherWorkerFiles: Array<{ path: string; taskName?: string }> | undefined =
-    (state as any)._otherWorkerFiles;
+  const otherWorkerFiles = state._otherWorkerFiles;
   const codeContextFiles = state.projectCodeContext?.files || [];
 
   const migrationPaths = new Set<string>();

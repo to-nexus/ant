@@ -397,7 +397,7 @@ Continue writing code files and output <done>true</done> when complete.`);
   // Without this, LLMs ignore the prompt constraint ("No build/test execution") and
   // run build/test in execute, wasting tokens and causing double-run on plan re-entry.
   const tracker = state._verificationTracker;
-  const isVerificationExecute = taskType === 'verification' && !state._planExploring;
+  const isVerificationExecute = taskType === 'verification' && state._activePhase !== 'plan';
   if (isVerificationExecute && tracker) {
     if (isBuildCommand(command) || isTestCommand(command) || isTypecheckCommand(command)) {
       console.warn(`   ⛔ [RunCommand] Execute guard: blocked verification command in execute phase: ${command}`);
@@ -411,7 +411,7 @@ Continue writing code files and output <done>true</done> when complete.`);
   // Plan tool loop guard: block re-runs of verification commands.
   // Plan phase has no code-editing tools, so re-running ANY already-attempted
   // command (passed or failed) produces identical results.
-  if (state._planExploring && tracker) {
+  if (state._activePhase === 'plan' && tracker) {
     // Typecheck guard
     if (isTypecheckCommand(command) && tracker.typecheckAttempted) {
       const msg = tracker.typecheckPassed
@@ -467,7 +467,7 @@ Continue writing code files and output <done>true</done> when complete.`);
   const isRetrying = !!(state as any).retries && (state as any).retries > 0;
   if (isBareInstallCommand(command) && !isRetrying) {
     const currentHash = await computeDepFileHash(featureRootPath);
-    const savedHash = (state as any)._depFileHash as string | undefined;
+    const savedHash = state._depFileHash;
     const depsExist = await hasInstalledDeps(featureRootPath);
 
     if (savedHash && currentHash === savedHash && depsExist) {
@@ -694,7 +694,7 @@ For verification: build success + server startup = task complete.`;
       try {
         const newHash = await computeDepFileHash(featureRootPath);
         if (newHash) {
-          (state as any)._depFileHash = newHash;
+          state._depFileHash = newHash;
           console.log(`   📦 [RunCommand] Updated dependency hash after successful install (${newHash.substring(0, 8)}…)`);
         }
       } catch { /* non-blocking */ }

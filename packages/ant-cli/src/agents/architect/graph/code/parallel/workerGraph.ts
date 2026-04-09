@@ -389,7 +389,12 @@ function buildWorkerSubgraph() {
       toolResults: null as any,
       conversationHistory: null as any,
       interruption: null as any,
-      _planExploring: null as any,
+      _activePhase: null as any,
+      _planEntryReason: null as any,
+      _executeModifiedFiles: null as any,
+      _installNeeded: null as any,
+      _appliedPlanHistory: null as any,
+      _otherWorkerFiles: null as any,
       planConversationHistory: null as any,
 
       // Verification & command tracking
@@ -402,7 +407,6 @@ function buildWorkerSubgraph() {
       _isStopRequested: null as any,
       isResume: null as any,
       _batchSplitRequeued: null as any,
-      _awaitingFinalVerify: null as any,
 
       // Figma MCP state
       figmaAvailable: null as any,

@@ -74,7 +74,7 @@ export async function buildPlanPrompt(
     } else {
       console.log(`🔧 [Plan] Verification profile: language=${profile.language}, framework=${profile.framework || 'none'}`);
     }
-    const installNeeded = (state as any)._installNeeded as boolean | undefined;
+    const installNeeded = state._installNeeded;
     let dependencyStatus: string | undefined;
     if (installNeeded === false) {
       dependencyStatus = 'Dependencies are current. Dependency declaration files are unchanged since last install. Skip dependency installation and proceed directly to build verification.';
@@ -471,7 +471,7 @@ export const PLAN_TOOL_LOOP_MAX = 15;
 
 export type PlanWithToolsResult =
   | { planText: string }
-  | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; planConversationHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>; _planExploring: true }
+  | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; planConversationHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>; _activePhase: 'plan' }
   | null;
 
 /**
@@ -529,11 +529,12 @@ export async function runPlanLLMWithTools(
   let thinkingSignature = '';
   let tokenUsage: any = undefined;
 
+  const isFirstRound = messages.length <= 1;
   for await (const event of llmToUse.stream(messages, {
     tools,
     maxTokens: LLM_MAX_TOKENS.DEFAULT,
-    enableThinking: true,
-    thinkingBudget: LLM_THINKING_BUDGET.PLAN,
+    enableThinking: isFirstRound,
+    thinkingBudget: isFirstRound ? LLM_THINKING_BUDGET.PLAN : undefined,
   })) {
     if (event.type === 'retry') {
       textResponse = '';
@@ -662,7 +663,7 @@ export async function runPlanLLMWithTools(
     return {
       llmResponse: { toolCalls, textResponse, thinking: thinking || undefined, thinkingSignature: thinkingSignature || undefined, done: false, tokenUsage },
       planConversationHistory: messages,
-      _planExploring: true,
+      _activePhase: 'plan' as const,
     };
   }
 

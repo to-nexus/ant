@@ -269,144 +269,138 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   
   const llm = state.deps?.llm as LLMClient;
 
-  const isRetry = state.violations && state.violations.length > 0;
   /** Set when plan↔tool loop limit hit so STEP 3 skips tools and uses generatePlanText only. */
   let forceNoTools = false;
+  /** Re-verification fast-path: skip keyword/RAG when we only need to re-run build/test. */
+  let skipKeywordAndRAG = false;
   
   let nextTask: CodeTask | undefined;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 0: Pop next task (or retry current)
+  // STEP 0: Determine entry reason and set up task
+  //
+  // Two orthogonal axes:
+  //   _activePhase ('plan'|'execute') — "where are we?" — routing & tool node branching
+  //   _planEntryReason ('retry'|'reverify'|undefined) — "why are we here?" — consumed immediately
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state._planExploring === true && state.currentTask) {
-    // Plan-tool loop re-entry: must be checked BEFORE isRetry.
-    // Stale violations from a previous checkTaskStatus persist in state during
-    // the plan-tool loop, making isRetry=true on every re-entry. If the retry
-    // path runs mid-loop it resets typecheckAttempted/buildAttempted, causing
-    // the tsc-first guard to permanently block build commands.
-    nextTask = state.currentTask;
-    console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
-  } else if (isRetry && state.currentTask) {
-    nextTask = state.currentTask;
-    
-    // 🚨 CRITICAL: Check if maxRetries exceeded
-    if (state.retries >= state.maxRetries) {
-      console.error(`\n❌ [Plan] Max retries (${state.maxRetries}) exceeded for task: ${nextTask.name}`);
-      console.error(`   Current retries: ${state.retries}`);
-      console.error(`   This task has failed repeatedly and cannot be fixed automatically.\n`);
-      
-      throw new Error(
-        `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). ` +
-        `Cannot proceed with automatic fixes.`
-      );
-    }
-    
-    // Reset call budget for retry — without this, each retry inherits the
-    // previous attempt's call index, progressively shrinking the available
-    // budget until the safety-net fires on the very first call.
-    const prevCallIndex = state._executeCallIndex || 0;
-    const isVerificationRetry = nextTask.type === 'verification';
+  const inToolLoop = state._activePhase === 'plan' && !!state.currentTask;
+  const entryReason = inToolLoop ? undefined : state._planEntryReason;
+  if (!inToolLoop) state._planEntryReason = undefined;
+  const isRetry = entryReason === 'retry';
 
-    if (isVerificationRetry) {
-      // Verification retry: clear execute state so LLM starts fresh each cycle.
-      // Previously preserved conversationHistory to avoid enableThinking=true loop,
-      // but isVerificationWithPlan guard in execute/index.ts now ensures
-      // enableThinking=false regardless of history length, making this safe.
+  if (inToolLoop) {
+    // Tool loop re-entry — no resets, just continue where we left off
+    nextTask = state.currentTask!;
+    console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
+  } else {
+
+    if (entryReason === 'retry' && state.currentTask) {
+      nextTask = state.currentTask;
+
+      // 🚨 CRITICAL: Check if maxRetries exceeded
+      if (state.retries >= state.maxRetries) {
+        console.error(`\n❌ [Plan] Max retries (${state.maxRetries}) exceeded for task: ${nextTask.name}`);
+        console.error(`   Current retries: ${state.retries}`);
+        console.error(`   This task has failed repeatedly and cannot be fixed automatically.\n`);
+
+        throw new Error(
+          `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). ` +
+          `Cannot proceed with automatic fixes.`
+        );
+      }
+
+      const prevCallIndex = state._executeCallIndex || 0;
+      const isVerificationRetry = nextTask.type === 'verification';
+
+      if (isVerificationRetry) {
+        state._executeCallIndex = 0;
+        state._finalTaskLoopCount = 0;
+        state.conversationHistory = [];
+        state._executeModifiedFiles = false;
+        state._installNeeded = true;
+        if (state._verificationTracker) {
+          state._verificationTracker.buildAttempted = false;
+          state._verificationTracker.testAttempted = false;
+          state._verificationTracker.typecheckAttempted = false;
+        }
+        const _retryAttempt = (state.retries || 0) + 1;
+        const _retryMax = state.maxRetries || 3;
+        console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
+        console.log(`   ♻️  Reset: conversationHistory cleared, _executeCallIndex ${prevCallIndex}→0`);
+        console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
+        if (nextTask && state.context?.featurePath && state._httpJobId) {
+          const _taskRef = nextTask;
+          import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+            getExecutionLogger({
+              featurePath: state.context!.featurePath!,
+              jobId: state._httpJobId!,
+              jobType: 'code',
+            }).logVerificationRetry(_taskRef.id, {
+              taskName: _taskRef.name,
+              attempt: _retryAttempt,
+              maxAttempts: _retryMax,
+              preservedHistoryLength: 0,
+              preservedCallIndex: 0,
+              violationsFromPrevAttempt: state.violations?.length ?? 0,
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      } else {
+        state._executeCallIndex = 0;
+        state._finalTaskLoopCount = 0;
+        state.conversationHistory = [];
+        console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
+        console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
+      }
+    } else if (entryReason === 'reverify' && state.currentTask) {
+      // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
+      nextTask = state.currentTask;
+      console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
+      console.log(`   Re-initializing VerificationTracker for fresh build/test check\n`);
+
+      skipKeywordAndRAG = true;
+
+      // Accumulate applied plans so plan LLM can see ALL previous attempts
+      if (state.planText) {
+        const history = (state._appliedPlanHistory || []) as string[];
+        history.push(state.planText);
+        state._appliedPlanHistory = history;
+      }
+
+      // Reset tracker for fresh verification pass
+      state._verificationTracker = {
+        buildPassed: false,
+        testPassed: false,
+        testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
+        buildAttempted: false,
+        testAttempted: false,
+        typecheckPassed: false,
+        typecheckAttempted: false,
+        typecheckRequired: isTypeScriptProject(state),
+      };
+
+      // Reset execute state for potential next fix cycle
       state._executeCallIndex = 0;
       state._finalTaskLoopCount = 0;
       state.conversationHistory = [];
-      (state as any)._executeModifiedFiles = false;
-      // On retry, force installNeeded=true to bypass dep-hash guard
-      // (previous failure may be caused by corrupted/incomplete deps)
-      (state as any)._installNeeded = true;
-      if (state._verificationTracker) {
-        state._verificationTracker.buildAttempted = false;
-        state._verificationTracker.testAttempted = false;
-        state._verificationTracker.typecheckAttempted = false;
-      }
-      const _retryAttempt = (state.retries || 0) + 1;
-      const _retryMax = state.maxRetries || 3;
-      console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
-      console.log(`   ♻️  Reset: conversationHistory cleared, _executeCallIndex ${prevCallIndex}→0`);
-      console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
-      if (nextTask && state.context?.featurePath && state._httpJobId) {
-        const _taskRef = nextTask;
-        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-          getExecutionLogger({
-            featurePath: state.context!.featurePath!,
-            jobId: state._httpJobId!,
-            jobType: 'code',
-          }).logVerificationRetry(_taskRef.id, {
-            taskName: _taskRef.name,
-            attempt: _retryAttempt,
-            maxAttempts: _retryMax,
-            preservedHistoryLength: 0,
-            preservedCallIndex: 0,
-            violationsFromPrevAttempt: state.violations?.length ?? 0,
-          }).catch(() => {});
-        }).catch(() => {});
+      state._executeModifiedFiles = false;
+
+      // Recompute installNeeded — execute may have modified dependency declaration files
+      const featureRoot = state.deps?.fileSystem?.getRootPath();
+      if (featureRoot) {
+        try {
+          const { computeDepFileHash, hasInstalledDeps } = await import('../tool/handlers/runCommand');
+          const currentHash = await computeDepFileHash(featureRoot);
+          const savedHash = state._depFileHash;
+          const depsExist = await hasInstalledDeps(featureRoot);
+          const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
+          state._installNeeded = installNeeded;
+          console.log(`📦 [Plan] Post-execute installNeeded: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
+        } catch {
+          state._installNeeded = true;
+        }
       }
     } else {
-      state._executeCallIndex = 0;
-      state._finalTaskLoopCount = 0;
-      state.conversationHistory = [];
-      console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-      console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
-    }
-  } else if ((state as any)._awaitingFinalVerify === true && state.currentTask) {
-    // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
-    nextTask = state.currentTask;
-    console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
-    console.log(`   Re-initializing VerificationTracker for fresh build/test check\n`);
-
-    // Clear the trigger flag
-    (state as any)._awaitingFinalVerify = false;
-
-    // Clear stale violations from previous cycle so isRetry doesn't
-    // interfere with the fresh plan-tool loop that follows.
-    state.violations = [];
-
-    // Accumulate applied plans so plan LLM can see ALL previous attempts
-    if (state.planText) {
-      const history = ((state as any)._appliedPlanHistory || []) as string[];
-      history.push(state.planText);
-      (state as any)._appliedPlanHistory = history;
-    }
-
-    // Reset tracker for fresh verification pass
-    state._verificationTracker = {
-      buildPassed: false,
-      testPassed: false,
-      testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
-      buildAttempted: false,
-      testAttempted: false,
-      typecheckPassed: false,
-      typecheckAttempted: false,
-      typecheckRequired: isTypeScriptProject(state),
-    };
-
-    // Reset execute state for potential next fix cycle
-    state._executeCallIndex = 0;
-    state._finalTaskLoopCount = 0;
-    state.conversationHistory = [];
-    (state as any)._executeModifiedFiles = false;
-
-    // Recompute installNeeded — execute may have modified dependency declaration files
-    const featureRoot = state.deps?.fileSystem?.getRootPath();
-    if (featureRoot) {
-      try {
-        const { computeDepFileHash, hasInstalledDeps } = await import('../tool/handlers/runCommand');
-        const currentHash = await computeDepFileHash(featureRoot);
-        const savedHash = (state as any)._depFileHash as string | undefined;
-        const depsExist = await hasInstalledDeps(featureRoot);
-        const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
-        (state as any)._installNeeded = installNeeded;
-        console.log(`📦 [Plan] Post-execute installNeeded: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
-      } catch {
-        (state as any)._installNeeded = true;
-      }
-    }
-  } else {
     // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
     // Sequential context: pop next task from queue
     const _wid = (state as any).workerId;
@@ -449,7 +443,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         typecheckAttempted: false,
         typecheckRequired: tsProject,
       };
-      (state as any)._appliedPlanHistory = [];
+      state._appliedPlanHistory = [];
       console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, typecheckRequired=${tsProject}`);
 
       // Compute installNeeded for dependency status prompt signal
@@ -458,13 +452,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         try {
           const { computeDepFileHash, hasInstalledDeps } = await import('../tool/handlers/runCommand');
           const currentHash = await computeDepFileHash(featureRoot);
-          const savedHash = (state as any)._depFileHash as string | undefined;
+          const savedHash = state._depFileHash;
           const depsExist = await hasInstalledDeps(featureRoot);
           const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
-          (state as any)._installNeeded = installNeeded;
+          state._installNeeded = installNeeded;
           console.log(`📦 [Plan] Dependency install needed: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
         } catch (err) {
-          (state as any)._installNeeded = true; // fail-open: allow install if check fails
+          state._installNeeded = true; // fail-open: allow install if check fails
           console.warn(`⚠️ [Plan] Dependency hash check failed, defaulting to installNeeded=true: ${err}`);
         }
       }
@@ -525,6 +519,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         // Non-critical: checkpoint save failure shouldn't block plan execution
         console.warn(`⚠️  [Plan] Failed to save task-start checkpoint: ${err}`);
       }
+    }
     }
   }
   
@@ -619,7 +614,7 @@ const hasPrePlanText =
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
       conversationHistory: [],
-      _planExploring: false,
+      _activePhase: 'execute' as const,
       planConversationHistory: undefined,
       // Error tasks: no VerificationTracker — plan uses error-specific template, not verification diagnostic.
       _verificationTracker: undefined,
@@ -640,7 +635,7 @@ const hasPrePlanText =
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0.9: Re-entry from tool (plan↔tool loop)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state._planExploring === true && state.planConversationHistory?.length) {
+  if (state._activePhase === 'plan' && state.planConversationHistory?.length) {
     const overLimit = state.planConversationHistory.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
     if (overLimit) {
       console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; finalizing plan from exploration context`);
@@ -654,7 +649,7 @@ const hasPrePlanText =
           state.projectCodeContext ,
           state.planConversationHistory,
         );
-        state._planExploring = false;
+        state._activePhase = 'execute';
         state.planConversationHistory = undefined;
         if (state.deps?.workflowUpdate && state._httpJobId) {
           await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
@@ -667,7 +662,7 @@ const hasPrePlanText =
           lessons: state.lessons ?? [],
           planText: finalizedPlan,
           _executeBudget: computeBudgetFromPlanText(finalizedPlan),
-          _planExploring: false,
+          _activePhase: 'execute' as const,
           planConversationHistory: undefined,
           retries: isRetry ? state.retries : 0,
           completedTasksDetails: state.completedTasksDetails || [],
@@ -686,19 +681,19 @@ const hasPrePlanText =
           state.planConversationHistory,
         );
       }
-      state._planExploring = false;
+      state._activePhase = 'execute';
       state.planConversationHistory = undefined;
       forceNoTools = true;
     } else {
       const result = await runPlanLLMWithTools(state, state.planConversationHistory, nextTask);
-      if (result && '_planExploring' in result) {
+      if (result && '_activePhase' in result) {
         if (state.deps?.workflowUpdate && state._httpJobId) {
           await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
         }
         return {
           ...state,
           planConversationHistory: result.planConversationHistory,
-          _planExploring: true,
+          _activePhase: 'plan' as const,
           llmResponse: result.llmResponse,
           projectCodeContext: state.projectCodeContext,
           referenceCodeContexts: state.referenceCodeContexts,
@@ -722,7 +717,7 @@ const hasPrePlanText =
           lessons: state.lessons ?? [],
           planText,
           _executeBudget: computeBudgetFromPlanText(planText),
-          _planExploring: false,
+          _activePhase: 'execute' as const,
           planConversationHistory: undefined,
           retries: isRetry ? state.retries : 0,
           completedTasksDetails: state.completedTasksDetails || [],
@@ -745,7 +740,7 @@ const hasPrePlanText =
           state.planConversationHistory,
         );
       }
-      state._planExploring = false;
+      state._activePhase = 'execute';
       state.planConversationHistory = undefined;
     }
   }
@@ -790,7 +785,7 @@ const hasPrePlanText =
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
-      _planExploring: false,
+      _activePhase: 'execute' as const,
       planConversationHistory: undefined,
     };
   }
@@ -817,10 +812,10 @@ const hasPrePlanText =
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let taskKeywords: TaskKeywords;
   
-  if (isRetry) {
-    // On retry: skip LLM keyword generation entirely.
-    // Only extract error files from violations for targeted RAG.
-    const errorFilesFromViolations = extractFilesFromViolations(state.violations);
+  if (isRetry || skipKeywordAndRAG) {
+    // On retry or re-verification: skip LLM keyword generation.
+    // Retry extracts error files from violations; reverify has context from prior cycle.
+    const errorFilesFromViolations = isRetry ? extractFilesFromViolations(state.violations) : [];
     taskKeywords = {
       errorFiles: errorFilesFromViolations,
       keywords: [],
@@ -872,15 +867,13 @@ const hasPrePlanText =
   let referenceCodeContexts: any[] = [];
   let lessons: any[] = [];  // ✅ Lessons from RAG
   
-  // ✅ CRITICAL: Always perform fresh RAG (even on retry)
-  // - Combines files from Vector DB, Git changes, and local reads
-  // - Ensures latest content from all sources
-  // - Local RAG is fast enough to run every time
+  // RAG: Combines files from Vector DB, Git changes, and local reads.
+  // Skip on re-verification — context from prior cycle is already enriched.
   const retriever = state.deps?.retriever;
   const vectorDB = state.deps?.vectorDB;
   const git = state.deps?.git;
   
-  if (retriever && vectorDB && git) {
+  if (retriever && vectorDB && git && !skipKeywordAndRAG) {
     const combinedResult = await combineCodeContext(
       taskKeywords,
       state,
@@ -1020,7 +1013,7 @@ const hasPrePlanText =
   }
 
   // Inject accumulated plan history so plan LLM can see ALL previous attempts
-  const planHistory = ((state as any)._appliedPlanHistory || []) as string[];
+  const planHistory = (state._appliedPlanHistory || []) as string[];
   if (planHistory.length > 0 && nextTask.type === 'verification') {
     const recentHistory = planHistory.slice(-3);
     let historyContext = `\n\n### PREVIOUS FIXES APPLIED BUT ERROR PERSISTS\n` +
@@ -1053,7 +1046,7 @@ const hasPrePlanText =
     const contentBlocks = await buildPlanPromptBlocks(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true });
     const messages = [{ role: 'user' as const, content: contentBlocks }];
     const result = await runPlanLLMWithTools(state, messages, nextTask);
-    if (result && '_planExploring' in result) {
+    if (result && '_activePhase' in result) {
       if (state.deps?.workflowUpdate && state._httpJobId) {
         await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
       }
@@ -1061,7 +1054,7 @@ const hasPrePlanText =
         ...state,
         currentTask: nextTask,
         planConversationHistory: result.planConversationHistory,
-        _planExploring: true,
+        _activePhase: 'plan' as const,
         llmResponse: result.llmResponse,
         projectCodeContext,
         referenceCodeContexts,
@@ -1126,7 +1119,7 @@ const hasPrePlanText =
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
-      _planExploring: false,
+      _activePhase: 'execute' as const,
       planConversationHistory: undefined,
       llmResponse: (batchSplitOccurred || diagnosticPass)
         ? { done: true, textResponse: '', thinking: '', toolCalls: [] }

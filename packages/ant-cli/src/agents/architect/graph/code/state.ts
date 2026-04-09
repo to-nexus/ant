@@ -331,10 +331,20 @@ export interface ArchitectGraphState extends TaskArtifacts {
   /** Counter for consecutive final-task iterations with no done and no tool calls (Safety Net C) */
   _finalTaskLoopCount?: number;
 
-  /** Plan↔tool loop: true while plan is exploring codebase with tools (tool routes back to plan) */
-  _planExploring?: boolean;
-  /** execute verification task fix 완료 후 plan 재진단 트리거 */
-  _awaitingFinalVerify?: boolean;
+  /** Which node's tool loop are we in? 'plan' = plan-tool loop, 'execute' = execute-tool loop.
+   *  Used by routers (planRouter, toolRouter) and tool node for conversation/tracking branching. */
+  _activePhase?: 'plan' | 'execute';
+  /** Why did we enter the plan node? Set by the caller (executeRouter, enforce, etc.),
+   *  consumed immediately on plan entry. Undefined = new task from queue. */
+  _planEntryReason?: 'retry' | 'reverify';
+  /** Tracks whether execute phase modified any files (for executeRouter re-verify decision) */
+  _executeModifiedFiles?: boolean;
+  /** Whether dependency install is needed (dep-hash guard bypass) */
+  _installNeeded?: boolean;
+  /** Accumulated remediation plans from previous fix cycles */
+  _appliedPlanHistory?: string[];
+  /** Files written by other parallel tasks/workers (for session manifest in execute) */
+  _otherWorkerFiles?: Array<{ path: string; taskName?: string }>;
   /** Plan-phase conversation only (separate from execute conversationHistory) */
   planConversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | import('../../../../core/ports/llm').MessageContentBlock[] }>;
 
