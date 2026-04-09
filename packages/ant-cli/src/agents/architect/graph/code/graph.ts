@@ -1127,7 +1127,12 @@ export function buildCodeGraph() {
       toolResults: null as any,     // Tool execution results
       conversationHistory: null as any,  // Multi-turn conversation
       interruption: null as any,         // Interruption details
-      _planExploring: null as any,
+      _activePhase: null as any,
+      _planEntryReason: null as any,
+      _executeModifiedFiles: null as any,
+      _installNeeded: null as any,
+      _appliedPlanHistory: null as any,
+      _otherWorkerFiles: null as any,
       planConversationHistory: null as any,
 
       // Figma MCP state

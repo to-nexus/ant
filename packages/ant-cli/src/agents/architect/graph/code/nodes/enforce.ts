@@ -264,12 +264,13 @@ Try a different approach. Read error message literally.${dependencyHint}
   
   return {
     ...state,
-    violations: focusedViolations,  // ✅ Pass violations to next node for retry strategy
-    violationMessage: formattedViolations,  // ✅ Pass the enhanced, formatted message to promptBuilder
+    violations: focusedViolations,
+    violationMessage: formattedViolations,
     retries: state.retries + 1,
     lastViolations: focusedViolations,
     enforcementHistory,
-    _errorIsRepeating: isRepeating // ⭐ Flag for execute node to use
+    _errorIsRepeating: isRepeating,
+    _planEntryReason: 'retry' as const,
   };
 }
 
