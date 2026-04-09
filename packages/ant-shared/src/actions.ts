@@ -194,6 +194,56 @@ export interface ActionMetadata {
   context?: string[];
 }
 
+/**
+ * Derive workType, jobMode, and environment from an intent string.
+ * Used by detect node to bypass LLM when intent is provided.
+ */
+export function deriveFromIntent(intent: string): {
+  workType?: 'ui-design' | 'system-design' | 'spec';
+  jobMode: 'generate' | 'refactor' | 'explain';
+  environment?: 'frontend' | 'backend' | 'fullstack';
+  agent: string;
+  jobType: string;
+} {
+  switch (intent) {
+    case 'create-plan':
+      return { jobMode: 'generate', agent: 'planner', jobType: 'plan' };
+
+    case 'create-fe':
+      return { workType: 'system-design', jobMode: 'generate', environment: 'frontend', agent: 'architect', jobType: 'design' };
+    case 'create-be':
+      return { workType: 'system-design', jobMode: 'generate', environment: 'backend', agent: 'architect', jobType: 'design' };
+    case 'create-fullstack':
+      return { workType: 'system-design', jobMode: 'generate', environment: 'fullstack', agent: 'architect', jobType: 'design' };
+    case 'revise-system':
+      return { workType: 'system-design', jobMode: 'refactor', agent: 'architect', jobType: 'design' };
+
+    case 'create-figma':
+    case 'create-ref':
+    case 'create-desc':
+      return { workType: 'ui-design', jobMode: 'generate', agent: 'architect', jobType: 'design' };
+    case 'revise-ui':
+      return { workType: 'ui-design', jobMode: 'refactor', agent: 'architect', jobType: 'design' };
+
+    case 'create-spec':
+      return { workType: 'spec', jobMode: 'generate', agent: 'architect', jobType: 'design' };
+    case 'revise-spec':
+      return { workType: 'spec', jobMode: 'refactor', agent: 'architect', jobType: 'design' };
+
+    case 'create-code':
+      return { jobMode: 'generate', agent: 'architect', jobType: 'code' };
+
+    case 'create-visual':
+      return { jobMode: 'generate', agent: 'creator', jobType: 'visual' };
+
+    case 'create-learn':
+      return { jobMode: 'generate', agent: 'architect', jobType: 'learn' };
+
+    default:
+      return { jobMode: 'generate', agent: 'architect', jobType: 'design' };
+  }
+}
+
 // ============================================
 // Action Readiness Types (computed on frontend from fileTree + store)
 // ============================================
