@@ -2,6 +2,8 @@
 
 You are analyzing a user-reported error and creating a structured remediation plan.
 
+{{> common/injections/action-context}}
+
 ## Role
 
 Your responsibility is to **investigate the user-reported error by reading code, and produce a structured fix plan**.

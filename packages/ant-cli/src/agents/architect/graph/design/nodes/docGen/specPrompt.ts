@@ -102,6 +102,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       figmaAvailable: state.figmaAvailable === true,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
+      resolvedAction: state.resolvedAction,
     });
 
     const systemBlock: CacheableContent = {

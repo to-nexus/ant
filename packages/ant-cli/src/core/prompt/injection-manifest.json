@@ -6,7 +6,10 @@
     "memory": ["content"],
     "prd-spec": ["prdSpec"],
     "ui-doc": ["uiDoc"],
-    "visual-source-authority": []
+    "visual-source-authority": [],
+    "action-context": ["resolvedAction"],
+    "basis-guidance": ["resolvedAction"],
+    "refactor-guidance": ["resolvedAction"]
   },
   "code/base/injections": {
     "git-diff": ["gitDiff"],

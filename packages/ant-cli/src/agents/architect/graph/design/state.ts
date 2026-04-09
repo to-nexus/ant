@@ -7,7 +7,7 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
-import type { FigmaDataConfig, UIDesignSource, FigmaExplorationResult } from '@ant/shared';
+import type { FigmaDataConfig, UIDesignSource, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
 
 /**
  * Design Task State
@@ -47,6 +47,9 @@ export interface DesignGraphState extends TaskArtifacts {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   /** 통합 환경 감지 결과 (jobMode, workType, environment, domain 등 포함) */
   detectionReport?: DetectionReport;
+  
+  /** Intent-centric resolved context (created in resolve/detect, consumed by ModeController + templates) */
+  resolvedAction?: ResolvedActionContext;
   
   // ✅ Resume flag (API level, set by runner before graph invoke)
   isResume?: boolean;

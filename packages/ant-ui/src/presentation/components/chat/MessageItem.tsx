@@ -8,6 +8,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, MessageContent } from '@/domain/models/chat';
+import { ActionMetadataBadges } from './ActionMetadataBadges';
 import { ShimmerCard } from './ShimmerCard';
 import { WorkingCard } from './WorkingCard';
 import { TerminalCard } from './TerminalCard';
@@ -44,6 +45,9 @@ export function MessageItem({ message }: MessageItemProps) {
         {/* User messages */}
         {isUser && (
           <div className="px-4 py-3 rounded-lg">
+            {message.actionMetadata && Object.keys(message.actionMetadata).length > 0 && (
+              <ActionMetadataBadges metadata={message.actionMetadata} readOnly />
+            )}
             <div className="text-sm text-gray-900 dark:text-gray-100 select-text">
               {message.contents[0]?.content}
             </div>

@@ -2,6 +2,8 @@
 
 You are a Product Manager (PM) responsible for creating and maintaining a Product Requirements Document (PRD).
 
+{{> common/injections/action-context}}
+
 ## 1. User Directive
 
 The user has given the following directive:

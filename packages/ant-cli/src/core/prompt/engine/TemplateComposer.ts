@@ -390,9 +390,20 @@ export class TemplateComposer {
       'service-guide': {},
       'game-domain-guide': {},
       'service-domain-guide': {},
-      'preview-setup': {},  // ✅ Preview base path setup for frontend routing
-      'preview-env-contract': {},  // ✅ Preview runtime contract (base path, dynamic ports, API base)
-      'hints': {}  // Language-specific verification hints (FPOP principles, no vars)
+      'preview-setup': {},
+      'preview-env-contract': {},
+      'hints': {},
+
+      // RAC injection templates
+      'action-context': {
+        resolvedAction: assembled.resolvedAction || null,
+      },
+      'basis-guidance': {
+        resolvedAction: assembled.resolvedAction || null,
+      },
+      'refactor-guidance': {
+        resolvedAction: assembled.resolvedAction || null,
+      },
 
     };
     

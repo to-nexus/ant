@@ -161,6 +161,7 @@ export interface ChatMessage {
   contents: MessageContent[];  // A message can have multiple content blocks
   timestamp: string;
   isStreaming?: boolean;  // Currently being streamed
+  actionMetadata?: import('@ant/shared').ActionMetadata;
 }
 
 export interface ChatSession {

@@ -6,6 +6,8 @@ import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
+import { resolveFromExplicit } from "@ant/shared";
+import type { EnvironmentHints } from "@ant/shared";
 
 /**
  * Compress uncompressed heavyweight entries in jobConversation via LLM summarization.
@@ -614,6 +616,18 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   
   // Profile detection moved to detectEnvironment node (LLM-based)
 
+  // RAC creation: explicit path only (infer path creates RAC in detectEnvironment)
+  const actionMetadata = (state as any).actionMetadata;
+  let resolvedAction = state.resolvedAction;
+  if (!resolvedAction && actionMetadata?.intent) {
+    const codebaseProfile = state.context.codebaseProfile;
+    const fallbackHints: EnvironmentHints = {
+      designDocPath: designDocPath,
+    };
+    resolvedAction = resolveFromExplicit(actionMetadata, codebaseProfile, fallbackHints);
+    console.log(`📋 [Resolve] RAC created (explicit): intent=${actionMetadata.intent}, tech=${JSON.stringify(resolvedAction.tech)}`);
+  }
+
   const result = {
     ...state,
     directive,
@@ -627,6 +641,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     sessionContext: sessionContextForLLM,
     profile,
     referenceContexts,
+    resolvedAction,
     figmaAvailable,
     figmaFileKey,
     figmaStartNodeId,

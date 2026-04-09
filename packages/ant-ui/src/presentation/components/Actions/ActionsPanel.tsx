@@ -1,44 +1,62 @@
 import { useStore } from '@/domain/store';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, type ActionId } from '@ant/shared';
-import { ActionChipGrid } from './ActionChipGrid';
-import { ActionSubModeStep } from './ActionSubModeStep';
-import { ActionDetailView } from './ActionDetailView';
+import { ACTION_DEFINITIONS, getIntentsForAction, type ActionId } from '@ant/shared';
+import { ActionChipGrid, IntentChipGrid, type ChipItem } from './ActionChipGrid';
+import { ActionConfigView } from './ActionConfigView';
+import { ActionStepHeader } from './ActionStepHeader';
+import { ACTION_VISUALS } from './ActionChip';
 
 export function ActionsPanel() {
-  const { t } = useTranslation('actions');
+  const { t, i18n } = useTranslation('actions');
+  const lang = i18n.language as 'en' | 'ko';
   const readiness = useActionReadiness();
   const step = useStore(s => s.actionsStep);
   const selectedActionId = useStore(s => s.selectedActionId) as ActionId | null;
+  const selectedIntentId = useStore(s => s.selectedIntentId);
   const setActionsStep = useStore(s => s.setActionsStep);
   const selectAction = useStore(s => s.selectAction);
-  const selectSubMode = useStore(s => s.selectSubMode);
-
-  const selectedDef = selectedActionId ? ACTION_DEFINITIONS.find(d => d.id === selectedActionId) : null;
+  const selectIntent = useStore(s => s.selectIntent);
 
   const handleActionSelect = (actionId: ActionId) => {
     selectAction(actionId);
-    const def = ACTION_DEFINITIONS.find(d => d.id === actionId);
-    if (def?.hasSubModes) {
-      setActionsStep('pick-mode');
-    } else {
-      setActionsStep('detail');
-    }
+    setActionsStep('pick-intent');
   };
 
-  const handleSubModeSelect = (modeId: string) => {
-    selectSubMode(modeId);
-    setActionsStep('detail');
+  const handleIntentSelect = (intentId: string) => {
+    selectIntent(intentId);
+    setActionsStep('config');
   };
 
   const handleBack = () => {
-    if (step === 'detail' && selectedDef?.hasSubModes) {
-      setActionsStep('pick-mode');
+    if (step === 'config') {
+      const intents = selectedActionId ? getIntentsForAction(selectedActionId) : [];
+      if (intents.length > 1) {
+        setActionsStep('pick-intent');
+      } else {
+        setActionsStep('pick-action');
+      }
     } else {
       setActionsStep('pick-action');
     }
   };
+
+  const intentChipItems = (): ChipItem[] => {
+    if (!selectedActionId) return [];
+    const intents = getIntentsForAction(selectedActionId);
+    const visual = ACTION_VISUALS[selectedActionId];
+
+    return intents.map(intent => ({
+      id: intent.id,
+      label: intent.label[lang] || intent.label.en,
+      description: intent.description[lang] || intent.description.en,
+      icon: visual?.icon,
+      bg: visual?.bg,
+      text: visual?.text,
+    }));
+  };
+
+  const actionDef = selectedActionId ? ACTION_DEFINITIONS.find(d => d.id === selectedActionId) : null;
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-white dark:bg-[#161b22]">
@@ -54,22 +72,28 @@ export function ActionsPanel() {
           </div>
         )}
 
-        {step === 'pick-mode' && selectedActionId && (
-          <div className="h-full animate-fadeIn">
-            <ActionSubModeStep
+        {step === 'pick-intent' && selectedActionId && (
+          <div className="h-full flex flex-col p-8 animate-fadeIn">
+            <ActionStepHeader
               actionId={selectedActionId}
-              readiness={readiness[selectedActionId]}
-              onSelect={handleSubModeSelect}
-              onBack={handleBack}
+              title={actionDef?.label[lang] || actionDef?.label.en || ''}
+              subtitle={actionDef?.description[lang] || actionDef?.description.en}
+              onBack={() => setActionsStep('pick-action')}
             />
+            <div className="flex-1 flex items-center justify-center">
+              <IntentChipGrid
+                items={intentChipItems()}
+                onSelect={handleIntentSelect}
+              />
+            </div>
           </div>
         )}
 
-        {step === 'detail' && selectedActionId && (
+        {step === 'config' && selectedActionId && selectedIntentId && (
           <div className="h-full animate-fadeIn">
-            <ActionDetailView
+            <ActionConfigView
               actionId={selectedActionId}
-              readiness={readiness[selectedActionId]}
+              intentId={selectedIntentId}
               onBack={handleBack}
             />
           </div>

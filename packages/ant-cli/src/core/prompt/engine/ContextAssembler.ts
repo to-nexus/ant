@@ -2,6 +2,7 @@ import { ProjectContext, AgentJob, CodebaseProfile } from "../../types";
 import { CodebaseAnalyzerPort, GitPort, MemoryPort } from "../../ports";
 import { ReferenceContext } from "../../codebase/types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
+import type { ResolvedActionContext } from "@ant/shared";
 
 /**
  * Assembled context from all sources
@@ -105,6 +106,9 @@ export interface AssembledContext {
 
   // ✅ Spec-driven mode: true when designDoc comes from spec document (not system design)
   isSpecDriven?: boolean;
+
+  // RAC (Intent-Centric Prompt System)
+  resolvedAction?: ResolvedActionContext;
   
   // Statistics
   stats: {
@@ -178,6 +182,7 @@ export class ContextAssembler {
       isSpecDriven?: boolean;
       figmaAvailable?: boolean;
       figmaStartNodeId?: string;
+      resolvedAction?: ResolvedActionContext;
     }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
@@ -212,6 +217,9 @@ export class ContextAssembler {
       }
       if (artifacts.figmaStartNodeId !== undefined) {
         assembled.figmaStartNodeId = artifacts.figmaStartNodeId;
+      }
+      if (artifacts.resolvedAction !== undefined) {
+        assembled.resolvedAction = artifacts.resolvedAction;
       }
     }
     
@@ -253,6 +261,9 @@ export class ContextAssembler {
       }
       if (artifacts.filteredCatalog !== undefined) {
         assembled.filteredCatalog = artifacts.filteredCatalog;
+      }
+      if (artifacts.resolvedAction !== undefined) {
+        assembled.resolvedAction = artifacts.resolvedAction;
       }
     }
     
