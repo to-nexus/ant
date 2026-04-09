@@ -10,6 +10,7 @@ export interface ExecuteJobParams {
   overrideDirective?: string;
   chatSource?: boolean;
   skipTriage?: boolean;
+  actionMetadata?: import('@ant/shared').ActionMetadata;
 }
 
 export interface JobStatus {
@@ -36,13 +37,14 @@ export async function executeJob(
     overrideDirective,
     chatSource,
     skipTriage,
+    actionMetadata,
   } = params;
 
   if (!featureName) {
     throw new Error('Feature name is required for job execution');
   }
 
-  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage };
+  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata };
   const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/execute`;
 
   const response = await authFetch(endpoint, {

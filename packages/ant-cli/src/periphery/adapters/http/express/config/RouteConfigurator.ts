@@ -445,6 +445,7 @@ export class RouteConfigurator {
         overrideDirective: params.overrideDirective,
         chatSource: params.chatSource,
         skipTriage: params.skipTriage,
+        actionMetadata: params.actionMetadata,
         inputFile: params.inputFile,
         isResume: params.isResume ?? !!params.jobId,
         originalJobId: params.jobId

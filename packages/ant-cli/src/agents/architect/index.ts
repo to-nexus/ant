@@ -40,6 +40,7 @@ export async function architectAgent(
     feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
     featurePath?: string;  // ✅ Pre-calculated feature path (avoids re-calculation mismatch)
     skipTriage?: boolean;
+    actionMetadata?: import('@ant/shared').ActionMetadata;
     redis?: any;  // Raw ioredis client for cloud Figma MCP bridge
   },
   jobMode?: JobMode,
@@ -274,6 +275,7 @@ export async function architectAgent(
         overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
         chatSource: deps?.chatSource,  // ✅ Chat SSE flag
         skipTriage: deps?.skipTriage,  // ✅ Skip triage (after proceed choice)
+        actionMetadata: deps?.actionMetadata,  // ✅ Structured context from Actions panel
         currentJob: 'design',  // ✅ For triage system
         currentAgent: 'architect'  // ✅ For triage system
       };
@@ -478,6 +480,7 @@ export async function architectAgent(
           overrideDirective: deps?.overrideDirective,  // ✅ Chat input as directive
           chatSource: deps?.chatSource,  // ✅ Chat SSE flag
           skipTriage: deps?.skipTriage,  // ✅ Skip triage (after proceed choice)
+          actionMetadata: deps?.actionMetadata,  // ✅ Structured context from Actions panel
           currentJob: 'code',  // ✅ For triage system
           currentAgent: 'architect'  // ✅ For triage system
         };

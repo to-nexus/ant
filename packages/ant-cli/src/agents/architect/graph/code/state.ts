@@ -270,6 +270,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
 
   // ✅ Triage System
   skipTriage?: boolean;          // Skip triage if true
+  actionMetadata?: import('@ant/shared').ActionMetadata;
   triageResult?: TriageResult;   // Triage analysis result
   workspaceState?: WorkspaceState;  // Workspace state snapshot
   currentAgent?: string;         // Current agent name (e.g., 'architect')
