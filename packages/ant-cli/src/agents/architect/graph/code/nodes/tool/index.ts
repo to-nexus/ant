@@ -92,7 +92,7 @@ async function executeToolByName(
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
         }
-        if (!state._planExploring) (state as any)._executeModifiedFiles = true;
+        if (state._activePhase !== 'plan') state._executeModifiedFiles = true;
         break;
       case 'edit_file':
         result = await handleEditFile(state, args as any);
@@ -101,7 +101,7 @@ async function executeToolByName(
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
         }
-        if (!state._planExploring) (state as any)._executeModifiedFiles = true;
+        if (state._activePhase !== 'plan') state._executeModifiedFiles = true;
         break;
       case 'mkdir':
         result = await handleMkdir(state, args as any);
@@ -147,7 +147,7 @@ async function executeToolByName(
           state._verificationTracker.buildPassed = false;
           state._verificationTracker.testPassed = false;
         }
-        if (!state._planExploring) (state as any)._executeModifiedFiles = true;
+        if (state._activePhase !== 'plan') state._executeModifiedFiles = true;
         break;
       case 'figma_get_design_context':
       case 'figma_get_screenshot':
@@ -403,7 +403,7 @@ export async function tool(
   }
 
   // Build batch conversation history (Anthropic multi-tool format)
-  const taskReminder = state._planExploring ? undefined : buildTaskReminder(state);
+  const taskReminder = state._activePhase === 'plan' ? undefined : buildTaskReminder(state);
 
   // Preserve file creation awareness: when LLM creates files AND uses tools in
   // the same response, the text portion (containing file tags) must be included
@@ -417,7 +417,7 @@ export async function tool(
   // Preserve thinking blocks for Anthropic API compatibility in multi-turn conversations.
   // When thinking is enabled, the assistant message must start with a thinking block.
   // The signature field is required by the Anthropic API to validate unmodified thinking blocks.
-  if (state._planExploring === true && state.llmResponse?.thinking) {
+  if (state._activePhase === 'plan' && state.llmResponse?.thinking) {
     const resp = state.llmResponse as { thinking?: string; thinkingSignature?: string };
     assistantContent.push({
       type: 'thinking' as const,
@@ -431,7 +431,7 @@ export async function tool(
   }
   assistantContent.push(...toolUseBlocks);
 
-  const baseHistory = state._planExploring === true
+  const baseHistory = state._activePhase === 'plan'
     ? (state.planConversationHistory || [])
     : (state.conversationHistory || []);
 
@@ -470,7 +470,7 @@ export async function tool(
     toolCalls: [],
   };
 
-  if (state._planExploring === true) {
+  if (state._activePhase === 'plan') {
     return {
       planConversationHistory: newHistory,
       llmResponse: nextLlmResponse,

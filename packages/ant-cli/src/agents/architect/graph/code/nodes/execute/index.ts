@@ -147,7 +147,7 @@ export async function execute(
     const otherTaskFiles: Array<{ path: string; taskName?: string }> =
       workerFSForManifest.sharedBuffer.getWrittenByOtherTasks(currentTaskName);
     if (otherTaskFiles.length > 0) {
-      (state as any)._otherWorkerFiles = otherTaskFiles;
+      state._otherWorkerFiles = otherTaskFiles;
       console.log(`📋 [CodeGen] Session manifest: ${otherTaskFiles.length} file(s) from other tasks`);
     }
   } else if (workerFSForManifest?.sharedBuffer?.getWrittenFilesByOtherWorkers) {
@@ -155,7 +155,7 @@ export async function execute(
     const otherWorkerFiles: Array<{ path: string; taskName?: string }> =
       workerFSForManifest.sharedBuffer.getWrittenFilesByOtherWorkers(currentWorkerId);
     if (otherWorkerFiles.length > 0) {
-      (state as any)._otherWorkerFiles = otherWorkerFiles;
+      state._otherWorkerFiles = otherWorkerFiles;
       console.log(`📋 [CodeGen] Session manifest: ${otherWorkerFiles.length} file(s) from other workers (legacy fallback)`);
     }
   }
@@ -377,12 +377,14 @@ export async function execute(
   // ✅ Check if this is a continuation after tool calling
   const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
   
-  // ✅ Verification tasks with a remediation plan don't need extended thinking —
+  // Diagnostic tasks (verification/error) with a remediation plan don't need extended thinking —
   // the plan node already analyzed errors and produced a concrete fix plan.
   // Enabling thinking here causes thinking-only responses (no tool calls),
   // which Safety Net C (threshold=1) immediately kills, wasting an entire
   // plan→execute→enforce cycle and triggering the "restart from beginning" loop.
-  const isVerificationWithPlan = state.currentTask?.type === 'verification' && !!state.planText;
+  const isDiagnosticWithPlan =
+    (state.currentTask?.type === 'verification' || state.currentTask?.type === 'error')
+    && !!state.planText;
 
   // ✅ Track token usage for this LLM call
   let capturedUsage: any = undefined;
@@ -392,7 +394,7 @@ export async function execute(
     for await (const event of llmToUse.stream(messages, {
       tools,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
-      enableThinking: !isAfterToolCall && !isVerificationWithPlan,
+      enableThinking: !isAfterToolCall && !isDiagnosticWithPlan,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
     })) {
       if (event.type === 'retry') {
@@ -507,7 +509,7 @@ export async function execute(
         state._verificationTracker.buildPassed = false;
         state._verificationTracker.testPassed = false;
       }
-      (state as any)._executeModifiedFiles = true;
+      state._executeModifiedFiles = true;
     }
 
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
@@ -725,7 +727,7 @@ export async function execute(
     
     // Thinking-only detection: log when LLM produces thinking but no text/tools
     if (toolCalls.length === 0 && !textResponse.trim() && thinking) {
-      const actualEnableThinking = !isAfterToolCall && !isVerificationWithPlan;
+      const actualEnableThinking = !isAfterToolCall && !isDiagnosticWithPlan;
       console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${actualEnableThinking}, history=${state.conversationHistory?.length ?? 0}, violations=${state.violations?.length ?? 0}`);
       if (state.context?.featurePath && state._httpJobId) {
         const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
