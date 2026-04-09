@@ -268,14 +268,31 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   context.featurePath = featurePath;
 
   // 1. Load source documents (PRD + all text files in inputs/sources/)
+  const actionRefs = (state as any).actionMetadata?.refs as string[] | undefined;
+  const actionCtx = (state as any).actionMetadata?.context as string[] | undefined;
+  const hasExplicitRefs = actionRefs && actionRefs.length > 0;
+
   let prd: string | undefined;
   let sourceDocuments: Record<string, string> | undefined;
   try {
     const source = await ArtifactService.getSource(context, gitPort, fileSystem);
     prd = source?.prd || undefined;
     sourceDocuments = source?.sourceDocuments;
+
+    if (hasExplicitRefs && sourceDocuments) {
+      const allowedPaths = new Set([...(actionRefs || []), ...(actionCtx || [])]);
+      const filtered: Record<string, string> = {};
+      for (const [name, content] of Object.entries(sourceDocuments)) {
+        if (allowedPaths.has(`inputs/sources/${name}`) || allowedPaths.has(name)) {
+          filtered[name] = content;
+        }
+      }
+      if (Object.keys(filtered).length > 0) {
+        sourceDocuments = filtered;
+        console.log(`📋 [Design Resolve] ActionMetadata refs filter: ${Object.keys(filtered).length} source docs selected`);
+      }
+    }
   } catch (error) {
-    // PRD not found - might be refactor mode without PRD
     prd = undefined;
   }
 

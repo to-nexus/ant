@@ -390,6 +390,49 @@ export async function detectEnvironment(
     };
   }
   
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // ActionMetadata bypass: intent already determines workType/jobMode
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if ((state as any).actionMetadata?.intent) {
+    const { deriveFromIntent } = await import('@ant/shared');
+    const intent = (state as any).actionMetadata.intent as string;
+    const derived = deriveFromIntent(intent);
+    console.log(`⚡ [detectEnvironment] ActionMetadata bypass: intent=${intent} → workType=${derived.workType}, jobMode=${derived.jobMode}, env=${derived.environment}`);
+
+    let detectionReport: DetectionReport;
+    if (derived.workType === 'ui-design') {
+      detectionReport = createUiDesignDetectionReport({
+        jobMode: derived.jobMode as any,
+        jobModeReasoning: `Determined by actionMetadata intent: ${intent}`,
+      });
+    } else if (derived.workType === 'spec') {
+      detectionReport = createSpecDetectionReport({
+        jobMode: derived.jobMode as any,
+        jobModeReasoning: `Determined by actionMetadata intent: ${intent}`,
+      });
+    } else {
+      detectionReport = createSystemDesignDetectionReport({
+        jobMode: derived.jobMode as any,
+        jobModeReasoning: `Determined by actionMetadata intent: ${intent}`,
+        environment: (derived.environment || 'fullstack') as any,
+        environmentReasoning: `Determined by actionMetadata intent: ${intent}`,
+        domain: 'service',
+        domainReasoning: 'Default domain.',
+      });
+    }
+
+    const { getChatAPIClient } = await import("../../../../../core/adapters/ChatAPIClient");
+    const chatAPI = getChatAPIClient();
+    const formattedReport = formatDetectionReportForChat(detectionReport, state._uiLocale || 'ko');
+    await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
+    await chatAPI.finalizeMessage();
+
+    return {
+      detectionReport,
+      _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
+    };
+  }
+
   // ✅ Node activity banner
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('detect', state._uiLocale), 'detect');

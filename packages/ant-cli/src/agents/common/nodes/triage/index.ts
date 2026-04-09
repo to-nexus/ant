@@ -88,9 +88,10 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     (state as any).deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('triage', locale), 'triage');
   }
   
-  // ✅ Skip triage if explicitly requested
-  if (state.skipTriage) {
-    console.log('⏭️  Triage skipped (skipTriage=true)\n');
+  // ✅ Skip triage if explicitly requested or intent is already determined
+  if (state.skipTriage || (state as any).actionMetadata?.intent) {
+    const reason = state.skipTriage ? 'skipTriage=true' : `actionMetadata.intent=${(state as any).actionMetadata.intent}`;
+    console.log(`⏭️  Triage skipped (${reason})\n`);
     return {} as Partial<T>;
   }
   
