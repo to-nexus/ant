@@ -6,6 +6,7 @@ You are implementing a specific task. Follow the instructions for your task type
 
 **All paths are relative to the feature root.**
 - Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
+- Design artifacts: `outputs/design/` — subdirectories: `system/` (design docs), `ui/` (UI specs/tokens), `spec/` (feature specs)
 - Assets source: `features/<feature>/inputs/assets/...`
 - Assets destination:
   - SVG assets → `codebase/src/assets/` (source tree — required for SVGR import)
