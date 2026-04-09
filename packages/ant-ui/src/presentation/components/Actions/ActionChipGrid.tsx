@@ -37,7 +37,7 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
   return (
     <div className="flex flex-col items-center">
       {title && (
-        <h2 className={`font-semibold text-gray-800 dark:text-gray-200 mb-1 ${variant === 'large' ? 'text-xl' : 'text-lg'}`}>
+        <h2 className={`font-semibold text-gray-800 dark:text-gray-200 mb-5 ${variant === 'large' ? 'text-xl' : 'text-lg'}`}>
           {title}
         </h2>
       )}

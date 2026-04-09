@@ -1,6 +1,6 @@
 import { type ActionId } from '@ant/shared';
 import type { ActionReadiness } from '@ant/shared';
-import { FileText, Server, Palette, LayoutList, Code2, ImageIcon, BookOpen, CheckCircle2 } from 'lucide-react';
+import { FileText, Server, Palette, LayoutList, Code2, ImageIcon, BookOpen } from 'lucide-react';
 
 const ACTION_VISUALS: Record<ActionId, { icon: any; bg: string; text: string }> = {
   plan: { icon: FileText, bg: 'bg-blue-100 dark:bg-blue-900/50', text: 'text-blue-600 dark:text-blue-400' },
@@ -30,13 +30,6 @@ export function ActionChip({ actionId, label, description, readiness, variant, o
   const Icon = visual.icon;
   const isLarge = variant === 'large';
 
-  const statusIndicator = !readiness ? null : readiness.hasOutput
-      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-      : readiness.buildReady
-        ? <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-        : readiness.buildBlockReason
-          ? <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-          : null;
 
   return (
     <button
@@ -70,7 +63,6 @@ export function ActionChip({ actionId, label, description, readiness, variant, o
             <span className={`${isLarge ? 'text-sm' : 'text-xs'} font-semibold text-gray-800 dark:text-gray-200 truncate`}>
               {label}
             </span>
-            {statusIndicator}
           </div>
           {isLarge && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{description}</p>

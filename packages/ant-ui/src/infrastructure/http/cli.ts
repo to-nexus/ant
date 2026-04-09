@@ -12,6 +12,7 @@ export interface ExecuteCodeJobOptions {
   overrideDirective?: string;  // ✅ Chat input as directive
   chatSource?: boolean;        // ✅ Flag for Chat SSE
   skipTriage?: boolean;        // ✅ Skip triage node (after proceed choice)
+  actionMetadata?: import('@ant/shared').ActionMetadata;  // ✅ Structured context from Actions panel
 }
 
 export interface JobExecution {
@@ -31,7 +32,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     language = 'en',
     overrideDirective,  // ✅ Chat input as directive
     chatSource,         // ✅ Flag for Chat SSE
-    skipTriage          // ✅ Skip triage (after proceed choice)
+    skipTriage,         // ✅ Skip triage (after proceed choice)
+    actionMetadata      // ✅ Structured context from Actions panel
   } = options;
   
   // ✅ Feature name is required
@@ -96,7 +98,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     language,
     overrideDirective,  // ✅ Pass to API
     chatSource,          // ✅ Pass to API
-    skipTriage           // ✅ Pass to API
+    skipTriage,          // ✅ Pass to API
+    actionMetadata       // ✅ Pass to API
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);

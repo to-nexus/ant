@@ -433,6 +433,9 @@ export class JobWorker {
     if (payload.skipTriage) {
       env.ANT_SKIP_TRIAGE = 'true';
     }
+    if (payload.actionMetadata) {
+      env.ANT_ACTION_METADATA = JSON.stringify(payload.actionMetadata);
+    }
     if (payload.inputFile) {
       env.ANT_INPUT_FILE = payload.inputFile;
     }

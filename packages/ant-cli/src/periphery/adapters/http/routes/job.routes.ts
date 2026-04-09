@@ -94,7 +94,7 @@ export function createJobRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage } = req.body;
+      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata } = req.body;
       
       const userContext = extractUserContext(req);
 
@@ -151,6 +151,7 @@ export function createJobRoutes(deps: {
         overrideDirective,
         chatSource,
         skipTriage,
+        actionMetadata,
         userContext
       };
       

@@ -52,6 +52,13 @@ export const executeJobSchema = z.object({
   enableEvaluation: z.boolean().optional(),
   uiDocumentContext: z.any().optional(),
   designContext: z.any().optional(),
+  actionMetadata: z.object({
+    intent: z.string().optional(),
+    target: z.array(z.string()).optional(),
+    basis: z.string().optional(),
+    refs: z.array(z.string()).optional(),
+    context: z.array(z.string()).optional(),
+  }).optional(),
 }).passthrough();
 
 /**

@@ -44,8 +44,9 @@ export async function orchestrator(params: {
   overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
   chatSource?: boolean;  // ✅ Flag for Chat SSE
   skipTriage?: boolean;  // ✅ Skip triage node (after user selects "proceed" on redirect)
+  actionMetadata?: import('@ant/shared').ActionMetadata;  // ✅ Structured context from Actions panel
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata } = params;
 
   switch (agent) {
     case "architect": {
@@ -247,7 +248,7 @@ export async function orchestrator(params: {
           project || "default",
           'design',
           inputFile,
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath, redis },
+          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, feature, featurePath, redis },
           undefined,  // codeMode
           undefined,  // enableEvaluation
           jobId       // ✅ Pass jobId for real-time Kanban and resume
@@ -319,7 +320,7 @@ export async function orchestrator(params: {
           project || "default",
           'code',
           inputFile,
-          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, feature, featurePath, redis: codeRedis },
+          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, feature, featurePath, redis: codeRedis },
           mode,
           enableEvaluation,
           jobId

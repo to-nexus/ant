@@ -33,6 +33,7 @@ export interface JobPayload {
   overrideDirective?: string;
   chatSource?: boolean;
   skipTriage?: boolean;
+  actionMetadata?: import('@ant/shared').ActionMetadata;
   enableEvaluation?: boolean;
   inputFile?: string;
   

@@ -59,6 +59,7 @@ interface JobParams {
   originalJobId?: string;
   skipTriage?: boolean;
   chatSource?: boolean;
+  actionMetadata?: import('@ant/shared').ActionMetadata;
 }
 
 function getJobParams(): JobParams {
@@ -86,7 +87,8 @@ function getJobParams(): JobParams {
     isResume: process.env.ANT_IS_RESUME === 'true',
     originalJobId: process.env.ANT_ORIGINAL_JOB_ID,
     chatSource: process.env.ANT_CHAT_SOURCE === 'true',
-    skipTriage: process.env.ANT_SKIP_TRIAGE === 'true'
+    skipTriage: process.env.ANT_SKIP_TRIAGE === 'true',
+    actionMetadata: process.env.ANT_ACTION_METADATA ? (() => { try { return JSON.parse(process.env.ANT_ACTION_METADATA); } catch { return undefined; } })() : undefined,
   };
 }
 
@@ -168,7 +170,8 @@ async function runJob(params: JobParams): Promise<void> {
       userContext,
       overrideDirective: params.overrideDirective,
       chatSource: params.chatSource,
-      skipTriage: params.skipTriage
+      skipTriage: params.skipTriage,
+      actionMetadata: params.actionMetadata,
     });
     
     reportProgress('completed', 'Job completed successfully', 100);
