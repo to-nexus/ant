@@ -163,6 +163,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         isLastTaskForDocument,
         sectionScope,
         filteredCatalog,
+        resolvedAction: state.resolvedAction,
       },
       undefined,
       undefined

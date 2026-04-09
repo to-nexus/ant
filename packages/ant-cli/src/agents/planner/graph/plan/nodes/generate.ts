@@ -174,6 +174,7 @@ function buildSystemPrompt(
     hasConversation: compaction.entries.length > 0,
     conversationSummary: compaction.summary || '',
     hasConversationSummary: !!compaction.summary,
+    resolvedAction: state.resolvedAction,
   });
   
   return `${basePrompt}\n\n---\n\n${rules}`;

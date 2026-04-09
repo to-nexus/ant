@@ -93,7 +93,16 @@
   "footer": {
     "chatStart": "채팅으로 시작",
     "build": "BUILD",
+    "building": "BUILDING...",
     "buildBlocked": "{{reason}}"
+  },
+
+  "intent": {
+    "pickTitle": "어떤 작업을 진행하시겠습니까?",
+    "basis": "기반 소스",
+    "refs": "참조 파일",
+    "context": "추가 컨텍스트",
+    "outputDir": "산출물 위치"
   },
 
   "status": {

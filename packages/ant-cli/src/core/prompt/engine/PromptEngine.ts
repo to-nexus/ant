@@ -7,6 +7,7 @@ import { TemplateComposer, ComposedPrompt } from "./TemplateComposer";
 import { PolicyInjector } from "./PolicyInjector";
 import { PromptFormatter, FormattedPrompt } from "./PromptFormatter";
 import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
+import type { ResolvedActionContext } from "@ant/shared";
 /**
  * Dependencies for PromptEngine
  */
@@ -111,7 +112,8 @@ export class PromptEngine {
       "plan",
       assembled,
       mode,
-      taskType
+      taskType,
+      assembled.resolvedAction,
     );
     
     // Layer 4: Compose prompt from templates
@@ -207,6 +209,7 @@ export class PromptEngine {
       isSpecDriven?: boolean;  // ✅ true when designDoc comes from spec document (not system design)
       figmaAvailable?: boolean;
       figmaStartNodeId?: string;
+      resolvedAction?: ResolvedActionContext;
     },
     mode?: JobMode,
     taskType?: string
@@ -240,7 +243,8 @@ export class PromptEngine {
       "execute",
       assembled,
       mode,
-      taskType
+      taskType,
+      assembled.resolvedAction,
     );
     
     // Layer 4: Compose prompt from templates
@@ -522,6 +526,7 @@ export class PromptEngine {
     options?: { hasTools?: boolean },
     designDocUnknownPackages?: string[],
     isSpecDriven?: boolean,
+    resolvedAction?: ResolvedActionContext,
   ): Promise<string> {
     // ✅ Format projectCodeContext as FILE PATHS ONLY (not full content)
     // Plan node is a strategic planner — CodeGen reads actual files via tools.
@@ -573,6 +578,7 @@ export class PromptEngine {
       designDocUnknownPackages: designDocUnknownPackages,
       hasDesignDocUnknownPackages: designDocUnknownPackages && designDocUnknownPackages.length > 0,
       isSpecDriven: isSpecDriven || false,
+      resolvedAction: resolvedAction,
     });
   }
   
@@ -588,6 +594,7 @@ export class PromptEngine {
     options?: { hasTools?: boolean },
     profile?: { language: string; [key: string]: any },
     dependencyStatus?: string,
+    resolvedAction?: ResolvedActionContext,
   ): Promise<string> {
     let formattedCodeContext = '';
     if (projectCodeContext?.files && Array.isArray(projectCodeContext.files) && projectCodeContext.files.length > 0) {
@@ -626,6 +633,7 @@ export class PromptEngine {
       languageHints: languageHints,
       hasLanguageHints: !!languageHints,
       dependencyStatus: dependencyStatus,
+      resolvedAction: resolvedAction,
     });
   }
 
@@ -641,6 +649,7 @@ export class PromptEngine {
     violationsText?: string,
     options?: { hasTools?: boolean },
     profile?: { language: string; [key: string]: any },
+    resolvedAction?: ResolvedActionContext,
   ): Promise<string> {
     let formattedCodeContext = '';
     if (projectCodeContext?.files && Array.isArray(projectCodeContext.files) && projectCodeContext.files.length > 0) {
@@ -672,6 +681,7 @@ export class PromptEngine {
       hasTools: options?.hasTools ?? false,
       languageHints: languageHints,
       hasLanguageHints: !!languageHints,
+      resolvedAction: resolvedAction,
     });
   }
 

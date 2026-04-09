@@ -16,78 +16,60 @@ export type ActionId = 'plan' | 'system-design' | 'ui-design' | 'spec' | 'code' 
 
 export type ActionStatus = 'active' | 'coming-soon';
 
+/**
+ * An Action is an intent group — the top-level card in ActionsPanel.
+ * Each Action groups one or more Intents that share a domain.
+ * The actual agent, jobType, and pipeline config are determined
+ * per-Intent via deriveFromIntent() and the config matrix.
+ */
 export interface ActionDefinition {
   readonly id: ActionId;
-  readonly jobType: JobType;
-  readonly agent: string;
   readonly label: { en: string; ko: string };
   readonly description: { en: string; ko: string };
-  readonly hasSubModes: boolean;
   readonly status: ActionStatus;
 }
 
 export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
   {
     id: 'plan',
-    jobType: 'plan',
-    agent: 'planner',
-    label: { en: 'Create PRD', ko: '기획서 작성' },
-    description: { en: 'Generate or refine a product requirements document', ko: 'PRD를 생성하거나 보강합니다' },
-    hasSubModes: false,
+    label: { en: 'PRD', ko: '기획서' },
+    description: { en: 'Create or revise product requirements', ko: '기획서를 작성하거나 보강합니다' },
     status: 'active',
   },
   {
     id: 'system-design',
-    jobType: 'design',
-    agent: 'architect',
     label: { en: 'System Design', ko: '시스템 설계' },
     description: { en: 'Design architecture, API contracts, and data models', ko: '아키텍처, API 계약, 데이터 모델을 설계합니다' },
-    hasSubModes: false,
     status: 'active',
   },
   {
     id: 'ui-design',
-    jobType: 'design',
-    agent: 'architect',
     label: { en: 'UI Design', ko: 'UI 설계' },
     description: { en: 'Design tokens, assets, and UI specifications', ko: '디자인 토큰, 에셋, UI 스펙을 설계합니다' },
-    hasSubModes: true,
     status: 'active',
   },
   {
     id: 'spec',
-    jobType: 'design',
-    agent: 'architect',
-    label: { en: 'Feature Spec', ko: '기능 스펙 작성' },
+    label: { en: 'Feature Spec', ko: '기능 스펙' },
     description: { en: 'Create implementation specs for a feature scope', ko: '특정 기능의 구현 계획을 작성합니다' },
-    hasSubModes: false,
     status: 'active',
   },
   {
     id: 'code',
-    jobType: 'code',
-    agent: 'architect',
-    label: { en: 'Code', ko: '코드 구현' },
-    description: { en: 'Generate code from specs, design docs, or directives', ko: '스펙, 설계 문서, 또는 지시사항으로 코드를 생성합니다' },
-    hasSubModes: false,
+    label: { en: 'Code', ko: '코드' },
+    description: { en: 'Generate or refactor code', ko: '코드를 생성하거나 리팩토링합니다' },
     status: 'active',
   },
   {
     id: 'visual',
-    jobType: 'visual',
-    agent: 'creator',
-    label: { en: 'Generate Images', ko: '이미지 생성' },
+    label: { en: 'Visual', ko: '이미지' },
     description: { en: 'Generate images, icons, and visual assets', ko: '이미지, 아이콘, 비주얼 에셋을 생성합니다' },
-    hasSubModes: false,
     status: 'active',
   },
   {
     id: 'learn',
-    jobType: 'learn',
-    agent: 'architect',
     label: { en: 'Learn Codebase', ko: '코드베이스 학습' },
     description: { en: 'Analyze and index existing codebase', ko: '기존 코드를 분석하고 인덱싱합니다' },
-    hasSubModes: false,
     status: 'coming-soon',
   },
 ];
@@ -143,6 +125,7 @@ export interface IntentDefinition {
 export const INTENT_DEFINITIONS: ReadonlyArray<IntentDefinition> = [
   // Plan
   { id: 'create-plan', actionId: 'plan', label: { en: 'Create PRD', ko: '기획서 작성' }, description: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' } },
+  { id: 'revise-plan', actionId: 'plan', label: { en: 'Update PRD', ko: '기획서 업데이트' }, description: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' } },
 
   // System Design
   { id: 'create-fe', actionId: 'system-design', label: { en: 'Frontend System', ko: '프론트엔드 시스템' }, description: { en: 'Design frontend architecture', ko: '프론트엔드 아키텍처를 설계합니다' } },
@@ -162,6 +145,7 @@ export const INTENT_DEFINITIONS: ReadonlyArray<IntentDefinition> = [
 
   // Code
   { id: 'create-code', actionId: 'code', label: { en: 'Generate Code', ko: '코드 생성' }, description: { en: 'Generate code from design or directive', ko: '설계 또는 지시사항으로 코드를 생성합니다' } },
+  { id: 'refactor-code', actionId: 'code', label: { en: 'Refactor Code', ko: '코드 리팩토링' }, description: { en: 'Refactor existing codebase', ko: '기존 코드를 리팩토링합니다' } },
 
   // Visual
   { id: 'create-visual', actionId: 'visual', label: { en: 'Generate Images', ko: '이미지 생성' }, description: { en: 'Generate images and visual assets', ko: '이미지와 비주얼 에셋을 생성합니다' } },
@@ -179,9 +163,11 @@ export function getIntentsForAction(actionId: ActionId): ReadonlyArray<IntentDef
 // ActionMetadata (passed from FE to BE for explicit/infer pipeline)
 // ============================================
 
-export type Basis = 'prd' | 'directive' | 'existing-doc' | 'figma' | 'references';
+export type Basis = 'prd' | 'directive' | 'existing-doc' | 'figma' | 'references' | 'spec' | 'design-doc';
 
 export interface ActionMetadata {
+  /** true = explicit pipeline (no inference, use only provided values). Set only via ActionsPanel "Start via Chat". */
+  explicit?: boolean;
   /** When present, determines agent/job and bypasses triage */
   intent?: string;
   /** Target output file paths */
@@ -208,6 +194,8 @@ export function deriveFromIntent(intent: string): {
   switch (intent) {
     case 'create-plan':
       return { jobMode: 'generate', agent: 'planner', jobType: 'plan' };
+    case 'revise-plan':
+      return { jobMode: 'refactor', agent: 'planner', jobType: 'plan' };
 
     case 'create-fe':
       return { workType: 'system-design', jobMode: 'generate', environment: 'frontend', agent: 'architect', jobType: 'design' };
@@ -232,6 +220,8 @@ export function deriveFromIntent(intent: string): {
 
     case 'create-code':
       return { jobMode: 'generate', agent: 'architect', jobType: 'code' };
+    case 'refactor-code':
+      return { jobMode: 'refactor', agent: 'architect', jobType: 'code' };
 
     case 'create-visual':
       return { jobMode: 'generate', agent: 'creator', jobType: 'visual' };
@@ -247,16 +237,6 @@ export function deriveFromIntent(intent: string): {
 // ============================================
 // Action Readiness Types (computed on frontend from fileTree + store)
 // ============================================
-
-export interface MaterialInfo {
-  name: string;
-  path: string;
-  required: boolean;
-  present: boolean;
-  description: { en: string; ko: string };
-  formatHint?: { en: string; ko: string };
-  fileCount?: number;
-}
 
 export interface NamingIssue {
   file: string;
@@ -278,7 +258,6 @@ export interface ActionReadiness {
   hasCodebase: boolean;
   detectedMode: { id: string; label: { en: string; ko: string } };
   subModes?: SubModeStatus[];
-  materials: MaterialInfo[];
   outputDir: string;
   namingIssues: NamingIssue[];
 }

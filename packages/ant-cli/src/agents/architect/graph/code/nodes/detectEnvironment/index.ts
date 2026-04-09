@@ -21,7 +21,8 @@ import {
   formatDetectionReportForChat,
   JobMode,
 } from '../../../../../../core/types/detection';
-import { DESIGN_DIR, DESIGN_SUBDIR, DESIGN_SUBDIRS } from '@ant/shared';
+import { DESIGN_DIR, DESIGN_SUBDIR, DESIGN_SUBDIRS, resolveFromDetection } from '@ant/shared';
+import type { ActionMetadata, EnvironmentHints } from '@ant/shared';
 
 // Import submodules
 import { parseDetectResponse } from './responseParser';
@@ -67,12 +68,12 @@ export async function detectEnvironment(
 
     return {
       detectionReport: state.detectionReport,
+      resolvedAction: state.resolvedAction,
       decomposeKeywords: state.decomposeKeywords || {
         errorFiles: [],
         keywords: [],
         references: new Map<string, string[]>()
       },
-      // ✅ Pass all designDocs through unfiltered (decompose handles profile)
       designDocs: state.designDocs,
       design: state.design,
       profile: state.profile,
@@ -367,10 +368,22 @@ export async function detectEnvironment(
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'detectEnvironment', 0);
   }
   
+  // RAC: create from detection (infer path, LLM detection complete)
+  let resolvedAction = state.resolvedAction;
+  if (!resolvedAction) {
+    const inferActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+    const codebaseProfile = state.context.codebaseProfile;
+    const fallbackHints: EnvironmentHints = {
+      designDocPath: state.designDocPath,
+    };
+    resolvedAction = resolveFromDetection(detectionReport, inferActionMetadata, codebaseProfile, fallbackHints);
+    console.log(`📋 [DetectEnv] RAC created (infer): jobMode=${resolvedAction.jobMode}, tech=${JSON.stringify(resolvedAction.tech)}`);
+  }
+
   return {
     detectionReport,
+    resolvedAction,
     decomposeKeywords,
-    // ✅ Pass all designDocs through unfiltered (decompose determines profile + environment)
     designDocs: state.designDocs,
     design: state.design,
     profile: state.profile,

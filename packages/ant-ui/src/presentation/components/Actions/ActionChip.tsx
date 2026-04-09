@@ -36,7 +36,7 @@ export function ActionChip({ actionId, label, description, readiness, variant, o
       type="button"
       onClick={onClick}
       className={`
-        action-chip relative overflow-hidden w-full
+        action-chip relative overflow-hidden w-full h-full
         rounded-2xl border border-gray-200 dark:border-[#30363d]
         bg-white dark:bg-gray-800/50
         cursor-pointer transition-all duration-200 text-left group
@@ -65,7 +65,7 @@ export function ActionChip({ actionId, label, description, readiness, variant, o
             </span>
           </div>
           {isLarge && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{description}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{description}</p>
           )}
         </div>
       </div>

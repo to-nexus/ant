@@ -2,7 +2,7 @@
  * ChatInput - Message input area with job selector
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Send, ChevronDown } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
@@ -14,8 +14,11 @@ import type { FileStats } from '@/domain/models/chat';
 import { useAgentJobOptions } from './hooks/useAgentJobOptions';
 import { useChatSubmit } from './hooks/useChatSubmit';
 import { useResizableHeight } from './hooks/useResizableHeight';
+import { useMentionAutocomplete } from './hooks/useMentionAutocomplete';
 import { ChatFileChangeSummary } from './ChatFileChangeSummary';
 import { AgentJobToolbar } from './AgentJobToolbar';
+import { ActionMetadataBadges } from './ActionMetadataBadges';
+import { MentionDropdown } from './MentionDropdown';
 
 
 interface ChatInputProps {
@@ -34,6 +37,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const pendingChatInput = useStore((state) => state.pendingChatInput);
   const [message, setMessage] = useState('');
   const [isComposing, setIsComposing] = useState(false);
+  const [cursorPos, setCursorPos] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isAuthenticated = backendMode === 'local' || !!userEmail;
 
@@ -42,6 +47,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const { agents, agentsWithMetadata, currentAgent, jobsWithMetadata, currentJob } = useAgentJobOptions();
   const { handleSubmit } = useChatSubmit({ message, setMessage, showError });
   const { textareaHeight, isResizing, handleResizeStart, handleResizeMove, handleResizeEnd } = useResizableHeight();
+  const mention = useMentionAutocomplete(message, cursorPos);
 
   // Consume pending chat input (from fix, quick action, template, etc.)
   useEffect(() => {
@@ -142,6 +148,22 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
         />
       )}
       
+      {/* Mention Autocomplete Dropdown */}
+      {mention.showSuggestions && (
+        <MentionDropdown
+          suggestions={mention.suggestions}
+          selectedIndex={mention.selectedIndex}
+          onSelect={(s) => {
+            const { newMessage, newCursorPos } = mention.applySuggestion(s);
+            setMessage(newMessage);
+            requestAnimationFrame(() => {
+              textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+            });
+          }}
+          onHover={mention.setSelectedIndex}
+        />
+      )}
+
       {/* Unified Frame */}
       <div className="relative border border-gray-300 dark:border-gray-600 rounded-lg 
                       bg-white dark:bg-gray-800">
@@ -163,8 +185,12 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                          group-hover:bg-blue-500 transition-colors" />
         </div>
         
+        {/* Action Metadata Badges */}
+        <ActionMetadataBadges />
+
         {/* Textarea */}
         <textarea
+          ref={textareaRef}
           data-chat-input
           style={{ height: `${textareaHeight}px` }}
           className="w-full px-3 py-2.5 text-sm
@@ -175,8 +201,20 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                      disabled:opacity-50 disabled:cursor-not-allowed"
           placeholder={chatPolicy.inputPlaceholder}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => {
+            setMessage(e.target.value);
+            setCursorPos(e.target.selectionStart || 0);
+          }}
+          onSelect={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart || 0)}
           onKeyDown={(e) => {
+            const mentionResult = mention.handleKeyDown(e);
+            if (mentionResult !== false) {
+              setMessage(mentionResult.newMessage);
+              requestAnimationFrame(() => {
+                textareaRef.current?.setSelectionRange(mentionResult.newCursorPos, mentionResult.newCursorPos);
+              });
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
               e.preventDefault();
               if (isRunning) {

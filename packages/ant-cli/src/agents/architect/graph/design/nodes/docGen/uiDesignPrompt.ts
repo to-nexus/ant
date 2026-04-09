@@ -621,6 +621,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     siblingTasks: siblingTasks || '',
     jobMode: state.detectionReport?.jobMode,
     userLanguage: state.context.userLanguage || 'en',
+    resolvedAction: state.resolvedAction,
   };
 
   const isFigmaMode = state.uiDesignSource === 'figma';

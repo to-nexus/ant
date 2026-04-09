@@ -1,4 +1,5 @@
 import { API_BASE, apiPost, apiDelete } from './client';
+import type { ActionMetadata } from '@ant/shared';
 
 /**
  * Add a user message to the chat history.
@@ -9,10 +10,15 @@ export async function addChatUserMessage(
   projectId: string,
   featureName: string,
   content: string,
+  actionMetadata?: ActionMetadata,
 ): Promise<string> {
+  const body: Record<string, unknown> = { content };
+  if (actionMetadata && Object.keys(actionMetadata).length > 0) {
+    body.actionMetadata = actionMetadata;
+  }
   const data = await apiPost<{ messageId: string }>(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/user-message`,
-    { content },
+    body,
   );
   return data.messageId;
 }

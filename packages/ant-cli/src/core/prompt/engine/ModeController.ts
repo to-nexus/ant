@@ -1,5 +1,6 @@
 import { AgentJob, JobMode, ProjectEnvironment } from "../../types";
 import { AssembledContext } from "./ContextAssembler";
+import type { ResolvedActionContext } from "@ant/shared";
 
 /**
  * Prompt mode configuration
@@ -52,13 +53,11 @@ export class ModeController {
     phase: "plan" | "execute",
     context: AssembledContext,
     explicitMode?: JobMode,
-    taskType?: string  // 'setup' | 'feature' | 'test-code' | 'doc' | 'error'
+    taskType?: string,  // 'setup' | 'feature' | 'test-code' | 'doc' | 'error'
+    resolvedAction?: ResolvedActionContext,
   ): PromptModeConfig {
-    // ✅ Use explicit mode only - LLM will infer in detectEnvironment if needed
     const mode: JobMode | undefined = explicitMode;
-    
-    // Build mode config based on job and phase
-    return this.buildModeConfig(job, phase, mode, context, taskType);
+    return this.buildModeConfig(job, phase, mode, context, taskType, resolvedAction);
   }
   
   /**
@@ -69,7 +68,8 @@ export class ModeController {
     phase: "plan" | "execute",
     mode: JobMode | undefined,
     context: AssembledContext,
-    taskType?: string
+    taskType?: string,
+    resolvedAction?: ResolvedActionContext,
   ): PromptModeConfig {
     // Template paths
     const basePrefix = `${job}/base`;
@@ -113,7 +113,7 @@ export class ModeController {
     const templates = {
       base: templateBase,
       rules: templateRules,
-      injections: this.selectInjections(job, phase, context, taskType, mode)
+      injections: this.selectInjections(job, phase, context, taskType, mode, resolvedAction)
     };
     
     // LLM parameters based on job
@@ -146,7 +146,8 @@ export class ModeController {
     phase: "plan" | "execute",
     context: AssembledContext,
     taskType?: string,
-    mode?: JobMode
+    mode?: JobMode,
+    resolvedAction?: ResolvedActionContext,
   ): string[] {
     const commonPrefix = `common/injections`;  // ✅ All jobs (templates/common/injections)
     const jobPrefix = `${job}/base/injections`;  // ✅ Job-specific (templates/{job}/base/injections)
@@ -371,6 +372,22 @@ export class ModeController {
       }
       
       
+    }
+
+    // RAC-only injections (R1-R3): additional injections when resolvedAction is present
+    if (resolvedAction) {
+      // R1: action-context — only when source=explicit OR has substantive fields
+      if (resolvedAction.source === 'explicit' || resolvedAction.hasExplicitFields) {
+        injections.push('common/injections/action-context');
+      }
+      // R2: basis-guidance — only when basis is explicitly set
+      if (resolvedAction.basis) {
+        injections.push('common/injections/basis-guidance');
+      }
+      // R3: refactor-guidance — when jobMode is refactor (both explicit and infer)
+      if (resolvedAction.jobMode === 'refactor') {
+        injections.push('common/injections/refactor-guidance');
+      }
     }
     
     return injections;
