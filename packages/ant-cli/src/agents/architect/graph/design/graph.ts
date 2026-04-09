@@ -14,6 +14,7 @@ import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
 import { routeAfterDocGen } from "./routers/docGenRouter";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
+import { designSubdirOf } from "@ant/shared";
 import path from "node:path";
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
@@ -24,7 +25,8 @@ async function stripInternalMarkers(
   targetFile: string,
 ): Promise<void> {
   try {
-    const filePath = path.join(featurePath, 'outputs', 'design', targetFile);
+    const subdir = designSubdirOf(targetFile);
+    const filePath = path.join(featurePath, 'outputs', 'design', subdir, targetFile);
     const content = await fileSystem.readFile(filePath);
     const cleaned = content.replace(INTERNAL_MARKER_RE, '');
     if (cleaned !== content) {
@@ -58,7 +60,9 @@ async function validateAssetReferences(state: DesignGraphState): Promise<{
   const featurePath = state.context.featurePath;
   const fs = await import('fs/promises');
 
-  const uiAssetsPath = path.join(featurePath, 'outputs', 'design', 'ui-assets.json');
+  const uiSubdirPath = path.join(featurePath, 'outputs', 'design', 'ui', 'ui-assets.json');
+  const uiFlatPath = path.join(featurePath, 'outputs', 'design', 'ui-assets.json');
+  const uiAssetsPath = await fs.access(uiSubdirPath).then(() => uiSubdirPath).catch(() => uiFlatPath);
   try {
     const content = await fs.readFile(uiAssetsPath, 'utf-8');
     const parsed = JSON.parse(content);

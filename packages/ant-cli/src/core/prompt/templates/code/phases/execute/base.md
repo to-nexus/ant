@@ -303,10 +303,10 @@ MODIFY: app/page.tsx - Add import and render new component
 {{#if hasUiDoc}}
 ### Visual Design Reference (on-demand)
 
-UI design documents are available at `outputs/design/`. Use `read_file` to inspect sections relevant to your current task:
-- `outputs/design/ui-tokens.json` — design tokens (colors, spacing, typography)
-- `outputs/design/ui-assets.json` — asset inventory and mappings
-- `outputs/design/ui-spec.json` — component specs and layout properties
+UI design documents are available at `outputs/design/ui/`. Use `read_file` to inspect sections relevant to your current task:
+- `outputs/design/ui/ui-tokens.json` — design tokens (colors, spacing, typography)
+- `outputs/design/ui/ui-assets.json` — asset inventory and mappings
+- `outputs/design/ui/ui-spec.json` — component specs and layout properties
 {{/if}}
 {{#if figmaAvailable}}
 ### Figma Visual Reference

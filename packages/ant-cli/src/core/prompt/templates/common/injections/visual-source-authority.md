@@ -31,9 +31,9 @@ When multiple sources describe the same visual property:
 ### On-demand Access Paths
 
 UI design documents reside at these paths (relative to feature root):
-- `outputs/design/ui-tokens.json` — design tokens
-- `outputs/design/ui-assets.json` — asset inventory
-- `outputs/design/ui-spec.json` — component specs and layout
+- `outputs/design/ui/ui-tokens.json` — design tokens
+- `outputs/design/ui/ui-assets.json` — asset inventory
+- `outputs/design/ui/ui-spec.json` — component specs and layout
 
 Use `read_file` to inspect only the sections relevant to your current task.
 

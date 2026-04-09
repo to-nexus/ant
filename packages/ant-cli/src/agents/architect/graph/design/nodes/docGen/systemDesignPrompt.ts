@@ -13,6 +13,7 @@ import { compactAndPruneHistory } from '../../../../../../core/utils/historyMana
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { buildSourceDocsForTask, buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
+import { designDirOf } from '@ant/shared';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -66,7 +67,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       // ✅ FIX: Convert absolute path to workspace-relative path for FileSystemPort
       // FileSystemPort expects relative paths - absolute paths cause path resolution issues
       const pathModule = await import('path');
-      let designDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
+      let designDocPath = `${state.context.featurePath}/${designDirOf(targetFile)}/${targetFile}`;
       
       if (state.deps?.fileSystem) {
         const rootPath = state.deps.fileSystem.getRootPath?.();
@@ -397,10 +398,11 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // ✅ 1. Target File
   if (task?.targetFile) {
     lines.push(`# Target Document`);
-    lines.push(`Write to: \`outputs/design/${task.targetFile}\``);
+    const outputDir = designDirOf(task.targetFile);
+    lines.push(`Write to: \`${outputDir}/${task.targetFile}\``);
     lines.push('');
     lines.push(`⚠️ CRITICAL: You MUST write to this file in your XML output!`);
-    lines.push(`Use: <file path="outputs/design/${task.targetFile}">...</file>`);
+    lines.push(`Use: <file path="${outputDir}/${task.targetFile}">...</file>`);
     lines.push('');
   }
   

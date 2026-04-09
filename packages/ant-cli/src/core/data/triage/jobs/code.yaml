@@ -23,7 +23,7 @@ modes:
           items:
             - type: directory_with_files
               path: outputs/design
-              description: Design documents (outputs/design/)
+              description: Design documents (outputs/design/system/, ui/, spec/)
             - type: has_directive
               description: Task description entered via chat
       recommended:

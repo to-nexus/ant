@@ -31,6 +31,8 @@ export function createCodeDetectionReport(params: {
   environmentReasoning?: string;
   profile?: ProjectProfile;
   requireRag?: boolean;
+  primarySources?: string[];
+  primarySourcesReasoning?: string;
 }): DetectionReport {
   return {
     sourceJob: 'code',
@@ -40,6 +42,8 @@ export function createCodeDetectionReport(params: {
     environmentReasoning: params.environmentReasoning,
     profile: params.profile,
     requireRag: params.requireRag,
+    primarySources: params.primarySources,
+    primarySourcesReasoning: params.primarySourcesReasoning,
     detectedAt: new Date().toISOString(),
   };
 }
@@ -240,9 +244,9 @@ export function formatDetectionReportForChat(
     formatted += isKorean
       ? `📄 **생성 문서**:\n`
       : `📄 **Output Documents**:\n`;
-    formatted += `   • \`outputs/design/ui-tokens.json\`\n`;
-    formatted += `   • \`outputs/design/ui-assets.json\`\n`;
-    formatted += `   • \`outputs/design/ui-spec.json\`\n\n`;
+    formatted += `   • \`outputs/design/ui/ui-tokens.json\`\n`;
+    formatted += `   • \`outputs/design/ui/ui-assets.json\`\n`;
+    formatted += `   • \`outputs/design/ui/ui-spec.json\`\n\n`;
   } else if (report.workType === 'spec') {
     // spec doc output hint is dynamic (spec-{slug}.md), shown after decompose determines the slug
   } else if (report.workType === 'system-design') {

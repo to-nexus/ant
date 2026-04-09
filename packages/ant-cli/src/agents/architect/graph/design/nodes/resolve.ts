@@ -4,7 +4,7 @@ import { DesignGraphState } from "../state";
 import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
-import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData } from "@ant/shared";
+import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 
@@ -161,23 +161,22 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
         /^be-system-.+\.md$/,
       ];
       try {
-        const designDirAbs = path.join(featurePath, "outputs/design");
-        if (fs.existsSync(designDirAbs)) {
-          const designEntries = fs.readdirSync(designDirAbs, { withFileTypes: true });
-          const designFiles = designEntries.filter(
-            (e: any) => !e.isDirectory() && DESIGN_FILE_PATTERNS.some(p => p.test(e.name))
-          );
-          if (designFiles.length > 0) {
-            const reloaded: Record<string, string> = {};
-            for (const entry of designFiles) {
-              const content = fs.readFileSync(path.join(designDirAbs, entry.name), 'utf-8');
-              if (content?.trim()) {
-                reloaded[entry.name] = content;
-              }
+        const designDirAbs = path.join(featurePath, DESIGN_DIR);
+        const reloaded: Record<string, string> = {};
+        for (const dir of [path.join(designDirAbs, DESIGN_SUBDIR.SYSTEM), designDirAbs]) {
+          if (!fs.existsSync(dir)) continue;
+          const entries = fs.readdirSync(dir, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.isDirectory() || reloaded[e.name]) continue;
+            if (DESIGN_FILE_PATTERNS.some(p => p.test(e.name))) {
+              const content = fs.readFileSync(path.join(dir, e.name), 'utf-8');
+              if (content?.trim()) reloaded[e.name] = content;
             }
-            state.existingDesignDocs = reloaded;
-            console.log(`📄 [Design Resolve] Reloaded existingDesignDocs: [${Object.keys(reloaded).join(', ')}]`);
           }
+        }
+        if (Object.keys(reloaded).length > 0) {
+          state.existingDesignDocs = reloaded;
+          console.log(`📄 [Design Resolve] Reloaded existingDesignDocs: [${Object.keys(reloaded).join(', ')}]`);
         }
       } catch {
         // Non-critical: design directory may not exist yet
@@ -325,23 +324,21 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   ];
   let existingDesignDocs: Record<string, string> | undefined;
   try {
-    const designDirAbs = path.join(featurePath, "outputs/design");
-    if (fs.existsSync(designDirAbs)) {
-      const designEntries = fs.readdirSync(designDirAbs, { withFileTypes: true });
-      const designFiles = designEntries.filter(
-        (e: any) => !e.isDirectory() && DESIGN_FILE_PATTERNS.some(p => p.test(e.name))
-      );
-      if (designFiles.length > 0) {
-        existingDesignDocs = {};
-        for (const entry of designFiles) {
-          const content = fs.readFileSync(
-            path.join(designDirAbs, entry.name), 'utf-8'
-          );
-          if (content?.trim()) {
-            existingDesignDocs[entry.name] = content;
-          }
+    const designDirAbs = path.join(featurePath, DESIGN_DIR);
+    const docs: Record<string, string> = {};
+    for (const dir of [path.join(designDirAbs, DESIGN_SUBDIR.SYSTEM), designDirAbs]) {
+      if (!fs.existsSync(dir)) continue;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const e of entries) {
+        if (e.isDirectory() || docs[e.name]) continue;
+        if (DESIGN_FILE_PATTERNS.some(p => p.test(e.name))) {
+          const content = fs.readFileSync(path.join(dir, e.name), 'utf-8');
+          if (content?.trim()) docs[e.name] = content;
         }
       }
+    }
+    if (Object.keys(docs).length > 0) {
+      existingDesignDocs = docs;
     }
   } catch {
     // Non-critical: design directory may not exist yet

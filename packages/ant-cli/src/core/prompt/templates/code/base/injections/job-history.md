@@ -1,7 +1,8 @@
 ## Previous Jobs in This Feature
 
 The following jobs have been completed in this feature session.
-Use this context to avoid redundant work and maintain consistency with prior decisions.
+Each `[Result]` entry shows what was built, which spec/docs were consumed, and which files were written.
+This history defines the boundary of completed work — see Scope Determination rules.
 
 {{#each jobConversation}}
 {{#if (eq this.role "system")}}

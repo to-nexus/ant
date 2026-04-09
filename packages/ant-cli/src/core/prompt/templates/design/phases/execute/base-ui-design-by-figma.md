@@ -21,7 +21,7 @@
 
 ⚠️ **CRITICAL INSTRUCTIONS:**
 
-1. **Read the target file** using `read_file` on `outputs/design/{{targetFile}}`
+1. **Read the target file** using `read_file` on `outputs/design/ui/{{targetFile}}`
 2. **Identify target section** — find the section mentioned in your task
 3. **Modify surgically** using `edit_file` with precise `old_str`/`new_str`
 
@@ -219,7 +219,7 @@ Use semantic token names:
 
 {{{previousChaptersSummary}}}
 
-Use `read_file` on `outputs/design/{{targetFile}}` to inspect existing structure before extending.
+Use `read_file` on `outputs/design/ui/{{targetFile}}` to inspect existing structure before extending.
 
 **⚠️ DUPLICATE PREVENTION:**
 1. Check if topic name appears above → **SKIP entirely**

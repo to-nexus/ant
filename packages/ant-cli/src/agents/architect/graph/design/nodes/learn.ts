@@ -1,6 +1,7 @@
 import { DesignGraphState } from "../state";
 import { SessionRun, ConversationEntry } from "../../../../../core/types";
 import { saveFigmaMCPDebugLog } from '../../../tools/figmaMCPHandler';
+import { DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 
 /**
  * Inter-Job Context Bridge: Build raw job completion record.
@@ -133,7 +134,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   // ✅ Load files from disk (state.files is reset between tasks)
-  // - All Design documents: outputs/design/ (system-design, ui-design both go here)
+  // - Design documents: outputs/design/{system,ui,spec}/ (scanner checks subdir then flat legacy)
   const loadedFiles: Array<{ path: string; content: string; actionType: 'create' | 'append' | 'edit' }> = [];
   
   if (state.deps?.fileSystem && state.context.featurePath) {
@@ -147,60 +148,64 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       ? path.relative(rootPath, state.context.featurePath)
       : state.context.featurePath.replace(/^\//, '');
     
-    // ✅ All design documents go to outputs/design
-    const designDirRel = path.join(featureDirRel, 'outputs/design');
+    const designDirRel = path.join(featureDirRel, DESIGN_DIR);
     
     const isUiDesign = state.detectionReport?.workType === 'ui-design'
       || state.uiDesignSource != null;
-    const expectedFiles = isUiDesign
-      ? ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json']
-      : undefined;  // Any .md files for system design
     
     if (!state.detectionReport?.workType && state.uiDesignSource) {
       console.warn(`⚠️  [Learn] detectionReport.workType missing — falling back to uiDesignSource="${state.uiDesignSource}"`);
     }
-    console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in outputs/design...`);
+
+    const targetSubdir = isUiDesign ? DESIGN_SUBDIR.UI : DESIGN_SUBDIR.SYSTEM;
+    const subDirRel = path.join(designDirRel, targetSubdir);
+    console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in outputs/design/${targetSubdir}/...`);
     
     try {
-      const dirExists = await fileSystem.fileExists(designDirRel);
-      if (dirExists) {
-        const entries = await fileSystem.readDirectory(designDirRel);
-        let mdFiles = entries
-          .filter(e => !e.isDirectory && e.name.endsWith('.md'))
-          .map(e => e.name);
-        
-        // For UI Design, only load expected JSON files
-        if (expectedFiles) {
-          const allFiles = entries
-            .filter(e => !e.isDirectory)
-            .map(e => e.name);
-          mdFiles = allFiles.filter(f => expectedFiles.includes(f));
-        }
-        
-        console.log(`📂 [Learn] Loading ${mdFiles.length} design document(s) from disk...`);
-        
-        for (const filename of mdFiles) {
-          const filePath = path.join(designDirRel, filename);
-          let content = await fileSystem.readFile(filePath);
-          
-          // ✅ Clean up _meta field from JSON files (chapter tracking metadata)
-          if (content && isUiDesign) {
-            content = stripMetaFromContent(filename, content);
-            // Write cleaned content back to disk
-            await fileSystem.writeFile(filePath, content);
-            console.log(`   🧹 Cleaned _meta from: ${filename}`);
+      // Scan subdirectory first, then flat fallback
+      const filesToProcess: { filename: string; dir: string }[] = [];
+
+      for (const dir of [subDirRel, designDirRel]) {
+        if (!(await fileSystem.fileExists(dir))) continue;
+        const entries = await fileSystem.readDirectory(dir);
+
+        if (isUiDesign) {
+          const expectedFiles = ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json'];
+          for (const e of entries) {
+            if (!e.isDirectory && expectedFiles.includes(e.name) && !filesToProcess.some(f => f.filename === e.name)) {
+              filesToProcess.push({ filename: e.name, dir });
+            }
           }
-          
-          const relativePath = `outputs/design/${filename}`;
-          
-          loadedFiles.push({
-            path: relativePath,
-            content: content || '',
-            actionType: 'create'
-          });
-          
-          console.log(`   ✅ Loaded: ${filename} (${(content || '').length} chars)`);
+        } else {
+          for (const e of entries) {
+            if (!e.isDirectory && e.name.endsWith('.md') && !filesToProcess.some(f => f.filename === e.name)) {
+              filesToProcess.push({ filename: e.name, dir });
+            }
+          }
         }
+      }
+        
+      console.log(`📂 [Learn] Loading ${filesToProcess.length} design document(s) from disk...`);
+        
+      for (const { filename, dir } of filesToProcess) {
+        const filePath = path.join(dir, filename);
+        let content = await fileSystem.readFile(filePath);
+          
+        if (content && isUiDesign) {
+          content = stripMetaFromContent(filename, content);
+          await fileSystem.writeFile(filePath, content);
+          console.log(`   🧹 Cleaned _meta from: ${filename}`);
+        }
+          
+        const relativePath = `${dir === subDirRel ? `${DESIGN_DIR}/${targetSubdir}` : DESIGN_DIR}/${filename}`;
+          
+        loadedFiles.push({
+          path: relativePath,
+          content: content || '',
+          actionType: 'create'
+        });
+          
+        console.log(`   ✅ Loaded: ${filename} (${(content || '').length} chars)`);
       }
     } catch (error) {
       console.warn(`⚠️  [Learn] Failed to load design files:`, error);
@@ -208,7 +213,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   }
   
   if (loadedFiles.length === 0 && !hasEarlyTermination) {
-    throw new Error(`No design files found in outputs/design/ - docGen nodes must have run`);
+    throw new Error(
+      `No design files found under outputs/design/{system,ui,spec}/ — docGen nodes must have run`
+    );
   }
   
   // ✅ Update state.files for downstream processing (lessons extraction, session save, etc.)
@@ -323,7 +330,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       await chatAPI.finalizeMessage();
       
       const specFile = state.completedTasksDetails?.[0]?.targetFile 
-        || state.files?.[0]?.path?.replace('outputs/design/', '')
+        || state.files?.[0]?.path?.replace(/^outputs\/design\/(?:spec\/|system\/|ui\/)?/, '')
         || 'spec.md';
       
       const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';

@@ -358,7 +358,7 @@ Generates components, services, APIs, tests based on specifications.
 
 **Prerequisites:**
 - Required:
-  - Design documents (outputs/design/)
+  - Design documents (outputs/design/system/, ui/, spec/)
 - Recommended:
   - Indexed codebase for consistent code style and patterns
 

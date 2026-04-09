@@ -24,7 +24,7 @@ export interface CondenseOptions {
   /** Human-readable document label shown in the condensed header. */
   label: string;
   /**
-   * File path for read_file instruction (e.g. "outputs/design/ui-assets.json").
+   * File path for read_file instruction (e.g. "outputs/design/ui/ui-assets.json").
    * When omitted the condensed output omits the read_file hint.
    */
   filePath?: string;

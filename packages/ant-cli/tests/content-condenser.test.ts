@@ -73,7 +73,7 @@ describe('condenseContent', () => {
       const result = condenseContent(content, {
         threshold: 100,
         label: 'ui-assets.json',
-        filePath: 'outputs/design/ui-assets.json',
+        filePath: 'outputs/design/ui/ui-assets.json',
         contentType: 'json',
       });
 
@@ -94,7 +94,7 @@ describe('condenseContent', () => {
       const result = condenseContent(content, {
         threshold: 100,
         label: 'spec-main.md',
-        filePath: 'outputs/design/spec-main.md',
+        filePath: 'outputs/design/spec/spec-main.md',
       });
 
       expect(result.wasCondensed).toBe(true);
@@ -159,7 +159,7 @@ describe('condenseContent', () => {
       const result = condenseContent(content, {
         threshold: 100,
         label: 'Design Document',
-        filePath: 'outputs/design/fe-system-main.md',
+        filePath: 'outputs/design/system/fe-system-main.md',
       });
       expect(result.wasCondensed).toBe(true);
       expect(result.content).toMatch(/L\d+:.*# Document Title/);

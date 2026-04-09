@@ -51,7 +51,7 @@ export function SpecCompleteVariant({ content, messageId }: VariantProps) {
       theme="emerald"
       icon={<Play className="w-4 h-4" />}
       title={content.content || 'Spec Complete'}
-      subtitle={`outputs/design/${specFile}`}
+      subtitle={`outputs/design/spec/${specFile}`}
       isSelected={state.isSelected}
       resolvedLabel={state.resolvedLabel}
       resolvedIcon={state.selectedChoice === 'later' ? 'dismiss' : 'resume'}

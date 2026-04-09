@@ -42,6 +42,9 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   // outputs
   { path: 'outputs',                           visibility: 'internal' },
   { path: 'outputs/design',                    visibility: 'ui:outputs' },
+  { path: 'outputs/design/ui',                 visibility: 'internal' },
+  { path: 'outputs/design/system',             visibility: 'internal' },
+  { path: 'outputs/design/spec',               visibility: 'internal' },
   { path: 'outputs/plan',                      visibility: 'ui:outputs' },
   { path: 'outputs/evals',                     visibility: 'ui:outputs' },
   { path: 'outputs/evals/prd',                 visibility: 'internal' },
@@ -118,4 +121,40 @@ const CANONICAL_FEATURE_DIRS_SET = new Set(CANONICAL_FEATURE_DIRS);
 export function isCanonicalDir(relativePath: string): boolean {
   const normalized = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
   return CANONICAL_FEATURE_DIRS_SET.has(normalized);
+}
+
+// ============================================
+// Design subdirectory helpers (Single Source of Truth)
+// ============================================
+
+export type DesignSubdir = 'ui' | 'system' | 'spec';
+
+export const DESIGN_SUBDIR = {
+  UI: 'ui',
+  SYSTEM: 'system',
+  SPEC: 'spec',
+} as const satisfies Record<string, DesignSubdir>;
+
+export const DESIGN_SUBDIRS: ReadonlyArray<DesignSubdir> = Object.values(DESIGN_SUBDIR);
+
+export const DESIGN_DIR = 'outputs/design' as const;
+
+/**
+ * Determine which design subdirectory a file belongs to based on filename.
+ *   ui-*.json       → 'ui'
+ *   spec-*.md       → 'spec'
+ *   everything else → 'system'  (be-system-*, fe-system-*, api-contract-*)
+ */
+export function designSubdirOf(filename: string): DesignSubdir {
+  if (filename.startsWith('ui-') && filename.endsWith('.json')) return 'ui';
+  if (filename.startsWith('spec-') && filename.endsWith('.md')) return 'spec';
+  return 'system';
+}
+
+/**
+ * Build the design output directory path for a given filename.
+ * Returns e.g. 'outputs/design/system' or 'outputs/design/ui'.
+ */
+export function designDirOf(filename: string): string {
+  return `${DESIGN_DIR}/${designSubdirOf(filename)}`;
 }

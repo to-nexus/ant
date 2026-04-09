@@ -90,7 +90,7 @@
 | `inputs/directives/` | User directives (design/code) |
 | `inputs/references/` | Design reference images |
 | `inputs/assets/` | Icons, images, logos |
-| `outputs/design/` | Generated design documents |
+| `outputs/design/{system,ui,spec}/` | Generated design documents (system MD, UI JSON, spec MD) |
 | `outputs/evals/` | Evaluation reports (prd/, ui-design/, system-design/, code/) |
 
 ### Information Sources
@@ -105,7 +105,7 @@
 | Architecture docs | `architecture/` (source: docs) |
 | Project guides | `guides/` (source: docs) |
 | User's PRD | `inputs/sources/prd.md` (workspace) |
-| User's design docs | `outputs/design/` (workspace) |
+| User's design docs | `outputs/design/{system,ui,spec}/` (workspace) |
 | User's eval reports | `outputs/evals/{type}/` (workspace) |
 
 ---
@@ -186,8 +186,8 @@ No elaboration. Move on.
 | Evaluation Target | Rubric Path (source: docs) | Workspace Target |
 |-------------------|---------------------------|-----------------|
 | PRD | `rubric/PRD-RUBRIC.md` | `inputs/sources/prd.md` |
-| System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `outputs/design/api-contract-*.md`, `fe-system-*.md`, `be-system-*.md` |
-| UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `outputs/design/ui-spec.json`, `ui-tokens.json`, `ui-assets.json` |
+| System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `outputs/design/system/api-contract-*.md`, `outputs/design/system/fe-system-*.md`, `outputs/design/system/be-system-*.md` |
+| UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `outputs/design/ui/ui-spec.json`, `outputs/design/ui/ui-tokens.json`, `outputs/design/ui/ui-assets.json` |
 | Code | `rubric/CODE-RUBRIC.md` | generated codebase |
 
 ### Scope Resolution
