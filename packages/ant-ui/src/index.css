@@ -139,3 +139,53 @@
   animation: watermark-idle-float 3.6s ease-in-out infinite;
   will-change: transform, filter;
 }
+
+/* Action chip glow — subtle conic-gradient border that rotates */
+@property --glow-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes action-glow-rotate {
+  to { --glow-angle: 360deg; }
+}
+
+.action-chip-glow {
+  background: conic-gradient(
+    from var(--glow-angle, 0deg),
+    transparent 0%,
+    rgba(99, 102, 241, 0.12) 8%,
+    transparent 16%,
+    transparent 100%
+  );
+  animation: action-glow-rotate 6s linear infinite;
+}
+
+.dark .action-chip-glow {
+  background: conic-gradient(
+    from var(--glow-angle, 0deg),
+    transparent 0%,
+    rgba(129, 140, 248, 0.15) 8%,
+    transparent 16%,
+    transparent 100%
+  );
+}
+
+/* Artifact highlight pulse */
+@keyframes artifact-highlight-pulse {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(59, 130, 246, 0.08); }
+}
+
+.dark .artifact-highlight {
+  animation: artifact-highlight-pulse-dark 1.5s ease-in-out 3;
+}
+.artifact-highlight {
+  animation: artifact-highlight-pulse 1.5s ease-in-out 3;
+}
+
+@keyframes artifact-highlight-pulse-dark {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(96, 165, 250, 0.1); }
+}

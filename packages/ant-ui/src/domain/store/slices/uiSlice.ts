@@ -2,6 +2,7 @@ import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
+import { ACTION_DEFINITIONS } from '@ant/shared';
 import i18n from '@/i18n';
 
 export interface UIActions {
@@ -16,9 +17,9 @@ export interface UIActions {
   setIdeConnecting: (connecting: boolean, error?: string) => void;
   setIdeFrameLoaded: (loaded: boolean) => void;
   reloadIdeFrame: () => void;
-  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => void;
-  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => void;
-  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => void;
+  selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
+  openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
+  closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
   clearJobTab: () => Promise<void>;
   restoreJobTab: () => void;
   // ✅ Pending clarify answers (compound ChoiceCard ↔ ChatInput shared state)
@@ -35,6 +36,13 @@ export interface UIActions {
   // ✅ Figma integration bridge state (single normalization point)
   setBridgeStatus: (status: { connected: boolean; detected?: boolean; figmaDesktopReachable?: boolean }) => void;
   setAccountConfigScrollTarget: (target: string | null) => void;
+  // Actions panel
+  openActionsPanel: (actionId?: string) => void;
+  setActionsStep: (step: 'pick-action' | 'pick-mode' | 'detail') => void;
+  selectAction: (actionId: string) => void;
+  selectSubMode: (modeId: string) => void;
+  highlightArtifactDirs: (dirs: string[]) => void;
+  clearHighlightedArtifactDirs: () => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -99,9 +107,13 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   ideConnectError: undefined,
   ideFrameLoaded: false,
   mainPanelActiveTab: 'job',
-  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false },
+  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false },
   mainPanelTabOrder: [],
   isJobTabCleared: false,
+  actionsStep: 'pick-action' as const,
+  selectedActionId: null,
+  selectedSubModeId: null,
+  highlightedArtifactDirs: [] as string[],
   pendingClarifyAnswers: {},
   pendingClarifyQuestions: [],
   onboardingSkipped: false,
@@ -336,6 +348,56 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   setAccountConfigScrollTarget: (target) => {
     set({ accountConfigScrollTarget: target });
+  },
+
+  openActionsPanel: (actionId?: string) => {
+    set((s: any) => {
+      const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'actions');
+      newOrder.push('actions');
+
+      let step: 'pick-action' | 'pick-mode' | 'detail' = 'pick-action';
+      if (actionId) {
+        const def = ACTION_DEFINITIONS.find(d => d.id === actionId);
+        step = def?.hasSubModes ? 'pick-mode' : 'detail';
+      }
+
+      return {
+        mainPanelActiveTab: 'actions',
+        mainPanelOpenTabs: { ...s.mainPanelOpenTabs, actions: true },
+        mainPanelTabOrder: newOrder,
+        actionsStep: step,
+        selectedActionId: actionId || null,
+        selectedSubModeId: null,
+      };
+    });
+  },
+
+  setActionsStep: (step) => {
+    set({ actionsStep: step });
+  },
+
+  selectAction: (actionId: string) => {
+    set({ selectedActionId: actionId, selectedSubModeId: null });
+  },
+
+  selectSubMode: (modeId: string) => {
+    set({ selectedSubModeId: modeId });
+  },
+
+  highlightArtifactDirs: (dirs: string[]) => {
+    set({ highlightedArtifactDirs: dirs });
+    setTimeout(() => {
+      set((s: any) => {
+        if (JSON.stringify(s.highlightedArtifactDirs) === JSON.stringify(dirs)) {
+          return { highlightedArtifactDirs: [] };
+        }
+        return {};
+      });
+    }, 4000);
+  },
+
+  clearHighlightedArtifactDirs: () => {
+    set({ highlightedArtifactDirs: [] });
   },
 });
 

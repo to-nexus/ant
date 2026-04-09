@@ -12,6 +12,11 @@ import { PinnedQuery } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
 import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
+import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
+import { ActionChipGrid } from '../Actions';
+import { useStore } from '@/domain/store';
+import type { ActionId } from '@ant/shared';
+import { Compass, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FileStats } from '@/domain/models/chat';
 
 interface ChatPanelProps {
@@ -98,6 +103,7 @@ export function ChatPanel({
   const { messages, isStreaming } = useChat();
   
   const chatPolicy = useChatPolicy(messages.length);
+  const mainPanelActiveTab = useStore(s => s.mainPanelActiveTab);
 
   // ✅ Track which user message to pin (Cursor-style dynamic pinning)
   // null = no pin needed (user message visible or none above viewport)
@@ -238,23 +244,27 @@ export function ChatPanel({
           </div>
         )}
 
-        {/* Empty State Message - Ready to Chat */}
+        {/* Empty State - Ready: Action Chip Grid (hidden when actions tab is open) */}
         {messages.length === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
-          <div className="flex-1 min-h-0 flex items-center justify-center p-8">
-            <div className="text-center max-w-sm">
-              <WatermarkIcon
-                src={emptyStateWatermarkSrc}
-                size={120}
-                className="mx-auto mb-4 watermark-empty-icon"
-                fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon">✨</div>}
-              />
-              <p className="text-sm text-gray-700 dark:text-gray-200 font-medium mb-2 shimmer-text">
-                {t('policy.readyToStart')}
-              </p>
-              <p className="text-xs text-gray-600 dark:text-gray-300 shimmer-text">
-                {chatPolicy.readyEmptyStateMessage}
-              </p>
-            </div>
+          <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+            {mainPanelActiveTab === 'actions' ? (
+              <div className="text-center max-w-sm">
+                <WatermarkIcon
+                  src={emptyStateWatermarkSrc}
+                  size={120}
+                  className="mx-auto mb-4 watermark-empty-icon"
+                  fallback={<div className="text-5xl mb-4 animate-sparkle-float inline-block watermark-empty-icon">✨</div>}
+                />
+                <p className="text-sm text-gray-700 dark:text-gray-200 font-medium mb-2 shimmer-text">
+                  {t('policy.readyToStart')}
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-300 shimmer-text">
+                  {chatPolicy.readyEmptyStateMessage}
+                </p>
+              </div>
+            ) : (
+              <ChatActionCards />
+            )}
           </div>
         )}
 
@@ -289,6 +299,10 @@ export function ChatPanel({
 
       {/* Input Area - Fixed at bottom */}
       <div className="border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+        {/* Actions CTA - show when messages exist + no active job */}
+        {messages.length > 0 && chatPolicy.reason === 'ready' && (
+          <ActionsCTA />
+        )}
         {/* Queue Status Banner */}
         <QueueStatusBanner />
         
@@ -298,6 +312,83 @@ export function ChatPanel({
         />
       </div>
     </div>
+  );
+}
+
+function ChatActionCards() {
+  const { t } = useTranslation('actions');
+  const readiness = useActionReadiness();
+  const openActionsPanel = useStore(s => s.openActionsPanel);
+  const selectedAgent = useStore(s => s.selectedAgent);
+  const [showAll, setShowAll] = useState(false);
+
+  const handleSelect = (actionId: ActionId) => {
+    openActionsPanel(actionId);
+  };
+
+  const BASE = import.meta.env.BASE_URL;
+  const agentWatermark = selectedAgent && !showAll
+    ? `${BASE}watermarks/${selectedAgent}-color.png`
+    : undefined;
+
+  return (
+    <div className="flex flex-col items-center max-w-md w-full">
+      {/* Agent character (only in agent-filtered view) */}
+      {agentWatermark && (
+        <img src={agentWatermark} alt="" className="w-20 h-20 mb-4 opacity-80 watermark-empty-icon" />
+      )}
+
+      {/* Title row: back button (in showAll) + title + forward button (in agent view) */}
+      <div className="flex items-center gap-2 mb-5">
+        {showAll && (
+          <button
+            type="button"
+            onClick={() => setShowAll(false)}
+            className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            aria-label="Back"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">{t('title')}</h2>
+      </div>
+
+      <ActionChipGrid
+        readiness={readiness}
+        variant="compact"
+        onSelect={handleSelect}
+        agentFilter={showAll ? undefined : (selectedAgent || undefined)}
+      />
+
+      {/* "All actions" link (only in agent-filtered view) */}
+      {!showAll && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-4 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors flex items-center gap-1"
+        >
+          {t('showAll')}
+          <ChevronRight className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ActionsCTA() {
+  const { t } = useTranslation('actions');
+  const openActionsPanel = useStore(s => s.openActionsPanel);
+
+  return (
+    <button
+      type="button"
+      onClick={() => openActionsPanel()}
+      className="mx-4 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-[#30363d] flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm w-[calc(100%-2rem)]"
+    >
+      <Compass className="w-4 h-4 text-gray-500" />
+      <span className="font-medium text-gray-700 dark:text-gray-300">{t('ctaButton')}</span>
+      <ChevronRight className="w-3 h-3 text-gray-400 ml-auto" />
+    </button>
   );
 }
 
