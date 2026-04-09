@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceState } from './types';
+import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
 import { MemoryPort } from '../../../../core/ports';
 import { isTemplateContent } from '../../../../core/utils/templateDetector';
 import { migrateFigmaConfig, isFigmaDataPopulated } from '@ant/shared';
@@ -172,27 +173,31 @@ export async function analyzeWorkspace(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Check design documents
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const designPath = path.join(featurePath, 'outputs', 'design');
+  const designPath = path.join(featurePath, DESIGN_DIR);
   
-  // System design - check for any design doc matching unified naming patterns
-  if (fs.existsSync(designPath)) {
-    const files = fs.readdirSync(designPath);
-    state.hasSystemDesignDoc = files.some(f => 
+  const listDesignDir = (subdir?: string) => {
+    const dir = subdir ? path.join(designPath, subdir) : designPath;
+    if (!fs.existsSync(dir)) return [] as string[];
+    return fs.readdirSync(dir);
+  };
+
+  // System design - check subdirectory first, then flat
+  {
+    const systemFiles = [...listDesignDir('system'), ...listDesignDir()];
+    state.hasSystemDesignDoc = systemFiles.some(f => 
       (f.startsWith('fe-system-') || f.startsWith('be-system-') || f.startsWith('api-contract-')) && f.endsWith('.md')
     );
-  } else {
-    state.hasSystemDesignDoc = false;
   }
   
-  // UI docs (ui-tokens.json, ui-assets.json, ui-spec.json)
-  const uiTokensPath = path.join(designPath, 'ui-tokens.json');
-  const uiAssetsPath = path.join(designPath, 'ui-assets.json');
-  const uiSpecPath = path.join(designPath, 'ui-spec.json');
-  state.hasUiDocs = fs.existsSync(uiTokensPath) || fs.existsSync(uiAssetsPath) || fs.existsSync(uiSpecPath);
+  // UI docs — check ui/ subdir first, then flat
+  const uiDir = path.join(designPath, 'ui');
+  const existsInUi = (name: string) =>
+    fs.existsSync(path.join(uiDir, name)) || fs.existsSync(path.join(designPath, name));
+  state.hasUiDocs = existsInUi('ui-tokens.json') || existsInUi('ui-assets.json') || existsInUi('ui-spec.json');
   
-  // Spec documents (spec-*.md)
-  if (fs.existsSync(designPath)) {
-    const specFiles = fs.readdirSync(designPath).filter(f =>
+  // Spec documents — check spec/ subdir first, then flat
+  {
+    const specFiles = [...listDesignDir('spec'), ...listDesignDir()].filter(f =>
       f.startsWith('spec-') && f.endsWith('.md')
     );
     state.hasSpecDocs = specFiles.length > 0;
@@ -200,16 +205,17 @@ export async function analyzeWorkspace(
       state.specDocCount = specFiles.length;
       state.specDocNames = specFiles;
     }
-  } else {
-    state.hasSpecDocs = false;
   }
 
-  // Any design document
-  if (fs.existsSync(designPath)) {
-    const designFiles = fs.readdirSync(designPath).filter(f => 
-      f.endsWith('.md') || f.endsWith('.json')
-    );
-    state.hasDesignDoc = designFiles.length > 0;
+  // Any design document (across all subdirectories)
+  {
+    const allDesignFiles = [
+      ...listDesignDir('system'),
+      ...listDesignDir('ui'),
+      ...listDesignDir('spec'),
+      ...listDesignDir(),
+    ].filter(f => f.endsWith('.md') || f.endsWith('.json'));
+    state.hasDesignDoc = allDesignFiles.length > 0;
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

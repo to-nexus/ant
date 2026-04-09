@@ -134,20 +134,20 @@ export interface WorkspaceState {
   assetCount?: number;
   
   // Design job - system-design mode
-  hasSystemDesignDoc: boolean;   // outputs/design/*-system-*.md or api-contract-*.md
-  hasUiDocs: boolean;            // outputs/design/ui-*.json
+  hasSystemDesignDoc: boolean;   // outputs/design/system/*-system-*.md or api-contract-*.md
+  hasUiDocs: boolean;            // outputs/design/ui/ui-*.json
   
   // Evaluations
   hasEvals: boolean;             // outputs/evals/ has any reports
   evalCount?: number;            // Total eval report files
   
   // Spec documents
-  hasSpecDocs: boolean;          // Any spec-*.md in outputs/design/
+  hasSpecDocs: boolean;          // Any spec-*.md in outputs/design/spec/
   specDocCount?: number;
   specDocNames?: string[];       // e.g. ['spec-social-login.md', 'spec-payment.md']
 
   // Code job
-  hasDesignDoc: boolean;         // Any design doc in outputs/design/
+  hasDesignDoc: boolean;         // Any design doc under outputs/design/system|ui|spec/
   hasCodebase: boolean;          // Indexed in vector DB
   indexedFileCount?: number;
 }

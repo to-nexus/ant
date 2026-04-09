@@ -15,6 +15,7 @@ import { DesignGraphState } from '../../state';
 import { CacheableContent, MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildSourceDocsForTask } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
+import { designDirOf } from '@ant/shared';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
@@ -70,7 +71,8 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     if (!isFirstSection && state.deps?.fileSystem && state.context.featurePath) {
       try {
         const pathModule = await import('path');
-        let specDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
+        const specOutputDir = designDirOf(targetFile);
+        let specDocPath = `${state.context.featurePath}/${specOutputDir}/${targetFile}`;
         const rootPath = state.deps.fileSystem.getRootPath?.();
         if (rootPath && pathModule.isAbsolute(specDocPath)) {
           specDocPath = pathModule.relative(rootPath, specDocPath);
@@ -128,7 +130,8 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       try {
         const pathModule = await import('path');
         if (state.deps?.fileSystem && state.context.featurePath) {
-          let specDocPath = `${state.context.featurePath}/outputs/design/${targetFile}`;
+          const refactorOutputDir = designDirOf(targetFile);
+          let specDocPath = `${state.context.featurePath}/${refactorOutputDir}/${targetFile}`;
           const rootPath = state.deps.fileSystem.getRootPath?.();
           if (rootPath && pathModule.isAbsolute(specDocPath)) {
             specDocPath = pathModule.relative(rootPath, specDocPath);
@@ -161,9 +164,10 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
 
     const runtimeParts: string[] = [];
 
+    const specDir = designDirOf(targetFile);
     runtimeParts.push(`# Target Document`);
-    runtimeParts.push(`Write to: \`outputs/design/${targetFile}\``);
-    runtimeParts.push(`Use: <file path="outputs/design/${targetFile}">...</file>`);
+    runtimeParts.push(`Write to: \`${specDir}/${targetFile}\``);
+    runtimeParts.push(`Use: <file path="${specDir}/${targetFile}">...</file>`);
     runtimeParts.push('');
 
     if (task) {

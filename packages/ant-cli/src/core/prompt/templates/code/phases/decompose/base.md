@@ -13,6 +13,8 @@ DIRECTIVE:
 {{{assetsHint}}}
 {{/if}}
 
+{{> code/phases/decompose/scope-rules}}
+
 {{> code/phases/decompose/mode-guide}}
 
 {{> code/phases/decompose/error-or-general}}
@@ -55,12 +57,11 @@ DIRECTIVE:
 The following feature-scoped specification documents exist:
 {{specDocsMeta}}
 
-If any spec doc is relevant to the directive, select it as the primary specification.
-Output the selected filename in a `<selectedSpec>` tag:
+**You MUST output a `<selectedSpec>` tag.** Select the spec relevant to the directive, or null if none applies.
+
 `<selectedSpec>spec-social-login.md</selectedSpec>`
 
-If no spec doc is relevant, output:
-`<selectedSpec>null</selectedSpec>`
+If no spec doc is relevant: `<selectedSpec>null</selectedSpec>`
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}

@@ -115,7 +115,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         label: 'System Design',
         filePath: state.currentTask.packages
           .filter(p => p.startsWith('fe-') || p.startsWith('be-'))
-          .map(p => `outputs/design/${p.startsWith('fe') ? 'fe' : 'be'}-system-${p.slice(3)}.md`)
+          .map(p => `outputs/design/system/${p.startsWith('fe') ? 'fe' : 'be'}-system-${p.slice(3)}.md`)
           .join(', '),
       });
       designDocForTask = designResult.content || undefined;
@@ -144,7 +144,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       {
         threshold: 30_000,
         label: `Spec Document: ${state.selectedSpec}`,
-        filePath: `outputs/design/${state.selectedSpec}`,
+        filePath: `outputs/design/spec/${state.selectedSpec}`,
       },
     ).content;
     console.log(`📋 [Execute] Error task with spec "${state.selectedSpec}" — injecting specDoc (${designDocForTask.length} chars)`);
@@ -331,7 +331,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
               `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
               `Use them to match layout/spacing/visual states.\n` +
               `IMPORTANT: Treat these as reference only. Do NOT assume these files are available in the app runtime (e.g. not copied into \`public/\` automatically).\n` +
-              `If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) require explicit instructions in \`outputs/design/ui-assets.json\` (including destination paths).\n\n` +
+              `If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) require explicit instructions in \`outputs/design/ui/ui-assets.json\` (including destination paths).\n\n` +
               `${previewList}\n`
           });
         }

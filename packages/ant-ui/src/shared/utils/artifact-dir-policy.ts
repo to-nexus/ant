@@ -31,8 +31,20 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     acceptedExtensions: ['.png', '.jpg', '.jpeg', '.webp', '.gif'],
   },
   'outputs/design': {
-    allowSubdirs: false,
+    allowSubdirs: true,
     acceptedExtensions: ['.md', '.json'],
+  },
+  'outputs/design/ui': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.json'],
+  },
+  'outputs/design/system': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.md'],
+  },
+  'outputs/design/spec': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.md'],
   },
   'outputs/evals/prd': {
     allowSubdirs: false,

@@ -186,17 +186,30 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
       
       if (stats.isDirectory()) {
         const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
-        const files = await fs.promises.readdir(fullPath);
-        const textFiles = files.filter(f => textExtensions.some(ext => f.endsWith(ext)));
+
+        const collectTextFiles = async (dir: string): Promise<{ file: string; dir: string }[]> => {
+          const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+          const result: { file: string; dir: string }[] = [];
+          for (const e of entries) {
+            if (e.isDirectory()) {
+              result.push(...await collectTextFiles(path.join(dir, e.name)));
+            } else if (textExtensions.some(ext => e.name.endsWith(ext))) {
+              result.push({ file: e.name, dir });
+            }
+          }
+          return result;
+        };
+
+        const textFiles = await collectTextFiles(fullPath);
         
         if (textFiles.length === 0) {
           return true;
         }
         
         if (material.mustHaveContent) {
-          for (const textFile of textFiles) {
+          for (const { file, dir } of textFiles) {
             const content = await fs.promises.readFile(
-              path.join(fullPath, textFile),
+              path.join(dir, file),
               'utf-8'
             );
             if (this.hasContent(content)) {

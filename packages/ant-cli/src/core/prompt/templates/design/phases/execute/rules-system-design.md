@@ -124,7 +124,7 @@ LLMs generate plausible but outdated API structures and framework constraints wi
 Use `<file>` tag:
 
 ```xml
-<file path="outputs/design/[FILENAME]">
+<file path="outputs/design/system/[FILENAME]">
 # [Document Type] Document: [Project Name]
 
 ## 1. Overview
@@ -154,7 +154,7 @@ Use `<file>` tag:
 Use `<append>` tag:
 
 ```xml
-<append path="outputs/design/[FILENAME]">
+<append path="outputs/design/system/[FILENAME]">
 ## N. [Topic]    <!-- N = lastSectionNumber + 1 -->
 
 ...
@@ -174,7 +174,7 @@ Use `<append>` tag:
 
 **❌ FATAL ERROR - Using <file> on existing document:**
 ```xml
-<file path="outputs/design/be-system-main.md">  ← WRONG! Will OVERWRITE!
+<file path="outputs/design/system/be-system-main.md">  ← WRONG! Will OVERWRITE!
 ## N. [Topic]
 ...
 </file>
@@ -182,7 +182,7 @@ Use `<append>` tag:
 
 **✅ CORRECT - Using <append> for continuation:**
 ```xml
-<append path="outputs/design/be-system-main.md">  ← CORRECT! Adds at end
+<append path="outputs/design/system/be-system-main.md">  ← CORRECT! Adds at end
 ## N. [Topic]
 ...
 </append>
@@ -194,7 +194,7 @@ Use `edit_file` tool to modify existing sections:
 
 ```python
 edit_file(
-  path="outputs/design/be-system-main.md",
+  path="outputs/design/system/be-system-main.md",
   old_str="""## 2. Architecture
 
 ### 2.1 System Overview
@@ -212,9 +212,9 @@ edit_file(
 ## Path Requirements
 ════════════════════════════════════════════════════════════════════════════════
 
-**CRITICAL: All paths must be in `outputs/design/` directory!**
+**CRITICAL: All paths must be in `outputs/design/system/` directory!**
 
-**Your target document:** `outputs/design/{{currentTask.targetFile}}`
+**Your target document:** `outputs/design/system/{{currentTask.targetFile}}`
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Tag Selection Decision Tree
@@ -254,12 +254,12 @@ Is lastSectionNumber provided in context?
 If you need multiple file operations, use multiple XML tags:
 
 ```xml
-<append path="outputs/design/be-system-main.md">
+<append path="outputs/design/system/be-system-main.md">
 ## 4. Technology Stack
 ...
 </append>
 
-<append path="outputs/design/be-system-main.md">
+<append path="outputs/design/system/be-system-main.md">
 ## 5. Non-Functional Requirements
 ...
 </append>
@@ -273,7 +273,7 @@ If you need multiple file operations, use multiple XML tags:
 1. **lastSectionNumber exists?** → Use `<append>`, NOT `<file>`
 2. **ALL output must be inside XML tags** (no text before/after)
 3. **NO markdown fences inside XML** (just write markdown directly)
-4. **Path MUST start with** `outputs/design/`
+4. **Path MUST start with** `outputs/design/system/`
 {{#if isLastTaskForDocument}}
 5. **OMIT** `<!-- LAST_SECTION: N -->` (this is the LAST task)
 {{else}}
@@ -292,7 +292,7 @@ Before generating output, verify:
 - ✅ NO text outside XML tags?
 
 **Path Correctness:**
-- ✅ Path starts with `outputs/design/`?
+- ✅ Path starts with `outputs/design/system/`?
 - ✅ Filename is `{{currentTask.targetFile}}`?
 
 **Content Format:**

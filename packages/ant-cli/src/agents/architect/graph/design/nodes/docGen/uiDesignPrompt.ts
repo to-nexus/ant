@@ -21,6 +21,7 @@ import { compactAndPruneHistory } from '../../../../../../core/utils/historyMana
 import { buildSourceDocsForTask } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
 import type { FigmaNodeSummary } from '@ant/shared';
+import { designDirOf, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -469,7 +470,7 @@ async function loadPreviousUiDocs(
     ? path.relative(rootPath, state.context.featurePath)
     : state.context.featurePath.replace(/^\//, '');
   
-  const designOutputDir = path.join(featureDirRel, 'outputs/design');
+  const designOutputDir = path.join(featureDirRel, DESIGN_DIR, DESIGN_SUBDIR.UI);
   let injectedDocs = '';
   
   // Load COMPLETE ui-tokens.json for ui-spec-*
@@ -554,7 +555,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         ? path.relative(rootPath, state.context.featurePath)
         : state.context.featurePath.replace(/^\//, '');
       
-      const filePath = path.join(featureDirRel, 'outputs/design', actualTargetFile);
+      const filePath = path.join(featureDirRel, designDirOf(actualTargetFile), actualTargetFile);
       const fileExists = await state.deps.fileSystem.fileExists(filePath);
       
       if (fileExists) {

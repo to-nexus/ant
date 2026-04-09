@@ -4,7 +4,7 @@
  * Feature 개발 과정의 입출력 artifact 파일 관리
  * - inputs/directives/: 작업 지시사항
  * - inputs/sources/: PRD, Figma 등 입력 자료
- * - outputs/design/: 설계 문서
+ * - outputs/design/{system,ui,spec}/: 설계 문서 (system / UI JSON / spec)
  * - outputs/evals/: 평가 리포트
  * 
  * ✅ Hexagonal Architecture:
@@ -25,6 +25,7 @@ import {
 } from "./UiDocParser";
 import { getSessionDebugDir } from "../../core/utils/sessionPaths";
 import { normalizeTemplateDoc } from "../../core/utils/templateDetector";
+import { designSubdirOf, DESIGN_SUBDIRS, DESIGN_DIR } from "@ant/shared";
 
 /**
  * Artifact-specific project context.
@@ -220,6 +221,28 @@ export class ArtifactService {
    *   - specSections: Map of section ID → content (from ui-spec.json)
    *   - specToc: Table of contents (for decompose prompt)
    */
+  /**
+   * Try to read a UI document from subdirectory first, then flat fallback.
+   */
+  private static async readUiFile(
+    fileSystem: FileSystemPort,
+    designDir: string,
+    fileName: string
+  ): Promise<string | undefined> {
+    const subPath = path.join(designDir, designSubdirOf(fileName), fileName);
+    if (await fileSystem.fileExists(subPath)) {
+      const content = await fileSystem.readFile(subPath);
+      const normalized = ArtifactService.normalizeUserDoc(content) || undefined;
+      if (normalized) return normalized;
+    }
+    const flatPath = path.join(designDir, fileName);
+    if (await fileSystem.fileExists(flatPath)) {
+      const content = await fileSystem.readFile(flatPath);
+      return ArtifactService.normalizeUserDoc(content) || undefined;
+    }
+    return undefined;
+  }
+
   static async loadParsedUiContext(
     context: ArtifactProjectContext,
     gitPort: GitPort,
@@ -235,48 +258,20 @@ export class ArtifactService {
       return null;
     }
 
-    // Read individual UI document files
-    let uiSpec: string | undefined;
-    let uiTokens: string | undefined;
-    let uiAssets: string | undefined;
+    const uiSpec = await ArtifactService.readUiFile(fileSystem, designDir, 'ui-spec.json');
+    if (uiSpec) console.log(`   ✅ [loadParsedUiContext] ui-spec.json: loaded (${uiSpec.length} chars)`);
 
-    // ui-spec.json
-    const specPath = path.join(designDir, 'ui-spec.json');
-    if (await fileSystem.fileExists(specPath)) {
-      const content = await fileSystem.readFile(specPath);
-      uiSpec = ArtifactService.normalizeUserDoc(content) || undefined;
-      if (uiSpec) {
-        console.log(`   ✅ [loadParsedUiContext] ui-spec.json: loaded (${uiSpec.length} chars)`);
-      }
-    }
+    const uiTokens = await ArtifactService.readUiFile(fileSystem, designDir, 'ui-tokens.json');
+    if (uiTokens) console.log(`   ✅ [loadParsedUiContext] ui-tokens.json: loaded (${uiTokens.length} chars)`);
 
-    // ui-tokens.json
-    const tokensPath = path.join(designDir, 'ui-tokens.json');
-    if (await fileSystem.fileExists(tokensPath)) {
-      const content = await fileSystem.readFile(tokensPath);
-      uiTokens = ArtifactService.normalizeUserDoc(content) || undefined;
-      if (uiTokens) {
-        console.log(`   ✅ [loadParsedUiContext] ui-tokens.json: loaded (${uiTokens.length} chars)`);
-      }
-    }
+    const uiAssets = await ArtifactService.readUiFile(fileSystem, designDir, 'ui-assets.json');
+    if (uiAssets) console.log(`   ✅ [loadParsedUiContext] ui-assets.json: loaded (${uiAssets.length} chars)`);
 
-    // ui-assets.json
-    const assetsPath = path.join(designDir, 'ui-assets.json');
-    if (await fileSystem.fileExists(assetsPath)) {
-      const content = await fileSystem.readFile(assetsPath);
-      uiAssets = ArtifactService.normalizeUserDoc(content) || undefined;
-      if (uiAssets) {
-        console.log(`   ✅ [loadParsedUiContext] ui-assets.json: loaded (${uiAssets.length} chars)`);
-      }
-    }
-
-    // If no UI docs found, return null
     if (!uiSpec && !uiTokens && !uiAssets) {
       console.log(`   ⚠️  [loadParsedUiContext] No UI documents found`);
       return null;
     }
 
-    // Parse into structured format
     const parsed = parseUiDocs(uiSpec, uiTokens, uiAssets);
     
     console.log(`   📊 [loadParsedUiContext] Parsed UI docs:`);
@@ -374,7 +369,10 @@ export class ArtifactService {
 
     console.log(`🔍 [ArtifactService.findLatestDesign] designPath: ${designPath}`);
 
-    const designFiles = await ArtifactService.listDesignFiles(fileSystem, designPath);
+    const SYSTEM_PATTERN = /^(api-contract|fe-system|be-system)-.+\.md$/;
+    const designFiles = await ArtifactService.listDesignFiles(
+      fileSystem, designPath, 'system', n => SYSTEM_PATTERN.test(n)
+    );
 
     const priorityPatterns: RegExp[] = [];
     if (preferredEnvironment === 'frontend') {
@@ -386,13 +384,13 @@ export class ArtifactService {
     }
 
     for (const pattern of priorityPatterns) {
-      const match = designFiles.find(f => pattern.test(f));
+      const match = designFiles.find(f => pattern.test(f.name));
       if (match) {
-        const filePath = path.join(designPath, match);
+        const filePath = path.join(match.dir, match.name);
         const content = await fileSystem.readFile(filePath);
         if (content) {
-          console.log(`📄 [ArtifactService] Found design document: ${match}`);
-          return { content, filePath: match };
+          console.log(`📄 [ArtifactService] Found design document: ${match.name}`);
+          return { content, filePath: match.name };
         }
       }
     }
@@ -413,10 +411,8 @@ export class ArtifactService {
   /**
    * Load design documents for Code Job.
    * 
-   * Scans outputs/design/ for unified `{type}-{name}.md` pattern only:
-   *   - api-contract-{name}.md
-   *   - fe-system-{name}.md
-   *   - be-system-{name}.md
+   * Scans outputs/design/system/ first, then falls back to outputs/design/ (flat).
+   * Patterns: api-contract-{name}.md, fe-system-{name}.md, be-system-{name}.md
    */
   static async loadDesignDocuments(
     context: ArtifactProjectContext,
@@ -436,16 +432,20 @@ export class ArtifactService {
       beDesigns: {},
     };
 
-    const designFiles = await ArtifactService.listDesignFiles(fileSystem, designPath);
+    const SYSTEM_PATTERN = /^(api-contract|fe-system|be-system)-.+\.md$/;
+    const designFiles = await ArtifactService.listDesignFiles(
+      fileSystem, designPath, 'system', n => SYSTEM_PATTERN.test(n)
+    );
     
     const apiContractPattern = /^api-contract-(.+)\.md$/;
     const fePattern = /^fe-system-(.+)\.md$/;
     const bePattern = /^be-system-(.+)\.md$/;
     
-    for (const file of designFiles) {
+    for (const { name: file, dir } of designFiles) {
+      const filePath = path.join(dir, file);
+
       const apiMatch = file.match(apiContractPattern);
       if (apiMatch) {
-        const filePath = path.join(designPath, file);
         const content = await fileSystem.readFile(filePath);
         if (content) {
           result.apiContracts[apiMatch[1]] = content;
@@ -456,7 +456,6 @@ export class ArtifactService {
       
       const feMatch = file.match(fePattern);
       if (feMatch) {
-        const filePath = path.join(designPath, file);
         const content = await fileSystem.readFile(filePath);
         if (content) {
           result.feDesigns[feMatch[1]] = content;
@@ -467,7 +466,6 @@ export class ArtifactService {
       
       const beMatch = file.match(bePattern);
       if (beMatch) {
-        const filePath = path.join(designPath, file);
         const content = await fileSystem.readFile(filePath);
         if (content) {
           result.beDesigns[beMatch[1]] = content;
@@ -489,9 +487,10 @@ export class ArtifactService {
   }
 
   /**
-   * Load spec documents (spec-{slug}.md) from outputs/design/
+   * Load spec documents (spec-{slug}.md).
    * 
-   * Spec docs are feature/task-scoped specifications generated by Design Job (workType: 'spec').
+   * Scans outputs/design/spec/ first, then falls back to outputs/design/ (flat).
+   * Spec docs are feature-scoped specifications generated by Design Job (workType: 'spec').
    * Code Job loads all spec docs at resolve, then decompose LLM selects the relevant one.
    * 
    * @returns Record<filename, content> (e.g., { "spec-social-login.md": "# Spec: ..." })
@@ -509,17 +508,16 @@ export class ArtifactService {
     const SPEC_PATTERN = /^spec-.+\.md$/;
 
     try {
-      const exists = await fileSystem.fileExists(designPath);
-      if (!exists) return specDocs;
+      const specFiles = await ArtifactService.listDesignFiles(
+        fileSystem, designPath, 'spec', n => SPEC_PATTERN.test(n)
+      );
 
-      const entries = await fileSystem.readDirectory(designPath);
-      for (const entry of entries) {
-        if (entry.isDirectory || !SPEC_PATTERN.test(entry.name)) continue;
-        const filePath = path.join(designPath, entry.name);
+      for (const { name, dir } of specFiles) {
+        const filePath = path.join(dir, name);
         const content = await fileSystem.readFile(filePath);
         if (content) {
-          specDocs[entry.name] = content;
-          console.log(`📋 [ArtifactService] Loaded spec doc: ${entry.name}`);
+          specDocs[name] = content;
+          console.log(`📋 [ArtifactService] Loaded spec doc: ${name}`);
         }
       }
     } catch (error) {
@@ -534,25 +532,61 @@ export class ArtifactService {
   }
 
   /**
-   * List design files in directory
-   * Helper for scanning multi-package patterns
+   * List files in a directory matching an optional filter.
+   * Returns filenames (not paths).
+   */
+  private static async listFilesIn(
+    fileSystem: FileSystemPort,
+    dirPath: string,
+    filter?: (name: string) => boolean
+  ): Promise<string[]> {
+    try {
+      const exists = await fileSystem.fileExists(dirPath);
+      if (!exists) return [];
+
+      const entries = await fileSystem.readDirectory(dirPath);
+      let names = entries.filter(e => !e.isDirectory).map(e => e.name);
+      if (filter) names = names.filter(filter);
+      return names;
+    } catch (error) {
+      console.error(`❌ [ArtifactService] Failed to list files at ${dirPath}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * List design files in directory (subdirectory-first with flat fallback).
+   * Scans `designPath/{subdir}/` first, then `designPath/` for any remaining matches.
+   * Subdirectory files take precedence on name collision.
    */
   private static async listDesignFiles(
     fileSystem: FileSystemPort,
-    designPath: string
-  ): Promise<string[]> {
-    try {
-      const exists = await fileSystem.fileExists(designPath);
-      if (!exists) return [];
-      
-      const entries = await fileSystem.readDirectory(designPath);
-      return entries
-        .filter(e => !e.isDirectory && e.name.endsWith('.md'))
-        .map(e => e.name);
-    } catch (error) {
-      console.error(`❌ [ArtifactService] Failed to list design files at ${designPath}:`, error);
-      return [];
+    designPath: string,
+    subdir?: string,
+    filter?: (name: string) => boolean
+  ): Promise<{ name: string; dir: string }[]> {
+    const results = new Map<string, { name: string; dir: string }>();
+
+    if (subdir) {
+      const subPath = path.join(designPath, subdir);
+      const subFiles = await ArtifactService.listFilesIn(fileSystem, subPath, filter);
+      for (const name of subFiles) {
+        results.set(name, { name, dir: subPath });
+      }
     }
+
+    const flatFiles = await ArtifactService.listFilesIn(
+      fileSystem,
+      designPath,
+      filter ?? ((n: string) => n.endsWith('.md'))
+    );
+    for (const name of flatFiles) {
+      if (!results.has(name)) {
+        results.set(name, { name, dir: designPath });
+      }
+    }
+
+    return Array.from(results.values());
   }
 
   /**

@@ -238,7 +238,7 @@ ${parsedDocs.tokens}
     const assetsResult = condenseContent(parsedDocs.assets, {
       threshold: 20_000,
       label: 'ui-assets.json',
-      filePath: 'outputs/design/ui-assets.json',
+      filePath: 'outputs/design/ui/ui-assets.json',
       contentType: 'json',
     });
     if (assetsResult.wasCondensed) {
@@ -313,7 +313,7 @@ ${parsedDocs.tokens}
     const assetsResult = condenseContent(parsedDocs.assets, {
       threshold: 20_000,
       label: 'ui-assets.json',
-      filePath: 'outputs/design/ui-assets.json',
+      filePath: 'outputs/design/ui/ui-assets.json',
       contentType: 'json',
     });
     if (assetsResult.wasCondensed) {

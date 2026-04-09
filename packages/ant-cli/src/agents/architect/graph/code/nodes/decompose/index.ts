@@ -290,31 +290,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     specDocsMeta = specLines.join('\n');
   }
 
-  // ✅ Auto-select spec and prepare full content for prompt injection
+  // Spec content is populated AFTER LLM selects via <selectedSpec> tag.
+  // No auto-selection — the decompose LLM decides which spec is relevant.
   let specDoc = '';
   let specApiContract = '';
-  if (state.specDocs && Object.keys(state.specDocs).length > 0) {
-    const specEntries = Object.entries(state.specDocs);
-    let selectedKey: string | null = null;
-
-    if (specEntries.length === 1) {
-      selectedKey = specEntries[0][0];
-    } else {
-      selectedKey = specEntries.find(([k]) =>
-        state.directive?.includes(k)
-      )?.[0] || specEntries[0][0];
-    }
-
-    if (selectedKey) {
-      specDoc = state.specDocs[selectedKey];
-      state.selectedSpec = selectedKey;
-      const allContracts = Object.values(state.designDocs?.apiContracts || {});
-      if (allContracts.length > 0) {
-        specApiContract = allContracts.join('\n\n---\n\n');
-      }
-      console.log(`📋 [Decompose] Auto-selected spec: ${selectedKey} (${specDoc.length} chars)`);
-    }
-  }
 
   // Detect error indicators in directive for error-or-general template activation
   const hasErrorInDirective = (() => {
@@ -386,13 +365,26 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   let decomposeTokenUsage: any;
   try {
     const { READ_DESIGN_DOC_TOOL, handleReadDesignDoc } = await import('./designSelector');
-    const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, useToolMode ? {
-      tools: [READ_DESIGN_DOC_TOOL],
+    const { DISCOVERY_TOOLS, createDiscoveryToolHandler, createClarifyContext } = await import('./discoveryTools');
+
+    const clarifyCtx = createClarifyContext();
+    const discoveryCtx = {
+      featurePath: state.context.featurePath || '',
+      codebasePath: (state as any).codebasePath || undefined,
+      clarify: clarifyCtx,
+    };
+    const discoveryHandler = createDiscoveryToolHandler(discoveryCtx);
+
+    const allTools = [...DISCOVERY_TOOLS, ...(useToolMode ? [READ_DESIGN_DOC_TOOL] : [])];
+    const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
+      tools: allTools,
       toolHandler: (name, args) => {
         if (name === 'read_design_doc') return handleReadDesignDoc(args.name, state);
+        const discoveryResult = discoveryHandler(name, args);
+        if (!discoveryResult.startsWith('Error: Unknown tool')) return discoveryResult;
         return `Error: Unknown tool "${name}"`;
       },
-    } : undefined);
+    });
     rawResponse = result.response;
     decomposeTokenUsage = result.tokenUsage;
     
@@ -431,6 +423,38 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 4.5: Check if clarify was triggered during tool loop
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (clarifyCtx.clarifySent) {
+    console.log('⏸️  [Decompose] Clarify tool invoked — pausing for user response');
+
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'code',
+          {
+            state: {
+              awaitingDecomposeClarify: true,
+              detectionReport: state.detectionReport,
+              directive: state.directive,
+              overrideDirective: state.overrideDirective,
+              chatSource: state.chatSource,
+            }
+          }
+        );
+      } catch { /* non-critical */ }
+    }
+
+    return {
+      ...state,
+      awaitingDecomposeClarify: true,
+      _phaseTimings: { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart },
+    };
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 5: Parse response and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let parsed;
@@ -449,16 +473,19 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     ? (parsedBoundary || 'lightweight')
     : suggestedBoundary;
   
-  // ✅ Store selectedSpec in state (used by plan node for spec injection)
-  // LLM response can override auto-selected spec if it picks a different valid one
+  // Store LLM-selected spec in state (used by plan/execute for spec injection)
   if (selectedSpec && state.specDocs?.[selectedSpec]) {
-    if (state.selectedSpec && state.selectedSpec !== selectedSpec) {
-      console.log(`📋 [Decompose] LLM overrode auto-selected spec: ${state.selectedSpec} → ${selectedSpec}`);
-    }
     state.selectedSpec = selectedSpec;
-    console.log(`📋 [Decompose] Using spec document: ${selectedSpec}`);
+    specDoc = state.specDocs[selectedSpec];
+    const allContracts = Object.values(state.designDocs?.apiContracts || {});
+    if (allContracts.length > 0) {
+      specApiContract = allContracts.join('\n\n---\n\n');
+    }
+    console.log(`📋 [Decompose] LLM selected spec: ${selectedSpec} (${specDoc.length} chars)`);
   } else if (selectedSpec) {
     console.warn(`⚠️  [Decompose] selectedSpec "${selectedSpec}" not found in specDocs, ignoring`);
+    state.selectedSpec = null;
+  } else {
     state.selectedSpec = null;
   }
   

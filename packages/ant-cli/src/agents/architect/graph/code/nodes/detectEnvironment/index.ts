@@ -21,6 +21,7 @@ import {
   formatDetectionReportForChat,
   JobMode,
 } from '../../../../../../core/types/detection';
+import { DESIGN_DIR, DESIGN_SUBDIR, DESIGN_SUBDIRS } from '@ant/shared';
 
 // Import submodules
 import { parseDetectResponse } from './responseParser';
@@ -111,7 +112,47 @@ export async function detectEnvironment(
   console.log('🔍 DETECT ENVIRONMENT: Analyzing development context');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
-  // 1. Build Prompt (directive + combined source documents)
+  // 1. Scan artifact directories for availability summary
+  let artifactAvailability = '';
+  if (state.context.featurePath) {
+    const fs = await import('fs');
+    const path = await import('path');
+    const featurePath = state.context.featurePath;
+    const lines: string[] = [];
+
+    const listDir = (dirPath: string): string[] => {
+      try {
+        if (!fs.existsSync(dirPath)) return [];
+        return fs.readdirSync(dirPath).filter((f: string) => !f.startsWith('.'));
+      } catch { return []; }
+    };
+
+    for (const sub of DESIGN_SUBDIRS) {
+      const dir = path.join(featurePath, DESIGN_DIR, sub);
+      const files = listDir(dir);
+      if (files.length > 0) {
+        lines.push(`- \`${DESIGN_DIR}/${sub}/\`: ${files.join(', ')}`);
+      }
+    }
+    const flatFiles = listDir(path.join(featurePath, DESIGN_DIR))
+      .filter((f: string) => f.endsWith('.md') || f.endsWith('.json'));
+    if (flatFiles.length > 0) {
+      lines.push(`- \`${DESIGN_DIR}/\` (flat): ${flatFiles.join(', ')}`);
+    }
+
+    const sourcesDir = path.join(featurePath, 'inputs/sources');
+    const sourceFiles = listDir(sourcesDir).filter((f: string) => !f.startsWith('.'));
+    if (sourceFiles.length > 0) {
+      lines.push(`- \`inputs/sources/\`: ${sourceFiles.join(', ')}`);
+    }
+
+    if (lines.length > 0) {
+      artifactAvailability = lines.join('\n');
+      console.log(`📂 [DetectEnv] Artifact scan:\n${artifactAvailability}`);
+    }
+  }
+
+  // 2. Build Prompt (directive + combined source documents + artifact availability)
   const promptEngine = state.deps?.promptEngine;
   if (!promptEngine) {
     throw new Error('[DetectEnvironment] PromptEngine not available');
@@ -120,7 +161,8 @@ export async function detectEnvironment(
   const combinedPrd = buildAllSourceDocs(state.sourceDocuments) || state.prd;
   const prompt = await promptEngine.buildDetectEnvironmentPrompt(
     state.directive || '',
-    combinedPrd
+    combinedPrd,
+    artifactAvailability
   );
   
   // ✅ Log prompt structure (not content)
@@ -199,6 +241,8 @@ export async function detectEnvironment(
     jobMode: parsed.mode as JobMode,
     jobModeReasoning: parsed.modeReasoning,
     requireRag: parsed.requireRagForDecompose,
+    primarySources: parsed.primarySources,
+    primarySourcesReasoning: parsed.primarySourcesReasoning,
   });
   
   // 5. Display in Chat UI

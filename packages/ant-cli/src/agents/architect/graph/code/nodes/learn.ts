@@ -3,6 +3,8 @@ import { ArchitectGraphState } from "../state";
 import { SessionRun, ConversationEntry } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 import { getChatAPIClient } from "../../../../../core/adapters/ChatAPIClient";
+import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../core/utils/docMetadata";
+import { designSubdirOf, DESIGN_DIR } from "@ant/shared";
 
 /**
  * Inter-Job Context Bridge: Build raw job completion record.
@@ -23,11 +25,23 @@ function buildJobRecord(state: ArchitectGraphState): { user: ConversationEntry; 
     metadata: { jobId: (state as any).jobId, boundary },
   };
 
+  // Collect consumed document references for next job's context
+  const consumedDesignRefs = new Set<string>();
+  for (const t of tasks) {
+    if ((t as any).packages) {
+      for (const pkg of (t as any).packages) {
+        consumedDesignRefs.add(pkg);
+      }
+    }
+  }
+
   const assistant: ConversationEntry = {
     role: 'assistant',
     content: [
       taskNames && `Tasks: ${taskNames}`,
       filePaths.length > 0 && `Files: ${filePaths.slice(0, 20).join(', ')}${filePaths.length > 20 ? '...' : ''}`,
+      state.selectedSpec && `Based on: ${state.selectedSpec}`,
+      consumedDesignRefs.size > 0 && `Design refs: ${[...consumedDesignRefs].join(', ')}`,
       state.planText && `Plan: ${state.planText.substring(0, 500)}`,
     ].filter(Boolean).join('\n'),
     timestamp,
@@ -352,7 +366,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       timestamp: new Date().toISOString(),
       input: {
         type: 'design',
-        source: state.design ? 'outputs/design/[latest]' : 'directive',
+        source: state.design ? 'outputs/design/system/[latest]' : 'directive',
         summary: inputSummary.substring(0, 200),
         size: state.design?.length || (state.directive || '').length,
       },
@@ -430,6 +444,41 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
       updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
       console.log(`📋 [Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || 'lightweight'})`);
+
+      // Mark consumed documents with metadata
+      if (state.deps?.fileSystem && state.context.featurePath) {
+        try {
+          const rootPath = state.deps.fileSystem.getRootPath?.() || '';
+          const featureDirRel = rootPath
+            ? path.relative(rootPath, state.context.featurePath)
+            : state.context.featurePath.replace(/^\//, '');
+          const jobId = (state as any).jobId || 'unknown';
+          const meta = buildConsumedMeta(jobId);
+
+          const markFile = async (filename: string) => {
+            const subdir = designSubdirOf(filename);
+            const isJson = filename.endsWith('.json');
+            for (const dir of [path.join(featureDirRel, 'outputs/design', subdir), path.join(featureDirRel, 'outputs/design')]) {
+              const filePath = path.join(dir, filename);
+              if (await state.deps!.fileSystem!.fileExists(filePath)) {
+                const content = await state.deps!.fileSystem!.readFile(filePath);
+                if (content) {
+                  const existing = readDocMeta(content, isJson);
+                  if (existing?.status === 'consumed') return;
+                  const updated = writeDocMeta(content, meta, isJson);
+                  await state.deps!.fileSystem!.writeFile(filePath, updated);
+                  console.log(`📋 [Learn] Marked as consumed: ${filename}`);
+                }
+                return;
+              }
+            }
+          };
+
+          if (state.selectedSpec) await markFile(state.selectedSpec);
+        } catch (err: any) {
+          console.warn(`⚠️  [Learn] Failed to mark consumed documents: ${err.message}`);
+        }
+      }
     }
 
     // Update artifacts and save state snapshot for resuming

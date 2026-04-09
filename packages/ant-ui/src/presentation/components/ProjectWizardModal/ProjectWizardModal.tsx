@@ -13,6 +13,7 @@ import { executeCodeJob } from '@/infrastructure/http/cli';
 import { cn } from '@/shared/utils/design-system';
 
 import type { WizardStep, ExecStepId, ExecStepStatus, ExecStepState } from './types';
+import { designDirOf } from '@ant/shared';
 import { isCanonicalDesignDoc, isValidName, sanitizeRepoName, delay, generateProjectName, generateFeatureName } from './constants';
 import { WizardStepIndicator } from './WizardStepIndicator';
 import { StepProjectSetup } from './StepProjectSetup';
@@ -386,7 +387,16 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         await batch(assetsFiles, 'inputs/assets');
         await batch(referencesFiles, 'inputs/references');
         if (mode === 'code' && uploadableDesignDocs.length > 0) {
-          await batch(uploadableDesignDocs, 'outputs/design');
+          const byDesignDir = new Map<string, File[]>();
+          for (const f of uploadableDesignDocs) {
+            const dir = designDirOf(f.name);
+            const list = byDesignDir.get(dir) ?? [];
+            list.push(f);
+            byDesignDir.set(dir, list);
+          }
+          for (const [dir, files] of byDesignDir) {
+            await batch(files, dir);
+          }
         }
         updateExecStep('upload', 'done');
       }
