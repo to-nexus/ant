@@ -412,6 +412,11 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
 
   // 1. Load design document (optional)
+  // When actionMetadata.refs is provided, only load referenced files
+  const actionRefs = (state as any).actionMetadata?.refs as string[] | undefined;
+  const actionContext = (state as any).actionMetadata?.context as string[] | undefined;
+  const hasExplicitRefs = actionRefs && actionRefs.length > 0;
+
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
   const design = designResult?.content || undefined;
   const designDocPath = designResult?.filePath || undefined;
@@ -419,7 +424,22 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // Load PRD + all source documents (inputs/sources) for detectEnvironment & downstream prompts
   const source = await ArtifactService.getSource(context, gitPort, fileSystem);
   const prd = source?.prd || undefined;
-  const sourceDocuments = source?.sourceDocuments;
+  let sourceDocuments = source?.sourceDocuments;
+
+  // Filter source documents to only refs+context when explicitly provided
+  if (hasExplicitRefs && sourceDocuments) {
+    const allowedPaths = new Set([...(actionRefs || []), ...(actionContext || [])]);
+    const filtered: Record<string, string> = {};
+    for (const [name, content] of Object.entries(sourceDocuments)) {
+      if (allowedPaths.has(`inputs/sources/${name}`) || allowedPaths.has(name)) {
+        filtered[name] = content;
+      }
+    }
+    if (Object.keys(filtered).length > 0) {
+      sourceDocuments = filtered;
+      console.log(`📋 [Resolve] ActionMetadata refs filter: ${Object.keys(filtered).length} source docs selected`);
+    }
+  }
   
   // Load parsed UI documents for split injection
   const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
