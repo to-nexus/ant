@@ -23,7 +23,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         path: {
           type: 'string',
-          description: 'File path relative to feature root. Code files MUST use codebase/ prefix (e.g., codebase/src/main.ts, codebase/internal/handler/auth.go)',
+          description: 'File path relative to feature root. Code files use codebase/ prefix (e.g., codebase/src/main.ts). Design artifacts use outputs/design/ prefix with subdirectories: system/, ui/, spec/.',
         },
         startLine: {
           type: 'number',
@@ -69,7 +69,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         directory: {
           type: 'string',
-          description: 'Directory path relative to feature root (optional, defaults to "."). Code dirs use codebase/ prefix (e.g., codebase/src)',
+          description: 'Directory path relative to feature root (optional, defaults to "."). Code dirs use codebase/ prefix (e.g., codebase/src). Design artifacts are under outputs/design/ with subdirectories: system/, ui/, spec/.',
         },
         pattern: {
           type: 'string',
