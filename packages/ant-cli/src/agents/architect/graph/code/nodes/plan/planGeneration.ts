@@ -90,6 +90,7 @@ export async function buildPlanPrompt(
       { hasTools: options?.hasTools ?? false },
       profile,
       dependencyStatus,
+      state.resolvedAction,
     );
   }
 
@@ -102,6 +103,7 @@ export async function buildPlanPrompt(
       violationsText,
       { hasTools: options?.hasTools ?? false },
       profile,
+      state.resolvedAction,
     );
   }
 
@@ -119,6 +121,7 @@ export async function buildPlanPrompt(
     { hasTools: options?.hasTools ?? false },
     state.designDocUnknownPackages,
     !!state.selectedSpec,  // isSpecDriven
+    state.resolvedAction,
   );
 
   return prompt;

@@ -2,7 +2,7 @@ import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import { ACTION_DEFINITIONS } from '@ant/shared';
+import { type ActionMetadata } from '@ant/shared';
 import i18n from '@/i18n';
 
 export interface UIActions {
@@ -38,9 +38,11 @@ export interface UIActions {
   setAccountConfigScrollTarget: (target: string | null) => void;
   // Actions panel
   openActionsPanel: (actionId?: string) => void;
-  setActionsStep: (step: 'pick-action' | 'pick-mode' | 'detail') => void;
+  setActionsStep: (step: 'pick-action' | 'pick-intent' | 'config') => void;
   selectAction: (actionId: string) => void;
-  selectSubMode: (modeId: string) => void;
+  selectIntent: (intentId: string) => void;
+  updateActionMetadata: (patch: Partial<ActionMetadata>) => void;
+  resetActionMetadata: () => void;
   highlightArtifactDirs: (dirs: string[]) => void;
   clearHighlightedArtifactDirs: () => void;
 }
@@ -112,7 +114,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   isJobTabCleared: false,
   actionsStep: 'pick-action' as const,
   selectedActionId: null,
-  selectedSubModeId: null,
+  selectedIntentId: null,
+  actionMetadata: {} as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
   pendingClarifyAnswers: {},
   pendingClarifyQuestions: [],
@@ -355,10 +358,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'actions');
       newOrder.push('actions');
 
-      let step: 'pick-action' | 'pick-mode' | 'detail' = 'pick-action';
+      let step: 'pick-action' | 'pick-intent' | 'config' = 'pick-action';
+      let selectedIntentId: string | null = null;
+      let actionMetadata: ActionMetadata = {};
+
       if (actionId) {
-        const def = ACTION_DEFINITIONS.find(d => d.id === actionId);
-        step = def?.hasSubModes ? 'pick-mode' : 'detail';
+        step = 'pick-intent';
       }
 
       return {
@@ -367,7 +372,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         mainPanelTabOrder: newOrder,
         actionsStep: step,
         selectedActionId: actionId || null,
-        selectedSubModeId: null,
+        selectedIntentId,
+        actionMetadata,
       };
     });
   },
@@ -377,11 +383,21 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   selectAction: (actionId: string) => {
-    set({ selectedActionId: actionId, selectedSubModeId: null });
+    set({ selectedActionId: actionId, selectedIntentId: null, actionMetadata: {} });
   },
 
-  selectSubMode: (modeId: string) => {
-    set({ selectedSubModeId: modeId });
+  selectIntent: (intentId: string) => {
+    set({ selectedIntentId: intentId, actionMetadata: { intent: intentId } });
+  },
+
+  updateActionMetadata: (patch: Partial<ActionMetadata>) => {
+    set((s: any) => ({
+      actionMetadata: { ...s.actionMetadata, ...patch },
+    }));
+  },
+
+  resetActionMetadata: () => {
+    set({ actionMetadata: {}, selectedIntentId: null });
   },
 
   highlightArtifactDirs: (dirs: string[]) => {

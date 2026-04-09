@@ -173,6 +173,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       hasUiDoc: !!state.parsedUiDocs,
       figmaAvailable: (state.figmaAvailable && !state.parsedUiDocs) || false,
       figmaStartNodeId: state.figmaStartNodeId,
+      resolvedAction: state.resolvedAction,
     },
     state.detectionReport?.jobMode,
     state.currentTask.type

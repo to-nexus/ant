@@ -4,7 +4,6 @@ import type { FileNode } from '@/infrastructure/http/api';
 import {
   type ActionId,
   type ActionReadiness,
-  type MaterialInfo,
   type NamingIssue,
   ACTION_DEFINITIONS,
   validateDesignFileName,
@@ -14,6 +13,10 @@ import {
 /**
  * Compute action readiness from fileTree + store state.
  * Reactive: re-computes when fileTree, figmaPopulated, gitStatus, or bridgeConnected change.
+ *
+ * Note: refs/context/target are now determined by the config matrix module
+ * (getConfigSlots) based on (intent, basis). This hook only computes
+ * action-level readiness (buildReady, hasOutput, subModes, namingIssues).
  */
 export function useActionReadiness(): Record<ActionId, ActionReadiness> {
   const fileTree = useStore(s => s.fileTree);
@@ -72,12 +75,12 @@ function hasAnyFile(node: FileNode): boolean {
   return (node.children || []).some(hasAnyFile);
 }
 
-function listFilesInDir(tree: FileNode[], dirPath: string): { name: string; size?: number }[] {
+function listFilesInDir(tree: FileNode[], dirPath: string): { name: string; path: string; size?: number }[] {
   const node = findNode(tree, dirPath.split('/'));
   if (!node || node.type !== 'directory' || !node.children) return [];
   return node.children
     .filter(c => c.type === 'file')
-    .map(c => ({ name: c.name, size: c.size }));
+    .map(c => ({ name: c.name, path: `${dirPath}/${c.name}`, size: c.size }));
 }
 
 function fileExists(tree: FileNode[], filePath: string): boolean {
@@ -102,14 +105,6 @@ function checkNaming(tree: FileNode[], dirPath: string, subdir: DesignSubdir): N
   return issues;
 }
 
-function mat(
-  name: string, path: string, required: boolean, present: boolean,
-  desc: { en: string; ko: string },
-  formatHint?: { en: string; ko: string },
-): MaterialInfo {
-  return { name, path, required, present, description: desc, formatHint };
-}
-
 // ============================================
 // Per-action readiness computation
 // ============================================
@@ -127,18 +122,12 @@ function computeReadiness(actionId: ActionId, ctx: TreeContext): ActionReadiness
 }
 
 function computePlan(ctx: TreeContext): ActionReadiness {
-  const hasSources = dirHasFilesDeeply(ctx.fileTree, 'inputs/sources');
   const hasOutput = dirHasFiles(ctx.fileTree, 'outputs/plan');
   return {
     buildReady: true,
     hasOutput,
     hasCodebase: ctx.hasCodebase,
-    detectedMode: { id: 'plan', label: { en: 'Create PRD', ko: '기획서 작성' } },
-    materials: [
-      mat('Source Documents', 'inputs/sources', false, hasSources,
-        { en: 'PRD, requirements, reference docs — multiple files accepted', ko: 'PRD, 요구사항, 참고 문서 등 여러 파일을 넣을 수 있습니다' },
-        { en: '.md, .txt, .json, .yaml text files', ko: '.md, .txt, .json, .yaml 텍스트 파일' }),
-    ],
+    detectedMode: { id: 'plan', label: { en: 'PRD', ko: '기획서' } },
     outputDir: 'outputs/plan',
     namingIssues: [],
   };
@@ -147,7 +136,6 @@ function computePlan(ctx: TreeContext): ActionReadiness {
 function computeSystemDesign(ctx: TreeContext): ActionReadiness {
   const hasSources = dirHasFilesDeeply(ctx.fileTree, 'inputs/sources');
   const hasDesign = dirHasFiles(ctx.fileTree, 'outputs/design/system');
-  const hasDirective = fileExists(ctx.fileTree, 'inputs/directives/design/directive.md');
   const canRefactor = ctx.hasCodebase && hasDesign;
   return {
     buildReady: hasSources,
@@ -157,21 +145,12 @@ function computeSystemDesign(ctx: TreeContext): ActionReadiness {
     detectedMode: canRefactor
       ? { id: 'refactor', label: { en: 'Refactoring design', ko: '리팩토링 설계' } }
       : { id: 'generate', label: { en: 'New system design', ko: '신규 시스템 설계' } },
-    materials: [
-      mat('Source Documents', 'inputs/sources', true, hasSources,
-        { en: 'PRD, requirements, reference docs — multiple files accepted', ko: 'PRD, 요구사항, 참고 문서 등 여러 파일을 넣을 수 있습니다' },
-        { en: '.md, .txt, .json, .yaml text files', ko: '.md, .txt, .json, .yaml 텍스트 파일' }),
-      mat('Directive', 'inputs/directives/design', false, hasDirective,
-        { en: 'Additional design instructions', ko: '추가 설계 지시사항' },
-        { en: 'directive.md file', ko: 'directive.md 파일' }),
-    ],
     outputDir: 'outputs/design/system',
     namingIssues: checkNaming(ctx.fileTree, 'outputs/design/system', 'system'),
   };
 }
 
 function computeUiDesign(ctx: TreeContext): ActionReadiness {
-  const hasSources = dirHasFilesDeeply(ctx.fileTree, 'inputs/sources');
   const hasRefs = dirHasFilesDeeply(ctx.fileTree, 'inputs/references');
   const figmaConfigured = ctx.figmaPopulated === true;
   const figmaReady = figmaConfigured && ctx.bridgeConnected === true && ctx.figmaDesktopReachable;
@@ -193,23 +172,12 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
       { id: 'references', active: hasRefs, blockReason: hasRefs ? undefined : { en: 'Upload screenshots to inputs/references/', ko: 'inputs/references/에 스크린샷을 업로드하세요' } },
       { id: 'description', active: true },
     ],
-    materials: [
-      mat('Figma', 'inputs/figma.json', false, figmaConfigured,
-        { en: 'Figma file URL configuration', ko: 'Figma 파일 URL 설정' },
-        { en: 'figma.json with file URL', ko: 'Figma URL이 포함된 figma.json' }),
-      mat('References', 'inputs/references', false, hasRefs,
-        { en: 'UI screenshots or mockups', ko: 'UI 스크린샷 또는 목업 이미지' },
-        { en: '.png, .jpg, .webp image files', ko: '.png, .jpg, .webp 이미지 파일' }),
-      mat('Source Documents', 'inputs/sources', false, hasSources,
-        { en: 'PRD, requirements — recommended for better results', ko: '소스 문서 — 있으면 더 정확한 결과' }),
-    ],
     outputDir: 'outputs/design/ui',
     namingIssues: checkNaming(ctx.fileTree, 'outputs/design/ui', 'ui'),
   };
 }
 
 function computeSpec(ctx: TreeContext): ActionReadiness {
-  const hasDesign = dirHasFilesDeeply(ctx.fileTree, 'outputs/design');
   const hasSpec = dirHasFiles(ctx.fileTree, 'outputs/design/spec');
   return {
     buildReady: false,
@@ -219,9 +187,6 @@ function computeSpec(ctx: TreeContext): ActionReadiness {
     detectedMode: ctx.hasCodebase
       ? { id: 'refactor-capable', label: { en: 'Spec (refactor possible)', ko: '스펙 (리팩토링 가능)' } }
       : { id: 'generate', label: { en: 'Feature spec', ko: '기능 스펙' } },
-    materials: [
-      mat('Design docs', 'outputs/design', false, hasDesign, { en: 'Used as context if available', ko: '있으면 컨텍스트로 활용됩니다' }),
-    ],
     outputDir: 'outputs/design/spec',
     namingIssues: checkNaming(ctx.fileTree, 'outputs/design/spec', 'spec'),
   };
@@ -251,11 +216,6 @@ function computeCode(ctx: TreeContext): ActionReadiness {
     hasOutput: false,
     hasCodebase: ctx.hasCodebase,
     detectedMode: { id: modeId, label: modeLabel },
-    materials: [
-      mat('Specs', 'outputs/design/spec', false, hasSpec, { en: 'Implementation specs', ko: '구현 스펙' }),
-      mat('System Design', 'outputs/design/system', false, hasSystem, { en: 'Architecture and API design', ko: '아키텍처 및 API 설계' }),
-      mat('UI Design', 'outputs/design/ui', false, hasUi, { en: 'UI tokens, assets, and specs', ko: 'UI 토큰, 에셋, 스펙' }),
-    ],
     outputDir: 'codebase',
     namingIssues: [],
   };
@@ -268,8 +228,7 @@ function computeVisual(ctx: TreeContext): ActionReadiness {
     hasOutput: false,
     hasCodebase: ctx.hasCodebase,
     detectedMode: { id: 'visual', label: { en: 'Image generation', ko: '이미지 생성' } },
-    materials: [],
-    outputDir: 'inputs/assets',
+    outputDir: 'inputs/assets/gen',
     namingIssues: [],
   };
 }
@@ -281,7 +240,6 @@ function computeLearn(ctx: TreeContext): ActionReadiness {
     hasOutput: false,
     hasCodebase: ctx.hasCodebase,
     detectedMode: { id: 'learn', label: { en: 'Codebase learning', ko: '코드베이스 학습' } },
-    materials: [],
     outputDir: '',
     namingIssues: [],
   };

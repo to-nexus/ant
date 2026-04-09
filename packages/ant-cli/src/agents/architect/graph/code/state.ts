@@ -7,6 +7,7 @@ import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/promp
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
+import type { ResolvedActionContext } from '@ant/shared';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)
 export { TaskQueue } from "../../types/task";
@@ -184,6 +185,9 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   /** 통합 환경 감지 결과 (jobMode, environment, profile 등 포함) */
   detectionReport?: DetectionReport;
+  
+  /** Intent-centric resolved context (created in resolve/detect, consumed by ModeController + templates) */
+  resolvedAction?: ResolvedActionContext;
   
   selectedDesignFiles?: string[];
   decomposeKeywords?: {

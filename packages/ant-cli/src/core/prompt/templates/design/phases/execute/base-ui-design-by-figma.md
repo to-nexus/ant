@@ -1,5 +1,7 @@
 # UI Design Document Generation System
 
+{{> common/injections/action-context}}
+
 {{> design/base/injections/document-language}}
 
 {{> design/phases/execute/rules-ui-design-by-figma}}

@@ -1,6 +1,7 @@
 import { useStore } from '@/domain/store';
 import { API_BASE, addChatUserMessage } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
+import { deriveFromIntent } from '@ant/shared';
 
 interface UseChatSubmitOptions {
   message: string;
@@ -113,19 +114,38 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     // CASE 2: Normal path — start new job
     useStore.getState().setRunning(true, undefined, 'generate');
 
+    const storeActionMetadata = useStore.getState().actionMetadata;
+    const hasMetadata = storeActionMetadata && Object.keys(storeActionMetadata).length > 0;
+
     try {
-      await addChatUserMessage(selectedProject, selectedFeature, userMessage);
+      await addChatUserMessage(
+        selectedProject,
+        selectedFeature,
+        userMessage,
+        hasMetadata ? storeActionMetadata : undefined,
+      );
 
       const { executeCodeJob } = await import('@/infrastructure/http/cli');
+
+      const derived = hasMetadata && storeActionMetadata.intent
+        ? deriveFromIntent(storeActionMetadata.intent)
+        : null;
+      const resolvedAgent = derived?.agent || selectedAgent;
+      const resolvedJobType = derived?.jobType || selectedJobType;
 
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,
-        jobType: selectedJobType,
-        agent: selectedAgent,
+        jobType: resolvedJobType,
+        agent: resolvedAgent,
         overrideDirective: userMessage,
-        chatSource: true
+        chatSource: true,
+        actionMetadata: hasMetadata ? storeActionMetadata : undefined,
       });
+
+      if (hasMetadata) {
+        useStore.getState().resetActionMetadata();
+      }
 
       useStore.getState().setCurrentJob(jobExecution);
 

@@ -11,6 +11,7 @@ import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 import { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
+import type { ResolvedActionContext } from '@ant/shared';
 
 export interface PlanGraphState extends PhaseTrackingState {
   // Input
@@ -44,6 +45,9 @@ export interface PlanGraphState extends PhaseTrackingState {
   // Output
   generatedDocument?: string;
   
+  /** Intent-centric resolved context (passed from FE actionMetadata, consumed by templates) */
+  resolvedAction?: ResolvedActionContext;
+
   // TriageableState-compatible fields (for shared triage node)
   context: { featurePath?: string; [key: string]: any };
   triageResult?: TriageResult;

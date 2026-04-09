@@ -259,6 +259,9 @@ describe('Template Smoke Tests', () => {
       'common/injections/prd-spec',
       'common/injections/memory',
       'common/injections/directive',
+      'common/injections/action-context',
+      'common/injections/basis-guidance',
+      'common/injections/refactor-guidance',
       'code/phases/decompose/mode-guide',
     ]);
 

@@ -102,9 +102,10 @@ export interface UIState {
   };
   mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions'>;
   // Actions panel state
-  actionsStep: 'pick-action' | 'pick-mode' | 'detail';
+  actionsStep: 'pick-action' | 'pick-intent' | 'config';
   selectedActionId: string | null;
-  selectedSubModeId: string | null;
+  selectedIntentId: string | null;
+  actionMetadata: import('@ant/shared').ActionMetadata;
   highlightedArtifactDirs: string[];
   isJobTabCleared: boolean;
   // ✅ Pending clarify answers (shared between compound ChoiceCard and ChatInput)

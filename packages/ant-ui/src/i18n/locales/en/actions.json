@@ -74,7 +74,16 @@
 
   "footer": {
     "chatStart": "Start via Chat",
-    "build": "BUILD"
+    "build": "BUILD",
+    "building": "BUILDING..."
+  },
+
+  "intent": {
+    "pickTitle": "What would you like to do?",
+    "basis": "Basis",
+    "refs": "Reference Files",
+    "context": "Additional Context",
+    "outputDir": "Output directory"
   },
 
   "status": {

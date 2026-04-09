@@ -357,7 +357,6 @@ function ChatActionCards() {
         readiness={readiness}
         variant="compact"
         onSelect={handleSelect}
-        agentFilter={showAll ? undefined : (selectedAgent || undefined)}
       />
 
       {/* "All actions" link (only in agent-filtered view) */}

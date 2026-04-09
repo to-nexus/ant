@@ -29,7 +29,8 @@ import {
   JobEnvironment,
   DesignDomain,
 } from "../../../../../core/types/detection";
-import { isFigmaDataPopulated, UIDesignSource, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
+import { isFigmaDataPopulated, UIDesignSource, DESIGN_DIR, DESIGN_SUBDIR, resolveFromDetection } from "@ant/shared";
+import type { ResolvedActionContext, ActionMetadata } from "@ant/shared";
 import { extractLLMInfo } from "../../../../../core/ports/workflow";
 
 interface ParsedDesignResponse {
@@ -383,8 +384,14 @@ export async function detectEnvironment(
     await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
     await chatAPI.finalizeMessage();
     
+    // RAC: create from detection (infer path, clarify resume)
+    const clarifyActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+    const clarifyRAC = resolveFromDetection(detectionReport, clarifyActionMetadata, state.context.codebaseProfile);
+    console.log(`📋 [detectEnvironment] RAC created (clarify resume): tech=${JSON.stringify(clarifyRAC.tech)}`);
+
     return {
       detectionReport,
+      resolvedAction: clarifyRAC,
       awaitingDetectClarify: false,
       _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
@@ -429,6 +436,7 @@ export async function detectEnvironment(
 
     return {
       detectionReport,
+      resolvedAction: state.resolvedAction,
       _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
   }
@@ -809,8 +817,13 @@ export async function detectEnvironment(
         await chatAPI.sendLLMEvent({ type: 'text', text: errorText });
         await chatAPI.finalizeMessage();
         
+        // RAC: create even on error path (downstream may need it)
+        const errorActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+        const errorRAC = state.resolvedAction || resolveFromDetection(detectionReport, errorActionMetadata, state.context.codebaseProfile);
+
         return {
           detectionReport,
+          resolvedAction: errorRAC,
           uiDesignSource,
           designError: figmaDesignError,
           tokenUsage: (state as any).tokenUsage,
@@ -866,8 +879,17 @@ export async function detectEnvironment(
       }
     }
 
+    // RAC: create from detection (infer path, LLM detection complete)
+    let inferRAC: ResolvedActionContext | undefined = state.resolvedAction;
+    if (!inferRAC) {
+      const inferActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+      inferRAC = resolveFromDetection(detectionReport, inferActionMetadata, state.context.codebaseProfile);
+      console.log(`📋 [detectEnvironment] RAC created (infer): workType=${inferRAC.workType}, tech=${JSON.stringify(inferRAC.tech)}`);
+    }
+
     return {
       detectionReport,
+      resolvedAction: inferRAC,
       uiDesignSource,
       uiReferences: detectionReport.workType === 'ui-design' ? uiReferences : undefined,
       uiAssetsList: detectionReport.workType === 'ui-design' ? uiAssetsList : undefined,

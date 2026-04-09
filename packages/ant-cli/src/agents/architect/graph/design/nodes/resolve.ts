@@ -4,7 +4,7 @@ import { DesignGraphState } from "../state";
 import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
-import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
+import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR, resolveFromExplicit } from "@ant/shared";
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 
@@ -459,6 +459,15 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     throw new Error("Generate mode requires source documents in inputs/sources/");
   }
 
+  // RAC creation: explicit path only (infer path creates RAC in detectEnvironment)
+  const actionMetadata = (state as any).actionMetadata;
+  let resolvedAction = state.resolvedAction;
+  if (!resolvedAction && actionMetadata?.intent) {
+    const codebaseProfile = state.context.codebaseProfile;
+    resolvedAction = resolveFromExplicit(actionMetadata, codebaseProfile);
+    console.log(`📋 [Design Resolve] RAC created (explicit): intent=${actionMetadata.intent}, tech=${JSON.stringify(resolvedAction.tech)}`);
+  }
+
   return {
     ...state,
     prd,
@@ -467,6 +476,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     design,
     existingDesignDocs,
     figmaConfig,
+    resolvedAction,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     _httpJobId: state._httpJobId,
