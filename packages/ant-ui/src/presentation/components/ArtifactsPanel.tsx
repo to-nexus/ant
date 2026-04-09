@@ -127,6 +127,21 @@ interface DirectoryViewProps {
 function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
+  const highlightedDirs = useStore(s => s.highlightedArtifactDirs);
+
+  useEffect(() => {
+    if (highlightedDirs.length === 0) return;
+    setExpandedDirs(prev => {
+      const next = new Set(prev);
+      for (const dir of highlightedDirs) {
+        const parts = dir.split('/');
+        for (let i = 1; i <= parts.length; i++) {
+          next.add(parts.slice(0, i).join('/'));
+        }
+      }
+      return next;
+    });
+  }, [highlightedDirs]);
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
   const [newFileName, setNewFileName] = useState('');
@@ -248,6 +263,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isStructural = isDirectory && isStructuralCanonicalDir(node.path);
     const isDragTarget = isDirectory && dragOverPath === node.path;
     const isRenaming = renamingPath === node.path;
+    const isHighlighted = highlightedDirs.some(d => node.path === d || node.path.endsWith('/' + d));
 
     return (
       <div
@@ -267,7 +283,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                   : 'hover:bg-gray-100 dark:hover:bg-gray-800',
             isMenuActive && !isDragTarget && (isSelected
               ? 'ring-1 ring-blue-400 dark:ring-blue-500'
-              : 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300 dark:ring-amber-600')
+              : 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300 dark:ring-amber-600'),
+            isHighlighted && 'artifact-highlight ring-1 ring-blue-300 dark:ring-blue-600'
           )}
           style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
         >

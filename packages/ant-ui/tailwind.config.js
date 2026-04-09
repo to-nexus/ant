@@ -225,6 +225,18 @@ export default {
         'toast-out': {
           '0%': { transform: 'translateX(0)', opacity: '1' },
           '100%': { transform: 'translateX(100%)', opacity: '0' }
+        },
+        fadeIn: {
+          '0%': { opacity: '0', transform: 'translateY(4px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' }
+        },
+        fadeOut: {
+          '0%': { opacity: '1' },
+          '100%': { opacity: '0' }
+        },
+        slideDown: {
+          '0%': { opacity: '0', transform: 'translateY(-8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' }
         }
       },
       animation: {
@@ -237,7 +249,10 @@ export default {
         'typing-dot': 'typing-dot 1.4s ease-in-out infinite',
         'glow-spin': 'glow-spin 3s linear infinite',
         'toast-in': 'toast-in 0.3s ease-out forwards',
-        'toast-out': 'toast-out 0.25s ease-in forwards'
+        'toast-out': 'toast-out 0.25s ease-in forwards',
+        fadeIn: 'fadeIn 0.2s ease-out',
+        fadeOut: 'fadeOut 0.15s ease-in',
+        slideDown: 'slideDown 0.25s ease-out'
       }
     }
   },

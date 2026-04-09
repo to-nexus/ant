@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor } from 'lucide-react';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { TabButton } from './components/TabButton';
@@ -73,38 +73,26 @@ export function MainPanelTabsBar() {
     );
   };
 
-  // Render dynamic tabs (projectConfig, accountConfig, fileEdit, transfer, previewConfig)
-  const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig') => {
+  // Render dynamic tabs
+  const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => {
     if (!openTabs[tabKey]) return null;
     
-    const tabConfig = {
-      projectConfig: {
-        icon: Settings,
-        label: t('tabs.projectConfig')
-      },
-      accountConfig: {
-        icon: User,
-        label: t('tabs.accountConfig')
-      },
-      fileEdit: {
-        icon: FileEdit,
-        label: t('tabs.fileEdit')
-      },
-      transfer: {
-        icon: ArrowLeftRight,
-        label: t('tabs.transfer')
-      },
-      previewConfig: {
-        icon: Monitor,
-        label: t('tabs.previewConfig', 'Preview Config')
-      }
-    }[tabKey];
+    const tabConfig: Record<string, { icon: any; label: string }> = {
+      projectConfig: { icon: Settings, label: t('tabs.projectConfig') },
+      accountConfig: { icon: User, label: t('tabs.accountConfig') },
+      fileEdit: { icon: FileEdit, label: t('tabs.fileEdit') },
+      transfer: { icon: ArrowLeftRight, label: t('tabs.transfer') },
+      previewConfig: { icon: Monitor, label: t('tabs.previewConfig', 'Preview Config') },
+      actions: { icon: Zap, label: t('tabs.actions', 'Actions') },
+    };
+    const config = tabConfig[tabKey];
+    if (!config) return null;
 
     return (
       <TabButton
         key={tabKey}
-        icon={tabConfig.icon}
-        label={tabConfig.label}
+        icon={config.icon}
+        label={config.label}
         isActive={activeTab === tabKey}
         showText={activeTab === tabKey}
         showCloseButton={true}

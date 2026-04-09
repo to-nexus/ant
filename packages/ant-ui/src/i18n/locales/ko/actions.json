@@ -1,0 +1,105 @@
+{
+  "title": "무엇을 하고 싶으십니까?",
+  "subtitle": "작업을 선택하면 필요한 준비물과 실행 방법을 안내합니다",
+  "ctaButton": "Actions",
+  "showAll": "모든 액션 보기",
+
+  "actions": {
+    "plan": {
+      "label": "기획서 작성",
+      "description": "PRD를 생성하거나 보강합니다",
+      "modeGenerate": "새 기획서 작성",
+      "modeRefine": "기존 기획서 보강"
+    },
+    "system-design": {
+      "label": "시스템 설계",
+      "description": "아키텍처, API 계약, 데이터 모델을 설계합니다",
+      "modeGenerate": "신규 시스템 설계",
+      "modeRefactor": "리팩토링 설계"
+    },
+    "ui-design": {
+      "label": "UI 설계",
+      "description": "디자인 토큰, 에셋, UI 스펙을 설계합니다",
+      "pickMode": "어떤 방식으로 UI를 설계하시겠습니까?",
+      "modeFigma": "Figma 기반",
+      "modeFigmaDesc": "Figma 파일에서 토큰, 에셋, 스펙을 추출합니다",
+      "modeFigmaBlock": "figma.json에 Figma URL을 설정하세요",
+      "modeFigmaBridgeBlock": "Figma Desktop 연결이 필요합니다",
+      "modeRef": "스크린샷 기반",
+      "modeRefDesc": "레퍼런스 이미지를 분석하여 UI를 설계합니다",
+      "modeRefBlock": "inputs/references/에 스크린샷을 업로드하세요",
+      "modeDesc": "설명 기반",
+      "modeDescDesc": "텍스트 설명으로 UI를 설계합니다 (정확도가 낮을 수 있음)"
+    },
+    "spec": {
+      "label": "기능 스펙 작성",
+      "description": "특정 기능의 구현 계획을 작성합니다 (코드 영향 분석, 태스크, 수용 기준)",
+      "modeGenerate": "기능 스펙",
+      "modeRefactorCapable": "스펙 (리팩토링 가능)",
+      "examplePrompt": "예: 소셜 로그인 기능의 구현 스펙을 작성해줘",
+      "chatOnly": "채팅에서 스펙 범위를 설명하세요"
+    },
+    "code": {
+      "label": "코드 구현",
+      "description": "스펙, 설계 문서, 또는 지시사항으로 코드를 생성합니다",
+      "modeSpec": "스펙 기반 코드 생성",
+      "modeDesignDoc": "설계 문서 기반 코드 생성",
+      "modeDirective": "디렉티브 기반 코드 생성",
+      "refactorHint": "기존 코드베이스에 대한 리팩토링도 가능합니다"
+    },
+    "visual": {
+      "label": "이미지 생성",
+      "description": "이미지, 아이콘, 비주얼 에셋을 생성합니다",
+      "chatOnly": "채팅에서 생성할 이미지를 설명하세요"
+    },
+    "learn": {
+      "label": "코드베이스 학습",
+      "description": "기존 코드를 분석하고 인덱싱합니다",
+      "comingSoonMessage": "이 기능은 현재 개발 중입니다. 사용을 권장하지 않습니다."
+    }
+  },
+
+  "materials": {
+    "sectionTitle": "재료",
+    "present": "보유",
+    "requiredMissing": "BUILD 실행에 필요합니다",
+    "optionalMissing": "선택 — 있으면 결과가 더 정확해집니다",
+    "namingIssue": "Ant가 인식할 수 없는 파일 형식",
+    "namingHint": "기대 형식: {{pattern}}",
+    "prd": "PRD / 소스 문서",
+    "prdDesc": "기획서 또는 참고 문서",
+    "designDirective": "설계 지시사항",
+    "designDirectiveDesc": "추가 설계 지시사항",
+    "figmaConfig": "Figma 설정",
+    "figmaConfigDesc": "Figma 파일 URL 설정",
+    "references": "레퍼런스 이미지",
+    "referencesDesc": "UI 스크린샷 또는 목업 이미지",
+    "designDocs": "설계 문서",
+    "designDocsDesc": "있으면 컨텍스트로 활용됩니다",
+    "specs": "기능 스펙",
+    "specsDesc": "코드 생성을 위한 구현 스펙",
+    "systemDesign": "시스템 설계",
+    "systemDesignDesc": "아키텍처 및 API 설계",
+    "uiDesign": "UI 설계",
+    "uiDesignDesc": "UI 토큰, 에셋, 스펙"
+  },
+
+  "outputs": {
+    "sectionTitle": "산출물",
+    "empty": "아직 생성된 산출물이 없습니다",
+    "directory": "산출물 위치"
+  },
+
+  "footer": {
+    "chatStart": "채팅으로 시작",
+    "build": "BUILD",
+    "buildBlocked": "{{reason}}"
+  },
+
+  "status": {
+    "buildReady": "BUILD 가능",
+    "hasOutput": "산출물 있음",
+    "materialsMissing": "재료 부족",
+    "namingWarning": "네이밍 문제"
+  }
+}

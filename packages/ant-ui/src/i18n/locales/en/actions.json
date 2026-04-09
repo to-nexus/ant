@@ -1,0 +1,86 @@
+{
+  "title": "What would you like to do?",
+  "subtitle": "Select a task to see what's needed and how to get started",
+  "ctaButton": "All actions",
+  "showAll": "View all actions",
+
+  "actions": {
+    "plan": {
+      "label": "Create PRD",
+      "description": "Generate or refine a product requirements document"
+    },
+    "system-design": {
+      "label": "System Design",
+      "description": "Design architecture, API contracts, and data models"
+    },
+    "ui-design": {
+      "label": "UI Design",
+      "description": "Design tokens, assets, and UI specifications",
+      "pickMode": "How would you like to design the UI?"
+    },
+    "spec": {
+      "label": "Feature Spec",
+      "description": "Create implementation specs for a feature scope",
+      "examplePrompt": "e.g. Create an implementation spec for social login",
+      "chatOnly": "Describe the spec scope via chat"
+    },
+    "code": {
+      "label": "Code",
+      "description": "Generate code from specs, design docs, or directives",
+      "refactorHint": "Refactoring of existing codebase is also possible"
+    },
+    "visual": {
+      "label": "Generate Images",
+      "description": "Generate images, icons, and visual assets",
+      "chatOnly": "Describe what to generate via chat"
+    },
+    "learn": {
+      "label": "Learn Codebase",
+      "description": "Analyze and index existing codebase",
+      "comingSoonMessage": "This feature is currently under development. Usage is not recommended."
+    }
+  },
+
+  "materials": {
+    "sectionTitle": "Materials",
+    "present": "Available",
+    "requiredMissing": "Required for BUILD",
+    "optionalMissing": "Optional — improves accuracy",
+    "namingIssue": "Unrecognized file format",
+    "namingHint": "Expected format: {{pattern}}",
+    "sources": "Source Documents",
+    "sourcesDesc": "PRD, requirements, reference docs — multiple files accepted",
+    "designDirective": "Design Directive",
+    "designDirectiveDesc": "Additional design instructions",
+    "figmaConfig": "Figma Configuration",
+    "figmaConfigDesc": "Figma file URL configuration",
+    "references": "Reference Images",
+    "referencesDesc": "UI screenshots or mockups",
+    "designDocs": "Design Documents",
+    "designDocsDesc": "Used as context if available",
+    "specs": "Feature Specs",
+    "specsDesc": "Implementation specs for code generation",
+    "systemDesign": "System Design",
+    "systemDesignDesc": "Architecture and API design",
+    "uiDesign": "UI Design",
+    "uiDesignDesc": "UI tokens, assets, and specs"
+  },
+
+  "outputs": {
+    "sectionTitle": "Outputs",
+    "empty": "No outputs generated yet",
+    "directory": "Output directory"
+  },
+
+  "footer": {
+    "chatStart": "Start via Chat",
+    "build": "BUILD"
+  },
+
+  "status": {
+    "buildReady": "BUILD ready",
+    "hasOutput": "Has outputs",
+    "materialsMissing": "Materials needed",
+    "namingWarning": "Naming issues"
+  }
+}
