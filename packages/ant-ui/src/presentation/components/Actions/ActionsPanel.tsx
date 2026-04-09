@@ -50,7 +50,6 @@ export function ActionsPanel() {
               variant="large"
               onSelect={handleActionSelect}
               title={t('title')}
-              subtitle={t('subtitle')}
             />
           </div>
         )}
