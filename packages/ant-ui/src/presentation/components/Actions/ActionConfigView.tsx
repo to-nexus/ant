@@ -879,6 +879,7 @@ function findFileNode(tree: FileNode[], path: string): FileNode | null {
 
 function resolveTargetFiles(target: ConfigSlots['target'], fileTree: FileNode[]): string[] {
   if (target.codebase || !target.dir) return [];
+  if (!target.expectedFiles || target.expectedFiles.length === 0) return [];
   return listDir(fileTree, target.dir).map(f => f.path);
 }
 

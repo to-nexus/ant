@@ -145,16 +145,6 @@ exports[`Intent Acceptance > create-spec:directive > prompt text snapshot 1`] = 
 ]
 `;
 
-exports[`Intent Acceptance > create-spec:existing-doc > prompt text snapshot 1`] = `
-[
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
-  "common/injections/basis-guidance",
-]
-`;
-
 exports[`Intent Acceptance > refactor-code:directive > prompt text snapshot 1`] = `
 [
   "common/injections/directive",
