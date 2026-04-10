@@ -746,6 +746,7 @@ async function saveConversationToSession(
     sessionData.state.chatSource = state.chatSource;
     sessionData.state.mode = state.mode;
     sessionData.state.tokenUsage = state.tokenUsage;
+    sessionData.state.jobTiming = state.deps?.stateSnapshot?.jobTiming;
     sessionData.state.recursionCount = state.recursionCount;
     sessionData.state.recursionLimit = state.recursionLimit;
     if (currentConversationHistory?.length) {

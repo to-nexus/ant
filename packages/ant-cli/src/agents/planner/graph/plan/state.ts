@@ -8,26 +8,25 @@
  */
 
 import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
-import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
+import { TriageableState, WorkspaceState } from '../../../common/nodes/triage/types';
 import { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
 import type { ResolvedActionContext, ActionMetadata } from '@ant/shared';
 
-export interface PlanGraphState extends PhaseTrackingState {
+export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   // Input
   directive?: string;
   language: 'ko' | 'en';
-  workspaceState?: WorkspaceState;
   featurePath: string;
   
   // Mode
   mode: 'generate' | 'refine' | 'explain';
-  isResume?: boolean;
   
   // Context (loaded by resolve node)
+  context: { featurePath?: string; [key: string]: any };
   existingDocument?: string;
   evalReport?: string;
-  rubricContent?: string;        // PRD rubric (auto-loaded when eval is absent, for self-diagnosis)
+  rubricContent?: string;
   recentTurnSummaries?: string[];
   
   // Multi-turn conversation (cross-run semantic history)
@@ -47,18 +46,8 @@ export interface PlanGraphState extends PhaseTrackingState {
   
   /** Intent-centric resolved context (passed from FE actionMetadata, consumed by templates) */
   resolvedAction?: ResolvedActionContext;
-
-  // TriageableState-compatible fields (for shared triage node)
-  context: { featurePath?: string; [key: string]: any };
-  triageResult?: TriageResult;
-  skipTriage?: boolean;
-  actionMetadata?: ActionMetadata;
-  currentAgent?: string;
-  currentJob?: string;
-  overrideDirective?: string;
-  chatSource?: boolean;
   
-  // Dependencies
+  // Dependencies (extends TriageableState.deps)
   deps?: {
     llm?: any;
     session?: any;
@@ -66,23 +55,17 @@ export interface PlanGraphState extends PhaseTrackingState {
     fileTreeUpdate?: any;
     workflowUpdate?: any;
     promptPort?: PromptPort;
-    /** Mutable shared reference for SIGTERM handler access to latest graph state */
     stateSnapshot?: {
       conversationHistory: Array<{ role: string; content: any }>;
       directive?: string;
       overrideDirective?: string;
       tokenUsage?: TokenUsage;
+      jobTiming?: import('@ant/shared').JobTiming;
     };
   };
   
-  // UI locale (auto-detected from directive)
+  // ✅ UI locale (narrowed from TriageableState.string to literal union)
   _uiLocale?: 'ko' | 'en';
-  
-  // HTTP context
-  _httpJobId?: string;
-  
-  // Token tracking
-  tokenUsage?: TokenUsage;
   
   // Recursion tracking (for kanban badge display)
   recursionCount: number;

@@ -311,6 +311,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
+      ...(this.jobTiming && { jobTiming: this.jobTiming }),
       // Include estimating activity for reconnect/recovery
       ...(this.estimatingLabel && {
         estimatingLabel: this.estimatingLabel,
