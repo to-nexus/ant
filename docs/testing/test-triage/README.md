@@ -19,6 +19,8 @@ pnpm dev
 `workspace-fixtures/` 디렉토리의 fixture 파일들을 feature 디렉토리에 복사하여 사용한다.
 파일명이 실제 워크스페이스 규칙과 동일하므로, 대상 디렉토리에 그대로 복사하면 된다.
 
+시나리오별 채팅 입력 텍스트는 `packages/ant-cli/tests/intents/documents/directives.json`의 `_triage:*` 키 참조.
+
 ```bash
 FIXTURES="docs/testing/test-triage/workspace-fixtures"
 FEATURE="<feature-path>"
@@ -48,7 +50,6 @@ cp "$FIXTURES/spec-auth.md" "$FEATURE/outputs/design/spec/"
 
 | 파일 | 트리거하는 플래그 | 복사 경로 |
 |------|-----------------|----------|
-| `directives.json` | — (채팅 입력 레퍼런스) | 복사 불필요. 시나리오별 채팅 입력 텍스트 모음. |
 | `prd.md` | `hasPrd` | `inputs/sources/prd.md` |
 | `fe-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
 | `be-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
