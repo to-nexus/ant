@@ -178,6 +178,8 @@ export interface ActionMetadata {
   refs?: string[];
   /** Secondary context file paths */
   context?: string[];
+  /** User's UI language (e.g. 'ko', 'en'). Overrides auto-detection when present. Not displayed in UI badges. */
+  language?: string;
 }
 
 /**

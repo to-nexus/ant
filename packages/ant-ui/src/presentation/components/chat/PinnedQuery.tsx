@@ -4,21 +4,29 @@
  * 
  * Features:
  * - Fixed height by default (truncated with line-clamp)
- * - Expands on hover to show full content
+ * - Expands on hover to show full content including ActionMetadata badges
  * - Uses absolute positioning to avoid layout feedback loops with Virtuoso
  * - Always mounted, visibility controlled via CSS (no mount/unmount flicker)
  */
 
 import { useState } from 'react';
+import type { ActionMetadata } from '@ant/shared';
+import { ActionMetadataBadges } from './ActionMetadataBadges';
+
+export interface PinnedQueryData {
+  content: string;
+  actionMetadata?: ActionMetadata;
+}
 
 interface PinnedQueryProps {
-  query: string | null;
+  query: PinnedQueryData | null;
 }
 
 export function PinnedQuery({ query }: PinnedQueryProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   const isActive = !!query;
+  const hasBadges = query?.actionMetadata && Object.keys(query.actionMetadata).length > 0;
 
   return (
     <div 
@@ -34,9 +42,9 @@ export function PinnedQuery({ query }: PinnedQueryProps) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="flex gap-3 items-center">
+      <div className="flex gap-3 items-start">
         {/* User Icon */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 mt-0.5">
           <div className="w-6 h-6 rounded-full bg-blue-500 dark:bg-blue-600 flex items-center justify-center">
             <svg 
               className="w-4 h-4 text-white" 
@@ -54,8 +62,13 @@ export function PinnedQuery({ query }: PinnedQueryProps) {
           </div>
         </div>
         
-        {/* Query Content - Single line normally, expands on hover */}
+        {/* Query Content + Badges */}
         <div className="flex-1 min-w-0">
+          {isHovered && hasBadges && (
+            <div className="-ml-3 mb-1">
+              <ActionMetadataBadges metadata={query.actionMetadata} readOnly />
+            </div>
+          )}
           <div 
             className={`
               text-sm text-gray-900 dark:text-gray-100 font-medium
@@ -63,7 +76,7 @@ export function PinnedQuery({ query }: PinnedQueryProps) {
               ${isHovered ? 'max-h-[50vh] overflow-y-auto whitespace-pre-wrap' : 'truncate'}
             `}
           >
-            {query}
+            {query?.content}
           </div>
         </div>
       </div>

@@ -58,6 +58,7 @@ export const executeJobSchema = z.object({
     basis: z.string().optional(),
     refs: z.array(z.string()).optional(),
     context: z.array(z.string()).optional(),
+    language: z.string().optional(),
   }).optional(),
 }).passthrough();
 
