@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   INTENT_DEFINITIONS,
+  getIntentsForAction,
   type ActionId,
   type Basis,
   getConfigSlots,
@@ -16,7 +17,8 @@ import {
   getPatternDescription,
 } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
-import { ActionStepHeader } from './ActionStepHeader';
+import { IntentTabNav } from './IntentTabNav';
+import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import {
@@ -90,6 +92,16 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     },
   }), [figmaPopulated, bridgeConnected, figmaDesktopReachable, openMainPanelTab, setAccountConfigScrollTarget]);
 
+  const intents = getIntentsForAction(actionId);
+  const directionRef = useRef<1 | -1>(1);
+
+  const handleIntentChange = useCallback((newIntentId: string) => {
+    const oldIdx = intents.findIndex(i => i.id === intentId);
+    const newIdx = intents.findIndex(i => i.id === newIntentId);
+    directionRef.current = newIdx > oldIdx ? 1 : -1;
+    selectIntent(newIntentId);
+  }, [intents, intentId, selectIntent]);
+
   const intentDef = INTENT_DEFINITIONS.find(d => d.id === intentId);
   if (!intentDef) return null;
 
@@ -99,7 +111,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
   const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
   const [selectedCtx, setSelectedCtx] = useState<Set<string>>(new Set());
-  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
+  const [_selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (availableBases.length > 0 && !selectedBasis) {
@@ -211,14 +223,17 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   return (
     <div className="flex flex-col h-full">
       <div className="shrink-0 px-5 pt-5">
-        <ActionStepHeader
+        <IntentTabNav
           actionId={actionId}
-          title={intentDef.label[lang] || intentDef.label.en}
-          subtitle={intentDef.description[lang] || intentDef.description.en}
+          intents={intents}
+          selectedIntentId={intentId}
+          onSelect={handleIntentChange}
           onBack={onBack}
+          lang={lang}
         />
       </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+      <PageTransition pageKey={intentId} direction={directionRef.current} className="flex-1 overflow-y-auto p-5 space-y-5">
 
         {/* Basis */}
         {availableBases.length > 0 && (
@@ -307,7 +322,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
             </Section>
           </>
         )}
-      </div>
+      </PageTransition>
 
       <ActionFooter actionId={actionId} />
     </div>
