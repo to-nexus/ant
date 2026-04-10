@@ -30,6 +30,10 @@ import {
   Eye,
   Unplug,
   Info,
+  Layers,
+  FileText,
+  BookOpen,
+  Crosshair,
 } from 'lucide-react';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
@@ -218,7 +222,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
         {/* Basis */}
         {availableBases.length > 0 && (
-          <Section title={lang === 'ko' ? '기반 소스' : 'Basis'}>
+          <Section title={lang === 'ko' ? '기반 소스' : 'Basis'} icon={Layers} iconColor="text-purple-500 dark:text-purple-400">
             <div className="flex flex-wrap gap-2">
               {availableBases.map(basis => {
                 const label = BASIS_LABELS[basis];
@@ -245,7 +249,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
         {slots && (
           <>
             {/* Refs (primary) */}
-            <Section title={lang === 'ko' ? '참조' : 'References'}>
+            <Section title={lang === 'ko' ? '참조' : 'References'} icon={FileText} iconColor="text-emerald-500 dark:text-emerald-400">
               {hasRefSlots ? (
                 <SlotEntryList
                   entries={refEntries}
@@ -267,7 +271,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
             </Section>
 
             {/* Context (secondary) */}
-            <Section title={lang === 'ko' ? '컨텍스트' : 'Context'}>
+            <Section title={lang === 'ko' ? '컨텍스트' : 'Context'} icon={BookOpen} iconColor="text-gray-500 dark:text-gray-400">
               {hasCtxSlots ? (
                 <SlotEntryList
                   entries={ctxEntries}
@@ -289,7 +293,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
             </Section>
 
             {/* Target */}
-            <Section title={lang === 'ko' ? '타겟' : 'Target'}>
+            <Section title={lang === 'ko' ? '타겟' : 'Target'} icon={Crosshair} iconColor="text-orange-500 dark:text-orange-400">
               <TargetDisplay
                 target={slots.target}
                 selectedRefs={selectedRefs}
@@ -314,10 +318,13 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 // Sub-components
 // ============================================
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, icon: Icon, iconColor, children }: { title: string; icon?: React.ComponentType<{ className?: string }>; iconColor?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{title}</h3>
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+        {Icon && <Icon className={`w-3.5 h-3.5 ${iconColor || 'text-gray-400'}`} />}
+        {title}
+      </h3>
       {children}
     </div>
   );
@@ -776,6 +783,7 @@ function resolveFileWarnings(
   filePath: string,
   fileSize: number | undefined,
   ctx: FileWarningContext,
+  isTemplate?: boolean,
 ): SlotWarning[] {
   const warnings: SlotWarning[] = [];
   const fileName = filePath.split('/').pop() || '';
@@ -795,6 +803,11 @@ function resolveFileWarnings(
         onFix: ctx.onOpenFigmaSettings,
       });
     }
+  } else if (isTemplate) {
+    warnings.push({
+      type: 'invalid-file',
+      message: { en: 'File contains only placeholder content — needs real data', ko: '실제 데이터가 없는 빈 파일입니다 — 내용을 작성해주세요' },
+    });
   } else if (fileSize === 0) {
     warnings.push({
       type: 'invalid-file',
@@ -818,13 +831,13 @@ function resolveSlotEntries(
       if (def.type === 'file') {
         const node = findFileNode(fileTree, def.path);
         if (node) {
-          const warnings = warningCtx ? resolveFileWarnings(def.path, node.size, warningCtx) : [];
+          const warnings = warningCtx ? resolveFileWarnings(def.path, node.size, warningCtx, node.isTemplate) : [];
           files = [{ name: def.path.split('/').pop() || def.path, path: def.path, size: node.size, warnings }];
         }
       } else if (def.path) {
-        files = listDir(fileTree, def.path).map(f => {
-          const warnings = warningCtx ? resolveFileWarnings(f.path, f.size, warningCtx) : [];
-          return { ...f, warnings };
+        files = listDirWithMeta(fileTree, def.path).map(f => {
+          const warnings = warningCtx ? resolveFileWarnings(f.path, f.size, warningCtx, f.isTemplate) : [];
+          return { name: f.name, path: f.path, size: f.size, warnings };
         });
       }
       if (excludePaths && excludePaths.size > 0) {
@@ -855,6 +868,10 @@ function resolveTargetFiles(target: ConfigSlots['target'], fileTree: FileNode[])
 }
 
 function listDir(fileTree: FileNode[], dirPath: string): { name: string; path: string; size?: number }[] {
+  return listDirWithMeta(fileTree, dirPath);
+}
+
+function listDirWithMeta(fileTree: FileNode[], dirPath: string): { name: string; path: string; size?: number; isTemplate?: boolean }[] {
   const parts = dirPath.split('/');
   let nodes: FileNode[] = fileTree;
   for (const part of parts) {
@@ -864,5 +881,5 @@ function listDir(fileTree: FileNode[], dirPath: string): { name: string; path: s
   }
   return nodes
     .filter(n => n.type === 'file')
-    .map(n => ({ name: n.name, path: `${dirPath}/${n.name}`, size: n.size }));
+    .map(n => ({ name: n.name, path: `${dirPath}/${n.name}`, size: n.size, isTemplate: n.isTemplate }));
 }
