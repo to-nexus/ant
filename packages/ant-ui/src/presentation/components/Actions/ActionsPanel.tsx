@@ -74,7 +74,7 @@ export function ActionsPanel() {
 
         {step === 'pick-intent' && selectedActionId && (
           <div className="h-full flex flex-col animate-fadeIn">
-            <div className="shrink-0 px-8 pt-8">
+            <div className="shrink-0 px-5 pt-5">
               <ActionStepHeader
                 actionId={selectedActionId}
                 title={actionDef?.label[lang] || actionDef?.label.en || ''}
@@ -82,7 +82,7 @@ export function ActionsPanel() {
                 onBack={() => setActionsStep('pick-action')}
               />
             </div>
-            <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+            <div className="flex-1 flex items-center justify-center p-5 overflow-y-auto">
               <IntentChipGrid
                 items={intentChipItems()}
                 onSelect={handleIntentSelect}
