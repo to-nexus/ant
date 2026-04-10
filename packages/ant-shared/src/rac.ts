@@ -279,7 +279,7 @@ export function resolveFromExplicit(
  * Merges actionMetadata fields (basis/refs/target/context) if present.
  * Called in detect node after LLM analysis.
  */
-export function resolveFromDetection(
+export function resolveFromInfer(
   report: DetectionReport,
   actionMetadata?: ActionMetadata,
   codebaseProfile?: CodebaseProfileLike,

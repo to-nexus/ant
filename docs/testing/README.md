@@ -1,40 +1,23 @@
-# Testing (practical)
+# Testing
 
-This folder exists for one purpose: **ship changes without fear** by locking Ant's **4 core flows**:
+두 가지 테스트 체계:
 
-- **Chat → job enqueue/run → SSE streaming visible**
-- **Preview lifecycle works end-to-end**
-- **Resume/continue (revise) works end-to-end**
-- **Prompt/template safety gate works** (`npm test`)
+| 문서 | 성격 | 실행 방법 |
+|------|------|----------|
+| `e2e-runbook.md` | 수동 E2E (인프라 필요) | 서버 4개 + Redis 띄우고 curl |
+| `prompt-test-spec.md` | 자동 테스트 (인프라 불필요) | `pnpm test:cli` (~1초) |
 
-If you only do one thing from this folder, do the smoke suite in `01-core-smoke-suite.md`.
+## Quick start
 
-## What these words mean (non-textbook)
+```bash
+# 자동 테스트 (일상적으로 이것만 하면 됨)
+pnpm test:cli                # 889 tests, ~1초
 
-- **E2E**: "From the outside, does the whole flow work?"  
-  For Ant that means: HTTP → Redis/BullMQ → worker → Redis Pub/Sub → SSE → client.
-- **CI gate**: "A merge is blocked unless the smoke suite passes."  
-  Without this, your brain becomes the CI (manual clicking/log hunting).
-- **Observability (관측성)**: "When it fails, can you tell *where* and *why* in minutes?"  
-  Minimum = correlation id + a few key logs you can trust. Not full APM.
+# 빌드 (테스트 자동 포함)
+pnpm build                   # prebuild → vitest run → esbuild
+```
 
 ## Definition of green
 
-You are "green" when:
-
-- You can run the smoke suite locally and get **PASS/FAIL** within ~10 minutes.
-- When it fails, you can pinpoint whether the failure is **API / Realtime(SSE) / Worker(queue) / Preview** without guessing.
-
-## Non-goals (not now)
-
-- Chasing broad unit test coverage.
-- Browser automation for everything.
-- "Perfect" test architecture.
-
-## Documents
-
-- `01-core-smoke-suite.md`: the actual smoke tests (3–5) with concrete pass/fail signals.
-- `02-local-runbook.md`: exact local commands + minimum env for repeatable runs.
-- `03-ci-gate-minimum.md`: the minimum PR gate and how to treat flaky tests.
-- `04-backlog.md`: only what unlocks speed later.
-- `05-prompt-safety-gate.md`: prompt/template safety gate (automated, `npm test`).
+- `pnpm test:cli`가 PASS (~1초)
+- E2E smoke 5개가 PASS (서버 띄운 상태에서)

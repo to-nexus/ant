@@ -192,7 +192,7 @@ npm run start:cloud → dist/ 기반 실행 (이미 검증됨)
 - **Injection manifest**: `injection-manifest.json`이 injection 템플릿 → 변수 매핑을 선언
 - **`npm test` 게이트**: 템플릿 스모크 + 런타임 조립 유닛 테스트 (CI에서 자동 실행)
 
-자세한 내용은 [docs/testing/05-prompt-safety-gate.md](../testing/05-prompt-safety-gate.md) 참고.
+자세한 내용은 [docs/testing/prompt-test-spec.md](../testing/prompt-test-spec.md) 참고.
 
 ## 경계
 

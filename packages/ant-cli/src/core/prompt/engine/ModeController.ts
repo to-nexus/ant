@@ -255,18 +255,18 @@ export class ModeController {
           }
         }
 
-        // preview-setup is also needed for error tasks in browser/fullstack environments.
-        // Error tasks may modify next.config / vite.config and must know the basePath
-        // requirements even though they skip environment-specific rules.
-        if (isError && (environment === 'browser' || environment === 'fullstack')) {
-          injections.push(`${jobPrefix}/preview-setup`);
-          console.log(`[ModeController] Adding preview-setup for error task in frontend environment`);
-        }
-
         if (job === 'code') {
           injections.push(`${jobPrefix}/tool-calling-rules-compact`);
           console.log(`[ModeController] Adding compact tool-calling rules`);
         }
+      }
+
+      // preview-setup is also needed for error tasks in browser/fullstack environments.
+      // Error tasks may modify next.config / vite.config and must know the basePath
+      // requirements even though they skip environment-specific rules.
+      if (isError && (environment === 'browser' || environment === 'fullstack')) {
+        injections.push(`${jobPrefix}/preview-setup`);
+        console.log(`[ModeController] Adding preview-setup for error task in frontend environment`);
       }
 
       // Verification language hints are now injected into the plan verification prompt
