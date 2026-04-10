@@ -1,5 +1,5 @@
 import { ChevronLeft } from 'lucide-react';
-import { ACTION_VISUALS } from './ActionChip';
+import { ACTION_VISUALS } from './actionVisuals';
 import type { ActionId } from '@ant/shared';
 
 interface ActionStepHeaderProps {
