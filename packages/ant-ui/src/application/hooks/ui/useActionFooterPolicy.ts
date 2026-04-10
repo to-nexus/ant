@@ -10,7 +10,6 @@
 import { useStore } from '@/domain/store';
 import { getConfigSlots } from '@ant/shared';
 import type { Basis } from '@ant/shared';
-import type { FileNode } from '@/infrastructure/http/api';
 
 export interface ActionFooterPolicy {
   canStartChat: boolean;
@@ -25,7 +24,7 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   const selectedFeature = useStore(s => s.selectedFeature);
   const isRunning = useStore(s => s.isRunning);
   const actionMetadata = useStore(s => s.actionMetadata);
-  const fileTree = useStore(s => s.fileTree);
+  const gitStatus = useStore(s => s.gitStatus);
 
   const hasWorkspace = !!selectedProject && !!selectedFeature;
   const hasRequiredMetadata = !!actionMetadata.intent && !!actionMetadata.basis;
@@ -61,11 +60,8 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     }
   }
 
-  if (slots.target.codebase) {
-    const codebaseHasFiles = hasCodebaseFilesFromTree(fileTree);
-    if (!codebaseHasFiles) {
-      return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'codebase-empty', buildDisabledReason: 'codebase-empty' };
-    }
+  if (slots.target.codebase && !gitStatus?.codebaseHasFiles) {
+    return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'codebase-empty', buildDisabledReason: 'codebase-empty' };
   }
 
   if (slots.target.mirrorRefs) {
@@ -93,46 +89,4 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   }
 
   return { canStartChat, canBuild, isBuilding: false, buildDisabledReason };
-}
-
-function hasFilesForSlots(defs: { path: string; type: string; emptyHint?: unknown }[], fileTree: FileNode[]): boolean {
-  for (const def of defs) {
-    if (def.emptyHint || !def.path) continue;
-    if (def.type === 'file') {
-      if (fileExists(fileTree, def.path)) return true;
-    } else {
-      if (dirHasFiles(fileTree, def.path)) return true;
-    }
-  }
-  return false;
-}
-
-function fileExists(tree: FileNode[], path: string): boolean {
-  const parts = path.split('/');
-  let nodes = tree;
-  for (let i = 0; i < parts.length; i++) {
-    const node = nodes.find(n => n.name === parts[i]);
-    if (!node) return false;
-    if (i === parts.length - 1) return node.type === 'file';
-    if (!node.children) return false;
-    nodes = node.children;
-  }
-  return false;
-}
-
-function dirHasFiles(tree: FileNode[], dirPath: string): boolean {
-  const parts = dirPath.split('/');
-  let nodes = tree;
-  for (const part of parts) {
-    const node = nodes.find(n => n.name === part);
-    if (!node || node.type !== 'directory' || !node.children) return false;
-    nodes = node.children;
-  }
-  return nodes.some(n => n.type === 'file');
-}
-
-const CANONICAL_ROOT_NAMES = new Set(['inputs', 'outputs', 'sessions', '.gitignore', '.git']);
-
-function hasCodebaseFilesFromTree(fileTree: FileNode[]): boolean {
-  return fileTree.some(n => !CANONICAL_ROOT_NAMES.has(n.name));
 }

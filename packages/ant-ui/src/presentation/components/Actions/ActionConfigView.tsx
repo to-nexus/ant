@@ -18,6 +18,7 @@ import {
 import type { FileNode } from '@/infrastructure/http/api';
 import { ActionStepHeader } from './ActionStepHeader';
 import { ActionFooter } from './ActionFooter';
+import { useToastContext } from '@/presentation/providers/ToastProvider';
 import {
   CheckCircle2,
   Circle,
@@ -68,6 +69,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const selectFile = useStore(s => s.selectFile);
   const setMainView = useStore(s => s.setMainView);
   const setAccountConfigScrollTarget = useStore(s => s.setAccountConfigScrollTarget);
+  const gitStatus = useStore(s => s.gitStatus);
+  const { toast } = useToastContext();
 
   useEffect(() => {
     return () => clearSpotlightTarget();
@@ -162,9 +165,14 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const handleCreateIntent = (targetIntentId: string) => {
     const targetIntentDef = INTENT_DEFINITIONS.find(d => d.id === targetIntentId);
     if (!targetIntentDef) return;
+    const fromLabel = intentDef?.label[lang] || intentDef?.label.en || intentId;
+    const toLabel = targetIntentDef.label[lang] || targetIntentDef.label.en;
     openActionsPanel(targetIntentDef.actionId);
     selectIntent(targetIntentId);
     setActionsStep('config');
+    toast.info(lang === 'ko'
+      ? `${fromLabel} → ${toLabel}(으)로 이동했습니다`
+      : `Navigated from ${fromLabel} to ${toLabel}`);
   };
 
   const toggleFile = (
@@ -289,7 +297,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                 onToggleSpotlight={handleToggleSpotlight}
                 spotlightPath={spotlightTarget?.path}
                 onOpenIde={handleOpenIde}
-                fileTree={fileTree}
+                codebaseHasFiles={gitStatus?.codebaseHasFiles ?? false}
                 lang={lang}
               />
             </Section>
@@ -633,14 +641,14 @@ function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onCreateIn
   );
 }
 
-function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight, spotlightPath, onOpenIde, fileTree, lang }: {
+function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight, spotlightPath, onOpenIde, codebaseHasFiles, lang }: {
   target: ConfigSlots['target'];
   selectedRefs: Set<string>;
   targetExisting: { name: string; path: string }[];
   onToggleSpotlight: (type: 'file' | 'dir', path: string) => void;
   spotlightPath?: string | null;
   onOpenIde?: () => void;
-  fileTree: FileNode[];
+  codebaseHasFiles: boolean;
   lang: 'en' | 'ko';
 }) {
   const { t } = useTranslation('actions');
@@ -675,16 +683,15 @@ function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight
   }
 
   if (target.codebase) {
-    const hasCode = hasCodebaseFiles(fileTree);
     return (
       <FileCard
         name={lang === 'ko' ? '코드베이스' : 'Codebase'}
-        path={lang === 'ko' ? (hasCode ? '소스 코드 감지됨' : '소스 코드 없음 — 코드를 먼저 생성하세요') : (hasCode ? 'Source code detected' : 'No source code — generate code first')}
-        selected={hasCode}
-        locked={hasCode}
-        empty={!hasCode}
-        emptyStyle={!hasCode ? 'amber' : undefined}
-        icon={<FolderOpen className={`w-4 h-4 ${hasCode ? 'text-emerald-500' : 'text-amber-400'} shrink-0`} />}
+        path={lang === 'ko' ? (codebaseHasFiles ? '소스 코드 감지됨' : '소스 코드 없음 — 코드를 먼저 생성하세요') : (codebaseHasFiles ? 'Source code detected' : 'No source code — generate code first')}
+        selected={codebaseHasFiles}
+        locked={codebaseHasFiles}
+        empty={!codebaseHasFiles}
+        emptyStyle={!codebaseHasFiles ? 'amber' : undefined}
+        icon={<FolderOpen className={`w-4 h-4 ${codebaseHasFiles ? 'text-emerald-500' : 'text-amber-400'} shrink-0`} />}
         description={{ en: 'Source code generated in the codebase/ directory.', ko: 'codebase/ 디렉터리에 생성된 소스 코드입니다.' }}
         actions={onOpenIde ? (
           <button
@@ -758,12 +765,6 @@ function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight
 // File resolution helpers
 // ============================================
 
-const CANONICAL_ROOT_NAMES = new Set(['inputs', 'outputs', 'sessions', '.gitignore', '.git']);
-
-function hasCodebaseFiles(fileTree: FileNode[]): boolean {
-  return fileTree.some(n => !CANONICAL_ROOT_NAMES.has(n.name));
-}
-
 interface FileWarningContext {
   figmaPopulated: boolean | null;
   bridgeConnected: boolean | null;
@@ -811,18 +812,8 @@ function resolveSlotEntries(
   warningCtx?: FileWarningContext,
 ): SlotEntry[] {
   return defs
-    .filter(def => !def.emptyHint || def.path || def.codebase)
+    .filter(def => !def.emptyHint || def.path)
     .map(def => {
-      if (def.codebase) {
-        const hasCode = hasCodebaseFiles(fileTree);
-        return {
-          def,
-          files: [],
-          hasFiles: hasCode,
-          hasValidFiles: hasCode,
-        };
-      }
-
       let files: SlotFileEntry[] = [];
       if (def.type === 'file') {
         const node = findFileNode(fileTree, def.path);

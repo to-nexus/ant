@@ -27,6 +27,7 @@ export class StatusService {
   async getGitStatus(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasGit: boolean;
     hasCodebase: boolean;
+    codebaseHasFiles: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
     remoteUrl?: string;
@@ -37,6 +38,14 @@ export class StatusService {
       const hasCodebase = fs.existsSync(codebasePath);
       const gitDir = path.join(codebasePath, '.git');
       const hasGit = fs.existsSync(gitDir);
+
+      let codebaseHasFiles = false;
+      if (hasCodebase) {
+        try {
+          const items = fs.readdirSync(codebasePath);
+          codebaseHasFiles = items.some(name => !name.startsWith('.') && name !== 'node_modules');
+        } catch { /* empty */ }
+      }
       
       // Check if features exist
       const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
@@ -68,11 +77,11 @@ export class StatusService {
         }
       }
 
-      return { hasGit, hasCodebase, hasFeatures, currentBranch, remoteUrl };
+      return { hasGit, hasCodebase, codebaseHasFiles, hasFeatures, currentBranch, remoteUrl };
     } catch (error: any) {
       // ENOENT/EACCES are expected when project path doesn't exist yet
       if (error?.code === 'ENOENT' || error?.code === 'EACCES') {
-        return { hasGit: false, hasCodebase: false, hasFeatures: false };
+        return { hasGit: false, hasCodebase: false, codebaseHasFiles: false, hasFeatures: false };
       }
       console.error('[GitStatusService] Error checking Git status:', error);
       throw error;

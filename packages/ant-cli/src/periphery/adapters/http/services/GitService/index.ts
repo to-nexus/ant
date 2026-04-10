@@ -54,6 +54,7 @@ export class GitService {
   async getGitStatus(projectId: string, userContext: UserContext, featureName?: string): Promise<{
     hasGit: boolean;
     hasCodebase: boolean;
+    codebaseHasFiles: boolean;
     hasFeatures: boolean;
     currentBranch?: string;
   }> {
