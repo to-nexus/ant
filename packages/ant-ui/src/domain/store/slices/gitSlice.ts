@@ -40,7 +40,7 @@ export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, _get) =
   
   fetchGitStatus: async (projectId: string, feature?: string) => {
     if (!projectId) {
-      set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false }, isGitStatusLoading: false });
+      set({ gitStatus: { hasGit: false, hasCodebase: false, codebaseHasFiles: false, hasFeatures: false }, isGitStatusLoading: false });
       return;
     }
     
@@ -53,7 +53,7 @@ export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, _get) =
       // Transient errors (network, timeout) should not reset git status.
       // Only clear if there was no previous status at all.
       if (!_get().gitStatus) {
-        set({ gitStatus: { hasGit: false, hasCodebase: false, hasFeatures: false } });
+        set({ gitStatus: { hasGit: false, hasCodebase: false, codebaseHasFiles: false, hasFeatures: false } });
       }
     } finally {
       set({ isGitStatusLoading: false });
