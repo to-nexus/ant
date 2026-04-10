@@ -30,14 +30,14 @@ ANT는 멀티테넌트 워크스페이스 구조를 사용한다. 조직, 사용
                                 design.json
                                 code.json
                                 learn.json
-                                debug/          (prompts/, plans/, logs/, tokens/, figma/)
+                                debug/          (summary/, prompts/, plans/, logs/, tokens/, figma/)
                                 runtime/        (design/, code/)
                             planner/
                                 plan.json
-                                debug/          (prompts/)
+                                debug/          (summary/, prompts/)
                             creator/
                                 visual.json
-                                debug/          (prompts/)
+                                debug/          (summary/, prompts/)
                             chat.json
 ```
 
@@ -104,3 +104,4 @@ Job 실행 시 자식 프로세스에 화이트리스트 방식으로 환경변�
 - 환경변수 상세: [02-infrastructure.md](02-infrastructure.md)
 - Job 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
 - IDE 격리: [23-cloud-ide.md](23-cloud-ide.md)
+- 디버그 로깅 시스템: [29-debug-logging.md](29-debug-logging.md)
