@@ -270,8 +270,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   context.featurePath = featurePath;
 
   // 1. Load source documents (PRD + all text files in inputs/sources/)
-  const actionRefs = (state as any).actionMetadata?.refs as string[] | undefined;
-  const actionCtx = (state as any).actionMetadata?.context as string[] | undefined;
+  const actionRefs = state.actionMetadata?.refs;
+  const actionCtx = state.actionMetadata?.context;
   const hasExplicitRefs = actionRefs && actionRefs.length > 0;
 
   let prd: string | undefined;
@@ -462,7 +462,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
   }
 
   // RAC creation: explicit path only (infer path creates RAC in detectEnvironment)
-  const actionMetadata = (state as any).actionMetadata;
+  const actionMetadata = state.actionMetadata;
   let resolvedAction = state.resolvedAction;
   if (!resolvedAction && actionMetadata?.intent) {
     const codebaseProfile = state.context.codebaseProfile;

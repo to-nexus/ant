@@ -385,7 +385,7 @@ export async function detectEnvironment(
     await chatAPI.finalizeMessage();
     
     // RAC: create from detection (infer path, clarify resume)
-    const clarifyActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+    const clarifyActionMetadata = state.actionMetadata;
     const clarifyRAC = resolveFromInfer(detectionReport, clarifyActionMetadata, state.context.codebaseProfile);
     console.log(`📋 [detectEnvironment] RAC created (clarify resume): tech=${JSON.stringify(clarifyRAC.tech)}`);
 
@@ -400,9 +400,9 @@ export async function detectEnvironment(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // ActionMetadata bypass: intent already determines workType/jobMode
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if ((state as any).actionMetadata?.intent) {
+  if (state.actionMetadata?.intent) {
     const { deriveFromIntent } = await import('@ant/shared');
-    const intent = (state as any).actionMetadata.intent as string;
+    const intent = state.actionMetadata.intent;
     const derived = deriveFromIntent(intent);
     console.log(`⚡ [detectEnvironment] ActionMetadata bypass: intent=${intent} → workType=${derived.workType}, jobMode=${derived.jobMode}, env=${derived.environment}`);
 
@@ -824,7 +824,7 @@ export async function detectEnvironment(
         await chatAPI.finalizeMessage();
         
         // RAC: create even on error path (downstream may need it)
-        const errorActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+        const errorActionMetadata = state.actionMetadata;
         const errorRAC = state.resolvedAction || resolveFromInfer(detectionReport, errorActionMetadata, state.context.codebaseProfile);
 
         return {
@@ -888,7 +888,7 @@ export async function detectEnvironment(
     // RAC: create from detection (infer path, LLM detection complete)
     let inferRAC: ResolvedActionContext | undefined = state.resolvedAction;
     if (!inferRAC) {
-      const inferActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+      const inferActionMetadata = state.actionMetadata;
       inferRAC = resolveFromInfer(detectionReport, inferActionMetadata, state.context.codebaseProfile);
       console.log(`📋 [detectEnvironment] RAC created (infer): workType=${inferRAC.workType}, tech=${JSON.stringify(inferRAC.tech)}`);
     }
