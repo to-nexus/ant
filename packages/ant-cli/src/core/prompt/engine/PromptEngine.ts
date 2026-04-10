@@ -63,7 +63,9 @@ export class PromptEngine {
   }
   
   /**
-   * Build prompt for plan phase
+   * @deprecated Dead code — planGeneration.ts calls buildTaskPlanPrompt() directly.
+   * Plan phase does NOT go through 6-layer pipeline / ModeController.
+   * Retained for reference; will be removed in a future cleanup.
    */
   async buildPlanPrompt(
     job: AgentJob,
