@@ -24,8 +24,6 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
     if (!derived || !policy.canStartChat) return;
     const store = useStore.getState();
     store.updateActionMetadata({ explicit: true });
-    store.setSelectedAgent(derived.agent);
-    store.setSelectedJobType(derived.jobType as any);
     requestAnimationFrame(() => {
       const input = document.querySelector('textarea[data-chat-input]') as HTMLTextAreaElement | null;
       input?.focus();
@@ -36,7 +34,6 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
     if (!derived || !policy.canBuild || !selectedProject || !selectedFeature) return;
 
     const store = useStore.getState();
-    store.setSelectedJobType(derived.jobType as any);
     store.setRunning(true, undefined, 'generate');
 
     const metadata = { ...actionMetadata };

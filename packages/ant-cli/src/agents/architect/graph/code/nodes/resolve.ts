@@ -7,7 +7,8 @@ import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/tim
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 import { resolveFromExplicit } from "@ant/shared";
-import type { EnvironmentHints } from "@ant/shared";
+import type { EnvironmentHints, ResolvedDocument } from "@ant/shared";
+import type { FileSystemPort } from "../../../../../core/ports/filesystem";
 
 /**
  * Compress uncompressed heavyweight entries in jobConversation via LLM summarization.
@@ -626,6 +627,23 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     };
     resolvedAction = resolveFromExplicit(actionMetadata, codebaseProfile, fallbackHints);
     console.log(`📋 [Resolve] RAC created (explicit): intent=${actionMetadata.intent}, tech=${JSON.stringify(resolvedAction.tech)}`);
+
+    // Load documents for explicit path: ActionMetadata.refs/context → ResolvedDocument[]
+    if (fileSystem && featurePath) {
+      const documents: ResolvedDocument[] = [];
+      for (const refPath of actionMetadata.refs || []) {
+        const content = await loadFeatureFile(refPath, fileSystem, featurePath);
+        if (content) documents.push({ path: refPath, content, role: 'ref' });
+      }
+      for (const ctxPath of actionMetadata.context || []) {
+        const content = await loadFeatureFile(ctxPath, fileSystem, featurePath);
+        if (content) documents.push({ path: ctxPath, content, role: 'context' });
+      }
+      if (documents.length > 0) {
+        resolvedAction = { ...resolvedAction, documents };
+        console.log(`📋 [Resolve] RAC documents loaded: ${documents.length} (${documents.filter(d => d.role === 'ref').length} ref, ${documents.filter(d => d.role === 'context').length} context)`);
+      }
+    }
   }
 
   const result = {
@@ -657,4 +675,24 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   }
   
   return result;
+}
+
+/**
+ * Load a feature-relative file via FileSystemPort.
+ * Returns undefined if the file doesn't exist or can't be read.
+ */
+async function loadFeatureFile(
+  relativePath: string,
+  fileSystem: FileSystemPort,
+  featurePath: string,
+): Promise<string | undefined> {
+  const fullPath = path.join(featurePath, relativePath);
+  const rootPath = fileSystem.getRootPath?.();
+  const normalizedPath = rootPath ? path.relative(rootPath, fullPath) : fullPath;
+  try {
+    if (await fileSystem.fileExists(normalizedPath)) {
+      return await fileSystem.readFile(normalizedPath) || undefined;
+    }
+  } catch { /* file not found, skip */ }
+  return undefined;
 }

@@ -2,7 +2,7 @@ import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import { type ActionMetadata } from '@ant/shared';
+import { type ActionMetadata, deriveFromIntent } from '@ant/shared';
 import i18n from '@/i18n';
 
 export interface UIActions {
@@ -387,13 +387,29 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   selectIntent: (intentId: string) => {
-    set({ selectedIntentId: intentId, actionMetadata: { intent: intentId } });
+    const derived = deriveFromIntent(intentId);
+    set({
+      selectedIntentId: intentId,
+      actionMetadata: { intent: intentId },
+      selectedAgent: derived.agent,
+      selectedJobType: derived.jobType as any,
+      pendingChatInput: { message: '', source: 'intent-change' },
+    });
   },
 
   updateActionMetadata: (patch: Partial<ActionMetadata>) => {
-    set((s: any) => ({
-      actionMetadata: { ...s.actionMetadata, ...patch },
-    }));
+    set((s: any) => {
+      const next = { ...s.actionMetadata, ...patch };
+      const updates: any = { actionMetadata: next };
+      if (patch.intent !== undefined) {
+        if (patch.intent) {
+          const derived = deriveFromIntent(patch.intent);
+          updates.selectedAgent = derived.agent;
+          updates.selectedJobType = derived.jobType;
+        }
+      }
+      return updates;
+    });
   },
 
   resetActionMetadata: () => {

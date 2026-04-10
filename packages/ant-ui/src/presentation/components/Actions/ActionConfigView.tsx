@@ -8,6 +8,7 @@ import {
   getConfigSlots,
   getAvailableBases,
   matchesExpectedFile,
+  formatExpectedFile,
   type ConfigSlots,
   type SlotDef,
 } from '@ant/shared';
@@ -164,7 +165,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
         {slots && (
           <>
             {/* Refs (primary) */}
-            <Section title={lang === 'ko' ? '참조 (Refs)' : 'References'}>
+            <Section title={lang === 'ko' ? '참조' : 'References'}>
               {hasRefSlots ? (
                 <SlotEntryList
                   entries={refEntries}
@@ -358,10 +359,10 @@ function TargetDisplay({ target, selectedRefs, targetExisting, selectedTargets, 
               {hasConflict && <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />}
               <div className="flex-1 min-w-0">
                 <span className="text-sm text-gray-800 dark:text-gray-200 truncate block">
-                  {ef.prefix}*{ef.ext}
+                  {formatExpectedFile(ef)}
                 </span>
                 <span className="text-xs text-gray-400 truncate block">
-                  {target.dir}/{ef.prefix}*{ef.ext}
+                  {target.dir}/{formatExpectedFile(ef)}
                   {hasConflict
                     ? ` — ${lang === 'ko' ? '기존 파일이 덮어쓰여질 수 있습니다' : 'may overwrite existing'}`
                     : ''}

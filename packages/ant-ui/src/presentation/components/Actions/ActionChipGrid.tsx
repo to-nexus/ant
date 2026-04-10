@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, type ActionId, type ActionReadiness } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, type ActionId, type ActionReadiness } from '@ant/shared';
 import { ActionChip } from './ActionChip';
 
 const EMPTY_READINESS: ActionReadiness = {
@@ -15,15 +16,22 @@ interface ActionChipGridProps {
   readiness: Record<ActionId, ActionReadiness>;
   variant: 'compact' | 'large';
   onSelect: (actionId: ActionId) => void;
+  agentFilter?: string;
   title?: string;
   subtitle?: string;
 }
 
-export function ActionChipGrid({ readiness, variant, onSelect, title, subtitle }: ActionChipGridProps) {
+export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, title, subtitle }: ActionChipGridProps) {
   const { i18n } = useTranslation('actions');
   const lang = i18n.language as 'en' | 'ko';
 
-  const defs = ACTION_DEFINITIONS;
+  const defs = useMemo(() => {
+    if (!agentFilter) return ACTION_DEFINITIONS;
+    return ACTION_DEFINITIONS.filter(def => {
+      const intents = getIntentsForAction(def.id);
+      return intents.some(intent => deriveFromIntent(intent.id).agent === agentFilter);
+    });
+  }, [agentFilter]);
   const gridCols = defs.length === 1 ? 'grid-cols-1 max-w-xs' : variant === 'large' ? 'grid-cols-2 max-w-lg' : 'grid-cols-2 max-w-md';
   const gap = variant === 'large' ? 'gap-4' : 'gap-3';
 
