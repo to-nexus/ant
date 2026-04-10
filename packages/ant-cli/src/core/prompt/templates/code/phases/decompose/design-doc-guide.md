@@ -1,4 +1,4 @@
-{{#if designDoc}}
+{{#if hasDocuments}}
 ════════════════════════════════════════════════════════════════════════════════
 ## 📐 DESIGN SPECIFICATION AVAILABLE
 ════════════════════════════════════════════════════════════════════════════════
@@ -28,10 +28,6 @@
 | **Tier count** | Count distinct document prefixes: `fe-system-*`, `be-system-*`, `api-contract-*` |
 | **Service boundaries** | Are there multiple `be-system-{service}.md` files (one per service)? |
 | **Shared contracts** | Does `api-contract-*` exist, implying a frontend-backend integration boundary? |
-
-{{#if (and (includes designDoc "fe-system-") (includes designDoc "be-system-"))}}
-✅ **Fullstack project detected** (Frontend + Backend design documents present)
-{{/if}}
 
 **Principle**: Repository structure follows tier boundaries — each independently buildable tier becomes a package in a multi-package workspace. A single-tier project remains monolithic.
 
@@ -75,7 +71,24 @@
 
 ════════════════════════════════════════════════════════════════════════════════
 
-{{designDoc}}
+{{#each documents}}
+{{#if (includes path "fe-system-")}}
+> Frontend architecture document.
+{{/if}}
+{{#if (includes path "be-system-")}}
+> Backend architecture document.
+{{/if}}
+{{#if (includes path "api-contract-")}}
+> API contract document.
+{{/if}}
+
+### {{label}}: {{path}}
+
+{{{content}}}
+
+────────────────────────────────────────
+
+{{/each}}
 
 ════════════════════════════════════════════════════════════════════════════════
 

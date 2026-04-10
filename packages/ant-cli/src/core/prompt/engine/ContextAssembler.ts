@@ -2,7 +2,7 @@ import { ProjectContext, AgentJob, CodebaseProfile } from "../../types";
 import { CodebaseAnalyzerPort, GitPort, MemoryPort } from "../../ports";
 import { ReferenceContext } from "../../codebase/types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
-import type { ResolvedActionContext } from "@ant/shared";
+import type { ResolvedActionContext, ResolvedDocument } from "@ant/shared";
 
 /**
  * Assembled context from all sources
@@ -10,12 +10,8 @@ import type { ResolvedActionContext } from "@ant/shared";
  */
 export interface AssembledContext {
   directive?: string;
-  designDoc?: string;
   designDocPath?: string;
-  prdSpec?: string;          // ✅ Added for design graph
-  currentCode?: string;      // ✅ Added for design graph
-  // ✅ Optional UI context - injected only for UI-related tasks
-  uiDoc?: string;
+  currentCode?: string;
   uiAssets?: Record<string, string[]>;  // Dynamic keys by asset subdirectory
   // ✅ Feature path for runtime asset resolution (e.g., features/skeleton)
   featurePath?: string;
@@ -35,7 +31,6 @@ export interface AssembledContext {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Prompt Flags
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  hasUiDoc?: boolean;
   figmaAvailable?: boolean;
   figmaStartNodeId?: string;
   
@@ -107,6 +102,9 @@ export interface AssembledContext {
   // ✅ Spec-driven mode: true when designDoc comes from spec document (not system design)
   isSpecDriven?: boolean;
 
+  // Documents (role-labeled file content for prompt rendering)
+  documents?: ResolvedDocument[];
+
   // RAC (Intent-Centric Prompt System)
   resolvedAction?: ResolvedActionContext;
   
@@ -152,10 +150,7 @@ export class ContextAssembler {
     loader?: (job: AgentJob, context: any) => Promise<Partial<AssembledContext>>,
     artifacts?: {
       directive?: string;
-      designDoc?: string;
-      prdSpec?: string;
       currentCode?: string;
-      uiDoc?: string;
       uiAssets?: AssembledContext['uiAssets'];
       lastSectionNumber?: number;
       sectionPattern?: string;
@@ -178,21 +173,18 @@ export class ContextAssembler {
         beDesigns: { [name: string]: string };
       };
       designDomain?: 'game' | 'service';
-      hasUiDoc?: boolean;
       isSpecDriven?: boolean;
       figmaAvailable?: boolean;
       figmaStartNodeId?: string;
       resolvedAction?: ResolvedActionContext;
+      documents?: ResolvedDocument[];
     }
   ): Promise<AssembledContext> {
     const assembled: Partial<AssembledContext> = {};
     
     if (artifacts) {
       assembled.directive = artifacts.directive;
-      assembled.designDoc = artifacts.designDoc;
-      assembled.prdSpec = artifacts.prdSpec;
       assembled.currentCode = artifacts.currentCode;
-      assembled.uiDoc = artifacts.uiDoc;
       assembled.uiAssets = artifacts.uiAssets;
       assembled.lastSectionNumber = artifacts.lastSectionNumber;
       assembled.sectionPattern = artifacts.sectionPattern;
@@ -206,9 +198,6 @@ export class ContextAssembler {
       assembled.referenceRequests = artifacts.referenceRequests;
       assembled.designDocs = artifacts.designDocs;
       assembled.designDomain = artifacts.designDomain;
-      if (artifacts.hasUiDoc !== undefined) {
-        assembled.hasUiDoc = artifacts.hasUiDoc;
-      }
       if (artifacts.isSpecDriven !== undefined) {
         assembled.isSpecDriven = artifacts.isSpecDriven;
       }
@@ -220,6 +209,9 @@ export class ContextAssembler {
       }
       if (artifacts.resolvedAction !== undefined) {
         assembled.resolvedAction = artifacts.resolvedAction;
+      }
+      if (artifacts.documents !== undefined) {
+        assembled.documents = artifacts.documents;
       }
     }
     
@@ -238,9 +230,6 @@ export class ContextAssembler {
       if (artifacts.directive !== undefined) {
         assembled.directive = artifacts.directive;
       }
-      if (artifacts.designDoc !== undefined) {
-        assembled.designDoc = artifacts.designDoc;
-      }
       if (artifacts.designDocs !== undefined) {
         assembled.designDocs = artifacts.designDocs;
       }
@@ -253,9 +242,6 @@ export class ContextAssembler {
       if (artifacts.currentTask !== undefined) {
         assembled.currentTask = artifacts.currentTask;
       }
-      if (artifacts.prdSpec !== undefined) {
-        assembled.prdSpec = artifacts.prdSpec;
-      }
       if (artifacts.sectionScope !== undefined) {
         assembled.sectionScope = artifacts.sectionScope;
       }
@@ -264,6 +250,9 @@ export class ContextAssembler {
       }
       if (artifacts.resolvedAction !== undefined) {
         assembled.resolvedAction = artifacts.resolvedAction;
+      }
+      if (artifacts.documents !== undefined) {
+        assembled.documents = artifacts.documents;
       }
     }
     
@@ -302,7 +291,7 @@ export class ContextAssembler {
     
     const stats = {
       hasDirective: Boolean(assembled.directive),
-      hasDesign: Boolean(assembled.designDoc || assembled.previousDesign),
+      hasDesign: Boolean(assembled.previousDesign || (assembled.documents && assembled.documents.length > 0)),
       hasProjectCode: Boolean(
         assembled.projectCodeContext?.files && 
         assembled.projectCodeContext.files.length > 0

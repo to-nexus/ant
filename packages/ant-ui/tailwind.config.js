@@ -5,6 +5,10 @@ export default {
     './src/**/*.{js,ts,jsx,tsx}'
   ],
   theme: {
+    containers: {
+      xs: '280px',
+      sm: '420px',
+    },
     extend: {
       fontFamily: {
         'display': ['Space Grotesk', 'system-ui', 'sans-serif'],
@@ -258,6 +262,7 @@ export default {
   },
   plugins: [
     require('@tailwindcss/typography'),
+    require('@tailwindcss/container-queries'),
     // ✅ 스크롤바 숨김 유틸리티
     function({ addUtilities }) {
       addUtilities({

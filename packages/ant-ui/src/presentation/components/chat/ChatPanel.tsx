@@ -246,7 +246,7 @@ export function ChatPanel({
 
         {/* Empty State - Ready: Action Chip Grid (hidden when actions tab is open) */}
         {messages.length === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
-          <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+          <div className="flex-1 min-h-0 flex items-center justify-center p-6 overflow-y-auto">
             {mainPanelActiveTab === 'actions' ? (
               <div className="text-center max-w-sm">
                 <WatermarkIcon

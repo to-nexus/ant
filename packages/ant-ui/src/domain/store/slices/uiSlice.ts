@@ -45,6 +45,8 @@ export interface UIActions {
   resetActionMetadata: () => void;
   highlightArtifactDirs: (dirs: string[]) => void;
   clearHighlightedArtifactDirs: () => void;
+  setSpotlightTarget: (target: { type: 'file' | 'dir'; path: string }) => void;
+  clearSpotlightTarget: () => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -117,6 +119,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   selectedIntentId: null,
   actionMetadata: {} as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
+  spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
   pendingClarifyAnswers: {},
   pendingClarifyQuestions: [],
   onboardingSkipped: false,
@@ -430,6 +433,14 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   clearHighlightedArtifactDirs: () => {
     set({ highlightedArtifactDirs: [] });
+  },
+
+  setSpotlightTarget: (target: { type: 'file' | 'dir'; path: string }) => {
+    set({ spotlightTarget: target });
+  },
+
+  clearSpotlightTarget: () => {
+    set({ spotlightTarget: null });
   },
 });
 

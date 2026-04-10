@@ -189,3 +189,21 @@
   0%, 100% { background-color: transparent; }
   50% { background-color: rgba(96, 165, 250, 0.1); }
 }
+
+/* Artifact spotlight — infinite pulse for file-level highlight */
+.artifact-spotlight {
+  animation: artifact-spotlight-pulse 1.2s ease-in-out infinite;
+  border-radius: 0.375rem;
+}
+.dark .artifact-spotlight {
+  animation: artifact-spotlight-pulse-dark 1.2s ease-in-out infinite;
+}
+
+@keyframes artifact-spotlight-pulse {
+  0%, 100% { background-color: rgba(250, 204, 21, 0.12); }
+  50% { background-color: rgba(250, 204, 21, 0.3); }
+}
+@keyframes artifact-spotlight-pulse-dark {
+  0%, 100% { background-color: rgba(234, 179, 8, 0.08); }
+  50% { background-color: rgba(234, 179, 8, 0.2); }
+}

@@ -62,7 +62,7 @@ export function ActionsPanel() {
     <div className="h-full flex flex-col overflow-hidden bg-white dark:bg-[#161b22]">
       <div className="flex-1 overflow-y-auto">
         {step === 'pick-action' && (
-          <div className="h-full flex items-center justify-center p-8 animate-fadeIn">
+          <div className="h-full flex items-center justify-center p-8 overflow-y-auto animate-fadeIn">
             <ActionChipGrid
               readiness={readiness}
               variant="large"
@@ -73,14 +73,16 @@ export function ActionsPanel() {
         )}
 
         {step === 'pick-intent' && selectedActionId && (
-          <div className="h-full flex flex-col p-8 animate-fadeIn">
-            <ActionStepHeader
-              actionId={selectedActionId}
-              title={actionDef?.label[lang] || actionDef?.label.en || ''}
-              subtitle={actionDef?.description[lang] || actionDef?.description.en}
-              onBack={() => setActionsStep('pick-action')}
-            />
-            <div className="flex-1 flex items-center justify-center">
+          <div className="h-full flex flex-col animate-fadeIn">
+            <div className="shrink-0 px-8 pt-8">
+              <ActionStepHeader
+                actionId={selectedActionId}
+                title={actionDef?.label[lang] || actionDef?.label.en || ''}
+                subtitle={actionDef?.description[lang] || actionDef?.description.en}
+                onBack={() => setActionsStep('pick-action')}
+              />
+            </div>
+            <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
               <IntentChipGrid
                 items={intentChipItems()}
                 onSelect={handleIntentSelect}

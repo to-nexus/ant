@@ -30,45 +30,67 @@ export function ActionChip({ actionId, label, description, readiness, variant, o
   const Icon = visual.icon;
   const isLarge = variant === 'large';
 
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`
-        action-chip relative overflow-hidden w-full h-full
-        rounded-2xl border border-gray-200 dark:border-[#30363d]
-        bg-white dark:bg-gray-800/50
-        cursor-pointer transition-all duration-200 text-left group
-        hover:shadow-lg hover:border-gray-300 dark:hover:border-gray-500
-        hover:scale-[1.02] active:scale-[0.98]
-        ${isLarge ? 'px-5 py-4' : 'px-4 py-3'}
-      `}
-      style={{ animationDelay: `${animationDelay}ms` }}
-    >
-      <div className="action-chip-glow absolute inset-[-1px] rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+    <>
+      {/* Full card — hidden at @xs (icon-only tier) */}
+      <button
+        type="button"
+        onClick={onClick}
+        className={`
+          action-chip relative overflow-hidden w-full h-full
+          rounded-2xl border border-gray-200 dark:border-[#30363d]
+          bg-white dark:bg-gray-800/50
+          cursor-pointer transition-all duration-200 text-left group
+          hover:shadow-lg hover:border-gray-300 dark:hover:border-gray-500
+          hover:scale-[1.02] active:scale-[0.98]
+          hidden @xs:block
+          ${isLarge ? 'px-5 py-4' : 'px-4 py-3'}
+        `}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <div className="action-chip-glow absolute inset-[-1px] rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-      <div className="relative flex items-center gap-3">
-        <div className={`
-          ${isLarge ? 'w-10 h-10' : 'w-9 h-9'}
-          rounded-xl flex items-center justify-center shrink-0
-          ${visual.bg}
-          group-hover:scale-105 transition-transform duration-200
-        `}>
-          <Icon className={`${isLarge ? 'w-5 h-5' : 'w-4 h-4'} ${visual.text}`} />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`${isLarge ? 'text-sm' : 'text-xs'} font-semibold text-gray-800 dark:text-gray-200 truncate`}>
-              {label}
-            </span>
+        <div className="relative flex items-center gap-3">
+          <div className={`
+            ${isLarge ? 'w-10 h-10' : 'w-9 h-9'}
+            rounded-xl flex items-center justify-center shrink-0
+            ${visual.bg}
+            group-hover:scale-105 transition-transform duration-200
+          `}>
+            <Icon className={`${isLarge ? 'w-5 h-5' : 'w-4 h-4'} ${visual.text}`} />
           </div>
-          {isLarge && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{description}</p>
-          )}
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={`${isLarge ? 'text-sm' : 'text-xs'} font-semibold text-gray-800 dark:text-gray-200 truncate`}>
+                {label}
+              </span>
+            </div>
+            {isLarge && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{description}</p>
+            )}
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+
+      {/* Icon-only — visible only below @xs */}
+      <button
+        type="button"
+        onClick={onClick}
+        className={`
+          @xs:hidden
+          w-11 h-11 rounded-xl flex items-center justify-center
+          border border-gray-200 dark:border-[#30363d]
+          bg-white dark:bg-gray-800/50
+          cursor-pointer transition-all duration-200 group
+          hover:shadow-md hover:scale-105 active:scale-95
+          ${visual.bg}
+        `}
+        title={label}
+        style={{ animationDelay: `${animationDelay}ms` }}
+      >
+        <Icon className={`w-5 h-5 ${visual.text}`} />
+      </button>
+    </>
   );
 }

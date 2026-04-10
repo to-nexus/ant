@@ -32,6 +32,7 @@ export interface ResolvedDocument {
   path: string;
   content: string;
   role: 'ref' | 'context';
+  label?: string;
 }
 
 // ============================================

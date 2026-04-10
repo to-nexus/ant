@@ -2,17 +2,14 @@
  * InputSanitizer — wraps user-controlled content in boundary tags
  * to mitigate prompt injection attacks.
  *
- * User-provided fields (PRD, directive, design doc, UI doc) are enclosed
+ * User-provided fields (directive) and document contents are enclosed
  * in XML-like boundary markers so the LLM can distinguish system
  * instructions from user data.
  */
 
 // Fields that carry user-authored content and need boundary wrapping
 const USER_CONTENT_FIELDS = new Set([
-  'prdSpec',
   'directive',
-  'designDoc',
-  'uiDoc',
 ]);
 
 /**
@@ -38,7 +35,14 @@ export function sanitizeInjectionVars(
 ): Record<string, any> {
   const result: Record<string, any> = {};
   for (const [key, value] of Object.entries(vars)) {
-    if (USER_CONTENT_FIELDS.has(key) && typeof value === 'string' && value.length > 0) {
+    if (key === 'documents' && Array.isArray(value)) {
+      result[key] = value.map((doc: any) => ({
+        ...doc,
+        content: typeof doc.content === 'string' && doc.content.length > 0
+          ? wrapUserContent(doc.content, doc.label || doc.path)
+          : doc.content,
+      }));
+    } else if (USER_CONTENT_FIELDS.has(key) && typeof value === 'string' && value.length > 0) {
       result[key] = wrapUserContent(value, key);
     } else {
       result[key] = value;

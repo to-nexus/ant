@@ -162,12 +162,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 3: Prepare design documents (environment-aware)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const { designDoc, hasDesignDoc, useToolMode } = prepareDesignDocument(state);
+  const { documents, hasDocuments, useToolMode } = prepareDesignDocument(state);
 
   // Inter-Job Context Bridge: pre-determine boundary classification
   const suggestedBoundary: 'heavyweight' | 'lightweight' | 'pending' =
     state.detectionReport?.jobMode === 'explain' ? 'lightweight'
-    : hasDesignDoc ? 'heavyweight'
+    : hasDocuments ? 'heavyweight'
     : (state.specDocs && Object.keys(state.specDocs).length > 0) ? 'pending'
     : 'lightweight';
   
@@ -303,8 +303,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   const decomposeVars = {
     directive: state.directive || '',
-    designDoc,
-    hasDesignDoc,
+    documents,
+    hasDocuments,
     specDoc,
     specApiContract,
     mode: state.detectionReport?.jobMode || 'unknown',
@@ -345,9 +345,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           ],
           injectedVariables: {
             directive: decomposeVars.directive ? `[${decomposeVars.directive.length} chars]` : undefined,
-            designDoc: designDoc ? `[${designDoc.length} chars]` : undefined,
+            documents: documents.length > 0 ? `[${documents.length} docs]` : undefined,
             designDocsMeta: designDocsMeta ? 'SET' : undefined,
-            hasDesignDoc,
+            hasDocuments,
             mode: decomposeVars.mode,
             hasProjectCode,
             codebaseFilePaths: codebaseFilePaths?.length || 0,

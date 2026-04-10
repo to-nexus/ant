@@ -40,6 +40,12 @@ export interface SlotDef {
   emptyHint?: { en: string; ko: string };
   /** When true, files already selected as refs are excluded from this slot's listing */
   excludeSelectedRefs?: boolean;
+  /** Intent to navigate to when "Create" button is clicked on an empty slot */
+  createIntent?: string;
+  /** Human-readable name for the empty slot (e.g. "기획서", "시스템 설계 문서") */
+  humanLabel?: { en: string; ko: string };
+  /** When true, this slot represents the project codebase rather than feature-relative files */
+  codebase?: boolean;
 }
 
 export interface TargetDef {
@@ -74,20 +80,44 @@ export function formatExpectedFile(ef: ExpectedFile): string {
 
 const CHAT_HINT = { en: 'Provide instructions via chat', ko: '채팅에 직접 입력합니다' };
 
-function refDir(path: string, label: { en: string; ko: string }, opts?: { locked?: boolean }): SlotDef {
-  return { path, label, type: 'dir', defaultSelected: true, locked: opts?.locked };
+interface SlotOpts {
+  locked?: boolean;
+  createIntent?: string;
+  humanLabel?: { en: string; ko: string };
 }
 
-function refFile(path: string, label: { en: string; ko: string }, opts?: { locked?: boolean }): SlotDef {
-  return { path, label, type: 'file', defaultSelected: true, locked: opts?.locked };
+function refDir(path: string, label: { en: string; ko: string }, opts?: SlotOpts): SlotDef {
+  return { path, label, type: 'dir', defaultSelected: true, locked: opts?.locked, createIntent: opts?.createIntent, humanLabel: opts?.humanLabel };
 }
 
-function ctxDir(path: string, label: { en: string; ko: string }, opts?: { excludeSelectedRefs?: boolean }): SlotDef {
-  return { path, label, type: 'dir', defaultSelected: false, excludeSelectedRefs: opts?.excludeSelectedRefs };
+function refFile(path: string, label: { en: string; ko: string }, opts?: SlotOpts): SlotDef {
+  return { path, label, type: 'file', defaultSelected: true, locked: opts?.locked, createIntent: opts?.createIntent, humanLabel: opts?.humanLabel };
+}
+
+interface CtxOpts {
+  excludeSelectedRefs?: boolean;
+  createIntent?: string;
+  humanLabel?: { en: string; ko: string };
+}
+
+function ctxDir(path: string, label: { en: string; ko: string }, opts?: CtxOpts): SlotDef {
+  return { path, label, type: 'dir', defaultSelected: false, excludeSelectedRefs: opts?.excludeSelectedRefs, createIntent: opts?.createIntent, humanLabel: opts?.humanLabel };
 }
 
 function emptyRef(): SlotDef {
   return { path: '', label: CHAT_HINT, type: 'file', defaultSelected: false, emptyHint: CHAT_HINT };
+}
+
+function codebaseRef(): SlotDef {
+  return {
+    path: '',
+    label: { en: 'Codebase', ko: '코드베이스' },
+    type: 'dir',
+    defaultSelected: true,
+    locked: true,
+    codebase: true,
+    humanLabel: { en: 'Codebase', ko: '코드베이스' },
+  };
 }
 
 function expected(prefix: string, ext: string, label: { en: string; ko: string }, isPattern = true): ExpectedFile {
@@ -117,6 +147,17 @@ const L = {
   plan: { en: 'PRD', ko: '기획서' },
   prd: { en: 'prd-refine.md', ko: 'prd-refine.md' },
   visual: { en: 'Generated Images', ko: '생성 이미지' },
+} as const;
+
+const HL = {
+  prd: { en: 'PRD / Requirements', ko: '기획서' },
+  systemDesign: { en: 'System Design Documents', ko: '시스템 설계 문서' },
+  uiDesign: { en: 'UI Design Documents', ko: 'UI 설계 문서' },
+  specDocs: { en: 'Feature Spec Documents', ko: '기능 스펙 문서' },
+  designAll: { en: 'Design Documents', ko: '설계 문서' },
+  figmaConfig: { en: 'Figma Configuration', ko: 'Figma 설정 파일' },
+  references: { en: 'Reference Images', ko: '레퍼런스 이미지' },
+  assets: { en: 'Asset Files', ko: '에셋 파일' },
 } as const;
 
 // ============================================
@@ -156,7 +197,7 @@ const MATRIX: Record<string, MatrixEntry> = {
   },
   'revise-plan': {
     directive: {
-      refs: [refDir(SOURCES_DIR, L.sources)],
+      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
       context: [ctxDir(SOURCES_DIR, L.sources, { excludeSelectedRefs: true })],
       target: { mirrorRefs: true },
       buildRequiresContext: true,
@@ -166,37 +207,37 @@ const MATRIX: Record<string, MatrixEntry> = {
   // ── System Design: Create ─────────────────
   'create-fe': {
     prd: {
-      refs: [refDir(SOURCES_DIR, L.sources)],
-      context: [ctxDir(SYS_DIR, L.systemDesign)],
+      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
+      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
       target: { dir: SYS_DIR, expectedFiles: FE_TARGETS },
     },
     directive: {
       refs: [emptyRef()],
-      context: [ctxDir(SYS_DIR, L.systemDesign)],
+      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
       target: { dir: SYS_DIR, expectedFiles: FE_TARGETS },
     },
   },
   'create-be': {
     prd: {
-      refs: [refDir(SOURCES_DIR, L.sources)],
-      context: [ctxDir(SYS_DIR, L.systemDesign)],
+      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
+      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
       target: { dir: SYS_DIR, expectedFiles: BE_TARGETS },
     },
     directive: {
       refs: [emptyRef()],
-      context: [ctxDir(SYS_DIR, L.systemDesign)],
+      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
       target: { dir: SYS_DIR, expectedFiles: BE_TARGETS },
     },
   },
   'create-fullstack': {
     prd: {
-      refs: [refDir(SOURCES_DIR, L.sources)],
-      context: [ctxDir(SYS_DIR, L.systemDesign)],
+      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
+      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
       target: { dir: SYS_DIR, expectedFiles: FULLSTACK_TARGETS },
     },
     directive: {
       refs: [emptyRef()],
-      context: [ctxDir(SYS_DIR, L.systemDesign)],
+      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
       target: { dir: SYS_DIR, expectedFiles: FULLSTACK_TARGETS },
     },
   },
@@ -204,8 +245,8 @@ const MATRIX: Record<string, MatrixEntry> = {
   // ── System Design: Revise ─────────────────
   'revise-system': {
     directive: {
-      refs: [refDir(SYS_DIR, L.systemDesign)],
-      context: [ctxDir(SOURCES_DIR, L.sources)],
+      refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign })],
+      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
       target: { mirrorRefs: true },
       buildRequiresContext: true,
     },
@@ -214,22 +255,27 @@ const MATRIX: Record<string, MatrixEntry> = {
   // ── UI Design: Create ─────────────────────
   'create-figma': {
     figma: {
-      refs: [refFile('inputs/figma.json', L.figmaConfig, { locked: true })],
-      context: [ctxDir(SOURCES_DIR, L.sources)],
+      refs: [refFile('inputs/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
+      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
       target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
     },
   },
   'create-ref': {
     references: {
-      refs: [refDir(REFS_DIR, L.references)],
-      context: [ctxDir(SOURCES_DIR, L.sources), ctxDir(ASSETS_DIR, L.assets)],
+      refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
+      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
       target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
     },
   },
   'create-desc': {
+    prd: {
+      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
+      context: [],
+      target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
+    },
     directive: {
       refs: [emptyRef()],
-      context: [ctxDir(SOURCES_DIR, L.sources)],
+      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
       target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
     },
   },
@@ -237,8 +283,8 @@ const MATRIX: Record<string, MatrixEntry> = {
   // ── UI Design: Revise ─────────────────────
   'revise-ui': {
     directive: {
-      refs: [refDir(UI_DIR, L.uiDesign)],
-      context: [ctxDir(SOURCES_DIR, L.sources)],
+      refs: [refDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
+      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
       target: { mirrorRefs: true },
       buildRequiresContext: true,
     },
@@ -247,20 +293,20 @@ const MATRIX: Record<string, MatrixEntry> = {
   // ── Spec ──────────────────────────────────
   'create-spec': {
     'existing-doc': {
-      refs: [refDir(DESIGN_DIR, L.designAll)],
+      refs: [refDir(DESIGN_DIR, L.designAll, { createIntent: 'create-fullstack', humanLabel: HL.designAll })],
       context: [],
       target: { dir: SPEC_DIR, expectedFiles: SPEC_TARGETS },
     },
     directive: {
       refs: [emptyRef()],
-      context: [ctxDir(DESIGN_DIR, L.designAll)],
+      context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'create-fullstack', humanLabel: HL.designAll })],
       target: { dir: SPEC_DIR, expectedFiles: SPEC_TARGETS },
     },
   },
   'revise-spec': {
     directive: {
-      refs: [refDir(SPEC_DIR, L.specDocs)],
-      context: [ctxDir(DESIGN_DIR, L.designAll)],
+      refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'create-spec', humanLabel: HL.specDocs })],
+      context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'create-fullstack', humanLabel: HL.designAll })],
       target: { mirrorRefs: true },
       buildRequiresContext: true,
     },
@@ -268,14 +314,14 @@ const MATRIX: Record<string, MatrixEntry> = {
 
   // ── Code ──────────────────────────────────
   'create-code': {
-    spec: {
-      refs: [refDir(SPEC_DIR, L.specDocs)],
-      context: [ctxDir(SYS_DIR, L.systemDesign), ctxDir(UI_DIR, L.uiDesign)],
+    'design-doc': {
+      refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign })],
+      context: [ctxDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
       target: { codebase: true },
     },
-    'design-doc': {
-      refs: [refDir(SYS_DIR, L.systemDesign), refDir(UI_DIR, L.uiDesign)],
-      context: [],
+    spec: {
+      refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'create-spec', humanLabel: HL.specDocs })],
+      context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
       target: { codebase: true },
     },
     directive: {
@@ -286,7 +332,7 @@ const MATRIX: Record<string, MatrixEntry> = {
   },
   'refactor-code': {
     'existing-doc': {
-      refs: [refDir(SPEC_DIR, L.specDocs), refDir(SYS_DIR, L.systemDesign), refDir(UI_DIR, L.uiDesign)],
+      refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'create-spec', humanLabel: HL.specDocs }), refDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign }), refDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
       context: [],
       target: { codebase: true },
     },

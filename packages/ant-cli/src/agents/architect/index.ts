@@ -245,7 +245,6 @@ export async function architectAgent(
           return {
             directive: directive || undefined,
             previousDesign: designResult?.content || undefined,
-            prdSpec: source?.prd || undefined,
             sourceDocuments: source?.sourceDocuments || undefined
           };
         }
@@ -425,9 +424,8 @@ export async function architectAgent(
             
             return {
               directive: directive || undefined,
-              designDoc: designResult?.content || undefined,
-              designDocPath: designResult?.filePath || undefined,  // ✅ For environment inference
-              designDocs  // ✅ All docs (filtered later by TemplateComposer)
+              designDocPath: designResult?.filePath || undefined,
+              designDocs
             };
           }
         });
