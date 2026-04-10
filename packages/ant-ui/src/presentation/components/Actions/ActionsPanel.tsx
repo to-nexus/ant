@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { ACTION_DEFINITIONS, getIntentsForAction, type ActionId } from '@ant/shared';
 import { ActionChipGrid, IntentChipGrid, type ChipItem } from './ActionChipGrid';
 import { ActionConfigView } from './ActionConfigView';
-import { ACTION_VISUALS } from './ActionChip';
+import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
 
@@ -88,16 +88,18 @@ export function ActionsPanel() {
   const intentChipItems = useCallback((): ChipItem[] => {
     if (!selectedActionId) return [];
     const intents = getIntentsForAction(selectedActionId);
-    const visual = ACTION_VISUALS[selectedActionId];
 
-    return intents.map(intent => ({
-      id: intent.id,
-      label: intent.label[lang] || intent.label.en,
-      description: intent.description[lang] || intent.description.en,
-      icon: visual?.icon,
-      bg: visual?.bg,
-      text: visual?.text,
-    }));
+    return intents.map(intent => {
+      const v = getIntentVisual(intent.id, selectedActionId);
+      return {
+        id: intent.id,
+        label: intent.label[lang] || intent.label.en,
+        description: intent.description[lang] || intent.description.en,
+        icon: v.icon,
+        bg: v.bg,
+        text: v.text,
+      };
+    });
   }, [selectedActionId, lang]);
 
   const renderStep = () => {

@@ -1,63 +1,83 @@
-import { type ActionId } from '@ant/shared';
-import type { ActionReadiness } from '@ant/shared';
-import { FileText, Server, Palette, LayoutList, Code2, ImageIcon, BookOpen } from 'lucide-react';
-
-const ACTION_VISUALS: Record<ActionId, { icon: any; bg: string; text: string }> = {
-  plan: { icon: FileText, bg: 'bg-blue-100 dark:bg-blue-900/50', text: 'text-blue-600 dark:text-blue-400' },
-  'system-design': { icon: Server, bg: 'bg-purple-100 dark:bg-purple-900/50', text: 'text-purple-600 dark:text-purple-400' },
-  'ui-design': { icon: Palette, bg: 'bg-pink-100 dark:bg-pink-900/50', text: 'text-pink-600 dark:text-pink-400' },
-  spec: { icon: LayoutList, bg: 'bg-rose-100 dark:bg-rose-900/50', text: 'text-rose-600 dark:text-rose-400' },
-  code: { icon: Code2, bg: 'bg-emerald-100 dark:bg-emerald-900/50', text: 'text-emerald-600 dark:text-emerald-400' },
-  visual: { icon: ImageIcon, bg: 'bg-violet-100 dark:bg-violet-900/50', text: 'text-violet-600 dark:text-violet-400' },
-  learn: { icon: BookOpen, bg: 'bg-amber-100 dark:bg-amber-900/50', text: 'text-amber-600 dark:text-amber-400' },
-};
+import { ACTION_VISUALS, type VisualDef } from './actionVisuals';
+import type { ActionId, ActionReadiness } from '@ant/shared';
 
 export { ACTION_VISUALS };
 
+// ============================================
+// Props — variation is controlled here
+// ============================================
+
 interface ActionChipProps {
-  actionId: ActionId;
   label: string;
   description: string;
-  readiness: ActionReadiness;
   variant: 'compact' | 'large';
   onClick: () => void;
   animationDelay?: number;
+
+  /** Lookup-based: resolve icon/bg/text from ACTION_VISUALS */
+  actionId?: ActionId;
+  readiness?: ActionReadiness;
+
+  /** Direct injection: override or supply icon/bg/text explicitly */
+  icon?: React.ComponentType<{ className?: string }>;
+  iconBg?: string;
+  iconColor?: string;
+
+  /** Disabled state (intent cards with block reasons) */
+  disabled?: boolean;
+  blockReason?: string;
 }
 
-export function ActionChip({ actionId, label, description, readiness, variant, onClick, animationDelay = 0 }: ActionChipProps) {
-  const visual = ACTION_VISUALS[actionId];
-  if (!visual) return null;
-  const Icon = visual.icon;
+// ============================================
+// Component
+// ============================================
+
+export function ActionChip({
+  label, description, variant, onClick, animationDelay = 0,
+  actionId, icon, iconBg, iconColor,
+  disabled, blockReason,
+}: ActionChipProps) {
+  const looked: VisualDef | undefined = actionId ? ACTION_VISUALS[actionId] : undefined;
+  const Icon = icon ?? looked?.icon;
+  const bg = iconBg ?? looked?.bg ?? '';
+  const text = iconColor ?? looked?.text ?? '';
+
+  if (!Icon) return null;
+
   const isLarge = variant === 'large';
 
   return (
     <>
-      {/* Full card — hidden at @xs (icon-only tier) */}
+      {/* Full card — hidden below @xs (icon-only tier) */}
       <button
         type="button"
         onClick={onClick}
+        disabled={disabled}
         className={`
           action-chip relative overflow-hidden w-full h-full
           rounded-2xl border border-gray-200 dark:border-[#30363d]
           bg-white dark:bg-gray-800/50
-          cursor-pointer transition-all duration-200 text-left group
-          hover:shadow-lg hover:border-gray-300 dark:hover:border-gray-500
-          hover:scale-[1.02] active:scale-[0.98]
+          transition-all duration-200 text-left group
           hidden @xs:block
           ${isLarge ? 'px-5 py-4' : 'px-4 py-3'}
+          ${disabled
+            ? 'opacity-50 cursor-not-allowed'
+            : 'cursor-pointer hover:shadow-lg hover:border-gray-300 dark:hover:border-gray-500 hover:scale-[1.02] active:scale-[0.98]'}
         `}
         style={{ animationDelay: `${animationDelay}ms` }}
       >
-        <div className="action-chip-glow absolute inset-[-1px] rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        {!disabled && (
+          <div className="action-chip-glow absolute inset-[-1px] rounded-2xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        )}
 
         <div className="relative flex items-center gap-3">
           <div className={`
             ${isLarge ? 'w-10 h-10' : 'w-9 h-9'}
             rounded-xl flex items-center justify-center shrink-0
-            ${visual.bg}
+            ${bg}
             group-hover:scale-105 transition-transform duration-200
           `}>
-            <Icon className={`${isLarge ? 'w-5 h-5' : 'w-4 h-4'} ${visual.text}`} />
+            <Icon className={`${isLarge ? 'w-5 h-5' : 'w-4 h-4'} ${text}`} />
           </div>
 
           <div className="flex-1 min-w-0">
@@ -69,6 +89,9 @@ export function ActionChip({ actionId, label, description, readiness, variant, o
             {isLarge && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{description}</p>
             )}
+            {disabled && blockReason && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{blockReason}</p>
+            )}
           </div>
         </div>
       </button>
@@ -77,19 +100,22 @@ export function ActionChip({ actionId, label, description, readiness, variant, o
       <button
         type="button"
         onClick={onClick}
+        disabled={disabled}
         className={`
           @xs:hidden
           w-11 h-11 rounded-xl flex items-center justify-center
           border border-gray-200 dark:border-[#30363d]
           bg-white dark:bg-gray-800/50
-          cursor-pointer transition-all duration-200 group
-          hover:shadow-md hover:scale-105 active:scale-95
-          ${visual.bg}
+          transition-all duration-200 group
+          ${bg}
+          ${disabled
+            ? 'opacity-50 cursor-not-allowed'
+            : 'cursor-pointer hover:shadow-md hover:scale-105 active:scale-95'}
         `}
         title={label}
         style={{ animationDelay: `${animationDelay}ms` }}
       >
-        <Icon className={`w-5 h-5 ${visual.text}`} />
+        <Icon className={`w-5 h-5 ${text}`} />
       </button>
     </>
   );
